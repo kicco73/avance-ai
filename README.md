@@ -186,11 +186,11 @@ request-body field:
 | --- | --- |
 | Chat | `GET/POST /api/chat/session(s)`, `DELETE /api/chat/sessions/{id}`, `GET/POST /api/chat/sessions/{id}/messages`, `POST /api/chat/sessions/{id}/action`, `POST /api/chat/reset` |
 | Auto-tracking | `GET/POST /api/chat/sessions/{id}/autotracking` — "Dev mode: freeze automatic state transitions", scoped to one 'test' session (EditProjectView.vue's own embedded "Test" chat); a native/imported session is always auto-tracked |
-| Live analytics | `GET /api/chat/signals` (last computed signal values, active project), `GET /api/projects/{name}/metrics` (metrics_framework, computed on demand), `POST /api/triggers/preview` |
+| Live analytics | `GET /api/chat/signals` (last computed signal values, active project), `GET /api/projects/{project_id}/metrics` (metrics_framework, computed on demand), `POST /api/triggers/preview` |
 | AI model | `GET /api/ai/models`, `POST /api/ai/models/selection` |
 | Voice | `GET /api/chat/messages/{id}/audio` (TTS), `POST /api/listen/transcribe` (STT) |
-| Projects | `GET/POST /api/projects`, `PUT /api/projects/{name}/activate`, `GET/PUT/DELETE /api/projects/{name}`, `GET /api/projects/{name}/graph`, `GET /api/projects/{name}/signals`, `GET /api/projects/{name}/sessions`, `GET /api/projects/{name}/identifiers` |
-| Project files | `GET /api/projects/{name}/files(/{file})`, `PUT/DELETE /api/projects/{name}/files/{file}` — the "Edit project" view's file explorer |
+| Projects | `GET/POST /api/projects`, `POST /api/projects/upload` (create or add a revision — see `backend/src/docs/PROJECT_SPECS.md` §2.2), `PUT /api/projects/{project_id}/activate`, `GET/DELETE /api/projects/{project_id}`, `GET /api/projects/{project_id}/graph`, `GET /api/projects/{project_id}/signals`, `GET /api/projects/{project_id}/sessions`, `GET /api/projects/{project_id}/identifiers` |
+| Project files | `GET /api/projects/{project_id}/files(/{file})`, `PUT/DELETE /api/projects/{project_id}/files/{file}` — the "Edit project" view's file explorer |
 | Settings | `GET/POST /api/settings/backup` (the whole database, every project and every user's sessions, as a single restorable `.sqlite` file), `GET /api/settings/projects/runtime-status` |
 | Status | `GET /api/state` |
 | Chat (optional) | `WS /ws/chat` — only when `chat-service.transport: websocket` |

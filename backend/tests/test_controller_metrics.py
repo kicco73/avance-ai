@@ -55,9 +55,9 @@ def test_metrics_are_scoped_to_the_url_project(client):
     names = {}
     for key, sample in (("hello", "Hello world.zip"), ("cat", "Aprendr català.zip")):
         content = (samples_dir / sample).read_bytes()
-        resp = client.put(f"/api/projects/{key}", content=content, headers={"Content-Type": "application/zip"})
+        resp = client.post("/api/projects/upload", content=content, headers={"Content-Type": "application/zip"})
         assert resp.status_code == 200, resp.text
-        names[key] = parse_sse_result(resp)["project_name"]
+        names[key] = parse_sse_result(resp)["project_id"]
         resp = client.post(f"/api/projects/{names[key]}/publish", json={})
         assert resp.status_code == 200, resp.text
 

@@ -57,14 +57,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # A plain 'user' only ever owns whichever projects they have a
         # UserProject row for (see ProjectService.resolve_invite_link) —
-        # checked once here, for every {project_name}-scoped route at
+        # checked once here, for every {project_id}-scoped route at
         # once, rather than in each controller method individually.
         # supervisor/admin routes are untouched: identity.role is never
         # 'user' there.
-        project_name = path_params.get("project_name")
-        if identity.role == 'user' and project_name is not None:
+        project_id = path_params.get("project_id")
+        if identity.role == 'user' and project_id is not None:
             db = request.app.state.db
-            if not db.user_has_project_access(identity.email, project_name):
+            if not db.user_has_project_access(identity.email, project_id):
                 return self._forbidden_response()
 
         Session().user = identity.email

@@ -16,7 +16,7 @@ class TriggerExpressionAnalyzer:
     # has no entry in _NAMESPACE_PATHS below since automaton.<project>.state/
     # env.<key> is a dynamic, per-project chain static-tuple matching can't express.
     RESERVED_NAMESPACES = (
-        "signal", "env", "system", "session", "user", "source", "actuator", "metric", "automaton", "datetime",
+        "signal", "env", "session", "user", "source", "actuator", "metric", "automaton", "datetime",
     )
 
     # Dotted sub-namespaces nested one level under a reserved namespace above —
@@ -132,6 +132,47 @@ class TriggerExpressionAnalyzer:
             calls.append((ref[1], len(node.args) + len(node.keywords)))
         return calls
 
+    @staticmethod
+    def on_enter_statements(source: str) -> list[tuple[int, str]]:
+        """Splits `on-enter` source into one (line_number, statement source)
+        pair per top-level statement — one `actuator.<name>(...)` call each
+        — using Python's own parser rather than naively splitting on '\\n'.
+        This is what lets a single call span several lines (implicit
+        continuation inside its own parens) and lets both a whole-line and
+        a trailing '# ...' comment work exactly like they do in any other
+        Python source, with no special-casing needed here at all — the
+        tokenizer already strips comments and skips blank lines before the
+        parser ever sees them. `line_number` is where that statement's own
+        source starts, for error messages elsewhere. Each returned segment
+        is handed to the exact same single-expression validators/evaluator
+        every other caller here already uses (they parse it again
+        themselves, in `mode="eval"` — multi-line is fine there too, only
+        a real statement, e.g. an assignment, isn't). Raises SyntaxError,
+        uncaught, for source that isn't valid Python at all — every caller
+        already turns that into the same error a single malformed
+        expression gets."""
+        tree = ast.parse(source, mode="exec")
+        return [(stmt.lineno, ast.get_source_segment(source, stmt)) for stmt in tree.body]
+
+    @staticmethod
+    def on_enter_assignment(statement: str) -> tuple[str, str] | None:
+        """(target_name, rhs_source) if `statement` (one already-split
+        on_enter_statements() segment) is a simple single-name assignment
+        — `name = <expr>`, the only assignment shape an on-enter line may
+        take — None for anything else (a bare actuator/source call, or a
+        shape (tuple/attribute/subscript target, chained `a = b = ...`)
+        this deliberately doesn't support, left to fail the normal
+        mode="eval" parse everywhere else the way any other malformed
+        on-enter line already does). Never raises on `statement` itself:
+        it already parsed once, as part of on_enter_statements()."""
+        tree = ast.parse(statement, mode="exec")
+        if len(tree.body) != 1 or not isinstance(tree.body[0], ast.Assign):
+            return None
+        stmt = tree.body[0]
+        if len(stmt.targets) != 1 or not isinstance(stmt.targets[0], ast.Name):
+            return None
+        return stmt.targets[0].id, ast.get_source_segment(statement, stmt.value)
+
     # Every identifier whose runtime *type* is fixed by its own contract, well
     # enough to check statically. `env.*` is absent: it's a free-form store any
     # expression can set to anything, so its type is treated as unknown.
@@ -144,7 +185,6 @@ class TriggerExpressionAnalyzer:
     _NUMERIC_KINDS = (_KIND_NUMBER, _KIND_BOOL)
 
     _FIXED_IDENTIFIER_KIND: dict[tuple[str, ...], dict[str, str]] = {
-        ("system",): {"today": _KIND_STRING, "time": _KIND_STRING},
         ("session",): {
             "current_session_duration_in_minutes": _KIND_NUMBER,
             "last_user_session_datetime": _KIND_STRING,
@@ -209,7 +249,7 @@ class TriggerExpressionAnalyzer:
     def type_violations(cls, expression: str) -> list[str]:
         """Every ordering comparison (`<`/`<=`/`>`/`>=`, never `==`/`!=`) in
         `expression` between operands whose statically-known kinds (see
-        _leaf_kind) are incompatible, e.g. `system.today() >= 5`. Returns messages, never raises."""
+        _leaf_kind) are incompatible, e.g. `user.name >= 5`. Returns messages, never raises."""
         tree = ast.parse(expression, mode="eval").body
         violations = []
         for node in ast.walk(tree):
@@ -229,6 +269,99 @@ class TriggerExpressionAnalyzer:
                     f"'{ast.unparse(left)} {symbol} {ast.unparse(right)}' compares a {left_kind} "
                     f"with a {right_kind} — this will raise a TypeError as soon as it's evaluated"
                 )
+        return violations
+
+    # --- actuator.defer(lambda: ..., when) --------------------------------
+
+    _KIND_DATETIME = "datetime"
+    _KIND_TIMEDELTA = "timedelta"
+    # Actuators bound to the live session (see PromptContext: the model
+    # call sees the session's own chat history) — meaningless, hence
+    # refused, inside a deferred lambda. actuator.prompt is the one for
+    # now; revisit if a session-free variant is ever added.
+    _SESSION_BOUND_ACTUATORS = (("actuator", "prompt"),)
+
+    @classmethod
+    def _temporal_kind(cls, node: ast.AST) -> str | None:
+        """`node`'s statically-known temporal kind: 'datetime' for
+        `datetime.datetime(...)` / `datetime.datetime.now(...)` and for a
+        datetime ± timedelta, 'timedelta' for `datetime.timedelta(...)`
+        and a timedelta ± timedelta; None for anything else (including a
+        bare `env.*`, whose runtime type nobody can know here)."""
+        if isinstance(node, ast.Call):
+            chain = cls._dotted_chain(node.func)
+            if chain in (("datetime", "datetime"), ("datetime", "datetime", "now")):
+                return cls._KIND_DATETIME
+            if chain == ("datetime", "timedelta"):
+                return cls._KIND_TIMEDELTA
+            return None
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub)):
+            left, right = cls._temporal_kind(node.left), cls._temporal_kind(node.right)
+            if left == cls._KIND_DATETIME and right == cls._KIND_TIMEDELTA:
+                return cls._KIND_DATETIME
+            if left == cls._KIND_TIMEDELTA and right == cls._KIND_TIMEDELTA:
+                return cls._KIND_TIMEDELTA
+            if isinstance(node.op, ast.Add) and left == cls._KIND_TIMEDELTA and right == cls._KIND_DATETIME:
+                return cls._KIND_DATETIME
+            return None
+        return None
+
+    @staticmethod
+    def _dotted_chain(node: ast.AST) -> tuple[str, ...] | None:
+        attrs: list[str] = []
+        while isinstance(node, ast.Attribute):
+            attrs.append(node.attr)
+            node = node.value
+        if not isinstance(node, ast.Name):
+            return None
+        return (node.id, *reversed(attrs))
+
+    @classmethod
+    def defer_violations(cls, expression: str) -> list[str]:
+        """Everything that would make an `actuator.defer(act, when)` in
+        `expression` unschedulable — or unhibernatable — at runtime,
+        caught here instead: `act` must be a zero-argument `lambda:` (a
+        bound method or any other value has no source to persist), and
+        `when` must be of datetime kind by its *shape* (see _temporal_kind)
+        — a bare `env.<key>` or string is refused even though it might
+        hold a date at runtime. Inside a `datetime.timedelta(...)` the
+        arguments may be anything numeric or unknown (`env.reminder_days`
+        is fine); only a certain string is refused. Returns messages, never raises."""
+        tree = ast.parse(expression, mode="eval")
+        violations: list[str] = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or cls._dotted_chain(node.func) != ("actuator", "defer"):
+                continue
+            if len(node.args) != 2 or node.keywords:
+                continue  # arity is reported by the builder's own check
+            act, when = node.args
+            if not isinstance(act, ast.Lambda):
+                violations.append(
+                    f"actuator.defer(...): the first argument must be a `lambda: ...`, got '{ast.unparse(act)}'"
+                )
+            elif act.args.args or act.args.vararg or act.args.kwonlyargs or act.args.kwarg or act.args.posonlyargs:
+                violations.append("actuator.defer(...): the lambda must take no arguments")
+            else:
+                for inner in ast.walk(act.body):
+                    if isinstance(inner, ast.Call) and cls._dotted_chain(inner.func) in cls._SESSION_BOUND_ACTUATORS:
+                        violations.append(
+                            f"actuator.defer(...): {ast.unparse(inner.func)}(...) reads the conversation of the "
+                            "session that fired it, which will be over by the time a deferred call runs — "
+                            "call it now and defer only what it produces"
+                        )
+            if cls._temporal_kind(when) != cls._KIND_DATETIME:
+                violations.append(
+                    f"actuator.defer(...): `when` must be a datetime built from datetime.datetime(...) or "
+                    f"datetime.datetime.now(...), optionally ± datetime.timedelta(...), got '{ast.unparse(when)}'"
+                )
+            for inner in ast.walk(when):
+                if isinstance(inner, ast.Call) and cls._dotted_chain(inner.func) == ("datetime", "timedelta"):
+                    for argument in (*inner.args, *(keyword.value for keyword in inner.keywords)):
+                        if cls._leaf_kind(argument) == cls._KIND_STRING:
+                            violations.append(
+                                f"actuator.defer(...): datetime.timedelta() takes numbers, got the string "
+                                f"'{ast.unparse(argument)}'"
+                            )
         return violations
 
     @classmethod

@@ -18,11 +18,11 @@ const ABSOLUTE_URL_PATTERN = /^(https?:)?\/\/|^data:/i
 // the stylesheet referencing it (see chatStore.js's own loadSkin) —
 // ChatPreview.vue omits it: a design-time preview of the live draft has
 // no session to pin to.
-export function resolveCssAssetUrls(cssText, projectName, sessionId) {
+export function resolveCssAssetUrls(cssText, projectId, sessionId) {
   return cssText.replace(CSS_URL_PATTERN, (whole, quote, target) => {
     const trimmed = target.trim()
     if (!trimmed || ABSOLUTE_URL_PATTERN.test(trimmed)) return whole
     const basename = trimmed.split('/').pop()
-    return `url(${quote}${projectFileContentUrl(projectName, `aspect/${basename}`, sessionId)}${quote})`
+    return `url(${quote}${projectFileContentUrl(projectId, `aspect/${basename}`, sessionId)}${quote})`
   })
 }

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pytest
 
+from conftest import parse_sse_result
 from project.archive.layout import MAX_IMAGE_UPLOAD_BYTES
 
 pytestmark = pytest.mark.contract
@@ -15,6 +16,7 @@ pytestmark = pytest.mark.contract
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n" + b"0" * 32
 
 TWO_STATE_YML = (
+    "project:\n  id: proj\n"
     "init-action:\n  target: a\n"
     "states:\n"
     "  a:\n"
@@ -72,12 +74,14 @@ def test_get_project_file_reports_no_content_for_a_missing_index_css(client):
     """index.css is the one file every project is allowed not to have —
     missing, this is 204 No Content, not a 404, so an editor can start
     with an empty buffer instead of surfacing an error."""
-    response = client.put(
-        "/api/projects/no-css", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"}
+    yml = TWO_STATE_YML.replace("id: proj", "id: no_css")
+    response = client.post(
+        "/api/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"}
     )
     assert response.status_code == 200, response.text
+    project_id = parse_sse_result(response)["project_id"]
 
-    response = client.get("/api/projects/no-css/files/index.css")
+    response = client.get(f"/api/projects/{project_id}/files/index.css")
     assert response.status_code == 204
     assert response.content == b""
 
@@ -220,7 +224,7 @@ class TestGetProjectFileContent:
     def test_a_live_session_stays_pinned_to_its_own_published_revision(self, client):
         # A two-state project with a real action: firing it establishes a
         # current_state reliably, unlike hello_project's single-state one.
-        client.put("/api/projects/proj", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+        client.post("/api/projects/upload", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
         client.put("/api/projects/proj/files/index.css", content=b"body { color: red; }")
         client.post("/api/projects/proj/publish", json={})
 
@@ -242,7 +246,7 @@ class TestGetProjectFileContent:
         assert current.content == b"body { color: blue; }"
 
     def test_a_test_session_always_tracks_the_live_draft(self, client):
-        client.put("/api/projects/proj", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+        client.post("/api/projects/upload", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
         client.put("/api/projects/proj/files/index.css", content=b"body { color: red; }")
         client.post("/api/projects/proj/publish", json={})
 

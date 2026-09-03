@@ -10,7 +10,7 @@ import TriggerEditor from './TriggerEditor.vue'
 import { handleEnterNext } from './enterToNextField.js'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   // 'env-key:<name>' for the entry a "+ Add env key" click just created;
   // null otherwise.
   recentlyAddedKey: { type: String, default: null }
@@ -88,7 +88,7 @@ function commitField(field, currentValue, originalValue) {
 async function loadEnvKeys() {
   envKeysLoading.value = true
   try {
-    envKeys.value = (await getProjectEnvKeys(props.projectName)).env_keys
+    envKeys.value = (await getProjectEnvKeys(props.projectId)).env_keys
   } catch {} finally { envKeysLoading.value = false }
   if (expandedName.value && !envKeys.value.some((e) => e.env_key.name === expandedName.value)) {
     expandedName.value = null

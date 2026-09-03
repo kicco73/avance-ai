@@ -13,6 +13,8 @@ pytestmark = pytest.mark.contract
 
 def _build(action_yaml: str, env_section: str = ""):
     content = f"""
+project:
+  id: test_project
 {env_section}
 init-action:
   target: a
@@ -83,6 +85,8 @@ def test_an_empty_env_mapping_is_normalized_to_none():
 
 def test_env_referencing_a_declared_signal_is_valid():
     content = """
+project:
+  id: test_project
 signals:
   mySignal:
     definition: "Some domain-specific signal."

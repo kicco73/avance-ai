@@ -14,6 +14,7 @@ from conftest import parse_sse_result
 pytestmark = pytest.mark.contract
 
 TWO_STATE_YML = (
+    "project:\n  id: {project_id}\n"
     "init-action:\n  target: a\n"
     "states:\n"
     "  a:\n"
@@ -38,12 +39,13 @@ def _upload_activate_and_establish_state(client, project_name: str):
     """Uploads, activates, and publishes a two-state project, then fires
     its one real action against a native session, establishing a real
     current_state before the test."""
-    response = client.put(
-        f"/api/projects/{project_name}",
-        content=_zip_of({"index.yml": TWO_STATE_YML}),
+    response = client.post(
+        "/api/projects/upload",
+        content=_zip_of({"index.yml": TWO_STATE_YML.format(project_id=project_name)}),
         headers={"Content-Type": "application/zip"},
     )
     assert response.status_code == 200, response.text
+    assert parse_sse_result(response)["project_id"] == project_name
     assert client.put(f"/api/projects/{project_name}/activate").status_code == 200
     assert client.post(f"/api/projects/{project_name}/publish", json={}).status_code == 200
 

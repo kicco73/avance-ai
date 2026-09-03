@@ -14,12 +14,12 @@ from tracking.session_import import SessionImportManager
 class SessionImportJob(CancelableJob):
 
     def __init__(
-        self, manager: SessionImportManager, db: Db, project_name: str, uploads: list[tuple[str, bytes]],
+        self, manager: SessionImportManager, db: Db, project_id: str, uploads: list[tuple[str, bytes]],
     ) -> None:
         super().__init__(key="import", username=f"import:{uuid.uuid4().hex}")
         self._manager = manager
         self._db = db
-        self._project_name = project_name
+        self._project_id = project_id
         self._uploads = uploads
         self._pending: list[tuple] = []
         self._results: list[dict] = []
@@ -70,8 +70,8 @@ class SessionImportJob(CancelableJob):
     def _import_json_session(self, label: str, session_data: dict) -> None:
         try:
             validated = SessionImportJsonRequest(**session_data)
-            username = validated.username or self._db.next_test_user_username(self._project_name)
-            session_id = self._manager.import_session_json(username, self._project_name, validated.model_dump())
+            username = validated.username or self._db.next_test_user_username(self._project_id)
+            session_id = self._manager.import_session_json(username, self._project_id, validated.model_dump())
             self._results.append({'file': label, 'ok': True, 'session_id': session_id})
             self._last_session_id = session_id
         except (ValidationError, ValueError, KeyError, TypeError) as exc:
@@ -80,9 +80,9 @@ class SessionImportJob(CancelableJob):
     def _import_transcript(self, filename: str, content: bytes) -> None:
         try:
             if self._transcript_test_user is None:
-                self._transcript_test_user = self._db.next_test_user_username(self._project_name)
+                self._transcript_test_user = self._db.next_test_user_username(self._project_id)
             session_id = self._manager.import_transcript(
-                self._transcript_test_user, self._project_name, content.decode('utf-8'), title=filename,
+                self._transcript_test_user, self._project_id, content.decode('utf-8'), title=filename,
             )
             self._results.append({'file': filename, 'ok': True, 'session_id': session_id})
             self._last_session_id = session_id

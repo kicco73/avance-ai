@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 import markdown
 
 from config import NotificationServiceConfig
-from jobs import JobQueue
+from job import JobService
 from logging_factory import LoggerFactory
 from notification.errors import NotificationError
 from notification.send_mail_job import SendMailJob
@@ -24,14 +24,14 @@ class NotificationService:
         "smtps": (465, True),
     }
 
-    def __init__(self, config: NotificationServiceConfig | None, job_queue: JobQueue) -> None:
+    def __init__(self, config: NotificationServiceConfig | None, job_service: JobService) -> None:
         # None whenever this deployment's own .config.yml declares no
         # notification-service section — always constructed regardless
         # (actuator.send_mail is the only caller, and may never fire), but
         # any actual attempt to send/enqueue a mail then raises, rather
         # than failing app boot for a feature nothing may ever use.
         self._config = config
-        self._job_queue = job_queue
+        self._job_service = job_service
         if config is not None:
             self._username = config.username
             self._password = config.password
@@ -69,8 +69,8 @@ class NotificationService:
 
     async def send_mail(self, to: str, subject: str, body_md: str) -> None:
         job = self._build_send_mail_job(to, subject, body_md)
-        self._job_queue.submit(job)
-        await self._job_queue.wait_for(job)
+        self._job_service.submit(job)
+        await self._job_service.wait_for(job)
 
         if job.exception is not None:
             raise NotificationError(f"Failed to send email to {to!r}.") from job.exception
@@ -78,7 +78,7 @@ class NotificationService:
         logger.info(f"Sent email to {to!r} (subject: {subject!r}).")
 
     def enqueue_mail(self, to: str, subject: str, body_md: str) -> None:
-        self._job_queue.submit(self._build_send_mail_job(to, subject, body_md))
+        self._job_service.submit(self._build_send_mail_job(to, subject, body_md))
 
     def _build_send_mail_job(self, to: str, subject: str, body_md: str) -> SendMailJob:
         if self._config is None:

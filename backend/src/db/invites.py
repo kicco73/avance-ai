@@ -8,10 +8,10 @@ from .models import Invite, UserProject
 class InviteMixin:
 
     def create_invite(
-        self, code: str, project_name: str, created_by: str | None, expires_at: datetime, max_shares: int,
+        self, code: str, project_id: str, created_by: str | None, expires_at: datetime, max_shares: int,
     ) -> Invite:
         return Invite.create(
-            code=code, project_name=project_name, created_by=created_by,
+            code=code, project=project_id, created_by=created_by,
             expires_at=expires_at, max_shares=max_shares,
         )
 

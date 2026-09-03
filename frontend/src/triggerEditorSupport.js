@@ -10,7 +10,8 @@ const CALL_PARAMS = {
   'source.attachment': ['name'],
   'source.search': ['what', 'where'],
   'actuator.send_mail': ['to', 'body_md'],
-  'actuator.notify': ['title', 'body_md']
+  'actuator.notify': ['title', 'body_md'],
+  'actuator.show': ['body_md']
 }
 
 const STRING_LITERAL_SOURCE = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/.source
@@ -37,7 +38,6 @@ export function completeFilePathArgument(context, files) {
 export const NAMESPACE_COLORS = {
   signal: '#1565c0',
   env: '#00838f',
-  system: '#8a6d3b',
   session: '#6a1b9a',
   'session.metric': '#ad1457',
   user: '#d84315',
@@ -52,10 +52,20 @@ export const NAMESPACE_COLORS = {
 // signal/env/user are plain variables (env/user resolve straight off an
 // already-fetched dict); "datetime.timezone" is too — its only member
 // (utc) is a plain attribute, not a callable. Every other fixed namespace
-// is call-style — system/session take no arguments, source's own methods
+// is call-style — session takes no arguments, source's own methods
 // (one per tracking/sources/ module, e.g. attachment(name)) take theirs
 // inside the same parens completion inserts empty. This decides a
 // completion's `type`/`apply` (append "()" or not), never a label.
+// The registry minus `excluded` namespaces, by prefix: excluding "session"
+// also drops "session.metric" — the same rule as the backend's
+// IdentifierRegistry.excluding, so the editor's autocomplete and the
+// build-time validation can never disagree about a field's scope.
+export function excludingNamespaces(registry, excluded) {
+  if (!excluded || !excluded.length) return registry
+  const isExcluded = (ns) => excluded.some((x) => ns === x || ns.startsWith(x + '.'))
+  return Object.fromEntries(Object.entries(registry).filter(([ns]) => !isExcluded(ns)))
+}
+
 export function isProxyNamespace(namespace) {
   return namespace !== 'signal' && namespace !== 'env' && namespace !== 'user' && namespace !== 'automaton' &&
     namespace !== 'datetime.timezone' && !namespace.startsWith('automaton.')
@@ -64,7 +74,7 @@ export function isProxyNamespace(namespace) {
 // Matches a complete namespace reference (e.g. "signal.mood") anywhere
 // in the text — group 1 is the namespace path, used to look up its color
 // (NAMESPACE_COLORS). Always construct a fresh RegExp — /g carries state via lastIndex.
-export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|system|session(?:\\.metric)?|user|source|actuator|metric|automaton|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'
+export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|session(?:\\.metric)?|user|source|actuator|metric|automaton|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'
 
 export function namespaceOf(referenceText) {
   const match = new RegExp(`^${REFERENCE_PATTERN_SOURCE}`).exec(referenceText)

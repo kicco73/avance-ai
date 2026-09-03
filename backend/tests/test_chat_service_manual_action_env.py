@@ -12,8 +12,7 @@ from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
 from chat.session_manager import ChatSessionManager
 from conftest import FakeAiService
-from conftest import NullBroadcaster, make_test_actuator_factory
-from jobs import JobQueue
+from conftest import make_test_actuator_factory, make_test_job_service
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService
 
@@ -21,7 +20,7 @@ from tracking.tracking_service import TrackingService
 # self-referencing, ordered before the next prompt.
 pytestmark = pytest.mark.regression
 
-PROJECT_NAME = "proj"
+PROJECT_ID = "proj"
 
 
 def _automaton(action_env: dict, target: str = "b") -> Automaton:
@@ -48,22 +47,22 @@ class FakeProjectService:
     def get_active_automaton_and_state(self, username: str | None = None):
         return self._automaton, self._automaton.states[self._state_key]
 
-    def get_automaton_and_state(self, project_name: str, type: str = 'live', username: str | None = None):
+    def get_automaton_and_state(self, project_id: str, type: str = 'live', username: str | None = None):
         return self._automaton, self._automaton.states[self._state_key]
 
     def get_automaton_and_state_for_session(self, session_id: int):
         return self._automaton, self._automaton.states[self._state_key]
 
-    def get_active_project_name(self) -> str:
-        return PROJECT_NAME
+    def get_active_project_id(self) -> str:
+        return PROJECT_ID
 
-    def get_published_revision(self, project_name: str) -> int:
+    def get_published_revision(self, project_id: str) -> int:
         return 0
 
-    def legal_terms_pending(self, username: str, project_name: str) -> bool:
+    def legal_terms_pending(self, username: str, project_id: str) -> bool:
         return False
 
-    def get_project_availability(self, project_name: str):
+    def get_project_availability(self, project_id: str):
         return (False, None)
 
     def apply_manual_action(self, action_name: str, session_id: int):
@@ -75,13 +74,13 @@ class FakeProjectService:
 
 
 def _chat_service(db, automaton: Automaton) -> ChatService:
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     ai_service = FakeAiService()
     project_service = FakeProjectService(automaton)
     metric_service = MetricService(db, project_service)
-    job_queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-    actuator_factory = make_test_actuator_factory(db, job_queue)
+    job_service = make_test_job_service(db)
+    actuator_factory = make_test_actuator_factory(db, job_service)
     tracking_service = TrackingService(
         db, project_service, metric_service, actuator_factory,
     )
@@ -93,13 +92,13 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
         session_manager=ChatSessionManager(db),
         tracking_service=tracking_service,
         metric_service=metric_service,
-        job_queue=job_queue,
+        job_service=job_service,
         actuator_factory=actuator_factory,
     )
 
 
 def _env_for(db) -> PersistedEnv:
-    return PersistedEnv(db, FixedProjectContext(project_name=PROJECT_NAME))
+    return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID))
 
 
 async def test_a_manually_fired_actions_env_is_persisted(db):

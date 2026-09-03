@@ -13,7 +13,7 @@ import { confirmDialog } from '../dialogStore.js'
 // (owned by the caller, read here); `sessions`/`projectSignals` are
 // reference data the caller already loads, consulted only for display
 // labels; `emit` is the component's own defineEmits('select').
-export function useTestExecutionTree(projectName, strategy, sessions, projectSignals, emit) {
+export function useTestExecutionTree(projectId, strategy, sessions, projectSignals, emit) {
   // Running total of AI tokens consumed so far — piggybacked onto every
   // SSE test-event message by the backend's QueueProgressBroadcaster (see
   // AiService.get_total_tokens), not fetched separately.
@@ -140,7 +140,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
 
   async function fetchAggregateResult(key, eventStrategy, kind, target) {
     try {
-      const result = await getAggregateResult(projectName, kind, target, eventStrategy)
+      const result = await getAggregateResult(projectId, kind, target, eventStrategy)
       nodeLastResult.value = { ...nodeLastResult.value, [key]: result }
     } catch {
       // already surfaced via apiFetch
@@ -178,7 +178,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     setNodeEvent(key, 'running')
     try {
       const sessionId = Number(nodeId.slice('session:'.length))
-      await postTest(projectName, sessionId, activeStrategy)
+      await postTest(projectId, sessionId, activeStrategy)
     } catch {
       // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
@@ -190,7 +190,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     setNodeEvent(key, 'running')
     try {
       const stateKey = nodeId.slice('state:'.length)
-      await postStateTest(projectName, stateKey, activeStrategy)
+      await postStateTest(projectId, stateKey, activeStrategy)
     } catch {
       // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
@@ -201,7 +201,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     const key = cacheKey(activeStrategy, 'sessions-branch')
     setNodeEvent(key, 'running')
     try {
-      await postSessionsRun(projectName, activeStrategy)
+      await postSessionsRun(projectId, activeStrategy)
     } catch {
       // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
@@ -212,7 +212,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     const key = cacheKey(activeStrategy, 'states-branch')
     setNodeEvent(key, 'running')
     try {
-      await postStatesAggregation(projectName, activeStrategy)
+      await postStatesAggregation(projectId, activeStrategy)
     } catch {
       // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
@@ -224,7 +224,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     setNodeEvent(key, 'running')
     try {
       const signalName = nodeId.slice('signal:'.length)
-      await postSignalTest(projectName, signalName, activeStrategy)
+      await postSignalTest(projectId, signalName, activeStrategy)
     } catch {
       // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
@@ -235,7 +235,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     const key = cacheKey(activeStrategy, 'signals-branch')
     setNodeEvent(key, 'running')
     try {
-      await postSignalsAggregation(projectName, activeStrategy)
+      await postSignalsAggregation(projectId, activeStrategy)
     } catch {
       // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
@@ -251,7 +251,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     setNodeEvent(key, 'running')
     try {
       const username = nodeId.slice('user:'.length)
-      await postUserSessionsRun(projectName, username, activeStrategy)
+      await postUserSessionsRun(projectId, username, activeStrategy)
     } catch {
       // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
@@ -262,7 +262,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     const key = cacheKey(activeStrategy, 'users-branch')
     setNodeEvent(key, 'running')
     try {
-      await postUsersAggregation(projectName, activeStrategy)
+      await postUsersAggregation(projectId, activeStrategy)
     } catch {
       // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
@@ -273,7 +273,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     const key = cacheKey(activeStrategy, 'root')
     setNodeEvent(key, 'running')
     try {
-      await postRootAggregation(projectName, activeStrategy)
+      await postRootAggregation(projectId, activeStrategy)
     } catch {
       // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
@@ -314,7 +314,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
   // dispatch needed here, unlike onActivate above.
   async function onAbort(nodeId) {
     try {
-      await deleteTestJob(projectName, cacheKey(strategy.value, nodeId))
+      await deleteTestJob(projectId, cacheKey(strategy.value, nodeId))
     } catch {
       // already surfaced via apiFetch
     }
@@ -323,7 +323,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
   async function onActivateRoot() {
     if (currentStrategyBusy.value) {
       try {
-        await deleteAllTestJobs(projectName)
+        await deleteAllTestJobs(projectId)
       } catch {
         // already surfaced via apiFetch
       }
@@ -336,7 +336,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     const sessionId = Number(nodeId.slice('session:'.length))
     selectedRunLoading.value = true
     try {
-      const runs = await getTests(projectName, sessionId)
+      const runs = await getTests(projectId, sessionId)
       // Already most-recent-first (see backend TestService.list_runs)
       // — filtered to the active strategy, since turn_by_turn and batch
       // runs aren't comparable and must never be shown as if they were.
@@ -376,7 +376,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
   const selectedNodeLabel = computed(() => {
     const nodeId = selectedNodeId.value
     if (!nodeId) return ''
-    if (nodeId === 'root') return projectName
+    if (nodeId === 'root') return projectId
     if (nodeId === 'sessions-branch') return 'Sessions'
     if (nodeId === 'states-branch') return 'Stats'
     if (nodeId === 'users-branch') return 'Users'
@@ -426,7 +426,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     }
     resettingCache.value = true
     try {
-      await deleteTests(projectName)
+      await deleteTests(projectId)
       nodeEvents.value = {}
       nodeLastResult.value = {}
       tokensBurntByStrategy.value = {}
@@ -452,7 +452,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     // node the backend currently knows about (see LastStatusBroadcaster/
     // get_test_events) — handleTestEvent needs no special-casing for
     // them, they're shaped exactly like a live update.
-    testEventSource = createTestEventsSource(projectName)
+    testEventSource = createTestEventsSource(projectId)
     testEventSource.onmessage = (event) => handleTestEvent(JSON.parse(event.data))
   })
 

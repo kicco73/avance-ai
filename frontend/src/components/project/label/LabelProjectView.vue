@@ -19,7 +19,7 @@ import { useSessionAnnotation } from '../../../composables/useSessionAnnotation.
 import { useSessionAdmin } from '../../../composables/useSessionAdmin.js'
 
 const props = defineProps({
-  projectName: {
+  projectId: {
     type: String,
     required: true
   },
@@ -61,7 +61,7 @@ const { width: sessionsPanelWidth, startDrag: startSessionsDrag } = useResizable
 // (chatStore.js's sessionsPanelOpen) — this overlay has its own panel.
 function toggleTestSessionsPanel() {
   testSessionsPanelOpen.value = !testSessionsPanelOpen.value
-  if (testSessionsPanelOpen.value) loadSessions(true, props.projectName)
+  if (testSessionsPanelOpen.value) loadSessions(true, props.projectId)
 }
 
 // This view's Sessions panel reviews imported transcripts alongside live
@@ -124,7 +124,7 @@ const {
   annotatableSignalsRow, expectedState, expectedValues, annotatableExpectedSignals,
   hasAnyAnnotations, unlabelingAll, onUnlabelAll,
   onUpdateExpectedState, onUpdateExpectedSignals, onSaveComment,
-} = useSessionAnnotation(props.projectName, currentSessionId, currentSessionIsImported, inspectorRef)
+} = useSessionAnnotation(props.projectId, currentSessionId, currentSessionIsImported, inspectorRef)
 
 const {
   importingSessions, importProgress, handleImportSession,
@@ -132,7 +132,7 @@ const {
   deletingAllImported, handleDeleteAllImported,
   deletingSessionId, handleDeleteSession,
   downloadingSessions, handleDownloadSessions,
-} = useSessionAdmin(props.projectName, currentSessionId, currentSession, currentSessionIsImported, selectSession)
+} = useSessionAdmin(props.projectId, currentSessionId, currentSession, currentSessionIsImported, selectSession)
 
 // Every registered user, fetched once — same list ManageUsersView.vue
 // shows, reused here just to resolve a live session's `username` (the
@@ -179,7 +179,7 @@ async function onToggleMarkDone() {
   markingDone.value = true
   try {
     await putSessionLabeled(currentSessionId.value, !currentSessionLabeled.value)
-    await refreshSessionsQuietly(true, props.projectName)
+    await refreshSessionsQuietly(true, props.projectId)
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -195,7 +195,7 @@ watch(selected, () => {
 
 onMounted(async () => {
   loadUsers()
-  await loadSessions(true, props.projectName)
+  await loadSessions(true, props.projectId)
   const mostRecent = sessions.value[0] ?? null
   if (mostRecent) {
     selectSession(mostRecent) // ids necessarily differ here, so this always triggers watch(currentSessionId, loadTimeline)
@@ -216,7 +216,7 @@ onBeforeUnmount(() => {
     <AppHeader>
       <template #left>
         <button class="app-header-icon-btn" title="Back" @click="emit('close')">«</button>
-        <ProjectsMenu align="left" :selected-name="projectName" @select="(name) => emit('project-select', name)" />
+        <ProjectsMenu align="left" :selected-name="projectId" @select="(name) => emit('project-select', name)" />
       </template>
       <template #center>
         <h2 class="app-header-title test-header-title">Sessions</h2>
@@ -327,7 +327,7 @@ onBeforeUnmount(() => {
               <SessionDetailCard
                 :session="currentSession"
                 deletable
-                @updated="refreshSessionsQuietly(true, props.projectName)"
+                @updated="refreshSessionsQuietly(true, props.projectId)"
                 @delete="handleDeleteSession"
               />
             </div>
@@ -339,7 +339,7 @@ onBeforeUnmount(() => {
           <template #tab-states="{ registerTab }">
             <InspectorGraphTab
               :ref="registerTab('states')"
-              :project-name="projectName"
+              :project-id="projectId"
               :highlighted-state-key="highlightedStateKey"
               :fired-action-edge="firedActionEdge"
               :annotatable="annotatableSignalsRow != null"
@@ -352,7 +352,7 @@ onBeforeUnmount(() => {
           <template #tab-signals="{ registerTab }">
             <InspectorSignalsTab
               :ref="registerTab('signals')"
-              :project-name="projectName"
+              :project-id="projectId"
               :signal-values="signalValues"
               :annotatable="annotatableExpectedSignals"
               :expected-values="expectedValues"

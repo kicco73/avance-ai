@@ -15,7 +15,7 @@ import { textareaDialog } from '../../../../dialogStore.js'
 import { aiEditIndexYml } from '../../../../api.js'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   // Behavior branch attachment basenames — the code segment's
   // `attachments:` autocomplete offers these (see CodeEditor.vue).
   attachmentFiles: { type: Array, default: () => [] },
@@ -76,11 +76,11 @@ function redo() { return codeEditorRef.value?.redo() }
 
 // The toolbar's AI button: prompts for a free-form problem/change
 // description, sends it (with the project's current index.yml and the
-// format spec) to the backend's AiService, and drops the rewritten
-// content straight into the code buffer — left dirty, ready for Save,
-// same as any manual edit. CodeEditor stays mounted regardless of which
-// segment is showing (see this component's own docstring), so setContent
-// works even when the graph segment is the one currently visible.
+// format spec) to the backend's AiService, drops the rewritten content
+// into the code buffer and saves it — Graph/Code stays whatever the user
+// had selected (see jumpToLine's docstring above). CodeEditor stays
+// mounted regardless of which segment is showing, so setContent/save
+// work even when the graph segment is the one currently visible.
 async function aiEdit() {
   const instruction = await textareaDialog({
     title: 'AI-assisted edit',
@@ -90,9 +90,9 @@ async function aiEdit() {
   if (!instruction) return
   aiEditing.value = true
   try {
-    const result = await aiEditIndexYml(props.projectName, instruction)
+    const result = await aiEditIndexYml(props.projectId, instruction)
     codeEditorRef.value?.setContent(result.content)
-    segment.value = 'code'
+    await codeEditorRef.value?.save()
   } catch {
     // already surfaced via apiFetch's shared error store
   } finally {
@@ -166,7 +166,7 @@ defineExpose({
     <div v-show="segment === 'graph'" class="index-yml-editor-graph">
       <InspectorGraph
         ref="graphRef"
-        :project-name="projectName"
+        :project-id="projectId"
         :highlighted-state-key="highlightedStateKey"
         :auto-jump-on-highlight-change="autoJumpOnHighlightChange"
         :fired-action-edge="firedActionEdge"
@@ -179,7 +179,7 @@ defineExpose({
     <div v-show="segment === 'code'" class="index-yml-editor-code">
       <CodeEditor
         ref="codeEditorRef"
-        :project-name="projectName"
+        :project-id="projectId"
         file-name="index.yml"
         :yaml-attachment-files="attachmentFiles"
         @saved="emit('saved', $event)"

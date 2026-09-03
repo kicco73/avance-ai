@@ -13,6 +13,8 @@ pytestmark = pytest.mark.contract
 
 def _build(env_yaml: str) -> object:
     content = f"""
+project:
+  id: test_project
 {env_yaml}
 init-action:
   target: a

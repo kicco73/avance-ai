@@ -17,7 +17,7 @@ from testing.signal_sources import BatchLiteSignalSource, BatchSignalSource
 pytestmark = pytest.mark.contract
 
 USERNAME = "user"
-PROJECT_NAME = "proj"
+PROJECT_ID = "proj"
 
 
 def _automaton(autotracking_on_ai_message: bool) -> Automaton:
@@ -34,11 +34,11 @@ def _automaton(autotracking_on_ai_message: bool) -> Automaton:
 
 
 def _session_id(db) -> int:
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     return db.create_chat_session(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime(2026, 1, 1), start_state="",
     )
 

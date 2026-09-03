@@ -8,12 +8,11 @@ from __future__ import annotations
 from automaton.automaton import Action, Automaton, State
 from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
-from conftest import FakeAiService, NullBroadcaster, make_test_actuator_factory
-from jobs import JobQueue
+from conftest import FakeAiService, make_test_actuator_factory, make_test_job_service
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService
 
-PROJECT_NAME = "proj"
+PROJECT_ID = "proj"
 
 
 def _automaton() -> Automaton:
@@ -32,39 +31,39 @@ class _FakeProjectService:
     def __init__(self, automaton: Automaton) -> None:
         self._automaton = automaton
 
-    def get_automaton_and_state(self, project_name: str, type: str = 'live', username: str | None = None):
+    def get_automaton_and_state(self, project_id: str, type: str = 'live', username: str | None = None):
         return self._automaton, self._automaton.states["a"]
 
-    def get_automaton(self, project_name: str, revision: int) -> Automaton:
+    def get_automaton(self, project_id: str, revision: int) -> Automaton:
         return self._automaton
 
     def get_automaton_and_state_for_session(self, session_id: int):
         return self._automaton, self._automaton.states["a"]
 
-    def get_active_project_name(self) -> str:
-        return PROJECT_NAME
+    def get_active_project_id(self) -> str:
+        return PROJECT_ID
 
-    def get_published_revision(self, project_name: str) -> int:
+    def get_published_revision(self, project_id: str) -> int:
         return 0
 
-    def get_draft_revision(self, project_name: str) -> int:
+    def get_draft_revision(self, project_id: str) -> int:
         return 0
 
-    def legal_terms_pending(self, username: str, project_name: str) -> bool:
+    def legal_terms_pending(self, username: str, project_id: str) -> bool:
         return False
 
-    def get_project_availability(self, project_name: str):
+    def get_project_availability(self, project_id: str):
         return (False, None)
 
 
 def _chat_service(db) -> ChatService:
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     ai_service = FakeAiService()
     project_service = _FakeProjectService(_automaton())
     metric_service = MetricService(db, project_service)
-    job_queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-    actuator_factory = make_test_actuator_factory(db, job_queue)
+    job_service = make_test_job_service(db)
+    actuator_factory = make_test_actuator_factory(db, job_service)
     tracking_service = TrackingService(db, project_service, metric_service, actuator_factory)
     return ChatService(
         ai_service=ai_service,
@@ -74,7 +73,7 @@ def _chat_service(db) -> ChatService:
         session_manager=ChatSessionManager(db),
         tracking_service=tracking_service,
         metric_service=metric_service,
-        job_queue=job_queue,
+        job_service=job_service,
         actuator_factory=actuator_factory,
     )
 
@@ -91,7 +90,7 @@ async def test_live_session_always_excludes_triggered_actions(db):
 async def test_test_session_excludes_triggered_actions_while_auto_tracking_is_on(db):
     chat_service = _chat_service(db)
 
-    session = await chat_service.get_current_draft_session_if_any_or_create_new(None, PROJECT_NAME)
+    session = await chat_service.get_current_draft_session_if_any_or_create_new(None, PROJECT_ID)
 
     assert chat_service.is_auto_tracking_enabled(session["id"]) is True
     names = {a["name"] for a in session["state"]["manual_actions"]}
@@ -100,7 +99,7 @@ async def test_test_session_excludes_triggered_actions_while_auto_tracking_is_on
 
 async def test_test_session_includes_triggered_actions_once_auto_tracking_is_off(db):
     chat_service = _chat_service(db)
-    session = await chat_service.get_current_draft_session_if_any_or_create_new(None, PROJECT_NAME)
+    session = await chat_service.get_current_draft_session_if_any_or_create_new(None, PROJECT_ID)
     session_id = session["id"]
 
     chat_service.set_auto_tracking_enabled(session_id, False)

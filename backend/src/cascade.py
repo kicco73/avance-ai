@@ -8,6 +8,7 @@ ai/cascading_llm_provider.py) use only the pointer bookkeeping below
 from __future__ import annotations
 
 import asyncio
+import threading
 from http import HTTPStatus
 from typing import Awaitable, Callable, Generic, NamedTuple, TypeVar
 
@@ -58,7 +59,14 @@ class _Entry(NamedTuple):
 class ProviderCascade(Generic[Provider]):
     """Tracks a "current provider" pointer: a transient error retries in
     place with backoff, an unavailable/rate-limited one advances to the
-    next provider. At most one pass through all providers per call."""
+    next provider. At most one pass through all providers per call. One
+    cascade instance is shared process-wide (built once in main.py) and
+    reached both by coroutines on the main event loop and by whichever
+    other OS thread happens to be mid-call (e.g. PromptContext's own
+    per-call thread, see ai/gemini_provider_v2.py's own docstring on the
+    same hazard) — `_lock` guards `_index` against a genuine cross-thread
+    race, not just a same-loop one (coroutines on one loop never
+    preempt each other mid-statement, so they'd never have needed this)."""
 
     def __init__(self, providers: list[tuple[str, Provider]], *, kind: str) -> None:
         if not providers:
@@ -66,30 +74,31 @@ class ProviderCascade(Generic[Provider]):
         self._kind = kind
         self._entries = [_Entry(label, provider) for label, provider in providers]
         self._index = 0
+        self._lock = threading.Lock()
 
     def __len__(self) -> int:
         return len(self._entries)
 
     @property
     def current(self) -> Provider:
-        return self._entries[self._index].provider
+        with self._lock:
+            return self._entries[self._index].provider
 
     @property
     def current_index(self) -> int:
-        return self._index
+        with self._lock:
+            return self._index
 
     @property
     def providers(self) -> list[Provider]:
         return [entry.provider for entry in self._entries]
 
     def advance(self) -> None:
-        self._index = (self._index + 1) % len(self._entries)
-        logger.warning(
-            "Switching %s provider to '%s' (entry #%d).",
-            self._kind,
-            self._entries[self._index].label,
-            self._index + 1,
-        )
+        with self._lock:
+            self._index = (self._index + 1) % len(self._entries)
+            label = self._entries[self._index].label
+            index = self._index
+        logger.warning("Switching %s provider to '%s' (entry #%d).", self._kind, label, index + 1)
 
     async def call_with_retry(
         self,

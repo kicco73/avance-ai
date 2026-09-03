@@ -12,7 +12,7 @@ import { textareaDialog } from '../../../../dialogStore.js'
 import { useResizablePanel } from '../../../../composables/useResizablePanel.js'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   files: { type: Array, default: () => [] }
 })
 
@@ -37,7 +37,7 @@ const selectedStateKey = ref('')
 
 async function loadStateNodes() {
   try {
-    const { nodes } = await getProjectGraph(props.projectName)
+    const { nodes } = await getProjectGraph(props.projectId)
     stateNodes.value = nodes.map((n) => n.state)
   } catch {
     stateNodes.value = []
@@ -63,8 +63,8 @@ function reload() { return codeEditorRef.value?.reload() }
 // The toolbar's AI button: prompts for a free-form problem/change
 // description, sends it (with the project's current index.css, its own
 // uploaded aspect/ asset names, and the skin format spec) to the
-// backend's AiService, and drops the rewritten content straight into the
-// code buffer — left dirty, ready for Save, same as any manual edit.
+// backend's AiService, drops the rewritten content into the code buffer
+// and saves it.
 async function aiEdit() {
   const instruction = await textareaDialog({
     title: 'AI-assisted edit',
@@ -74,8 +74,9 @@ async function aiEdit() {
   if (!instruction) return
   aiEditing.value = true
   try {
-    const result = await aiEditIndexCss(props.projectName, instruction)
+    const result = await aiEditIndexCss(props.projectId, instruction)
     codeEditorRef.value?.setContent(result.content)
+    await codeEditorRef.value?.save()
   } catch {
     // already surfaced via apiFetch's shared error store
   } finally {
@@ -161,7 +162,7 @@ defineExpose({ content, isDirty, saving, save, discard, undo, redo, reload })
 
     <div class="index-css-editor-split">
       <div class="index-css-editor-preview" :style="{ width: previewWidth + 'px' }">
-        <ChatPreview ref="previewRef" :css="content" :state-key="selectedStateKey" :project-name="projectName" />
+        <ChatPreview ref="previewRef" :css="content" :state-key="selectedStateKey" :project-id="projectId" />
       </div>
 
       <div class="index-css-editor-split-divider" @mousedown="startPreviewDrag"></div>
@@ -169,7 +170,7 @@ defineExpose({ content, isDirty, saving, save, discard, undo, redo, reload })
       <div class="index-css-editor-code">
         <CodeEditor
           ref="codeEditorRef"
-          :project-name="projectName"
+          :project-id="projectId"
           file-name="index.css"
           :css-asset-files="cssAssetFiles"
           @saved="onCodeSaved"

@@ -11,13 +11,13 @@ import pytest
 from metrics.metrics_framework import BenchmarkCalculator
 
 
-def _make_session(db, *, username="user", project_name="proj", start, start_state="a"):
-    db.ensure_project(project_name)
-    db.publish_project(project_name)
+def _make_session(db, *, username="user", project_id="proj", start, start_state="a"):
+    db.ensure_project(project_id)
+    db.publish_project(project_id)
     return db.create_chat_session(
         username=username,
-        project_name=project_name,
-        revision=db.get_project_published_revision(project_name),
+        project_id=project_id,
+        revision=db.get_project_published_revision(project_id),
         datetime_start=start,
         datetime_end=start,
         start_state=start_state,

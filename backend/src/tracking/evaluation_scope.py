@@ -12,14 +12,14 @@ from typing import Any, TYPE_CHECKING
 from simpleeval import ModuleWrapper
 
 from automaton.automaton import Automaton
+from automaton.scope import EvaluationScope
 from db import Db
 from metrics.metric_service import MetricService
-from tracking.actuators import ActuatorSet, FakeActuatorSet
+from tracking.actuators import ActuatorSet, FakeActuatorSet, PromptContext
 from tracking.env import Env
 from tracking.evaluator import SignalEvaluator
 from tracking.session_facts import SessionFacts
 from tracking.sources import SourceNamespace
-from tracking.system_facts import SystemFacts
 from tracking.user_facts import UserFacts
 
 if TYPE_CHECKING:
@@ -27,6 +27,9 @@ if TYPE_CHECKING:
     # tracking_engine -> this module would close a circular import if
     # done eagerly. Only needed for the annotation below, never at runtime.
     from tracking.automaton_namespace import AutomatonNamespace
+    # Import guarded for the same reason: ai.ai_service is a heavy,
+    # unrelated dependency graph — only needed for the annotation below.
+    from ai.ai_service import AiService
 
 
 class EvaluationScopeBuilder(object):
@@ -34,16 +37,15 @@ class EvaluationScopeBuilder(object):
         self,
         env: Env,
         metrics: MetricService,
-        system: SystemFacts,
         session: SessionFacts,
         user: UserFacts,
         db: Db,
         automaton_namespace: "AutomatonNamespace | None" = None,
         actuator_set: ActuatorSet | None = None,
+        ai_service: "AiService | None" = None,
     ) -> None:
         self._env = env
         self._metrics = metrics
-        self._system = system
         self._session = session
         self._user = user
         # Only for SourceNamespace (source.attachment(name) reads
@@ -55,22 +57,34 @@ class EvaluationScopeBuilder(object):
         # resolve rather than doing real cross-project work during a replay.
         self._automaton_namespace = automaton_namespace
         self._actuator_set = actuator_set if actuator_set is not None else FakeActuatorSet()
+        # Optional — actuator.prompt() only actually runs a generation
+        # call once both this and build()'s own session_id are given (see
+        # below); every caller with no real, live session (test replay,
+        # /api/triggers/preview) omits at least one, so actuator.prompt()
+        # there just returns "" rather than doing real work.
+        self._ai_service = ai_service
 
-    def build(self, automaton: Automaton, state_key: str, raw_signal_values: dict[str, Any] | None) -> dict[str, Any]:
+    def build(
+        self, automaton: Automaton, state_key: str, raw_signal_values: dict[str, Any] | None,
+        session_id: int | None = None,
+    ) -> EvaluationScope:
         """`raw_signal_values` is always re-coerced against every declared
-        signal, never assumed pre-validated. env/system/session/user/source/
+        signal, never assumed pre-validated. env/session/user/source/
         metric are cheap, lazy proxies included unconditionally; only the
         bare core-metric names are gated, since building them is eager.
-        `source` is rebuilt fresh every call (unlike env/system/session/
+        `source` is rebuilt fresh every call (unlike env/session/
         user, never threaded through __init__) since it needs `automaton`
         itself — a `build()` parameter, not a constructor dependency any
         caller has to wire up separately — to know where source.attachment
-        should actually read from (see Automaton.set_storage_location)."""
+        should actually read from (see Automaton.set_storage_location).
+        `session_id`: same reasoning as `source` above — actuator.prompt()
+        needs this call's own (automaton, state, session), so the scope's
+        "actuator" is a fresh copy bound to exactly that (see
+        ActuatorSet.with_prompt_context), never the shared instance itself."""
         signal_values = SignalEvaluator().validate(automaton, raw_signal_values)
         scope: dict[str, Any] = {
             "signal": signal_values,
             "env": self._env.action_set(),
-            "system": self._system,
             "session": self._session,
             "user": self._user.as_dict(),
             "source": SourceNamespace(self._db, automaton),
@@ -80,6 +94,12 @@ class EvaluationScopeBuilder(object):
             "datetime": ModuleWrapper(datetime, allowed_attrs={"datetime", "timedelta", "timezone"}),
         }
         if self._automaton_namespace is not None:
-            scope["automaton"] = self._automaton_namespace
-        scope["actuator"] = self._actuator_set
-        return self._metrics.merge_if_referenced(automaton, state_key, scope)
+            scope["automaton"] = self._automaton_namespace.scoped_to(automaton.family)
+        if self._ai_service is not None and session_id is not None:
+            state = automaton.states.get(state_key)
+            prompt_context = PromptContext(self._ai_service, self._db, self._env, automaton, state, session_id)
+            scope["actuator"] = self._actuator_set.with_prompt_context(prompt_context)
+        else:
+            scope["actuator"] = self._actuator_set
+        merged = self._metrics.merge_if_referenced(automaton, state_key, scope)
+        return EvaluationScope(merged, automaton=automaton, state_key=state_key)

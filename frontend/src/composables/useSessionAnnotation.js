@@ -12,7 +12,7 @@ import { confirmDialog } from '../dialogStore.js'
 // annotations (expected state/signals, comments) against it.
 // `currentSessionId`/`currentSessionIsImported`/`inspectorRef` are owned by
 // the caller (LabelProjectView.vue) — this composable only reads them.
-export function useSessionAnnotation(projectName, currentSessionId, currentSessionIsImported, inspectorRef) {
+export function useSessionAnnotation(projectId, currentSessionId, currentSessionIsImported, inspectorRef) {
   const loading = ref(true)
   // Raw backend message rows, kept as-is rather than chatStore.js's live
   // `messages` shape — this view reviews a fixed past session, not a live
@@ -39,7 +39,7 @@ export function useSessionAnnotation(projectName, currentSessionId, currentSessi
       const [messageRows, signalRows, allSessions] = await Promise.all([
         getMessages(sessionId),
         getSessionSignals(sessionId),
-        getSessions(projectName, true)
+        getSessions(projectId, true)
       ])
       rawMessages.value = messageRows
       signalsLog.value = signalRows
@@ -146,7 +146,7 @@ export function useSessionAnnotation(projectName, currentSessionId, currentSessi
     // The Sessions panel's has_annotations tag may have just flipped;
     // quiet, so it doesn't flash the panel to "Loading…" for a reload the
     // user never asked for.
-    await refreshSessionsQuietly(true, projectName)
+    await refreshSessionsQuietly(true, projectId)
   }
 
   async function onUpdateExpectedState(value) {

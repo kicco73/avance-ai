@@ -6,7 +6,8 @@ import time
 import pytest
 
 from conftest import NullBroadcaster
-from jobs import CancelableJob, ThrottledJobQueue
+from jobs import CancelableJob
+from jobs.throttled_job_queue import ThrottledJobQueue
 from jobs import throttled_job_queue as throttled_job_queue_module
 
 pytestmark = pytest.mark.contract

@@ -8,18 +8,21 @@ from pathlib import Path
 
 import pytest
 
+from conftest import parse_sse_result
+
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
 
 
-def _upload_and_activate(client, name: str = "metrics-playground-states"):
+def _upload_and_activate(client):
     content = (SAMPLES_DIR / "Metrics Playground (states).zip").read_bytes()
-    response = client.put(f"/api/projects/{name}", content=content, headers={"Content-Type": "application/zip"})
+    response = client.post("/api/projects/upload", content=content, headers={"Content-Type": "application/zip"})
     assert response.status_code == 200, response.text
-    response = client.put(f"/api/projects/{name}/activate")
+    project_id = parse_sse_result(response)["project_id"]
+    response = client.put(f"/api/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
-    response = client.post(f"/api/projects/{name}/publish", json={})
+    response = client.post(f"/api/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
-    return name
+    return project_id
 
 
 @pytest.mark.contract

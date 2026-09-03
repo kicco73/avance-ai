@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { EditorState } from '@codemirror/state'
 import { CompletionContext } from '@codemirror/autocomplete'
 import {
-  completeIdentifiers, completeFilePathArgument, completionInfo, isProxyNamespace, namespaceOf, NAMESPACE_COLORS
+  completeIdentifiers, completeFilePathArgument, completionInfo, excludingNamespaces, isProxyNamespace, namespaceOf, NAMESPACE_COLORS
 } from '../src/triggerEditorSupport.js'
 
 const REGISTRY = {
@@ -251,7 +251,6 @@ describe('isProxyNamespace', () => {
   })
 
   it('is true for every proxy namespace', () => {
-    expect(isProxyNamespace('system')).toBe(true)
     expect(isProxyNamespace('session')).toBe(true)
     expect(isProxyNamespace('session.metric')).toBe(true)
     expect(isProxyNamespace('source')).toBe(true)
@@ -293,7 +292,7 @@ describe('namespaceOf (the coloring regex\'s own namespace extraction)', () => {
   })
 
   it('every namespace it can extract has a fixed color', () => {
-    for (const namespace of ['signal', 'env', 'system', 'session', 'session.metric', 'user', 'source', 'metric', 'automaton', 'datetime', 'datetime.timezone']) {
+    for (const namespace of ['signal', 'env', 'session', 'session.metric', 'user', 'source', 'metric', 'automaton', 'datetime', 'datetime.timezone']) {
       expect(NAMESPACE_COLORS[namespace]).toMatch(/^#[0-9a-f]{6}$/)
     }
   })
@@ -310,5 +309,30 @@ describe('namespaceOf (the coloring regex\'s own namespace extraction)', () => {
   it('extracts plain datetime when not followed by .timezone', () => {
     expect(namespaceOf('datetime.datetime')).toBe('datetime')
     expect(namespaceOf('datetime.timedelta')).toBe('datetime')
+  })
+})
+
+describe('excludingNamespaces', () => {
+  it('drops a namespace and everything nested under it, by prefix', () => {
+    const filtered = excludingNamespaces(REGISTRY, ['session'])
+    expect(Object.keys(filtered)).toEqual(['signal', 'env', 'system', 'metric'])
+  })
+
+  it('never matches on a mere string prefix without the dot', () => {
+    const registry = { ...REGISTRY, sessionish: { x: '' } }
+    expect(Object.keys(excludingNamespaces(registry, ['session']))).toContain('sessionish')
+  })
+
+  it('returns the registry untouched with nothing to exclude', () => {
+    expect(excludingNamespaces(REGISTRY, [])).toBe(REGISTRY)
+    expect(excludingNamespaces(REGISTRY, undefined)).toBe(REGISTRY)
+  })
+
+  it('is what the on-enter editor sees: session gone, session.metric gone with it, actuator kept', () => {
+    const registry = { ...REGISTRY, actuator: { notify: '' } }
+    const filtered = excludingNamespaces(registry, ['session'])
+    expect(filtered.actuator).toBeDefined()
+    expect(filtered.session).toBeUndefined()
+    expect(filtered['session.metric']).toBeUndefined()
   })
 })

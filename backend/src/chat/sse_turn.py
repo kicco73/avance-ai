@@ -13,13 +13,10 @@ logger = LoggerFactory.get_logger(__name__)
 
 
 class SseChatTurn(object):
-    def __init__(
-        self, chat_service: ChatService, session_id: int, text: str | None, extra_prompt: str | None = None
-    ) -> None:
+    def __init__(self, chat_service: ChatService, session_id: int, text: str | None) -> None:
         self._chat_service = chat_service
         self._session_id = session_id
         self._text = text
-        self._extra_prompt = extra_prompt
         self._events: asyncio.Queue[tuple[str, dict]] = asyncio.Queue()
 
     async def on_metadata(self, key: str, value) -> None:
@@ -36,7 +33,7 @@ class SseChatTurn(object):
     async def _run(self) -> None:
         try:
             result = await self._chat_service.process_turn(
-                self._session_id, self._text, on_metadata=self.on_metadata, extra_prompt=self._extra_prompt
+                self._session_id, self._text, on_metadata=self.on_metadata
             )
             await self._events.put(("done", result))
         except ServiceError as exc:

@@ -37,7 +37,7 @@ def test_exposes_every_user_field_except_id(db):
 def test_reflects_role_and_active_project_changes(db):
     db.set_user_role("user", "admin")
     db.ensure_project("proj")
-    db.set_active_project_name("proj", "user")
+    db.set_active_project_id("proj", "user")
 
     facts = UserFacts(db).as_dict()
 
@@ -55,7 +55,7 @@ def test_is_empty_for_an_identity_with_no_user_row_yet(db):
 
 @pytest.mark.regression
 def test_reads_session_user_lazily_not_at_construction(db):
-    """Matches PersistedEnv/SessionFacts/SystemFacts: constructed once,
+    """Matches PersistedEnv/SessionFacts: constructed once,
     re-reads Session().user on every call — so Session().impersonate(...)
     (wakeup_service.py) scopes an already-built UserFacts correctly too."""
     facts = UserFacts(db)

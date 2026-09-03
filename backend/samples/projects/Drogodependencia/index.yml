@@ -16,7 +16,7 @@ general-prompt: |
   NO es un sistema de evaluación. La persona no está siendo puntuada, y nunca se le presenta un resultado, una etiqueta, un porcentaje ni un progreso medido.
 
   Conductas prohibidas:
-  
+
    Nombrar el estadio, o cualquier paráfrasis reconocible de él, o cualquier cifra derivada de la inferencia.
    Presuponer la abstinencia como objetivo, o preguntar cuándo lo va a dejar.
    Tratar un lapso como fracaso, o usar el vocabulario de la ruptura ("recaer", "fallar", "romper", "volver a empezar").
@@ -107,9 +107,9 @@ signals:
     ui-description: >
       Es un eje Clasificador
     definition: |
-     E7: Horizonte:	Es el criterio canónico del algoritmo de estadiaje: precontemplación es no pretender cambiar en seis meses; contemplación, pretenderlo en seis meses; preparación, pretenderlo en treinta días y haber dado algún paso.
-     Fuerza: la fuerza del lenguaje de compromiso al evaluar un plan predijo la proporción de días de abstinencia, y mediaba el efecto del deseo, la capacidad, la necesidad y las razones. Orden: deseo < capacidad < activación < compromiso.
-     Locus:	Teoría de la autodeterminación: la motivación controlada por presión externa predice peor adherencia y más abandono que la autónoma.
+      E7: Horizonte:	Es el criterio canónico del algoritmo de estadiaje: precontemplación es no pretender cambiar en seis meses; contemplación, pretenderlo en seis meses; preparación, pretenderlo en treinta días y haber dado algún paso.
+      Fuerza: la fuerza del lenguaje de compromiso al evaluar un plan predijo la proporción de días de abstinencia, y mediaba el efecto del deseo, la capacidad, la necesidad y las razones. Orden: deseo < capacidad < activación < compromiso.
+      Locus:	Teoría de la autodeterminación: la motivación controlada por presión externa predice peor adherencia y más abandono que la autónoma.
     attachments:
       - Intencion comprometida.txt
 
@@ -118,10 +118,10 @@ signals:
     ui-description: >
       Es un eje Modulador
     definition: |
-     E8: Contraste entre el uso de procesos conductuales y el uso de procesos experienciales, sobre los diez procesos del modelo. Su valor real es prescriptivo, no clasificatorio. E8 responde a la pregunta operativa que sigue a la clasificación: sabido el estadio, qué proceso conviene promover. Y advierte de un error frecuente: inducir procesos conductuales a alguien que aún está en trabajo experiencial es la vía documentada del estancamiento en contemplación.
+      E8: Contraste entre el uso de procesos conductuales y el uso de procesos experienciales, sobre los diez procesos del modelo. Su valor real es prescriptivo, no clasificatorio. E8 responde a la pregunta operativa que sigue a la clasificación: sabido el estadio, qué proceso conviene promover. Y advierte de un error frecuente: inducir procesos conductuales a alguien que aún está en trabajo experiencial es la vía documentada del estancamiento en contemplación.
     attachments:
       - Perfil de procesos de cambio.txt
-  
+
 
 # ----------------------------------------------------------------------------
 states:
@@ -129,14 +129,14 @@ states:
 
   Vinculación:
     ui-label: Vinculación
-    
+
     ui-description: >
       Estado previo a toda evaluación. La relación todavía no soporta ser medida. No es un estadio del Modelo Transteórico: es la  precondición para que el Modelo Transteórico pueda aplicarse.
 
     contextual-prompt: |
       Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
 
-    attachments: 
+    attachments:
       - Vinculacion.txt
 
     actions:
@@ -149,14 +149,14 @@ states:
 
   Precontemplación:
     ui-label: Precontemplación
-    
+
     ui-description: >
       La persona no pretende cambiar en los próximos seis meses. No hay atribución causal de daño al propio consumo, o la que hay es marginal o externalizada.
 
     contextual-prompt: |
       Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
 
-    attachments: 
+    attachments:
       - Precontemplacion.txt
 
     actions:
@@ -167,17 +167,17 @@ states:
           signal.alianza_terapéutica >= 45
           and signal.reconocimiento_del_problema >= 45
           and (signal.intención_comprometida >= 34 or signal.reconocimiento_del_problema >= 55)
-  
+
   Contemplación:
     ui-label: Contemplación
-    
+
     ui-description: >
       La persona pretende cambiar dentro de los próximos seis meses, pero no dentro de los próximos treinta días, y no ha dado pasos consolidados. Ambivalencia activa.
 
     contextual-prompt: |
       Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
 
-    attachments: 
+    attachments:
       - Contemplacion.txt
 
     actions:
@@ -193,14 +193,14 @@ states:
 
   Preparación:
     ui-label: Preparación
-    
+
     ui-description: >
-       La persona pretende cambiar dentro de los próximos treinta días Y HA DADO ALGÚN PASO. Los dos criterios son necesarios; ninguno es suficiente.
+      La persona pretende cambiar dentro de los próximos treinta días Y HA DADO ALGÚN PASO. Los dos criterios son necesarios; ninguno es suficiente.
 
     contextual-prompt: |
       Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
 
-    attachments: 
+    attachments:
       - Preparacion.txt
 
     actions:
@@ -216,14 +216,14 @@ states:
 
   Acción:
     ui-label: Acción
-    
+
     ui-description: >
-       Cambio conductual manifiesto y sostenido durante MENOS de seis meses.
+      Cambio conductual manifiesto y sostenido durante MENOS de seis meses.
 
     contextual-prompt: |
       Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
 
-    attachments: 
+    attachments:
       - Accion.txt
 
     actions:
@@ -237,14 +237,14 @@ states:
 
   Mantenimiento:
     ui-label: Mantenimiento
-    
+
     ui-description: >
-       Cambio conductual sostenido durante SEIS MESES O MÁS.
+      Cambio conductual sostenido durante SEIS MESES O MÁS.
 
     contextual-prompt: |
       Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
 
-    attachments: 
+    attachments:
       - Mantenimiento.txt
 
     actions:
@@ -256,14 +256,14 @@ states:
 
   Recaída:
     ui-label: Recaída
-    
+
     ui-description: >
-       EVENTO, no estadio. Interrupción del cambio consolidado con retorno al patrón previo. Sólo es posible desde acción o mantenimiento: no se puede recaer de lo que no se ha dejado.
+      EVENTO, no estadio. Interrupción del cambio consolidado con retorno al patrón previo. Sólo es posible desde acción o mantenimiento: no se puede recaer de lo que no se ha dejado.
 
     contextual-prompt: |
       Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
 
-    attachments: 
+    attachments:
       - Recaida.txt
 
     actions:
@@ -273,3 +273,5 @@ states:
         trigger: >-
           signal.alianza_terapéutica >= 45
           and signal.acción_efectiva_magnitud_y_duración >= 15
+project:
+  id: drogodependencia

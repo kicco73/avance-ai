@@ -17,10 +17,10 @@ import { setCanvasColor, restoreCanvasColor } from '../../canvasColor.js'
 const props = defineProps({
   // null for a plain user whose account has no project to land on at all
   // (see useAppBoot.js's own resolveLandingView — this is what
-  // getActiveProjectName resolves to when the system has zero projects).
+  // getActiveProjectId resolves to when the system has zero projects).
   // Real, always non-null for the admin's own pushed 'chat' instance,
   // which only ever opens from an explicit row click.
-  projectName: { type: String, default: null },
+  projectId: { type: String, default: null },
   hideSessionsPanel: { type: Boolean, default: false },
   // Passed straight through to ChatView.vue's own header — see its props
   // for what each one drives (the back-to-Manage-projects button /
@@ -37,16 +37,16 @@ const termsContent = ref('')
 const checkFailed = ref(false)
 
 async function checkTerms() {
-  // No project to check terms for at all — see the projectName prop's
+  // No project to check terms for at all — see the projectId prop's
   // own comment. Leaves termsPending/checkFailed alone (both still their
   // initial null/false), so none of the other branches below render
-  // either; the template's own !projectName check is what actually shows
+  // either; the template's own !projectId check is what actually shows
   // something for this case.
-  if (!props.projectName) return
+  if (!props.projectId) return
   termsPending.value = null
   checkFailed.value = false
   try {
-    const status = await getLegalTermsStatus(props.projectName)
+    const status = await getLegalTermsStatus(props.projectId)
     termsContent.value = status.content || ''
     termsPending.value = status.pending
     if (!status.pending) loadMessages()
@@ -61,7 +61,7 @@ async function fetchProjectTerms() {
 
 async function acceptTerms() {
   try {
-    await postAcceptProjectTerms(props.projectName)
+    await postAcceptProjectTerms(props.projectId)
   } catch {
     return
   }
@@ -69,7 +69,7 @@ async function acceptTerms() {
   loadMessages()
 }
 
-watch(() => props.projectName, checkTerms, { immediate: true })
+watch(() => props.projectId, checkTerms, { immediate: true })
 
 // Canvas-color sync (see canvasColor.js's own comment for why this
 // exists at all): keeps <html>'s background-color matching .chat-footer's
@@ -136,7 +136,7 @@ defineExpose({
 
 <template>
   <div class="live-chat-window" ref="rootEl">
-    <SplashScreen v-if="!projectName" variant="no-project" />
+    <SplashScreen v-if="!projectId" variant="no-project" />
     <SplashScreen v-else-if="checkFailed" variant="failed" @retry="checkTerms" />
     <SplashScreen v-else-if="termsPending === null" variant="connecting" />
     <TermsView

@@ -15,16 +15,16 @@ class UserAnalyticsDataBuilder(object):
     not import Peewee models directly — the Db facade stays the single
     point of database access."""
 
-    def __init__(self, db: AnalyticsDb, username: str, project_name: str) -> None:
+    def __init__(self, db: AnalyticsDb, username: str, project_id: str) -> None:
         self._db = db
         self._username = username
-        self._project_name = project_name
+        self._project_id = project_id
 
     def build(self, since: datetime | None = None, until: datetime | None = None) -> UserAnalyticsData:
         """`since`/`until`, each independently optional, restrict every
         dataset to what falls within [since, until]. `until` alone computes
         metrics "as of" a past message; `since` alongside it bounds to a window."""
-        sessions = self._db.list_chat_sessions(self._username, self._project_name)
+        sessions = self._db.list_chat_sessions(self._username, self._project_id)
         if since is not None:
             sessions = [row for row in sessions if row["datetime_start"] >= since]
         if until is not None:
@@ -82,10 +82,10 @@ class UserAnalyticsDataBuilder(object):
 
         return UserAnalyticsData(
             username=self._username,
-            project_name=self._project_name,
+            project_id=self._project_id,
             messages=messages,
             sessions=self._frame(sessions, [
-                "id", "username", "project_name", "datetime_start",
+                "id", "username", "project_id", "datetime_start",
                 "datetime_end", "start_state", "end_state",
             ]),
             signals=signal_snapshots,

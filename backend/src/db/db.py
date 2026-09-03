@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from logging_factory import LoggerFactory
 
+from .ai_usage import AiUsageMixin
 from .test_aggregates import TestAggregateMixin
 from .tests import TestMixin
 from .history import HistoryMixin
@@ -21,12 +22,13 @@ from .settings import SettingsMixin
 from .users import UserMixin
 from .user_projects import UserProjectMixin
 from .tracking import TrackingMixin
+from .tasks import TaskMixin
 
 from playhouse.db_url import connect, parse as parse_db_url
 
 from .models import (
-    Archive, ChatSession, EditHistory, Invite, Message,
-    Project, ProjectObserverIndex, Settings, User, SessionSummary, StateRemap, SystemWarning, Test,
+    AiTokenUsage, Archive, ChatSession, EditHistory, Invite, Message,
+    Project, ProjectObserverIndex, Settings, User, SessionSummary, StateRemap, SystemWarning, Task, Test,
     TestAggregateResult, TestObservation, Tracking, UserProject,
     database,
 )
@@ -49,13 +51,15 @@ class Db(
     SettingsMixin,
     UserProjectMixin,
     InviteMixin,
-    ObservabilityMixin):
+    ObservabilityMixin,
+    AiUsageMixin,
+    TaskMixin):
 
     _SQLITE_MAGIC = b"SQLite format 3\x00"
     _MODELS = (
         Project, ChatSession, Message, User, Tracking, Archive, EditHistory, StateRemap,
         Test, TestObservation, TestAggregateResult, SessionSummary, SystemWarning,
-        ProjectObserverIndex, Settings, UserProject, Invite,
+        ProjectObserverIndex, Settings, UserProject, Invite, AiTokenUsage, Task,
     )
 
     MIGRATION_STRATEGIES = ('stop', 'upgrade', 'drop')
@@ -89,10 +93,10 @@ class Db(
 
     @staticmethod
     def _backfill_projects() -> None:
-        names = {row.project_name_id for row in ChatSession.select(ChatSession.project_name).distinct()}
-        names |= {row.project_name_id for row in Archive.select(Archive.project_name).distinct()}
-        for name in names:
-            Project.get_or_create(name=name, defaults={'revision': 0, 'published_revision': None})
+        ids = {row.project_id for row in ChatSession.select(ChatSession.project).distinct()}
+        ids |= {row.project_id for row in Archive.select(Archive.project).distinct()}
+        for project_id in ids:
+            Project.get_or_create(id=project_id, defaults={'revision': 0, 'published_revision': None})
 
     def _apply_migration_strategy(self, strategy: str) -> None:
         path = self.backup_file_path()
@@ -101,18 +105,28 @@ class Db(
         actual = self._migrator.actual_schema(path)
         if not actual:
             return
+        # A pre-merge database (Project still has its own project_id
+        # column) needs this one-off migration — checked independently of
+        # the generic diff below, since column-set equality alone can't
+        # tell "already merged" apart from "never had a Project table at all".
+        needs_legacy_identity_migration = 'project_id' in actual.get('Project', set())
         expected = self._migrator.expected_schema()
-        if not self._migrator.schema_differs(actual, expected, path):
+        if not needs_legacy_identity_migration and not self._migrator.schema_differs(actual, expected, path):
             return
         if strategy == 'stop':
             raise ValueError(f"Database schema at '{path}' doesn't match what this code expects and database.migration-strategy is 'stop' — set it to 'upgrade' or 'drop', or fix the database by hand.")
         backup_path = self._timestamped_backup_path(path)
         self._backup_to_path(backup_path)
         if strategy == 'upgrade':
-            logger.warning("Database schema at '%s' doesn't match what this code expects — backed it up to '%s', now migrating it in place (database.migration-strategy is 'upgrade').", path, backup_path)
-            self._migrator.migrate(actual, expected, path)
-            if self._migrator.schema_differs(self._migrator.actual_schema(path), expected, path):
-                raise ValueError(f"Database schema at '{path}' still doesn't match after in-place migration — refusing to touch the data any further (the pre-migration backup is at '{backup_path}').")
+            if needs_legacy_identity_migration:
+                logger.warning("Database schema at '%s' is still in the pre-merge project_name/project_id shape — backed it up to '%s', now merging it into a single Project.id.", path, backup_path)
+                self._migrator.migrate_legacy_project_identity(actual)
+                actual = self._migrator.actual_schema(path)
+            if self._migrator.schema_differs(actual, expected, path):
+                logger.warning("Database schema at '%s' doesn't match what this code expects — backed it up to '%s', now migrating it in place (database.migration-strategy is 'upgrade').", path, backup_path)
+                self._migrator.migrate(actual, expected, path)
+                if self._migrator.schema_differs(self._migrator.actual_schema(path), expected, path):
+                    raise ValueError(f"Database schema at '{path}' still doesn't match after in-place migration — refusing to touch the data any further (the pre-migration backup is at '{backup_path}').")
             return
         logger.warning("Database schema at '%s' doesn't match what this code expects — backed it up to '%s', now dropping and recreating every table from scratch (database.migration-strategy is 'drop').", path, backup_path)
         database.execute_sql('PRAGMA foreign_keys = OFF')

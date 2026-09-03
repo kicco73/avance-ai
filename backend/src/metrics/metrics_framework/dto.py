@@ -32,7 +32,7 @@ class UserAnalyticsData(object):
     shared by all calculators."""
 
     username: str
-    project_name: str
+    project_id: str
     messages: pd.DataFrame
     sessions: pd.DataFrame
     signals: pd.DataFrame

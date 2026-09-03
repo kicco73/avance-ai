@@ -1,11 +1,12 @@
-// Verifies the "on-enter" wire key (see backend's chat_service.py
-// apply_manual_action/_process_turn_locked, sent as "on-enter" — kebab,
-// matching the YAML field's own spelling, unlike every other snake_case
-// response key) reaches onEnterActions.js's runOnEnterScript through
-// chatStore.js's handleAction (a manual test action) and submitMessage
-// (an auto-tracking-triggered transition), and only when the state
-// genuinely changed. onEnterActions.js itself (script → onEnterLocals
-// binding) has its own dedicated tests — see onEnterActions.test.js.
+// An action's own "on-enter" script never rides in a turn's or a manual
+// action's response any more: the backend runs it as a task and pushes
+// its output over the websocket as a "notification" frame, which
+// notificationBus.js runs exactly once, globally. These tests pin both
+// halves: a store never runs a script off a response (even a stale one
+// that still carries the old key), and the bus runs whatever frame
+// arrives, whether or not it also carries a state for some project.
+// onEnterActions.js itself (script → onEnterLocals binding) has its own
+// dedicated tests — see onEnterActions.test.js.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildTimeline } from '../src/testTimeline.js'
 
@@ -17,7 +18,7 @@ vi.mock('../src/api.js', () => ({
 }))
 vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn() }))
 
-describe('handleAction (manual test action) runs the on-enter script', () => {
+describe('handleAction (manual test action) never runs an on-enter script off the response', () => {
   let chatStore
   let onEnterActions
   let api
@@ -33,7 +34,7 @@ describe('handleAction (manual test action) runs the on-enter script', () => {
     vi.clearAllMocks()
   })
 
-  it('runs the script when the fired test action carries on-enter and the state actually changed', async () => {
+  it('applies the state and runs nothing, even off a stale response still carrying "on-enter"', async () => {
     api.postAction.mockResolvedValue({
       reply: [],
       state: { key: 'b', ui_label: 'B', actions: [] },
@@ -43,79 +44,67 @@ describe('handleAction (manual test action) runs the on-enter script', () => {
 
     await chatStore.handleAction('go-loud')
 
-    expect(onEnterActions.runOnEnterScript).toHaveBeenCalledTimes(1)
-    expect(onEnterActions.runOnEnterScript).toHaveBeenCalledWith('celebrate()')
+    expect(onEnterActions.runOnEnterScript).not.toHaveBeenCalled()
     expect(chatStore.state.value.key).toBe('b')
-  })
-
-  it('does not run anything when the fired action has no on-enter', async () => {
-    api.postAction.mockResolvedValue({
-      reply: [],
-      state: { key: 'b', ui_label: 'B', actions: [] },
-      'on-enter': null,
-      session_id: 1
-    })
-
-    await chatStore.handleAction('go-quiet')
-
-    expect(onEnterActions.runOnEnterScript).not.toHaveBeenCalled()
-  })
-
-  it('still runs the script on a self-loop that carries on-enter, even though the state key did not change — a self-loop action still really fired', async () => {
-    // First call establishes the current state as 'b'.
-    api.postAction.mockResolvedValue({
-      reply: [],
-      state: { key: 'b', ui_label: 'B', actions: [] },
-      'on-enter': null,
-      session_id: 1
-    })
-    await chatStore.handleAction('go-quiet')
-    expect(onEnterActions.runOnEnterScript).not.toHaveBeenCalled()
-
-    // Second call: a self-loop back onto 'b' that *does* carry on-enter —
-    // every automaton.* trigger is itself self-loop-only (see Prompt 6),
-    // so this is exactly the case that must keep working.
-    api.postAction.mockResolvedValue({
-      reply: [],
-      state: { key: 'b', ui_label: 'B', actions: [] },
-      'on-enter': 'celebrate()',
-      session_id: 1
-    })
-    await chatStore.handleAction('self-loop-with-on-enter')
-
-    expect(onEnterActions.runOnEnterScript).toHaveBeenCalledWith('celebrate()')
   })
 })
 
-describe('submitMessage (auto-tracking-triggered transition) also threads on-enter through', () => {
-  let chatStore
+describe('the notification bus runs a pushed on-enter script once, globally', () => {
   let onEnterActions
   let chatClient
+  let bus
 
   beforeEach(async () => {
     vi.resetModules()
-    chatStore = await import('../src/chatStore.js')
     onEnterActions = await import('../src/onEnterActions.js')
     chatClient = await import('../src/chatClient.js')
+    bus = await import('../src/notificationBus.js')
   })
 
   afterEach(() => {
     vi.clearAllMocks()
   })
 
-  it('runs the script when a chat turn auto-fires an action with an on-enter script', async () => {
-    chatClient.sendMessage.mockResolvedValue({
-      reply: [],
-      user_message_id: 100,
-      assistant_message_id: 1,
-      state: { key: 'b', ui_label: 'B', actions: [] },
-      'on-enter': "notify('Nice!', 'You reached **state B**.')",
-      session_id: 1
-    })
+  function pushedFrame() {
+    // What chatClient's single handler received: the bus registers it
+    // the first time anyone subscribes.
+    expect(chatClient.onNotification).toHaveBeenCalledTimes(1)
+    return chatClient.onNotification.mock.calls[0][0]
+  }
 
-    await chatStore.handleSend('trigger the transition')
+  it('runs the script of a frame carrying only "on-enter" (an OnEnterTask that ran server-side)', () => {
+    const seen = []
+    bus.subscribeToStateNotifications((frame) => seen.push(frame))
 
+    pushedFrame()({ project_name: undefined, state: undefined, 'on-enter': "notify('Nice!', 'You reached **state B**.')" })
+
+    expect(onEnterActions.runOnEnterScript).toHaveBeenCalledTimes(1)
     expect(onEnterActions.runOnEnterScript).toHaveBeenCalledWith("notify('Nice!', 'You reached **state B**.')")
+    expect(seen).toEqual([])  // no state: nothing for the stores
+  })
+
+  it('runs the script once however many stores subscribed, and hands the state to each', () => {
+    const a = []
+    const b = []
+    bus.subscribeToStateNotifications((frame) => a.push(frame))
+    bus.subscribeToStateNotifications((frame) => b.push(frame))
+
+    pushedFrame()({ project_name: 'proj', state: { key: 'x' }, 'on-enter': 'celebrate()' })
+
+    expect(onEnterActions.runOnEnterScript).toHaveBeenCalledTimes(1)
+    expect(a).toEqual([{ project_name: 'proj', state: { key: 'x' } }])
+    expect(b).toEqual([{ project_name: 'proj', state: { key: 'x' } }])
+  })
+
+  it('a live chat store applies a pushed state only when it is about its own project', async () => {
+    const chatStore = await import('../src/chatStore.js')
+    chatStore.currentProjectId.value = 'proj'
+
+    pushedFrame()({ project_name: 'other', state: { key: 'x', actions: [] } })
+    expect(chatStore.state.value?.key).not.toBe('x')
+
+    pushedFrame()({ project_name: 'proj', state: { key: 'x', actions: [] } })
+    expect(chatStore.state.value.key).toBe('x')
   })
 })
 

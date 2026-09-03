@@ -6,9 +6,12 @@ from __future__ import annotations
 
 import pytest
 
+from conftest import parse_sse_result
+
 pytestmark = pytest.mark.regression
 
 TWO_STATE_YML = (
+    "project:\n  id: proj\n"
     "init-action:\n  target: a\n"
     "states:\n"
     "  a:\n"
@@ -24,9 +27,10 @@ TWO_STATE_YML = (
 
 
 def _upload_and_reach_b(client):
-    resp = client.put("/api/projects/proj", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+    resp = client.post("/api/projects/upload", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
-    resp = client.post("/api/projects/proj/publish", json={})
+    project_id = parse_sse_result(resp)["project_id"]
+    resp = client.post(f"/api/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
 
     session = client.get("/api/chat/session").json()
@@ -54,7 +58,7 @@ def test_editing_a_file_that_removes_the_current_state_resets_the_conversation(c
     _upload_and_reach_b(client)
 
     # The edit removes "b", the state the conversation is currently in.
-    yml_v2 = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+    yml_v2 = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
     resp = client.put("/api/projects/proj/files/index.yml", content=yml_v2.encode())
     assert resp.status_code == 200, resp.text
 
@@ -69,6 +73,7 @@ def test_editing_a_file_that_renames_the_current_state_resets_the_conversation(c
     _upload_and_reach_b(client)
 
     yml_v2 = (
+        "project:\n  id: proj\n"
         "init-action:\n  target: a\n"
         "states:\n"
         "  a:\n"
@@ -94,14 +99,17 @@ def test_editing_an_unrelated_project_does_not_touch_the_active_ones_conversatio
     conversation that's actually running right now."""
     session = _upload_and_reach_b(client)
 
-    other_yml = "init-action:\n  target: x\nstates:\n  x:\n    contextual-prompt: hi\n"
-    resp = client.put("/api/projects/other", content=other_yml.encode(), headers={"Content-Type": "application/x-yaml"})
+    other_yml = "project:\n  id: other\ninit-action:\n  target: x\nstates:\n  x:\n    contextual-prompt: hi\n"
+    resp = client.post("/api/projects/upload", content=other_yml.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
     # Uploading "other" activates it — reactivate "proj" so the edit
     # below targets a non-active project.
     client.put("/api/projects/proj/activate")
 
-    resp = client.put("/api/projects/other/files/index.yml", content=b"init-action:\n  target: y\nstates:\n  y:\n    contextual-prompt: hi\n")
+    resp = client.put(
+        "/api/projects/other/files/index.yml",
+        content=b"project:\n  id: other\ninit-action:\n  target: y\nstates:\n  y:\n    contextual-prompt: hi\n",
+    )
     assert resp.status_code == 200, resp.text
 
     sessions = client.get("/api/projects/proj/sessions").json()

@@ -13,7 +13,7 @@ import { confirmDialog } from '../dialogStore.js'
 // `currentSession`/`currentSessionIsImported`/`selectSession` are owned by
 // the caller — this composable only reads/drives them where an action
 // needs to clear or move the active selection.
-export function useSessionAdmin(projectName, currentSessionId, currentSession, currentSessionIsImported, selectSession) {
+export function useSessionAdmin(projectId, currentSessionId, currentSession, currentSessionIsImported, selectSession) {
   // Every selected file (whichever mix of .txt transcripts and "Download
   // all" .json exports) uploaded in one request — all per-file/per-session
   // dispatch and error handling happens server-side; this just renders the
@@ -28,7 +28,7 @@ export function useSessionAdmin(projectName, currentSessionId, currentSession, c
     importProgress.value = null
     let result
     try {
-      result = await postImportSessions(projectName, files, (message) => {
+      result = await postImportSessions(projectId, files, (message) => {
         importProgress.value = message.percentage
       })
     } catch {
@@ -42,7 +42,7 @@ export function useSessionAdmin(projectName, currentSessionId, currentSession, c
     if (result.last_session_id != null) {
       // The list must contain the new session before it can be looked up
       // in it — refresh first, select second, not the other way around.
-      await refreshSessionsQuietly(true, projectName)
+      await refreshSessionsQuietly(true, projectId)
       const imported = sessions.value.find((s) => s.id === result.last_session_id)
       if (imported) selectSession(imported)
     }
@@ -54,8 +54,8 @@ export function useSessionAdmin(projectName, currentSessionId, currentSession, c
 
   async function onMoveSessions({ sessionIds, username }) {
     try {
-      await putSessionsReassign(projectName, sessionIds, username)
-      await refreshSessionsQuietly(true, projectName)
+      await putSessionsReassign(projectId, sessionIds, username)
+      await refreshSessionsQuietly(true, projectId)
     } catch {
     }
   }
@@ -70,9 +70,9 @@ export function useSessionAdmin(projectName, currentSessionId, currentSession, c
     if (!ok) return
     const deletedUsername = `Test user ${testUserSeq}`
     try {
-      await deleteTestUser(projectName, testUserSeq)
+      await deleteTestUser(projectId, testUserSeq)
       if (currentSession.value?.username === deletedUsername) currentSessionId.value = null
-      await refreshSessionsQuietly(true, projectName)
+      await refreshSessionsQuietly(true, projectId)
     } catch {
     }
   }
@@ -88,9 +88,9 @@ export function useSessionAdmin(projectName, currentSessionId, currentSession, c
     })
     if (!ok) return
     try {
-      await deleteUserSessions(projectName, username)
+      await deleteUserSessions(projectId, username)
       if (currentSession.value?.username === username) currentSessionId.value = null
-      await refreshSessionsQuietly(true, projectName)
+      await refreshSessionsQuietly(true, projectId)
     } catch {
     }
   }
@@ -108,9 +108,9 @@ export function useSessionAdmin(projectName, currentSessionId, currentSession, c
     if (!ok) return
     deletingAllImported.value = true
     try {
-      await deleteImportedSessions(projectName)
+      await deleteImportedSessions(projectId)
       if (currentSessionIsImported.value) currentSessionId.value = null
-      await refreshSessionsQuietly(true, projectName)
+      await refreshSessionsQuietly(true, projectId)
     } catch {
       // already surfaced via apiFetch
     } finally {
@@ -133,7 +133,7 @@ export function useSessionAdmin(projectName, currentSessionId, currentSession, c
     try {
       await deleteSession(session.id)
       if (session.id === currentSessionId.value) currentSessionId.value = null
-      await refreshSessionsQuietly(true, projectName)
+      await refreshSessionsQuietly(true, projectId)
     } catch {
       // already surfaced via apiFetch
     } finally {
@@ -151,11 +151,11 @@ export function useSessionAdmin(projectName, currentSessionId, currentSession, c
   async function handleDownloadSessions(type) {
     downloadingSessions.value = true
     try {
-      const blob = await getExportSessions(projectName, type)
+      const blob = await getExportSessions(projectId, type)
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `${projectName}-${type}-sessions.json`
+      link.download = `${projectId}-${type}-sessions.json`
       document.body.appendChild(link)
       link.click()
       link.remove()

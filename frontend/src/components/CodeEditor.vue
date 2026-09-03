@@ -17,7 +17,7 @@ import { yamlStructureCompletionSource } from './yamlStructureCompletion.js'
 import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile } from '../api.js'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   fileName: { type: String, required: true },
   // Basenames url(...) can complete to — the Theme branch's image assets.
   // Only meaningful for a text/css buffer; ignored otherwise.
@@ -28,7 +28,7 @@ const props = defineProps({
   yamlAttachmentFiles: { type: Array, default: () => [] }
 })
 
-const emit = defineEmits(['saved'])
+const emit = defineEmits(['saved', 'renamed'])
 
 const loading = ref(true)
 const saving = ref(false)
@@ -119,7 +119,7 @@ async function load() {
   const token = ++requestToken
   loading.value = true
   try {
-    const file = await getProjectFile(props.projectName, props.fileName)
+    const file = await getProjectFile(props.projectId, props.fileName)
     if (token !== requestToken) return
     // A 204 (null) response means the file doesn't exist yet (e.g.
     // index.css is optional) — not an error; start with an empty buffer.
@@ -153,7 +153,7 @@ async function load() {
 async function save() {
   saving.value = true
   try {
-    const result = await putProjectFile(props.projectName, props.fileName, content.value)
+    const result = await putProjectFile(props.projectId, props.fileName, content.value)
     // Refresh from the server's response rather than trusting what was typed.
     setEditorDoc(result.content)
     originalContent.value = result.content
@@ -185,12 +185,21 @@ function setContent(newContent) {
 
 // Previews the previous/next content from history without persisting —
 // no 'saved' emitted. `originalContent` stays put, so the resulting
-// diff from it is what re-enables Save.
+// diff from it is what re-enables Save. A rename step (file.renamed_to
+// set — see db/history.py's own rename-marker) has no content of *this*
+// file's own to preview: this instance is scoped to `props.fileName` for
+// its whole lifetime (see the module comment up top), so it can't just
+// keep going under a different name — 'renamed' tells the parent to
+// remount a fresh instance at renamed_to instead.
 async function applyHistoryNavigation(action) {
   const token = ++requestToken
   try {
-    const file = await action(props.projectName, props.fileName, content.value)
+    const file = await action(props.projectId, props.fileName, content.value)
     if (token !== requestToken) return
+    if (file.renamed_to) {
+      emit('renamed', file.renamed_to)
+      return
+    }
     setEditorDoc(file.content)
     canUndo.value = file.can_undo
     canRedo.value = file.can_redo

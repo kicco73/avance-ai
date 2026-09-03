@@ -14,7 +14,7 @@ import SessionDetailCard from './SessionDetailCard.vue'
 import ActionEnvEditor from './ActionEnvEditor.vue'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   selectedElement: { type: Object, default: null },
   editableFiles: { type: Array, default: null },
   highlightedStateKey: { type: String, default: null },
@@ -25,6 +25,12 @@ const props = defineProps({
   // action — its target <select> options and Env editor's key suggestions.
   availableStates: { type: Array, default: () => [] },
   availableEnvKeys: { type: Array, default: () => [] },
+  // Forwarded to InspectorDetailCard.vue's own OnEnterDialog.vue — unlike
+  // @set-field (fire-and-forget, every other field), that dialog's OK
+  // button needs to know whether the write actually landed before
+  // closing, which only a real awaited call (not a Vue emit) can answer.
+  // EditProjectView.vue's own handleSetSelectedElementField.
+  saveField: { type: Function, default: null },
   // See EditProjectView.vue's own docstring on this — 'state:<key>' while
   // `selectedElement` is the state a "+ Add state" click just created,
   // null otherwise.
@@ -34,6 +40,7 @@ const props = defineProps({
   // excluded here since it has no delete and its own dedicated tabs.
   currentFileName: { type: String, default: null },
   deletingFile: { type: String, default: null },
+  renamingFile: { type: String, default: null },
   // Auto mode's own selection (see EditProjectView.vue's autoSelected*
   // computeds) — a session read-only, in place of selectedElement's
   // state/action. { id, title, comment, type, ... }, same shape as
@@ -56,7 +63,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'select', 'select-attachment', 'jump-to-attachment', 'set-field', 'set-project-field', 'delete',
-  'add-state', 'add-action', 'delete-file', 'open-actions-order'
+  'add-state', 'add-action', 'delete-file', 'rename-file', 'open-actions-order'
 ])
 
 // True whenever there's no active file browsing to defer to (currentFileName
@@ -96,7 +103,7 @@ const projectMetadata = ref(null)
 
 async function loadProjectMetadata() {
   try {
-    projectMetadata.value = (await getProjectMetadata(props.projectName)).project
+    projectMetadata.value = (await getProjectMetadata(props.projectId)).project
   } catch {
     // already surfaced via apiFetch
   }
@@ -124,10 +131,12 @@ onMounted(loadProjectMetadata)
     />
     <InspectorFileCard
       v-if="showFileCard"
-      :project-name="projectName"
+      :project-id="projectId"
       :file-name="currentFileName"
       :deleting="deletingFile === currentFileName"
+      :renaming="renamingFile === currentFileName"
       @delete="emit('delete-file', currentFileName)"
+      @rename="(newBasename) => emit('rename-file', currentFileName, newBasename)"
     />
 
     <template v-if="selectedSession">
@@ -160,6 +169,7 @@ onMounted(loadProjectMetadata)
       :recently-added-key="recentlyAddedKey"
       :selectable="!readOnly"
       :editable="!readOnly"
+      :save-field="saveField"
       :closable="false"
       :open="open"
       @update:open="open = $event"

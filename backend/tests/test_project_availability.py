@@ -28,7 +28,7 @@ states:
 """
 
 
-def _yml_observing(project_name: str) -> str:
+def _yml_observing(project_id: str) -> str:
     return f"""
 init-action:
   target: x
@@ -39,27 +39,36 @@ states:
     actions:
       - name: notice
         target: x
-        trigger: "automaton.{project_name}.state == 'never'"
+        trigger: "automaton.{project_id}.state == 'never'"
 """
 
 
-def _publish_project(db, project_service: ProjectService, project_name: str, index_yml: str) -> None:
-    """A real save, through _finalize_project_update, so the reverse
-    index and the initial availability recompute both actually run.
-    Auto-declares `project: {id: <project_name>}` when project_name is a
-    valid identifier, so automaton.* references in this file resolve."""
-    if project_name.isidentifier() and "project:" not in index_yml:
-        index_yml = f"project:\n  id: {project_name}\n{index_yml}"
-    db.ensure_project(project_name)
-    db.save_project_files(project_name, {"index.yml": index_yml.encode("utf-8")}, {"index.yml": "text/yaml"})
-    db.publish_project(project_name)
-    db.set_active_project_name(project_name, USERNAME)
+def _publish_project(db, project_service: ProjectService, project_id: str, index_yml: str) -> None:
+    """A real save, through finalize_update, so the reverse index and the
+    initial availability recompute both actually run. Auto-declares
+    `project: {id: <project_id>, family: test}` when index_yml doesn't
+    already declare its own — every project in this file shares family
+    "test" so automaton.* references resolve; family only gates that
+    (build-time knowledge + runtime automaton.<id>.state/env reads), never
+    the plain existence-based availability cascade this file actually
+    exercises. `project_id` is always a valid identifier here — every
+    call site either relies on this auto-declare (so its own id always
+    matches) or, for the one test that changes a project's id mid-flow,
+    addresses the project by its own *current* id, exactly as the real
+    HTTP API would."""
+    if "project:" not in index_yml:
+        index_yml = f"project:\n  id: {project_id}\n  family: test\n{index_yml}"
+    is_new_project = not db.project_exists(project_id)
+    db.ensure_project(project_id)
+    db.save_project_files(project_id, {"index.yml": index_yml.encode("utf-8")}, {"index.yml": "text/yaml"})
+    db.publish_project(project_id)
+    db.set_active_project_id(project_id, USERNAME)
     automaton = AutomatonBuilder().build({"index.yml": index_yml})
 
-    async def commit(_project_name, _automaton):
+    async def commit(_project_id, _automaton):
         pass
 
-    asyncio.run(project_service._manager.finalize_update(project_name, automaton, commit))
+    asyncio.run(project_service._manager.finalize_update(project_id, automaton, commit, is_new_project=is_new_project))
 
 
 @pytest.fixture
@@ -120,7 +129,7 @@ def test_recompute_publishes_availability_changed_when_it_flips(db, project_serv
     db.set_project_availability("dependency", is_paused=True, paused_reason="manually paused")
     project_service.recompute_availability("dependent")
 
-    assert received == [AvailabilityChanged(project_name="dependent", available=False)]
+    assert received == [AvailabilityChanged(project_id="dependent", available=False)]
 
 
 def test_pausing_a_project_cascades_through_a_dependency_chain(db, project_service):
@@ -131,7 +140,7 @@ def test_pausing_a_project_cascades_through_a_dependency_chain(db, project_servi
     project_service.register_availability_cascade()
 
     db.set_project_availability("c", is_paused=True, paused_reason="c's own build broke")
-    publish(AvailabilityChanged(project_name="c", available=False))
+    publish(AvailabilityChanged(project_id="c", available=False))
 
     b_paused, b_reason = db.get_project_availability("b")
     a_paused, a_reason = db.get_project_availability("a")
@@ -145,7 +154,7 @@ def test_recovering_a_project_cascades_availability_back_through_the_chain(db, p
     _publish_project(db, project_service, "a", _yml_observing("b"))
     project_service.register_availability_cascade()
     db.set_project_availability("c", is_paused=True, paused_reason="broken")
-    publish(AvailabilityChanged(project_name="c", available=False))
+    publish(AvailabilityChanged(project_id="c", available=False))
     assert db.get_project_availability("a")[0] is True
     assert db.get_project_availability("b")[0] is True
 
@@ -153,7 +162,7 @@ def test_recovering_a_project_cascades_availability_back_through_the_chain(db, p
     # succeeds, no paused dependency of its own) rather than a manual
     # flip, closer to what a real recovery looks like.
     project_service.recompute_availability("c")
-    publish(AvailabilityChanged(project_name="c", available=True))
+    publish(AvailabilityChanged(project_id="c", available=True))
 
     assert db.get_project_availability("c") == (False, None)
     assert db.get_project_availability("b") == (False, None)
@@ -171,7 +180,7 @@ def test_a_mutual_dependency_between_two_projects_converges_without_looping_fore
     subscribe(AvailabilityChanged, received.append)
 
     db.set_project_availability("a", is_paused=True, paused_reason="a's own build broke")
-    publish(AvailabilityChanged(project_name="a", available=False))
+    publish(AvailabilityChanged(project_id="a", available=False))
 
     assert db.get_project_availability("a")[0] is True
     assert db.get_project_availability("b")[0] is True
@@ -179,8 +188,8 @@ def test_a_mutual_dependency_between_two_projects_converges_without_looping_fore
     # already paused (the "unchanged, don't republish" guard) — so
     # exactly these two events fire, total, never a third or a loop.
     assert set(received) == {
-        AvailabilityChanged(project_name="a", available=False),
-        AvailabilityChanged(project_name="b", available=False),
+        AvailabilityChanged(project_id="a", available=False),
+        AvailabilityChanged(project_id="b", available=False),
     }
 
 
@@ -214,14 +223,16 @@ def test_a_newly_created_projects_arrival_wakes_up_a_previously_dangling_depende
 
 
 def test_changing_a_projects_id_pauses_observers_of_the_stale_old_id(db, project_service):
-    """"dependent" observes "dep" via its declared id ("old_id"). Renaming
-    that id out from under it (a real re-save, not a manual DB flip) must
-    pause "dependent" immediately — without "dependent" itself being touched."""
-    _publish_project(db, project_service, "dep", "project:\n  id: old_id\n" + VALID_YML)
+    """"dependent" observes "old_id". Renaming that same project's id out
+    from under it (a real re-save, addressed by its own *current* id —
+    project.id is this project's one and only identity now, so "renaming"
+    it really is renaming the project) must pause "dependent" immediately
+    — without "dependent" itself being touched."""
+    _publish_project(db, project_service, "old_id", VALID_YML)
     _publish_project(db, project_service, "dependent", _yml_observing("old_id"))
     assert db.get_project_availability("dependent") == (False, None)
 
-    _publish_project(db, project_service, "dep", "project:\n  id: new_id\n" + VALID_YML)
+    _publish_project(db, project_service, "old_id", "project:\n  id: new_id\n" + VALID_YML)
 
     is_paused, reason = db.get_project_availability("dependent")
     assert is_paused is True
@@ -237,7 +248,7 @@ def test_set_manually_paused_only_allowed_from_running(db, project_service):
     row = project_service.set_manually_paused("solo")
 
     assert row == {
-        "name": "solo", "status": "manually_paused", "paused_reason": "Manually paused.",
+        "id": "solo", "status": "manually_paused", "paused_reason": "Manually paused.",
         "revision": 0, "published_revision": 0,
     }
     assert db.get_project_availability("solo") == (True, "Manually paused.")
@@ -262,7 +273,7 @@ def test_set_manually_paused_rejects_a_project_already_manually_paused(db, proje
 
 def test_set_manually_paused_rejects_an_unknown_project(db, project_service):
     with pytest.raises(FileNotFoundError):
-        project_service.set_manually_paused("does-not-exist")
+        project_service.set_manually_paused("does_not_exist")
 
 
 def test_set_manually_running_only_allowed_from_manually_paused(db, project_service):
@@ -335,7 +346,7 @@ def test_deleting_a_project_pauses_its_observer(db, project_service):
     _publish_project(db, project_service, "dependent", _yml_observing("dependency"))
     assert db.get_project_availability("dependent") == (False, None)
 
-    async def commit(_project_name, _automaton):
+    async def commit(_project_id, _automaton):
         pass
 
     asyncio.run(project_service.delete_project("dependency", commit))
@@ -346,14 +357,14 @@ def test_deleting_a_project_pauses_its_observer(db, project_service):
 
 
 def test_get_runtime_status_reports_all_three_states(db, project_service):
-    _publish_project(db, project_service, "running-proj", VALID_YML)
-    _publish_project(db, project_service, "auto-paused-proj", VALID_YML)
-    db.set_project_availability("auto-paused-proj", is_paused=True, paused_reason="Build failed: x")
-    _publish_project(db, project_service, "manually-paused-proj", VALID_YML)
-    project_service.set_manually_paused("manually-paused-proj")
+    _publish_project(db, project_service, "running_proj", VALID_YML)
+    _publish_project(db, project_service, "auto_paused_proj", VALID_YML)
+    db.set_project_availability("auto_paused_proj", is_paused=True, paused_reason="Build failed: x")
+    _publish_project(db, project_service, "manually_paused_proj", VALID_YML)
+    project_service.set_manually_paused("manually_paused_proj")
 
-    rows = {row["name"]: row for row in project_service.get_runtime_status()}
+    rows = {row["id"]: row for row in project_service.get_runtime_status()}
 
-    assert rows["running-proj"]["status"] == "running"
-    assert rows["auto-paused-proj"]["status"] == "paused"
-    assert rows["manually-paused-proj"]["status"] == "manually_paused"
+    assert rows["running_proj"]["status"] == "running"
+    assert rows["auto_paused_proj"]["status"] == "paused"
+    assert rows["manually_paused_proj"]["status"] == "manually_paused"

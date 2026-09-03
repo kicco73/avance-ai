@@ -166,7 +166,6 @@ class AutomatonBuilder(object):
             # on the state it fired from.
             target=raw_action.get("target", key),
             trigger=raw_action.get("trigger"),
-            action_prompt=raw_action["action-prompt"].strip() if raw_action.get("action-prompt") else None,
             attachments=self._extract_required_archives(raw_action.get("attachments", []), all_archives, f"action {raw_action['name']}"),
             on_enter=on_enter,
             env=self._build_action_env(raw_action.get("env"), raw_action["name"]),
@@ -221,10 +220,16 @@ class AutomatonBuilder(object):
         )
 
     @staticmethod
-    def _validate_namespaced_expression(expression: str, context: str, registry: dict[str, dict[str, str]]) -> None:
+    def _validate_namespaced_expression(
+        expression: str, context: str, registry: dict[str, dict[str, str]],
+        known_locals: frozenset[str] = frozenset(),
+    ) -> None:
         """Syntax + per-namespace identifier validation shared by
-        `trigger:` and an action's `env:` expressions. Any bare
-        identifier left over must be a core metric."""
+        `trigger:`, an action's `env:` expressions, and an on-enter
+        statement. Any bare identifier left over must be a core metric —
+        or, for on-enter only, a local variable an earlier `name = ...`
+        statement in the same script already declared (`known_locals`;
+        always empty for trigger:/env:, which have no such thing)."""
         try:
             namespace_refs = TriggerExpressionAnalyzer.namespace_refs(expression)
             bare_names = TriggerExpressionAnalyzer.bare_names(expression)
@@ -235,7 +240,7 @@ class AutomatonBuilder(object):
         for namespace, refs in namespace_refs.items():
             valid = registry.get(namespace, {}).keys()
             unknown |= {f"{namespace}.{n}" for n in refs - valid}
-        unknown |= bare_names - metric_names()
+        unknown |= bare_names - metric_names() - known_locals
         if unknown:
             raise ValueError(f"{context} references undefined name(s): {', '.join(sorted(unknown))}")
 
@@ -255,20 +260,44 @@ class AutomatonBuilder(object):
     @classmethod
     def _validate_on_enter(cls, on_enter: str | None, context: str, registry: dict[str, dict[str, str]]) -> None:
         """`on-enter`: zero or more `actuator.<name>(...)` calls, one per
-        non-blank line — e.g. `actuator.celebrate()` on its own line,
-        `actuator.notify(user.name, "Hi!")` on another — validated the
-        same way a lone `actuator:` expression always was (full registry,
-        since a call's own arguments may reference any namespace), just
-        per line so multiple calls can fire from one action."""
+        top-level statement — e.g. `actuator.celebrate()` on its own line,
+        `actuator.notify(user.name, "Hi!")` on another, a single call
+        free to span several lines of its own — split via
+        TriggerExpressionAnalyzer.on_enter_statements (real Python
+        parsing, so blank lines and '#' comments need no special-casing
+        here), each validated the same way a trigger is, against the
+        actuator view of the registry (see IdentifierRegistry.
+        for_actuators): no `session.*`, since an actuator.defer'd call
+        outlives the session that fired it. A statement may instead be a
+        simple `name = <expr>` assignment (see
+        TriggerExpressionAnalyzer.on_enter_assignment) — `<expr>` is
+        validated exactly like any other on-enter statement, `name`
+        becomes usable, bare, by every later statement in this same
+        on-enter script (never earlier ones, never a different action's),
+        and must not shadow a reserved namespace or core metric name."""
         if not on_enter:
             return
-        for line_number, line in enumerate(on_enter.splitlines(), start=1):
-            line = line.strip()
-            if not line:
-                continue
+        try:
+            statements = TriggerExpressionAnalyzer.on_enter_statements(on_enter)
+        except SyntaxError as exc:
+            raise ValueError(f"{context} ('{on_enter}') is not valid on-enter source: {exc}") from exc
+        known_locals: set[str] = set()
+        for line_number, statement in statements:
             line_context = f"{context}, on-enter line {line_number}"
-            cls._validate_namespaced_expression(line, line_context, registry)
-            cls._validate_actuator_arity(line, line_context)
+            assignment = TriggerExpressionAnalyzer.on_enter_assignment(statement)
+            target, expression = assignment if assignment is not None else (None, statement)
+            if target is not None and (target in TriggerExpressionAnalyzer.RESERVED_NAMESPACES or target in metric_names()):
+                raise ValueError(
+                    f"{line_context} ('{statement}'): '{target}' is a reserved name "
+                    "(a namespace or core metric) and can't be used as an on-enter local variable."
+                )
+            cls._validate_namespaced_expression(expression, line_context, registry, frozenset(known_locals))
+            cls._validate_actuator_arity(expression, line_context)
+            violations = TriggerExpressionAnalyzer.defer_violations(expression)
+            if violations:
+                raise ValueError(f"{line_context} ('{statement}'): {'; '.join(violations)}")
+            if target is not None:
+                known_locals.add(target)
 
     @staticmethod
     def _validate_trigger_types(expression: str, context: str) -> None:
@@ -312,7 +341,8 @@ class AutomatonBuilder(object):
         writes against each key's own declared type (see
         _validate_env_key_type below). `known_projects`: None skips the
         automaton.* existence check entirely."""
-        registry_without_actuator = {ns: names for ns, names in registry.items() if ns != "actuator"}
+        registry_without_actuator = IdentifierRegistry.for_triggers(registry)
+        registry_without_session = IdentifierRegistry.for_actuators(registry)
         for action in state.actions:
             if action.target not in declared_states:
                 raise ValueError(
@@ -354,7 +384,7 @@ class AutomatonBuilder(object):
                     )
             if action.on_enter:
                 self._validate_on_enter(
-                    action.on_enter, f"State {key}, action '{action.name}'", registry,
+                    action.on_enter, f"State {key}, action '{action.name}'", registry_without_session,
                 )
 
     @staticmethod
@@ -404,7 +434,6 @@ class AutomatonBuilder(object):
             ui_label=raw_init_action.get("ui-label", "init-action"),
             ui_button="",
             target=raw_init_action["target"],
-            action_prompt=raw_init_action["action-prompt"].strip() if raw_init_action.get("action-prompt") else None,
             on_enter=init_on_enter,
             env=env or None,
         )
@@ -412,60 +441,104 @@ class AutomatonBuilder(object):
 
 
     @staticmethod
-    def _build_project_metadata(raw: dict) -> tuple[str | None, str | None, str | None, bool, bool]:
-        """The optional top-level `project:` section — id/ui-label/
-        ui-description/signal-tracking-on-ai-message/talk-enabled. `id` is
-        what *other* projects reach this one as through automaton.*;
-        global uniqueness is ProjectService's concern."""
+    def _build_project_metadata(raw: dict) -> tuple[str, str | None, int, str | None, str | None, bool, bool]:
+        """The `project:` section — id/family/revision/ui-label/
+        ui-description/signal-tracking-on-ai-message/talk-enabled. `id`
+        is mandatory: a plain identifier (letters, digits, underscores,
+        not starting with a digit — the same grammar Python's own
+        attribute access requires, since `automaton.<id>.*` is exactly
+        that), this project's sole identity everywhere; global uniqueness
+        is ProjectService's concern. `family` is optional, free-form text
+        (never parsed — e.g. a reverse-DNS style "com.example.app" is
+        fine), never displayed, and never itself referenced anywhere: it
+        only ever gates automaton.* visibility (see AutomatonLoader.
+        known_projects_env_keys) — two projects can observe/notify each
+        other only when both declare the exact same family. Absent
+        (None) means this project can neither observe anything nor be
+        observed by anything, itself included. `revision`
+        defaults to 0 for a project that never declared one (e.g. a fresh
+        import) — automatically overwritten on every publish (see
+        ProjectManager.publish_project)."""
         raw_project = raw.get("project")
-        if raw_project is None:
-            return None, None, None, False, True
         if not isinstance(raw_project, dict):
             raise ValueError(
-                f"'project' must be a mapping of fields (id, ui-label, ui-description, "
-                f"signal-tracking-on-ai-message, talk-enabled), got {type(raw_project).__name__}."
+                "'project' is required and must be a mapping of fields (id, family, ui-label, "
+                "ui-description, signal-tracking-on-ai-message, talk-enabled), got "
+                f"{type(raw_project).__name__ if raw_project is not None else 'nothing'}."
             )
         project_id = raw_project.get("id")
-        if project_id is not None and (not isinstance(project_id, str) or not project_id.isidentifier()):
+        if not isinstance(project_id, str) or not project_id.isidentifier():
             raise ValueError(
-                f"project.id {project_id!r} is not a valid identifier — letters, digits, and "
-                "underscores only, and it can't start with a digit."
+                f"project.id {project_id!r} is required and must be a valid identifier — letters, "
+                "digits, and underscores only, and it can't start with a digit."
             )
+        family = raw_project.get("family") or None
+        if family is not None and not isinstance(family, str):
+            raise ValueError(f"project.family {family!r} must be a string.")
+        revision = raw_project.get("revision", 0)
+        if not isinstance(revision, int) or isinstance(revision, bool) or revision < 0:
+            raise ValueError(f"project.revision {revision!r} must be a non-negative integer.")
         return (
-            project_id, raw_project.get("ui-label"), raw_project.get("ui-description"),
+            project_id, family, revision, raw_project.get("ui-label"), raw_project.get("ui-description"),
             raw_project.get("signal-tracking-on-ai-message", False),
             raw_project.get("talk-enabled", True),
         )
 
     @staticmethod
-    def read_declared_env_keys(index_yml_text: str) -> tuple[str | None, frozenset[str]]:
-        """Reads only `project.id` and the top-level `env:` key names,
-        never a full build — lets ProjectService validate automaton.*
-        references without building every other project. Malformed id/env reports nothing."""
+    def read_declared_env_keys(index_yml_text: str) -> tuple[str | None, str | None, frozenset[str]]:
+        """Reads only `project.id`/`project.family` and the top-level
+        `env:` key names, never a full build — lets ProjectService
+        validate automaton.* references without building every other
+        project. Malformed id/env reports nothing."""
         try:
             raw = _yaml.load(index_yml_text)
         except Exception as exc:
             logger.warning("Failed to parse index.yml for known_projects_env_keys: %s", exc)
-            return None, frozenset()
+            return None, None, frozenset()
         if not isinstance(raw, dict):
-            return None, frozenset()
+            return None, None, frozenset()
         raw_project = raw.get("project")
         project_id = raw_project.get("id") if isinstance(raw_project, dict) else None
         if not isinstance(project_id, str) or not project_id.isidentifier():
             project_id = None
+        family = raw_project.get("family") if isinstance(raw_project, dict) else None
+        if not isinstance(family, str) or not family:
+            family = None
         raw_env = raw.get("env")
         env_keys = frozenset(raw_env.keys()) if isinstance(raw_env, dict) else frozenset()
-        return project_id, env_keys
+        return project_id, family, env_keys
+
+    @staticmethod
+    def peek_declared_revision(index_yml_text: str) -> int | None:
+        """Reads only `project.revision`, never a full build — None both
+        for a malformed/unparseable file and for one that simply never
+        declared a revision (ProjectManager.put_project auto-numbers that
+        case as a back-compat import); an invalid-but-present value
+        surfaces properly through the real build() call right after."""
+        try:
+            raw = _yaml.load(index_yml_text)
+        except Exception:
+            return None
+        if not isinstance(raw, dict):
+            return None
+        raw_project = raw.get("project")
+        if not isinstance(raw_project, dict):
+            return None
+        revision = raw_project.get("revision")
+        return revision if isinstance(revision, int) and not isinstance(revision, bool) else None
 
     def build(self, contents: dict, known_projects: dict[str, frozenset[str]] | None = None) -> Automaton:
         """`known_projects`: every *other* project's own project.id
         mapped to its declared env key names, for validating an
-        automaton.<id>.env.<key> reference. None skips that check."""
+        automaton.<id>.env.<key> reference — already narrowed to this
+        project's own family (see AutomatonLoader.known_projects_env_keys),
+        so a cross-family (or family-less) id simply isn't here. None
+        skips that check."""
         all_archives = self._convert_contents_to_archives(contents=contents)
 
         raw = _yaml.load(contents['index.yml'])
 
-        project_id, project_ui_label, project_ui_description, autotracking_on_ai_message, talk_enabled = (
+        project_id, project_family, project_revision, project_ui_label, project_ui_description, autotracking_on_ai_message, talk_enabled = (
             self._build_project_metadata(raw)
         )
 
@@ -588,6 +661,8 @@ class AutomatonBuilder(object):
             attachments=all_archives,
             autotracking_on_ai_message=autotracking_on_ai_message,
             project_id=project_id,
+            project_family=project_family,
+            project_revision=project_revision,
             project_ui_label=project_ui_label,
             project_ui_description=project_ui_description,
             talk_enabled=talk_enabled,

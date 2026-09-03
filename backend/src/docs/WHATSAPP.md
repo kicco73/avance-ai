@@ -76,9 +76,9 @@ email at all.
 ## What the user sees
 
 - Opening message (if the project generates one) and then the reply,
-  each as its own WhatsApp message; a transition's follow-up messages
-  (`action_prompt`, opening turn of the new state) come through too, since
-  the channel sends whatever assistant rows the turn persisted.
+  each as its own WhatsApp message; a transition's follow-up message (the
+  new state's own opening turn, if any) comes through too, since the
+  channel sends whatever assistant rows the turn persisted.
 - The current state's manual actions (`ChatService`'s own `manual_actions`
   — untriggerable actions, plus every action while a test session's
   auto-tracking is off) ride along on the *last* message of any reply

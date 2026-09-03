@@ -15,7 +15,6 @@ from tracking.env import Env, PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
-from tracking.system_facts import SystemFacts
 from tracking.tracking_engine import TestObservationSink, TrackingEngine
 from tracking.user_facts import UserFacts
 
@@ -122,7 +121,7 @@ class TestReplayJob(CancelableJob):
         if current_run['session_id'] is not None or current_run['username'] is None:
             calculator = BenchmarkCalculator.from_data(data)
         else:
-            unfiltered_metrics = BenchmarkCalculator(db, current_run['username'], current_run['project_name']).default_metrics()
+            unfiltered_metrics = BenchmarkCalculator(db, current_run['username'], current_run['project_id']).default_metrics()
             calculator = BenchmarkCalculator.from_data(data, metrics=unfiltered_metrics)
 
         results = [_serialize_metric_result(result) for result in calculator.calculate_all()]
@@ -134,11 +133,10 @@ class TestReplayJob(CancelableJob):
         if session is None:
             return [], f"session {session_id}: not found, skipped"
         env = self._build_seed_env(session)
-        system_facts = SystemFacts()
-        session_facts = SessionFacts(db, FixedProjectContext(project_name=self._run['project_name']))
+        session_facts = SessionFacts(db, FixedProjectContext(project_id=self._run['project_id']))
         user_facts = UserFacts(db)
-        metrics = TestMetricsProvider(db, self._run['username'], self._run['project_name'], session_id)
-        scope_builder = EvaluationScopeBuilder(env, metrics, system_facts, session_facts, user_facts, db)
+        metrics = TestMetricsProvider(db, self._run['username'], self._run['project_id'], session_id)
+        scope_builder = EvaluationScopeBuilder(env, metrics, session_facts, user_facts, db)
         sink = TestObservationSink(self._run['id'])
         tracking_engine = TrackingEngine(sink, env, scope_builder)
         self._signal_source = self._signal_source_cls(
@@ -159,7 +157,7 @@ class TestReplayJob(CancelableJob):
         # historical session's own username for the two calls that need
         # it, then restored (see FixedProjectContext's own docstring).
         with Session().impersonate(session['username']):
-            persisted_env = PersistedEnv(self._service._db, FixedProjectContext(project_name=session['project_name']))
+            persisted_env = PersistedEnv(self._service._db, FixedProjectContext(project_id=session['project_id']))
             until = session['datetime_start']
             return Env(stored=persisted_env.stored(until=until), action_set=persisted_env.action_set(until=until))
 

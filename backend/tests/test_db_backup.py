@@ -66,10 +66,10 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
     the exact same-tables-wrong-columns case a naive "tables only" check
     would miss."""
     ddl = [
-        "CREATE TABLE Project (name TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER, "
-        "is_paused INTEGER, paused_reason TEXT, manually_paused INTEGER, project_id TEXT, "
+        "CREATE TABLE Project (id TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER, "
+        "is_paused INTEGER, paused_reason TEXT, manually_paused INTEGER, "
         "ui_label TEXT, ui_description TEXT, draft_edit_count INTEGER)",
-        "CREATE TABLE ChatSession (id INTEGER PRIMARY KEY, username TEXT, user_id TEXT, project_name TEXT, "
+        "CREATE TABLE ChatSession (id INTEGER PRIMARY KEY, username TEXT, user_id TEXT, project_id TEXT, "
         "type TEXT, title TEXT, project_revision INTEGER, datetime_start TEXT, datetime_end TEXT, "
         "start_state TEXT, end_state TEXT, labeled INTEGER, comment TEXT, labeling_revision INTEGER, channel TEXT, "
         "closed_at TEXT, close_reason TEXT)",
@@ -78,26 +78,31 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "name TEXT, picture_url TEXT, created_at TEXT, last_login TEXT, active_project_id TEXT, role TEXT)",
         "CREATE TABLE Tracking (id INTEGER PRIMARY KEY, session_id INTEGER, timestamp TEXT, "
         "\"values\" TEXT, old_state TEXT, action TEXT, new_state TEXT, env TEXT, origin TEXT)",
-        "CREATE TABLE Archive (project_name TEXT, archive_name TEXT, revision INTEGER, content BLOB)",
-        "CREATE TABLE EditHistory (id INTEGER PRIMARY KEY, user_id TEXT, project_name TEXT, "
+        "CREATE TABLE Archive (project_id TEXT, archive_name TEXT, revision INTEGER, content BLOB)",
+        "CREATE TABLE EditHistory (id INTEGER PRIMARY KEY, user_id TEXT, project_id TEXT, "
         "archive_name TEXT, kind TEXT, seq INTEGER, content TEXT)",
-        "CREATE TABLE UserProject (user_id TEXT, project_name TEXT, accepted_terms_id INTEGER, "
+        "CREATE TABLE UserProject (user_id TEXT, project_id TEXT, accepted_terms_id INTEGER, "
         "invite_id INTEGER, invite_timestamp TEXT)",
         "CREATE TABLE Invite (id INTEGER PRIMARY KEY, code TEXT, created_at TEXT, expires_at TEXT, "
-        "project_name TEXT, max_shares INTEGER, created_by_id TEXT)",
-        "CREATE TABLE StateRemap (project_name TEXT, old_key TEXT, new_key TEXT)",
-        "CREATE TABLE Test (id INTEGER PRIMARY KEY, username TEXT, user_id TEXT, project_name TEXT, "
+        "project_id TEXT, max_shares INTEGER, created_by_id TEXT)",
+        "CREATE TABLE StateRemap (project_id TEXT, old_key TEXT, new_key TEXT)",
+        "CREATE TABLE Test (id INTEGER PRIMARY KEY, username TEXT, user_id TEXT, project_id TEXT, "
         "session_id INTEGER, strategy TEXT, project_draft_edit_count INTEGER, session_labeling_revision INTEGER, "
         "batch_segments INTEGER, ai_model_snapshot TEXT, results TEXT)",
         "CREATE TABLE TestObservation (id INTEGER PRIMARY KEY, run_id INTEGER, session_id INTEGER, "
         "message_id INTEGER, timestamp TEXT, \"values\" TEXT, old_state TEXT, action TEXT, new_state TEXT)",
-        "CREATE TABLE TestAggregateResult (id INTEGER PRIMARY KEY, project_name TEXT, revision INTEGER, "
+        "CREATE TABLE TestAggregateResult (id INTEGER PRIMARY KEY, project_id TEXT, revision INTEGER, "
         "project_draft_edit_count INTEGER, kind TEXT, target TEXT, strategy TEXT, results TEXT, created_at TEXT)",
         "CREATE TABLE SessionSummary (id INTEGER PRIMARY KEY, session_id INTEGER, content TEXT)",
-        "CREATE TABLE SystemWarning (id INTEGER PRIMARY KEY, user_id TEXT, project_name TEXT, kind TEXT, "
+        "CREATE TABLE SystemWarning (id INTEGER PRIMARY KEY, user_id TEXT, project_id TEXT, kind TEXT, "
         "message TEXT, timestamp TEXT)",
-        "CREATE TABLE ProjectObserverIndex (id INTEGER PRIMARY KEY, project_id TEXT, observer_project_name TEXT)",
+        "CREATE TABLE ProjectObserverIndex (id INTEGER PRIMARY KEY, project_id TEXT, observer_project_id TEXT)",
         "CREATE TABLE Settings (key TEXT PRIMARY KEY, value TEXT)",
+        "CREATE TABLE Task (id INTEGER PRIMARY KEY, key TEXT, type TEXT, user_id TEXT, project_id TEXT, run_at TEXT, "
+        "payload TEXT, ui_label TEXT, ui_description TEXT, status TEXT, error TEXT, created_at TEXT, dispatched_at TEXT, "
+        "settled_at TEXT)",
+        "CREATE TABLE AiTokenUsage (id INTEGER PRIMARY KEY, provider_label TEXT, timestamp TEXT, "
+        "input_tokens INTEGER, output_tokens INTEGER)",
     ]
     wrong = _make_sqlite_bytes(tmp_path, "wrong_columns.db", ddl)
 
@@ -149,7 +154,7 @@ def test_restore_backup_replaces_data_and_reconnects(file_db):
     file_db.publish_project("proj2")
     kept_id = file_db.create_chat_session(
         username="user",
-        project_name="proj",
+        project_id="proj",
         revision=file_db.get_project_published_revision("proj"),
         datetime_start=datetime(2026, 1, 1),
         datetime_end=datetime(2026, 1, 1),
@@ -161,7 +166,7 @@ def test_restore_backup_replaces_data_and_reconnects(file_db):
     # Mutate the working db after the backup snapshot was taken.
     file_db.create_chat_session(
         username="user",
-        project_name="proj2",
+        project_id="proj2",
         revision=file_db.get_project_published_revision("proj2"),
         datetime_start=datetime(2026, 1, 2),
         datetime_end=datetime(2026, 1, 2),

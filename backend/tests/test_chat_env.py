@@ -11,23 +11,23 @@ from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
 
 USERNAME = "user"
-PROJECT_NAME = "proj"
+PROJECT_ID = "proj"
 
 
 def _env(db) -> PersistedEnv:
-    return PersistedEnv(db, FixedProjectContext(project_name=PROJECT_NAME))
+    return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID))
 
 
-def _session(db, username=USERNAME, project_name=PROJECT_NAME, start=None):
+def _session(db, username=USERNAME, project_id=PROJECT_ID, start=None):
     # set_env resolves onto the latest chat session — a no-op without
     # one, so any test that stores a value needs a session first.
     from datetime import datetime
     start = start or datetime(2026, 1, 1)
-    db.ensure_project(project_name)
-    db.publish_project(project_name)
+    db.ensure_project(project_id)
+    db.publish_project(project_id)
     return db.create_chat_session(
-        username=username, project_name=project_name,
-        revision=db.get_project_published_revision(project_name),
+        username=username, project_id=project_id,
+        revision=db.get_project_published_revision(project_id),
         datetime_start=start, datetime_end=start,
         start_state="a", end_state="a",
     )
@@ -36,16 +36,16 @@ def _session(db, username=USERNAME, project_name=PROJECT_NAME, start=None):
 @pytest.mark.regression
 def test_get_reads_a_stored_value(db):
     _session(db)
-    db.set_env(PROJECT_NAME, {"favorite_color": "blue"}, USERNAME)
+    db.set_env(PROJECT_ID, {"favorite_color": "blue"}, USERNAME)
 
     assert _env(db).get("favorite_color") == "blue"
 
 
 @pytest.mark.regression
 def test_get_falls_back_to_default_for_an_unknown_key(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
-    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
+    db.set_active_project_id(PROJECT_ID, USERNAME)
     assert _env(db).get("nope", "fallback") == "fallback"
 
 
@@ -57,7 +57,7 @@ def test_update_merges_onto_existing_stored_values(db):
 
     env.update({"b": "2"})
 
-    assert db.get_env(PROJECT_NAME, USERNAME) == {"a": "1", "b": "2"}
+    assert db.get_env(PROJECT_ID, USERNAME) == {"a": "1", "b": "2"}
 
 
 @pytest.mark.regression
@@ -68,7 +68,7 @@ def test_update_overwrites_a_matching_key(db):
 
     env.update({"a": "2"})
 
-    assert db.get_env(PROJECT_NAME, USERNAME) == {"a": "2"}
+    assert db.get_env(PROJECT_ID, USERNAME) == {"a": "2"}
 
 
 @pytest.mark.regression
@@ -80,7 +80,7 @@ def test_update_with_empty_values_is_a_noop(db):
     env.update({})
     env.update(None)
 
-    assert db.get_env(PROJECT_NAME, USERNAME) == {"a": "1"}
+    assert db.get_env(PROJECT_ID, USERNAME) == {"a": "1"}
 
 
 @pytest.mark.contract
@@ -93,7 +93,7 @@ def test_update_drops_a_key_that_is_currently_action_set(db):
 
     env.update({"WRONG_ANSWERS_ON_CURRENT_STEP": "2", "favorite_color": "blue"})
 
-    assert db.get_env(PROJECT_NAME, USERNAME) == {"favorite_color": "blue"}
+    assert db.get_env(PROJECT_ID, USERNAME) == {"favorite_color": "blue"}
     assert env.action_set() == {"WRONG_ANSWERS_ON_CURRENT_STEP": 2}
 
 
@@ -105,7 +105,7 @@ def test_update_is_a_noop_when_every_key_is_filtered_out(db):
 
     env.update({"a": "1"})
 
-    assert db.get_env(PROJECT_NAME, USERNAME) == {}
+    assert db.get_env(PROJECT_ID, USERNAME) == {}
 
 
 @pytest.mark.regression

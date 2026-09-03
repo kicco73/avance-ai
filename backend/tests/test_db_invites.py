@@ -26,7 +26,7 @@ class TestCreateInviteAndGetByCode:
 
         assert fetched is not None
         assert fetched.id == created.id
-        assert fetched.project_name_id == project
+        assert fetched.project_id == project
         assert fetched.max_shares == 3
         assert fetched.created_by_id == "user"
 

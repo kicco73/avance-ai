@@ -167,6 +167,12 @@ class SetProjectFieldRequest(BaseModel):
         return value
 
 
+class RenameProjectFileRequest(BaseModel):
+    # See ProjectEditor.rename_project_file — the new basename only, same
+    # folder (aspect/behaviour) as the file being renamed.
+    new_name: str
+
+
 class AiEditRequest(BaseModel):
     # Free-form problem/change description typed into the index.yml/
     # index.css editor's AI dialog — see ProjectEditor.

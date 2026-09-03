@@ -16,7 +16,7 @@ _USERNAME_UNSPECIFIED = object()
 class TestMixin:
 
     def create_test(
-        self, username: str | None, project_name: str, session_id: int | None, strategy: str,
+        self, username: str | None, project_id: str, session_id: int | None, strategy: str,
         project_draft_edit_count: int, session_labeling_revision: int | None, ai_model_snapshot: dict,
     ) -> dict:
         # A prior dead/failed attempt (no results, no live job — see
@@ -33,7 +33,7 @@ class TestMixin:
         # user stays null unless it resolves to an actual User row.
         user = User.get_or_none(User.id == username) if username is not None else None
         row = Test.create(
-            username=username, user=user, project_name=project_name, session=session_id, strategy=strategy,
+            username=username, user=user, project_id=project_id, session=session_id, strategy=strategy,
             project_draft_edit_count=project_draft_edit_count, session_labeling_revision=session_labeling_revision,
             ai_model_snapshot=json.dumps(ai_model_snapshot),
         )
@@ -56,9 +56,9 @@ class TestMixin:
         return self._test_to_dict(row)
 
     def list_tests(
-        self, project_name: str, session_id: int | None=None, username: str | None=_USERNAME_UNSPECIFIED,
+        self, project_id: str, session_id: int | None=None, username: str | None=_USERNAME_UNSPECIFIED,
     ) -> list[dict]:
-        query = Test.select().where(Test.project_name == project_name)
+        query = Test.select().where(Test.project_id == project_id)
         if session_id is None:
             query = query.where(Test.session.is_null(True))
         else:
@@ -70,9 +70,9 @@ class TestMixin:
                 query = query.where(Test.username == username)
         return [self._test_to_dict(row) for row in query]
 
-    def delete_tests(self, project_name: str) -> list[int]:
+    def delete_tests(self, project_id: str) -> list[int]:
         run_ids = [
-            row.id for row in Test.select(Test.id).where(Test.project_name == project_name)
+            row.id for row in Test.select(Test.id).where(Test.project_id == project_id)
         ]
         if run_ids:
             Test.delete().where(Test.id.in_(run_ids)).execute()
@@ -110,7 +110,7 @@ class TestMixin:
         return {
             'id': row.id,
             'username': row.username,
-            'project_name': row.project_name,
+            'project_id': row.project_id,
             'session_id': row.session_id,
             'strategy': row.strategy,
             'project_draft_edit_count': row.project_draft_edit_count,

@@ -61,16 +61,16 @@ class SessionImportManager:
     def __init__(self, db: Db) -> None:
         self._db = db
 
-    def _published_revision(self, project_name: str) -> int:
-        revision = self._db.get_project_published_revision(project_name)
+    def _published_revision(self, project_id: str) -> int:
+        revision = self._db.get_project_published_revision(project_id)
         if revision is None:
-            raise ValueError(f"Project '{project_name}' has never been published.")
+            raise ValueError(f"Project '{project_id}' has never been published.")
         return revision
 
-    def import_transcript(self, username: str, project_name: str, text: str, title: str | None = None) -> int:
+    def import_transcript(self, username: str, project_id: str, text: str, title: str | None = None) -> int:
         messages = parse_transcript(text)
         session_id = self._db.create_chat_session(
-            username, project_name, self._published_revision(project_name),
+            username, project_id, self._published_revision(project_id),
             datetime_start=None, datetime_end=None, start_state=None, end_state=None,
             type='imported', title=title,
         )
@@ -78,17 +78,17 @@ class SessionImportManager:
             self._db.save_message(message["role"], message["content"], session_id, timestamp=None)
         return session_id
 
-    def import_session_json(self, username: str, project_name: str, session_data: dict) -> int:
+    def import_session_json(self, username: str, project_id: str, session_data: dict) -> int:
         datetime_start = _parse_iso(session_data.get('timestamp'))
         datetime_end = _parse_iso(session_data.get('datetime_end'))
         if datetime_start is not None and datetime_end is not None and self._db.chat_session_exists(
-            username, project_name, datetime_start, datetime_end
+            username, project_id, datetime_start, datetime_end
         ):
             raise ValueError('A session with the same start and end time already exists for this user.')
         restored_type = session_data.get('type') if session_data.get('type') in ('live', 'imported') else 'imported'
         messages = session_data.get('messages', [])
         session_id = self._db.create_chat_session(
-            username, project_name, self._published_revision(project_name),
+            username, project_id, self._published_revision(project_id),
             datetime_start=datetime_start,
             datetime_end=datetime_end,
             start_state=session_data.get('start_state'),
@@ -112,26 +112,26 @@ class SessionImportManager:
             raise
         return session_id
 
-    def import_batch(self, project_name: str, uploads: list[tuple[str, bytes]]) -> dict:
+    def import_batch(self, project_id: str, uploads: list[tuple[str, bytes]]) -> dict:
         results: list[dict] = []
         last_session_id: int | None = None
         transcript_test_user: str | None = None
         for filename, content in uploads:
             if (filename or '').lower().endswith('.json'):
-                session_id = self._import_json_upload(project_name, filename, content, results)
+                session_id = self._import_json_upload(project_id, filename, content, results)
             else:
                 if transcript_test_user is None:
-                    transcript_test_user = self._db.next_test_user_username(project_name)
-                session_id = self._import_transcript_upload(transcript_test_user, project_name, filename, content, results)
+                    transcript_test_user = self._db.next_test_user_username(project_id)
+                session_id = self._import_transcript_upload(transcript_test_user, project_id, filename, content, results)
             if session_id is not None:
                 last_session_id = session_id
         return {'results': results, 'last_session_id': last_session_id}
 
     def _import_transcript_upload(
-        self, username: str, project_name: str, filename: str, content: bytes, results: list[dict],
+        self, username: str, project_id: str, filename: str, content: bytes, results: list[dict],
     ) -> int | None:
         try:
-            session_id = self.import_transcript(username, project_name, content.decode('utf-8'), title=filename)
+            session_id = self.import_transcript(username, project_id, content.decode('utf-8'), title=filename)
             results.append({'file': filename, 'ok': True, 'session_id': session_id})
             return session_id
         except (ValueError, UnicodeDecodeError) as exc:
@@ -139,7 +139,7 @@ class SessionImportManager:
             return None
 
     def _import_json_upload(
-        self, project_name: str, filename: str, content: bytes, results: list[dict],
+        self, project_id: str, filename: str, content: bytes, results: list[dict],
     ) -> int | None:
         try:
             parsed = json.loads(content.decode('utf-8'))
@@ -156,8 +156,8 @@ class SessionImportManager:
             label = label or f'{filename} #{index + 1}'
             try:
                 validated = SessionImportJsonRequest(**session_data)
-                username = validated.username or self._db.next_test_user_username(project_name)
-                session_id = self.import_session_json(username, project_name, validated.model_dump())
+                username = validated.username or self._db.next_test_user_username(project_id)
+                session_id = self.import_session_json(username, project_id, validated.model_dump())
                 results.append({'file': label, 'ok': True, 'session_id': session_id})
                 last_session_id = session_id
             except (ValidationError, ValueError, KeyError, TypeError) as exc:

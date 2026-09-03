@@ -33,10 +33,10 @@ class _AggregationJob(CancelableJob):
     """Common shape for every aggregation job kind: check the cache first,
     compute, persist, return."""
 
-    def __init__(self, service: "TestService", project_name: str, kind: str, target: str | None, strategy: str) -> None:
+    def __init__(self, service: "TestService", project_id: str, kind: str, target: str | None, strategy: str) -> None:
         super().__init__(key=f"{strategy}:{_aggregation_node_id(kind, target)}", username=Session().user)
         self._service = service
-        self._project_name = project_name
+        self._project_id = project_id
         self._kind = kind
         self._target = target
         self._strategy = strategy
@@ -83,7 +83,7 @@ class _AggregationJob(CancelableJob):
         # live job, silently dropping the dependency on an in-flight run.
         with self._service._cache.locked():
             candidates = [
-                run for run in self._service.list_runs(self._project_name, session_id) if run['strategy'] == self._strategy
+                run for run in self._service.list_runs(self._project_id, session_id) if run['strategy'] == self._strategy
             ]
             candidate = candidates[0] if candidates and not candidates[0]['stale'] else None
             if candidate is not None:
@@ -100,7 +100,7 @@ class _AggregationJob(CancelableJob):
                 # 'failed' or 'aborted' — a dead attempt; fall through to retry below.
             session = self._service._db.get_chat_session(session_id)
             assert session is not None
-            run, job = self._service._construct_run(session['username'], self._project_name, session_id, self._strategy)
+            run, job = self._service._construct_run(session['username'], self._project_id, session_id, self._strategy)
             return run['id'], job
 
     def _observations_for_run(self, run_id: int) -> list:
@@ -162,16 +162,16 @@ class _AggregationJob(CancelableJob):
         return json.dumps(self._result_value) if self._result_value is not None else None
 
     def _cached(self) -> dict | list[dict] | None:
-        edit_count = self._service._db.get_project_draft_edit_count(self._project_name)
+        edit_count = self._service._db.get_project_draft_edit_count(self._project_id)
         return self._service._db.find_test_aggregate_result(
-            self._project_name, self._kind, self._target, self._strategy, edit_count,
+            self._project_id, self._kind, self._target, self._strategy, edit_count,
         )
 
     def _persist(self, result: dict | list[dict]) -> None:
-        revision = self._service._db.get_project_revision(self._project_name)
-        edit_count = self._service._db.get_project_draft_edit_count(self._project_name)
+        revision = self._service._db.get_project_revision(self._project_id)
+        edit_count = self._service._db.get_project_draft_edit_count(self._project_id)
         self._service._db.upsert_test_aggregate_result(
-            self._project_name, revision, edit_count, self._kind, self._target, self._strategy, json.dumps(result),
+            self._project_id, revision, edit_count, self._kind, self._target, self._strategy, json.dumps(result),
         )
 
     async def _compute(self) -> dict | list[dict]:

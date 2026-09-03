@@ -17,7 +17,7 @@ from conftest import make_test_actuator_factory
 from tracking.tracking_service import TrackingService
 
 USERNAME = "user"
-PROJECT_NAME = "proj"
+PROJECT_ID = "proj"
 
 pytestmark = pytest.mark.regression
 
@@ -49,10 +49,10 @@ class FakeProjectService:
     def get_automaton_and_state_for_session(self, session_id: int):
         return self._automaton, self._automaton.states[self._state_key]
 
-    def get_active_project_name(self) -> str:
-        return PROJECT_NAME
+    def get_active_project_id(self) -> str:
+        return PROJECT_ID
 
-    def get_project_availability(self, project_name: str):
+    def get_project_availability(self, project_id: str):
         return (False, None)
 
 
@@ -77,16 +77,16 @@ class FakeSchemaAiService:
 def _tracking_service(db, automaton: Automaton, signals_json: str = '{"mySignal": 1}') -> tuple[TrackingService, FakeSchemaAiService]:
     ai_service = FakeSchemaAiService(signals_json)
     project_service = FakeProjectService(automaton)
-    metrics = MetricService(db, FixedProjectContext(project_name=PROJECT_NAME))
+    metrics = MetricService(db, FixedProjectContext(project_id=PROJECT_ID))
     return TrackingService(db, project_service, metrics, make_test_actuator_factory(db)), ai_service
 
 
 def _session_id(db, *, type: str = "test") -> int:
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     return db.create_chat_session(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a", type=type,
     )
@@ -151,11 +151,11 @@ async def test_freezing_one_test_session_never_affects_another(db):
     created against the same publish, to avoid a second publish deleting
     the first session's draft test session."""
     automaton = _automaton("signal.mySignal >= 1")
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     session_kwargs = dict(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a", type="test",
     )

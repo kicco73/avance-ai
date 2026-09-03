@@ -1,12 +1,12 @@
 import { nextTick, ref } from 'vue'
 import {
   getMessages, getSessionState, postAction, getAutoTracking, postAutoTracking, getActuators, postActuators,
-  postTruncateSession, deleteSession, putMessageReaction, postListenTranscribe, messageAudioUrl,
+  postTruncateSession, deleteSession, postCloseSession, putMessageReaction, postListenTranscribe, messageAudioUrl,
   getAiModels, postAiModelSelection
 } from './api.js'
-import { sendMessage as sendChatMessage, onNotification } from './chatClient.js'
+import { sendMessage as sendChatMessage } from './chatClient.js'
+import { subscribeToStateNotifications } from './notificationBus.js'
 import { playMessageChime, playMessageAudio, playReactionChime, unlockAudioPlayback } from './audio.js'
-import { runOnEnterScript } from './onEnterActions.js'
 import { clearApiError, setApiError } from './errorStore.js'
 import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
@@ -104,7 +104,7 @@ export function createChatStore({
   const sessions = ref([])
   const sessionsLoading = ref(false)
   const sessionsPanelOpen = ref(false)
-  const currentProjectName = ref(null)
+  const currentProjectId = ref(null)
   const messages = ref([])
   const historyLoaded = ref(false)
   const chatLoading = ref(false)
@@ -118,33 +118,27 @@ export function createChatStore({
   const turnCount = ref(0)
   let nextMessageId = 0
 
-  registerSkinSource(kind, currentProjectName, currentSessionId)
+  registerSkinSource(kind, currentProjectId, currentSessionId)
 
   function bumpTurn() {
     turnCount.value++
   }
 
-  // `onEnter` is the fired action's own "on-enter" script — not part of
-  // `newState` itself. Callers with nothing to report simply omit it.
-  // Deliberately not gated on the state key having changed — a self-loop
-  // still fires its own on-enter.
-  function handleStateChange(newState, onEnter) {
+  // A fired action's own "on-enter" script is never part of a turn's
+  // response: the backend runs it as a task and pushes its output over
+  // the websocket, where notificationBus.js runs it once, globally.
+  function handleStateChange(newState) {
     state.value = newState
-    if (onEnter) {
-      runOnEnterScript(onEnter)
-    }
   }
 
   if (subscribeToNotifications) {
     // A server-pushed cross-project wake-up — can land for a project
     // other than the one currently open. Only applies state.value when
     // the notification is about the currently displayed project.
-    onNotification(({ project_name, state: newState, 'on-enter': onEnter }) => {
-      if (project_name === currentProjectName.value) {
-        handleStateChange(newState, onEnter)
-        return
+    subscribeToStateNotifications(({ project_name, state: newState }) => {
+      if (project_name === currentProjectId.value) {
+        handleStateChange(newState)
       }
-      if (onEnter) runOnEnterScript(onEnter)
     })
   }
 
@@ -186,7 +180,7 @@ export function createChatStore({
     if (session.legal_terms_pending) return null
     currentSessionId.value = session.id
     selectedSessionActive.value = session.active
-    currentProjectName.value = session.project_name
+    currentProjectId.value = session.project_id
     state.value = session.state
     if (useAutoTracking) await loadAutoTracking()
     if (useActuatorsToggle) await loadActuators()
@@ -211,10 +205,10 @@ export function createChatStore({
     }
   }
 
-  async function loadSessions(includeImported = false, projectName = null) {
+  async function loadSessions(includeImported = false, projectId = null) {
     sessionsLoading.value = true
     try {
-      sessions.value = await getSessionsList(includeImported, projectName ?? currentProjectName.value)
+      sessions.value = await getSessionsList(includeImported, projectId ?? currentProjectId.value)
     } catch {
       // already surfaced via apiFetch
     } finally {
@@ -225,9 +219,9 @@ export function createChatStore({
   // Same fetch as loadSessions, but never touches sessionsLoading — for a
   // caller that wants `sessions` refreshed without flashing the panel to
   // "Loading…".
-  async function refreshSessionsQuietly(includeImported = false, projectName = null) {
+  async function refreshSessionsQuietly(includeImported = false, projectId = null) {
     try {
-      sessions.value = await getSessionsList(includeImported, projectName ?? currentProjectName.value)
+      sessions.value = await getSessionsList(includeImported, projectId ?? currentProjectId.value)
     } catch {
       // already surfaced via apiFetch
     }
@@ -452,7 +446,7 @@ export function createChatStore({
       }
 
       if (result.state) {
-        handleStateChange(result.state, result['on-enter'])
+        handleStateChange(result.state)
       }
       if (result.ai_model) {
         applyAiModelInfo(result.ai_model)
@@ -553,7 +547,7 @@ export function createChatStore({
         playMessageChime()
         maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
       }
-      handleStateChange(result.state, result['on-enter'])
+      handleStateChange(result.state)
       if (result.ai_model) {
         applyAiModelInfo(result.ai_model)
       }
@@ -579,7 +573,7 @@ export function createChatStore({
     actuatorsEnabled.value = false
     // A project switch is exactly when "the current session" should be re-resolved.
     currentSessionId.value = null
-    currentProjectName.value = null
+    currentProjectId.value = null
     selectedSessionActive.value = true
     sessions.value = []
   }
@@ -595,11 +589,11 @@ export function createChatStore({
     clearChatUi()
     try {
       // A reset re-enters the automaton through init-action, same as a
-      // session's very first transition — its on-enter rides along under
-      // the same "on-enter" wire key as any other real transition.
-      const { 'on-enter': onEnter, ...newState } = await resetSession()
+      // session's very first transition — its on-enter arrives over the
+      // websocket like any other, never in this response.
+      const newState = await resetSession()
       state.value = null
-      handleStateChange(newState, onEnter)
+      handleStateChange(newState)
       await loadMessages()
       bumpTurn()
     } catch {
@@ -631,9 +625,7 @@ export function createChatStore({
       clearApiError()
       messages.value = []
       // A brand new session enters init_action.target through init_action
-      // itself, reported under the same "on-enter" wire key as any other
-      // real transition.
-      if (session['on-enter']) runOnEnterScript(session['on-enter'])
+      // itself; its on-enter arrives over the websocket like any other.
       await loadMessages()
       // Opened unconditionally so the new session is visible right away,
       // regardless of whether the panel was already open.
@@ -645,14 +637,25 @@ export function createChatStore({
     }
   }
 
+  async function handleCloseSession() {
+    if (currentSessionId.value == null) return
+    try {
+      const session = await postCloseSession(currentSessionId.value)
+      selectedSessionActive.value = session.active
+      if (sessionsPanelOpen.value) await loadSessions()
+    } catch {
+      // already surfaced via apiFetch
+    }
+  }
+
   return {
     state, currentSessionId, selectedSessionActive, projectPaused, projectPausedReason,
-    sessions, sessionsLoading, sessionsPanelOpen, currentProjectName,
+    sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
     messages, historyLoaded, chatLoading, chatStatus, actionLoading,
     autoTrackingEnabled, autoTrackingLoading, actuatorsEnabled, actuatorsLoading, draft, turnCount,
     handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
     selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking, toggleActuators,
     toggleAudio, handleSend, handleVoiceMessage, handleResend, handleReact, handleAction,
-    clearChatUi, handleReset: resetSession ? handleReset : null, handleNewSession,
+    clearChatUi, handleReset: resetSession ? handleReset : null, handleNewSession, handleCloseSession,
   }
 }

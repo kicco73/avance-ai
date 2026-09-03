@@ -20,7 +20,9 @@ from controller import AvanceController
 from db import Db
 from error_handlers import ApiErrorHandlers
 from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
-from jobs import JobQueue, NullBroadcaster
+from job import JobService
+from jobs import NullBroadcaster
+from jobs.job_queue import JobQueue
 from metrics.metric_service import MetricService
 from notification.notification_service import NotificationService
 from project.project_service import ProjectService
@@ -161,20 +163,32 @@ def app_db(tmp_path) -> Db:
     return Db(f"sqlite:///{tmp_path / 'test.db'}")
 
 
-def make_test_actuator_factory(db: Db, job_queue: JobQueue | None = None) -> ActuatorSetFactory:
+def make_test_job_service(db: Db, broadcaster=None) -> JobService:
+    """A real JobService over a one-worker pool — what every test that
+    needs platform jobs (never a TestService's own throttled pool) shares.
+    Not started: nothing here claims hibernated tasks unless a test
+    calls start() itself (see test_actuator_defer_persistence.py)."""
+    return JobService(max_concurrent=1, broadcaster=broadcaster if broadcaster is not None else NullBroadcaster(), db=db)
+
+
+def make_test_actuator_factory(
+    db: Db, job_service: JobService | None = None, project_service: ProjectService | None = None,
+    ai_service=None,
+) -> ActuatorSetFactory:
     """A real ActuatorSetFactory, wired the same way main.py does — every
     test project's own YAML only ever calls actuator.celebrate()/notify(),
     never actuator.send_mail, so the dummy SMTP config below is never
     actually dialed. Shared by every fixture/helper across the test suite
     that needs to construct a TrackingService/ChatService/WakeupService."""
-    job_queue = job_queue if job_queue is not None else JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
+    job_service = job_service if job_service is not None else make_test_job_service(db)
+    project_service = project_service if project_service is not None else ProjectService(db)
     notification_service = NotificationService(
         NotificationServiceConfig(
             url="smtp://localhost", username="test@example.com", password="", from_name=None, timeout_seconds=5,
         ),
-        job_queue,
+        job_service,
     )
-    return ActuatorSetFactory(notification_service, db, job_queue)
+    return ActuatorSetFactory(notification_service, db, job_service, project_service, ai_service)
 
 
 @pytest.fixture
@@ -186,17 +200,19 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     session_manager = ChatSessionManager(app_db)
     metric_service = MetricService(app_db, project_service)
     test_event_broadcaster = LastStatusBroadcaster(QueueProgressBroadcaster(fake_ai_service))
-    job_queue = JobQueue(max_concurrent=1, broadcaster=test_event_broadcaster)
-    actuator_factory = make_test_actuator_factory(app_db, job_queue)
+    job_service = make_test_job_service(app_db, test_event_broadcaster)
+    # TestService's own pool, as in main.py — never the platform JobService's.
+    test_job_queue = JobQueue(max_concurrent=1, broadcaster=test_event_broadcaster)
+    actuator_factory = make_test_actuator_factory(app_db, job_service, project_service, fake_ai_service)
     tracking_service = TrackingService(
         app_db, project_service, metric_service, actuator_factory,
     )
     chat_service = ChatService(
         app_db, fake_ai_service, fake_ai_service, project_service, session_manager,
-        tracking_service, metric_service, job_queue, actuator_factory,
+        tracking_service, metric_service, job_service, actuator_factory,
     )
     test_service = TestService(
-        app_db, fake_ai_service, tracking_service, job_queue, project_service, test_event_broadcaster,
+        app_db, fake_ai_service, tracking_service, test_job_queue, project_service, test_event_broadcaster,
     )
     # No real providers: this app fixture never goes through AuthMiddleware
     # (that's only wired in main.py's create_app(), not here) or exercises
@@ -226,12 +242,57 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     ApiErrorHandlers.register(fastapi_app)
     controller = AvanceController(
         chat_service, project_service, None, None, app_db, tracking_service, test_service,
-        auth_service, test_event_broadcaster, job_queue, "test-version", services_config,
+        auth_service, test_event_broadcaster, job_service, "test-version", services_config,
     )
     fastapi_app.include_router(controller.router)
     fastapi_app.state.test_service = test_service
     fastapi_app.state.chat_service = chat_service
+    # For tests that need to watch an on-enter task run: start the
+    # service and register a fake websocket on the factory (see
+    # run_on_enter_tasks below). Never started here — most tests only
+    # ever assert on the Task rows an on-enter leaves behind.
+    fastapi_app.state.job_service = job_service
+    fastapi_app.state.actuator_factory = actuator_factory
     return fastapi_app
+
+
+class FakeWebSocket:
+    """Just enough to stand in for a real connection in WsAdapter's
+    username -> WebSocket _connections registry — push only calls
+    send_json on it."""
+
+    def __init__(self):
+        self.sent: list[dict] = []
+
+    async def send_json(self, payload: dict):
+        self.sent.append(payload)
+
+
+def run_on_enter_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0) -> list[dict]:
+    """Starts the app fixture's JobService (once), attaches a FakeWebSocket
+    for `username`, waits until no on-enter task is pending or dispatched,
+    and returns the frames the browser would have received. Stops the
+    service afterwards so its thread never outlives the test."""
+    import time
+    from chat.ws_adapter import WsAdapter
+
+    factory = app.state.actuator_factory
+    websocket = FakeWebSocket()
+    ws_adapter = WsAdapter(chat_service=app.state.chat_service, db=None, auth_service=None)
+    ws_adapter._connections[username] = websocket
+    factory.set_ws_adapter(ws_adapter)
+    job_service = app.state.job_service
+    job_service.start()
+    try:
+        from db.models import Task as TaskRow
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not TaskRow.select().where(TaskRow.status.in_(("pending", "dispatched"))).exists():
+                break
+            time.sleep(0.02)
+    finally:
+        job_service.stop()
+    return websocket.sent
 
 
 @pytest.fixture
@@ -294,17 +355,17 @@ def live_server(app: FastAPI):
 def hello_project(client: TestClient) -> str:
     """Uploads, activates, and publishes the bundled "Hello world" sample
     project — a project needs a published revision before it can have
-    chat sessions. Returns the project's actual name: put_project derives
-    it from the upload's own project.ui-label ("Hello, world!"), not the
-    "hello" URL this is requested under."""
+    chat sessions. Returns the project's own id (its index.yml declares
+    "legacy.hello_world" — put_project.py always uses whatever the
+    upload's own project.id says, there's no separate name to request)."""
     content = (SAMPLES_DIR / "Hello world.zip").read_bytes()
-    response = client.put(
-        "/api/projects/hello", content=content, headers={"Content-Type": "application/zip"}
+    response = client.post(
+        "/api/projects/upload", content=content, headers={"Content-Type": "application/zip"}
     )
     assert response.status_code == 200, response.text
-    project_name = parse_sse_result(response)["project_name"]
-    response = client.put(f"/api/projects/{project_name}/activate")
+    project_id = parse_sse_result(response)["project_id"]
+    response = client.put(f"/api/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
-    response = client.post(f"/api/projects/{project_name}/publish", json={})
+    response = client.post(f"/api/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
-    return project_name
+    return project_id

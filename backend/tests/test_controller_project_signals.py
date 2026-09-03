@@ -1,4 +1,4 @@
-"""GET /api/projects/{name}/signals — see ProjectService.get_project_signals.
+"""GET /api/projects/{project_id}/signals — see ProjectService.get_project_signals.
 Each signal's `relevant` field feeds the Inspector's "show only relevant
 signals" filter directly. Scoped to `state_key`'s outgoing actions when
 given, else falls back to every state's triggers combined."""
@@ -8,6 +8,8 @@ import io
 import zipfile
 
 import pytest
+
+from conftest import parse_sse_result
 
 pytestmark = pytest.mark.regression
 
@@ -75,17 +77,22 @@ def _zip_of(yaml_text: str) -> bytes:
     return buffer.getvalue()
 
 
-def _upload(client, name: str, yaml_text: str):
-    response = client.put(
-        f"/api/projects/{name}", content=_zip_of(yaml_text), headers={"Content-Type": "application/zip"}
+def _upload(client, project_id: str, yaml_text: str) -> str:
+    response = client.post(
+        "/api/projects/upload",
+        content=_zip_of(f"project:\n  id: {project_id}\n" + yaml_text),
+        headers={"Content-Type": "application/zip"},
     )
     assert response.status_code == 200, response.text
+    result = parse_sse_result(response)
+    assert result["project_id"] == project_id
+    return result["project_id"]
 
 
 def test_signals_report_whether_a_trigger_references_them(client):
-    _upload(client, "relevance-test", PROJECT)
+    project_id = _upload(client, "relevance_test", PROJECT)
 
-    response = client.get("/api/projects/relevance-test/signals")
+    response = client.get(f"/api/projects/{project_id}/signals")
 
     assert response.status_code == 200
     by_name = {s["signal"]["name"]: s for s in response.json()["signals"]}
@@ -101,18 +108,18 @@ def test_a_signal_referenced_only_via_env_field_is_also_relevant(client):
         "states:",
         "env:\n  last_score: {}\n\nstates:",
     )
-    _upload(client, "relevance-env-test", project)
+    project_id = _upload(client, "relevance_env_test", project)
 
-    response = client.get("/api/projects/relevance-env-test/signals")
+    response = client.get(f"/api/projects/{project_id}/signals")
 
     by_name = {s["signal"]["name"]: s for s in response.json()["signals"]}
     assert by_name["score"]["relevant"] is True
 
 
 def test_without_state_key_relevance_is_every_states_triggers_combined(client):
-    _upload(client, "two-state-test", TWO_STATE_PROJECT)
+    project_id = _upload(client, "two_state_test", TWO_STATE_PROJECT)
 
-    response = client.get("/api/projects/two-state-test/signals")
+    response = client.get(f"/api/projects/{project_id}/signals")
 
     by_name = {s["signal"]["name"]: s for s in response.json()["signals"]}
     assert by_name["progressSignal"]["relevant"] is True
@@ -121,23 +128,23 @@ def test_without_state_key_relevance_is_every_states_triggers_combined(client):
 
 
 def test_state_key_scopes_relevance_to_that_states_own_outgoing_triggers(client):
-    _upload(client, "two-state-scoped-test", TWO_STATE_PROJECT)
+    project_id = _upload(client, "two_state_scoped_test", TWO_STATE_PROJECT)
 
-    response_a = client.get("/api/projects/two-state-scoped-test/signals?state_key=a")
+    response_a = client.get(f"/api/projects/{project_id}/signals?state_key=a")
     by_name_a = {s["signal"]["name"]: s for s in response_a.json()["signals"]}
     assert by_name_a["progressSignal"]["relevant"] is True
     assert by_name_a["moodSignal"]["relevant"] is False
 
-    response_b = client.get("/api/projects/two-state-scoped-test/signals?state_key=b")
+    response_b = client.get(f"/api/projects/{project_id}/signals?state_key=b")
     by_name_b = {s["signal"]["name"]: s for s in response_b.json()["signals"]}
     assert by_name_b["progressSignal"]["relevant"] is False
     assert by_name_b["moodSignal"]["relevant"] is True
 
 
 def test_an_unknown_state_key_falls_back_to_every_states_triggers_combined(client):
-    _upload(client, "unknown-state-key-test", TWO_STATE_PROJECT)
+    project_id = _upload(client, "unknown_state_key_test", TWO_STATE_PROJECT)
 
-    response = client.get("/api/projects/unknown-state-key-test/signals?state_key=not-a-real-state")
+    response = client.get(f"/api/projects/{project_id}/signals?state_key=not-a-real-state")
 
     by_name = {s["signal"]["name"]: s for s in response.json()["signals"]}
     assert by_name["progressSignal"]["relevant"] is True

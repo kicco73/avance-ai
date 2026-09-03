@@ -13,6 +13,7 @@ pytestmark = pytest.mark.contract
 
 
 def _build(content: str) -> object:
+    content = "project:\n  id: test_project\n" + content
     return AutomatonBuilder().build({"index.yml": content})
 
 

@@ -148,3 +148,5 @@ states:
     ui-description: "Reached via a trigger that referenced only the 'signal_stability' metric."
     contextual-prompt: |
       Acknowledge that the signal-stability trigger fired, then stop.
+project:
+  id: metrics_playground_states

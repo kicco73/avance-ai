@@ -8,7 +8,7 @@ import { getProjectGraph } from '../../api.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   highlightedStateKey: { type: String, default: null },
   autoJumpOnHighlightChange: { type: Boolean, default: false },
   firedActionEdge: { type: Object, default: null },
@@ -71,7 +71,7 @@ function destroyGraph() {
 
 // `n`/`e` wrap the same state/action payload the live chat client gets,
 // plus extra fields only the graph needs (is_start/history_cutoff/
-// attachments on a node; source/trigger/action_prompt on an edge).
+// attachments on a node; source/trigger on an edge).
 // hasReactions: whether the project declares any reactions at all
 // (n.state.reactions is always the automaton's whole vocabulary, per
 // Automaton.get_state_payload — never state-specific) — reactionsEnabled
@@ -94,7 +94,6 @@ function edgeToCyData(e, id) {
     buttonText: e.action.ui_button,
     trigger: e.trigger,
     hasTrigger: e.action.has_trigger,
-    actionPrompt: e.action_prompt,
     onEnter: e.action['on-enter'],
     env: e.env || {},
     isInitEdge
@@ -220,7 +219,7 @@ function renderGraph(nodes, edges) {
 async function loadGraph() {
   graphLoading.value = true
   try {
-    const { nodes, edges, revision } = await getProjectGraph(props.projectName, props.sessionId)
+    const { nodes, edges, revision } = await getProjectGraph(props.projectId, props.sessionId)
     graphNodes.value = nodes
     graphEdges.value = edges
     graphRevision.value = revision

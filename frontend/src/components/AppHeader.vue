@@ -92,7 +92,9 @@ defineExpose({ el: rootEl })
    own slots — slot content renders in the parent's own scope, which a
    scoped selector here could never reach.
    .app-header-icon-btn: the small square icon button every view's back
-   arrow (and live chat's sessions toggle) uses.
+   arrow uses. ProjectsMenu.vue's own .projects-btn already matches this
+   look pixel-for-pixel (same size/border/color), so the overlay-only
+   rules below reach it too rather than duplicating them there.
    .app-header-title: the header's own h2, for a view that needs one. */
 .app-header-icon-btn {
   flex-shrink: 0;
@@ -117,19 +119,22 @@ defineExpose({ el: rootEl })
 }
 
 /* Live chat's overlay controls sit on top of a project's own skin — kept
-   unobtrusive until touched, same idiom as the sessions-panel toggle and
-   the old floating Settings/Profile cluster this replaces. */
-.app-header-overlay .app-header-icon-btn {
+   unobtrusive until touched, same idiom as the old floating Settings/
+   Profile cluster this replaced. */
+.app-header-overlay .app-header-icon-btn,
+.app-header-overlay .projects-btn {
   opacity: 0.35;
   transition: opacity 0.15s ease;
 }
 
-.app-header-overlay .app-header-icon-btn:hover {
+.app-header-overlay .app-header-icon-btn:hover,
+.app-header-overlay .projects-btn:hover {
   opacity: 1;
 }
 
 @media (hover: none) and (pointer: coarse) {
-  .app-header-overlay .app-header-icon-btn {
+  .app-header-overlay .app-header-icon-btn,
+  .app-header-overlay .projects-btn {
     width: 2.75rem;
     height: 2.75rem;
     opacity: 1;

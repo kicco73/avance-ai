@@ -6,11 +6,11 @@ export function getSignals() {
   return apiFetch(`${API_URL}/chat/signals`)
 }
 
-// `projectName`'s identifier registry — {identifier: description} per
+// `projectId`'s identifier registry — {identifier: description} per
 // namespace (signal, env, system, session, metric, ...) a trigger/env
 // expression can reference. Used by TriggerEditor's autocomplete.
-export function getIdentifiers(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/identifiers`)
+export function getIdentifiers(projectId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/identifiers`)
 }
 
 // The active project's "environment" memory: {stored, action_set},

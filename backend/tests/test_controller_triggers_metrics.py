@@ -20,6 +20,8 @@ def _zip_of(yaml_text: str) -> bytes:
 def test_uploading_a_project_with_a_signal_named_after_a_metric_is_rejected(client):
     reserved = sorted(metric_names())[0]
     content = f"""
+project:
+  id: bad
 init-action:
   target: a
 signals:
@@ -29,7 +31,7 @@ states:
   a:
     contextual-prompt: "hi"
 """
-    response = client.put("/api/projects/bad", content=_zip_of(content), headers={"Content-Type": "application/zip"})
+    response = client.post("/api/projects/upload", content=_zip_of(content), headers={"Content-Type": "application/zip"})
 
     assert response.status_code == 400
     assert "reserved for core metrics" in response.json()["error"]["message"]

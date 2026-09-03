@@ -1,4 +1,4 @@
-"""POST /api/projects/{project_name}/publish — freezes the current draft
+"""POST /api/projects/{project_id}/publish — freezes the current draft
 as the new published revision (see ProjectService.publish_project/
 Db.publish_project). Backs the "Publish" button (see EditProjectView.vue).
 """
@@ -8,6 +8,8 @@ import io
 import zipfile
 
 import pytest
+
+from conftest import parse_sse_result
 
 pytestmark = pytest.mark.contract
 
@@ -22,15 +24,16 @@ def _zip_of(files: dict[str, str]) -> bytes:
     return buffer.getvalue()
 
 
-def _upload_activate_publish(client, project_name: str):
-    response = client.put(
-        f"/api/projects/{project_name}",
-        content=_zip_of({"index.yml": MINIMAL_YML, "notes.txt": "original"}),
+def _upload_activate_publish(client, project_id: str):
+    response = client.post(
+        "/api/projects/upload",
+        content=_zip_of({"index.yml": f"project:\n  id: {project_id}\n" + MINIMAL_YML, "notes.txt": "original"}),
         headers={"Content-Type": "application/zip"},
     )
     assert response.status_code == 200, response.text
-    assert client.put(f"/api/projects/{project_name}/activate").status_code == 200
-    assert client.post(f"/api/projects/{project_name}/publish", json={}).status_code == 200
+    assert parse_sse_result(response)["project_id"] == project_id
+    assert client.put(f"/api/projects/{project_id}/activate").status_code == 200
+    assert client.post(f"/api/projects/{project_id}/publish", json={}).status_code == 200
 
 
 def test_publish_clears_undo_history(client):

@@ -14,18 +14,28 @@ const props = defineProps({
   // right of its header. 'left' anchors the left edge instead, opening
   // rightward, for a button placed near the left of its header (see
   // LabelProjectView.vue).
-  align: { type: String, default: 'right' }
+  align: { type: String, default: 'right' },
+  // Live chat's own two extra rows (New/Close session) above the usual
+  // project list, with a divider between — opt-in since ManageUsersView.
+  // vue/LabelProjectView.vue reuse this same dropdown as a plain project
+  // picker with no session of its own to act on.
+  sessionActions: { type: Boolean, default: false },
+  // Grays out "Close session" the same way projects.length === 0 already
+  // grays out the button itself — there's no open session left to close.
+  closeSessionDisabled: { type: Boolean, default: false }
 })
 
 const emit = defineEmits([
   'select',
-  'download'
+  'download',
+  'new-session',
+  'close-session'
 ])
 
 const open = ref(false)
 const loading = ref(false)
-// {name, is_paused, ui_label}[] — ui_label is shown in place of the raw
-// name wherever declared.
+// {id, is_paused, ui_label}[] — ui_label is shown in place of the raw
+// id wherever declared.
 const projects = ref([])
 const activeProjectName = ref(null)
 const rootEl = ref(null)
@@ -64,6 +74,17 @@ function selectProject(name) {
   emit('select', name)
 }
 
+function selectNewSession() {
+  open.value = false
+  emit('new-session')
+}
+
+function selectCloseSession() {
+  if (props.closeSessionDisabled) return
+  open.value = false
+  emit('close-session')
+}
+
 function handleClickOutside(event) {
   if (open.value && rootEl.value && !rootEl.value.contains(event.target)) {
     open.value = false
@@ -83,7 +104,7 @@ onBeforeUnmount(() => {
       class="projects-btn"
       :class="{ 'projects-btn-disabled': projects.length === 0 }"
       :disabled="projects.length === 0"
-      title="Current project"
+      :title="sessionActions ? 'Session and applications' : 'Current project'"
       @click="toggle"
     >
       <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
@@ -93,22 +114,46 @@ onBeforeUnmount(() => {
 
     <Transition name="projects-panel">
       <div v-if="open" class="projects-panel" :class="{ 'projects-panel-align-left': align === 'left' }">
+        <template v-if="sessionActions">
+          <ul class="projects-list">
+            <li>
+              <button type="button" class="projects-item projects-session-item" @click="selectNewSession">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 4a1 1 0 0 1 1 1v6h6a1 1 0 1 1 0 2h-6v6a1 1 0 1 1-2 0v-6H5a1 1 0 1 1 0-2h6V5a1 1 0 0 1 1-1z"/></svg>
+                <span>New session</span>
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                class="projects-item projects-session-item"
+                :disabled="closeSessionDisabled"
+                @click="selectCloseSession"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.54 12.12-1.42 1.42L12 13.41l-2.12 2.13-1.42-1.42L10.59 12 8.46 9.88l1.42-1.42L12 10.59l2.12-2.13 1.42 1.42L13.41 12l2.13 2.12z"/></svg>
+                <span>Close session</span>
+              </button>
+            </li>
+          </ul>
+          <div class="projects-menu-divider"></div>
+        </template>
+
         <p v-if="loading" class="projects-status">Loading…</p>
 
         <ul v-else class="projects-list">
           <li
             v-for="project in projects"
-            :key="project.name"
+            :key="project.id"
             class="project-entry"
           >
             <button
               class="projects-item"
-              @click="selectProject(project.name)"
+              :title="project.ui_label ?? project.id"
+              @click="selectProject(project.id)"
             >
               <span class="projects-item-check">
-                {{ project.name === displayedProjectName ? '✓' : '' }}
+                {{ project.id === displayedProjectName ? '✓' : '' }}
               </span>
-              {{ project.ui_label ?? project.name }}
+              <span class="projects-item-label">{{ project.ui_label ?? project.id }}</span>
             </button>
           </li>
         </ul>
@@ -153,7 +198,8 @@ onBeforeUnmount(() => {
   position: absolute;
   top: calc(100% + 0.4rem);
   right: 0;
-  min-width: 180px;
+  min-width: 240px;
+  max-width: 320px;
   background: white;
   border: 1px solid #ddd;
   border-radius: 8px;
@@ -191,7 +237,9 @@ onBeforeUnmount(() => {
 }
 
 .projects-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   width: 100%;
   text-align: left;
   padding: 0.5rem 0.9rem;
@@ -202,12 +250,42 @@ onBeforeUnmount(() => {
   color: #4a6fa5;
 }
 
+.projects-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .projects-item:hover:not(:disabled) {
   background: #f0f4fa;
 }
 
+.projects-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.projects-session-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.projects-session-item svg {
+  flex-shrink: 0;
+}
+
+.projects-menu-divider {
+  height: 1px;
+  margin: 0.3rem 0;
+  background: #eee;
+}
+
 .projects-item-check {
   display: inline-block;
+  flex-shrink: 0;
   width: 1.1rem;
   color: #2e7d32;
   font-weight: 600;

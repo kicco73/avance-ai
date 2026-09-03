@@ -29,7 +29,7 @@ import { setSkinCss, invalidateSkin } from '../../../../chatStore.js'
 const props = defineProps({
   css: { type: String, default: '' },
   stateKey: { type: String, default: '' },
-  projectName: { type: String, required: true }
+  projectId: { type: String, required: true }
 })
 
 const MOCK_MESSAGES = [
@@ -58,10 +58,10 @@ function syncStyle() {
   }
   // sessionId omitted: a design-time preview of the live draft has no
   // session to pin an asset url(...) to (see resolveCssAssetUrls's own docstring).
-  setSkinCss(props.css, props.projectName)
+  setSkinCss(props.css, props.projectId)
 }
 
-watch([() => props.css, () => props.projectName, visible], syncStyle, { immediate: true })
+watch([() => props.css, () => props.projectId, visible], syncStyle, { immediate: true })
 
 onMounted(() => {
   // jsdom (unit tests) has no IntersectionObserver — fall back to "always

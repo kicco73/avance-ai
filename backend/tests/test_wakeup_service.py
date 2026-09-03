@@ -13,8 +13,7 @@ import pytest
 from automaton.automaton_builder import AutomatonBuilder
 from chat.ws_adapter import WsAdapter
 from events import StateChanged, publish
-from conftest import NullBroadcaster, make_test_actuator_factory
-from jobs import JobQueue
+from conftest import make_test_actuator_factory, make_test_job_service
 from project.project_service import ProjectService
 from tracking.wakeup_service import WakeupService
 
@@ -52,17 +51,18 @@ def _publish_project(db, project_service: ProjectService, project_name: str, ind
     """A real save, through _finalize_project_update, so the reverse
     index is actually refreshed, same as a real save (put_project/
     put_project_file) does."""
-    # Auto-declares `project: {id: <project_name>}` whenever project_name
-    # is a valid identifier, so automaton.observed references resolve.
+    # Auto-declares `project: {id: <project_name>, family: test}` whenever
+    # project_name is a valid identifier — both "observed" and "watcher"
+    # share family "test" so automaton.observed references actually resolve.
     if project_name.isidentifier() and "project:" not in index_yml:
-        index_yml = f"project:\n  id: {project_name}\n{index_yml}"
+        index_yml = f"project:\n  id: {project_name}\n  family: test\n{index_yml}"
     db.ensure_project(project_name)
     db.save_project_files(project_name, {"index.yml": index_yml.encode("utf-8")}, {"index.yml": "text/yaml"})
     db.publish_project(project_name)
-    # _finalize_project_update calls get_active_project_name(), which
+    # _finalize_project_update calls get_active_project_id(), which
     # raises when nothing is active yet — this bare helper has no
     # activation flow of its own to make that true.
-    db.set_active_project_name(project_name, USERNAME)
+    db.set_active_project_id(project_name, USERNAME)
     automaton = AutomatonBuilder().build({"index.yml": index_yml})
 
     async def commit(_project_name, _automaton):
@@ -100,18 +100,18 @@ def test_reverse_index_is_cleared_when_the_reference_is_removed(db, project_serv
 def test_reevaluate_and_apply_fires_the_self_loop_when_the_observed_state_now_matches(db, project_service):
     _publish_project(db, project_service, "observed", OBSERVED_YML)
     _publish_project(db, project_service, "watcher", WATCHER_YML)
-    db.create_chat_session(username=USERNAME, project_name="watcher", revision=db.get_project_published_revision("watcher"))
+    db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
     watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
     before = len(db.get_signals(watcher_session["id"]))
 
     # "observed" moves to state 'b' — the state the watcher's own
     # self-loop trigger is actually watching for.
-    db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
+    db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
     observed_session = db.get_latest_chat_session(USERNAME, "observed")
     db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
 
-    job_queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-    service = WakeupService(db, project_service, job_queue, _actuator_factory(db))
+    job_service = make_test_job_service(db)
+    service = WakeupService(db, project_service, job_service, _actuator_factory(db))
     asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
     after = db.get_signals(watcher_session["id"])
@@ -143,15 +143,18 @@ class _FakeWebSocket:
 
 class TestWsAdapterPush:
     """A fired self-loop wake-up pushes a "notification" frame (state/
-    on-enter/project_name) to whichever connection is registered for
-    `username`, never keyed on project_name (which only rides along
-    inside the payload)."""
+    project_name) to whichever connection is registered for
+    `username`, never keyed on project_id (which only rides along
+    inside the payload). The payload key is deliberately still
+    "project_name", not "project_id": chatClient.js (frontend, off-limits)
+    parses this exact WS message shape by that literal key name — see
+    WakeupService._reevaluate_and_apply's own comment."""
 
     def test_pushes_state_on_enter_and_project_name_when_the_self_loop_fires_and_a_connection_exists(self, db, project_service):
         _publish_project(db, project_service, "observed", OBSERVED_YML)
         _publish_project(db, project_service, "watcher", WATCHER_YML)
-        db.create_chat_session(username=USERNAME, project_name="watcher", revision=db.get_project_published_revision("watcher"))
-        db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
+        db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
+        db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
         observed_session = db.get_latest_chat_session(USERNAME, "observed")
         db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
 
@@ -159,7 +162,7 @@ class TestWsAdapterPush:
         websocket = _FakeWebSocket()
         ws_adapter._connections[USERNAME] = websocket
 
-        ephemeral_jobs = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
+        ephemeral_jobs = make_test_job_service(db)
         service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db), ws_adapter=ws_adapter)
         asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
@@ -167,7 +170,9 @@ class TestWsAdapterPush:
         assert websocket.sent[0]["type"] == "notification"
         assert websocket.sent[0]["project_name"] == "watcher"
         assert websocket.sent[0]["state"]["key"] == "x"  # self-loop — the state itself never changes
-        assert "on-enter" in websocket.sent[0]
+        # The fired action's on-enter is a task of its own (see
+        # tracking/actuators/on_enter_task.py), never part of this frame.
+        assert "on-enter" not in websocket.sent[0]
         # The fired action has a trigger and no tracking_service was wired
         # in (defaults to "always auto-tracked") — filtered out of
         # manual_actions same as a live session's own state payload would.
@@ -176,8 +181,8 @@ class TestWsAdapterPush:
     def test_manual_actions_includes_the_triggered_action_when_auto_tracking_is_disabled(self, db, project_service):
         _publish_project(db, project_service, "observed", OBSERVED_YML)
         _publish_project(db, project_service, "watcher", WATCHER_YML)
-        db.create_chat_session(username=USERNAME, project_name="watcher", revision=db.get_project_published_revision("watcher"))
-        db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
+        db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
+        db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
         observed_session = db.get_latest_chat_session(USERNAME, "observed")
         db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
         watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
@@ -186,7 +191,7 @@ class TestWsAdapterPush:
         websocket = _FakeWebSocket()
         ws_adapter._connections[USERNAME] = websocket
 
-        ephemeral_jobs = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
+        ephemeral_jobs = make_test_job_service(db)
         tracking_service = _FakeTrackingService({watcher_session["id"]})
         service = WakeupService(
             db, project_service, ephemeral_jobs, _actuator_factory(db),
@@ -199,15 +204,15 @@ class TestWsAdapterPush:
     def test_no_connection_registered_is_a_silent_no_op_not_an_error(self, db, project_service):
         _publish_project(db, project_service, "observed", OBSERVED_YML)
         _publish_project(db, project_service, "watcher", WATCHER_YML)
-        db.create_chat_session(username=USERNAME, project_name="watcher", revision=db.get_project_published_revision("watcher"))
-        db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
+        db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
+        db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
         observed_session = db.get_latest_chat_session(USERNAME, "observed")
         db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
         watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
 
         ws_adapter = WsAdapter(chat_service=None, db=db, auth_service=None)  # nobody registered for USERNAME
 
-        ephemeral_jobs = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
+        ephemeral_jobs = make_test_job_service(db)
         service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db), ws_adapter=ws_adapter)
         asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
@@ -218,13 +223,13 @@ class TestWsAdapterPush:
     def test_no_ws_adapter_at_all_is_unaffected_same_as_before_this_parameter_existed(self, db, project_service):
         _publish_project(db, project_service, "observed", OBSERVED_YML)
         _publish_project(db, project_service, "watcher", WATCHER_YML)
-        db.create_chat_session(username=USERNAME, project_name="watcher", revision=db.get_project_published_revision("watcher"))
-        db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
+        db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
+        db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
         observed_session = db.get_latest_chat_session(USERNAME, "observed")
         db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
         watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
 
-        ephemeral_jobs = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
+        ephemeral_jobs = make_test_job_service(db)
         service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db))  # ws_adapter omitted entirely
         asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
@@ -233,15 +238,15 @@ class TestWsAdapterPush:
     def test_push_is_never_called_when_the_self_loop_does_not_fire(self, db, project_service):
         _publish_project(db, project_service, "observed", OBSERVED_YML)
         _publish_project(db, project_service, "watcher", WATCHER_YML)
-        db.create_chat_session(username=USERNAME, project_name="watcher", revision=db.get_project_published_revision("watcher"))
-        db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
+        db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
+        db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
         # No transition to state 'b' at all — the watcher's own trigger never matches.
 
         ws_adapter = WsAdapter(chat_service=None, db=db, auth_service=None)
         websocket = _FakeWebSocket()
         ws_adapter._connections[USERNAME] = websocket
 
-        ephemeral_jobs = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
+        ephemeral_jobs = make_test_job_service(db)
         service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db), ws_adapter=ws_adapter)
         asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
@@ -251,12 +256,12 @@ class TestWsAdapterPush:
 def test_reevaluate_and_apply_does_nothing_when_the_observed_state_does_not_match(db, project_service):
     _publish_project(db, project_service, "observed", OBSERVED_YML)
     _publish_project(db, project_service, "watcher", WATCHER_YML)
-    db.create_chat_session(username=USERNAME, project_name="watcher", revision=db.get_project_published_revision("watcher"))
-    db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
+    db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
+    db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
     watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
     before = len(db.get_signals(watcher_session["id"]))
 
-    ephemeral_jobs = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
+    ephemeral_jobs = make_test_job_service(db)
     service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db))
     asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
@@ -271,17 +276,17 @@ def test_publishing_state_changed_wakes_up_every_observer_with_a_session(app_db)
     project_service = ProjectService(db)
     _publish_project(db, project_service, "observed", OBSERVED_YML)
     _publish_project(db, project_service, "watcher", WATCHER_YML)
-    db.create_chat_session(username=USERNAME, project_name="watcher", revision=db.get_project_published_revision("watcher"))
+    db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
     watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
-    db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
+    db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
     observed_session = db.get_latest_chat_session(USERNAME, "observed")
     db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
 
-    ephemeral_jobs = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
+    ephemeral_jobs = make_test_job_service(db)
     service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db))
     service.register()
 
-    publish(StateChanged(username=USERNAME, project_name="observed", from_state="a", to_state="b"))
+    publish(StateChanged(username=USERNAME, project_id="observed", from_state="a", to_state="b"))
 
     for _ in range(200):
         if len(db.get_signals(watcher_session["id"])) > 0:
@@ -300,13 +305,13 @@ def test_a_user_with_no_session_in_the_observer_project_is_never_woken(app_db):
     _publish_project(db, project_service, "observed", OBSERVED_YML)
     _publish_project(db, project_service, "watcher", WATCHER_YML)
     # No chat session created in "watcher" at all for this user.
-    db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
+    db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
 
-    ephemeral_jobs = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
+    ephemeral_jobs = make_test_job_service(db)
     service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db))
     service.register()
 
-    publish(StateChanged(username=USERNAME, project_name="observed", from_state="a", to_state="b"))
+    publish(StateChanged(username=USERNAME, project_id="observed", from_state="a", to_state="b"))
 
     import time
     time.sleep(0.1)

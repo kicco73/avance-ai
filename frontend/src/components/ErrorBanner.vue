@@ -52,6 +52,21 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* Teleported to <body> (see App.vue's own comment on that) — no longer
+   a flex child pushing .app-body down, so this is what actually keeps it
+   pinned across the top of the viewport instead of just wherever it
+   landed in <body>'s own child order. z-index above DialogHost.vue's own
+   .app-dim (2000): stays legible over the dim scrim while a dialog is
+   open, though a dialog's own top-layer promotion still always wins over
+   any z-index if the two actually overlap on screen. */
+.error-banner-wrap {
+  position: fixed;
+  top: var(--safe-area-top);
+  left: 0;
+  right: 0;
+  z-index: 2050;
+}
+
 /* "Slide up": collapses the banner's height to 0 so content below it
    visibly scrolls up, rather than just fading in place. */
 .error-banner-collapse-enter-active, .error-banner-collapse-leave-active {

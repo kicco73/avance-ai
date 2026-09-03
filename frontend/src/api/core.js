@@ -85,8 +85,8 @@ export async function apiFetch(url, options, { parse = 'json', onProgress, onCom
   return res.json()
 }
 
-export async function projectFetch(projectName, url, options, fetchOpts) {
+export async function projectFetch(projectId, url, options, fetchOpts) {
   const result = await apiFetch(url, options, fetchOpts)
-  await emitProjectChanged(projectName)
+  await emitProjectChanged(projectId)
   return result
 }

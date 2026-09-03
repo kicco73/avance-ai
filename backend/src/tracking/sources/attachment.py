@@ -14,13 +14,13 @@ from automaton.automaton import Automaton
 from db import Db
 
 
-def _resolve_archive_name(db: Db, project_name: str, revision: int, name: str) -> str:
+def _resolve_archive_name(db: Db, project_id: str, revision: int, name: str) -> str:
     """Same exact/unique-basename matching build-time `attachments:`
     declarations get (AutomatonBuilder._extract_required_archives) —
     reimplemented here against Db.list_archives (names only, no content)
     rather than an in-memory archive dict, so resolving the name never
     itself requires loading every file's content either."""
-    names = db.list_archives(project_name, revision=revision)
+    names = db.list_archives(project_id, revision=revision)
     if name in names:
         return name
     matches = [n for n in names if Path(n).name == name]
@@ -28,7 +28,7 @@ def _resolve_archive_name(db: Db, project_name: str, revision: int, name: str) -
         raise ValueError(f"source.attachment('{name}') is ambiguous — matches {', '.join(sorted(matches))}")
     if len(matches) == 1:
         return matches[0]
-    raise ValueError(f"source.attachment('{name}') not found in project '{project_name}'.")
+    raise ValueError(f"source.attachment('{name}') not found in project '{project_id}'.")
 
 
 def read(db: Db, automaton: Automaton, name: str) -> str:
@@ -36,19 +36,22 @@ def read(db: Db, automaton: Automaton, name: str) -> str:
     trigger/env: evaluation (see eval_action_env/_eval_trigger), same as
     any other bad scope reference — for an automaton with no known
     storage location (never built through AutomatonLoader/ProjectManager,
-    e.g. a validation-only build — see set_storage_location), a name that
+    e.g. a validation-only build — see set_storage_location; unlike
+    project_id, `revision` is never set except by set_storage_location,
+    so it alone is the "no known storage location" signal now that
+    project_id is always populated straight from the YAML), a name that
     doesn't resolve to exactly one file, or one whose stored content_type
     isn't text/* (an image/PDF/etc. — no binary-to-text extraction exists
     in this codebase)."""
-    if automaton.project_name is None or automaton.revision is None:
+    if automaton.revision is None:
         raise ValueError(f"source.attachment('{name}'): this automaton has no known storage location to read from.")
-    archive_name = _resolve_archive_name(db, automaton.project_name, automaton.revision, name)
-    content_type = db.get_archive_content_type(automaton.project_name, archive_name, revision=automaton.revision)
+    archive_name = _resolve_archive_name(db, automaton.project_id, automaton.revision, name)
+    content_type = db.get_archive_content_type(automaton.project_id, archive_name, revision=automaton.revision)
     if content_type is None or not content_type.startswith("text/"):
         raise ValueError(
             f"source.attachment('{name}') resolved to '{archive_name}', "
             f"a binary file ({content_type or 'unknown type'}) — only text files can be read this way."
         )
-    content = db.get_archive(automaton.project_name, archive_name, revision=automaton.revision)
+    content = db.get_archive(automaton.project_id, archive_name, revision=automaton.revision)
     assert content is not None  # same Archive row get_archive_content_type just found this content_type on
     return content.decode("utf-8")

@@ -43,12 +43,12 @@ export function postAcceptTerms(inviteCode) {
   })
 }
 
-export function getLegalTermsStatus(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/legal-terms-status`)
+export function getLegalTermsStatus(projectId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/legal-terms-status`)
 }
 
-export function postAcceptProjectTerms(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/accept-terms`, { method: 'POST' })
+export function postAcceptProjectTerms(projectId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/accept-terms`, { method: 'POST' })
 }
 
 // ProfileView.vue's "Erase all my data" — deletes the account and

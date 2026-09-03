@@ -17,7 +17,7 @@ import { useTokensBar } from '../../../../composables/useTokensBar.js'
 import { useTestExecutionTree } from '../../../../composables/useTestExecutionTree.js'
 
 const props = defineProps({
-  projectName: {
+  projectId: {
     type: String,
     required: true
   }
@@ -60,7 +60,7 @@ const metricDefinitions = ref({})
 
 async function loadMetricDefinitions() {
   try {
-    const metrics = await getTestMetrics(props.projectName)
+    const metrics = await getTestMetrics(props.projectId)
     metricDefinitions.value = Object.fromEntries(metrics.map((m) => [m.name, m]))
   } catch {
     // already surfaced via apiFetch
@@ -85,7 +85,7 @@ const {
   selectedCacheKey, selectedNodeError, selectedNodeLabel, anyTestExecuted, anyJobBusy, currentStrategyBusy,
   onActivate, onAbort, onActivateRoot, onSelect,
   resettingCache, onResetCache,
-} = useTestExecutionTree(props.projectName, strategy, sessions, projectSignals, emit)
+} = useTestExecutionTree(props.projectId, strategy, sessions, projectSignals, emit)
 
 const TEST_BUDGET = 300000
 const { width: tokensBarWidth, level: tokensBarLevel } = useTokensBar(tokensBurnt, TEST_BUDGET)
@@ -94,10 +94,10 @@ const {
 } = useFloatingTooltip()
 
 onMounted(() => {
-  loadSessions(true, props.projectName)
+  loadSessions(true, props.projectId)
   loadMetricDefinitions()
   statesLoading.value = true
-  getProjectStates(props.projectName).then((states) => {
+  getProjectStates(props.projectId).then((states) => {
     projectStates.value = states
   }).catch(() => {
     // already surfaced via apiFetch
@@ -105,7 +105,7 @@ onMounted(() => {
     statesLoading.value = false
   })
   signalsLoading.value = true
-  getProjectSignals(props.projectName).then(({ signals }) => {
+  getProjectSignals(props.projectId).then(({ signals }) => {
     projectSignals.value = signals.map((entry) => entry.signal)
   }).catch(() => {
     // already surfaced via apiFetch

@@ -15,7 +15,13 @@ class BaseModel(Model):
         database = database
 
 class Project(BaseModel):
-    name = CharField(primary_key=True)
+    # The project's own declared `project.id` — mandatory, globally unique,
+    # a plain identifier (letters/digits/underscore). What *other* projects
+    # in the same declared `project.family` (see automaton_builder.py,
+    # never stored here — always read fresh off each project's own
+    # index.yml) reach this one as through automaton.*, and the sole
+    # identity every other table keys on.
+    id = CharField(primary_key=True)
     revision = IntegerField(null=False, default=0)
     published_revision = IntegerField(null=True)
     draft_edit_count = IntegerField(null=False, default=0)
@@ -28,10 +34,6 @@ class Project(BaseModel):
     # is_paused mechanism — whenever True, recompute_availability forces
     # is_paused True too, so nothing un-pauses it but a manual resume.
     manually_paused = BooleanField(default=False)
-    # The project's own declared `project:` section, kept in sync on
-    # every save rather than parsed from index.yml on demand. project_id
-    # is what *other* projects reach this one as through automaton.*.
-    project_id = CharField(null=True, unique=True)
     ui_label = TextField(null=True)
     ui_description = TextField(null=True)
 
@@ -42,9 +44,9 @@ class User(BaseModel):
     id = CharField(primary_key=True)
     # "google"/"whatsapp" — which AuthProvider (or channel) verified this
     # account. Nullable along with provider_user_id/name: UserMixin's
-    # get_active_project_name/set_active_project_name/clear_active_project_name
+    # get_active_project_id/set_active_project_id/clear_active_project_id
     # still take a bare `user: str` (resolved against `id`, see db/users.py)
-    # rather than a real FK — set_active_project_name's own create-fallback,
+    # rather than a real FK — set_active_project_id's own create-fallback,
     # for a user with no User row yet, has no provider identity to fill
     # these with.
     provider = CharField(null=True)
@@ -64,10 +66,10 @@ class User(BaseModel):
     # user's own active project. Nullable: a user with no projects yet
     # still needs a row. on_delete='SET NULL' so deleting the active
     # project never leaves a dangling reference — every user pointing at
-    # it just goes back to "no active project" (get_active_project_name
+    # it just goes back to "no active project" (get_active_project_id
     # picks a fallback the next time it's read).
     active_project = ForeignKeyField(
-        Project, field='name', column_name='active_project_id', null=True,
+        Project, field='id', column_name='active_project_id', null=True,
         backref='users_with_active', on_delete='SET NULL',
     )
     role = CharField(default='user')
@@ -91,7 +93,10 @@ class ChatSession(BaseModel):
     # display/lookup identifier every existing query already uses;
     # `user` only backs "erase all my data"'s cascade.
     user = ForeignKeyField(User, field='id', column_name='user_id', null=True, backref='chat_sessions_owned', on_delete='CASCADE')
-    project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='chat_sessions', on_delete='CASCADE')
+    # Bare field name (not "project_id") so peewee derives the raw-scalar
+    # instance accessor as `.project_id` — same convention as `user`/`user_id`
+    # just above.
+    project = ForeignKeyField(Project, field='id', column_name='project_id', backref='chat_sessions', on_delete='CASCADE')
     type = CharField(default='live')
     # Optional, freeform — an imported session gets the uploaded
     # transcript's filename to start with; a native one has none until
@@ -123,7 +128,7 @@ class ChatSession(BaseModel):
 
     class Meta:
         table_name = 'ChatSession'
-        indexes = ((('username', 'project_name', 'datetime_start', 'datetime_end'), False), (('username', 'project_name', 'start_state', 'end_state'), False))
+        indexes = ((('username', 'project', 'datetime_start', 'datetime_end'), False), (('username', 'project', 'start_state', 'end_state'), False))
 
 class Message(BaseModel):
     id = AutoField()
@@ -168,7 +173,7 @@ class Tracking(BaseModel):
 
 class Archive(BaseModel):
     id = AutoField()
-    project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='archives', on_delete='CASCADE')
+    project = ForeignKeyField(Project, field='id', column_name='project_id', backref='archives', on_delete='CASCADE')
     archive_name = CharField(index=True, null=False)
     revision = IntegerField(null=False, default=0)
     content = BlobField(null=False)
@@ -178,20 +183,20 @@ class Archive(BaseModel):
         table_name = 'Archive'
         # One row per revision — a published revision's own rows are never
         # updated in place again (see Db.save_project_files's fork step),
-        # so (project_name, archive_name) alone can no longer be unique.
-        indexes = ((('project_name', 'archive_name', 'revision'), True),)
+        # so (project, archive_name) alone can no longer be unique.
+        indexes = ((('project', 'archive_name', 'revision'), True),)
 
 class StateRemap(BaseModel):
     """An administrative fact about a published revision, not a
     conversation event (never goes in Tracking). Flattened on every
     write so resolving a key is always a single lookup, never a chain."""
-    project_name = CharField()
+    project_id = CharField()
     old_key = CharField()
     new_key = CharField()
 
     class Meta:
         table_name = 'StateRemap'
-        primary_key = CompositeKey('project_name', 'old_key')
+        primary_key = CompositeKey('project_id', 'old_key')
 
 class SessionSummary(BaseModel):
     id = AutoField()
@@ -214,7 +219,7 @@ class Test(BaseModel):
     # reachable via session below) because session is itself null for a
     # project-wide aggregate run — see the comment on it just below.
     user = ForeignKeyField(User, field='id', column_name='user_id', null=True, backref='tests_owned', on_delete='CASCADE')
-    project_name = CharField(index=True)
+    project_id = CharField(index=True)
     # None means "every labeled session of the project", never a single
     # unresolved session — same dual as BenchmarkCalculator(session_id=
     # None|int) (see metrics/metrics_framework/benchmark_metrics/calculator.py).
@@ -233,7 +238,7 @@ class Test(BaseModel):
     class Meta:
         table_name = 'Test'
         indexes = (
-            (('username', 'project_name'), False),
+            (('username', 'project_id'), False),
             (('session', 'strategy', 'project_draft_edit_count', 'session_labeling_revision'), True),
         )
 
@@ -257,7 +262,7 @@ class TestObservation(BaseModel):
 
 class TestAggregateResult(BaseModel):
     id = AutoField()
-    project_name = CharField(index=True)
+    project_id = CharField(index=True)
     revision = IntegerField(null=False)
     project_draft_edit_count = IntegerField(null=False)
     kind = CharField()
@@ -269,8 +274,8 @@ class TestAggregateResult(BaseModel):
     class Meta:
         table_name = 'TestAggregateResult'
         indexes = (
-            (('project_name', 'revision'), False),
-            (('project_name', 'revision', 'project_draft_edit_count', 'kind', 'target', 'strategy'), True),
+            (('project_id', 'revision'), False),
+            (('project_id', 'revision', 'project_draft_edit_count', 'kind', 'target', 'strategy'), True),
         )
 
 class SystemWarning(BaseModel):
@@ -283,7 +288,7 @@ class SystemWarning(BaseModel):
     # AutomatonNamespace) — a real registered account is the only thing
     # ever authenticated enough to reach this code path at all.
     user_id = ForeignKeyField(User, field='id', backref='system_warnings', on_delete='CASCADE')
-    project_name = CharField(index=True)
+    project_id = CharField(index=True)
     kind = CharField()
     message = TextField()
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
@@ -291,21 +296,37 @@ class SystemWarning(BaseModel):
     class Meta:
         table_name = 'SystemWarning'
 
+class AiTokenUsage(BaseModel):
+    """One row per successful ai-service generate call (see AiService.
+    generate_stream_with_metadata's on_metadata tap) — raw, un-aggregated,
+    the same way Tracking rows are: day/provider totals for Manage
+    services' own consumption bar and trend chart are grouped from these
+    at read time (db/ai_usage.py), not maintained as a running counter."""
+    id = AutoField()
+    # "<driver>/<model>", matching AiService._build_labeled_providers'
+    # own label — shared across the live and test cascades, since both
+    # bill against the same real-world provider/model either way.
+    provider_label = CharField(index=True)
+    timestamp = DateTimeField(index=True, default=datetime.utcnow)
+    input_tokens = IntegerField(default=0)
+    output_tokens = IntegerField(default=0)
+
+    class Meta:
+        table_name = 'AiTokenUsage'
+
 class ProjectObserverIndex(BaseModel):
     """Reverse index of automaton.* cross-project references, rebuilt
-    from scratch for `observer_project_name` on every index.yml build.
+    from scratch for `observer_project_id` on every index.yml build.
     Queried both as "who observes me" and "who do I depend on". Keyed by
-    project_id (the stable token an automaton.<id> reference names), not
-    project_name — a project_name is only ever the *observer* side here,
-    since the observed side must always have a declared id to be
-    referenceable in the first place, while the observer itself may not."""
+    project_id (the stable token an automaton.<id> reference names) on
+    both sides now that project identity is unified."""
     id = AutoField()
     project_id = CharField(index=True)
-    observer_project_name = CharField(index=True)
+    observer_project_id = CharField(index=True)
 
     class Meta:
         table_name = 'ProjectObserverIndex'
-        indexes = ((('project_id', 'observer_project_name'), True),)
+        indexes = ((('project_id', 'observer_project_id'), True),)
 
 class EditHistory(BaseModel):
     """Per-(user, project, file) undo/redo trail for the project editor —
@@ -316,20 +337,28 @@ class EditHistory(BaseModel):
     # undo_project_file/redo_project_file) — project editing requires a
     # real registered account, never an imported/synthetic identity.
     user_id = ForeignKeyField(User, field='id', backref='edit_history_entries', on_delete='CASCADE')
-    project_name = CharField(index=True, null=False)
+    project_id = CharField(index=True, null=False)
     archive_name = CharField(index=True, null=False)
     kind = CharField(null=False)
     seq = IntegerField(null=False)
-    content = BlobField(null=False)
+    # Null for a rename-marker row (see rename_target below); set for an
+    # ordinary content-snapshot row.
+    content = BlobField(null=True)
+    # Set only on a rename-marker row — the *other* name involved in this
+    # rename step (see HistoryMixin.rename_project_file/undo_project_file/
+    # redo_project_file in db/history.py): for an 'undo' row, the name to
+    # rename back to; for a 'redo' row, the name to rename forward to.
+    # Null for an ordinary content-snapshot row.
+    rename_target = CharField(null=True)
 
     class Meta:
         table_name = 'EditHistory'
-        indexes = ((('user_id', 'project_name', 'archive_name', 'kind', 'seq'), True),)
+        indexes = ((('user_id', 'project_id', 'archive_name', 'kind', 'seq'), True),)
 
 class Invite(BaseModel):
     """A "share project" link's own row (see ShareProjectDialog.vue/
     shareLink.js) — one per dialog-open, never reused. `code` is the
-    short random token the link/QR actually carries; project_name/
+    short random token the link/QR actually carries; project_id/
     expires_at/max_shares are the invite-only-registration budget
     InviteManager enforces (project/invites.py) before a brand-new
     identity is ever allowed to self-register through it (see
@@ -340,7 +369,7 @@ class Invite(BaseModel):
     code = CharField(unique=True, index=True)
     created_at = DateTimeField(default=datetime.utcnow)
     expires_at = DateTimeField()
-    project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='invites', on_delete='CASCADE')
+    project = ForeignKeyField(Project, field='id', column_name='project_id', backref='invites', on_delete='CASCADE')
     max_shares = IntegerField()
     # Nullable + SET NULL, not CASCADE: unlike EditHistory/SystemWarning's
     # own user_id (whose owner's own data it *is*), an Invite is a link
@@ -366,14 +395,14 @@ class UserProject(BaseModel):
     is how InviteManager counts a code's max_shares usage, by counting
     rows here rather than any counter stored on Invite itself."""
     user = ForeignKeyField(User, field='id', column_name='user_id', backref='user_projects', on_delete='CASCADE')
-    project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='user_projects', on_delete='CASCADE')
+    project = ForeignKeyField(Project, field='id', column_name='project_id', backref='user_projects', on_delete='CASCADE')
     accepted_terms = ForeignKeyField(Archive, column_name='accepted_terms_id', backref='accepted_by', null=True, on_delete='SET NULL')
     invite = ForeignKeyField(Invite, column_name='invite_id', null=True, backref='redemptions', on_delete='SET NULL')
     invite_timestamp = DateTimeField(null=True)
 
     class Meta:
         table_name = 'UserProject'
-        primary_key = CompositeKey('user', 'project_name')
+        primary_key = CompositeKey('user', 'project')
 
 class Settings(BaseModel):
     key = CharField(primary_key=True)
@@ -381,3 +410,37 @@ class Settings(BaseModel):
 
     class Meta:
         table_name = 'Settings'
+
+class Task(BaseModel):
+    """A hibernated scheduled task (see jobs/task.py and
+    job/persisted_scheduler.py) — this table *is* the persisted
+    scheduler's queue: one row per task still owed to the future, plus
+    a terminal row once it settled (kept as an audit trail, never run
+    again). `type` selects the hydrator that turns `payload` (JSON, the
+    task's own dehydrate()) back into a live Task; `user` and `project`
+    are real foreign keys cascading on delete, so erasing a user or
+    deleting a project takes their pending tasks with it. `ui_label`/
+    `ui_description` are what a listing shows, stored at submit time so
+    the UI never hydrates a row. `run_at` is naive UTC, like every
+    other DateTimeField here."""
+    id = AutoField()
+    key = CharField(unique=True)
+    type = CharField(index=True)
+    user = ForeignKeyField(User, field='id', column_name='user_id', backref='tasks', on_delete='CASCADE')
+    project = ForeignKeyField(Project, field='id', column_name='project_id', backref='tasks', on_delete='CASCADE')
+    run_at = DateTimeField(index=True)
+    payload = TextField()
+    ui_label = TextField()
+    ui_description = TextField()
+    # pending -> dispatched -> done | failed; pending -> canceled.
+    status = CharField(default='pending', index=True)
+    error = TextField(null=True)
+    created_at = DateTimeField(default=datetime.utcnow)
+    # When the row was claimed (see TaskMixin.claim_due_task) — a claim
+    # older than the scheduler's lease with no settlement is a dead
+    # process's, and goes back to pending (requeue_stale_dispatched_tasks).
+    dispatched_at = DateTimeField(null=True)
+    settled_at = DateTimeField(null=True)
+
+    class Meta:
+        table_name = 'Task'

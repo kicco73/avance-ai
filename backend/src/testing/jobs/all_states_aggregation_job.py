@@ -17,15 +17,15 @@ class AllStatesAggregationJob(_AggregationJob):
     UsersAggregationJob's own docstring for why."""
 
     def __init__(
-        self, service: "TestService", project_name: str, strategy: str, session_ids_by_state: dict[str, list[int]],
+        self, service: "TestService", project_id: str, strategy: str, session_ids_by_state: dict[str, list[int]],
     ) -> None:
-        super().__init__(service, project_name, 'all_states', None, strategy)
+        super().__init__(service, project_id, 'all_states', None, strategy)
         self._session_ids_by_state = session_ids_by_state
         self._state_jobs: list[StateAggregationJob] = []
 
     def _resolve_or_construct_dependencies(self) -> tuple[CancelableJob, ...]:
         self._state_jobs = [
-            self._service._track(StateAggregationJob(self._service, self._project_name, state_key, self._strategy, session_ids))
+            self._service._track(StateAggregationJob(self._service, self._project_id, state_key, self._strategy, session_ids))
             for state_key, session_ids in self._session_ids_by_state.items()
         ]
         return tuple(self._state_jobs)

@@ -4,7 +4,9 @@ import argparse
 import asyncio
 
 from config import AppConfig
-from jobs import JobQueue, NullBroadcaster
+from db import Db
+from job import JobService
+from jobs import NullBroadcaster
 from notification.notification_service import NotificationService
 
 
@@ -14,8 +16,10 @@ async def main() -> None:
     args = parser.parse_args()
 
     config = AppConfig()
-    job_queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-    service = NotificationService(config.notification_service_config, job_queue)
+    # Never started: this script only ever submits one immediate job,
+    # so no hibernated task of the real deployment gets claimed by it.
+    job_service = JobService(max_concurrent=1, broadcaster=NullBroadcaster(), db=Db(config.database_url))
+    service = NotificationService(config.notification_service_config, job_service)
     await service.send_mail(
         to=args.to,
         subject="Avance NotificationService smoke test",

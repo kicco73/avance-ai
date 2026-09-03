@@ -31,7 +31,7 @@ from tracking.turn_protocol import TurnProtocol
 pytestmark = pytest.mark.contract
 
 USERNAME = "user"
-PROJECT_NAME = "proj"
+PROJECT_ID = "proj"
 
 
 def _handler() -> MetadataHandler:
@@ -209,16 +209,16 @@ class _RecordingProtocol(TurnProtocol):
 def test_generate_reply_renders_an_env_block_with_stored_values_only(db):
     """System/session facts live in the `system`/`session`
     evaluation-scope namespaces, never rendered into the prompt."""
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     db.create_chat_session(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a",
     )
-    db.set_env(PROJECT_NAME, {"favorite_color": "blue"}, USERNAME)
-    env = PersistedEnv(db, FixedProjectContext(project_name=PROJECT_NAME))
+    db.set_env(PROJECT_ID, {"favorite_color": "blue"}, USERNAME)
+    env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID))
     protocol = _RecordingProtocol()
 
     protocol.generate_reply("base prompt", "- Definition of signals:\n", env, [], lambda k, v: None)
@@ -232,7 +232,7 @@ def test_generate_reply_renders_an_env_block_with_stored_values_only(db):
 def test_generate_reply_embeds_the_given_signal_definition_verbatim(db):
     """__build_prompt takes the already-rendered definition text directly
     — it has no opinion of its own on which signals it describes."""
-    env = PersistedEnv(db, FixedProjectContext(project_name=PROJECT_NAME))
+    env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID))
     protocol = _RecordingProtocol()
 
     protocol.generate_reply(

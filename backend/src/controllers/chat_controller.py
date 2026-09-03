@@ -106,21 +106,21 @@ class ChatController(BaseController):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/identifiers")
-    def get_identifiers(self, project_name: str):
-        """`project_name`'s own identifier registry — every identifier a
+    @get("/api/projects/{project_id}/identifiers")
+    def get_identifiers(self, project_id: str):
+        """`project_id`'s own identifier registry — every identifier a
         trigger/`env:` expression can reference, one {identifier:
         description} dict per namespace."""
         try:
-            return self.project_service.get_identifier_registry(project_name)
+            return self.project_service.get_identifier_registry(project_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/metrics")
-    def get_metrics(self, project_name: str, message_id: int | None = None, full: bool = False, username: str | None = None):
-        """Core metrics for `project_name`, live or (`message_id` given)
+    @get("/api/projects/{project_id}/metrics")
+    def get_metrics(self, project_id: str, message_id: int | None = None, full: bool = False, username: str | None = None):
+        """Core metrics for `project_id`, live or (`message_id` given)
         as of that exact message — no caching. `full`: every core metric,
         including ones that need more than one session (e.g. Retention),
         instead of the usual "one_session" subset. `username` (omitted:
@@ -128,22 +128,22 @@ class ChatController(BaseController):
         inspect a specific user's sessions rather than its own. ChatServiceError
         for an unknown message_id is handled globally, see error_handlers.py."""
         return self.chat_service.get_metrics(
-            project_name=project_name, message_id=message_id, full=full, username=username,
+            project_id=project_id, message_id=message_id, full=full, username=username,
         )
 
-    @get("/api/projects/{project_name}/users/{username}/latest-signals")
-    def get_user_latest_signals(self, project_name: str, username: str):
+    @get("/api/projects/{project_id}/users/{username}/latest-signals")
+    def get_user_latest_signals(self, project_id: str, username: str):
         """The most recent live session's own latest signal snapshot for
-        `username` in `project_name` — Manage Users' Signals tab."""
-        return self.chat_service.get_latest_signal_values(project_name, username)
+        `username` in `project_id` — Manage Users' Signals tab."""
+        return self.chat_service.get_latest_signal_values(project_id, username)
 
-    @get("/api/projects/{project_name}/users/{username}/timeline")
-    def get_user_timeline(self, project_name: str, username: str):
-        return self.chat_service.get_timeline(project_name, username)
+    @get("/api/projects/{project_id}/users/{username}/timeline")
+    def get_user_timeline(self, project_id: str, username: str):
+        return self.chat_service.get_timeline(project_id, username)
 
-    @get("/api/projects/{project_name}/users/{username}/metrics-history")
-    def get_user_metrics_history(self, project_name: str, username: str):
-        return self.chat_service.get_metrics_history(project_name, username)
+    @get("/api/projects/{project_id}/users/{username}/metrics-history")
+    def get_user_metrics_history(self, project_id: str, username: str):
+        return self.chat_service.get_metrics_history(project_id, username)
 
     @get("/api/state")
     def get_state(self):
@@ -217,20 +217,20 @@ class ChatController(BaseController):
         superseding whichever session was previously current."""
         return await self.chat_service.create_session()
 
-    @get("/api/projects/{project_name}/legal-terms-status")
-    def get_legal_terms_status(self, project_name: str):
-        return self.chat_service.get_legal_terms_status(project_name)
+    @get("/api/projects/{project_id}/legal-terms-status")
+    def get_legal_terms_status(self, project_id: str):
+        return self.chat_service.get_legal_terms_status(project_id)
 
-    @post("/api/projects/{project_name}/accept-terms")
-    def post_accept_chat_terms(self, project_name: str):
-        self.chat_service.accept_legal_terms(project_name)
+    @post("/api/projects/{project_id}/accept-terms")
+    def post_accept_chat_terms(self, project_id: str):
+        self.chat_service.accept_legal_terms(project_id)
         return {"success": True}
 
-    @get("/api/projects/{project_name}/sessions")
-    def get_sessions(self, project_name: str, include_imported: bool = False):
-        """Every session for `project_name`, for the "Sessions" side
+    @get("/api/projects/{project_id}/sessions")
+    def get_sessions(self, project_id: str, include_imported: bool = False):
+        """Every session for `project_id`, for the "Sessions" side
         panel — see ChatService.list_sessions."""
-        return self.chat_service.list_sessions(include_imported=include_imported, project_name=project_name)
+        return self.chat_service.list_sessions(include_imported=include_imported, project_id=project_id)
 
     @get("/api/chat/sessions/{session_id}/state")
     def get_session_state(self, session_id: int):

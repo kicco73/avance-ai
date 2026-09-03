@@ -71,7 +71,7 @@ const {
 } = testStore
 
 const props = defineProps({
-  projectName: {
+  projectId: {
     type: String,
     required: true
   },
@@ -83,18 +83,19 @@ const props = defineProps({
 
 // One EditProjectView instance is always scoped to a single project for
 // its whole lifetime — the "Run" tab's own test store targets it once here.
-setTestProject(props.projectName)
+setTestProject(props.projectId)
 
 const emit = defineEmits(['saved', 'back', 'profile', 'logout'])
 
 const {
-  filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile,
+  filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile, renamingFile,
   designPanelRef, codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
   currentFileIsImage, currentFileIsMarkdown, isBehaviorNodeSelected, hasTheme,
   activeEditorIsDirty, activeEditor,
   loadFiles, switchFile, guardedAction, selectFile, jumpToDefinition,
-  handleUploadFile, handleNewAttachment, handleNewAspect, handleNewLegal, handleDeleteFile, handleFileSaved,
-} = useProjectFiles(props.projectName, emit)
+  handleUploadFile, handleNewAttachment, handleNewAspect, handleNewLegal, handleDeleteFile, handleRenameFile,
+  handleFileRenamedByHistory, handleFileSaved,
+} = useProjectFiles(props.projectId, emit)
 
 // Inspect panel: the shared Inspector component shows the last-saved
 // project's state graph, signal definitions, and metrics_framework's core
@@ -199,7 +200,7 @@ async function ensureSignalsList() {
   if (signalsListLoaded) return
   signalsListLoaded = true
   try {
-    signalsList.value = (await getProjectSignals(props.projectName, null, null)).signals
+    signalsList.value = (await getProjectSignals(props.projectId, null, null)).signals
   } catch {
     // already surfaced via apiFetch
   }
@@ -330,7 +331,7 @@ async function refreshSessionStartState() {
     return
   }
   try {
-    const allSessions = await getSessions(props.projectName)
+    const allSessions = await getSessions(props.projectId)
     sessionStartState.value = allSessions.find((s) => s.id === currentSessionId.value)?.start_state ?? null
   } catch {
     // already surfaced via apiFetch
@@ -368,7 +369,7 @@ function actionLabelFor(stateKey, actionName) {
 
 async function refreshValidStateKeys() {
   try {
-    const { nodes, edges } = await getProjectGraph(props.projectName)
+    const { nodes, edges } = await getProjectGraph(props.projectId)
     validStateKeys.value = new Set(nodes.map((n) => n.state.key))
     availableStates.value = nodes.map((n) => ({ key: n.state.key, uiLabel: n.state.ui_label }))
     actionLabelsByState.value = new Map(
@@ -378,15 +379,15 @@ async function refreshValidStateKeys() {
     // already surfaced via apiFetch
   }
   try {
-    availableEnvKeys.value = (await getProjectEnvKeys(props.projectName)).env_keys.map((e) => e.env_key.name)
+    availableEnvKeys.value = (await getProjectEnvKeys(props.projectId)).env_keys.map((e) => e.env_key.name)
   } catch {
     // already surfaced via apiFetch
   }
   // Common point every project edit funnels through — refreshing the
   // shared trigger-autocomplete registry here (see identifierRegistry.js)
   // covers every way a signal/action can come into existence.
-  refreshIdentifierRegistry(props.projectName)
-  refreshProjectFiles(props.projectName)
+  refreshIdentifierRegistry(props.projectId)
+  refreshProjectFiles(props.projectId)
 }
 
 // The state a given message's turn left the conversation in — a
@@ -501,7 +502,7 @@ async function refreshStateTabTokens() {
   }
   const requestId = ++stateTabTokensRequestId
   try {
-    const { tokens } = await getStateInputTokens(props.projectName, key)
+    const { tokens } = await getStateInputTokens(props.projectId, key)
     if (requestId === stateTabTokensRequestId) stateTabTokens.value = tokens
   } catch {
     // already surfaced via apiFetch
@@ -545,8 +546,8 @@ async function refreshAfterProjectEdit() {
   refreshStateTabTokens()
 }
 
-const unsubscribeProjectChanged = onProjectChanged((changedProjectName) => {
-  if (changedProjectName === props.projectName) return refreshAfterProjectEdit()
+const unsubscribeProjectChanged = onProjectChanged((changedProjectId) => {
+  if (changedProjectId === props.projectId) return refreshAfterProjectEdit()
 })
 onBeforeUnmount(unsubscribeProjectChanged)
 
@@ -555,14 +556,14 @@ const {
   refreshProjectRevision, publishUpToDate,
   handlePublish, confirmPublishRemap, cancelPublishRemap,
   canRevert, publishMenuOpen, closePublishMenu, handleRevert,
-} = useProjectPublishing(props.projectName, currentFileName, activeEditor, selectedGraphElement)
+} = useProjectPublishing(props.projectId, currentFileName, activeEditor, selectedGraphElement)
 
 const {
   handleAddState, handleAddSignal, handleAddEnvKey, handleAddAction,
   handleSetStateField, handleSetProjectField, handleSetActionField, handleSetSignalField, handleSetEnvKeyField,
   handleDeleteState, handleDeleteAction, handleDeleteSignal, handleDeleteEnvKey,
 } = useIndexYmlEditing(
-  props.projectName, guardedAction, indexYmlEditorRef, jumpToDefinition, selectedGraphElement, selectedStateKey, flashRecentlyAdded
+  props.projectId, guardedAction, indexYmlEditorRef, jumpToDefinition, selectedGraphElement, selectedStateKey, flashRecentlyAdded
 )
 
 // The Inspector's "Info" tab shares the same selection the Graph drives,
@@ -585,9 +586,9 @@ function handleTabSelect(element) {
 // handleDeleteAction actually applies, off selectedGraphElement's own kind.
 function handleSetSelectedElementField(field, value) {
   const element = selectedGraphElement.value
-  if (!element) return
-  if (element.kind === 'state') handleSetStateField(element.data.id, field, value)
-  else handleSetActionField(element.data.matchStateKey, element.data.actionName, field, value)
+  if (!element) return undefined
+  if (element.kind === 'state') return handleSetStateField(element.data.id, field, value)
+  return handleSetActionField(element.data.matchStateKey, element.data.actionName, field, value)
 }
 
 function handleDeleteSelectedElement(element) {
@@ -603,7 +604,7 @@ function handleOpenActionsOrder(element) {
     customDialog({
       component: ActionsOrderDialog,
       props: {
-        projectName: props.projectName,
+        projectId: props.projectId,
         stateName: stateKey,
         actions: indexYmlEditorRef.value?.actionsForState(stateKey) ?? []
       }
@@ -744,14 +745,14 @@ onMounted(async () => {
   // Surfaced once, right on entry — not re-triggered by later
   // refreshProjectRevision calls, or it would pop back open after dismissal.
   if (projectRevision.value?.is_paused) {
-    setApiWarning(projectRevision.value.paused_reason || `Project '${props.projectName}' is currently paused.`)
+    setApiWarning(projectRevision.value.paused_reason || `Project '${props.projectId}' is currently paused.`)
   }
   if (inspecting.value) openInspect()
   window.addEventListener('resize', handleWindowResize)
   // A fresh editing session starts with a clean undo/redo slate — cleared
   // here (entry), not on Back.
   try {
-    await clearProjectHistory(props.projectName)
+    await clearProjectHistory(props.projectId)
   } catch {
     // already surfaced via apiFetch — the session still opens either way
   } finally {
@@ -825,7 +826,7 @@ onBeforeUnmount(() => {
         <ProjectDesignPanel
           v-show="editorOpen"
           ref="designPanelRef"
-          :project-name="projectName"
+          :project-id="projectId"
           :files="files"
           :files-loading="filesLoading"
           :current-file-name="currentFileName"
@@ -848,6 +849,7 @@ onBeforeUnmount(() => {
           @jump-to-definition="(target) => jumpToDefinition(target, { silent: true })"
           @select="selectedGraphElement = $event"
           @saved="handleFileSaved"
+          @renamed="handleFileRenamedByHistory"
         />
 
         <Transition name="panel-slide-bottom">
@@ -868,7 +870,7 @@ onBeforeUnmount(() => {
           />
         </Transition>
 
-        <ProjectTestPanel v-if="testOpen" :project-name="projectName" @select="handleAutoSelect" />
+        <ProjectTestPanel v-if="testOpen" :project-id="projectId" @select="handleAutoSelect" />
       </div>
 
       <div class="inspector-wrap">
@@ -890,7 +892,7 @@ onBeforeUnmount(() => {
               />
               <InspectorGraphTab
                 :ref="registerTab('states')"
-                :project-name="projectName"
+                :project-id="projectId"
                 :highlighted-state-key="highlightedStateKey"
                 :auto-jump-on-highlight-change="true"
                 :fired-action-edge="firedActionEdge"
@@ -908,7 +910,7 @@ onBeforeUnmount(() => {
               <InspectorStateTab
                 v-else
                 :ref="registerTab('state')"
-                :project-name="projectName"
+                :project-id="projectId"
                 :selected-element="mode === 'test' ? autoSelectedElement : selectedGraphElement"
                 :state-tokens="stateTabTokens"
                 :fired-action-edge="firedActionEdge"
@@ -925,16 +927,19 @@ onBeforeUnmount(() => {
                 :recently-added-key="recentlyAddedKey"
                 :current-file-name="mode === 'edit' ? currentFileName : null"
                 :deleting-file="deletingFile"
+                :renaming-file="renamingFile"
                 @select="handleTabSelect"
                 @select-attachment="selectFile"
                 @jump-to-attachment="handleJumpToAttachment"
                 @set-field="handleSetSelectedElementField"
+                :save-field="handleSetSelectedElementField"
                 @set-project-field="handleSetProjectField"
                 @delete="handleDeleteSelectedElement"
                 @open-actions-order="handleOpenActionsOrder"
                 @add-state="handleAddState"
                 @add-action="handleAddAction"
                 @delete-file="handleDeleteFile"
+                @rename-file="handleRenameFile"
               />
             </template>
             <template #tab-user="{ registerTab }">
@@ -943,7 +948,7 @@ onBeforeUnmount(() => {
             <template #tab-signals="{ registerTab }">
               <InspectorSignalsTab
                 :ref="registerTab('signals')"
-                :project-name="projectName"
+                :project-id="projectId"
                 :signal-values="effectiveSignalValues"
                 :editable-files="mode === 'edit' ? files : null"
                 :state-key="mode === 'edit' ? selectedStateKey : highlightedStateKey"
@@ -956,7 +961,7 @@ onBeforeUnmount(() => {
               />
             </template>
             <template #tab-metrics="{ registerTab }">
-              <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" :project-name="projectName" />
+              <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" :project-id="projectId" />
             </template>
             <template #tab-env="{ registerTab }">
               <InspectorEnvTab :ref="registerTab('env')" :until-message-id="untilMessageId" :editable="envEditable" />
@@ -964,7 +969,7 @@ onBeforeUnmount(() => {
             <template #tab-env-keys="{ registerTab }">
               <InspectorEnvKeysTab
                 :ref="registerTab('env-keys')"
-                :project-name="projectName"
+                :project-id="projectId"
                 :recently-added-key="recentlyAddedKey"
                 @jump-to-definition="(target) => jumpToDefinition(target, { silent: true })"
                 @set-field="handleSetEnvKeyField"

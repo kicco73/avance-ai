@@ -7,7 +7,8 @@ from __future__ import annotations
 from ai.ai_service import AiService
 from chat.session_manager import ChatSessionManager
 from db import Db
-from jobs import CancelableJob, JobQueue
+from job import JobService
+from jobs import CancelableJob
 
 SUMMARY_PROMPT = (
     "Summarize the salient points of the following conversation in a few "
@@ -47,17 +48,17 @@ class SessionSummaryJob(CancelableJob):
 class SessionSummaryManager:
 
     def __init__(
-        self, db: Db, ai_service: AiService, job_queue: JobQueue, session_manager: ChatSessionManager,
+        self, db: Db, ai_service: AiService, job_service: JobService, session_manager: ChatSessionManager,
     ) -> None:
         self._db = db
         self._ai_service = ai_service
-        self._job_queue = job_queue
+        self._job_service = job_service
         self._session_manager = session_manager
 
-    def check_for_closed_sessions(self, username: str, project_name: str) -> None:
+    def check_for_closed_sessions(self, username: str, project_id: str) -> None:
         # Only 'live' — an imported session and a "Test" (draft) one
         # have no real usage timeline for "closed" to mean anything about.
-        sessions = self._db.list_chat_sessions(username, project_name, type='live')
+        sessions = self._db.list_chat_sessions(username, project_id, type='live')
         session_ids = [session['id'] for session in sessions]
         already_summarized = self._db.get_session_ids_with_summary(session_ids)
 
@@ -70,6 +71,6 @@ class SessionSummaryManager:
             # what stops this same session from being queued again on the
             # next call, regardless of how the job itself turns out.
             summary_id = self._db.create_session_summary(session['id'])
-            self._job_queue.submit(
+            self._job_service.submit(
                 SessionSummaryJob(self._db, self._ai_service, session['id'], summary_id)
             )

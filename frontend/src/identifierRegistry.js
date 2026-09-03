@@ -6,9 +6,9 @@ import { getIdentifiers } from './api.js'
 
 export const identifierRegistry = ref({})
 
-export async function refreshIdentifierRegistry(projectName) {
+export async function refreshIdentifierRegistry(projectId) {
   try {
-    identifierRegistry.value = await getIdentifiers(projectName)
+    identifierRegistry.value = await getIdentifiers(projectId)
   } catch {
     // already surfaced via apiFetch
   }

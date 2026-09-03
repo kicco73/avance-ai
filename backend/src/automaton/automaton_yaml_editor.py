@@ -182,6 +182,8 @@ class AutomatonYamlEditor:
         raw_project = self._raw.get("project") or {}
         return {
             "id": raw_project.get("id"),
+            "family": raw_project.get("family") or None,
+            "revision": raw_project.get("revision", 0),
             "ui_label": raw_project.get("ui-label"),
             "ui_description": raw_project.get("ui-description"),
             "talk_enabled": raw_project.get("talk-enabled", True),
@@ -306,14 +308,16 @@ class AutomatonYamlEditor:
         return self._env_key_payload(name)
 
     def set_project_field(self, field: str, value) -> ProjectPayload:
-        """The optional top-level `project:` mapping — id/ui-label/
+        """The optional top-level `project:` mapping — id/family/ui-label/
         ui-description/talk-enabled/signal-tracking-on-ai-message — plus
         'general-prompt', which despite belonging to this same edit form
         is actually its own top-level YAML key, not nested under
         `project:` at all (see AutomatonBuilder.build's own
-        general_prompt=raw.get("general-prompt", "")). A falsy `id`
-        removes the key rather than writing an empty string, which
-        AutomatonBuilder would reject as an invalid identifier."""
+        general_prompt=raw.get("general-prompt", "")). A falsy `id`/
+        `family` removes the key rather than writing an empty string —
+        AutomatonBuilder would reject an empty id as invalid, and an
+        empty family is meant to read as "none" (isolated), same as
+        never having declared it at all."""
         if field == "general-prompt":
             if value:
                 self._raw["general-prompt"] = value
@@ -321,10 +325,18 @@ class AutomatonYamlEditor:
                 self._raw.pop("general-prompt", None)
             return self._project_payload()
         project = self._raw.setdefault("project", CommentedMap())
-        if field == "id" and not value:
-            project.pop("id", None)
+        if field in ("id", "family") and not value:
+            project.pop(field, None)
         else:
             project[field] = value
+        return self._project_payload()
+
+    def set_project_revision(self, revision: int) -> ProjectPayload:
+        """Stamps `project.revision` directly — called only by
+        ProjectManager.publish_project, never through the "Edit project"
+        form (revision is system-managed, not a user-editable field)."""
+        project = self._raw.setdefault("project", CommentedMap())
+        project["revision"] = revision
         return self._project_payload()
 
     def set_init_action_field(self, field: str, value) -> StatePayload | ActionPayload:

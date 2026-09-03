@@ -6,111 +6,111 @@ const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 // whole-project-scope run (every labeled session at once). `username`,
 // when given, scopes that whole-project run to just that user's sessions
 // instead of the requesting user's own.
-export function postTest(projectName, sessionId, strategy, username) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests`, {
+export function postTest(projectId, sessionId, strategy, username) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/tests`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: sessionId, strategy, ...(username != null ? { username } : {}) })
   })
 }
 
-export function getTest(projectName, testId) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests/${encodeURIComponent(testId)}`)
+export function getTest(projectId, testId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/tests/${encodeURIComponent(testId)}`)
 }
 
-export function getTests(projectName, sessionId, username) {
+export function getTests(projectId, sessionId, username) {
   const params = new URLSearchParams()
   if (sessionId != null) params.set('session_id', sessionId)
   if (username != null) params.set('username', username)
   const query = params.size ? `?${params}` : ''
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests${query}`)
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/tests${query}`)
 }
 
-export function deleteTests(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests`, { method: 'DELETE' })
+export function deleteTests(projectId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/tests`, { method: 'DELETE' })
 }
 
-export function deleteTestJob(projectName, jobKey) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests/jobs/${encodeURIComponent(jobKey)}`, { method: 'DELETE' })
+export function deleteTestJob(projectId, jobKey) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/tests/jobs/${encodeURIComponent(jobKey)}`, { method: 'DELETE' })
 }
 
-export function deleteAllTestJobs(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests/jobs`, { method: 'DELETE' })
+export function deleteAllTestJobs(projectId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/tests/jobs`, { method: 'DELETE' })
 }
 
-export function getTestMetrics(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests/metrics`)
+export function getTestMetrics(projectId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/tests/metrics`)
 }
 
 // Every real state key of the project's current draft automaton.
-export function getProjectStates(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/states`)
+export function getProjectStates(projectId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/states`)
 }
 
-export function postStateTest(projectName, stateKey, strategy) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateKey)}/test`, {
+export function postStateTest(projectId, stateKey, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/states/${encodeURIComponent(stateKey)}/test`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ strategy })
   })
 }
 
-export function getAggregateResult(projectName, kind, target, strategy) {
+export function getAggregateResult(projectId, kind, target, strategy) {
   const params = new URLSearchParams({ kind, strategy })
   if (target != null) params.set('target', target)
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/aggregate-result?${params}`)
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/aggregate-result?${params}`)
 }
 
-export function postStatesAggregation(projectName, strategy) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/states/aggregation`, {
+export function postStatesAggregation(projectId, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/states/aggregation`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ strategy })
   })
 }
 
-export function postSignalsAggregation(projectName, strategy) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals/aggregation`, {
+export function postSignalsAggregation(projectId, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/signals/aggregation`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ strategy })
   })
 }
 
-export function postRootAggregation(projectName, strategy) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/root/aggregation`, {
+export function postRootAggregation(projectId, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/root/aggregation`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ strategy })
   })
 }
 
-export function postUsersAggregation(projectName, strategy) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/users/aggregation`, {
+export function postUsersAggregation(projectId, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/users/aggregation`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ strategy })
   })
 }
 
-export function postSessionsRun(projectName, strategy) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/test`, {
+export function postSessionsRun(projectId, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/sessions/test`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ strategy })
   })
 }
 
-export function postUserSessionsRun(projectName, username, strategy) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/users/${encodeURIComponent(username)}/test`, {
+export function postUserSessionsRun(projectId, username, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(username)}/test`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ strategy })
   })
 }
 
-export function postSignalTest(projectName, signalName, strategy) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals/${encodeURIComponent(signalName)}/test`, {
+export function postSignalTest(projectId, signalName, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/signals/${encodeURIComponent(signalName)}/test`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ strategy })

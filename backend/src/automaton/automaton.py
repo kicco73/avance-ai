@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 
 import simpleeval
 
+from automaton.scope import EvaluationScope
+
 from logging_factory import LoggerFactory
 
 from .trigger_expression_analyzer import TriggerExpressionAnalyzer
@@ -32,7 +34,6 @@ class Action:
     target: str
     ui_description: str | None = None
     trigger: str | None = None
-    action_prompt: str | None = None
     attachments: dict[str, MemoryArchive] = field(default_factory=dict[str, MemoryArchive])
     # Not state-level: two different actions landing on the same target
     # state can each carry their own value (or none), since it describes
@@ -143,16 +144,55 @@ def manual_actions_for(actions: list[ActionPayload], auto_tracking_enabled: bool
     return [a for a in actions if not a["has_trigger"] or not auto_tracking_enabled]
 
 
+class JsSnippet(str):
+    # FIXME: subclassing str, not a plain str, is load-bearing —
+    # render_on_enter uses isinstance(result, JsSnippet) to tell an
+    # actuator's wire-ready JS apart from actuator.prompt()'s plain text.
+    pass
+
+
+class DeferredExpression(object):
+    """What a zero-argument `lambda:` in an on-enter line evaluates to:
+    a callable closing over the evaluator (hence its scope) and the
+    lambda's body, exactly like the plain closure it replaces — but one
+    that also *knows its own source* (`source`, the body re-emitted by
+    ast.unparse) and the EvaluationScope it was built against. Those two
+    are what let actuator.defer hibernate the call instead of holding a
+    live closure (see tracking/actuators/on_enter_task.py)."""
+
+    def __init__(self, evaluator: "_OnEnterEval", body: ast.expr) -> None:
+        self._evaluator = evaluator
+        self._body = body
+        self.source: str = ast.unparse(body)
+
+    @property
+    def scope(self) -> EvaluationScope:
+        return self._evaluator.names
+
+    def __call__(self):
+        return self._evaluator._eval(self._body)
+
+    def __repr__(self) -> str:
+        return f"DeferredExpression({self.source!r})"
+
+
 class _OnEnterEval(simpleeval.SimpleEval):
-    def __init__(self, names: dict) -> None:
+    """Evaluates one on-enter line. Only ever against an EvaluationScope
+    — a plain dict has no automaton/state to hibernate a deferred call
+    with, so it is refused up front rather than failing at defer time."""
+
+    names: EvaluationScope
+
+    def __init__(self, names: EvaluationScope) -> None:
+        if not isinstance(names, EvaluationScope):
+            raise TypeError(f"_OnEnterEval needs an EvaluationScope, got {type(names).__name__}.")
         super().__init__(names=names)
         self.nodes[ast.Lambda] = self._eval_lambda
 
     def _eval_lambda(self, node: ast.Lambda):
         if node.args.args or node.args.vararg or node.args.kwonlyargs or node.args.kwarg or node.args.posonlyargs:
             raise simpleeval.FeatureNotAvailable("Sorry, only zero-argument lambdas are supported.")
-        body = node.body
-        return lambda: self._eval(body)
+        return DeferredExpression(self, node.body)
 
 class SignalPayload(TypedDict):
     name: str
@@ -168,7 +208,9 @@ class EnvKeyPayload(TypedDict):
     value: str
 
 class ProjectPayload(TypedDict):
-    id: str | None
+    id: str
+    family: str | None
+    revision: int
     ui_label: str | None
     ui_description: str | None
     talk_enabled: bool
@@ -193,16 +235,28 @@ class Automaton(object):
         # Same reasoning as env_keys above — only AutomatonBuilder.build
         # parses a project's declared reactions: section.
         reactions: list[Reaction] | None = None,
-        # The optional top-level `project:` section. `project_id` is the
-        # identifier this project is reachable as from other projects'
-        # automaton.* references, globally unique (enforced by ProjectService).
+        # The optional top-level `project:` section. `project_id` is this
+        # project's own mandatory, globally unique identity — what
+        # *other* projects reach it as through automaton.* references,
+        # and the sole key every DB table stores it under (see
+        # db/models.py's Project.id). `project_family` gates that
+        # visibility: two projects can observe/notify each other only
+        # when both declare the exact same family (never parsed, plain
+        # string equality) — None (the default) means neither observes
+        # nor is observed by anything, itself included (see
+        # AutomatonLoader.known_projects_env_keys). `project_revision` is
+        # the YAML's own declared `project.revision` (default 0) —
+        # distinct from this object's own `revision` attribute below
+        # (which DB storage revision it was actually loaded from).
         project_id: str | None = None,
+        project_family: str | None = None,
+        project_revision: int = 0,
         project_ui_label: str | None = None,
         project_ui_description: str | None = None,
         talk_enabled: bool = True,
     ):
         # A real Action (not just a target state string) so it can also
-        # carry an action_prompt — see ChatService.open_if_needed.
+        # carry its own on_enter/env — see ChatService._ensure_project_bootstrap.
         self.init_action = init_action
         self.states = states
         self.general_prompt = general_prompt
@@ -210,6 +264,8 @@ class Automaton(object):
         self.reactions = reactions or []
         self.env_keys = env_keys or []
         self.project_id = project_id
+        self.family = project_family
+        self.project_revision = project_revision
         self.project_ui_label = project_ui_label
         self.project_ui_description = project_ui_description
         self.general_attachments = general_attachments
@@ -218,25 +274,24 @@ class Automaton(object):
         # mutually exclusive — this flag selects between them.
         self.autotracking_on_ai_message = autotracking_on_ai_message
         self.talk_enabled = talk_enabled
-        # Which (project_name, revision) this Automaton actually came
-        # from — unset here (never a build()-time concern: most callers,
+        # Which DB storage revision this Automaton actually came from —
+        # unset here (never a build()-time concern: most callers,
         # including nearly every test, build one purely in-memory with
-        # nothing to name). Only AutomatonLoader.load_at_revision and
+        # nothing to pin). Only AutomatonLoader.load_at_revision and
         # ProjectManager.finalize_update, the two places that resolve
         # this correctly and are about to cache the result, ever call
-        # set_storage_location below.
-        self.project_name: str | None = None
+        # set_storage_location below. project_id above already carries
+        # this project's own identity, so there's nothing left to pass in.
         self.revision: int | None = None
 
-    def set_storage_location(self, project_name: str, revision: int) -> None:
+    def set_storage_location(self, revision: int) -> None:
         """tracking.sources.attachment's own source.attachment(name) reads
-        straight from Db at this exact (project_name, revision) — never
+        straight from Db at this exact (project_id, revision) — never
         this Automaton's own in-memory `attachments` (see that module's
         docstring for why: a large file no state/action/signal ever
         declared under its own `attachments:` would otherwise still get
         eagerly loaded/converted on every build just because it's in the
         project, whether source.attachment ever asks for it or not)."""
-        self.project_name = project_name
         self.revision = revision
 
     def get_state(self, state_key: str) -> State:
@@ -384,33 +439,69 @@ class Automaton(object):
         return result
 
     @staticmethod
-    def render_on_enter(action: Action, scope: dict[str, Any]) -> str | None:
+    def render_on_enter(action: Action, scope: EvaluationScope) -> str | None:
         """Evaluates `action.on_enter` — the same namespaced-expression
-        grammar as `trigger`/`env` (one call per non-blank line, e.g.
-        `actuator.celebrate()` / `actuator.notify(user.name, "Hi!")`) —
-        into the wire-ready JS text the frontend's onEnterActions.js
-        already knows how to run unchanged: each line's own return value
-        is either a JS snippet to tunnel through verbatim (`celebrate()`
-        and `notify(...)` compile to themselves, minus the "actuator."
-        prefix) or None (a pure server-side side effect, e.g. `send_mail`).
-        A line that fails to evaluate is logged and simply contributes
-        nothing, same resilience as eval_action_env."""
+        grammar as `trigger`/`env` (one `actuator.<name>(...)` call per
+        top-level statement, e.g. `actuator.celebrate()` /
+        `actuator.notify(user.name, "Hi!")`, split via
+        TriggerExpressionAnalyzer.on_enter_statements so a single call may
+        itself span several lines and a '#' comment needs no special
+        handling) — into the wire-ready JS text the frontend's
+        onEnterActions.js already knows how to run unchanged: each
+        statement's own return value is tunneled through verbatim only
+        when it's a JsSnippet (`celebrate()`, `notify(...)`, and `show(...)`
+        compile to themselves, minus the "actuator." prefix) — a plain
+        `str` (e.g. a bare `actuator.prompt(...)` statement's own reply
+        text, never wrapped by another actuator call) or None (a pure
+        server-side side effect, e.g. `send_mail`) both contribute
+        nothing. A statement may instead be a simple `name = <expr>`
+        assignment (see TriggerExpressionAnalyzer.on_enter_assignment):
+        `<expr>` is evaluated the same way but its result is stored under
+        `name` directly on `actuator_scope` — never appended to
+        `snippets`, even when it's a JsSnippet — so every later statement
+        in this same on_enter can reference `name` bare (including inside
+        an actuator.defer(...) lambda, which shares this same evaluator/
+        scope — see DeferredExpression.scope and freeze()'s own "extra"
+        capture, which already snapshots any such bare scalar). A
+        statement that fails to evaluate is logged and simply contributes
+        nothing (an assignment that fails leaves `name` unset, so a later
+        reference to it fails too, same way any other undefined name
+        would) — this only ever affects on_enter as a whole (rather than
+        one statement of it) when it fails to parse at all, which
+        build-time validation already rules out for any project this ever
+        runs against."""
         if not action.on_enter:
             return None
+        return Automaton.render_on_enter_script(action.on_enter, scope.for_actuators(action_name=action.name))
+
+    @staticmethod
+    def render_on_enter_script(script: str, actuator_scope: EvaluationScope) -> str | None:
+        """render_on_enter's own engine, on a bare script and an already
+        actuator-view scope — also what an OnEnterTask runs, later and
+        possibly in another process, against a rehydrated scope (see
+        tracking/actuators/on_enter_task.py): the same code path whether
+        the on-enter fires now or was deferred."""
+        action_name = actuator_scope.action_name
+        try:
+            statements = TriggerExpressionAnalyzer.on_enter_statements(script)
+        except SyntaxError as exc:
+            logger.warning("on-enter parsing failed for action '%s': %s", action_name, exc)
+            return None
         snippets = []
-        for line in action.on_enter.splitlines():
-            line = line.strip()
-            if not line:
-                continue
+        for _line_number, statement in statements:
+            assignment = TriggerExpressionAnalyzer.on_enter_assignment(statement)
+            target, expression = assignment if assignment is not None else (None, statement)
             try:
-                result = _OnEnterEval(names=scope).eval(line)
+                result = _OnEnterEval(names=actuator_scope).eval(expression)
             except Exception as exc:
                 logger.warning(
                     "on-enter expression evaluation failed for action '%s' ('%s'): %s",
-                    action.name, line, exc,
+                    action_name, statement, exc,
                 )
                 continue
-            if isinstance(result, str):
+            if target is not None:
+                actuator_scope[target] = result
+            elif isinstance(result, JsSnippet):
                 snippets.append(result)
         return "\n".join(snippets) if snippets else None
 

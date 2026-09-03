@@ -10,6 +10,10 @@ from conftest import parse_sse_result
 pytestmark = pytest.mark.regression
 
 PROJECT = """
+project:
+  id: identifiers_proj
+  family: shared
+
 init-action:
   target: a
 
@@ -44,39 +48,37 @@ def _zip_of(yaml_text: str) -> bytes:
     return buffer.getvalue()
 
 
-def _upload_and_activate(client, name: str, yaml_text: str) -> str:
-    """Returns the project's actual name — put_project derives it from
-    the upload's own project.id/project.ui-label when declared, so it
-    need not match `name`, the fallback used only when neither is."""
-    response = client.put(
-        f"/api/projects/{name}", content=_zip_of(yaml_text), headers={"Content-Type": "application/zip"}
+def _upload_and_activate(client, yaml_text: str) -> str:
+    """Returns the project's own id — always read off the upload's own
+    project.id, mandatory now, there is no name to request separately."""
+    response = client.post(
+        "/api/projects/upload", content=_zip_of(yaml_text), headers={"Content-Type": "application/zip"}
     )
     assert response.status_code == 200, response.text
-    project_name = parse_sse_result(response)["project_name"]
-    response = client.put(f"/api/projects/{project_name}/activate")
+    project_id = parse_sse_result(response)["project_id"]
+    response = client.put(f"/api/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
     # get_active_automaton_and_state requires a published revision.
-    response = client.post(f"/api/projects/{project_name}/publish", json={})
+    response = client.post(f"/api/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
-    return project_name
+    return project_id
 
 
 def test_returns_one_dict_per_namespace_for_the_active_project(client):
-    _upload_and_activate(client, "identifiers-proj", PROJECT)
+    project_id = _upload_and_activate(client, PROJECT)
 
-    response = client.get("/api/projects/identifiers-proj/identifiers")
+    response = client.get(f"/api/projects/{project_id}/identifiers")
 
     assert response.status_code == 200
     body = response.json()
     # "automaton" is always present, even empty with no other project.
     assert set(body) == {
-        "signal", "env", "system", "session", "session.metric", "user", "source", "actuator", "metric", "automaton",
+        "signal", "env", "session", "session.metric", "user", "source", "actuator", "metric", "automaton",
         "datetime", "datetime.timezone",
     }
     assert body["automaton"] == {}
     assert body["signal"] == {"myOwnSignal": "whatever this measures"}
     assert body["env"] == {"visits": "How many times this action has fired."}
-    assert set(body["system"]) == {"today", "time"}
     assert set(body["session"]) == {
         "current_session_duration_in_minutes", "last_user_session_datetime",
         "number_of_user_sessions", "state_duration_in_minutes",
@@ -100,12 +102,13 @@ def test_200_for_a_project_that_exists_but_has_never_been_published(client):
     """The identifier registry backs the design view's own autocomplete —
     it must reflect a signal/env key just declared in the draft, even
     before the project's very first publish."""
-    response = client.put(
-        "/api/projects/draft-only-proj", content=_zip_of(PROJECT), headers={"Content-Type": "application/zip"}
+    response = client.post(
+        "/api/projects/upload", content=_zip_of(PROJECT), headers={"Content-Type": "application/zip"}
     )
     assert response.status_code == 200, response.text
+    project_id = parse_sse_result(response)["project_id"]
 
-    response = client.get("/api/projects/draft-only-proj/identifiers")
+    response = client.get(f"/api/projects/{project_id}/identifiers")
 
     assert response.status_code == 200
     assert response.json()["env"] == {"visits": "How many times this action has fired."}
@@ -114,6 +117,7 @@ def test_200_for_a_project_that_exists_but_has_never_been_published(client):
 OTHER_PROJECT = """
 project:
   id: other_proj
+  family: shared
 
 init-action:
   target: x
@@ -129,14 +133,14 @@ states:
 
 
 def test_automaton_namespace_lists_every_other_project_never_the_active_one(client):
-    other_name = _upload_and_activate(client, "other-proj", OTHER_PROJECT)
-    _upload_and_activate(client, "identifiers-proj", PROJECT)  # re-activates identifiers-proj
+    other_id = _upload_and_activate(client, OTHER_PROJECT)
+    project_id = _upload_and_activate(client, PROJECT)  # re-activates identifiers_proj
 
-    response = client.get("/api/projects/identifiers-proj/identifiers")
+    response = client.get(f"/api/projects/{project_id}/identifiers")
 
     assert response.status_code == 200
     body = response.json()
     assert body["automaton"] == {}
-    assert "automaton.identifiers-proj" not in body  # never declared a project.id at all
-    assert body["automaton.other_proj"] == {"state": f"The '{other_name}' project's own current state."}
-    assert body["automaton.other_proj.env"] == {"budget": "Remaining shared budget."}
+    assert f"automaton.{project_id}" not in body  # a project never lists itself
+    assert body[f"automaton.{other_id}"] == {"state": f"The '{other_id}' project's own current state."}
+    assert body[f"automaton.{other_id}.env"] == {"budget": "Remaining shared budget."}

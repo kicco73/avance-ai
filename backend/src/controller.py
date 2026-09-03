@@ -10,7 +10,7 @@ from auth.auth_service import AuthService
 from chat.chat_service import ChatService
 from chat.ws_adapter import WsAdapter
 from db import Db
-from jobs import JobQueue
+from job import JobService
 from listen.listen_service import ListenService
 from project.project_service import ProjectService
 from talk.talk_service import TalkService
@@ -41,7 +41,7 @@ class AvanceController(object):
         test_service: TestService,
         auth_service: AuthService,
         test_event_broadcaster: QueueProgressBroadcaster | LastStatusBroadcaster,
-        job_queue: JobQueue,
+        job_service: JobService,
         version: str,
         services_config: dict,
         whatsapp_service: WhatsAppService | None = None,
@@ -56,16 +56,16 @@ class AvanceController(object):
         self.tracking_service = tracking_service
         self.auth_service = auth_service
         self.test_event_broadcaster = test_event_broadcaster
-        self.job_queue = job_queue
+        self.job_service = job_service
         self.version = version
 
         self.chat = ChatController(chat_service, project_service, talk_service, listen_service)
         self.edit_project = EditProjectController(chat_service, project_service)
         self.label_project = LabelProjectController(
-            chat_service, project_service, tracking_service, test_service, test_event_broadcaster, job_queue,
+            chat_service, project_service, tracking_service, test_service, test_event_broadcaster, job_service,
         )
         self.settings = SettingsController(
-            chat_service, project_service, db, version, test_event_broadcaster, job_queue, services_config,
+            chat_service, project_service, db, version, test_event_broadcaster, job_service, services_config,
         )
         self.auth = AuthController(auth_service)
         self.user = UserController(auth_service)

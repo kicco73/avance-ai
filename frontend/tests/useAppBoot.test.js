@@ -83,26 +83,26 @@ describe('useAppBoot', () => {
     return mounted.result
   }
 
-  describe('getActiveProjectName', () => {
+  describe('getActiveProjectId', () => {
     it('prefers the reported active project', async () => {
       getProjects.mockResolvedValue({ active: 'proj-a', projects: [{ name: 'proj-b' }] })
       const s = mount()
-      expect(await s.getActiveProjectName()).toBe('proj-a')
+      expect(await s.getActiveProjectId()).toBe('proj-a')
     })
 
     it('falls back to the first project when none is active', async () => {
       getProjects.mockResolvedValue({ active: null, projects: [{ name: 'proj-b' }] })
       const s = mount()
-      expect(await s.getActiveProjectName()).toBe('proj-b')
+      expect(await s.getActiveProjectId()).toBe('proj-b')
     })
 
     it('resolves null on a totally empty install or a fetch failure', async () => {
       getProjects.mockResolvedValue({ active: null, projects: [] })
       const s = mount()
-      expect(await s.getActiveProjectName()).toBeNull()
+      expect(await s.getActiveProjectId()).toBeNull()
 
       getProjects.mockRejectedValue(new Error('boom'))
-      expect(await s.getActiveProjectName()).toBeNull()
+      expect(await s.getActiveProjectId()).toBeNull()
     })
   })
 
@@ -281,7 +281,7 @@ describe('useAppBoot', () => {
       getState.mockResolvedValue({})
       getMe.mockResolvedValue({ role: 'user' })
       consumeInviteCode.mockReturnValueOnce('shared-id')
-      postRedeemInviteCode.mockResolvedValue({ project_name: 'shared-project' })
+      postRedeemInviteCode.mockResolvedValue({ project_id: 'shared-project' })
       activateProject.mockResolvedValue({})
       const s = mount()
 
@@ -291,14 +291,14 @@ describe('useAppBoot', () => {
       expect(postRedeemInviteCode).toHaveBeenCalledWith('shared-id')
       expect(activateProject).toHaveBeenCalledWith('shared-project')
       expect(liveChatProjectName.value).toBe('shared-project')
-      expect(getProjects).not.toHaveBeenCalled() // never fell back to getActiveProjectName
+      expect(getProjects).not.toHaveBeenCalled() // never fell back to getActiveProjectId
     })
 
     it('pushes an admin straight into chat, on the shared project, and loads its messages', async () => {
       getState.mockResolvedValue({})
       getMe.mockResolvedValue({ role: 'admin' })
       consumeInviteCode.mockReturnValueOnce('shared-id')
-      postRedeemInviteCode.mockResolvedValue({ project_name: 'shared-project' })
+      postRedeemInviteCode.mockResolvedValue({ project_id: 'shared-project' })
       activateProject.mockResolvedValue({})
       const s = mount()
 
@@ -314,7 +314,7 @@ describe('useAppBoot', () => {
       getState.mockResolvedValue({})
       getMe.mockResolvedValue({ role: 'supervisor' })
       consumeInviteCode.mockReturnValueOnce('shared-id')
-      postRedeemInviteCode.mockResolvedValue({ project_name: 'shared-project' })
+      postRedeemInviteCode.mockResolvedValue({ project_id: 'shared-project' })
       activateProject.mockResolvedValue({})
       const s = mount()
 
@@ -342,7 +342,7 @@ describe('useAppBoot', () => {
       getMe.mockResolvedValue({ role: 'user' })
       getProjects.mockResolvedValue({ active: 'proj-fallback', projects: [] })
       consumeInviteCode.mockReturnValueOnce('stale-id')
-      postRedeemInviteCode.mockResolvedValue({ project_name: null })
+      postRedeemInviteCode.mockResolvedValue({ project_id: null })
       const s = mount()
 
       s.startBootSequence()

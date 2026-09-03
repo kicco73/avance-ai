@@ -11,6 +11,8 @@ pytestmark = pytest.mark.contract
 def test_a_signal_named_after_a_metric_is_rejected():
     reserved = sorted(metric_names())[0]
     content = f"""
+project:
+  id: proj
 init-action:
   target: a
 signals:
@@ -27,6 +29,8 @@ states:
 @pytest.mark.parametrize("metric", sorted(metric_names()))
 def test_every_metric_name_individually_is_rejected_as_a_signal_name(metric):
     content = f"""
+project:
+  id: proj
 init-action:
   target: a
 signals:
@@ -42,6 +46,8 @@ states:
 
 def test_signals_not_matching_any_metric_name_build_fine():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 signals:
@@ -59,6 +65,8 @@ states:
 def test_a_trigger_may_reference_a_metric_name_with_no_matching_signal_declared():
     metric = sorted(metric_names())[0]
     content = f"""
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -80,11 +88,13 @@ states:
 def test_a_trigger_may_combine_a_declared_signal_and_a_metric_name():
     metric = sorted(metric_names())[0]
     content = f"""
-init-action:
-  target: a
+project:
+  id: proj
 signals:
   myOwnSignal:
     definition: "whatever"
+init-action:
+  target: a
 states:
   a:
     contextual-prompt: "hi"
@@ -102,6 +112,8 @@ states:
 
 def test_a_trigger_referencing_a_truly_unknown_name_is_still_rejected():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:

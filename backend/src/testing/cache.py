@@ -46,12 +46,12 @@ class TestCache:
         return run
 
     def create(
-        self, username: str | None, project_name: str, session_id: int | None, strategy: str,
+        self, username: str | None, project_id: str, session_id: int | None, strategy: str,
         project_draft_edit_count: int, session_labeling_revision: int | None, ai_model_snapshot: dict,
     ) -> dict:
         # FIXME: caller must hold locked().
         return self._db.create_test(
-            username, project_name, session_id, strategy,
+            username, project_id, session_id, strategy,
             project_draft_edit_count, session_labeling_revision, ai_model_snapshot,
         )
 

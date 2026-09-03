@@ -1,5 +1,5 @@
 import { computed, nextTick, ref } from 'vue'
-import { getProjectFiles, putProjectFile, putProjectFileBinary, deleteProjectFile, postAddLegalTerms } from '../api.js'
+import { getProjectFiles, putProjectFile, putProjectFileBinary, deleteProjectFile, renameProjectFile, postAddLegalTerms } from '../api.js'
 import { setApiError, clearApiError } from '../errorStore.js'
 import { confirmDialog, promptDialog, chooseDialog } from '../dialogStore.js'
 import { findActionLine, findAttachmentLine, findEnvKeyLine, findInitActionLine, findSignalLine, findStateLine } from '../indexYmlLineFinder.js'
@@ -43,7 +43,7 @@ const LEGAL_TERMS_FILE_NAME = 'legal/terms.md'
 // unsaved-changes guard around switching files, and jump-to-definition
 // cursor placement. `emit` is the component's own defineEmits — only
 // 'saved' is ever raised here (handleFileSaved).
-export function useProjectFiles(projectName, emit) {
+export function useProjectFiles(projectId, emit) {
   const filesLoading = ref(true)
   const files = ref([])
   const currentFileName = ref('index.yml')
@@ -110,7 +110,7 @@ export function useProjectFiles(projectName, emit) {
   async function loadFiles() {
     filesLoading.value = true
     try {
-      files.value = (await getProjectFiles(projectName)).files
+      files.value = (await getProjectFiles(projectId)).files
     } catch {
       // already surfaced via apiFetch
     } finally {
@@ -131,13 +131,16 @@ export function useProjectFiles(projectName, emit) {
 
   // Every entry point that would discard unsaved code routes through here
   // instead of running `run` directly: dirty means ask first (via
-  // runGuardedAction's chooseDialog), clean runs immediately.
+  // runGuardedAction's chooseDialog), clean runs immediately. Returns
+  // whatever `run` itself resolves to (or undefined, if the whole action
+  // never ran at all) — most callers still just fire this and ignore the
+  // result, same as ever, but one that needs to know whether `run` (e.g.
+  // a field save) actually succeeded can now await it.
   function guardedAction(label, run) {
     if (!activeEditorIsDirty.value) {
-      run()
-      return
+      return run()
     }
-    runGuardedAction(label, run)
+    return runGuardedAction(label, run)
   }
 
   const pendingCursorTarget = ref(null)
@@ -152,20 +155,20 @@ export function useProjectFiles(projectName, emit) {
       ]
     })
     if (choice === 'save') {
-      if (await activeEditor()?.save?.()) run()
-      return
+      if (await activeEditor()?.save?.()) return run()
+      return undefined
     }
     if (choice === 'discard') {
       // The whole point of "Discard": the active editor's dirty buffer
       // actually reverts to its last-loaded content.
       activeEditor()?.discard?.()
-      run()
-      return
+      return run()
     }
     // null (Cancel/backdrop/ESC) — a cursor jump that triggered this action
     // is moot once it's declined, so it shouldn't fire on some later,
     // unrelated action either.
     pendingCursorTarget.value = null
+    return undefined
   }
 
   // Entry point for both explorer clicks and post-upload auto-open.
@@ -223,7 +226,7 @@ export function useProjectFiles(projectName, emit) {
     const invalidNames = uploadedFiles.filter((file) => !UPLOADABLE_PATTERN.test(file.name)).map((file) => file.name)
     if (invalidNames.length) {
       setApiError(
-        `Only .txt, .yml/.yaml, .css, or image (.png/.jpg/.gif/.webp/.svg) files can be uploaded — ` +
+        `Only .txt, .md, .csv, .yml/.yaml, .css, or image (.png/.jpg/.gif/.webp/.svg) files can be uploaded — ` +
         `${invalidNames.map((name) => `"${name}"`).join(', ')} ${invalidNames.length === 1 ? "isn't" : "aren't"}.`
       )
       return
@@ -245,10 +248,10 @@ export function useProjectFiles(projectName, emit) {
       for (const file of uploadedFiles) {
         const targetName = canonicalUploadName(file.name)
         if (IMAGE_PATTERN.test(file.name)) {
-          await putProjectFileBinary(projectName, targetName, file)
+          await putProjectFileBinary(projectId, targetName, file)
         } else {
           const text = await file.text()
-          await putProjectFile(projectName, targetName, text)
+          await putProjectFile(projectId, targetName, text)
         }
       }
       await loadFiles()
@@ -270,7 +273,7 @@ export function useProjectFiles(projectName, emit) {
     creatingFile.value = true
     clearApiError()
     try {
-      await putProjectFile(projectName, name, content)
+      await putProjectFile(projectId, name, content)
       await loadFiles()
       justAddedFileName.value = name
       await selectFile(name)
@@ -311,7 +314,7 @@ export function useProjectFiles(projectName, emit) {
     creatingFile.value = true
     clearApiError()
     try {
-      await postAddLegalTerms(projectName)
+      await postAddLegalTerms(projectId)
       await loadFiles()
       justAddedFileName.value = LEGAL_TERMS_FILE_NAME
       await selectFile(LEGAL_TERMS_FILE_NAME)
@@ -344,7 +347,7 @@ export function useProjectFiles(projectName, emit) {
     deletingFile.value = fileName
     clearApiError()
     try {
-      await deleteProjectFile(projectName, fileName)
+      await deleteProjectFile(projectId, fileName)
       await loadFiles()
       if (fileName === currentFileName.value || cascadeAssets.includes(currentFileName.value)) {
         await switchFile('index.yml')
@@ -356,16 +359,62 @@ export function useProjectFiles(projectName, emit) {
     }
   }
 
+  function basenameOf(name) {
+    const idx = name.lastIndexOf('/')
+    return idx === -1 ? name : name.slice(idx + 1)
+  }
+
+  // index.yml/index.css/legal/terms.md are fixed names the rest of the
+  // system assumes exist exactly as spelled (see editor.py's own
+  // rename_project_file) — never offered for rename.
+  const renamingFile = ref(null)
+
+  async function handleRenameFile(fileName, newBasename) {
+    const trimmed = newBasename.trim()
+    if (!trimmed || trimmed === basenameOf(fileName)) return
+    renamingFile.value = fileName
+    clearApiError()
+    try {
+      const result = await renameProjectFile(projectId, fileName, trimmed)
+      await loadFiles()
+      if (fileName === currentFileName.value) {
+        // The editor remounts fresh under the new :key, picking up the
+        // (unchanged) content itself — see ProjectDesignPanel.vue.
+        switchFile(result.new_name)
+      } else {
+        // index.yml/index.css may have had a reference to the old
+        // basename auto-rewritten server-side — refresh whichever of them
+        // is open (renaming one of *them* is never allowed, so this is
+        // always a genuinely different file) so its buffer doesn't go stale.
+        if (currentFileName.value === 'index.yml') await indexYmlEditorRef.value?.reload?.()
+        if (currentFileName.value === 'index.css') await indexCssEditorRef.value?.reload?.()
+      }
+    } catch {
+      // already surfaced via apiFetch
+    } finally {
+      renamingFile.value = null
+    }
+  }
+
+  // The currently-open file's own Undo/Redo just walked into a rename
+  // step (see CodeEditor.vue's own 'renamed' emit) — the server already
+  // renamed it, this just catches the explorer/tab up to that new name.
+  async function handleFileRenamedByHistory(newName) {
+    await loadFiles()
+    switchFile(newName)
+  }
+
   function handleFileSaved() {
     emit('saved')
   }
 
   return {
-    filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile,
+    filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile, renamingFile,
     designPanelRef, codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
     currentFileIsImage, currentFileIsMarkdown, isBehaviorNodeSelected, hasTheme,
     activeEditorIsDirty, activeEditor,
     loadFiles, switchFile, guardedAction, selectFile, jumpToDefinition,
-    handleUploadFile, handleNewAttachment, handleNewAspect, handleNewLegal, handleDeleteFile, handleFileSaved,
+    handleUploadFile, handleNewAttachment, handleNewAspect, handleNewLegal, handleDeleteFile, handleRenameFile,
+    handleFileRenamedByHistory, handleFileSaved,
   }
 }

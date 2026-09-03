@@ -53,10 +53,10 @@ class SignalAggregationJob(_AggregationJob):
     ids instead of holding the whole aggregation."""
 
     def __init__(
-        self, service: "TestService", project_name: str, signal_name: str, strategy: str, session_ids: list[int],
+        self, service: "TestService", project_id: str, signal_name: str, strategy: str, session_ids: list[int],
         observations_cache: SharedObservationsCache | None = None,
     ) -> None:
-        super().__init__(service, project_name, 'signal', signal_name, strategy)
+        super().__init__(service, project_id, 'signal', signal_name, strategy)
         self._signal_name = signal_name
         self._session_ids = session_ids
         self._sessions_job: PooledAggregationJob | None = None
@@ -70,7 +70,7 @@ class SignalAggregationJob(_AggregationJob):
         self._observations_cache = observations_cache if observations_cache is not None else SharedObservationsCache()
 
     def _resolve_or_construct_dependencies(self) -> tuple[CancelableJob, ...]:
-        self._sessions_job = self._service._sessions_job(self._project_name, self._strategy)
+        self._sessions_job = self._service._sessions_job(self._project_id, self._strategy)
         return (self._sessions_job,)
 
     def _prepare(self) -> tuple[int, tuple[CancelableJob, ...]]:

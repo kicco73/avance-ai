@@ -16,7 +16,7 @@ export { applyAspect, invalidateSkin, setSkinCss } from './chatSkin.js'
 export const liveStore = createChatStore({
   kind: 'live',
   getCurrentSession: (sessionId) => getCurrentSession(sessionId),
-  getSessionsList: (includeImported, projectName) => getSessions(projectName, includeImported),
+  getSessionsList: (includeImported, projectId) => getSessions(projectId, includeImported),
   createSession: () => postCreateSession(),
   confirmNewSession: true,
   useAutoTracking: false,
@@ -25,11 +25,11 @@ export const liveStore = createChatStore({
 
 export const {
   state, currentSessionId, selectedSessionActive, projectPaused, projectPausedReason,
-  sessions, sessionsLoading, sessionsPanelOpen, currentProjectName,
+  sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
   messages, historyLoaded, chatLoading, chatStatus, actionLoading,
   autoTrackingEnabled, autoTrackingLoading, draft, turnCount,
   handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
   selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking,
   toggleAudio, handleSend, handleVoiceMessage, handleResend, handleReact, handleAction,
-  clearChatUi, handleNewSession,
+  clearChatUi, handleNewSession, handleCloseSession,
 } = liveStore

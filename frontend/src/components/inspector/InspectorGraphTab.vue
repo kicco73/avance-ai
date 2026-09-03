@@ -7,7 +7,7 @@ import InspectorGraph from './InspectorGraph.vue'
 import InspectorDetailCard from './InspectorDetailCard.vue'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   highlightedStateKey: { type: String, default: null },
   autoJumpOnHighlightChange: { type: Boolean, default: false },
   firedActionEdge: { type: Object, default: null },
@@ -53,7 +53,7 @@ defineExpose({ loadGraph, resize, fit, refresh, stateElementFor })
   <div class="inspector-graph-tab">
     <InspectorGraph
       ref="graphRef"
-      :project-name="projectName"
+      :project-id="projectId"
       :highlighted-state-key="highlightedStateKey"
       :auto-jump-on-highlight-change="autoJumpOnHighlightChange"
       :fired-action-edge="firedActionEdge"

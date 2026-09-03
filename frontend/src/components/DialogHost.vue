@@ -6,8 +6,9 @@
 // watch below; everything about focus trapping, ESC handling, and
 // focus-return on close is the browser's own <dialog> behavior, not
 // reimplemented here.
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, provide, ref, watch } from 'vue'
 import { activeDialog, resolveActiveDialog } from '../dialogStore.js'
+import { renderMarkdown } from '../markdown.js'
 import logoUrl from '../assets/avance-logo.png'
 
 const CLOSE_ANIMATION_MS = 180
@@ -64,6 +65,13 @@ function onNativeClose() {
   resolveActiveDialog(pendingResult)
 }
 
+// A 'custom' dialog's own component has no dialog-actions row of its own
+// (see the template below) — its content is the only thing that could
+// ever offer a real "OK" button, so this is how it reaches the same
+// closeWith() every other kind's own button already uses. Unused by
+// every other kind, which close through their own buttons directly.
+provide('closeDialog', () => closeWith(null))
+
 // ESC fires 'cancel' (cancelable) before the native close — prevented so
 // closeWith's own animated sequence runs instead of an instant vanish,
 // while still treating ESC as an ordinary cancel.
@@ -103,6 +111,7 @@ function chooseOption(id) {
     v-if="activeDialog"
     ref="dialogEl"
     class="app-dialog"
+    :class="{ 'app-dialog-wide': activeDialog.wide }"
     @cancel="onCancel"
     @close="onNativeClose"
     @click="onBackdropClick"
@@ -126,8 +135,13 @@ function chooseOption(id) {
         <component :is="activeDialog.component" v-bind="activeDialog.props" />
       </template>
       <template v-else>
-        <h2 class="dialog-title">{{ activeDialog.title }}</h2>
-        <p v-if="activeDialog.body" class="dialog-body">{{ activeDialog.body }}</p>
+        <h2 v-if="activeDialog.title" class="dialog-title">{{ activeDialog.title }}</h2>
+        <div
+          v-if="activeDialog.body && activeDialog.markdown"
+          class="dialog-body dialog-body-markdown"
+          v-html="renderMarkdown(activeDialog.body)"
+        ></div>
+        <p v-else-if="activeDialog.body" class="dialog-body">{{ activeDialog.body }}</p>
       </template>
 
       <template v-if="activeDialog.kind === 'prompt'">
@@ -245,6 +259,10 @@ function chooseOption(id) {
   width: calc(100vw - 2rem);
 }
 
+.app-dialog-wide {
+  max-width: 640px;
+}
+
 .dialog-card {
   position: relative;
   background: white;
@@ -294,6 +312,18 @@ function chooseOption(id) {
   line-height: 1.5;
   color: #444;
   white-space: pre-line;
+}
+
+.dialog-body-markdown {
+  white-space: normal;
+}
+
+.dialog-body-markdown :deep(p) {
+  margin: 0 0 0.6rem;
+}
+
+.dialog-body-markdown :deep(p:last-child) {
+  margin-bottom: 0;
 }
 
 .dialog-input {

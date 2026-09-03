@@ -7,7 +7,7 @@ import { useSignalChangeFlash } from './signalDisplay.js'
 
 const props = defineProps({
   untilMessageId: { type: [Number, String], default: null },
-  projectName: { type: String, required: true }
+  projectId: { type: String, required: true }
 })
 
 const metricsLoading = ref(false)
@@ -17,7 +17,7 @@ const { recentlyChanged: recentlyChangedMetrics, markChanged: markMetricsChanged
 async function loadMetrics() {
   metricsLoading.value = true
   try {
-    const nextMetrics = await getMetrics(props.projectName, props.untilMessageId ?? undefined)
+    const nextMetrics = await getMetrics(props.projectId, props.untilMessageId ?? undefined)
     markMetricsChanged(metrics.value, nextMetrics)
     metrics.value = nextMetrics
   } catch {} finally {

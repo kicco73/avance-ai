@@ -197,8 +197,8 @@ class AuthService:
             phone_number, "whatsapp", None, None, None, None, invite_code, invite_exempt=False,
         )
         self._db.set_whatsapp_phone_number(phone_number, phone_number)
-        self._db.set_active_project_name(invite.project_name_id, phone_number)
-        return invite.project_name_id
+        self._db.set_active_project_id(invite.project_id, phone_number)
+        return invite.project_id
 
     def is_invite_exempt(self, email: str) -> bool:
         """App.vue's own TermsView-vs-InviteRequiredView gate for a

@@ -10,11 +10,11 @@ import { setCapabilities, setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSess
 // App.vue's own boot sequence: the backend-readiness ping loop, resolving
 // which view a freshly-booted session lands on, and every navigate-away
 // action (login/logout/terms accept-reject) that re-enters or exits this
-// sequence. `currentUserProfile`/`currentUserRole`/`labelProjectName`/
-// `liveChatProjectName`/`pushedView`/`showProfile`/`navDirection` are
+// sequence. `currentUserProfile`/`currentUserRole`/`labelProjectId`/
+// `liveChatProjectId`/`pushedView`/`showProfile`/`navDirection` are
 // App.vue's own — this composable only reads/resolves them.
 export function useAppBoot(
-  currentUserProfile, currentUserRole, labelProjectName, liveChatProjectName,
+  currentUserProfile, currentUserRole, labelProjectId, liveChatProjectId,
   pushedView, showProfile, navDirection
 ) {
   // Initial-boot backend readiness gate — entirely separate from the shared
@@ -131,7 +131,7 @@ export function useAppBoot(
   // backend, every single time. A Manage projects row click, Label
   // Sessions' own ProjectsMenu pick, etc. always carry their own project
   // name already and have no reason to call this at all.
-  async function getActiveProjectName() {
+  async function getActiveProjectId() {
     try {
       const res = await getProjects()
       // No active project set at all (a fresh install, or one manually
@@ -159,10 +159,10 @@ export function useAppBoot(
     const code = consumeInviteCode()
     if (!code) return null
     try {
-      const { project_name: projectName } = await postRedeemInviteCode(code)
-      if (!projectName) return null
-      await activateProject(projectName)
-      return projectName
+      const { project_id: projectId } = await postRedeemInviteCode(code)
+      if (!projectId) return null
+      await activateProject(projectId)
+      return projectId
     } catch {
       return null // already surfaced via apiFetch; falls back to the normal landing
     }
@@ -191,15 +191,15 @@ export function useAppBoot(
     } catch {
       return // already surfaced via apiFetch; falls back to the chat-live default
     }
-    const sharedProjectName = await activateInvitedProject()
+    const sharedProjectId = await activateInvitedProject()
     if (currentUserRole.value === 'supervisor') {
-      labelProjectName.value = sharedProjectName ?? await getActiveProjectName()
+      labelProjectId.value = sharedProjectId ?? await getActiveProjectId()
     }
     if (currentUserRole.value === 'user') {
-      liveChatProjectName.value = sharedProjectName ?? await getActiveProjectName()
+      liveChatProjectId.value = sharedProjectId ?? await getActiveProjectId()
     }
-    if (currentUserRole.value === 'admin' && sharedProjectName) {
-      liveChatProjectName.value = sharedProjectName
+    if (currentUserRole.value === 'admin' && sharedProjectId) {
+      liveChatProjectId.value = sharedProjectId
       pushedView.value = 'chat'
     }
   }
@@ -310,7 +310,7 @@ export function useAppBoot(
 
   return {
     bootStatus, needsTerms, termsError, inviteExempt,
-    getActiveProjectName, resolveLandingView, startBootSequence,
+    getActiveProjectId, resolveLandingView, startBootSequence,
     handleLoggedIn, handleTermsAccept, handleTermsReject, handleLogout,
   }
 }

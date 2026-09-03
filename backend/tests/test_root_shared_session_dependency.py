@@ -21,9 +21,9 @@ pytestmark = pytest.mark.contract
 def _make_labeled_session(client, app_db, project_name, username):
     Session().user = username
     # activate_project_idempotent needs an already-active project to
-    # compare against — set_active_project_name directly is the same
+    # compare against — set_active_project_id directly is the same
     # effect for a brand new username with no chat history yet.
-    app_db.set_active_project_name(project_name, username)
+    app_db.set_active_project_id(project_name, username)
     session = client.get("/api/chat/session").json()
     client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
     client.put(f"/api/chat/sessions/{session['id']}/labeled", json={"labeled": True})

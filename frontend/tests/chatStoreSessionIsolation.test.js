@@ -16,6 +16,7 @@ vi.mock('../src/api.js', () => ({
   getSessions: vi.fn(),
   getTestSessions: vi.fn(),
   deleteSession: vi.fn(),
+  postCloseSession: vi.fn(),
   getMessages: vi.fn(),
   postAction: vi.fn(),
   getAutoTracking: vi.fn(),
@@ -107,30 +108,48 @@ describe('the live store and the test store always route to their own endpoints'
     expect(api.postCreateSession).not.toHaveBeenCalled()
   })
 
-  it("the live store's handleNewSession runs a brand new session's own on-enter (init-action fired it)", async () => {
-    api.postCreateSession.mockResolvedValue({ id: 5, active: true, 'on-enter': 'celebrate()' })
+  it("the live store's handleNewSession never runs an on-enter off the response — init-action's on-enter arrives over the websocket", async () => {
+    api.postCreateSession.mockResolvedValue({ id: 5, active: true })
     api.getCurrentSession.mockResolvedValue({ id: 5, active: true, state: { key: 'x', ui_label: 'X', actions: [] } })
 
     const onEnterActions = await import('../src/onEnterActions.js')
     await chatStore.handleNewSession()
 
-    expect(onEnterActions.runOnEnterScript).toHaveBeenCalledWith('celebrate()')
+    expect(onEnterActions.runOnEnterScript).not.toHaveBeenCalled()
   })
 
-  it("the test store's handleReset calls postResetTestSessions and runs its own on-enter (also entering through init-action)", async () => {
-    api.postResetTestSessions.mockResolvedValue({ key: 'a', ui_label: 'A', actions: [], 'on-enter': 'celebrate()' })
+  it("the test store's handleReset calls postResetTestSessions and applies the returned state as-is (its on-enter arrives over the websocket)", async () => {
+    api.postResetTestSessions.mockResolvedValue({ key: 'a', ui_label: 'A', actions: [] })
     api.getCurrentTestSession.mockResolvedValue({ id: 6, active: true, state: { key: 'a', ui_label: 'A', actions: [] } })
 
     const onEnterActions = await import('../src/onEnterActions.js')
     await testChatStore.handleReset()
 
     expect(api.postResetTestSessions).toHaveBeenCalledWith('my-project')
-    expect(onEnterActions.runOnEnterScript).toHaveBeenCalledWith('celebrate()')
-    // The "on-enter" wire key must never leak into the displayed state object.
+    expect(onEnterActions.runOnEnterScript).not.toHaveBeenCalled()
     expect(testChatStore.state.value).toEqual({ key: 'a', ui_label: 'A', actions: [] })
   })
 
   it('the live store has no handleReset at all — nothing in the real app ever calls it', () => {
     expect(chatStore.liveStore.handleReset).toBeNull()
+  })
+
+  it("the live store's handleCloseSession closes the current session, no confirmation, and reflects the closed state back", async () => {
+    api.getCurrentSession.mockResolvedValue({ id: 7, active: true, state: { key: 'x', ui_label: 'X', actions: [] } })
+    await chatStore.loadMessages()
+    const dialogStore = await import('../src/dialogStore.js')
+
+    api.postCloseSession.mockResolvedValue({ id: 7, active: false })
+    await chatStore.handleCloseSession()
+
+    expect(dialogStore.confirmDialog).not.toHaveBeenCalled()
+    expect(api.postCloseSession).toHaveBeenCalledWith(7)
+    expect(chatStore.selectedSessionActive.value).toBe(false)
+  })
+
+  it('handleCloseSession is a no-op with no current session yet', async () => {
+    await chatStore.handleCloseSession()
+
+    expect(api.postCloseSession).not.toHaveBeenCalled()
   })
 })

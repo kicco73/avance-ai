@@ -137,30 +137,30 @@ class TrackingEngine:
         *,
         origin: str,
         username: str | None = None,
-        project_name: str | None = None,
-    ) -> tuple[int, str | None]:
-        """`username`/`project_name`: optional, defaulting to None meaning
+        project_id: str | None = None,
+    ) -> int:
+        """`username`/`project_id`: optional, defaulting to None meaning
         "don't publish" — a test replay has no real user/project of
         its own and must never trigger a StateChanged/EnvChanged a wake-up
-        handler could act on. The second element of the returned tuple is
-        the fired action's own on-enter, already rendered to wire-ready JS
-        (see apply_action_env) — None when there was no transition or
-        nothing on-enter renders to."""
+        handler could act on. Returns the tracking row id. The fired
+        action's own on-enter is scheduled as a task by apply_action_env,
+        never returned: it reaches the browser over the websocket."""
         if action is None:
             # No transition fired — just the evaluation itself is worth
             # keeping (see db.get_latest_signal_snapshot, Tracking.values).
-            return self._sink.save_signal_snapshot(signal_values, session_id, message_id), None
+            return self._sink.save_signal_snapshot(signal_values, session_id, message_id)
 
         # Always saved, self-loop or not — a fired trigger is a real event
         # worth a history entry either way; a self-loop just never bumps
         # history_cutoff's own timestamp.
 
-        on_enter = self.apply_action_env(automaton, action, signal_values, state.key, username=username, project_name=project_name)
-        tracking_id = self.record_transition(
-            automaton, state, action, signal_values, session_id, message_id,
-            origin=origin, username=username, project_name=project_name,
+        self.apply_action_env(
+            automaton, action, signal_values, state.key, username=username, project_id=project_id, session_id=session_id,
         )
-        return tracking_id, on_enter
+        return self.record_transition(
+            automaton, state, action, signal_values, session_id, message_id,
+            origin=origin, username=username, project_id=project_id,
+        )
 
     def record_transition(
         self,
@@ -173,7 +173,7 @@ class TrackingEngine:
         *,
         origin: str,
         username: str | None = None,
-        project_name: str | None = None,
+        project_id: str | None = None,
     ) -> int:
         # FIXME: caller must have already applied action's own env: (via
         # apply_action_env) itself — calling apply_transition too for the
@@ -188,21 +188,21 @@ class TrackingEngine:
             message_id=message_id,
             origin=origin,
         )
-        self.notify_transition(username, project_name, state.key, action.target)
+        self.notify_transition(username, project_id, state.key, action.target)
         return tracking_id
 
     @staticmethod
     def notify_transition(
-        username: str | None, project_name: str | None, old_state: str, new_state: str
+        username: str | None, project_id: str | None, old_state: str, new_state: str
     ) -> None:
         """Publishes StateChanged for a *real* transition only (old_state
         != new_state) — a no-op when either identity is missing. Called
         right after save_transition, from both the auto-tracking and manual-action paths."""
-        if username is None or project_name is None:
+        if username is None or project_id is None:
             return
         if old_state == new_state:
             return
-        publish(StateChanged(username=username, project_name=project_name, from_state=old_state, to_state=new_state))
+        publish(StateChanged(username=username, project_id=project_id, from_state=old_state, to_state=new_state))
 
     def apply_action_env(
         self,
@@ -212,34 +212,41 @@ class TrackingEngine:
         state_key: str,
         *,
         username: str | None = None,
-        project_name: str | None = None,
-    ) -> str | None:
+        project_id: str | None = None,
+        session_id: int | None = None,
+    ) -> None:
         """Applies `action`'s own `env:` updates to the current scope —
         shared by both the auto-tracking and manual-action paths (the
         latter fires with empty signal_values). Publishes one EnvChanged
-        per key actually written. Also renders `action.on_enter` (§6.5's
-        actuator.* calls, e.g. celebrate()/notify()/send_mail()) against
-        that same scope, returning the wire-ready JS text (or None) for
-        the caller to attach to its own "on-enter" response."""
+        per key actually written. Then hands `action.on_enter` (§6.5's
+        actuator.* calls) to the scope's own actuator set, which runs it
+        as an OnEnterTask due now — never inline here: actuator.prompt
+        is a model call, send_mail a network call, and the browser gets
+        whatever they produce over the websocket (see
+        tracking/actuators/on_enter_task.py). `session_id`: the firing
+        session, for actuator.prompt's own conversation history."""
         if not action.env and not action.on_enter:
-            return None
-        scope = self._scope_builder.build(automaton, state_key, signal_values)
+            return
+        scope = self._scope_builder.build(automaton, state_key, signal_values, session_id=session_id)
         if action.env:
             updates = automaton.eval_action_env(action, scope)
             if updates:
                 self._env.update_action_set(updates)
-                if username is not None and project_name is not None:
+                if username is not None and project_id is not None:
                     for key, value in updates.items():
-                        publish(EnvChanged(username=username, project_name=project_name, key=key, value=value))
-        return automaton.render_on_enter(action, scope) if action.on_enter else None
+                        publish(EnvChanged(username=username, project_id=project_id, key=key, value=value))
+        if action.on_enter:
+            scope["actuator"].schedule_on_enter(action, scope, session_id=session_id)
 
-    def render_on_enter(self, automaton: Automaton, action: Action, state_key: str) -> str | None:
-        """`action.on_enter` rendered against a fresh scope, with no env
-        applied — for a caller reporting an action's on-enter outside a
+    def schedule_on_enter(
+        self, automaton: Automaton, action: Action, state_key: str, session_id: int | None = None,
+    ) -> None:
+        """`action.on_enter` scheduled against a fresh scope, with no env
+        applied — for a caller firing an action's on-enter outside a
         real transition/env-apply path (a brand-new session's own
         init-action, a test-session reset), where env: is either
         irrelevant or already handled elsewhere."""
         if not action.on_enter:
-            return None
-        scope = self._scope_builder.build(automaton, state_key, None)
-        return automaton.render_on_enter(action, scope)
+            return
+        scope = self._scope_builder.build(automaton, state_key, None, session_id=session_id)
+        scope["actuator"].schedule_on_enter(action, scope, session_id=session_id)

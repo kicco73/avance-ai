@@ -418,10 +418,14 @@ class AppConfig:
             driver = driver.strip()
             ui_label, ui_description = cls._parse_ui_fields(entry, driver, "ai-service", i, path)
             modes = cls._parse_ai_service_modes(entry, i, path)
+            token_budget_per_day = entry.get("token-budget-per-day", 1_000_000)
+            if isinstance(token_budget_per_day, bool) or not isinstance(token_budget_per_day, int) or token_budget_per_day <= 0:
+                raise ConfigError(f"{path}: 'ai-service.providers[{i}].token-budget-per-day' must be a positive integer if present.")
             services.append(AIServiceConfig(
                 driver=driver, model=model.strip(), key=key, url=url,
                 ui_label=ui_label, ui_description=ui_description,
                 max_output_tokens=max_output_tokens, modes=modes,
+                token_budget_per_day=token_budget_per_day,
             ))
         # AiService.for_live/for_test each filter this same list down to
         # only the entries whose own modes include that one (see
@@ -541,7 +545,10 @@ class AppConfig:
             "ai": {
                 "max-output-tokens": self.ai_services[0].max_output_tokens,
                 "providers": [
-                    {**self._public_provider_fields(p), "url": p.url, "modes": list(p.modes)}
+                    {
+                        **self._public_provider_fields(p), "url": p.url, "modes": list(p.modes),
+                        "token-budget-per-day": p.token_budget_per_day,
+                    }
                     for p in self.ai_services
                 ],
             },

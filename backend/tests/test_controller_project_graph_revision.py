@@ -9,6 +9,7 @@ import pytest
 pytestmark = pytest.mark.contract
 
 TWO_STATE_YML = (
+    "project:\n  id: proj\n"
     "init-action:\n  target: a\n"
     "states:\n"
     "  a:\n"
@@ -21,6 +22,7 @@ TWO_STATE_YML = (
 )
 
 THREE_STATE_YML = (
+    "project:\n  id: proj\n"
     "init-action:\n  target: a\n"
     "states:\n"
     "  a:\n"
@@ -39,7 +41,7 @@ def _setup_pinned_session(client) -> int:
     """A live session pinned to revision 0 (a two-state project) — firing
     a real action first establishes current_state reliably before the
     later edit/publish below."""
-    client.put("/api/projects/proj", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+    client.post("/api/projects/upload", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
     client.post("/api/projects/proj/publish", json={})
 
     session_response = client.get("/api/chat/session")
@@ -83,7 +85,7 @@ class TestGetProjectGraphRevision:
         assert current.json()["revision"] == 1
 
     def test_a_test_session_always_tracks_the_live_draft(self, client):
-        client.put("/api/projects/proj", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+        client.post("/api/projects/upload", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
         client.post("/api/projects/proj/publish", json={})
 
         test_session_response = client.post("/api/projects/proj/test-sessions")
@@ -103,7 +105,7 @@ class TestGetProjectGraphRevision:
         assert {n["state"]["key"] for n in response.json()["nodes"]} == {"a", "b", "c"}
 
     def test_unknown_session_id_is_404(self, client):
-        client.put("/api/projects/proj", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+        client.post("/api/projects/upload", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
 
         response = client.get("/api/projects/proj/graph?session_id=999999")
 
@@ -112,7 +114,7 @@ class TestGetProjectGraphRevision:
 
 class TestGetProjectSignalsRevision:
     def test_a_live_session_stays_pinned_to_its_own_published_revision(self, client):
-        client.put("/api/projects/proj", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+        client.post("/api/projects/upload", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
         client.post("/api/projects/proj/publish", json={})
         session_response = client.get("/api/chat/session")
         session_id = session_response.json()["id"]
@@ -134,7 +136,7 @@ class TestGetProjectSignalsRevision:
 
 class TestGetProjectEnvKeysRevision:
     def test_a_live_session_stays_pinned_to_its_own_published_revision(self, client):
-        client.put("/api/projects/proj", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+        client.post("/api/projects/upload", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
         client.post("/api/projects/proj/publish", json={})
         session_response = client.get("/api/chat/session")
         session_id = session_response.json()["id"]

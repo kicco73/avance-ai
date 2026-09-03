@@ -16,33 +16,37 @@ export function postCreateSession() {
 // EditProjectView's embedded "Test" chat — the one place a session can
 // exist against an unpublished revision. Which revision applies is
 // decided by which endpoint is called, never by a caller-supplied flag.
-export function getCurrentTestSession(sessionId, projectName) {
+export function getCurrentTestSession(sessionId, projectId) {
   const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-sessions/current${query}`)
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/test-sessions/current${query}`)
 }
 
-export function postCreateTestSession(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-sessions`, { method: 'POST' })
+export function postCreateTestSession(projectId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/test-sessions`, { method: 'POST' })
 }
 
-export function getSessions(projectName, includeImported = false) {
+export function getSessions(projectId, includeImported = false) {
   const query = includeImported ? '?include_imported=true' : ''
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions${query}`)
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/sessions${query}`)
 }
 
 // EditProjectView's embedded "Test" chat's own Sessions panel — a
 // separate list from getSessions: a "Test" session never appears there,
 // and a real one never appears here.
-export function getTestSessions(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-sessions`)
+export function getTestSessions(projectId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/test-sessions`)
 }
 
-export function postResetTestSessions(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-sessions/reset`, { method: 'POST' })
+export function postResetTestSessions(projectId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/test-sessions/reset`, { method: 'POST' })
 }
 
 export function deleteSession(sessionId) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
+}
+
+export function postCloseSession(sessionId) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/close`, { method: 'POST' })
 }
 
 export function getMessages(sessionId) {
@@ -57,9 +61,9 @@ export function createChatSocket() {
   return new WebSocket(WS_URL)
 }
 
-export function createTestEventsSource(projectName) {
+export function createTestEventsSource(projectId) {
   return new EventSource(
-    `${API_URL}/projects/${encodeURIComponent(projectName)}/test-events`, { withCredentials: true }
+    `${API_URL}/projects/${encodeURIComponent(projectId)}/test-events`, { withCredentials: true }
   )
 }
 

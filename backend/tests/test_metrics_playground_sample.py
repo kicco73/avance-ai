@@ -7,22 +7,25 @@ from pathlib import Path
 
 import pytest
 
+from conftest import parse_sse_result
+
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
 
 
-def _upload_and_activate(client, name: str = "metrics-playground"):
+def _upload_and_activate(client):
     content = (SAMPLES_DIR / "Metrics Playground.zip").read_bytes()
-    response = client.put(f"/api/projects/{name}", content=content, headers={"Content-Type": "application/zip"})
+    response = client.post("/api/projects/upload", content=content, headers={"Content-Type": "application/zip"})
     assert response.status_code == 200, response.text
-    response = client.put(f"/api/projects/{name}/activate")
+    project_id = parse_sse_result(response)["project_id"]
+    response = client.put(f"/api/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
-    response = client.post(f"/api/projects/{name}/publish", json={})
+    response = client.post(f"/api/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
-    return name
+    return project_id
 
 
-def _metric_values(client) -> dict[str, float]:
-    return {m["name"]: m["value"] for m in client.get("/api/projects/metrics-playground/metrics").json()}
+def _metric_values(client, project_id: str) -> dict[str, float]:
+    return {m["name"]: m["value"] for m in client.get(f"/api/projects/{project_id}/metrics").json()}
 
 
 @pytest.mark.contract
@@ -39,10 +42,10 @@ def test_metric_values_never_include_a_non_session_scoped_metric(client):
     """retention/activity_consistency's scope excludes one_session, the
     only context a chat turn's trigger evaluation runs in — so neither
     metric appears here."""
-    _upload_and_activate(client)
+    project_id = _upload_and_activate(client)
     client.get("/api/chat/session")
 
-    values = _metric_values(client)
+    values = _metric_values(client, project_id)
 
     assert "retention" not in values
     assert "activity_consistency" not in values

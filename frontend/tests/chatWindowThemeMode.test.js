@@ -60,7 +60,7 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
   })
 
   it('mounting ChatWindow with theme-mode="manual" clears the shared skin tag', async () => {
-    chatStore.currentProjectName.value = 'proj'
+    chatStore.currentProjectId.value = 'proj'
     chatStore.currentSessionId.value = 1
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
 
@@ -77,8 +77,8 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
     const chatSkin = await import('../src/chatSkin.js')
     const testChatStore = await import('../src/testChatStore.js')
     testChatStore.setTestProject('test-proj')
-    api.getCurrentSession.mockResolvedValue({ id: 1, project_name: 'live-proj', active: true, state: { key: 'live', ui_label: 'Live', actions: [] } })
-    api.getCurrentTestSession.mockResolvedValue({ id: 99, project_name: 'test-proj', active: true, state: { key: 'test', ui_label: 'Test', actions: [] } })
+    api.getCurrentSession.mockResolvedValue({ id: 1, project_id: 'live-proj', active: true, state: { key: 'live', ui_label: 'Live', actions: [] } })
+    api.getCurrentTestSession.mockResolvedValue({ id: 99, project_id: 'test-proj', active: true, state: { key: 'test', ui_label: 'Test', actions: [] } })
     api.getMessages.mockResolvedValue([])
 
     const ChatWindow = (await import('../src/components/chat/ChatView.vue')).default
@@ -112,7 +112,7 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
     let resolveFetch
     fetchMock.mockReturnValue(new Promise((resolve) => { resolveFetch = resolve }))
 
-    chatStore.currentProjectName.value = 'proj'
+    chatStore.currentProjectId.value = 'proj'
     chatStore.currentSessionId.value = 1
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1)) // the fetch is now in flight
 

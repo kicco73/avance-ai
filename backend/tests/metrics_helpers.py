@@ -9,7 +9,7 @@ import pandas as pd
 
 from metrics.metrics_framework.dto import UserAnalyticsData
 
-SESSION_COLUMNS = ["id", "username", "project_name", "datetime_start", "datetime_end", "start_state", "end_state"]
+SESSION_COLUMNS = ["id", "username", "project_id", "datetime_start", "datetime_end", "start_state", "end_state"]
 MESSAGE_COLUMNS = ["id", "role", "content", "audio_text", "timestamp"]
 SIGNAL_COLUMNS = ["id", "timestamp", "values", "old_state", "action", "new_state", "message_id"]
 
@@ -39,7 +39,7 @@ def signals_frame(rows: list[dict]) -> pd.DataFrame:
 def analytics_data(*, messages=None, sessions=None, signals=None, transitions=None) -> UserAnalyticsData:
     return UserAnalyticsData(
         username="user",
-        project_name="proj",
+        project_id="proj",
         messages=messages_frame(messages or []),
         sessions=sessions_frame(sessions or []),
         signals=signals_frame(signals or []),
@@ -55,7 +55,7 @@ def session_row(id_, start, end, start_state="a", end_state="a") -> dict:
     return {
         "id": id_,
         "username": "user",
-        "project_name": "proj",
+        "project_id": "proj",
         "datetime_start": start,
         "datetime_end": end,
         "start_state": start_state,

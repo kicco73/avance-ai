@@ -17,12 +17,12 @@ class SessionExportManager:
         self._db = db
 
     def export_sessions(
-        self, username: str | None, project_name: str, type: str | tuple[str, ...] = ('live', 'imported'),
+        self, username: str | None, project_id: str, type: str | tuple[str, ...] = ('live', 'imported'),
     ) -> list[dict]:
         """`type` defaults to every real session. export_project_zip
         narrows this to 'imported' only: a live session only means
         something against the exact database it ran against, so re-importing it elsewhere would misrepresent it as a real conversation."""
-        sessions = self._db.list_chat_sessions(None, project_name, type=type)
+        sessions = self._db.list_chat_sessions(None, project_id, type=type)
         if username is not None:
             sessions = [s for s in sessions if self._owns_session(username, s['username'])]
         return [self._export_session(session) for session in sessions]

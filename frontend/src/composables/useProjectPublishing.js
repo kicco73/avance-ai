@@ -9,7 +9,7 @@ import { confirmDialog } from '../dialogStore.js'
 // editor's history after a real publish/revert); `selectedGraphElement`
 // is the Inspector's graph selection, cleared on revert since it can name
 // a state the reverted revision no longer has.
-export function useProjectPublishing(projectName, currentFileName, activeEditor, selectedGraphElement) {
+export function useProjectPublishing(projectId, currentFileName, activeEditor, selectedGraphElement) {
   // {revision, published_revision} — null while not yet loaded. A save can
   // fork (see Db.save_project_files' fork-on-first-edit-after-publish),
   // bumping `revision` — refreshed after every save and every publish.
@@ -29,7 +29,7 @@ export function useProjectPublishing(projectName, currentFileName, activeEditor,
 
   async function refreshProjectRevision() {
     try {
-      projectRevision.value = await getProjectRevision(projectName)
+      projectRevision.value = await getProjectRevision(projectId)
     } catch {
       // already surfaced via apiFetch
     }
@@ -68,7 +68,7 @@ export function useProjectPublishing(projectName, currentFileName, activeEditor,
     }
     publishing.value = true
     try {
-      const preview = await getPublishPreview(projectName)
+      const preview = await getPublishPreview(projectId)
       if (preview.needs_remap) {
         publishRemapChoice.value = ''
         publishRemapPrompt.value = preview
@@ -88,7 +88,7 @@ export function useProjectPublishing(projectName, currentFileName, activeEditor,
           return
         }
       }
-      projectRevision.value = await postPublishProject(projectName)
+      projectRevision.value = await postPublishProject(projectId)
       await refreshActiveEditorHistory()
       runPendingLeaveAction()
     } catch {
@@ -102,7 +102,7 @@ export function useProjectPublishing(projectName, currentFileName, activeEditor,
   async function confirmPublishRemap(stateKey) {
     publishing.value = true
     try {
-      projectRevision.value = await postPublishProject(projectName, stateKey)
+      projectRevision.value = await postPublishProject(projectId, stateKey)
       publishRemapPrompt.value = null
       await refreshActiveEditorHistory()
       runPendingLeaveAction()
@@ -148,7 +148,7 @@ export function useProjectPublishing(projectName, currentFileName, activeEditor,
     if (!ok) return
     publishing.value = true
     try {
-      await postRevertProject(projectName)
+      await postRevertProject(projectId)
       selectedGraphElement.value = null
       await refreshActiveEditorHistory()
     } catch {

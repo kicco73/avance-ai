@@ -8,7 +8,7 @@ import { getMetrics, getMetricsHistory } from '../../api.js'
 Chart.register(LineController, LineElement, PointElement, LinearScale, TimeScale, Tooltip, zoomPlugin)
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   username: { type: String, required: true },
 })
 
@@ -242,7 +242,7 @@ function renderChart() {
 
 async function loadMetricLabels() {
   try {
-    const metrics = await getMetrics(props.projectName, null, true, props.username)
+    const metrics = await getMetrics(props.projectId, null, true, props.username)
     metricLabels.value = Object.fromEntries(metrics.map((metric) => [metric.name, metric.ui_label || metric.name]))
   } catch {
     metricLabels.value = {}
@@ -250,7 +250,7 @@ async function loadMetricLabels() {
 }
 
 async function load() {
-  if (!props.projectName || !props.username) {
+  if (!props.projectId || !props.username) {
     history.value = []
     sessionStarts.value = []
     return
@@ -258,7 +258,7 @@ async function load() {
   loading.value = true
   try {
     await loadMetricLabels()
-    const data = await getMetricsHistory(props.projectName, props.username)
+    const data = await getMetricsHistory(props.projectId, props.username)
     history.value = data.metrics
     sessionStarts.value = data.session_starts
   } catch {
@@ -272,7 +272,7 @@ async function load() {
   renderChart()
 }
 
-watch(() => [props.projectName, props.username], load)
+watch(() => [props.projectId, props.username], load)
 
 onMounted(load)
 

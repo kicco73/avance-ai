@@ -15,15 +15,14 @@ from automaton.automaton import Action, Automaton, State
 from chat.channels import NATIVE_CHAT, WHATSAPP_CHAT
 from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
-from conftest import FakeAiService, NullBroadcaster, make_test_actuator_factory
-from jobs import JobQueue
+from conftest import FakeAiService, make_test_actuator_factory, make_test_job_service
 from metrics.metric_service import MetricService
 from session import Session
 from tracking.tracking_service import TrackingService
 
 pytestmark = pytest.mark.contract
 
-PROJECT_NAME = "lock-proj"
+PROJECT_ID = "lock-proj"
 USERNAME = "user"
 
 
@@ -49,7 +48,7 @@ class _FakeProjectService:
     def get_active_automaton_and_state(self, username=None):
         return self._automaton, self._automaton.states["a"]
 
-    def get_automaton_and_state(self, project_name, type='live', username=None):
+    def get_automaton_and_state(self, project_id, type='live', username=None):
         return self._automaton, self._automaton.states["a"]
 
     def get_automaton_and_state_for_session(self, session_id):
@@ -58,36 +57,36 @@ class _FakeProjectService:
     def get_automaton_for_session(self, session_id):
         return self._automaton
 
-    def get_active_project_name(self):
-        return PROJECT_NAME
+    def get_active_project_id(self):
+        return PROJECT_ID
 
-    def get_published_revision(self, project_name):
+    def get_published_revision(self, project_id):
         return 0
 
-    def get_draft_revision(self, project_name):
+    def get_draft_revision(self, project_id):
         return 0
 
-    def legal_terms_pending(self, username, project_name):
+    def legal_terms_pending(self, username, project_id):
         return False
 
-    def get_project_availability(self, project_name):
+    def get_project_availability(self, project_id):
         return (False, None)
 
 
 def _chat_service(db) -> ChatService:
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     ai_service = FakeAiService()
     project_service = _FakeProjectService(_automaton())
     metric_service = MetricService(db, project_service)
-    job_queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-    actuator_factory = make_test_actuator_factory(db, job_queue)
+    job_service = make_test_job_service(db)
+    actuator_factory = make_test_actuator_factory(db, job_service)
     tracking_service = TrackingService(db, project_service, metric_service, actuator_factory)
     return ChatService(
         ai_service=ai_service, ai_test_service=ai_service, project_service=project_service, db=db,
         session_manager=ChatSessionManager(db, open_window_minutes=5),
         tracking_service=tracking_service, metric_service=metric_service,
-        job_queue=job_queue, actuator_factory=actuator_factory,
+        job_service=job_service, actuator_factory=actuator_factory,
     )
 
 
@@ -146,8 +145,8 @@ async def test_concurrent_acquire_exclusive_session_from_different_channels_seri
     whatsapp_result = await second
 
     assert native_result["id"] != whatsapp_result["id"]
-    open_sessions = [s for s in db.list_chat_sessions(USERNAME, PROJECT_NAME) if s["closed_at"] is None]
-    closed_sessions = [s for s in db.list_chat_sessions(USERNAME, PROJECT_NAME) if s["closed_at"] is not None]
+    open_sessions = [s for s in db.list_chat_sessions(USERNAME, PROJECT_ID) if s["closed_at"] is None]
+    closed_sessions = [s for s in db.list_chat_sessions(USERNAME, PROJECT_ID) if s["closed_at"] is not None]
     assert len(open_sessions) == 1
     assert open_sessions[0]["id"] == whatsapp_result["id"]
     assert len(closed_sessions) == 1
@@ -181,5 +180,5 @@ async def test_get_current_session_concurrent_with_acquire_exclusive_session_nev
     exclusive_result = await second
 
     assert bootstrap_result["id"] == exclusive_result["id"]
-    sessions = db.list_chat_sessions(USERNAME, PROJECT_NAME)
+    sessions = db.list_chat_sessions(USERNAME, PROJECT_ID)
     assert len(sessions) == 1

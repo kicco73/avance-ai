@@ -49,14 +49,14 @@ class Metadata:
 class UserVariables:
 	automaton: Automaton
 	state: State
-	project_name: str
+	project_id: str
 	session_id: int
 	# Set by _save_user_message once the turn's own user-facing message
 	# (real or placeholder) has been persisted — None beforehand.
 	message_id: int | None = None
-	# True when this turn has no real user text (an opening message, or
-	# an action_prompt) — the AI is initiating, not replying. Literally
-	# `not text`, computed once in _save_user_message.
+	# True when this turn has no real user text (an opening message) — the
+	# AI is initiating, not replying. Literally `not text`, computed once
+	# in _save_user_message.
 	has_ai_started_conversation: bool = False
 
 @dataclass
@@ -76,10 +76,6 @@ class OutVariables:
 	# transition was ever possible. Gates whether buffered reply text is
 	# safe to stream.
 	signals_resolved: bool = False
-	# `action`'s own on-enter, already rendered to wire-ready JS by
-	# TrackingEngine.apply_transition — set alongside tracking_id, None
-	# whenever action is None or on-enter renders to nothing.
-	on_enter: str | None = None
 
 class TrackingProcessor(object):
 	metadata_processor = MetadataHandler()
@@ -104,9 +100,6 @@ class TrackingProcessor(object):
 		self.talk_enabled = talk_enabled
 		self.input_token_budget_per_turn = input_token_budget_per_turn
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder, auto_tracking_enabled)
-		# Set per-turn by process() — appended to base_prompt after the
-		# state's own contextual_prompt (see __build_turn_prompt_parts).
-		self.extra_prompt: str | None = None
 
 	async def _get_ai_reply(self) -> OutVariables:
 		raise NotImplementedError
@@ -118,9 +111,7 @@ class TrackingProcessor(object):
 		message_id = self.db.save_message("user", text or '...', self.user.session_id)
 		self.user = replace(self.user, message_id=message_id, has_ai_started_conversation=not text)
 
-	async def process(
-		self, text: str | None, on_metadata: MetadataCallback | None = None, extra_prompt: str | None = None,
-	) -> dict:
+	async def process(self, text: str | None, on_metadata: MetadataCallback | None = None) -> dict:
 
 		state = self.user.state
 
@@ -130,7 +121,6 @@ class TrackingProcessor(object):
 				code="state_not_chat",
 			)
 
-		self.extra_prompt = extra_prompt
 		self._save_user_message(text)
 
 		def dummy_on_metadata(key: str, value: str) -> None:
@@ -205,7 +195,7 @@ class TrackingProcessor(object):
 		logger.info(
 			"build_turn_protocol talk_enabled: project=%r revision=%s session=%s system_talk_enabled=%s "
 			"automaton_talk_enabled=%s -> %s",
-			self.user.project_name, self.user.automaton.revision, self.user.session_id, self.talk_enabled,
+			self.user.project_id, self.user.automaton.revision, self.user.session_id, self.talk_enabled,
 			self.user.automaton.talk_enabled, talk_enabled,
 		)
 		return Protocol(
@@ -232,8 +222,6 @@ class TrackingProcessor(object):
 		# State.reactions_enabled), never a partial vocabulary.
 		reaction_definition = self._build_reaction_definition(automaton) if automaton.reactions_enabled_for(state) else None
 		base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"
-		if self.extra_prompt:
-			base_prompt = f"{base_prompt}\n\n{self.extra_prompt}"
 		return (
 			base_prompt, signal_definition, reaction_definition,
 			list(automaton.general_attachments.values()) + list(state.attachments.values()),
@@ -271,7 +259,6 @@ class TrackingProcessor(object):
 			"state_changed": action is not None,
 			"new_state": action.target if action else None,
 			"triggered_action": action.name if action else None,
-			"on-enter": self.out.on_enter,
 			"ai_model": self.ai_service.get_models_info(),
 			"session_id": self.user.session_id,
 		}

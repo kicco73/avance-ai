@@ -44,7 +44,6 @@ const ACTION_FIELDS = [
   { name: 'name' },
   { name: 'target' },
   { name: 'trigger' },
-  { name: 'action-prompt' },
   { name: 'on-enter' },
   { name: 'env', nested: true },
   { name: 'ui-label' },
@@ -55,7 +54,6 @@ const ACTION_FIELDS = [
 
 const INIT_ACTION_FIELDS = [
   { name: 'target' },
-  { name: 'action-prompt' },
   { name: 'on-enter' }
 ]
 

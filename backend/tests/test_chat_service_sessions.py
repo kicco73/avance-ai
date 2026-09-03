@@ -6,8 +6,7 @@ import pytest
 
 from chat.chat_service import ChatService, ChatServiceError
 from chat.session_manager import ChatSessionManager
-from conftest import NullBroadcaster
-from jobs import JobQueue
+from conftest import make_test_job_service
 from metrics.metric_service import MetricService
 from session import Session
 from tracking.tracking_service import TrackingService
@@ -24,7 +23,7 @@ def chat_service(db):
     # ai_service/project_service are never touched: _require_own_session
     # raises before either would be used.
     metric_service = MetricService(db, project_service=None)
-    job_queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
+    job_service = make_test_job_service(db)
     # None is fine here since these tests never reach any path that reads it.
     tracking_service = TrackingService(
         db, project_service=None, metrics_service=metric_service, actuator_factory=None,
@@ -32,7 +31,7 @@ def chat_service(db):
     return ChatService(
         ai_service=None, ai_test_service=None, project_service=None, db=db, session_manager=ChatSessionManager(db),
         tracking_service=tracking_service, metric_service=metric_service,
-        job_queue=job_queue, actuator_factory=None,
+        job_service=job_service, actuator_factory=None,
     )
 
 
@@ -49,7 +48,7 @@ async def test_get_messages_raises_for_a_deleted_session(chat_service, db):
     db.publish_project("proj")
     session_id = db.create_chat_session(
         username="user",
-        project_name="proj",
+        project_id="proj",
         revision=db.get_project_published_revision("proj"),
         datetime_start=datetime(2026, 1, 1, 10, 0, 0),
         datetime_end=datetime(2026, 1, 1, 10, 0, 0),
@@ -70,7 +69,7 @@ async def test_get_messages_raises_for_someone_elses_session(chat_service, db):
     db.publish_project("proj")
     session_id = db.create_chat_session(
         username="other-user",
-        project_name="proj",
+        project_id="proj",
         revision=db.get_project_published_revision("proj"),
         datetime_start=datetime(2026, 1, 1, 10, 0, 0),
         datetime_end=datetime(2026, 1, 1, 10, 0, 0),
@@ -95,7 +94,7 @@ def test_delete_session_raises_for_someone_elses_session(chat_service, db):
     db.publish_project("proj")
     session_id = db.create_chat_session(
         username="other-user",
-        project_name="proj",
+        project_id="proj",
         revision=db.get_project_published_revision("proj"),
         datetime_start=datetime(2026, 1, 1, 10, 0, 0),
         datetime_end=datetime(2026, 1, 1, 10, 0, 0),

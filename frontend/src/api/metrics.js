@@ -9,23 +9,23 @@ const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 // Retention/Activity Consistency) instead of the usual "one_session"
 // subset. `username`, when given, computes metrics for that user's own
 // sessions instead of the caller's — see Manage Users' own statistics panel.
-export function getMetrics(projectName, messageId, full, username) {
+export function getMetrics(projectId, messageId, full, username) {
   const params = new URLSearchParams()
   if (messageId != null) params.set('message_id', messageId)
   if (full) params.set('full', 'true')
   if (username != null) params.set('username', username)
   const query = params.size ? `?${params}` : ''
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/metrics${query}`)
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/metrics${query}`)
 }
 
-export function getUserLatestSignals(projectName, username) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/users/${encodeURIComponent(username)}/latest-signals`)
+export function getUserLatestSignals(projectId, username) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(username)}/latest-signals`)
 }
 
-export function getTimeline(projectName, username) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/users/${encodeURIComponent(username)}/timeline`)
+export function getTimeline(projectId, username) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(username)}/timeline`)
 }
 
-export function getMetricsHistory(projectName, username) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/users/${encodeURIComponent(username)}/metrics-history`)
+export function getMetricsHistory(projectId, username) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(username)}/metrics-history`)
 }

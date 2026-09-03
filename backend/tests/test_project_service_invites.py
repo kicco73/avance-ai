@@ -14,13 +14,13 @@ from project.project_service import ProjectService
 
 pytestmark = pytest.mark.regression
 
-PROJECT_NAME = "proj"
+PROJECT_ID = "proj"
 
 
 @pytest.fixture
 def project(db) -> str:
-    db.ensure_project(PROJECT_NAME)
-    return PROJECT_NAME
+    db.ensure_project(PROJECT_ID)
+    return PROJECT_ID
 
 
 @pytest.fixture

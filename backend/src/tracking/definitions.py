@@ -28,11 +28,11 @@ class Signals(object):
     def automaton(self) -> Automaton:
         return self._project_service.get_active_automaton()
 
-    def _active_project_name(self) -> str:
-        name = self._db.get_active_project_name(Session().user)
-        if name is None:
+    def _active_project_id(self) -> str:
+        project_id = self._db.get_active_project_id(Session().user)
+        if project_id is None:
             raise ValueError("No active project")
-        return name
+        return project_id
 
     def history_window(
         self, session_id: int, pending_message: dict | None, since: datetime | None
@@ -82,6 +82,6 @@ class Signals(object):
         """Read-only, never calls the AI — reports the latest snapshot
         persisted through db.py. Signals are only (re)computed via
         compute_signals(), from the auto-tracking flow."""
-        project_name = self._active_project_name()
-        signal_snapshot = self._db.get_latest_signal_snapshot(project_name)
+        project_id = self._active_project_id()
+        signal_snapshot = self._db.get_latest_signal_snapshot(project_id)
         return self._snapshot_to_signals_payload(signal_snapshot)
