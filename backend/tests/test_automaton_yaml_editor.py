@@ -200,12 +200,12 @@ class TestSetActionField:
         action = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         assert action.target == "c"
 
-    def test_action_prompt_edit(self):
+    def test_on_enter_edit(self):
         editor = _editor()
-        editor.set_action_field("a", "go-b", "action-prompt", "Say hello warmly.")
+        editor.set_action_field("a", "go-b", "on-enter", "actuator.celebrate()")
         automaton = _builds(editor.serialize())
         action = next(a for a in automaton.states["a"].actions if a.name == "go-b")
-        assert action.action_prompt == "Say hello warmly."
+        assert action.on_enter == "actuator.celebrate()"
 
     def test_ui_description_edit(self):
         editor = _editor()

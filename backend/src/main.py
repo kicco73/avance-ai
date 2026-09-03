@@ -173,6 +173,7 @@ def create_app() -> FastAPI:
         # subscribes once for the process lifetime.
         WakeupService(
             db, project_service, job_queue, actuator_factory, ws_adapter=ws_adapter, tracking_service=tracking_service,
+            ai_service=ai_live_service,
         ).register()
 
         # Opt-in (whatsapp-service.enabled in .config.yml): one more

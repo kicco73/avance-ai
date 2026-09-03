@@ -388,8 +388,8 @@ class WhatsAppService(object):
         prepare_user_initiated_turn). Rather than reassembling the reply
         from process_turn's streaming-oriented result, every assistant
         message persisted since we started is what gets sent — that also
-        covers a transition's follow-up messages (action_prompt / a
-        chat-blocked state's own wrap-up message)."""
+        covers a transition's follow-up messages (a chat-blocked state's
+        own wrap-up message)."""
         session_id, early = await self._bootstrap_exclusive_session()
         if early is not None:
             return early

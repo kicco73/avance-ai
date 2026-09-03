@@ -403,7 +403,6 @@ function selectAttachment(fileName) {
             </p>
             <p v-if="selectedElement.data.trigger" class="inspector-detail-field"><strong>Trigger:</strong><code class="inspector-detail-code">{{ selectedElement.data.trigger }}</code></p>
             <p v-if="selectedElement.data.onEnter" class="inspector-detail-field"><strong>On enter:</strong><code class="inspector-detail-code">{{ selectedElement.data.onEnter }}</code></p>
-            <p v-if="selectedElement.data.actionPrompt" class="inspector-detail-field"><strong>Action prompt:</strong> {{ selectedElement.data.actionPrompt }}</p>
           </div>
         </Transition>
       </template>

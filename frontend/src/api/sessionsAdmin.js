@@ -9,29 +9,29 @@ const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 // same request/response (see post_import_sessions); pass `onProgress
 // (message)` to render live percentage instead of a spinner. The
 // returned promise resolves with the final {results, last_session_id}.
-export function postImportSessions(projectName, files, onProgress) {
+export function postImportSessions(projectId, files, onProgress) {
   const formData = new FormData()
   for (const file of files) formData.append('files', file)
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/import`, {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/sessions/import`, {
     method: 'POST',
     body: formData
   }, { parse: 'sse', onProgress })
 }
 
 // The "Label sessions" view's own "Download all" button — every session
-// of `projectName` matching `type` ('live' | 'imported'), as one JSON
+// of `projectId` matching `type` ('live' | 'imported'), as one JSON
 // array. A blob so the caller can trigger a real file download.
-export function getExportSessions(projectName, type) {
+export function getExportSessions(projectId, type) {
   return apiFetch(
-    `${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/export?type=${encodeURIComponent(type)}`,
+    `${API_URL}/projects/${encodeURIComponent(projectId)}/sessions/export?type=${encodeURIComponent(type)}`,
     {}, { parse: 'blob' }
   )
 }
 
 // The "Label sessions" view's own "Delete all imported sessions" button —
-// every imported session of `projectName`, across every user.
-export function deleteImportedSessions(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/imported`, {
+// every imported session of `projectId`, across every user.
+export function deleteImportedSessions(projectId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/sessions/imported`, {
     method: 'DELETE'
   })
 }
@@ -39,24 +39,24 @@ export function deleteImportedSessions(projectName) {
 // SessionsTree.vue's own drag-and-drop between branches — `username` is
 // whichever branch the sessions were dropped on, a "Test user N" one or
 // any other imported username alike.
-export function putSessionsReassign(projectName, sessionIds, username) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/reassign`, {
+export function putSessionsReassign(projectId, sessionIds, username) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/sessions/reassign`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_ids: sessionIds, username })
   })
 }
 
-export function deleteTestUser(projectName, testUserSeq) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-users/${encodeURIComponent(testUserSeq)}`, {
+export function deleteTestUser(projectId, testUserSeq) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/test-users/${encodeURIComponent(testUserSeq)}`, {
     method: 'DELETE'
   })
 }
 
 // The "Label sessions" view's per-branch × button for any non-live
 // branch that isn't a "Test user N" one — an arbitrary imported username.
-export function deleteUserSessions(projectName, username) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/users/${encodeURIComponent(username)}`, {
+export function deleteUserSessions(projectId, username) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/sessions/users/${encodeURIComponent(username)}`, {
     method: 'DELETE'
   })
 }

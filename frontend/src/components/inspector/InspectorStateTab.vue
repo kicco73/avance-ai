@@ -14,7 +14,7 @@ import SessionDetailCard from './SessionDetailCard.vue'
 import ActionEnvEditor from './ActionEnvEditor.vue'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   selectedElement: { type: Object, default: null },
   editableFiles: { type: Array, default: null },
   highlightedStateKey: { type: String, default: null },
@@ -97,7 +97,7 @@ const projectMetadata = ref(null)
 
 async function loadProjectMetadata() {
   try {
-    projectMetadata.value = (await getProjectMetadata(props.projectName)).project
+    projectMetadata.value = (await getProjectMetadata(props.projectId)).project
   } catch {
     // already surfaced via apiFetch
   }
@@ -125,7 +125,7 @@ onMounted(loadProjectMetadata)
     />
     <InspectorFileCard
       v-if="showFileCard"
-      :project-name="projectName"
+      :project-id="projectId"
       :file-name="currentFileName"
       :deleting="deletingFile === currentFileName"
       :renaming="renamingFile === currentFileName"

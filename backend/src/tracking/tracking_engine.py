@@ -155,7 +155,9 @@ class TrackingEngine:
         # worth a history entry either way; a self-loop just never bumps
         # history_cutoff's own timestamp.
 
-        on_enter = self.apply_action_env(automaton, action, signal_values, state.key, username=username, project_id=project_id)
+        on_enter = self.apply_action_env(
+            automaton, action, signal_values, state.key, username=username, project_id=project_id, session_id=session_id,
+        )
         tracking_id = self.record_transition(
             automaton, state, action, signal_values, session_id, message_id,
             origin=origin, username=username, project_id=project_id,
@@ -213,17 +215,21 @@ class TrackingEngine:
         *,
         username: str | None = None,
         project_id: str | None = None,
+        session_id: int | None = None,
     ) -> str | None:
         """Applies `action`'s own `env:` updates to the current scope —
         shared by both the auto-tracking and manual-action paths (the
         latter fires with empty signal_values). Publishes one EnvChanged
         per key actually written. Also renders `action.on_enter` (§6.5's
-        actuator.* calls, e.g. celebrate()/notify()/send_mail()) against
-        that same scope, returning the wire-ready JS text (or None) for
-        the caller to attach to its own "on-enter" response."""
+        actuator.* calls, e.g. celebrate()/notify()/send_mail()/prompt())
+        against that same scope, returning the wire-ready JS text (or
+        None) for the caller to attach to its own "on-enter" response.
+        `session_id`: only actuator.prompt() needs it (its own read-only
+        generation call's conversation history) — passed straight through
+        to the scope build, no other namespace here uses it."""
         if not action.env and not action.on_enter:
             return None
-        scope = self._scope_builder.build(automaton, state_key, signal_values)
+        scope = self._scope_builder.build(automaton, state_key, signal_values, session_id=session_id)
         if action.env:
             updates = automaton.eval_action_env(action, scope)
             if updates:
@@ -233,7 +239,9 @@ class TrackingEngine:
                         publish(EnvChanged(username=username, project_id=project_id, key=key, value=value))
         return automaton.render_on_enter(action, scope) if action.on_enter else None
 
-    def render_on_enter(self, automaton: Automaton, action: Action, state_key: str) -> str | None:
+    def render_on_enter(
+        self, automaton: Automaton, action: Action, state_key: str, session_id: int | None = None,
+    ) -> str | None:
         """`action.on_enter` rendered against a fresh scope, with no env
         applied — for a caller reporting an action's on-enter outside a
         real transition/env-apply path (a brand-new session's own
@@ -241,5 +249,5 @@ class TrackingEngine:
         irrelevant or already handled elsewhere."""
         if not action.on_enter:
             return None
-        scope = self._scope_builder.build(automaton, state_key, None)
+        scope = self._scope_builder.build(automaton, state_key, None, session_id=session_id)
         return automaton.render_on_enter(action, scope)

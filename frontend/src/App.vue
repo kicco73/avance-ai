@@ -54,9 +54,9 @@ import { peekInviteCode } from './shareLink.js'
 // submitError for that outcome.
 const hasSharedInvite = !!peekInviteCode()
 
-const editProjectName = ref(null)
-const labelProjectName = ref(null)
-const liveChatProjectName = ref(null)
+const editProjectId = ref(null)
+const labelProjectId = ref(null)
+const liveChatProjectId = ref(null)
 const showProfile = ref(false)
 // Admin only: what's currently pushed over the permanently-mounted
 // ManageProjectsView base — null | 'edit' | 'label' | 'manageUsers' |
@@ -118,7 +118,7 @@ const {
   startBootSequence,
   handleLoggedIn, handleTermsAccept, handleTermsReject, handleLogout,
 } = useAppBoot(
-  currentUserProfile, currentUserRole, labelProjectName, liveChatProjectName,
+  currentUserProfile, currentUserRole, labelProjectId, liveChatProjectId,
   pushedView, showProfile, navDirection
 )
 
@@ -194,43 +194,43 @@ async function handleModelUploadChange(event) {
 // EditProjectView.vue's own embedded "Test" chat creates its draft
 // session against whichever project is currently *active* server-side
 // (see ChatService.create_draft_session — it never actually looks at the
-// URL's own project_name), an invariant every previous way into "Edit
+// URL's own project_id), an invariant every previous way into "Edit
 // project" upheld for free: before Manage projects made a project's own
 // row directly clickable, the only path in was ProjectsMenu.vue's own
 // "Edit project" item, which only ever edited whichever project was
 // already active. That's no longer guaranteed — Manage projects lets you
 // open Edit for a project that isn't active at all — so this activates
-// `projectName` first, same as a real project switch, before ever
+// `projectId` first, same as a real project switch, before ever
 // opening the view: without this, Test silently runs against whatever
 // project was active before, not the one actually being edited.
-async function handleModelEdit(projectName) {
+async function handleModelEdit(projectId) {
   clearChatUi()
   try {
-    await activateProject(projectName)
+    await activateProject(projectId)
     await refreshStateAndProjects()
   } catch {
     // already surfaced via apiFetch
   }
-  editProjectName.value = projectName
+  editProjectId.value = projectId
   pushView('edit')
 }
 
-function handleSelectLabelSessions(projectName) {
-  labelProjectName.value = projectName
+function handleSelectLabelSessions(projectId) {
+  labelProjectId.value = projectId
   pushView('label')
 }
 
 // "Open chat" on a project's own row: same switch as picking it from
 // ProjectsMenu — ManageProjectsView is never unmounted, so this just
 // pushes chat over it.
-function handleManageProjectsChat(projectName) {
+function handleManageProjectsChat(projectId) {
   pushView('chat')
-  handleLiveChatProjectSelect(projectName)
+  handleLiveChatProjectSelect(projectId)
 }
 
-function handleLiveChatProjectSelect(projectName) {
-  liveChatProjectName.value = projectName
-  handleProjectSwitch(projectName)
+function handleLiveChatProjectSelect(projectId) {
+  liveChatProjectId.value = projectId
+  handleProjectSwitch(projectId)
 }
 
 // Fed only by ChatView.vue's own admin-only back arrow now (the Settings
@@ -260,10 +260,10 @@ async function handleModelEditSaved() {
 // Activation is idempotent backend-side (re-activating the already-active
 // model is a no-op, no reset) so this handler doesn't need to
 // special-case that itself.
-async function handleProjectSwitch(projectName) {
+async function handleProjectSwitch(projectId) {
   clearChatUi()
   try {
-    await activateProject(projectName)
+    await activateProject(projectId)
     await refreshStateAndProjects()
     await loadMessages()
   } catch {
@@ -275,9 +275,9 @@ async function handleProjectSwitch(projectName) {
 // leaving the label view. Reuses the same activation as a normal switch,
 // then repoints the view at the new project — its :key below remounts it,
 // same as opening it fresh from Manage projects.
-async function handleLabelProjectSwitch(projectName) {
-  await handleProjectSwitch(projectName)
-  labelProjectName.value = projectName
+async function handleLabelProjectSwitch(projectId) {
+  await handleProjectSwitch(projectId)
+  labelProjectId.value = projectId
 }
 
 // Triggers a browser download from the zip blob — standard synthetic-<a>
@@ -285,13 +285,13 @@ async function handleLabelProjectSwitch(projectName) {
 // browser's own download UI. No UI state changes at all on success: unlike
 // switch/upload/delete, downloading doesn't touch the active model or the
 // session. On failure, show the error the same way as the rest of the menu.
-async function handleModelDownload(projectName) {
+async function handleModelDownload(projectId) {
   try {
-    const blob = await downloadProject(projectName)
+    const blob = await downloadProject(projectId)
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `${projectName}.zip`
+    link.download = `${projectId}.zip`
     document.body.appendChild(link)
     link.click()
     link.remove()
@@ -305,10 +305,10 @@ async function handleModelDownload(projectName) {
 // backend-side (or none at all — see the "no-project" splash below), so
 // this behaves the same as a successful switch/upload either way — reload
 // state, clear the chat.
-async function handleModelDelete(projectName) {
+async function handleModelDelete(projectId) {
   clearChatUi()
   try {
-    await deleteProject(projectName)
+    await deleteProject(projectId)
     await refreshStateAndProjects()
   } catch {
     // already surfaced via apiFetch
@@ -452,7 +452,7 @@ onBeforeUnmount(() => {
       <LiveChatWindow
         v-if="currentUserRole === 'user'"
         ref="chatWindowRef"
-        :project-name="liveChatProjectName"
+        :project-id="liveChatProjectId"
         :role="currentUserRole"
         :profile="currentUserProfile"
         @project-select="handleLiveChatProjectSelect"
@@ -467,8 +467,8 @@ onBeforeUnmount(() => {
            project (project-select); Settings never push/pop it. -->
       <LabelProjectView
         v-else-if="currentUserRole === 'supervisor'"
-        :key="labelProjectName"
-        :project-name="labelProjectName"
+        :key="labelProjectId"
+        :project-id="labelProjectId"
         :profile="currentUserProfile"
         @project-select="handleLabelProjectSwitch"
         @profile="openProfile"
@@ -510,8 +510,8 @@ onBeforeUnmount(() => {
         <Transition :name="slideTransitionName">
           <EditProjectView
             v-if="pushedView === 'edit'"
-            :key="editProjectName"
-            :project-name="editProjectName"
+            :key="editProjectId"
+            :project-id="editProjectId"
             :profile="currentUserProfile"
             @saved="handleModelEditSaved"
             @back="popPushedView"
@@ -520,8 +520,8 @@ onBeforeUnmount(() => {
           />
           <LabelProjectView
             v-else-if="pushedView === 'label'"
-            :key="labelProjectName"
-            :project-name="labelProjectName"
+            :key="labelProjectId"
+            :project-id="labelProjectId"
             :profile="currentUserProfile"
             @close="popPushedView"
             @project-select="handleLabelProjectSwitch"
@@ -558,7 +558,7 @@ onBeforeUnmount(() => {
           <LiveChatWindow
             v-if="pushedView === 'chat'"
             ref="chatWindowRef"
-            :project-name="liveChatProjectName"
+            :project-id="liveChatProjectId"
             :role="currentUserRole"
             :profile="currentUserProfile"
             @project-select="handleLiveChatProjectSelect"

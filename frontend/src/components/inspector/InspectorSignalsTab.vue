@@ -7,7 +7,7 @@ import CardMenu from './CardMenu.vue'
 import { handleEnterNext } from './enterToNextField.js'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   signalValues: { type: Object, default: () => ({}) },
   editableFiles: { type: Array, default: null },
   annotatable: { type: Boolean, default: false },
@@ -162,7 +162,7 @@ function onClearExpectedSignal(signalName) {
 async function loadSignals() {
   signalsLoading.value = true
   try {
-    signals.value = (await getProjectSignals(props.projectName, props.stateKey, props.sessionId)).signals
+    signals.value = (await getProjectSignals(props.projectId, props.stateKey, props.sessionId)).signals
   } catch {} finally { signalsLoading.value = false }
   // A rename or delete removes the signal expandedSignalName was
   // pointing at — collapse rather than show a stale form for a name no

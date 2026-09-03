@@ -38,7 +38,7 @@ class FakeEnv:
 
 
 class FakeScopeBuilder:
-    def build(self, automaton, state_key, signal_values):
+    def build(self, automaton, state_key, signal_values, session_id=None):
         return {}
 
 

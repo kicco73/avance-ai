@@ -313,11 +313,10 @@ class ProjectInspector:
             {
                 "action": Automaton.get_action_payload(action),
                 "source": state.key,
-                # None of these four belong in ActionPayload — each is
+                # None of these three belong in ActionPayload — each is
                 # internal transition logic that never reaches a live
                 # chat client, this Inspect panel's own concern only.
                 "trigger": action.trigger,
-                "action_prompt": action.action_prompt,
                 "ui_description": action.ui_description,
                 "env": action.env or {},
             }

@@ -76,12 +76,8 @@ function findIconFile(files) {
   return files.find((name) => ICON_FILE_RE.test(name)) ?? null
 }
 
-const bodyEl = ref(null)
-const bodyWidth = ref(0)
-const actionsBlockWidth = ref(0)
 const openMenuFor = ref(null)
 const addMenuOpen = ref(false)
-let bodyResizeObserver = null
 
 const headerEl = ref(null)
 const headerLeftEl = ref(null)
@@ -106,22 +102,6 @@ function handleHeaderResize(entries) {
     else if (entry.target === headerLeftEl.value) headerLeftWidth.value = width
     else if (entry.target === headerActionsEl.value) headerActionsWidth.value = width
   }
-}
-
-const actionsOverflow = computed(() => actionsBlockWidth.value > 0 && bodyWidth.value > 0 && bodyWidth.value < actionsBlockWidth.value)
-
-function captureActionsWidth(rowEl) {
-  if (actionsBlockWidth.value > 0 || !rowEl) return
-  const nameCell = rowEl.querySelector('.manage-projects-name')
-  const statusBtn = rowEl.querySelector('.status-toggle-btn')
-  const actionsRow = rowEl.querySelector('.manage-projects-actions-row')
-  if (!nameCell || !statusBtn || !actionsRow) return
-  actionsBlockWidth.value = nameCell.getBoundingClientRect().width + statusBtn.getBoundingClientRect().width + actionsRow.getBoundingClientRect().width
-}
-
-function setFirstRowEl(el) {
-  if (!el) return
-  nextTick(() => captureActionsWidth(el))
 }
 
 function toggleActionsMenu(id) {
@@ -298,10 +278,6 @@ let previousCanvasColor = ''
 onMounted(() => {
   load()
   previousCanvasColor = setCanvasColor('#ffffff')
-  bodyResizeObserver = new ResizeObserver((entries) => {
-    bodyWidth.value = entries[0].contentRect.width
-  })
-  bodyResizeObserver.observe(bodyEl.value)
   headerResizeObserver = new ResizeObserver(handleHeaderResize)
   headerResizeObserver.observe(headerEl.value.el)
   headerResizeObserver.observe(headerLeftEl.value)
@@ -311,7 +287,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   restoreCanvasColor(previousCanvasColor)
-  bodyResizeObserver?.disconnect()
   headerResizeObserver?.disconnect()
   document.removeEventListener('click', handleDocumentClick)
 })
@@ -385,15 +360,23 @@ defineExpose({ refresh: load })
       </template>
     </AppHeader>
 
-    <div class="manage-projects-body" ref="bodyEl">
+    <div class="manage-projects-body">
       <p v-if="loading" class="manage-projects-status">Loading…</p>
       <p v-else-if="!rows.length && !uploading" class="manage-projects-status">No projects yet.</p>
 
       <table v-else class="manage-projects-table">
         <tbody>
-          <tr v-for="(row, index) in rows" :key="row.id" :ref="index === 0 ? setFirstRowEl : undefined">
+          <tr v-for="row in rows" :key="row.id">
             <td class="manage-projects-name">
-              <button type="button" class="project-card" title="Open chat" @click="selectChat(row.id)">
+              <div
+                class="project-card"
+                role="button"
+                tabindex="0"
+                title="Open chat"
+                @click="selectChat(row.id)"
+                @keydown.enter="selectChat(row.id)"
+                @keydown.space.prevent="selectChat(row.id)"
+              >
                 <img
                   v-if="iconFileById[row.id] && !iconFailedById[row.id]"
                   :src="projectFileContentUrl(row.id, iconFileById[row.id])"
@@ -409,102 +392,70 @@ defineExpose({ refresh: load })
                   </span>
                   <span v-if="projectDescription(row.id)" class="project-card-desc">{{ projectDescription(row.id) }}</span>
                 </span>
-              </button>
+                <!-- Own click/keydown stop: this sits inside the card's own
+                     "open chat" click target above, and must never trigger it. -->
+                <div class="project-card-menu" @click.stop @keydown.stop>
+                  <div class="manage-projects-actions-menu">
+                    <button type="button" class="manage-projects-menu-btn" title="More actions" @click="toggleActionsMenu(row.id)">⋮</button>
+                    <Transition name="manage-projects-menu-panel">
+                      <div v-if="openMenuFor === row.id" class="manage-projects-menu-panel">
+                        <ul class="manage-projects-menu-list">
+                          <li>
+                            <button type="button" class="manage-projects-menu-item" @click="selectLabelSessions(row.id); openMenuFor = null">
+                              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                                <path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.41l9 9c.36.36.86.59 1.41.59s1.05-.23 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM6.5 8C5.67 8 5 7.33 5 6.5S5.67 5 6.5 5 8 5.67 8 6.5 7.33 8 6.5 8z" />
+                              </svg>
+                              <span>Label sessions</span>
+                            </button>
+                          </li>
+                          <li>
+                            <button type="button" class="manage-projects-menu-item" @click="selectDownload(row.id); openMenuFor = null">
+                              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                                <path d="M12 3a1 1 0 0 1 1 1v9.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V4a1 1 0 0 1 1-1zM5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
+                              </svg>
+                              <span>Download project</span>
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              type="button"
+                              class="manage-projects-menu-item"
+                              @click="selectShare(row.id); openMenuFor = null"
+                            >
+                              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                                <path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM19 19h2v2h-2zM13 13h2v2h-2zM15 15h2v2h-2zM13 17h2v2h-2zM15 19h2v2h-2zM17 17h2v2h-2zM17 13h2v2h-2zM19 15h2v2h-2z" />
+                              </svg>
+                              <span>Share project</span>
+                            </button>
+                          </li>
+                          <li>
+                            <button type="button" class="manage-projects-menu-item manage-projects-menu-item-danger" @click="selectDelete(row.id); openMenuFor = null">
+                              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                                <path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+                              </svg>
+                              <span>Delete project</span>
+                            </button>
+                          </li>
+                        </ul>
+                      </div>
+                    </Transition>
+                  </div>
+                </div>
+              </div>
             </td>
-            <td class="manage-projects-col-spacer"></td>
-            <td class="manage-projects-col-status-actions" :class="{ 'manage-projects-col-status-actions-collapsed': actionsOverflow }">
+            <td class="manage-projects-col-status-actions">
               <div class="manage-projects-status-actions-row">
+                <button type="button" class="manage-projects-edit-btn" title="Edit project" @click="selectEdit(row.id)">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+                  </svg>
+                </button>
                 <StatusToggleButton
                   :status="row.status"
                   :disabled="row.status === 'paused' || togglingProject === row.id"
                   :title="statusTitle(row)"
                   @click="toggleStatus(row)"
                 />
-                <div v-if="!actionsOverflow" class="manage-projects-actions-row">
-                  <button type="button" class="manage-projects-edit-btn" title="Edit project" @click="selectEdit(row.id)">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-                    </svg>
-                  </button>
-                  <button type="button" class="manage-projects-label-btn" title="Label sessions" @click="selectLabelSessions(row.id)">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                      <path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.41l9 9c.36.36.86.59 1.41.59s1.05-.23 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM6.5 8C5.67 8 5 7.33 5 6.5S5.67 5 6.5 5 8 5.67 8 6.5 7.33 8 6.5 8z" />
-                    </svg>
-                  </button>
-                  <button type="button" class="manage-projects-download-btn" title="Download project" @click="selectDownload(row.id)">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                      <path d="M12 3a1 1 0 0 1 1 1v9.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V4a1 1 0 0 1 1-1zM5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    class="manage-projects-share-btn"
-                    title="Share project"
-                    @click="selectShare(row.id)"
-                  >
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                      <path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM19 19h2v2h-2zM13 13h2v2h-2zM15 15h2v2h-2zM13 17h2v2h-2zM15 19h2v2h-2zM17 17h2v2h-2zM17 13h2v2h-2zM19 15h2v2h-2z" />
-                    </svg>
-                  </button>
-                  <button type="button" class="manage-projects-delete-btn" title="Delete project" @click="selectDelete(row.id)">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                      <path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
-                    </svg>
-                  </button>
-                </div>
-                <div v-else class="manage-projects-actions-menu">
-                  <button type="button" class="manage-projects-menu-btn" title="More actions" @click="toggleActionsMenu(row.id)">⋮</button>
-                  <Transition name="manage-projects-menu-panel">
-                    <div v-if="openMenuFor === row.id" class="manage-projects-menu-panel">
-                      <ul class="manage-projects-menu-list">
-                        <li>
-                          <button type="button" class="manage-projects-menu-item" @click="selectEdit(row.id); openMenuFor = null">
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                              <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-                            </svg>
-                            <span>Edit project</span>
-                          </button>
-                        </li>
-                        <li>
-                          <button type="button" class="manage-projects-menu-item" @click="selectLabelSessions(row.id); openMenuFor = null">
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                              <path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.41l9 9c.36.36.86.59 1.41.59s1.05-.23 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM6.5 8C5.67 8 5 7.33 5 6.5S5.67 5 6.5 5 8 5.67 8 6.5 7.33 8 6.5 8z" />
-                            </svg>
-                            <span>Label sessions</span>
-                          </button>
-                        </li>
-                        <li>
-                          <button type="button" class="manage-projects-menu-item" @click="selectDownload(row.id); openMenuFor = null">
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                              <path d="M12 3a1 1 0 0 1 1 1v9.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V4a1 1 0 0 1 1-1zM5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
-                            </svg>
-                            <span>Download project</span>
-                          </button>
-                        </li>
-                        <li>
-                          <button
-                            type="button"
-                            class="manage-projects-menu-item"
-                            @click="selectShare(row.id); openMenuFor = null"
-                          >
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                              <path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM19 19h2v2h-2zM13 13h2v2h-2zM15 15h2v2h-2zM13 17h2v2h-2zM15 19h2v2h-2zM17 17h2v2h-2zM17 13h2v2h-2zM19 15h2v2h-2z" />
-                            </svg>
-                            <span>Share project</span>
-                          </button>
-                        </li>
-                        <li>
-                          <button type="button" class="manage-projects-menu-item manage-projects-menu-item-danger" @click="selectDelete(row.id); openMenuFor = null">
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                              <path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
-                            </svg>
-                            <span>Delete project</span>
-                          </button>
-                        </li>
-                      </ul>
-                    </div>
-                  </Transition>
-                </div>
               </div>
             </td>
           </tr>
@@ -532,7 +483,6 @@ defineExpose({ refresh: load })
                 </span>
               </div>
             </td>
-            <td class="manage-projects-col-spacer"></td>
             <td class="manage-projects-col-status-actions"></td>
           </tr>
         </tbody>
@@ -701,6 +651,7 @@ defineExpose({ refresh: load })
   min-height: 0;
   overflow-y: auto;
   padding-top: 20px;
+  background: rgba(255, 255, 255, 0.65);
   /* Reserves the home indicator / gesture nav bar for the *scrollable
      content*, not the outer box — this is the flex:1 middle section,
      sized by flex distribution rather than its own content, so a
@@ -732,15 +683,10 @@ defineExpose({ refresh: load })
 
 .manage-projects-table td {
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid #eee;
   vertical-align: middle;
 }
 
 .manage-projects-col-status-actions {
-  width: 256px;
-}
-
-.manage-projects-col-status-actions-collapsed {
   width: 96px;
 }
 
@@ -752,19 +698,18 @@ defineExpose({ refresh: load })
   width: 100%;
 }
 
-.manage-projects-actions-row {
-  display: flex;
-  justify-content: flex-end;
-}
-
 .project-card {
+  position: relative;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 0.6rem;
   width: 100%;
   max-width: 320px;
-  padding: 0.5rem 0.7rem;
+  /* Right-padded to clear the corner menu overlay below — its own
+     absolute positioning takes it out of flow, so this is what actually
+     keeps the title/rev-badge from running underneath it. */
+  padding: 0.5rem 2.6rem 0.5rem 0.7rem;
   border: 1px solid #eee;
   border-radius: 8px;
   background: #fafafa;
@@ -776,6 +721,21 @@ defineExpose({ refresh: load })
 .project-card:hover {
   border-color: #4a6fa5;
   background: #f3f6fb;
+}
+
+/* The "..." more-actions menu — top-right corner of the card itself
+   (see manage-projects-actions-menu below for the button/panel it
+   wraps), not a separate column beside the row. */
+.project-card-menu {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+}
+
+.project-card-menu .manage-projects-menu-btn {
+  width: 2rem;
+  height: 2rem;
+  font-size: 1rem;
 }
 
 .project-card-icon {
@@ -911,78 +871,6 @@ defineExpose({ refresh: load })
 
 .manage-projects-edit-btn:hover {
   background: #f0f4fa;
-}
-
-.manage-projects-label-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.88rem;
-  height: 2.88rem;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: #4a6fa5;
-  cursor: pointer;
-}
-
-.manage-projects-label-btn:hover {
-  background: #f0f4fa;
-}
-
-.manage-projects-download-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.88rem;
-  height: 2.88rem;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: #4a6fa5;
-  cursor: pointer;
-}
-
-.manage-projects-download-btn:hover {
-  background: #f0f4fa;
-}
-
-.manage-projects-share-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.88rem;
-  height: 2.88rem;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: #4a6fa5;
-  cursor: pointer;
-}
-
-.manage-projects-share-btn:hover {
-  background: #f0f4fa;
-}
-
-.manage-projects-delete-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.88rem;
-  height: 2.88rem;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: #c62828;
-  cursor: pointer;
-}
-
-.manage-projects-delete-btn:hover {
-  background: #fdecea;
 }
 
 .manage-projects-actions-menu {

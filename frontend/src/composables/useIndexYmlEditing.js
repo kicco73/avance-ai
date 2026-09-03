@@ -13,12 +13,12 @@ import {
 // state/action's current Graph element after index.yml's own text changes
 // server-side.
 export function useIndexYmlEditing(
-  projectName, guardedAction, indexYmlEditorRef, jumpToDefinition, selectedGraphElement, selectedStateKey, flashRecentlyAdded
+  projectId, guardedAction, indexYmlEditorRef, jumpToDefinition, selectedGraphElement, selectedStateKey, flashRecentlyAdded
 ) {
   function handleAddState() {
     guardedAction('add a new state', async () => {
       try {
-        const state = await postAddState(projectName)
+        const state = await postAddState(projectId)
         selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(state.key) ?? null
         flashRecentlyAdded(`state:${state.key}`)
       } catch {
@@ -30,7 +30,7 @@ export function useIndexYmlEditing(
   function handleAddSignal() {
     guardedAction('add a new signal', async () => {
       try {
-        const signal = await postAddSignal(projectName)
+        const signal = await postAddSignal(projectId)
         flashRecentlyAdded(`signal:${signal.name}`)
       } catch {
         // already surfaced via apiFetch
@@ -41,7 +41,7 @@ export function useIndexYmlEditing(
   function handleAddEnvKey() {
     guardedAction('add a new env key', async () => {
       try {
-        const envKey = await postAddEnvKey(projectName)
+        const envKey = await postAddEnvKey(projectId)
         flashRecentlyAdded(`env-key:${envKey.name}`)
       } catch {
         // already surfaced via apiFetch
@@ -54,7 +54,7 @@ export function useIndexYmlEditing(
     if (!stateKey) return
     guardedAction('add a new action', async () => {
       try {
-        const action = await postAddAction(projectName, stateKey)
+        const action = await postAddAction(projectId, stateKey)
         // Selects the new action itself, not its containing state — selecting
         // the state would flip the Inspector's active tab back to "State" (see the selectedGraphElement watch above).
         selectedGraphElement.value = indexYmlEditorRef.value?.actionsForState(stateKey).find(
@@ -70,7 +70,7 @@ export function useIndexYmlEditing(
   function handleSetStateField(stateName, field, value) {
     guardedAction(`edit "${field}"`, async () => {
       try {
-        await putStateField(projectName, stateName, field, value)
+        await putStateField(projectId, stateName, field, value)
         selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateName) ?? null
       } catch {
         // already surfaced via apiFetch
@@ -81,7 +81,7 @@ export function useIndexYmlEditing(
   function handleSetProjectField(field, value) {
     guardedAction(`edit "${field}"`, async () => {
       try {
-        await putProjectField(projectName, field, value)
+        await putProjectField(projectId, field, value)
       } catch {
         // already surfaced via apiFetch
       }
@@ -95,9 +95,9 @@ export function useIndexYmlEditing(
         // so putActionField's state/action lookup can't reach it — its
         // fields go through the dedicated endpoint instead.
         if (stateName === '') {
-          await putInitActionField(projectName, field, value)
+          await putInitActionField(projectId, field, value)
         } else {
-          await putActionField(projectName, stateName, actionName, field, value)
+          await putActionField(projectId, stateName, actionName, field, value)
         }
         selectedGraphElement.value = indexYmlEditorRef.value?.actionsForState(stateName).find(
           (a) => a.data.actionName === actionName
@@ -111,7 +111,7 @@ export function useIndexYmlEditing(
   function handleSetSignalField(signalName, field, value) {
     guardedAction(`edit "${field}"`, async () => {
       try {
-        const signal = await putSignalField(projectName, signalName, field, value)
+        const signal = await putSignalField(projectId, signalName, field, value)
         // Only a ui-label edit can rename the signal — its line in the YAML
         // moves, so re-jump to it off the *new* name the response reported.
         if (field === 'ui-label') await jumpToDefinition({ kind: 'signal', signalName: signal.name }, { silent: true })
@@ -124,7 +124,7 @@ export function useIndexYmlEditing(
   function handleSetEnvKeyField(envKeyName, field, value) {
     guardedAction(`edit "${field}"`, async () => {
       try {
-        const envKey = await putEnvKeyField(projectName, envKeyName, field, value)
+        const envKey = await putEnvKeyField(projectId, envKeyName, field, value)
         // Only a 'name' edit can rename the key — its line in the YAML
         // moves, so re-jump to it off the *new* name the response reported.
         if (field === 'name') await jumpToDefinition({ kind: 'env-key', envKeyName: envKey.name }, { silent: true })
@@ -137,7 +137,7 @@ export function useIndexYmlEditing(
   function handleDeleteState(stateName) {
     guardedAction('delete this state', async () => {
       try {
-        await deleteState(projectName, stateName)
+        await deleteState(projectId, stateName)
         selectedGraphElement.value = null
       } catch {
         // already surfaced via apiFetch
@@ -148,7 +148,7 @@ export function useIndexYmlEditing(
   function handleDeleteAction(stateName, actionName) {
     guardedAction('delete this action', async () => {
       try {
-        await deleteProjectAction(projectName, stateName, actionName)
+        await deleteProjectAction(projectId, stateName, actionName)
         // The containing state is still selected — only the action itself
         // (if it happened to be the literal selection) is now gone.
         if (selectedGraphElement.value?.kind === 'action' && selectedGraphElement.value.data.actionName === actionName) {
@@ -163,7 +163,7 @@ export function useIndexYmlEditing(
   function handleDeleteSignal(signalName) {
     guardedAction('delete this signal', async () => {
       try {
-        await deleteProjectSignal(projectName, signalName)
+        await deleteProjectSignal(projectId, signalName)
       } catch {
         // already surfaced via apiFetch
       }
@@ -173,7 +173,7 @@ export function useIndexYmlEditing(
   function handleDeleteEnvKey(envKeyName) {
     guardedAction('delete this env key', async () => {
       try {
-        await deleteProjectEnvKey(projectName, envKeyName)
+        await deleteProjectEnvKey(projectId, envKeyName)
       } catch {
         // already surfaced via apiFetch
       }

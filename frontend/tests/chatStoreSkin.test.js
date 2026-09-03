@@ -64,7 +64,7 @@ describe("chatSkin.js's shared index.css skin loader, driven by the live store",
   it('fetches and applies the skin once a project+session are set', async () => {
     fetchMock.mockResolvedValue({ ok: true, text: async () => '.chat-window-shell { color: red; }' })
 
-    chatStore.currentProjectName.value = 'proj'
+    chatStore.currentProjectId.value = 'proj'
     chatStore.currentSessionId.value = 1
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
 
@@ -78,7 +78,7 @@ describe("chatSkin.js's shared index.css skin loader, driven by the live store",
 
   it('re-fetches on every skinVersion bump, replacing the same tag rather than adding a second one', async () => {
     fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: red; }' })
-    chatStore.currentProjectName.value = 'proj'
+    chatStore.currentProjectId.value = 'proj'
     chatStore.currentSessionId.value = 1
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
 
@@ -92,7 +92,7 @@ describe("chatSkin.js's shared index.css skin loader, driven by the live store",
 
   it('applyAspect turned off skips the fetch entirely and removes any applied skin', async () => {
     fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: red; }' })
-    chatStore.currentProjectName.value = 'proj'
+    chatStore.currentProjectId.value = 'proj'
     chatStore.currentSessionId.value = 1
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
 
@@ -103,7 +103,7 @@ describe("chatSkin.js's shared index.css skin loader, driven by the live store",
 
   it('turning applyAspect back on resumes loading — the exact toggle RunChat.vue exposes', async () => {
     fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: green; }' })
-    chatStore.currentProjectName.value = 'proj'
+    chatStore.currentProjectId.value = 'proj'
     chatStore.currentSessionId.value = 1
     chatSkin.applyAspect.value = false
     await nextTick()
@@ -116,7 +116,7 @@ describe("chatSkin.js's shared index.css skin loader, driven by the live store",
 
   it('a non-ok response (e.g. no index.css yet) clears the skin instead of leaving a stale tag', async () => {
     fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: red; }' })
-    chatStore.currentProjectName.value = 'proj'
+    chatStore.currentProjectId.value = 'proj'
     chatStore.currentSessionId.value = 1
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
 
@@ -127,12 +127,12 @@ describe("chatSkin.js's shared index.css skin loader, driven by the live store",
 
   it('switching project+session (e.g. leaving then re-entering Test) fetches the new one', async () => {
     fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: red; }' })
-    chatStore.currentProjectName.value = 'proj-a'
+    chatStore.currentProjectId.value = 'proj-a'
     chatStore.currentSessionId.value = 1
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
 
     fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: purple; }' })
-    chatStore.currentProjectName.value = 'proj-b'
+    chatStore.currentProjectId.value = 'proj-b'
     chatStore.currentSessionId.value = 2
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     expect(fetchMock).toHaveBeenLastCalledWith(
@@ -168,14 +168,14 @@ describe('chatSkin.js only ever applies the currently active store — live vs t
 
   it('a project/session change on the inactive store is ignored until it becomes active', async () => {
     fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: red; }' })
-    chatStore.currentProjectName.value = 'proj'
+    chatStore.currentProjectId.value = 'proj'
     chatStore.currentSessionId.value = 1
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
 
     // Test mode's own store resolves in the background (e.g. RunChat.vue
     // mounted once) — must not touch the live skin while 'live' is active.
     fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: draft; }' })
-    testChatStore.currentProjectName.value = 'draft-project'
+    testChatStore.currentProjectId.value = 'draft-project'
     testChatStore.currentSessionId.value = 99
     await nextTick()
     await nextTick()
@@ -240,7 +240,7 @@ describe('the real Test-mode bootstrap sequence (loadMessages -> ensureSession) 
 
     await testChatStore.loadMessages()
 
-    expect(testChatStore.currentProjectName.value).toBe('ttm_prototype_2')
+    expect(testChatStore.currentProjectId.value).toBe('ttm_prototype_2')
     expect(testChatStore.currentSessionId.value).toBe(2)
 
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))

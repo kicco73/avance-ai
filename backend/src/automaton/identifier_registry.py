@@ -37,6 +37,7 @@ class IdentifierRegistry:
         "celebrate": "Plays a confetti animation in the frontend — e.g. actuator.celebrate().",
         "notify": "Shows a toast in the frontend — e.g. actuator.notify('Nice!', 'You reached **state B**.'). `body_md` is markdown.",
         "defer": "Runs another actuator call later, at a given time — e.g. actuator.defer(lambda: actuator.send_mail(user.email, 'Reminder'), when).",
+        "prompt": "Runs an extra, synchronous, read-only prompt (general-prompt + attachments + signal/env context, only its text returned — no message is added to the conversation) — e.g. actuator.notify('Note', actuator.prompt('Summarize the last exchange in one sentence.')).",
     }
 
     DATETIME: dict[str, str] = {

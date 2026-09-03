@@ -4,6 +4,7 @@ ever talked to gets a chance to re-evaluate its triggers. One handler
 serves both event types — neither carries anything the other doesn't."""
 from __future__ import annotations
 
+from ai.ai_service import AiService
 from automaton.automaton import manual_actions_for
 from chat.ws_adapter import WsAdapter
 from db.db import Db
@@ -54,6 +55,7 @@ class WakeupService:
     def __init__(
         self, db: Db, project_service: ProjectService, job_queue: JobQueue, actuator_factory: ActuatorSetFactory,
         ws_adapter: WsAdapter | None = None, tracking_service: TrackingService | None = None,
+        ai_service: AiService | None = None,
     ) -> None:
         self._db = db
         self._project_service = project_service
@@ -64,6 +66,10 @@ class WakeupService:
         # applied and persisted either way, only live delivery depends on this.
         self._ws_adapter = ws_adapter
         self._tracking_service = tracking_service
+        # Only actuator.prompt() needs this — None here just means a
+        # self-loop's own on-enter falls back to actuator.prompt()'s own
+        # no-context default ("", logged) instead of a real generation call.
+        self._ai_service = ai_service
 
     def register(self) -> None:
         subscribe(StateChanged, self._on_event)
@@ -115,6 +121,7 @@ class WakeupService:
             automaton_namespace = AutomatonNamespace(self._db, self._project_service)
             scope_builder = EvaluationScopeBuilder(
                 env, metrics, system, session_facts, user_facts, self._db, automaton_namespace, self._actuator_factory.live(),
+                ai_service=self._ai_service,
             )
             tracking_engine = TrackingEngine(DbTrackingSink(self._db), env, scope_builder)
 

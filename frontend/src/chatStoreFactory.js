@@ -104,7 +104,7 @@ export function createChatStore({
   const sessions = ref([])
   const sessionsLoading = ref(false)
   const sessionsPanelOpen = ref(false)
-  const currentProjectName = ref(null)
+  const currentProjectId = ref(null)
   const messages = ref([])
   const historyLoaded = ref(false)
   const chatLoading = ref(false)
@@ -118,7 +118,7 @@ export function createChatStore({
   const turnCount = ref(0)
   let nextMessageId = 0
 
-  registerSkinSource(kind, currentProjectName, currentSessionId)
+  registerSkinSource(kind, currentProjectId, currentSessionId)
 
   function bumpTurn() {
     turnCount.value++
@@ -140,7 +140,7 @@ export function createChatStore({
     // other than the one currently open. Only applies state.value when
     // the notification is about the currently displayed project.
     onNotification(({ project_name, state: newState, 'on-enter': onEnter }) => {
-      if (project_name === currentProjectName.value) {
+      if (project_name === currentProjectId.value) {
         handleStateChange(newState, onEnter)
         return
       }
@@ -186,7 +186,7 @@ export function createChatStore({
     if (session.legal_terms_pending) return null
     currentSessionId.value = session.id
     selectedSessionActive.value = session.active
-    currentProjectName.value = session.project_id
+    currentProjectId.value = session.project_id
     state.value = session.state
     if (useAutoTracking) await loadAutoTracking()
     if (useActuatorsToggle) await loadActuators()
@@ -211,10 +211,10 @@ export function createChatStore({
     }
   }
 
-  async function loadSessions(includeImported = false, projectName = null) {
+  async function loadSessions(includeImported = false, projectId = null) {
     sessionsLoading.value = true
     try {
-      sessions.value = await getSessionsList(includeImported, projectName ?? currentProjectName.value)
+      sessions.value = await getSessionsList(includeImported, projectId ?? currentProjectId.value)
     } catch {
       // already surfaced via apiFetch
     } finally {
@@ -225,9 +225,9 @@ export function createChatStore({
   // Same fetch as loadSessions, but never touches sessionsLoading — for a
   // caller that wants `sessions` refreshed without flashing the panel to
   // "Loading…".
-  async function refreshSessionsQuietly(includeImported = false, projectName = null) {
+  async function refreshSessionsQuietly(includeImported = false, projectId = null) {
     try {
-      sessions.value = await getSessionsList(includeImported, projectName ?? currentProjectName.value)
+      sessions.value = await getSessionsList(includeImported, projectId ?? currentProjectId.value)
     } catch {
       // already surfaced via apiFetch
     }
@@ -579,7 +579,7 @@ export function createChatStore({
     actuatorsEnabled.value = false
     // A project switch is exactly when "the current session" should be re-resolved.
     currentSessionId.value = null
-    currentProjectName.value = null
+    currentProjectId.value = null
     selectedSessionActive.value = true
     sessions.value = []
   }
@@ -658,7 +658,7 @@ export function createChatStore({
 
   return {
     state, currentSessionId, selectedSessionActive, projectPaused, projectPausedReason,
-    sessions, sessionsLoading, sessionsPanelOpen, currentProjectName,
+    sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
     messages, historyLoaded, chatLoading, chatStatus, actionLoading,
     autoTrackingEnabled, autoTrackingLoading, actuatorsEnabled, actuatorsLoading, draft, turnCount,
     handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,

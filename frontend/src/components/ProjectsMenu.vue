@@ -34,8 +34,8 @@ const emit = defineEmits([
 
 const open = ref(false)
 const loading = ref(false)
-// {name, is_paused, ui_label}[] — ui_label is shown in place of the raw
-// name wherever declared.
+// {id, is_paused, ui_label}[] — ui_label is shown in place of the raw
+// id wherever declared.
 const projects = ref([])
 const activeProjectName = ref(null)
 const rootEl = ref(null)
@@ -142,17 +142,18 @@ onBeforeUnmount(() => {
         <ul v-else class="projects-list">
           <li
             v-for="project in projects"
-            :key="project.name"
+            :key="project.id"
             class="project-entry"
           >
             <button
               class="projects-item"
-              @click="selectProject(project.name)"
+              :title="project.ui_label ?? project.id"
+              @click="selectProject(project.id)"
             >
               <span class="projects-item-check">
-                {{ project.name === displayedProjectName ? '✓' : '' }}
+                {{ project.id === displayedProjectName ? '✓' : '' }}
               </span>
-              {{ project.ui_label ?? project.name }}
+              <span class="projects-item-label">{{ project.ui_label ?? project.id }}</span>
             </button>
           </li>
         </ul>
@@ -197,7 +198,8 @@ onBeforeUnmount(() => {
   position: absolute;
   top: calc(100% + 0.4rem);
   right: 0;
-  min-width: 180px;
+  min-width: 240px;
+  max-width: 320px;
   background: white;
   border: 1px solid #ddd;
   border-radius: 8px;
@@ -235,7 +237,9 @@ onBeforeUnmount(() => {
 }
 
 .projects-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   width: 100%;
   text-align: left;
   padding: 0.5rem 0.9rem;
@@ -244,6 +248,14 @@ onBeforeUnmount(() => {
   cursor: pointer;
   font-size: 0.9rem;
   color: #4a6fa5;
+}
+
+.projects-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .projects-item:hover:not(:disabled) {
@@ -273,6 +285,7 @@ onBeforeUnmount(() => {
 
 .projects-item-check {
   display: inline-block;
+  flex-shrink: 0;
   width: 1.1rem;
   color: #2e7d32;
   font-weight: 600;

@@ -72,24 +72,30 @@ class ChatService(object):
 		self._session_lifecycle_locks = KeyedLockRegistry(asyncio.Lock)
 		self._global_lock = asyncio.Lock()
 
+	def _ai_service_for_session(self, session_id: int) -> AiService:
+		session = self._db.get_chat_session(session_id)
+		return self._ai_test_service if session is not None and session["type"] == "test" else self._ai_service
+
 	def _tracking_engine_for_session(self, session_id: int) -> tuple[TrackingEngine, "ActuatorSet"]:
 		actuator_set = self._actuator_factory.for_session(session_id)
 		scope_builder = EvaluationScopeBuilder(
 			self.env, self.metric_service, self._system_facts, self._session_facts, self._user_facts,
-			self._db, self._automaton_namespace, actuator_set,
+			self._db, self._automaton_namespace, actuator_set, ai_service=self._ai_service_for_session(session_id),
 		)
 		return TrackingEngine(DbTrackingSink(self._db), self.env, scope_builder), actuator_set
 
 	def _render_on_enter(self, automaton: Automaton, action: Action, session_id: int | None) -> str | None:
-		"""`action.on_enter` (celebrate/notify/send_mail-style actuator.*
-		calls, or nothing) rendered into the wire-ready JS text the
-		frontend's on-enter runner already knows how to execute — the
+		"""`action.on_enter` (celebrate/notify/send_mail/prompt-style
+		actuator.* calls, or nothing) rendered into the wire-ready JS text
+		the frontend's on-enter runner already knows how to execute — the
 		"perfect tunnel" from a server-side actuator call to its
 		client-side equivalent. Used wherever an action's on-enter reaches
 		the client outside a real trigger/apply_transition path (new-
 		session bootstrap, test-session reset). `session_id=None` (no
 		session yet, e.g. a project-wide test reset) always renders
-		through a FakeActuatorSet, same as any other actuator-off default."""
+		through a FakeActuatorSet, same as any other actuator-off default —
+		and actuator.prompt() itself returns "" there (no session to read
+		conversation history from)."""
 		if not action.on_enter:
 			return None
 		if session_id is not None:
@@ -100,7 +106,7 @@ class ChatService(object):
 				self._db, self._automaton_namespace,
 			)
 			tracking_engine = TrackingEngine(DbTrackingSink(self._db), self.env, scope_builder)
-		return tracking_engine.render_on_enter(automaton, action, action.target)
+		return tracking_engine.render_on_enter(automaton, action, action.target, session_id=session_id)
 
 	@property
 	def _active_project_id(self) -> str:
@@ -695,12 +701,12 @@ class ChatService(object):
 		for key, expression in missing.items():
 			tracking_engine.apply_action_env(
 				automaton, replace(action, env={key: expression}, on_enter=None), {}, "",
-				username=self._username, project_id=project_id,
+				username=self._username, project_id=project_id, session_id=session_id,
 			)
 
 	async def _ensure_project_bootstrap(
 		self, session_id: int
-	) -> tuple[Automaton, State, dict | None] | tuple[None, None, None]:
+	) -> tuple[Automaton, State] | tuple[None, None]:
 		# An imported session is a fixed transcript, never live — its NULL
 		# message timestamps would make has_messages_since wrongly report
 		# "no messages" and crash trying to generate an opening one.
@@ -708,7 +714,7 @@ class ChatService(object):
 		if session is None:
 			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
 		if session["type"] == "imported":
-			return None, None, None
+			return None, None
 
 		project_id = session["project_id"]
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
@@ -723,7 +729,6 @@ class ChatService(object):
 		# (no DB write) once every declared key already has one.
 		self._apply_declared_env_defaults(automaton, project_id, session_id)
 
-		init_message = None
 		if self._db.get_current_state(project_id) is None:
 			action = automaton.init_action
 			# Deliberately never linked to a message: this transition
@@ -733,17 +738,15 @@ class ChatService(object):
 				"", action.name, state.key, session_id, transition_log_level=state.transition_log_level,
 				origin='init-action',
 			)
-			if action.action_prompt:
-				init_message = await self._generate_action_prompt_message(action, session_id)
 
-		return automaton, state, init_message
+		return automaton, state
 
 	async def open_if_needed(self, session_id: int) -> dict | None:
-		automaton, state, init_message = await self._ensure_project_bootstrap(session_id)
+		automaton, state = await self._ensure_project_bootstrap(session_id)
 		if automaton is None:
 			return None
 		await self._generate_opening_message_if_needed(session_id, automaton, state)
-		return init_message
+		return None
 
 	async def prepare_user_initiated_turn(self, session_id: int) -> None:
 		"""WhatsApp's own turns (invite welcome excluded): the user's text
@@ -752,7 +755,7 @@ class ChatService(object):
 		above, plus (when the current state can't take a real turn at
 		all) the wrap-up message that's otherwise the only thing this
 		session would ever say."""
-		automaton, state, _ = await self._ensure_project_bootstrap(session_id)
+		automaton, state = await self._ensure_project_bootstrap(session_id)
 		if automaton is None:
 			return
 		if state.final or not state.chat:
@@ -775,35 +778,23 @@ class ChatService(object):
 	async def _generate_opening_message_body(self, session_id: int) -> dict:
 		return await self.process_turn(session_id)
 
-	async def _generate_action_prompt_message(self, action: Action, session_id: int, *, locked: bool = True) -> dict:
-		logger.warning("Executing action_prompt for action '%s'.", action.name)
-		if locked:
-			return await self.process_turn(session_id, None, extra_prompt=action.action_prompt)
-		return await self._process_turn_body(session_id, None, extra_prompt=action.action_prompt)
-
 	async def _messages_for_transition(
-		self, action: Action, session_id: int, new_state: State, *, is_self_loop: bool
+		self, session_id: int, new_state: State, *, is_self_loop: bool
 	) -> list[dict]:
-		"""Every real, chat-visible message this transition's follow-up
-		turn(s) produced, as flat message rows. A turn whose reply landed
-		in a non-chat state has no assistant_message_id, so it's skipped rather than looked up as None."""
+		"""The new state's own opening message, if this transition
+		generated one, as a flat message row (list-wrapped for
+		apply_manual_action's own "reply" field). A turn whose reply
+		landed in a non-chat state has no assistant_message_id, so
+		nothing is returned rather than looked up as None."""
 		should_open = not is_self_loop and self._should_generate_opening_message(session_id, new_state)
-
-		turn_results = []
-		if action.action_prompt:
-			turn_results.append(await self._generate_action_prompt_message(action, session_id, locked=False))
-		if should_open:
-			turn_results.append(await self._process_turn_body(session_id))
-
-		messages = []
-		for turn_result in turn_results:
-			message_id = turn_result["assistant_message_id"]
-			if message_id is None:
-				continue
-			message = self._db.get_message(message_id)
-			if message is not None:
-				messages.append(message)
-		return messages
+		if not should_open:
+			return []
+		turn_result = await self._process_turn_body(session_id)
+		message_id = turn_result["assistant_message_id"]
+		if message_id is None:
+			return []
+		message = self._db.get_message(message_id)
+		return [message] if message is not None else []
 
 	async def apply_manual_action(self, action_name: str, session_id: int) -> dict:
 		project_id = self._project_id_for_session(session_id)
@@ -823,9 +814,10 @@ class ChatService(object):
 			tracking_engine, _ = self._tracking_engine_for_session(session["id"])
 			on_enter = tracking_engine.apply_action_env(
 				automaton, action, {}, source_state_key, username=Session().user, project_id=project_id,
+				session_id=session["id"],
 			)
 			reply = await self._messages_for_transition(
-				action, session["id"], state, is_self_loop=(action.target == source_state_key)
+				session["id"], state, is_self_loop=(action.target == source_state_key)
 			)
 			self._session_manager.touch_session(session["id"], state.key)
 			return {
@@ -841,18 +833,16 @@ class ChatService(object):
 		session_id: int,
 		text: str | None = None,
 		on_metadata: OnMetadata | None = None,
-		extra_prompt: str | None = None,
 	) -> dict:
 		project_id = self._project_id_for_session(session_id)
 		async with self._session_scope(project_id, session_id):
-			return await self._process_turn_body(session_id, text, on_metadata, extra_prompt=extra_prompt)
+			return await self._process_turn_body(session_id, text, on_metadata)
 
 	async def _process_turn_body(
 		self,
 		session_id: int,
 		text: str | None = None,
 		on_metadata: OnMetadata | None = None,
-		extra_prompt: str | None = None,
 	) -> dict:
 		session = self._db.get_chat_session(session_id)
 		if session is None:
@@ -861,7 +851,7 @@ class ChatService(object):
 		ai_service = self._ai_test_service if session["type"] == "test" else self._ai_service
 		_, state = self._project_service.get_automaton_and_state_for_session(session_id)
 		self._require_active_session(session_id, project_id, state.key)
-		reply = await self._tracking_service._process(session_id, text, ai_service, on_metadata, extra_prompt=extra_prompt)
+		reply = await self._tracking_service._process(session_id, text, ai_service, on_metadata)
 		# touch_session wants the plain state key — reply['state'] is the
 		# full StatePayload dict, not a string; passing it whole would
 		# silently store its Python repr as end_state.

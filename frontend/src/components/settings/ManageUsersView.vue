@@ -89,18 +89,18 @@ async function handleChangeRole(role) {
 // The central panel's own project picker — deliberately independent of the
 // app's active project (see ProjectsMenu.vue's `selectedName` prop): picking
 // a project here only drives the statistics below, never `activateProject`.
-const statsProjectName = ref(null)
+const statsProjectId = ref(null)
 const stats = ref([])
 const statsLoading = ref(false)
 
-async function loadStats(projectName, user) {
-  if (!projectName || !user) {
+async function loadStats(projectId, user) {
+  if (!projectId || !user) {
     stats.value = []
     return
   }
   statsLoading.value = true
   try {
-    stats.value = await getMetrics(projectName, null, true, user.email ?? user.id)
+    stats.value = await getMetrics(projectId, null, true, user.email ?? user.id)
   } catch {
   } finally {
     statsLoading.value = false
@@ -129,16 +129,16 @@ const lastSessionStateNode = computed(() => {
   return projectGraphNodes.value.find((node) => node.state.key === key) ?? null
 })
 
-async function loadLatestSignals(projectName, user) {
-  if (!projectName || !user) {
+async function loadLatestSignals(projectId, user) {
+  if (!projectId || !user) {
     latestSignals.value = { last_session: null, session_id: null, values: null }
     projectGraphNodes.value = []
     return
   }
   latestSignalsLoading.value = true
   try {
-    latestSignals.value = await getUserLatestSignals(projectName, user.email ?? user.id)
-    projectGraphNodes.value = (await getProjectGraph(projectName, latestSignals.value.last_session?.id)).nodes
+    latestSignals.value = await getUserLatestSignals(projectId, user.email ?? user.id)
+    projectGraphNodes.value = (await getProjectGraph(projectId, latestSignals.value.last_session?.id)).nodes
   } catch {
     latestSignals.value = { last_session: null, session_id: null, values: null }
     projectGraphNodes.value = []
@@ -149,9 +149,9 @@ async function loadLatestSignals(projectName, user) {
 
 // Re-runs whenever either the toolbar's project or the Explorer's selected
 // user changes — the statistics are that user's own sessions of that project.
-watch([statsProjectName, selectedUser], ([projectName, user]) => {
-  loadStats(projectName, user)
-  loadLatestSignals(projectName, user)
+watch([statsProjectId, selectedUser], ([projectId, user]) => {
+  loadStats(projectId, user)
+  loadLatestSignals(projectId, user)
 })
 
 // Seeds the picker with the app's current active project — a read-only
@@ -163,7 +163,7 @@ watch([statsProjectName, selectedUser], ([projectName, user]) => {
 async function loadInitialProject() {
   try {
     const res = await getProjects()
-    if (statsProjectName.value == null) statsProjectName.value = res.active
+    if (statsProjectId.value == null) statsProjectId.value = res.active
   } catch {
   }
 }
@@ -187,7 +187,7 @@ defineExpose({ refresh: load })
   <div class="manage-users-overlay">
     <div class="manage-users-header">
       <button class="back-btn" title="Back" @click="emit('close')">«</button>
-      <ProjectsMenu align="left" :selected-name="statsProjectName" @select="statsProjectName = $event" />
+      <ProjectsMenu align="left" :selected-name="statsProjectId" @select="statsProjectId = $event" />
       <h2 class="manage-users-header-title">Users</h2>
       <div class="manage-users-header-actions">
         <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
@@ -260,12 +260,12 @@ defineExpose({ refresh: load })
         </div>
 
         <div v-else-if="activeMainTab === 'signals'" class="manage-users-stats">
-          <p v-if="!statsProjectName" class="manage-users-stats-status">Select a project to see timelines.</p>
+          <p v-if="!statsProjectId" class="manage-users-stats-status">Select a project to see timelines.</p>
           <p v-else-if="!selectedUser" class="manage-users-stats-status">Select a user to see their timeline.</p>
           <template v-else>
             <div class="manage-users-trends-block">
               <TimelineChart
-                :project-name="statsProjectName"
+                :project-id="statsProjectId"
                 :username="selectedUser.email ?? selectedUser.id"
                 @colors="signalColorMap = $event"
               />
@@ -276,7 +276,7 @@ defineExpose({ refresh: load })
             </p>
             <InspectorSignalsTab
               v-else
-              :project-name="statsProjectName"
+              :project-id="statsProjectId"
               :signal-values="latestSignalValues"
               :session-id="latestSignals.session_id"
               :signal-colors="signalColorMap"
@@ -285,12 +285,12 @@ defineExpose({ refresh: load })
         </div>
 
         <div v-else class="manage-users-stats">
-          <p v-if="!statsProjectName" class="manage-users-stats-status">Select a project to see its statistics.</p>
+          <p v-if="!statsProjectId" class="manage-users-stats-status">Select a project to see its statistics.</p>
           <p v-else-if="!selectedUser" class="manage-users-stats-status">Select a user to see their statistics.</p>
           <template v-else>
             <div class="manage-users-trends-block">
               <MetricsTrendsChart
-                :project-name="statsProjectName"
+                :project-id="statsProjectId"
                 :username="selectedUser.email ?? selectedUser.id"
                 @colors="metricColorMap = $event"
               />

@@ -3,9 +3,9 @@ import { getProjectFiles } from './api.js'
 
 export const projectFiles = ref([])
 
-export async function refreshProjectFiles(projectName) {
+export async function refreshProjectFiles(projectId) {
   try {
-    projectFiles.value = (await getProjectFiles(projectName)).files
+    projectFiles.value = (await getProjectFiles(projectId)).files
   } catch {
     // already surfaced via apiFetch
   }

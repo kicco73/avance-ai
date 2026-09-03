@@ -259,7 +259,6 @@ class TrackingService(object):
 		text: str | None,
 		ai_service: AiService,
 		on_metadata: OnMetadata | None = None,
-		extra_prompt: str | None = None,
 		):
 
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
@@ -291,6 +290,7 @@ class TrackingService(object):
 		)
 		scope_builder = EvaluationScopeBuilder(
 			env, metrics, system_facts, session_facts, user_facts, self._db, automaton_namespace, actuator_set,
+			ai_service=ai_service,
 		)
 
 		def on_metadata_sync_to_async(key: str, value: Any):
@@ -305,4 +305,4 @@ class TrackingService(object):
 			input_token_budget_per_turn=self._input_token_budget_per_turn,
 		)
 
-		return await tracking_processor.process(text, on_metadata=on_metadata_sync_to_async, extra_prompt=extra_prompt)
+		return await tracking_processor.process(text, on_metadata=on_metadata_sync_to_async)

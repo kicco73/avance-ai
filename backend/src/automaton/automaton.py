@@ -32,7 +32,6 @@ class Action:
     target: str
     ui_description: str | None = None
     trigger: str | None = None
-    action_prompt: str | None = None
     attachments: dict[str, MemoryArchive] = field(default_factory=dict[str, MemoryArchive])
     # Not state-level: two different actions landing on the same target
     # state can each carry their own value (or none), since it describes
@@ -216,7 +215,7 @@ class Automaton(object):
         talk_enabled: bool = True,
     ):
         # A real Action (not just a target state string) so it can also
-        # carry an action_prompt — see ChatService.open_if_needed.
+        # carry its own on_enter/env — see ChatService._ensure_project_bootstrap.
         self.init_action = init_action
         self.states = states
         self.general_prompt = general_prompt

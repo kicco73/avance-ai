@@ -22,8 +22,9 @@ avance-version: "1.7.0"
 #
 # Every action in "engaged" targets "engaged" itself: firing one is a
 # self-loop, so the conversation never dead-ends — each one just prompts
-# an acknowledgment (via its own action-prompt) and stays put, ready to
-# fire again (or a different one) on a later turn. How to exercise each:
+# an acknowledgment (via its own on-enter: actuator.notify(...,
+# actuator.prompt(...))) and stays put, ready to fire again (or a
+# different one) on a later turn. How to exercise each:
 #
 # - notice_mood: send a message with a clearly positive tone — "mood" is
 #   re-estimated by the AI every user turn.
@@ -82,7 +83,7 @@ states:
       a different metric (or signal, or a combination of both) — see the
       file-level comment above for how to exercise each one. Firing one
       never ends the conversation: it just triggers its own acknowledgment
-      message, and every action stays available to fire again afterward.
+      toast, and every action stays available to fire again afterward.
     contextual-prompt: |
       Continue the conversation naturally.
     actions:
@@ -91,40 +92,35 @@ states:
         ui-button: "Notice mood"
         target: engaged
         trigger: "signal.mood >= 70"
-        action-prompt: |
-          Briefly acknowledge to the user that the mood-based trigger just
-          fired, then continue the conversation normally.
+        on-enter: |
+          actuator.notify('Mood', actuator.prompt('Briefly acknowledge that the mood-based trigger just fired.'))
       - name: notice_combo
         ui-label: "Mood signal AND engagement metric both cross their thresholds"
         ui-button: "Notice combo"
         target: engaged
         trigger: "signal.mood >= 40 and session.metric.engagement() >= 10"
-        action-prompt: |
-          Briefly acknowledge to the user that the combined mood+engagement
-          trigger just fired, then continue the conversation normally.
+        on-enter: |
+          actuator.notify('Combo', actuator.prompt('Briefly acknowledge that the combined mood+engagement trigger just fired.'))
       - name: notice_engagement
         ui-label: "Engagement metric crosses its threshold"
         ui-button: "Notice engagement"
         target: engaged
         trigger: "session.metric.engagement() >= 20"
-        action-prompt: |
-          Briefly acknowledge to the user that the engagement trigger just
-          fired, then continue the conversation normally.
+        on-enter: |
+          actuator.notify('Engagement', actuator.prompt('Briefly acknowledge that the engagement trigger just fired.'))
       - name: notice_stability
         ui-label: "State stability metric stays above its threshold"
         ui-button: "Notice stability"
         target: engaged
         trigger: "session.metric.state_stability() >= 80"
-        action-prompt: |
-          Briefly acknowledge to the user that the state-stability trigger
-          just fired, then continue the conversation normally.
+        on-enter: |
+          actuator.notify('Stability', actuator.prompt('Briefly acknowledge that the state-stability trigger just fired.'))
       - name: notice_signal_stability
         ui-label: "Signal stability metric crosses its threshold"
         ui-button: "Notice signal stability"
         target: engaged
         trigger: "session.metric.signal_stability() >= 1"
-        action-prompt: |
-          Briefly acknowledge to the user that the signal-stability
-          trigger just fired, then continue the conversation normally.
+        on-enter: |
+          actuator.notify('Signal stability', actuator.prompt('Briefly acknowledge that the signal-stability trigger just fired.'))
 project:
   id: metrics_playground

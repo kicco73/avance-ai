@@ -8,7 +8,7 @@ import { getProjectGraph, getProjectSignals, getTimeline } from '../../api.js'
 Chart.register(LineController, LineElement, PointElement, LinearScale, TimeScale, Tooltip, zoomPlugin)
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   username: { type: String, required: true },
 })
 
@@ -253,7 +253,7 @@ function renderChart() {
 
 async function loadSignalLabels() {
   try {
-    const { signals } = await getProjectSignals(props.projectName)
+    const { signals } = await getProjectSignals(props.projectId)
     signalLabels.value = Object.fromEntries(signals.map((entry) => [entry.signal.name, entry.signal.ui_label || entry.signal.name]))
   } catch {
     signalLabels.value = {}
@@ -262,7 +262,7 @@ async function loadSignalLabels() {
 
 async function loadStateLabels() {
   try {
-    const { nodes } = await getProjectGraph(props.projectName)
+    const { nodes } = await getProjectGraph(props.projectId)
     stateLabels.value = Object.fromEntries(nodes.map((node) => [node.state.key, node.state.ui_label || node.state.key]))
   } catch {
     stateLabels.value = {}
@@ -270,7 +270,7 @@ async function loadStateLabels() {
 }
 
 async function load() {
-  if (!props.projectName || !props.username) {
+  if (!props.projectId || !props.username) {
     history.value = []
     transitions.value = []
     return
@@ -278,7 +278,7 @@ async function load() {
   loading.value = true
   try {
     await Promise.all([loadSignalLabels(), loadStateLabels()])
-    const timeline = await getTimeline(props.projectName, props.username)
+    const timeline = await getTimeline(props.projectId, props.username)
     history.value = timeline.signals
     transitions.value = timeline.transitions
   } catch {
@@ -292,7 +292,7 @@ async function load() {
   renderChart()
 }
 
-watch(() => [props.projectName, props.username], load)
+watch(() => [props.projectId, props.username], load)
 
 onMounted(load)
 

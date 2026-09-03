@@ -65,8 +65,8 @@ actions:
   - &help
     name: help
     ui-button: "Ajuda'm"
-    action-prompt: |
-      Given the current question, give some hint to the user, without revealing the answer.
+    on-enter: |
+      actuator.notify('Ajuda', actuator.prompt('Given the current question, give some hint to the user, without revealing the answer.'))
   - &chat
     name: chat
     ui-button: "Xat"
@@ -163,9 +163,8 @@ states:
       - <<: *results
         trigger: "signal.progress == 100"
       - <<: *grammar
-        action-prompt: |
-          Show a table with the rules to conjugate regular verbs in this mode and tense.
-          Show all the verbs: parlar, prometre, tenir, llegir.
+        on-enter: |
+          actuator.notify('Gramàtica', actuator.prompt('Show a table with the rules to conjugate regular verbs in this mode and tense. Show all the verbs: parlar, prometre, tenir, llegir.'))
       - <<: *unit-subjuntive
     attachments:
       - verbs.txt
@@ -203,9 +202,8 @@ states:
       - <<: *results
         trigger: "signal.progress == 100"
       - <<: *grammar
-        action-prompt: |
-          - explain the trick: all verbs whose infinitive ends in -jar , -car, -çar, -gar have hortographic alterations
-          - Show the a table of the rules to conjugate this kind regular verbs, with also some example of this.
+        on-enter: |
+          actuator.notify('Gramàtica', actuator.prompt('Explain the trick: all verbs whose infinitive ends in -jar, -car, -çar, -gar have hortographic alterations. Show a table of the rules to conjugate this kind of regular verbs, with also some examples.'))
       - <<: *unit-subjuntive
     attachments:
       - verbs.txt
@@ -238,9 +236,8 @@ states:
       - <<: *results
         trigger: "signal.progress == 100"
       - <<: *grammar
-        action-prompt: |
-          - explain the trick: all verbs that end in -c (like creure, jo crec -> cregui) in the first person indicative present tense, will need the ortographic change in -gu.
-          - Show the a table of the rules to conjugate this kind regular verbs, with also an example of this.
+        on-enter: |
+          actuator.notify('Gramàtica', actuator.prompt('Explain the trick: all verbs that end in -c (like creure, jo crec -> cregui) in the first person indicative present tense will need the ortographic change in -gu. Show a table of the rules to conjugate this kind of regular verbs, with also an example.'))
       - <<: *unit-subjuntive
     attachments:
       - verbs.txt
@@ -270,8 +267,8 @@ states:
       - <<: *results
         trigger: "signal.progress == 100"
       - <<: *grammar
-        action-prompt: |
-          - show quick table with conjugations for some important random irregular verbs of the subjuntive - present tense.
+        on-enter: |
+          actuator.notify('Gramàtica', actuator.prompt('Show a quick table with conjugations for some important random irregular verbs of the subjuntive - present tense.'))
       - <<: *unit-subjuntive
 
   unit55-D:

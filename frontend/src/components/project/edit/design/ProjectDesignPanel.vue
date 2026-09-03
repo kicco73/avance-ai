@@ -15,7 +15,7 @@ import { projectFileContentUrl } from '../../../../api.js'
 const IMAGE_PATTERN = /\.(png|jpe?g|gif|webp|svg)$/i
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   files: { type: Array, default: () => [] },
   filesLoading: { type: Boolean, default: true },
   currentFileName: { type: String, default: null },
@@ -92,7 +92,7 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
         <IndexYmlEditorPanel
           v-show="currentFileName === 'index.yml'"
           ref="indexYmlEditorRef"
-          :project-name="projectName"
+          :project-id="projectId"
           :attachment-files="attachmentFiles"
           :highlighted-state-key="highlightedStateKey"
           :auto-jump-on-highlight-change="true"
@@ -105,20 +105,20 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
         <IndexCssEditorPanel
           v-show="currentFileName === 'index.css'"
           ref="indexCssEditorRef"
-          :project-name="projectName"
+          :project-id="projectId"
           :files="files"
           @saved="emit('saved', $event)"
         />
         <div v-if="currentFileIsImage" class="edit-project-editor-attachment">
           <div class="edit-project-editor-content edit-project-editor-image">
-            <img :key="currentFileName" :src="projectFileContentUrl(projectName, currentFileName)" :alt="currentFileName" />
+            <img :key="currentFileName" :src="projectFileContentUrl(projectId, currentFileName)" :alt="currentFileName" />
           </div>
         </div>
         <MdEditorPanel
           v-else-if="currentFileIsMarkdown"
           :key="currentFileName"
           ref="mdEditorRef"
-          :project-name="projectName"
+          :project-id="projectId"
           :file-name="currentFileName"
           :initial-segment="currentFileName === justAddedFileName ? 'edit' : 'preview'"
           @saved="emit('saved', $event)"
@@ -151,7 +151,7 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
             <CodeEditor
               :key="currentFileName"
               ref="codeEditorRef"
-              :project-name="projectName"
+              :project-id="projectId"
               :file-name="currentFileName"
               @saved="emit('saved', $event)"
               @renamed="emit('renamed', $event)"

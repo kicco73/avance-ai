@@ -100,7 +100,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			# again via apply_transition further down — see record_transition.
 			self.out.on_enter = self._tracking_engine.apply_action_env(
 				self.user.automaton, self.out.action, self.metadata.signals, self.user.state.key,
-				username=Session().user, project_id=self.user.project_id,
+				username=Session().user, project_id=self.user.project_id, session_id=self.user.session_id,
 			)
 
 			# Signals are already known from the first call — asking again

@@ -15,7 +15,7 @@ import { textareaDialog } from '../../../../dialogStore.js'
 import { aiEditIndexYml } from '../../../../api.js'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   // Behavior branch attachment basenames — the code segment's
   // `attachments:` autocomplete offers these (see CodeEditor.vue).
   attachmentFiles: { type: Array, default: () => [] },
@@ -90,7 +90,7 @@ async function aiEdit() {
   if (!instruction) return
   aiEditing.value = true
   try {
-    const result = await aiEditIndexYml(props.projectName, instruction)
+    const result = await aiEditIndexYml(props.projectId, instruction)
     codeEditorRef.value?.setContent(result.content)
     await codeEditorRef.value?.save()
   } catch {
@@ -166,7 +166,7 @@ defineExpose({
     <div v-show="segment === 'graph'" class="index-yml-editor-graph">
       <InspectorGraph
         ref="graphRef"
-        :project-name="projectName"
+        :project-id="projectId"
         :highlighted-state-key="highlightedStateKey"
         :auto-jump-on-highlight-change="autoJumpOnHighlightChange"
         :fired-action-edge="firedActionEdge"
@@ -179,7 +179,7 @@ defineExpose({
     <div v-show="segment === 'code'" class="index-yml-editor-code">
       <CodeEditor
         ref="codeEditorRef"
-        :project-name="projectName"
+        :project-id="projectId"
         file-name="index.yml"
         :yaml-attachment-files="attachmentFiles"
         @saved="emit('saved', $event)"

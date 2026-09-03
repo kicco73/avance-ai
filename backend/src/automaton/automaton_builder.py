@@ -166,7 +166,6 @@ class AutomatonBuilder(object):
             # on the state it fired from.
             target=raw_action.get("target", key),
             trigger=raw_action.get("trigger"),
-            action_prompt=raw_action["action-prompt"].strip() if raw_action.get("action-prompt") else None,
             attachments=self._extract_required_archives(raw_action.get("attachments", []), all_archives, f"action {raw_action['name']}"),
             on_enter=on_enter,
             env=self._build_action_env(raw_action.get("env"), raw_action["name"]),
@@ -404,7 +403,6 @@ class AutomatonBuilder(object):
             ui_label=raw_init_action.get("ui-label", "init-action"),
             ui_button="",
             target=raw_init_action["target"],
-            action_prompt=raw_init_action["action-prompt"].strip() if raw_init_action.get("action-prompt") else None,
             on_enter=init_on_enter,
             env=env or None,
         )

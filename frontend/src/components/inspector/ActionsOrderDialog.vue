@@ -4,7 +4,7 @@ import InspectorDetailCard from './InspectorDetailCard.vue'
 import { putActionOrder } from '../../api.js'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   stateName: { type: String, required: true },
   actions: { type: Array, default: () => [] }
 })
@@ -30,7 +30,7 @@ function handleDrop(index) {
   if (fromIndex === null || fromIndex === index) return
   const [moved] = orderedActions.value.splice(fromIndex, 1)
   orderedActions.value.splice(index, 0, moved)
-  putActionOrder(props.projectName, props.stateName, moved.data.actionName, index)
+  putActionOrder(props.projectId, props.stateName, moved.data.actionName, index)
 }
 
 function handleDragEnd() {

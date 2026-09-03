@@ -5,6 +5,6 @@ export function onProjectChanged(handler) {
   return () => listeners.delete(handler)
 }
 
-export async function emitProjectChanged(projectName) {
-  await Promise.all([...listeners].map((handler) => handler(projectName)))
+export async function emitProjectChanged(projectId) {
+  await Promise.all([...listeners].map((handler) => handler(projectId)))
 }

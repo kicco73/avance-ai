@@ -43,7 +43,7 @@ const LEGAL_TERMS_FILE_NAME = 'legal/terms.md'
 // unsaved-changes guard around switching files, and jump-to-definition
 // cursor placement. `emit` is the component's own defineEmits — only
 // 'saved' is ever raised here (handleFileSaved).
-export function useProjectFiles(projectName, emit) {
+export function useProjectFiles(projectId, emit) {
   const filesLoading = ref(true)
   const files = ref([])
   const currentFileName = ref('index.yml')
@@ -110,7 +110,7 @@ export function useProjectFiles(projectName, emit) {
   async function loadFiles() {
     filesLoading.value = true
     try {
-      files.value = (await getProjectFiles(projectName)).files
+      files.value = (await getProjectFiles(projectId)).files
     } catch {
       // already surfaced via apiFetch
     } finally {
@@ -245,10 +245,10 @@ export function useProjectFiles(projectName, emit) {
       for (const file of uploadedFiles) {
         const targetName = canonicalUploadName(file.name)
         if (IMAGE_PATTERN.test(file.name)) {
-          await putProjectFileBinary(projectName, targetName, file)
+          await putProjectFileBinary(projectId, targetName, file)
         } else {
           const text = await file.text()
-          await putProjectFile(projectName, targetName, text)
+          await putProjectFile(projectId, targetName, text)
         }
       }
       await loadFiles()
@@ -270,7 +270,7 @@ export function useProjectFiles(projectName, emit) {
     creatingFile.value = true
     clearApiError()
     try {
-      await putProjectFile(projectName, name, content)
+      await putProjectFile(projectId, name, content)
       await loadFiles()
       justAddedFileName.value = name
       await selectFile(name)
@@ -311,7 +311,7 @@ export function useProjectFiles(projectName, emit) {
     creatingFile.value = true
     clearApiError()
     try {
-      await postAddLegalTerms(projectName)
+      await postAddLegalTerms(projectId)
       await loadFiles()
       justAddedFileName.value = LEGAL_TERMS_FILE_NAME
       await selectFile(LEGAL_TERMS_FILE_NAME)
@@ -344,7 +344,7 @@ export function useProjectFiles(projectName, emit) {
     deletingFile.value = fileName
     clearApiError()
     try {
-      await deleteProjectFile(projectName, fileName)
+      await deleteProjectFile(projectId, fileName)
       await loadFiles()
       if (fileName === currentFileName.value || cascadeAssets.includes(currentFileName.value)) {
         await switchFile('index.yml')
@@ -372,7 +372,7 @@ export function useProjectFiles(projectName, emit) {
     renamingFile.value = fileName
     clearApiError()
     try {
-      const result = await renameProjectFile(projectName, fileName, trimmed)
+      const result = await renameProjectFile(projectId, fileName, trimmed)
       await loadFiles()
       if (fileName === currentFileName.value) {
         // The editor remounts fresh under the new :key, picking up the

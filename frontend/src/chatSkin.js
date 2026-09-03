@@ -35,9 +35,9 @@ const sources = {}
 // by a component directly. Each source watches only its own refs, so
 // registration order between stores never matters and neither has to
 // exist yet for the other to work correctly.
-export function registerSkinSource(kind, projectNameRef, sessionIdRef) {
-  sources[kind] = { projectNameRef, sessionIdRef }
-  watch([projectNameRef, sessionIdRef], () => {
+export function registerSkinSource(kind, projectIdRef, sessionIdRef) {
+  sources[kind] = { projectIdRef, sessionIdRef }
+  watch([projectIdRef, sessionIdRef], () => {
     if (activeChatMode.value === kind) loadSkin()
   })
 }
@@ -70,19 +70,19 @@ export function onLiveSkinApplied(callback) {
 // Shared by loadSkin's own fetched-and-saved skin below and by
 // ChatPreview.vue's live draft — both go through this single function so
 // there is still ever only one tag, never a second one racing it.
-export function setSkinCss(css, projectName, sessionId) {
+export function setSkinCss(css, projectId, sessionId) {
   if (!skinStyleEl) {
     skinStyleEl = document.createElement('style')
     document.head.appendChild(skinStyleEl)
   }
-  skinStyleEl.textContent = resolveCssAssetUrls(css, projectName, sessionId)
+  skinStyleEl.textContent = resolveCssAssetUrls(css, projectId, sessionId)
 }
 
 async function loadSkin() {
   const source = sources[activeChatMode.value]
-  const projectName = source?.projectNameRef.value ?? null
+  const projectId = source?.projectIdRef.value ?? null
   const sessionId = source?.sessionIdRef.value ?? null
-  if (!applyAspect.value || !projectName || sessionId == null) {
+  if (!applyAspect.value || !projectId || sessionId == null) {
     clearSkin()
     return
   }
@@ -99,7 +99,7 @@ async function loadSkin() {
     // practice, so this skips the HTTP cache entirely instead of trusting
     // revalidation.
     const response = await fetch(
-      projectFileContentUrl(projectName, 'index.css', sessionId),
+      projectFileContentUrl(projectId, 'index.css', sessionId),
       { credentials: 'include', cache: 'no-store' }
     )
     if (!response.ok) {
@@ -117,7 +117,7 @@ async function loadSkin() {
   // the race and re-apply a skin something already turned off/switched
   // away from.
   const stillCurrent = sources[activeChatMode.value] === source
-    && source.projectNameRef.value === projectName && source.sessionIdRef.value === sessionId
+    && source.projectIdRef.value === projectId && source.sessionIdRef.value === sessionId
   if (!applyAspect.value || !stillCurrent) return
   // The fetched text's own url(...) references are still bare basenames
   // (see get_project_file_content's own docstring on why the server never
@@ -125,7 +125,7 @@ async function loadSkin() {
   // same way ChatPreview.vue's live-editor preview already does, so a
   // background-image etc. actually loads instead of silently 404ing
   // against whatever origin this page happens to be running on.
-  setSkinCss(css, projectName, sessionId)
+  setSkinCss(css, projectId, sessionId)
   if (activeChatMode.value === 'live') {
     for (const callback of liveSkinAppliedCallbacks) callback()
   }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -16,24 +17,53 @@ from .deferred_job import DeferredActuatorJob
 if TYPE_CHECKING:
     from chat.ws_adapter import WsAdapter
 
+    from .prompt_context import PromptContext
+
 logger = LoggerFactory.get_logger(__name__)
 
 _SEND_MAIL_SUBJECT = "Notification from Avance"
 
 
 class ActuatorSet(ABC):
-    """`celebrate`/`notify` compile straight to the frontend's own
-    onEnterActions.js locals of the same name (see Automaton.render_on_enter)
-    — a pure client-visual effect with no real-world side effect either
-    subclass could meaningfully suppress, so both behave identically
-    regardless of a test session's "Run actuators" toggle. Only
-    `send_mail` (a real side effect) is each subclass's own concern."""
+    """`celebrate`/`notify`/`prompt` compile straight to the frontend's
+    own onEnterActions.js locals of the same name (see
+    Automaton.render_on_enter) or, for `prompt`, run a read-only
+    generation call — no real-world side effect either subclass could
+    meaningfully suppress, so all three behave identically regardless of
+    a test session's "Run actuators" toggle. Only `send_mail`/`defer`
+    (real side effects) are each subclass's own concern."""
+
+    def __init__(self) -> None:
+        # Bound fresh per on-enter evaluation via with_prompt_context —
+        # never set any other way (see EvaluationScopeBuilder.build).
+        self._prompt_context: "PromptContext | None" = None
 
     def celebrate(self) -> str | None:
         return "celebrate()"
 
     def notify(self, title: str, body_md: str) -> str | None:
         return f"notify({json.dumps(title)}, {json.dumps(body_md)})"
+
+    def prompt(self, prompt: str) -> str:
+        """Runs `prompt` as one extra, synchronous, read-only generation
+        call — general-prompt + attachments (global and the current
+        state's own) + signal/env context, only the resulting text
+        aggregated back — and returns its text. No message is persisted
+        and no env/signal/audio channel is applied (see PromptContext).
+        Returns "" (logged) wherever no session context is bound, e.g. a
+        project-wide test reset with no real session behind it."""
+        if self._prompt_context is None:
+            logger.warning("actuator.prompt() called with no session context bound — returning ''.")
+            return ""
+        return self._prompt_context.run(prompt)
+
+    def with_prompt_context(self, prompt_context: "PromptContext") -> "ActuatorSet":
+        """A copy of this actuator set bound to `prompt_context` — never
+        mutates `self`, so the long-lived instance a factory hands out
+        stays reusable across calls with different automaton/state/session context."""
+        bound = copy.copy(self)
+        bound._prompt_context = prompt_context
+        return bound
 
     @abstractmethod
     def send_mail(self, to: str, body_md: str) -> str | None:
@@ -50,6 +80,7 @@ class LiveActuatorSet(ActuatorSet):
         self, notification_service: NotificationService, scheduled_job_queue: Scheduler,
         ws_adapter: "WsAdapter | None",
     ) -> None:
+        super().__init__()
         self._notification_service = notification_service
         self._scheduled_job_queue = scheduled_job_queue
         self._ws_adapter = ws_adapter

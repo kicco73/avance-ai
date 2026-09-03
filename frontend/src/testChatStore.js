@@ -9,20 +9,20 @@ import { createChatStore } from './chatStoreFactory.js'
 // session/messages/state, scoped to whichever project is currently open
 // for editing. Never touches the live chat's currentSessionId/messages
 // (see chatStore.js's own liveStore) — the two used to share one set of
-// refs, toggled by a testModeProjectName flag, which is exactly what let
+// refs, toggled by a testModeProjectId flag, which is exactly what let
 // browsing an imported session (or anything else touching the shared
 // refs) bleed into the live chat and vice versa.
-let projectName = null
+let projectId = null
 export function setTestProject(name) {
-  projectName = name
+  projectId = name
 }
 
 export const testStore = createChatStore({
   kind: 'test',
-  getCurrentSession: (sessionId) => getCurrentTestSession(sessionId, projectName),
-  getSessionsList: () => getTestSessions(projectName),
-  createSession: () => postCreateTestSession(projectName),
-  resetSession: () => postResetTestSessions(projectName),
+  getCurrentSession: (sessionId) => getCurrentTestSession(sessionId, projectId),
+  getSessionsList: () => getTestSessions(projectId),
+  createSession: () => postCreateTestSession(projectId),
+  resetSession: () => postResetTestSessions(projectId),
   confirmNewSession: false,
   useAutoTracking: true,
   useActuatorsToggle: true,
@@ -31,7 +31,7 @@ export const testStore = createChatStore({
 
 export const {
   state, currentSessionId, selectedSessionActive, projectPaused, projectPausedReason,
-  sessions, sessionsLoading, sessionsPanelOpen, currentProjectName,
+  sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
   messages, historyLoaded, chatLoading, chatStatus, actionLoading,
   autoTrackingEnabled, autoTrackingLoading, actuatorsEnabled, actuatorsLoading, draft, turnCount,
   handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,

@@ -60,7 +60,7 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
   })
 
   it('mounting ChatWindow with theme-mode="manual" clears the shared skin tag', async () => {
-    chatStore.currentProjectName.value = 'proj'
+    chatStore.currentProjectId.value = 'proj'
     chatStore.currentSessionId.value = 1
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
 
@@ -112,7 +112,7 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
     let resolveFetch
     fetchMock.mockReturnValue(new Promise((resolve) => { resolveFetch = resolve }))
 
-    chatStore.currentProjectName.value = 'proj'
+    chatStore.currentProjectId.value = 'proj'
     chatStore.currentSessionId.value = 1
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1)) // the fetch is now in flight
 

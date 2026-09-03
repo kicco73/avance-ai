@@ -34,7 +34,7 @@ vi.mock('../src/api.js', () => ({
   postListenTranscribe: vi.fn(),
   postResetTestSessions: vi.fn(),
   postTruncateSession: vi.fn(),
-  getProjects: vi.fn().mockResolvedValue({ projects: [{ name: 'proj', ui_label: 'Proj' }], active: 'proj' }),
+  getProjects: vi.fn().mockResolvedValue({ projects: [{ id: 'proj', ui_label: 'Proj' }], active: 'proj' }),
   projectFileContentUrl: vi.fn(() => '/skin.css')
 }))
 
@@ -92,7 +92,24 @@ describe('ChatView.vue: the applications menu carries New/Close session, with no
 
     const items = Array.from(container.querySelectorAll('.projects-panel button, .projects-panel .projects-menu-divider'))
     const labels = items.map((el) => (el.classList.contains('projects-menu-divider') ? '(divider)' : el.textContent.trim()))
-    expect(labels.slice(0, 4)).toEqual(['New session', 'Close session', '(divider)', '✓ Proj'])
+    expect(labels.slice(0, 4)).toEqual(['New session', 'Close session', '(divider)', '✓Proj'])
+
+    app.unmount()
+  })
+
+  it('marks the active project with a ✓, matched by id (not name — the backend row carries no such field)', async () => {
+    api.getProjects.mockResolvedValue({
+      projects: [{ id: 'proj', ui_label: 'Proj' }, { id: 'other', ui_label: 'Other' }],
+      active: 'proj'
+    })
+    const app = await mountLiveChat()
+
+    container.querySelector('.projects-btn').click()
+    await vi.waitFor(() => expect(container.querySelectorAll('.project-entry')).toHaveLength(2))
+
+    const [activeRow, otherRow] = projectsPanelButtons(container).filter((b) => b.classList.contains('projects-item') && !b.classList.contains('projects-session-item'))
+    expect(activeRow.querySelector('.projects-item-check').textContent.trim()).toBe('✓')
+    expect(otherRow.querySelector('.projects-item-check').textContent.trim()).toBe('')
 
     app.unmount()
   })

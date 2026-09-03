@@ -11,7 +11,7 @@ import CardMenu from './CardMenu.vue'
 import { getProjectFile } from '../../api.js'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   fileName: { type: String, required: true },
   deleting: { type: Boolean, default: false },
   renaming: { type: Boolean, default: false }
@@ -71,7 +71,7 @@ const fileSize = ref(null)
 async function loadFileSize() {
   fileSize.value = null
   try {
-    const info = await getProjectFile(props.projectName, props.fileName)
+    const info = await getProjectFile(props.projectId, props.fileName)
     fileSize.value = info.size
   } catch {
     // already surfaced via apiFetch

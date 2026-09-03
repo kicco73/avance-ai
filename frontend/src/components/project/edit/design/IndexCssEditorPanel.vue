@@ -12,7 +12,7 @@ import { textareaDialog } from '../../../../dialogStore.js'
 import { useResizablePanel } from '../../../../composables/useResizablePanel.js'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   files: { type: Array, default: () => [] }
 })
 
@@ -37,7 +37,7 @@ const selectedStateKey = ref('')
 
 async function loadStateNodes() {
   try {
-    const { nodes } = await getProjectGraph(props.projectName)
+    const { nodes } = await getProjectGraph(props.projectId)
     stateNodes.value = nodes.map((n) => n.state)
   } catch {
     stateNodes.value = []
@@ -74,7 +74,7 @@ async function aiEdit() {
   if (!instruction) return
   aiEditing.value = true
   try {
-    const result = await aiEditIndexCss(props.projectName, instruction)
+    const result = await aiEditIndexCss(props.projectId, instruction)
     codeEditorRef.value?.setContent(result.content)
     await codeEditorRef.value?.save()
   } catch {
@@ -162,7 +162,7 @@ defineExpose({ content, isDirty, saving, save, discard, undo, redo, reload })
 
     <div class="index-css-editor-split">
       <div class="index-css-editor-preview" :style="{ width: previewWidth + 'px' }">
-        <ChatPreview ref="previewRef" :css="content" :state-key="selectedStateKey" :project-name="projectName" />
+        <ChatPreview ref="previewRef" :css="content" :state-key="selectedStateKey" :project-id="projectId" />
       </div>
 
       <div class="index-css-editor-split-divider" @mousedown="startPreviewDrag"></div>
@@ -170,7 +170,7 @@ defineExpose({ content, isDirty, saving, save, discard, undo, redo, reload })
       <div class="index-css-editor-code">
         <CodeEditor
           ref="codeEditorRef"
-          :project-name="projectName"
+          :project-id="projectId"
           file-name="index.css"
           :css-asset-files="cssAssetFiles"
           @saved="onCodeSaved"

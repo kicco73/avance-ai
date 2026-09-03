@@ -11,7 +11,7 @@ import DocInfoButton from '../../../DocInfoButton.vue'
 import { renderMarkdown } from '../../../../markdown.js'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   fileName: { type: String, required: true },
   // 'edit' for a file a create/upload/new-legal flow just opened (see
   // ProjectDesignPanel.vue) — read once at mount, same as fileName
@@ -81,7 +81,7 @@ defineExpose({ content, isDirty, saving, save, discard, undo, redo, reload })
     <div v-show="segment === 'edit'" class="md-editor-edit">
       <CodeEditor
         ref="codeEditorRef"
-        :project-name="projectName"
+        :project-id="projectId"
         :file-name="fileName"
         @saved="emit('saved', $event)"
         @renamed="emit('renamed', $event)"
