@@ -27,7 +27,7 @@ class BenchmarkCalculator(object):
         self,
         db: Any,
         username: str | None,
-        project_name: str,
+        project_id: str,
         configuration: BenchmarkConfiguration | None = None,
         session_id: int | None = None,
         metrics: Iterable[BenchmarkMetric] | None = None,
@@ -37,7 +37,7 @@ class BenchmarkCalculator(object):
         as-is, unfiltered — the caller's own explicit choice."""
         self._db = db
         self._username = username
-        self._project_name = project_name
+        self._project_id = project_id
         self._session_id = session_id
         self._configuration = configuration or BenchmarkConfiguration()
         # None here tells _build_observations to load from `db` normally;
@@ -109,7 +109,7 @@ class BenchmarkCalculator(object):
         data = BenchmarkData(
             messages=messages,
             sessions=self._frame(sessions, [
-                "id", "username", "project_name", "datetime_start", "datetime_end", "start_state", "end_state"
+                "id", "username", "project_id", "datetime_start", "datetime_end", "start_state", "end_state"
             ]),
             signals=signals,
             transitions=signals.loc[signals["new_state"].notna()].copy() if not signals.empty else self._empty_signals(),
@@ -122,7 +122,7 @@ class BenchmarkCalculator(object):
         # own default (type='live') would silently drop every imported session,
         # which is exactly where annotations usually live.
         username = self._username if self._session_id is None else None
-        sessions = self._db.list_chat_sessions(username, self._project_name, type=None)
+        sessions = self._db.list_chat_sessions(username, self._project_id, type=None)
         if self._session_id is None:
             return sessions
         return [row for row in sessions if int(row["id"]) == self._session_id]

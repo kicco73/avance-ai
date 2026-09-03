@@ -58,7 +58,7 @@ class BenchmarkMetricsTest(unittest.TestCase):
             [{
                 "id": 1,
                 "username": "u",
-                "project_name": "p",
+                "project_id": "p",
                 "datetime_start": pd.Timestamp("2026-01-01T00:00:00Z"),
                 "datetime_end": pd.Timestamp("2026-01-01T00:20:00Z"),
                 "start_state": "a",

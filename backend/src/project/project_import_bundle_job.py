@@ -20,13 +20,13 @@ class ProjectImportBundleJob(CancelableJob):
     progress instead of blocking."""
 
     def __init__(
-        self, manager: SessionImportManager, db: Db, project_name: str,
+        self, manager: SessionImportManager, db: Db, project_id: str,
         sessions: list[dict], test_entries: list[dict],
     ) -> None:
         super().__init__(key="upload", username=f"upload:{uuid.uuid4().hex}")
         self._manager = manager
         self._db = db
-        self._project_name = project_name
+        self._project_id = project_id
         self._sessions = sessions
         self._test_entries = test_entries
         self._revision: int | None = None
@@ -35,10 +35,10 @@ class ProjectImportBundleJob(CancelableJob):
 
     def _prepare(self) -> tuple[int, tuple[CancelableJob, ...]]:
         if self._sessions:
-            self._db.publish_project(self._project_name)
+            self._db.publish_project(self._project_id)
         if self._test_entries:
-            self._revision = self._db.get_project_revision(self._project_name)
-            self._edit_count = self._db.get_project_draft_edit_count(self._project_name)
+            self._revision = self._db.get_project_revision(self._project_id)
+            self._edit_count = self._db.get_project_draft_edit_count(self._project_id)
         self._pending = (
             [('session', session) for session in self._sessions]
             + [('test', entry) for entry in self._test_entries]
@@ -54,7 +54,7 @@ class ProjectImportBundleJob(CancelableJob):
 
     @property
     def result(self) -> str | None:
-        return json.dumps({'success': True, 'project_name': self._project_name})
+        return json.dumps({'success': True, 'project_id': self._project_id})
 
     async def _run_next_step(self) -> None:
         if not self._pending:
@@ -67,15 +67,15 @@ class ProjectImportBundleJob(CancelableJob):
 
     def _import_session(self, session_data: dict) -> None:
         try:
-            username = session_data.get('username') or self._db.next_test_user_username(self._project_name)
-            self._manager.import_session_json(username, self._project_name, session_data)
+            username = session_data.get('username') or self._db.next_test_user_username(self._project_id)
+            self._manager.import_session_json(username, self._project_id, session_data)
         except (ValueError, KeyError, TypeError):
             logger.exception("Skipped a malformed session while importing an uploaded project's sessions.json.")
 
     def _import_test(self, entry: dict) -> None:
         try:
             self._db.upsert_test_aggregate_result(
-                self._project_name, self._revision, self._edit_count,
+                self._project_id, self._revision, self._edit_count,
                 entry['kind'], entry.get('target'), entry['strategy'], json.dumps(entry['results']),
             )
         except (KeyError, TypeError):

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from automaton.automaton import Automaton
-from automaton.automaton_builder import AutomatonBuilder
+from automaton.automaton_builder import AutomatonBuilder, family_of
 from db import Db
 
 from .layout import ArchiveLayout
@@ -12,72 +12,79 @@ from .layout import ArchiveLayout
 class AutomatonLoader:
     def __init__(self, db: Db) -> None:
         self._db = db
-        # (project_name, revision) -> Automaton. Revision-keyed so a caller
+        # (project_id, revision) -> Automaton. Revision-keyed so a caller
         # pinned to one specific revision and a caller wanting "whatever's
         # current" can share the cache without cross-serving.
         self._automaton_cache: dict[tuple[str, int], Automaton] = {}
 
     @staticmethod
-    def is_safe_project_name(project_name: str) -> bool:
+    def is_safe_project_name(project_id: str) -> bool:
         """No path traversal: must be a single plain path segment — not
         empty, not '.'/'..', no separators, resolving to itself when
-        treated as a bare filename."""
-        if not project_name or project_name in (".", ".."):
+        treated as a bare filename. A defensive check on raw/untrusted
+        input (e.g. a URL path param) ahead of any DB lookup — every
+        project.id that actually passed AutomatonBuilder's own stricter
+        dot-segmented grammar already satisfies this trivially."""
+        if not project_id or project_id in (".", ".."):
             return False
-        return Path(project_name).name == project_name
+        return Path(project_id).name == project_id
 
-    def known_projects_env_keys(self, project_name: str) -> dict[str, frozenset[str]]:
+    def known_projects_env_keys(self, project_id: str) -> dict[str, frozenset[str]]:
         """Every *other* project's declared project.id mapped to its
         declared env key names, for AutomatonBuilder.build's automaton.*
-        existence check."""
+        existence check — narrowed to `project_id`'s own family
+        (family_of): a project outside it is invisible here, so an
+        out-of-family automaton.<id> reference fails build validation
+        exactly like referencing an id that doesn't exist at all."""
+        family = family_of(project_id)
         known: dict[str, frozenset[str]] = {}
-        for other_name in self._db.list_projects():
-            if other_name == project_name:
+        for other_id in self._db.list_projects():
+            if other_id == project_id or family_of(other_id) != family:
                 continue
-            archive = self._db.get_archive(other_name, "index.yml")
+            archive = self._db.get_archive(other_id, "index.yml")
             if archive is None:
                 continue
-            project_id, env_keys = AutomatonBuilder.read_declared_env_keys(archive.decode("utf-8"))
-            if project_id is not None:
-                known[project_id] = env_keys
+            other_declared_id, env_keys = AutomatonBuilder.read_declared_env_keys(archive.decode("utf-8"))
+            if other_declared_id is not None:
+                known[other_declared_id] = env_keys
         return known
 
-    def invalidate_cache(self, project_name: str) -> None:
-        """Drops every cached revision of `project_name`, for callers that
+    def invalidate_cache(self, project_id: str) -> None:
+        """Drops every cached revision of `project_id`, for callers that
         can't tell which revisions are now stale. Ordinary edits go through
         ProjectManager.finalize_update instead, which re-caches just one revision."""
-        for key in [k for k in self._automaton_cache if k[0] == project_name]:
+        for key in [k for k in self._automaton_cache if k[0] == project_id]:
             del self._automaton_cache[key]
 
-    def set_cached(self, project_name: str, revision: int, automaton: Automaton) -> None:
-        self._automaton_cache[(project_name, revision)] = automaton
+    def set_cached(self, project_id: str, revision: int, automaton: Automaton) -> None:
+        self._automaton_cache[(project_id, revision)] = automaton
 
-    def load_at_revision(self, project_name: str, revision: int) -> Automaton:
-        cache_key = (project_name, revision)
+    def load_at_revision(self, project_id: str, revision: int) -> Automaton:
+        cache_key = (project_id, revision)
         cached = self._automaton_cache.get(cache_key)
         if cached is not None:
             return cached
 
-        if not AutomatonLoader.is_safe_project_name(project_name):
-            raise ValueError(f"Invalid project name: '{project_name}'.")
+        if not AutomatonLoader.is_safe_project_name(project_id):
+            raise ValueError(f"Invalid project id: '{project_id}'.")
 
-        archives = self._db.get_archives(project_name, revision=revision)
+        archives = self._db.get_archives(project_id, revision=revision)
 
         if not archives:
-            raise  FileNotFoundError(f"Project '{project_name}' does not exist.")
+            raise  FileNotFoundError(f"Project '{project_id}' does not exist.")
         if 'index.yml' not in archives:
-            raise  FileNotFoundError(f"Project '{project_name}' does not contain 'index.yml'.")
+            raise  FileNotFoundError(f"Project '{project_id}' does not contain 'index.yml'.")
 
         automaton = AutomatonBuilder().build(
-            ArchiveLayout.decode_text(archives), self.known_projects_env_keys(project_name)
+            ArchiveLayout.decode_text(archives), self.known_projects_env_keys(project_id)
         )
-        automaton.set_storage_location(project_name, revision)
+        automaton.set_storage_location(revision)
         self._automaton_cache[cache_key] = automaton
         return automaton
 
-    def load(self, project_name: str) -> Automaton:
-        """Whatever's current for `project_name` right now — the most
+    def load(self, project_id: str) -> Automaton:
+        """Whatever's current for `project_id` right now — the most
         recent draft, published or not. A caller needing a specific,
         possibly older revision uses load_at_revision directly."""
-        revision = self._db.get_project_revision(project_name)
-        return self.load_at_revision(project_name, revision)
+        revision = self._db.get_project_revision(project_id)
+        return self.load_at_revision(project_id, revision)

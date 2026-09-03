@@ -54,8 +54,8 @@ class SessionFacts(object):
         if self._last_transition_instant is _UNSET:
             # Production: no last transition yet is a routine 0.0, never
             # a "nothing to report" None.
-            project_name = self._project_service.get_active_project_name()
-            last_transition = self._db.get_last_transition_timestamp(project_name)
+            project_id = self._project_service.get_active_project_id()
+            last_transition = self._db.get_last_transition_timestamp(project_id)
             if last_transition is None or now is None:
                 return 0.0
             return round((now - last_transition).total_seconds() / 60, 2)
@@ -75,8 +75,8 @@ class SessionFacts(object):
         if now is None:
             return None
         username = Session().user
-        project_name = self._project_service.get_active_project_name()
-        session = self._db.get_latest_chat_session(username, project_name, until=self._replay_bound())
+        project_id = self._project_service.get_active_project_id()
+        session = self._db.get_latest_chat_session(username, project_id, until=self._replay_bound())
         if session is None:
             return 0.0
         return round((now - session["datetime_start"]).total_seconds() / 60, 2)
@@ -86,11 +86,11 @@ class SessionFacts(object):
         if now is None:
             return None
         username = Session().user
-        project_name = self._project_service.get_active_project_name()
+        project_id = self._project_service.get_active_project_id()
         # index 0 is the current/most recent session (as of `now`) —
         # "last" means the one immediately before it, most-recent-first
         # ordering. None for a user's very first session ever.
-        sessions = self._db.list_chat_sessions(username, project_name, until=self._replay_bound())
+        sessions = self._db.list_chat_sessions(username, project_id, until=self._replay_bound())
         previous = sessions[1] if len(sessions) > 1 else None
         return _utc_iso(previous["datetime_start"]) if previous is not None else None
 
@@ -99,8 +99,8 @@ class SessionFacts(object):
         if now is None:
             return None
         username = Session().user
-        project_name = self._project_service.get_active_project_name()
-        return len(self._db.list_chat_sessions(username, project_name, until=self._replay_bound()))
+        project_id = self._project_service.get_active_project_id()
+        return len(self._db.list_chat_sessions(username, project_id, until=self._replay_bound()))
 
     @property
     def metric(self) -> SessionMetricNamespace:
@@ -114,7 +114,7 @@ class SessionFacts(object):
     def _build_session_metric_calculator(self) -> AnalyticsCalculator:
         now = self._now()
         username = Session().user
-        project_name = self._project_service.get_active_project_name()
-        session = self._db.get_latest_chat_session(username, project_name, until=self._replay_bound())
+        project_id = self._project_service.get_active_project_id()
+        session = self._db.get_latest_chat_session(username, project_id, until=self._replay_bound())
         since = session["datetime_start"] if session is not None else None
-        return AnalyticsCalculator(self._db, username, project_name, since=since, until=now)
+        return AnalyticsCalculator(self._db, username, project_id, since=since, until=now)

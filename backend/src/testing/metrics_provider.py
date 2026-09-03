@@ -26,10 +26,10 @@ class TestMetricsProvider:
     up to real_timestamp; an imported session (no timestamp) scopes to
     just itself, truncated by message id."""
 
-    def __init__(self, db: Db, username: str, project_name: str, session_id: int) -> None:
+    def __init__(self, db: Db, username: str, project_id: str, session_id: int) -> None:
         self._db = db
         self._username = username
-        self._project_name = project_name
+        self._project_id = project_id
         self._session_id = session_id
         # Set once per turn by advance_to; no default bound so a caller
         # that forgets to call it first fails loudly (AttributeError)
@@ -42,10 +42,10 @@ class TestMetricsProvider:
     def _calculate(self) -> list[tuple[MetricCalculator, MetricResult]]:
         if self._real_timestamp is not None:
             calculator = AnalyticsCalculator(
-                self._db, self._username, self._project_name, until=self._real_timestamp
+                self._db, self._username, self._project_id, until=self._real_timestamp
             )
         else:
-            data = UserAnalyticsDataBuilder(self._db, self._username, self._project_name).build_for_session(
+            data = UserAnalyticsDataBuilder(self._db, self._username, self._project_id).build_for_session(
                 self._session_id, until_message_id=self._message_id
             )
             calculator = AnalyticsCalculator.from_data(data)
@@ -61,10 +61,10 @@ class TestMetricsProvider:
         def _build_calculator() -> AnalyticsCalculator:
             if self._real_timestamp is not None:
                 return AnalyticsCalculator(
-                    self._db, self._username, self._project_name,
+                    self._db, self._username, self._project_id,
                     metrics=user_scoped_metrics(), until=self._real_timestamp,
                 )
-            data = UserAnalyticsDataBuilder(self._db, self._username, self._project_name).build_for_session(
+            data = UserAnalyticsDataBuilder(self._db, self._username, self._project_id).build_for_session(
                 self._session_id, until_message_id=self._message_id
             )
             return AnalyticsCalculator.from_data(data, metrics=user_scoped_metrics())

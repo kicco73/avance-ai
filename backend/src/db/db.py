@@ -89,10 +89,10 @@ class Db(
 
     @staticmethod
     def _backfill_projects() -> None:
-        names = {row.project_name_id for row in ChatSession.select(ChatSession.project_name).distinct()}
-        names |= {row.project_name_id for row in Archive.select(Archive.project_name).distinct()}
-        for name in names:
-            Project.get_or_create(name=name, defaults={'revision': 0, 'published_revision': None})
+        ids = {row.project_id for row in ChatSession.select(ChatSession.project).distinct()}
+        ids |= {row.project_id for row in Archive.select(Archive.project).distinct()}
+        for project_id in ids:
+            Project.get_or_create(id=project_id, defaults={'revision': 0, 'published_revision': None})
 
     def _apply_migration_strategy(self, strategy: str) -> None:
         path = self.backup_file_path()
@@ -101,6 +101,8 @@ class Db(
         actual = self._migrator.actual_schema(path)
         if not actual:
             return
+        self._migrator.migrate_legacy_project_identity(actual)
+        actual = self._migrator.actual_schema(path)
         expected = self._migrator.expected_schema()
         if not self._migrator.schema_differs(actual, expected, path):
             return

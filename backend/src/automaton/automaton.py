@@ -168,7 +168,8 @@ class EnvKeyPayload(TypedDict):
     value: str
 
 class ProjectPayload(TypedDict):
-    id: str | None
+    id: str
+    revision: int
     ui_label: str | None
     ui_description: str | None
     talk_enabled: bool
@@ -193,10 +194,16 @@ class Automaton(object):
         # Same reasoning as env_keys above — only AutomatonBuilder.build
         # parses a project's declared reactions: section.
         reactions: list[Reaction] | None = None,
-        # The optional top-level `project:` section. `project_id` is the
-        # identifier this project is reachable as from other projects'
-        # automaton.* references, globally unique (enforced by ProjectService).
+        # The optional top-level `project:` section. `project_id` is this
+        # project's own mandatory, globally unique identity — what
+        # *other* projects reach it as through automaton.* references,
+        # and the sole key every DB table stores it under (see
+        # db/models.py's Project.id). `project_revision` is the YAML's
+        # own declared `project.revision` (default 0) — distinct from
+        # this object's own `revision` attribute below (which DB storage
+        # revision it was actually loaded from).
         project_id: str | None = None,
+        project_revision: int = 0,
         project_ui_label: str | None = None,
         project_ui_description: str | None = None,
         talk_enabled: bool = True,
@@ -210,6 +217,7 @@ class Automaton(object):
         self.reactions = reactions or []
         self.env_keys = env_keys or []
         self.project_id = project_id
+        self.project_revision = project_revision
         self.project_ui_label = project_ui_label
         self.project_ui_description = project_ui_description
         self.general_attachments = general_attachments
@@ -218,25 +226,24 @@ class Automaton(object):
         # mutually exclusive — this flag selects between them.
         self.autotracking_on_ai_message = autotracking_on_ai_message
         self.talk_enabled = talk_enabled
-        # Which (project_name, revision) this Automaton actually came
-        # from — unset here (never a build()-time concern: most callers,
+        # Which DB storage revision this Automaton actually came from —
+        # unset here (never a build()-time concern: most callers,
         # including nearly every test, build one purely in-memory with
-        # nothing to name). Only AutomatonLoader.load_at_revision and
+        # nothing to pin). Only AutomatonLoader.load_at_revision and
         # ProjectManager.finalize_update, the two places that resolve
         # this correctly and are about to cache the result, ever call
-        # set_storage_location below.
-        self.project_name: str | None = None
+        # set_storage_location below. project_id above already carries
+        # this project's own identity, so there's nothing left to pass in.
         self.revision: int | None = None
 
-    def set_storage_location(self, project_name: str, revision: int) -> None:
+    def set_storage_location(self, revision: int) -> None:
         """tracking.sources.attachment's own source.attachment(name) reads
-        straight from Db at this exact (project_name, revision) — never
+        straight from Db at this exact (project_id, revision) — never
         this Automaton's own in-memory `attachments` (see that module's
         docstring for why: a large file no state/action/signal ever
         declared under its own `attachments:` would otherwise still get
         eagerly loaded/converted on every build just because it's in the
         project, whether source.attachment ever asks for it or not)."""
-        self.project_name = project_name
         self.revision = revision
 
     def get_state(self, state_key: str) -> State:

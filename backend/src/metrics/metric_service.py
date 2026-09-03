@@ -80,25 +80,25 @@ class MetricService(object):
         return self._max_session_duration_in_minutes
 
     def _calculate(
-        self, until: datetime | None = None, project_name: str | None = None,
+        self, until: datetime | None = None, project_id: str | None = None,
         metrics: list[MetricCalculator] | None = None, username: str | None = None,
     ) -> list[tuple[MetricCalculator, MetricResult]]:
         """Loads the analytical dataset once per call, then evaluates every
-        core metric against it. `until` restricts the dataset; `project_name`
+        core metric against it. `until` restricts the dataset; `project_id`
         omitted falls back to the active project; `username` omitted falls
         back to the caller's own session. `metrics` omitted uses
         AnalyticsCalculator's own default (scoped to "one_session")."""
         calculator = AnalyticsCalculator(
-            self._db, username or Session().user, project_name or self._project_service.get_active_project_name(),
+            self._db, username or Session().user, project_id or self._project_service.get_active_project_id(),
             metrics=metrics, until=until,
         )
         return list(zip(calculator.metrics, calculator.calculate_all()))
 
     def calculate_all(
-        self, until: datetime | None = None, project_name: str | None = None,
+        self, until: datetime | None = None, project_id: str | None = None,
         include_all_scopes: bool = False, username: str | None = None,
     ) -> list[dict]:
-        """ui_label/ui_description/value per metric. `until`/`project_name`
+        """ui_label/ui_description/value per metric. `until`/`project_id`
         omitted means the live active project; both set gives a point-in-time
         view of a specific project, so it never leaks another project's state.
         `include_all_scopes`: every core metric (e.g. Retention/Activity
@@ -115,7 +115,7 @@ class MetricService(object):
                 "ui_description": metric.ui_description,
                 "value": result.value,
             }
-            for metric, result in self._calculate(until=until, project_name=project_name, metrics=metrics, username=username)
+            for metric, result in self._calculate(until=until, project_id=project_id, metrics=metrics, username=username)
         ]
 
     def calculate_values(self) -> dict[str, float]:
@@ -129,7 +129,7 @@ class MetricService(object):
         call unconditionally: no AnalyticsCalculator is built until an
         expression calls one of the namespace's own methods."""
         return UserMetricNamespace(lambda: AnalyticsCalculator(
-            self._db, Session().user, self._project_service.get_active_project_name(),
+            self._db, Session().user, self._project_service.get_active_project_id(),
             metrics=user_scoped_metrics(), until=datetime.utcnow(),
         ))
 
@@ -141,24 +141,24 @@ class MetricService(object):
             return names
         return {**names, **self.calculate_values()}
 
-    def get_benchmark_metrics(self, session_id: int | None = None, project_name: str | None = None) -> list[dict]:
-        """Expert-annotation-vs-actual benchmark metrics for `project_name`
+    def get_benchmark_metrics(self, session_id: int | None = None, project_id: str | None = None) -> list[dict]:
+        """Expert-annotation-vs-actual benchmark metrics for `project_id`
         (omitted: active project) — every annotated session, or just
         `session_id` if given. Adds `sample_count` alongside each score."""
         configuration = BenchmarkConfiguration(
             max_session_duration_in_minutes=self._max_session_duration_in_minutes
         )
-        resolved_project_name = project_name or self._project_service.get_active_project_name()
+        resolved_project_id = project_id or self._project_service.get_active_project_id()
         # This is the frontend's own metric *catalog* (name -> ui_label/
         # ui_description) — every metric belongs in it regardless of
         # session_id, unlike a real run's own results, which stay scoped
         # to whatever's meaningful for that run (see BenchmarkCalculator's
         # own default "one_session" filtering).
         unfiltered_metrics = BenchmarkCalculator(
-            self._db, Session().user, resolved_project_name, configuration=configuration, session_id=session_id,
+            self._db, Session().user, resolved_project_id, configuration=configuration, session_id=session_id,
         ).default_metrics()
         calculator = BenchmarkCalculator(
-            self._db, Session().user, resolved_project_name,
+            self._db, Session().user, resolved_project_id,
             configuration=configuration, session_id=session_id, metrics=unfiltered_metrics,
         )
         results = calculator.calculate_all()

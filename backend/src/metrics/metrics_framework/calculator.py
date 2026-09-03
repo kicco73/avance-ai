@@ -29,7 +29,7 @@ class AnalyticsCalculator(object):
         self,
         db: AnalyticsDb,
         username: str,
-        project_name: str,
+        project_id: str,
         metrics: Iterable[MetricCalculator] | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
@@ -37,7 +37,7 @@ class AnalyticsCalculator(object):
         """`since`/`until` (naive UTC) restrict the dataset to that window;
         both omitted gives full history. The default metric set is
         filtered to "one_session" scope; an explicit `metrics` is used as-is, unfiltered."""
-        self._data = UserAnalyticsDataBuilder(db, username, project_name).build(since=since, until=until)
+        self._data = UserAnalyticsDataBuilder(db, username, project_id).build(since=since, until=until)
         self._metrics = self._select_metrics(metrics)
 
     @classmethod

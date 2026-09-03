@@ -137,9 +137,9 @@ class TrackingEngine:
         *,
         origin: str,
         username: str | None = None,
-        project_name: str | None = None,
+        project_id: str | None = None,
     ) -> tuple[int, str | None]:
-        """`username`/`project_name`: optional, defaulting to None meaning
+        """`username`/`project_id`: optional, defaulting to None meaning
         "don't publish" — a test replay has no real user/project of
         its own and must never trigger a StateChanged/EnvChanged a wake-up
         handler could act on. The second element of the returned tuple is
@@ -155,10 +155,10 @@ class TrackingEngine:
         # worth a history entry either way; a self-loop just never bumps
         # history_cutoff's own timestamp.
 
-        on_enter = self.apply_action_env(automaton, action, signal_values, state.key, username=username, project_name=project_name)
+        on_enter = self.apply_action_env(automaton, action, signal_values, state.key, username=username, project_id=project_id)
         tracking_id = self.record_transition(
             automaton, state, action, signal_values, session_id, message_id,
-            origin=origin, username=username, project_name=project_name,
+            origin=origin, username=username, project_id=project_id,
         )
         return tracking_id, on_enter
 
@@ -173,7 +173,7 @@ class TrackingEngine:
         *,
         origin: str,
         username: str | None = None,
-        project_name: str | None = None,
+        project_id: str | None = None,
     ) -> int:
         # FIXME: caller must have already applied action's own env: (via
         # apply_action_env) itself — calling apply_transition too for the
@@ -188,21 +188,21 @@ class TrackingEngine:
             message_id=message_id,
             origin=origin,
         )
-        self.notify_transition(username, project_name, state.key, action.target)
+        self.notify_transition(username, project_id, state.key, action.target)
         return tracking_id
 
     @staticmethod
     def notify_transition(
-        username: str | None, project_name: str | None, old_state: str, new_state: str
+        username: str | None, project_id: str | None, old_state: str, new_state: str
     ) -> None:
         """Publishes StateChanged for a *real* transition only (old_state
         != new_state) — a no-op when either identity is missing. Called
         right after save_transition, from both the auto-tracking and manual-action paths."""
-        if username is None or project_name is None:
+        if username is None or project_id is None:
             return
         if old_state == new_state:
             return
-        publish(StateChanged(username=username, project_name=project_name, from_state=old_state, to_state=new_state))
+        publish(StateChanged(username=username, project_id=project_id, from_state=old_state, to_state=new_state))
 
     def apply_action_env(
         self,
@@ -212,7 +212,7 @@ class TrackingEngine:
         state_key: str,
         *,
         username: str | None = None,
-        project_name: str | None = None,
+        project_id: str | None = None,
     ) -> str | None:
         """Applies `action`'s own `env:` updates to the current scope —
         shared by both the auto-tracking and manual-action paths (the
@@ -228,9 +228,9 @@ class TrackingEngine:
             updates = automaton.eval_action_env(action, scope)
             if updates:
                 self._env.update_action_set(updates)
-                if username is not None and project_name is not None:
+                if username is not None and project_id is not None:
                     for key, value in updates.items():
-                        publish(EnvChanged(username=username, project_name=project_name, key=key, value=value))
+                        publish(EnvChanged(username=username, project_id=project_id, key=key, value=value))
         return automaton.render_on_enter(action, scope) if action.on_enter else None
 
     def render_on_enter(self, automaton: Automaton, action: Action, state_key: str) -> str | None:

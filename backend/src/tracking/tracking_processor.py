@@ -49,7 +49,7 @@ class Metadata:
 class UserVariables:
 	automaton: Automaton
 	state: State
-	project_name: str
+	project_id: str
 	session_id: int
 	# Set by _save_user_message once the turn's own user-facing message
 	# (real or placeholder) has been persisted — None beforehand.
@@ -205,7 +205,7 @@ class TrackingProcessor(object):
 		logger.info(
 			"build_turn_protocol talk_enabled: project=%r revision=%s session=%s system_talk_enabled=%s "
 			"automaton_talk_enabled=%s -> %s",
-			self.user.project_name, self.user.automaton.revision, self.user.session_id, self.talk_enabled,
+			self.user.project_id, self.user.automaton.revision, self.user.session_id, self.talk_enabled,
 			self.user.automaton.talk_enabled, talk_enabled,
 		)
 		return Protocol(

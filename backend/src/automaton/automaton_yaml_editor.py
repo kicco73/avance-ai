@@ -182,6 +182,7 @@ class AutomatonYamlEditor:
         raw_project = self._raw.get("project") or {}
         return {
             "id": raw_project.get("id"),
+            "revision": raw_project.get("revision", 0),
             "ui_label": raw_project.get("ui-label"),
             "ui_description": raw_project.get("ui-description"),
             "talk_enabled": raw_project.get("talk-enabled", True),
@@ -325,6 +326,14 @@ class AutomatonYamlEditor:
             project.pop("id", None)
         else:
             project[field] = value
+        return self._project_payload()
+
+    def set_project_revision(self, revision: int) -> ProjectPayload:
+        """Stamps `project.revision` directly — called only by
+        ProjectManager.publish_project, never through the "Edit project"
+        form (revision is system-managed, not a user-editable field)."""
+        project = self._raw.setdefault("project", CommentedMap())
+        project["revision"] = revision
         return self._project_payload()
 
     def set_init_action_field(self, field: str, value) -> StatePayload | ActionPayload:

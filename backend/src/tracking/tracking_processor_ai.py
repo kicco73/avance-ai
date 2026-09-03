@@ -44,7 +44,7 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 			# signals were evaluated, fired or not, so a no-op evaluation still leaves a real, queryable row.
 			self.out.tracking_id, self.out.on_enter = self._tracking_engine.apply_transition(
 				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
-				origin='trigger', username=Session().user, project_name=self.user.project_name,
+				origin='trigger', username=Session().user, project_id=self.user.project_id,
 			)
 			if self.out.action:
 				self.out.state = self.user.automaton.get_state(self.out.action.target)

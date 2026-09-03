@@ -17,9 +17,9 @@ class AllSignalsAggregationJob(_AggregationJob):
     UsersAggregationJob's own docstring for why."""
 
     def __init__(
-        self, service: "TestService", project_name: str, strategy: str, session_ids: list[int], signal_names: list[str],
+        self, service: "TestService", project_id: str, strategy: str, session_ids: list[int], signal_names: list[str],
     ) -> None:
-        super().__init__(service, project_name, 'all_signals', None, strategy)
+        super().__init__(service, project_id, 'all_signals', None, strategy)
         self._session_ids = session_ids
         self._signal_names = signal_names
         self._signal_jobs: list[SignalAggregationJob] = []
@@ -28,7 +28,7 @@ class AllSignalsAggregationJob(_AggregationJob):
         observations_cache = SharedObservationsCache()
         self._signal_jobs = [
             self._service._track(SignalAggregationJob(
-                self._service, self._project_name, signal_name, self._strategy, self._session_ids,
+                self._service, self._project_id, signal_name, self._strategy, self._session_ids,
                 observations_cache=observations_cache,
             ))
             for signal_name in self._signal_names

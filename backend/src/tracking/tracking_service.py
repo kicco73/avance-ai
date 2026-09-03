@@ -78,22 +78,22 @@ class TrackingService(object):
 		entry silently freezing an unrelated, newly-restored session."""
 		self._disabled_test_sessions.clear()
 
-	def build_import_sessions_job(self, project_name: str, uploads: list[tuple[str, bytes]]) -> SessionImportJob:
-		return SessionImportJob(self._session_import_manager, self._db, project_name, uploads)
+	def build_import_sessions_job(self, project_id: str, uploads: list[tuple[str, bytes]]) -> SessionImportJob:
+		return SessionImportJob(self._session_import_manager, self._db, project_id, uploads)
 
 	def reassign_sessions_to_username(self, session_ids: list[int], username: str) -> None:
 		self._db.reassign_sessions_to_username(session_ids, username)
 
-	def delete_sessions_by_username(self, project_name: str, username: str) -> None:
-		self._db.delete_sessions_by_username_and_project(username, project_name)
+	def delete_sessions_by_username(self, project_id: str, username: str) -> None:
+		self._db.delete_sessions_by_username_and_project(username, project_id)
 
-	def delete_imported_sessions(self, project_name: str) -> None:
-		self._db.delete_imported_sessions(project_name)
+	def delete_imported_sessions(self, project_id: str) -> None:
+		self._db.delete_imported_sessions(project_id)
 
-	def export_sessions(self, username: str, project_name: str, type: str | tuple[str, ...] = ('live', 'imported')) -> list[dict]:
+	def export_sessions(self, username: str, project_id: str, type: str | tuple[str, ...] = ('live', 'imported')) -> list[dict]:
 		"""The "Label sessions" view's own "Download all" button — see
 		SessionExportManager.export_sessions."""
-		return self._session_export_manager.export_sessions(username, project_name, type=type)
+		return self._session_export_manager.export_sessions(username, project_id, type=type)
 
 	@property
 	def automaton(self) -> Automaton:
@@ -265,12 +265,12 @@ class TrackingService(object):
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
 		session = self._db.get_chat_session(session_id)
 		is_test_session = session is not None and session["type"] == "test"
-		project_name = session["project_name"]
+		project_id = session["project_id"]
 
 		user_vars = UserVariables(
 			automaton=automaton,
 			state=state,
-			project_name=project_name,
+			project_id=project_id,
 			session_id=session_id
 		)
 
@@ -279,7 +279,7 @@ class TrackingService(object):
 		else:
 			TrackingProcessor = TrackingProcessorAfterAiMessage
 
-		fixed_context = FixedProjectContext(automaton=automaton, project_name=project_name)
+		fixed_context = FixedProjectContext(automaton=automaton, project_id=project_id)
 		env = PersistedEnv(self._db, fixed_context)
 		system_facts = SystemFacts()
 		session_facts = SessionFacts(self._db, fixed_context)

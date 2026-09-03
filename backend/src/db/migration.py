@@ -1,8 +1,34 @@
 from __future__ import annotations
 
+import re
 import sqlite3
+import unicodedata
 
 from playhouse.migrate import SqliteMigrator, migrate
+
+
+def _slugify(text: str) -> str:
+    """Lowercase, ASCII, underscore-separated — 'Aprendr català' -> 'aprendr_catala'."""
+    ascii_text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('ascii')
+    slug = re.sub(r'[^a-zA-Z0-9]+', '_', ascii_text).strip('_').lower()
+    if not slug:
+        slug = 'project'
+    if slug[0].isdigit():
+        slug = f'p_{slug}'
+    return slug
+
+
+def _unique_legacy_id(seed: str, used_ids: set[str]) -> str:
+    """A fresh `legacy.<slug>` id for a project that never declared its
+    own — not already in `used_ids` (every id assigned so far, this call
+    included, plus every project.id that already existed)."""
+    base = f'legacy.{_slugify(seed)}'
+    candidate = base
+    suffix = 2
+    while candidate in used_ids:
+        candidate = f'{base}_{suffix}'
+        suffix += 1
+    return candidate
 
 
 class SchemaMigrator:
@@ -42,6 +68,73 @@ class SchemaMigrator:
         # already added a table's missing columns without ever revisiting
         # an existing column's own constraint (e.g. NOT NULL -> nullable).
         return actual != expected or bool(self._tables_needing_constraint_rebuild(actual, expected, path))
+
+    def rename_column(self, table: str, old_name: str, new_name: str) -> None:
+        """Peewee's own portable rename operation (every backend's migrator
+        implements it, same as add_column/drop_column below) — not raw SQL."""
+        migrator = SqliteMigrator(self._database)
+        migrate(migrator.rename_column(table, old_name, new_name))
+
+    # (table, old column, new column) — every place a project's old `name`
+    # string was stored elsewhere, cascaded before Project.name itself is
+    # renamed away. User.active_project_id's own column name never
+    # changes (already right) — only its stored *value* needs the cascade.
+    _PROJECT_NAME_COLUMNS: tuple[tuple[str, str, str], ...] = (
+        ('ChatSession', 'project_name', 'project_id'),
+        ('Archive', 'project_name', 'project_id'),
+        ('Invite', 'project_name', 'project_id'),
+        ('UserProject', 'project_name', 'project_id'),
+        ('StateRemap', 'project_name', 'project_id'),
+        ('Test', 'project_name', 'project_id'),
+        ('TestAggregateResult', 'project_name', 'project_id'),
+        ('SystemWarning', 'project_name', 'project_id'),
+        ('EditHistory', 'project_name', 'project_id'),
+        ('ProjectObserverIndex', 'observer_project_name', 'observer_project_id'),
+        ('User', 'active_project_id', 'active_project_id'),
+    )
+
+    def migrate_legacy_project_identity(self, actual: dict[str, set[str]]) -> None:
+        """One-off migration for the project_name/project_id merge:
+        Project.name (the old primary key) and Project.project_id (the
+        old, optional, YAML-mirroring column) collapse into one mandatory
+        Project.id. No-op once already migrated — detected by
+        Project.project_id's own absence, so this only ever fires once
+        against a database still in the pre-merge shape.
+
+        A project that never declared a project_id gets one invented
+        here: 'legacy.<slug of its ui_label or old name>' (see _slugify/
+        _unique_legacy_id above) — every project must have a real id
+        going forward, dot-allowed, family 'legacy' for anything migrated
+        this way."""
+        if 'project_id' not in actual.get('Project', set()):
+            return
+        rows = self._database.execute_sql('SELECT "name", "project_id", "ui_label" FROM "Project"').fetchall()
+        used_ids = {row[1] for row in rows if row[1]}
+        renames: list[tuple[str, str]] = []
+        for old_name, project_id, ui_label in rows:
+            new_id = project_id or _unique_legacy_id(ui_label or old_name, used_ids)
+            used_ids.add(new_id)
+            if new_id != old_name:
+                renames.append((old_name, new_id))
+        dependent_columns = [
+            (table, old_column) for table, old_column, _ in self._PROJECT_NAME_COLUMNS if table in actual
+        ]
+        self._database.execute_sql('PRAGMA foreign_keys = OFF')
+        try:
+            with self._database.atomic():
+                for old_name, new_id in renames:
+                    self._database.execute_sql('UPDATE "Project" SET "name" = ? WHERE "name" = ?', (new_id, old_name))
+                    for table, old_column in dependent_columns:
+                        self._database.execute_sql(
+                            f'UPDATE "{table}" SET "{old_column}" = ? WHERE "{old_column}" = ?', (new_id, old_name),
+                        )
+                self.rename_column('Project', 'name', 'id')
+                migrate(SqliteMigrator(self._database).drop_column('Project', 'project_id'))
+                for table, old_column, new_column in self._PROJECT_NAME_COLUMNS:
+                    if table in actual and old_column != new_column:
+                        self.rename_column(table, old_column, new_column)
+        finally:
+            self._database.execute_sql('PRAGMA foreign_keys = ON')
 
     def migrate(self, actual: dict[str, set[str]], expected: dict[str, set[str]], path: str) -> None:
         migrator = SqliteMigrator(self._database)

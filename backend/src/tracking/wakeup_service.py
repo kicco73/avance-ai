@@ -29,11 +29,11 @@ logger = LoggerFactory.get_logger(__name__)
 
 class WakeupJob(CancelableJob):
 
-    def __init__(self, service: "WakeupService", username: str, observer_project_name: str) -> None:
-        super().__init__(key=f"wakeup:{observer_project_name}:{username}", username="system")
+    def __init__(self, service: "WakeupService", username: str, observer_project_id: str) -> None:
+        super().__init__(key=f"wakeup:{observer_project_id}:{username}", username="system")
         self._service = service
         self._username = username
-        self._observer_project_name = observer_project_name
+        self._observer_project_id = observer_project_id
 
     def _prepare(self) -> tuple[int, tuple[CancelableJob, ...]]:
         return 1, ()
@@ -47,7 +47,7 @@ class WakeupJob(CancelableJob):
         return None
 
     async def _run_next_step(self) -> None:
-        await self._service._reevaluate_and_apply(self._username, self._observer_project_name)
+        await self._service._reevaluate_and_apply(self._username, self._observer_project_id)
 
 
 class WakeupService:
@@ -74,23 +74,21 @@ class WakeupService:
         # own caller — that caller is always some *other* project's real
         # turn, which must complete regardless of whether waking up an observer succeeds.
         try:
-            # The observer index is keyed by the observed project's id
-            # (see ProjectObserverIndex), not its name.
-            project_id = self._db.get_project_id(event.project_name)
-            observers = self._db.get_observers(project_id) if project_id else []
-            for observer_project_name in observers:
-                if self._db.get_latest_chat_session(event.username, observer_project_name) is not None:
-                    self._wake(event.username, observer_project_name)
+            # The observer index is keyed by project id directly now that
+            # project identity is unified (see ProjectObserverIndex).
+            for observer_project_id in self._db.get_observers(event.project_id):
+                if self._db.get_latest_chat_session(event.username, observer_project_id) is not None:
+                    self._wake(event.username, observer_project_id)
         except Exception:
             logger.exception(
-                "Wake-up dispatch failed for %s in project '%s'.", type(event).__name__, event.project_name
+                "Wake-up dispatch failed for %s in project '%s'.", type(event).__name__, event.project_id
             )
 
-    async def _reevaluate_and_apply(self, username: str, observer_project_name: str) -> None:
-        """Re-derives `observer_project_name`'s own current scope from
+    async def _reevaluate_and_apply(self, username: str, observer_project_id: str) -> None:
+        """Re-derives `observer_project_id`'s own current scope from
         scratch — a fresh Env/MetricService/SessionFacts/UserFacts/AutomatonNamespace
-        bound to this (username, observer_project_name) pair — then applies a self-loop transition if one fires."""
-        session = self._db.get_latest_chat_session(username, observer_project_name)
+        bound to this (username, observer_project_id) pair — then applies a self-loop transition if one fires."""
+        session = self._db.get_latest_chat_session(username, observer_project_id)
         if session is None:
             return  # deleted between dispatch and this job actually running
 
@@ -101,10 +99,10 @@ class WakeupService:
         # being woken (never whatever's live for this job's own context),
         # then restored. project_context stands in for the *live* active
         # project these would otherwise resolve, staying fixed on
-        # observer_project_name instead — a wake-up must never silently
+        # observer_project_id instead — a wake-up must never silently
         # evaluate against whatever project happens to be active right now.
         with Session().impersonate(username):
-            project_context = FixedProjectContext(project_name=observer_project_name)
+            project_context = FixedProjectContext(project_id=observer_project_id)
             env = PersistedEnv(self._db, project_context)
             metrics = MetricService(self._db, project_context)
             system = SystemFacts()
@@ -128,7 +126,7 @@ class WakeupService:
             if action is not None and action.target == state.key:
                 _, on_enter = tracking_engine.apply_transition(
                     automaton, state, action, {}, session["id"],
-                    origin='system', username=username, project_name=observer_project_name,
+                    origin='system', username=username, project_id=observer_project_id,
                 )
                 # A "notification" frame, never "done" — chatClient.js drops a
                 # "done" with no pendingTurn in flight, which a push never is.
@@ -141,10 +139,10 @@ class WakeupService:
                     )
                     await self._ws_adapter.push(username, {
                         "type": "notification",
-                        "project_name": observer_project_name,
+                        "project_id": observer_project_id,
                         "state": {**state_payload, "manual_actions": manual_actions_for(state_payload["actions"], auto_tracking_enabled)},
                         "on-enter": on_enter,
                     })
 
-    def _wake(self, username: str, observer_project_name: str) -> None:
-        self._job_queue.submit(WakeupJob(self, username, observer_project_name))
+    def _wake(self, username: str, observer_project_id: str) -> None:
+        self._job_queue.submit(WakeupJob(self, username, observer_project_id))

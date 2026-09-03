@@ -20,16 +20,16 @@ class UsersAggregationJob(_AggregationJob):
     play button standalone (start_user_sessions_run_job) would."""
 
     def __init__(
-        self, service: "TestService", project_name: str, strategy: str, session_ids_by_user: dict[str, list[int]],
+        self, service: "TestService", project_id: str, strategy: str, session_ids_by_user: dict[str, list[int]],
     ) -> None:
-        super().__init__(service, project_name, 'users', None, strategy)
+        super().__init__(service, project_id, 'users', None, strategy)
         self._session_ids_by_user = session_ids_by_user
         self._user_jobs: list[PooledAggregationJob] = []
 
     def _resolve_or_construct_dependencies(self) -> tuple[CancelableJob, ...]:
         self._user_jobs = [
             self._service._track(
-                PooledAggregationJob(self._service, self._project_name, 'user_sessions', username, self._strategy, session_ids)
+                PooledAggregationJob(self._service, self._project_id, 'user_sessions', username, self._strategy, session_ids)
             )
             for username, session_ids in self._session_ids_by_user.items()
         ]

@@ -55,29 +55,29 @@ class ChatSessionManager(object):
         strategy = get_session_type_strategy(session["type"])
         return not strategy.is_expired(session, now, self._open_window)
 
-    def has_open_sessions_for_revision(self, project_name: str, revision: int) -> bool:
-        sessions = self._db.list_live_sessions_for_revision(project_name, revision)
+    def has_open_sessions_for_revision(self, project_id: str, revision: int) -> bool:
+        sessions = self._db.list_live_sessions_for_revision(project_id, revision)
         return any(self.is_open(session) for session in sessions)
 
-    def get_active_session(self, username: str, project_name: str, type: str = 'live') -> dict | None:
-        """The single session `username`+`project_name` may currently
+    def get_active_session(self, username: str, project_id: str, type: str = 'live') -> dict | None:
+        """The single session `username`+`project_id` may currently
         write to — the most recently started one, if still open. `type`:
         'live'/'test' are separate "active session" pools, never interchangeable."""
-        latest = self._db.get_latest_chat_session(username, project_name, type=type)
+        latest = self._db.get_latest_chat_session(username, project_id, type=type)
         if latest is not None and self.is_open(latest):
             return latest
         return None
 
     def create_session(
-        self, strategy: SessionTypeStrategy, project_service: ProjectService, username: str, project_name: str,
+        self, strategy: SessionTypeStrategy, project_service: ProjectService, username: str, project_id: str,
     ) -> dict:
         if strategy.type_name == 'live' and self._session_summary_manager is not None:
-            self._session_summary_manager.check_for_closed_sessions(username, project_name)
-        state_key = strategy.starting_state(project_service, project_name, username)
+            self._session_summary_manager.check_for_closed_sessions(username, project_id)
+        state_key = strategy.starting_state(project_service, project_id, username)
         now = datetime.utcnow()
-        revision = strategy.revision_for(project_service, project_name)
+        revision = strategy.revision_for(project_service, project_id)
         session_id = self._db.create_chat_session(
-            username, project_name, revision,
+            username, project_id, revision,
             datetime_start=now, datetime_end=now,
             start_state=state_key, end_state=state_key,
             type=strategy.type_name, channel=Session().channel,
@@ -87,45 +87,45 @@ class ChatSessionManager(object):
         return session
 
     def get_current_session_if_any_or_create_new(
-        self, strategy: SessionTypeStrategy, project_service: ProjectService, username: str, project_name: str,
+        self, strategy: SessionTypeStrategy, project_service: ProjectService, username: str, project_id: str,
         session_id: int | None, current_state: str | None = None,
     ) -> dict:
-        resolved = strategy.resolve_session(self, username, project_name)
+        resolved = strategy.resolve_session(self, username, project_id)
         if resolved is not None:
             if session_id is not None and session_id != resolved["id"]:
                 logger.info(
                     "get_current_session_if_any_or_create_new(): caller's session_id=%s is stale for %s/%s, "
-                    "current session is %s", session_id, username, project_name, resolved["id"]
+                    "current session is %s", session_id, username, project_id, resolved["id"]
                 )
             if resolved["channel"] != Session().channel:
                 return resolved
             return self._touch(resolved["id"], datetime.utcnow(), current_state)
-        return self.create_session(strategy, project_service, username, project_name)
+        return self.create_session(strategy, project_service, username, project_id)
 
     def acquire_exclusive_session(
-        self, strategy: SessionTypeStrategy, project_service: ProjectService, username: str, project_name: str,
+        self, strategy: SessionTypeStrategy, project_service: ProjectService, username: str, project_id: str,
         current_state: str | None = None,
     ) -> dict:
-        resolved = strategy.resolve_session(self, username, project_name)
+        resolved = strategy.resolve_session(self, username, project_id)
         if resolved is None:
-            return self.create_session(strategy, project_service, username, project_name)
+            return self.create_session(strategy, project_service, username, project_id)
         if resolved["channel"] == Session().channel:
             return self._touch(resolved["id"], datetime.utcnow(), current_state)
         self.close_session(resolved, "channel-switch")
-        return self.create_session(strategy, project_service, username, project_name)
+        return self.create_session(strategy, project_service, username, project_id)
 
     def require_active_session(
-        self, username: str, project_name: str, session_id: int | None, current_state: str
+        self, username: str, project_id: str, session_id: int | None, current_state: str
     ) -> dict:
         if session_id is None:
             raise SessionNotWritable("No session specified.", code="session_not_found")
         session = self._db.get_chat_session(session_id)
-        if session is None or session["username"] != username or session["project_name"] != project_name:
+        if session is None or session["username"] != username or session["project_id"] != project_id:
             raise SessionNotWritable("Session not found.", code="session_not_found")
         if session["closed_at"] is not None:
             raise SessionNotWritable("Session is closed.", code="session_closed")
         strategy = get_session_type_strategy(session["type"])
-        active = self.get_active_session(username, project_name, type=session["type"])
+        active = self.get_active_session(username, project_id, type=session["type"])
         if not strategy.is_valid_write_target(session, active):
             if active is None or active["id"] != session["id"]:
                 raise SessionNotWritable("Session is not active.", code="session_superseded")
@@ -141,9 +141,9 @@ class ChatSessionManager(object):
         now = now if now is not None else datetime.utcnow()
         self._db.close_chat_session(session["id"], now, reason)
         logger.info(
-            "close_session(): session_id=%s username=%s project_name=%s session_channel=%s "
+            "close_session(): session_id=%s username=%s project_id=%s session_channel=%s "
             "current_channel=%s reason=%s",
-            session["id"], session["username"], session["project_name"], session["channel"],
+            session["id"], session["username"], session["project_id"], session["channel"],
             Session().channel, reason,
         )
         result = self._db.get_chat_session(session["id"])

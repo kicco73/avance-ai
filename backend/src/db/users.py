@@ -115,18 +115,18 @@ class UserMixin:
             SystemWarning.update(user_id=target_id).where(SystemWarning.user_id == absorbed_id).execute()
             EditHistory.update(user_id=target_id).where(EditHistory.user_id == absorbed_id).execute()
             Invite.update(created_by=target_id).where(Invite.created_by == absorbed_id).execute()
-            # UserProject's PK is (user, project_name) — reassigning would
+            # UserProject's PK is (user, project) — reassigning would
             # collide wherever target already has its own row for that
             # project, so those are dropped instead of overwriting it.
             target_projects = {
-                row.project_name_id for row in UserProject.select(UserProject.project_name).where(UserProject.user == target_id)
+                row.project_id for row in UserProject.select(UserProject.project).where(UserProject.user == target_id)
             }
             for row in list(UserProject.select().where(UserProject.user == absorbed_id)):
-                if row.project_name_id in target_projects:
+                if row.project_id in target_projects:
                     row.delete_instance()
                 else:
                     UserProject.update(user=target_id).where(
-                        (UserProject.user == absorbed_id) & (UserProject.project_name == row.project_name_id)
+                        (UserProject.user == absorbed_id) & (UserProject.project == row.project_id)
                     ).execute()
             User.delete().where(User.id == absorbed_id).execute()
             User.update(whatsapp_phone_number=whatsapp_phone_number).where(User.id == target_id).execute()
@@ -158,7 +158,7 @@ class UserMixin:
         """tracking.user_facts.UserFacts's own source — every User field
         except id, keyed exactly as a trigger/env: expression references
         them (user.email, user.name, ...; user.active_project resolves
-        to the project's own name string, same as active_project_id
+        to the project's own id string, same as active_project_id
         everywhere else in this module). {} for an identity with no
         User row yet, rather than raising — the same "just missing"
         shape env.* namespace values get from PersistedEnv."""
@@ -203,25 +203,25 @@ class UserMixin:
         the next time that account actually logs in."""
         User.update(name=name, picture_url=picture_url, last_login=datetime.utcnow()).where(User.id == user_id).execute()
 
-    def get_active_project_name(self, user: str) -> str | None:
+    def get_active_project_id(self, user: str) -> str | None:
         row = User.get_or_none(User.id == user)
         if row is None:
             return None
         if row.active_project_id is None:
-            first_project = Project.select(Project.name).order_by(SQL('rowid')).first()
+            first_project = Project.select(Project.id).order_by(SQL('rowid')).first()
             if first_project is None:
                 return None
-            row.active_project_id = first_project.name
+            row.active_project_id = first_project.id
             row.save()
         return row.active_project_id
 
-    def set_active_project_name(self, project_name: str, user: str) -> None:
+    def set_active_project_id(self, project_id: str, user: str) -> None:
         row = User.get_or_none(User.id == user)
         if row is not None:
-            row.active_project_id = project_name
+            row.active_project_id = project_id
             row.save()
         else:
-            User.create(id=user, active_project_id=project_name)
+            User.create(id=user, active_project_id=project_id)
 
-    def clear_active_project_name(self, user: str) -> None:
+    def clear_active_project_id(self, user: str) -> None:
         User.update(active_project_id=None).where(User.id == user).execute()

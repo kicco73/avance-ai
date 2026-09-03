@@ -236,7 +236,7 @@ class BatchSignalSource(object):
         # restored, so a concurrent request's own Session().user (a
         # separate context already, but belt-and-suspenders) is never at risk.
         with Session().impersonate(session['username']):
-            persisted_env = PersistedEnv(self._db, FixedProjectContext(self._automaton, session['project_name']))
+            persisted_env = PersistedEnv(self._db, FixedProjectContext(self._automaton, session['project_id']))
             return persisted_env.stored(until=session['datetime_start'])
 
     def _user_message_ids(self) -> list[int]:

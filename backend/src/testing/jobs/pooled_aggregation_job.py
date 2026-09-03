@@ -19,10 +19,10 @@ if TYPE_CHECKING:
 class PooledAggregationJob(_AggregationJob):
 
     def __init__(
-        self, service: "TestService", project_name: str, kind: str, target: str | None, strategy: str,
+        self, service: "TestService", project_id: str, kind: str, target: str | None, strategy: str,
         session_ids: list[int],
     ) -> None:
-        super().__init__(service, project_name, kind, target, strategy)
+        super().__init__(service, project_id, kind, target, strategy)
         self._session_ids = session_ids
         self._sub_run_ids: list[int] = []
         self._sessions_job: PooledAggregationJob | None = None
@@ -31,7 +31,7 @@ class PooledAggregationJob(_AggregationJob):
         if self._kind == 'sessions':
             self._sub_run_ids, dependencies = self._resolve_session_ids(self._session_ids)
             return dependencies
-        self._sessions_job = self._service._sessions_job(self._project_name, self._strategy)
+        self._sessions_job = self._service._sessions_job(self._project_id, self._strategy)
         return (self._sessions_job,)
 
     async def _compute(self) -> list[dict]:
@@ -49,6 +49,6 @@ class PooledAggregationJob(_AggregationJob):
             signals=pd.concat([f.signals for f in frames], ignore_index=True),
             transitions=pd.concat([f.transitions for f in frames], ignore_index=True),
         )
-        unfiltered_metrics = BenchmarkCalculator(db, None, self._project_name).default_metrics()
+        unfiltered_metrics = BenchmarkCalculator(db, None, self._project_id).default_metrics()
         calculator = BenchmarkCalculator.from_data(pooled, metrics=unfiltered_metrics)
         return [_serialize_metric_result(result) for result in calculator.calculate_all()]

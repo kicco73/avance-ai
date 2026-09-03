@@ -14,7 +14,7 @@ class StateChanged:
     """A real (non-self-loop) transition — published right after the
     transition itself is persisted."""
     username: str
-    project_name: str
+    project_id: str
     from_state: str
     to_state: str
 
@@ -25,7 +25,7 @@ class EnvChanged:
     tracking.tracking_engine.TrackingEngine.apply_action_env, once per
     key an action's own `env:` field actually wrote this turn."""
     username: str
-    project_name: str
+    project_id: str
     key: str
     value: object
 
@@ -35,5 +35,5 @@ class AvailabilityChanged:
     """A project's is_paused flag flipped — published only when the
     recomputed value actually differs from what was already saved,
     which is what makes a mutual dependency converge without cycle detection."""
-    project_name: str
+    project_id: str
     available: bool

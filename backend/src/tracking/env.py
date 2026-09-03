@@ -110,16 +110,16 @@ class PersistedEnv(Env):
         """`until` (naive-but-UTC): as they stood at or before that
         point, for the "Label sessions" view's point-in-time Inspector
         (see ChatService.get_env); omitted (None) means live/current."""
-        return self._db.get_env(self._project_service.get_active_project_name(), Session().user, until=until)
+        return self._db.get_env(self._project_service.get_active_project_id(), Session().user, until=until)
 
     def action_set(self, until: datetime | None = None) -> dict[str, Any]:
         """Same `until` convention as stored()."""
-        return self._db.get_action_env(self._project_service.get_active_project_name(), Session().user, until=until)
+        return self._db.get_action_env(self._project_service.get_active_project_id(), Session().user, until=until)
 
     def _write_stored(self, values: dict[str, Any], message_id: int | None = None) -> None:
         self._db.set_env(
-            self._project_service.get_active_project_name(), values, Session().user, message_id=message_id
+            self._project_service.get_active_project_id(), values, Session().user, message_id=message_id
         )
 
     def _write_action_set(self, values: dict[str, Any]) -> None:
-        self._db.set_action_env(self._project_service.get_active_project_name(), values, Session().user)
+        self._db.set_action_env(self._project_service.get_active_project_id(), values, Session().user)

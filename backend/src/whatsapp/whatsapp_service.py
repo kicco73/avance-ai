@@ -310,28 +310,28 @@ class WhatsAppService(object):
         if session_payload.get("paused"):
             return [], None, None
         if session_payload.get("legal_terms_pending"):
-            return self._terms_reply(session_payload["project_name"])
+            return self._terms_reply(session_payload["project_id"])
         session_id = session_payload["id"]
         replies, manual_actions = await self._bootstrap_replies(session_id)
         return replies, manual_actions, session_id
 
-    def _terms_reply(self, project_name: str) -> tuple[list[Reply], list[dict] | None, int | None]:
+    def _terms_reply(self, project_id: str) -> tuple[list[Reply], list[dict] | None, int | None]:
         """The project's own legal/terms.md plus an Accept button — the
         WhatsApp equivalent of TermsView.vue, in place of the plain "go
         accept it on the web" notice this used to send."""
-        status = self._chat_service.get_legal_terms_status(project_name)
+        status = self._chat_service.get_legal_terms_status(project_id)
         manual_actions = [{"name": _ACCEPT_TERMS_ACTION, "ui_button": REPLY_ACCEPT_TERMS_LABEL, "ui_description": None}]
         return [Reply(to_whatsapp_markdown(status["content"] or ""))], manual_actions, None
 
     async def _accept_terms_action(self) -> tuple[list[Reply], list[dict] | None, int | None]:
         session_payload = await self._chat_service.acquire_exclusive_session()
         if session_payload.get("legal_terms_pending"):
-            self._chat_service.accept_legal_terms(session_payload["project_name"])
+            self._chat_service.accept_legal_terms(session_payload["project_id"])
             session_payload = await self._chat_service.acquire_exclusive_session()
         if session_payload.get("paused"):
             return [Reply(REPLY_PAUSED)], None, None
         if session_payload.get("legal_terms_pending"):
-            return self._terms_reply(session_payload["project_name"])
+            return self._terms_reply(session_payload["project_id"])
         session_id = session_payload["id"]
         replies, manual_actions = await self._bootstrap_replies(session_id)
         return replies or [Reply(REPLY_TERMS_ACCEPTED)], manual_actions, session_id
@@ -355,7 +355,7 @@ class WhatsAppService(object):
         if session_payload.get("paused"):
             return None, ([Reply(REPLY_PAUSED)], None, None)
         if session_payload.get("legal_terms_pending"):
-            return None, self._terms_reply(session_payload["project_name"])
+            return None, self._terms_reply(session_payload["project_id"])
         return session_payload["id"], None
 
     async def _attempt_turn(

@@ -20,7 +20,7 @@ class TestDataBuilder:
 
     @classmethod
     def build(cls, db: Db, run: dict) -> BenchmarkData:
-        calculator = BenchmarkCalculator(db, run['username'], run['project_name'], session_id=run['session_id'])
+        calculator = BenchmarkCalculator(db, run['username'], run['project_id'], session_id=run['session_id'])
 
         sessions_rows = calculator._load_sessions()
         session_ids = [int(row['id']) for row in sessions_rows]
@@ -29,7 +29,7 @@ class TestDataBuilder:
 
         messages = calculator._load_messages(session_ids, signal_rows_by_session)
         sessions = calculator._frame(sessions_rows, [
-            "id", "username", "project_name", "datetime_start", "datetime_end", "start_state", "end_state"
+            "id", "username", "project_id", "datetime_start", "datetime_end", "start_state", "end_state"
         ])
         signals = cls._load_run_signals(db, run['id'], session_ids, signal_rows_by_session)
         transitions = signals.loc[signals["new_state"].notna()].copy() if not signals.empty else cls._empty_signals()

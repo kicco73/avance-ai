@@ -103,8 +103,8 @@ class ChatService(object):
 		return tracking_engine.render_on_enter(automaton, action, action.target)
 
 	@property
-	def _active_project_name(self) -> str:
-		return self._project_service.get_active_project_name()
+	def _active_project_id(self) -> str:
+		return self._project_service.get_active_project_id()
 
 	@property
 	def _username(self) -> str:
@@ -152,7 +152,7 @@ class ChatService(object):
 		return {
 			"id": session["id"],
 			"username": session["username"],
-			"project_name": session["project_name"],
+			"project_id": session["project_id"],
 			"type": session["type"],
 			"title": session["title"],
 			"datetime_start": _utc_iso(session["datetime_start"]),
@@ -176,30 +176,30 @@ class ChatService(object):
 			"comment": session["comment"],
 		}
 
-	def _require_active_session(self, session_id: int | None, project_name: str, current_state: str) -> dict:
+	def _require_active_session(self, session_id: int | None, project_id: str, current_state: str) -> dict:
 		"""A chat turn's session must already be the active one for this
 		project — rejected just as firmly if merely open-but-superseded
 		as if outright closed. ValueError becomes a 409 the frontend can act on."""
 		try:
 			return self._session_manager.require_active_session(
-				self._username, project_name, session_id, current_state
+				self._username, project_id, session_id, current_state
 			)
 		except SessionNotWritable as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT, code=exc.code) from exc
 
-	def get_legal_terms_status(self, project_name: str) -> dict:
-		return self._project_service.get_legal_terms_status(self._username, project_name)
+	def get_legal_terms_status(self, project_id: str) -> dict:
+		return self._project_service.get_legal_terms_status(self._username, project_id)
 
-	def accept_legal_terms(self, project_name: str) -> None:
-		self._project_service.accept_legal_terms(self._username, project_name)
+	def accept_legal_terms(self, project_id: str) -> None:
+		self._project_service.accept_legal_terms(self._username, project_id)
 
-	def _legal_terms_pending_response(self, project_name: str) -> dict | None:
+	def _legal_terms_pending_response(self, project_id: str) -> dict | None:
 		# Only a session about to be created is pinned to
 		# get_published_revision — an already-open one keeps running
 		# against whatever revision it was created against, so it's
 		# never blocked by terms published since.
-		if self._project_service.legal_terms_pending(self._username, project_name):
-			return {"legal_terms_pending": True, "project_name": project_name}
+		if self._project_service.legal_terms_pending(self._username, project_id):
+			return {"legal_terms_pending": True, "project_id": project_id}
 		return None
 
 	def _session_response(self, session: dict, *, active: bool) -> dict:
@@ -208,19 +208,19 @@ class ChatService(object):
 		return {**self._session_payload(session, active=active), "state": state_payload}
 
 	async def _get_current_session_if_any_or_create_new_of_type(
-		self, strategy: SessionTypeStrategy, project_name: str, session_id: int | None
+		self, strategy: SessionTypeStrategy, project_id: str, session_id: int | None
 	) -> dict:
-		async with self._session_lifecycle_scope(self._username, project_name):
+		async with self._session_lifecycle_scope(self._username, project_id):
 			try:
-				if strategy.type_name == 'live' and self._session_manager.get_active_session(self._username, project_name) is None:
-					pending = self._legal_terms_pending_response(project_name)
+				if strategy.type_name == 'live' and self._session_manager.get_active_session(self._username, project_id) is None:
+					pending = self._legal_terms_pending_response(project_id)
 					if pending is not None:
 						return pending
 				_, state = self._project_service.get_automaton_and_state(
-					project_name, type=strategy.type_name, username=self._username
+					project_id, type=strategy.type_name, username=self._username
 				)
 				session = self._session_manager.get_current_session_if_any_or_create_new(
-					strategy, self._project_service, self._username, project_name, session_id, state.key
+					strategy, self._project_service, self._username, project_id, session_id, state.key
 				)
 			except ValueError as exc:
 				raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
@@ -230,55 +230,55 @@ class ChatService(object):
 		"""Bootstrap for a client with no (or a possibly-stale) session_id:
 		resolves or creates the one session currently writable for the
 		active project. A paused project skips bootstrapping entirely."""
-		project_name = self._active_project_name
-		is_paused, paused_reason = self._project_service.get_project_availability(project_name)
+		project_id = self._active_project_id
+		is_paused, paused_reason = self._project_service.get_project_availability(project_id)
 		if is_paused:
 			return {"paused": True, "paused_reason": paused_reason}
-		return await self._get_current_session_if_any_or_create_new_of_type(get_session_type_strategy('live'), project_name, session_id)
+		return await self._get_current_session_if_any_or_create_new_of_type(get_session_type_strategy('live'), project_id, session_id)
 
-	async def get_current_draft_session_if_any_or_create_new(self, session_id: int | None, project_name: str) -> dict:
+	async def get_current_draft_session_if_any_or_create_new(self, session_id: int | None, project_id: str) -> dict:
 		"""Like get_current_session_if_any_or_create_new, but for
-		`project_name`'s own *draft* — the embedded "Test" chat is the one
+		`project_id`'s own *draft* — the embedded "Test" chat is the one
 		place a session is allowed to exist against an unpublished
-		revision. `project_name` comes from the URL, never the
+		revision. `project_id` comes from the URL, never the
 		active-project pointer."""
-		return await self._get_current_session_if_any_or_create_new_of_type(get_session_type_strategy('test'), project_name, session_id)
+		return await self._get_current_session_if_any_or_create_new_of_type(get_session_type_strategy('test'), project_id, session_id)
 
 	async def acquire_exclusive_session(self) -> dict:
 		"""Like get_current_session_if_any_or_create_new(None), but with
 		real intent to write through the current channel right now: an
 		open session on another channel is closed and superseded instead
 		of returned as-is."""
-		project_name = self._active_project_name
-		is_paused, paused_reason = self._project_service.get_project_availability(project_name)
+		project_id = self._active_project_id
+		is_paused, paused_reason = self._project_service.get_project_availability(project_id)
 		if is_paused:
 			return {"paused": True, "paused_reason": paused_reason}
-		async with self._session_lifecycle_scope(self._username, project_name):
-			if self._session_manager.get_active_session(self._username, project_name) is None:
-				pending = self._legal_terms_pending_response(project_name)
+		async with self._session_lifecycle_scope(self._username, project_id):
+			if self._session_manager.get_active_session(self._username, project_id) is None:
+				pending = self._legal_terms_pending_response(project_id)
 				if pending is not None:
 					return pending
-			_, state = self._project_service.get_automaton_and_state(project_name, type='live', username=self._username)
+			_, state = self._project_service.get_automaton_and_state(project_id, type='live', username=self._username)
 			try:
 				session = self._session_manager.acquire_exclusive_session(
-					get_session_type_strategy('live'), self._project_service, self._username, project_name, state.key
+					get_session_type_strategy('live'), self._project_service, self._username, project_id, state.key
 				)
 			except ValueError as exc:
 				raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		return self._session_response(session, active=True)
 
-	async def _create_session_of_type(self, strategy: SessionTypeStrategy, project_name: str) -> dict:
-		async with self._session_lifecycle_scope(self._username, project_name):
+	async def _create_session_of_type(self, strategy: SessionTypeStrategy, project_id: str) -> dict:
+		async with self._session_lifecycle_scope(self._username, project_id):
 			try:
 				if strategy.type_name == 'live':
-					if self._project_service.legal_terms_pending(self._username, project_name):
-						return {"legal_terms_pending": True, "project_name": project_name}
-					active = self._session_manager.get_active_session(self._username, project_name)
+					if self._project_service.legal_terms_pending(self._username, project_id):
+						return {"legal_terms_pending": True, "project_id": project_id}
+					active = self._session_manager.get_active_session(self._username, project_id)
 					if active is not None:
 						reason = "force-new-session" if active["channel"] == Session().channel else "channel-switch"
 						self._session_manager.close_session(active, reason)
 				session = self._session_manager.create_session(
-					strategy, self._project_service, self._username, project_name
+					strategy, self._project_service, self._username, project_id
 				)
 			except ValueError as exc:
 				raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
@@ -290,42 +290,42 @@ class ChatService(object):
 		return payload
 
 	async def create_session(self) -> dict:
-		return await self._create_session_of_type(get_session_type_strategy('live'), self._active_project_name)
+		return await self._create_session_of_type(get_session_type_strategy('live'), self._active_project_id)
 
-	async def create_draft_session(self, project_name: str) -> dict:
-		"""Like create_session, but against `project_name`'s own current
+	async def create_draft_session(self, project_id: str) -> dict:
+		"""Like create_session, but against `project_id`'s own current
 		*draft* revision, always starting fresh from the automaton's own
 		initial state — the embedded "Test" chat is the only caller.
-		`project_name` comes from the URL, never the active-project pointer."""
-		return await self._create_session_of_type(get_session_type_strategy('test'), project_name)
+		`project_id` comes from the URL, never the active-project pointer."""
+		return await self._create_session_of_type(get_session_type_strategy('test'), project_id)
 
-	def reset_test_sessions(self, project_name: str) -> dict:
-		self._project_service.reset_test_sessions(project_name)
-		automaton, state = self._project_service.get_automaton_and_state(project_name, type='test')
+	def reset_test_sessions(self, project_id: str) -> dict:
+		self._project_service.reset_test_sessions(project_id)
+		automaton, state = self._project_service.get_automaton_and_state(project_id, type='test')
 		on_enter = self._render_on_enter(automaton, automaton.init_action, None)
 		return {**automaton.get_state_payload(state), "on-enter": on_enter}
 
-	def _list_sessions_by_type(self, project_name: str, type: str | tuple[str, ...], active_type: str) -> list[dict]:
-		sessions = self._db.list_chat_sessions(None, project_name, type=type)
+	def _list_sessions_by_type(self, project_id: str, type: str | tuple[str, ...], active_type: str) -> list[dict]:
+		sessions = self._db.list_chat_sessions(None, project_id, type=type)
 		sessions = [s for s in sessions if self._owns_session(s['username'])]
-		active = self._session_manager.get_active_session(self._username, project_name, type=active_type)
+		active = self._session_manager.get_active_session(self._username, project_id, type=active_type)
 		return [
 			self._session_payload(s, active=get_session_type_strategy(s["type"]).is_valid_write_target(s, active))
 			for s in sessions
 		]
 
-	def list_sessions(self, project_name: str, include_imported: bool = False) -> list[dict]:
+	def list_sessions(self, project_id: str, include_imported: bool = False) -> list[dict]:
 		"""Every real (live, and optionally imported) session for
-		`project_name`, most recently started first — for the "Sessions"
+		`project_id`, most recently started first — for the "Sessions"
 		panel. Never a 'test' session (see list_test_sessions instead)."""
 		type = ('live', 'imported') if include_imported else 'live'
-		return self._list_sessions_by_type(project_name, type, active_type='live')
+		return self._list_sessions_by_type(project_id, type, active_type='live')
 
-	def list_test_sessions(self, project_name: str) -> list[dict]:
-		"""Like list_sessions, but `project_name`'s own 'test' sessions —
+	def list_test_sessions(self, project_id: str) -> list[dict]:
+		"""Like list_sessions, but `project_id`'s own 'test' sessions —
 		live/imported never appear here, symmetric to how a test session
 		never appears in list_sessions."""
-		return self._list_sessions_by_type(project_name, 'test', active_type='test')
+		return self._list_sessions_by_type(project_id, 'test', active_type='test')
 
 	def _require_own_session(self, session_id: int) -> None:
 		"""Raises (404) unless `session_id` still exists and belongs to
@@ -348,7 +348,7 @@ class ChatService(object):
 		session = self._db.get_chat_session(session_id)
 		assert session is not None
 		strategy = get_session_type_strategy(session["type"])
-		active_session = self._session_manager.get_active_session(self._username, session["project_name"], type=session["type"])
+		active_session = self._session_manager.get_active_session(self._username, session["project_id"], type=session["type"])
 		return self._session_payload(session, active=strategy.is_valid_write_target(session, active_session))
 
 	def set_session_title(self, session_id: int, title: str | None) -> dict:
@@ -381,8 +381,8 @@ class ChatService(object):
 		`timestamp` in `session_id`; the live automaton state is just
 		recomputed from whatever Tracking rows survive."""
 		self._require_own_session(session_id)
-		project_name = self._project_name_for_session(session_id)
-		async with self._session_scope(project_name, session_id):
+		project_id = self._project_id_for_session(session_id)
+		async with self._session_scope(project_id, session_id):
 			cutoff = datetime.fromisoformat(timestamp).replace(tzinfo=None)
 			self._db.truncate_session(session_id, cutoff)
 			session = self._db.get_chat_session(session_id)
@@ -439,9 +439,9 @@ class ChatService(object):
 		return datetime.fromisoformat(message["timestamp"]).replace(tzinfo=None)
 
 	def get_metrics(
-		self, project_name: str, message_id: int | None = None, full: bool = False, username: str | None = None,
+		self, project_id: str, message_id: int | None = None, full: bool = False, username: str | None = None,
 	) -> list[dict]:
-		"""metrics.metrics_framework's core metrics for `project_name` —
+		"""metrics.metrics_framework's core metrics for `project_id` —
 		the full current history, or (`message_id` given) restricted to
 		what existed at or before that message's own timestamp. `full`:
 		every core metric, not just the "one_session" subset — see
@@ -449,7 +449,7 @@ class ChatService(object):
 		omitted means the caller's own sessions — see its own `username`."""
 		until = self._until_from_message(message_id)
 		return self.metric_service.calculate_all(
-			until=until, project_name=project_name, include_all_scopes=full, username=username,
+			until=until, project_id=project_id, include_all_scopes=full, username=username,
 		)
 
 	def _session_start_marker(self, session: dict) -> str | None:
@@ -458,7 +458,7 @@ class ChatService(object):
 		messages = self._db.get_messages(session['id'])
 		return messages[0]['timestamp'] if messages else None
 
-	def get_metrics_history(self, project_name: str, username: str) -> dict:
+	def get_metrics_history(self, project_id: str, username: str) -> dict:
 		# Sorted by the same value each point is actually plotted at
 		# (`until` below) — sorting by datetime_start instead let an
 		# overlapping session (e.g. a longer-running one whose datetime_end
@@ -466,7 +466,7 @@ class ChatService(object):
 		# before an earlier one, which Chart.js then draws as the line
 		# jumping backward in time instead of connecting points left to right.
 		sessions = sorted(
-			self._db.list_chat_sessions(username, project_name, type=None),
+			self._db.list_chat_sessions(username, project_id, type=None),
 			key=lambda session: session['datetime_end'] or session['datetime_start'],
 		)
 		history = []
@@ -474,7 +474,7 @@ class ChatService(object):
 		for session in sessions:
 			until = session['datetime_end'] or session['datetime_start']
 			results = self.metric_service.calculate_all(
-				until=until, project_name=project_name, include_all_scopes=True, username=username,
+				until=until, project_id=project_id, include_all_scopes=True, username=username,
 			)
 			values = {result['name']: result['value'] for result in results if result['value'] is not None}
 			if values:
@@ -484,8 +484,8 @@ class ChatService(object):
 				session_starts.append({'timestamp': marker, 'title': session['title'], 'end_timestamp': _utc_iso(until)})
 		return {'metrics': history, 'session_starts': session_starts}
 
-	def get_latest_signal_values(self, project_name: str, username: str) -> dict:
-		sessions = self._db.list_chat_sessions(username, project_name, type='live')
+	def get_latest_signal_values(self, project_id: str, username: str) -> dict:
+		sessions = self._db.list_chat_sessions(username, project_id, type='live')
 		if not sessions:
 			return {'last_session': None, 'session_id': None, 'values': None}
 		last_session = sessions[0]
@@ -498,7 +498,7 @@ class ChatService(object):
 					return {'last_session': last_session_payload, 'session_id': session['id'], 'values': row['values']}
 		return {'last_session': last_session_payload, 'session_id': last_session['id'], 'values': None}
 
-	def get_timeline(self, project_name: str, username: str) -> dict:
+	def get_timeline(self, project_id: str, username: str) -> dict:
 		"""Real transitions from this user's own sessions, plus — regardless
 		of which user's session it belongs to — the one transition that
 		bootstrapped the project's automaton into its initial state: the
@@ -506,9 +506,9 @@ class ChatService(object):
 		that single event is what "the initial state" means for every
 		user's timeline, not whichever state a later session happened to
 		start in (see open_if_needed)."""
-		data = self._db.get_timeline(project_name, username)
+		data = self._db.get_timeline(project_id, username)
 		transitions = list(data['transitions'])
-		init_transition = self._db.get_project_init_transition(project_name)
+		init_transition = self._db.get_project_init_transition(project_id)
 		if init_transition is not None and init_transition not in transitions:
 			transitions.append(init_transition)
 		transitions.sort(key=lambda transition: transition['timestamp'])
@@ -546,13 +546,13 @@ class ChatService(object):
 		self.env.clear()
 		return self.get_env()
 
-	def get_benchmark_metrics(self, project_name: str, session_id: int | None = None) -> list[dict]:
-		"""Expert-annotation-vs-actual benchmark metrics for `project_name`
+	def get_benchmark_metrics(self, project_id: str, session_id: int | None = None) -> list[dict]:
+		"""Expert-annotation-vs-actual benchmark metrics for `project_id`
 		— every annotated session, or (session_id given) just that one.
 		Ownership of `session_id`, when given, is checked here."""
 		if session_id is not None:
 			self._require_own_session(session_id)
-		return self.metric_service.get_benchmark_metrics(session_id, project_name=project_name)
+		return self.metric_service.get_benchmark_metrics(session_id, project_id=project_id)
 
 	def set_message_expected_state(self, message_id: int, expected_state: str | None) -> dict | None:
 		"""Sets (expected_state given) or clears (None) the expert-
@@ -625,8 +625,8 @@ class ChatService(object):
 		return self._global_lock
 
 	@asynccontextmanager
-	async def acquire_read(self, project_name: str):
-		lock = self._project_locks.get(project_name)
+	async def acquire_read(self, project_id: str):
+		lock = self._project_locks.get(project_id)
 		await lock.acquire_read()
 		try:
 			yield
@@ -634,8 +634,8 @@ class ChatService(object):
 			await lock.release_read()
 
 	@asynccontextmanager
-	async def acquire_write(self, project_name: str):
-		lock = self._project_locks.get(project_name)
+	async def acquire_write(self, project_id: str):
+		lock = self._project_locks.get(project_id)
 		await lock.acquire_write()
 		try:
 			yield
@@ -643,23 +643,23 @@ class ChatService(object):
 			await lock.release_write()
 
 	@asynccontextmanager
-	async def _session_scope(self, project_name: str, session_id: int):
-		async with self.acquire_read(project_name):
+	async def _session_scope(self, project_id: str, session_id: int):
+		async with self.acquire_read(project_id):
 			async with self._session_locks.get(str(session_id)):
 				yield
 
 	@asynccontextmanager
-	async def _session_lifecycle_scope(self, username: str, project_name: str):
-		async with self._session_lifecycle_locks.get(f"{username}/{project_name}"):
+	async def _session_lifecycle_scope(self, username: str, project_id: str):
+		async with self._session_lifecycle_locks.get(f"{username}/{project_id}"):
 			yield
 
-	def _project_name_for_session(self, session_id: int) -> str:
+	def _project_id_for_session(self, session_id: int) -> str:
 		session = self._db.get_chat_session(session_id)
 		if session is None:
 			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
-		return session["project_name"]
+		return session["project_id"]
 
-	def _apply_declared_env_defaults(self, automaton: Automaton, project_name: str, session_id: int) -> None:
+	def _apply_declared_env_defaults(self, automaton: Automaton, project_id: str, session_id: int) -> None:
 		"""See open_if_needed's own call site. `automaton.init_action.env`
 		carries every project-level `env:` declaration's default
 		(AutomatonBuilder folds them in, in declaration order), evaluated
@@ -682,7 +682,7 @@ class ChatService(object):
 		for key, expression in missing.items():
 			tracking_engine.apply_action_env(
 				automaton, replace(action, env={key: expression}, on_enter=None), {}, "",
-				username=self._username, project_name=project_name,
+				username=self._username, project_id=project_id,
 			)
 
 	async def _ensure_project_bootstrap(
@@ -697,7 +697,7 @@ class ChatService(object):
 		if session["type"] == "imported":
 			return None, None, None
 
-		project_name = session["project_name"]
+		project_id = session["project_id"]
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
 
 		# Every declared env key's default (folded into init_action's own
@@ -708,10 +708,10 @@ class ChatService(object):
 		# a key nothing has set yet, so it never clobbers a value the
 		# model/an action/the user set afterwards, and it's a no-op
 		# (no DB write) once every declared key already has one.
-		self._apply_declared_env_defaults(automaton, project_name, session_id)
+		self._apply_declared_env_defaults(automaton, project_id, session_id)
 
 		init_message = None
-		if self._db.get_current_state(project_name) is None:
+		if self._db.get_current_state(project_id) is None:
 			action = automaton.init_action
 			# Deliberately never linked to a message: this transition
 			# fires before any message of this bootstrap exists, so
@@ -793,23 +793,23 @@ class ChatService(object):
 		return messages
 
 	async def apply_manual_action(self, action_name: str, session_id: int) -> dict:
-		project_name = self._project_name_for_session(session_id)
+		project_id = self._project_id_for_session(session_id)
 		if self._session_locks.get(str(session_id)).locked():
 			raise ChatServiceError(
 				"A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT, code="turn_in_progress",
 			)
-		async with self._session_scope(project_name, session_id):
+		async with self._session_scope(project_id, session_id):
 			_, source_state = self._project_service.get_automaton_and_state_for_session(session_id)
 			# Resolved before applying the action: save_transition (inside
 			# project_service.apply_manual_action) now needs a session_id.
-			session = self._require_active_session(session_id, project_name, source_state.key)
+			session = self._require_active_session(session_id, project_id, source_state.key)
 			state_payload, action, source_state_key = self._project_service.apply_manual_action(
 				action_name, session["id"]
 			)
 			automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
 			tracking_engine, _ = self._tracking_engine_for_session(session["id"])
 			on_enter = tracking_engine.apply_action_env(
-				automaton, action, {}, source_state_key, username=Session().user, project_name=project_name,
+				automaton, action, {}, source_state_key, username=Session().user, project_id=project_id,
 			)
 			reply = await self._messages_for_transition(
 				action, session["id"], state, is_self_loop=(action.target == source_state_key)
@@ -830,8 +830,8 @@ class ChatService(object):
 		on_metadata: OnMetadata | None = None,
 		extra_prompt: str | None = None,
 	) -> dict:
-		project_name = self._project_name_for_session(session_id)
-		async with self._session_scope(project_name, session_id):
+		project_id = self._project_id_for_session(session_id)
+		async with self._session_scope(project_id, session_id):
 			return await self._process_turn_body(session_id, text, on_metadata, extra_prompt=extra_prompt)
 
 	async def _process_turn_body(
@@ -844,10 +844,10 @@ class ChatService(object):
 		session = self._db.get_chat_session(session_id)
 		if session is None:
 			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
-		project_name = session["project_name"]
+		project_id = session["project_id"]
 		ai_service = self._ai_test_service if session["type"] == "test" else self._ai_service
 		_, state = self._project_service.get_automaton_and_state_for_session(session_id)
-		self._require_active_session(session_id, project_name, state.key)
+		self._require_active_session(session_id, project_id, state.key)
 		reply = await self._tracking_service._process(session_id, text, ai_service, on_metadata, extra_prompt=extra_prompt)
 		# touch_session wants the plain state key — reply['state'] is the
 		# full StatePayload dict, not a string; passing it whole would

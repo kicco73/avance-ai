@@ -27,7 +27,7 @@ class SessionTypeStrategy(ABC):
     # here to stay reachable: writing to it directly (is_valid_write_target)
     # never depends on it being the one resolve() would pick.
     @abstractmethod
-    def resolve_session(self, session_manager: "ChatSessionManager", username: str, project_name: str) -> dict | None: ...
+    def resolve_session(self, session_manager: "ChatSessionManager", username: str, project_id: str) -> dict | None: ...
 
     # Whether this specific session may currently be written to (a chat
     # turn or manual action applied to it) — `active_session` is whatever
@@ -40,12 +40,12 @@ class SessionTypeStrategy(ABC):
     # scope actually applies to it (the calling user's own last live
     # transition for live, always the automaton's init state for test).
     @abstractmethod
-    def starting_state(self, project_service: "ProjectService", project_name: str, username: str) -> str: ...
+    def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str: ...
 
     # Which project revision (published vs. draft) a session of this type
     # runs against.
     @abstractmethod
-    def revision_for(self, project_service: "ProjectService", project_name: str) -> int: ...
+    def revision_for(self, project_service: "ProjectService", project_id: str) -> int: ...
 
     # The "on-enter" payload a brand-new session of this type should report
     # to the client, if any — None when starting_state() resumes an
@@ -62,8 +62,8 @@ class LiveSessionStrategy(SessionTypeStrategy):
             return False
         return now - session["datetime_end"] >= open_window
 
-    def resolve_session(self, session_manager: "ChatSessionManager", username: str, project_name: str) -> dict | None:
-        return session_manager.get_active_session(username, project_name, type=self.type_name)
+    def resolve_session(self, session_manager: "ChatSessionManager", username: str, project_id: str) -> dict | None:
+        return session_manager.get_active_session(username, project_id, type=self.type_name)
 
     def is_valid_write_target(self, session: dict, active_session: dict | None) -> bool:
         return (
@@ -71,12 +71,12 @@ class LiveSessionStrategy(SessionTypeStrategy):
             and session["channel"] == Session().channel
         )
 
-    def starting_state(self, project_service: "ProjectService", project_name: str, username: str) -> str:
-        _, state = project_service.get_automaton_and_state(project_name, type=self.type_name, username=username)
+    def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
+        _, state = project_service.get_automaton_and_state(project_id, type=self.type_name, username=username)
         return state.key
 
-    def revision_for(self, project_service: "ProjectService", project_name: str) -> int:
-        return project_service.get_published_revision(project_name)
+    def revision_for(self, project_service: "ProjectService", project_id: str) -> int:
+        return project_service.get_published_revision(project_id)
 
     def on_enter_for_new_session(self, automaton: "Automaton") -> dict | None:
         return None
@@ -88,19 +88,19 @@ class TestSessionStrategy(SessionTypeStrategy):
     def is_expired(self, session: dict, now: datetime, open_window: timedelta) -> bool:
         return False
 
-    def resolve_session(self, session_manager: "ChatSessionManager", username: str, project_name: str) -> dict | None:
-        return session_manager.get_active_session(username, project_name, type=self.type_name)
+    def resolve_session(self, session_manager: "ChatSessionManager", username: str, project_id: str) -> dict | None:
+        return session_manager.get_active_session(username, project_id, type=self.type_name)
 
     def is_valid_write_target(self, session: dict, active_session: dict | None) -> bool:
         return True
 
-    def starting_state(self, project_service: "ProjectService", project_name: str, username: str) -> str:
-        revision = self.revision_for(project_service, project_name)
-        automaton = project_service.get_automaton(project_name, revision)
+    def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
+        revision = self.revision_for(project_service, project_id)
+        automaton = project_service.get_automaton(project_id, revision)
         return automaton.init_action.target
 
-    def revision_for(self, project_service: "ProjectService", project_name: str) -> int:
-        return project_service.get_draft_revision(project_name)
+    def revision_for(self, project_service: "ProjectService", project_id: str) -> int:
+        return project_service.get_draft_revision(project_id)
 
     def on_enter_for_new_session(self, automaton: "Automaton") -> dict | None:
         return automaton.init_action.on_enter
@@ -112,7 +112,7 @@ class ImportedSessionStrategy(SessionTypeStrategy):
     def is_expired(self, session: dict, now: datetime, open_window: timedelta) -> bool:
         return True
 
-    def resolve_session(self, session_manager: "ChatSessionManager", username: str, project_name: str) -> dict | None:
+    def resolve_session(self, session_manager: "ChatSessionManager", username: str, project_id: str) -> dict | None:
         raise NotImplementedError(
             "An imported session is never resolved-or-created — it only ever exists via import."
         )
@@ -120,12 +120,12 @@ class ImportedSessionStrategy(SessionTypeStrategy):
     def is_valid_write_target(self, session: dict, active_session: dict | None) -> bool:
         return False
 
-    def starting_state(self, project_service: "ProjectService", project_name: str, username: str) -> str:
+    def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
         raise NotImplementedError(
             "An imported session's state comes from the imported file, never resolved fresh."
         )
 
-    def revision_for(self, project_service: "ProjectService", project_name: str) -> int:
+    def revision_for(self, project_service: "ProjectService", project_id: str) -> int:
         raise NotImplementedError(
             "An imported session's revision is stamped at import time, never resolved fresh."
         )

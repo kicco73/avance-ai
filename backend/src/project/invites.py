@@ -38,13 +38,13 @@ class InviteManager:
                 return code
         raise RuntimeError("Could not generate a unique invite code.")
 
-    def create_invite(self, project_name: str, created_by: str | None) -> dict:
-        if not self._db.project_exists(project_name):
-            raise FileNotFoundError(f"No such project: {project_name!r}")
+    def create_invite(self, project_id: str, created_by: str | None) -> dict:
+        if not self._db.project_exists(project_id):
+            raise FileNotFoundError(f"No such project: {project_id!r}")
         self._db.delete_expired_unredeemed_invites()
         code = self._generate_unique_code()
         expires_at = datetime.utcnow() + timedelta(days=self._valid_days)
-        invite = self._db.create_invite(code, project_name, created_by, expires_at, self._max_shares)
+        invite = self._db.create_invite(code, project_id, created_by, expires_at, self._max_shares)
         return self._payload(invite)
 
     def resolve_invite_link(self, code: str | None, user_id: str, role: str) -> str | None:
@@ -63,12 +63,12 @@ class InviteManager:
         invite = self._db.get_invite_by_code(code) if code else None
         if invite is None:
             return None
-        project_name = invite.project_name_id
-        if role != 'user' or self._db.user_has_project_access(user_id, project_name):
-            return project_name
+        project_id = invite.project_id
+        if role != 'user' or self._db.user_has_project_access(user_id, project_id):
+            return project_id
         self._ensure_within_budget(invite)
         self.redeem(invite, user_id)
-        return project_name
+        return project_id
 
     def _ensure_within_budget(self, invite) -> None:
         if invite.expires_at < datetime.utcnow():
@@ -92,7 +92,7 @@ class InviteManager:
         """Records that `user_id` registered through `invite` — the other
         half of what makes count_invite_redemptions (and so
         validate_for_registration's own max-shares check) mean anything."""
-        self._db.record_invite_redemption(user_id, invite.project_name_id, invite.id, datetime.utcnow())
+        self._db.record_invite_redemption(user_id, invite.project_id, invite.id, datetime.utcnow())
 
     def _payload(self, invite) -> dict:
         return {

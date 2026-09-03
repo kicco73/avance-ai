@@ -99,29 +99,29 @@ class SettingsController(BaseController, ProjectCommitMixin):
 
     @get("/api/settings/projects/runtime-status", role="admin")
     def get_all_projects_runtime_status(self):
-        """One row per project — name/status/paused_reason/revision/
+        """One row per project — id/status/paused_reason/revision/
         published_revision — the Settings > Runtime status view's own
         table."""
         return {"projects": self.project_service.get_runtime_status()}
 
-    @put("/api/projects/{project_name}/pause", role="admin")
-    def put_project_pause(self, project_name: str):
+    @put("/api/projects/{project_id}/pause", role="admin")
+    def put_project_pause(self, project_id: str):
         """An operator's own explicit override — only ever allowed while
-        `project_name` is actually running."""
+        `project_id` is actually running."""
         try:
-            return self.project_service.set_manually_paused(project_name)
+            return self.project_service.set_manually_paused(project_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_name}/resume", role="admin")
-    def put_project_resume(self, project_name: str):
+    @put("/api/projects/{project_id}/resume", role="admin")
+    def put_project_resume(self, project_id: str):
         """The other half of pause above — only ever allowed while
-        `project_name` is manually paused (see ProjectService.
+        `project_id` is manually paused (see ProjectService.
         set_manually_running)."""
         try:
-            return self.project_service.set_manually_running(project_name)
+            return self.project_service.set_manually_running(project_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:
@@ -129,68 +129,73 @@ class SettingsController(BaseController, ProjectCommitMixin):
 
     @post("/api/projects", role="admin")
     async def post_new_project(self):
-        """"New project" — same effect as PUT /api/projects/{project_name}
-        with backend/samples/Hello world.zip as the body, minus picking a
-        name first (see ProjectService.create_new_project). The built-in
-        template bundles no sessions/test results, so there's nothing
-        for the returned job to do — no progress worth reporting, plain
-        JSON response, unlike a real upload."""
+        """"New project" — same effect as POST /api/projects/upload with
+        backend/samples/Hello world.zip as the body, minus a real upload
+        (see ProjectService.create_new_project — its own project.id is
+        always freshly minted, since project.id must be globally unique).
+        The built-in template bundles no sessions/test results, so
+        there's nothing for the returned job to do — no progress worth
+        reporting, plain JSON response, unlike a real upload."""
         result, _job = await self.project_service.create_new_project(self._activate_project)
         return result
 
-    @put("/api/projects/{project_name}/activate")
-    async def activate_project(self, project_name: str):
+    @put("/api/projects/{project_id}/activate")
+    async def activate_project(self, project_id: str):
         try:
-            await self.project_service.activate_project_idempotent(project_name, self._activate_project)
+            await self.project_service.activate_project_idempotent(project_id, self._activate_project)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {
             "success": True,
-            "project_name": project_name,
+            "project_id": project_id,
         }
 
-    @get("/api/projects/{project_name}", role="admin")
-    def get_project(self, project_name: str):
-        """Downloads `project_name` as a zip — the read side of PUT
-        /api/projects/{project_name}, built so it round-trips back through PUT
-        with no transformation. Not restricted to the active project."""
+    @get("/api/projects/{project_id}", role="admin")
+    def get_project(self, project_id: str):
+        """Downloads `project_id` as a zip — the read side of POST
+        /api/projects/upload, built so it round-trips back through that
+        endpoint with no transformation. Not restricted to the active project."""
         try:
-            content = self.project_service.export_project_zip(project_name)
+            content = self.project_service.export_project_zip(project_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        encoded_project_name = quote(project_name)
+        encoded_project_id = quote(project_id)
         return Response(
             content=content,
             media_type="application/zip",
             headers={
-                "Content-Disposition": f'attachment; filename="project.zip"; filename*=UTF-8\'\'{encoded_project_name}.zip'
+                "Content-Disposition": f'attachment; filename="project.zip"; filename*=UTF-8\'\'{encoded_project_id}.zip'
             },
         )
 
-    @put("/api/projects/{project_name}", role="admin")
-    async def put_project(self, project_name: str, request: Request):
-        """Creates or replaces `project_name` from a raw body (YAML or zip, see
-        ProjectService._looks_like_zip). Stage -> validate -> only on success
-        commit, swap, and wipe `project_name`'s prior conversation data. The
-        project definition itself is staged and committed synchronously
-        (fast, and needs the main event loop's chat lock); this same
-        response then streams SSE progress for a background Job importing
-        whatever sessions.json/tests.json the upload bundled, ending
-        with a chunk carrying the final {success, project_name}."""
+    @post("/api/projects/upload", role="admin")
+    async def post_upload_project(self, request: Request):
+        """Creates a project from a raw body (YAML or zip), or — when its
+        own project.id already names an existing project — adds a new
+        revision on top of it instead (see ProjectService.put_project for
+        the full accept/reject/auto-publish rules). There is no project id
+        in this URL: the uploaded content's own project.id is always what's
+        used, never a name requested ahead of time — the server decides,
+        and returns it. Stage -> validate -> only on success commit, swap,
+        and publish. The project definition itself is staged and committed
+        synchronously (fast, and needs the main event loop's chat lock);
+        this same response then streams SSE progress for a background Job
+        importing whatever sessions.json/tests.json the upload bundled,
+        ending with a chunk carrying the final {success, project_id}."""
         content = await request.body()
         content_type = request.headers.get("content-type")
 
         try:
-            _, job = await self.project_service.put_project(project_name, content, content_type, self._activate_project)
+            _, job = await self.project_service.put_project(content, content_type, self._activate_project)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return stream_job_progress(self.job_queue, self.test_event_broadcaster, job)
 
-    @delete("/api/projects/{project_name}", role="admin")
-    async def delete_project(self, project_name: str):
+    @delete("/api/projects/{project_id}", role="admin")
+    async def delete_project(self, project_id: str):
 
         try:
-            await self.project_service.delete_project(project_name, self._activate_project)
+            await self.project_service.delete_project(project_id, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except OSError as exc:
