@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 
 # Frontend
 WORKDIR /app/frontend
-RUN npm install
+RUN npm ci
 RUN npm run build
 
 WORKDIR /app
