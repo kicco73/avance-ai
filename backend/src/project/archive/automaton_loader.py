@@ -16,6 +16,13 @@ class AutomatonLoader:
         # pinned to one specific revision and a caller wanting "whatever's
         # current" can share the cache without cross-serving.
         self._automaton_cache: dict[tuple[str, int], Automaton] = {}
+        # Same (project_id, revision) keying as _automaton_cache above, and
+        # for the same reason: a session pinned to an old revision can
+        # populate this via set_cached too (through load_at_revision), and
+        # that stale revision's family/env-keys must never answer for
+        # "whatever's current" — the only thing known_projects_env_keys
+        # scans other projects for. (declared_id, family, env_key_names).
+        self._declared_meta_cache: dict[tuple[str, int], tuple[str | None, str | None, frozenset[str]]] = {}
 
     @staticmethod
     def is_safe_project_name(project_id: str) -> bool:
@@ -47,13 +54,35 @@ class AutomatonLoader:
         for other_id in self._db.list_projects():
             if other_id == project_id:
                 continue
-            archive = self._db.get_archive(other_id, "index.yml")
-            if archive is None:
-                continue
-            other_declared_id, other_family, env_keys = AutomatonBuilder.read_declared_env_keys(archive.decode("utf-8"))
+            other_declared_id, other_family, env_keys = self._declared_meta(other_id)
             if other_declared_id is not None and other_family == family:
                 known[other_declared_id] = env_keys
         return known
+
+    def _declared_meta(self, project_id: str) -> tuple[str | None, str | None, frozenset[str]]:
+        """(declared_id, family, env_key_names) off `project_id`'s *current*
+        index.yml — cached per (project_id, current revision) so a family
+        scan across every project (see known_projects_env_keys) parses each
+        sibling's YAML at most once per revision. Resolving the current
+        revision is one cheap int lookup, still far short of the archive
+        fetch + full YAML parse it replaces on a cache hit."""
+        revision = self._db.get_project_revision(project_id)
+        cache_key = (project_id, revision)
+        cached = self._declared_meta_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        archive = self._db.get_archive(project_id, "index.yml", revision=revision)
+        if archive is None:
+            return None, None, frozenset()
+        meta = AutomatonBuilder.read_declared_env_keys(archive.decode("utf-8"))
+        self._declared_meta_cache[cache_key] = meta
+        return meta
+
+    def declared_family(self, project_id: str) -> str | None:
+        """`project_id`'s current declared project.family — cached, for
+        scanning every other project by family (e.g.
+        ProjectInspector.get_identifier_registry) without a full build."""
+        return self._declared_meta(project_id)[1]
 
     def invalidate_cache(self, project_id: str) -> None:
         """Drops every cached revision of `project_id`, for callers that
@@ -61,9 +90,14 @@ class AutomatonLoader:
         ProjectManager.finalize_update instead, which re-caches just one revision."""
         for key in [k for k in self._automaton_cache if k[0] == project_id]:
             del self._automaton_cache[key]
+        for key in [k for k in self._declared_meta_cache if k[0] == project_id]:
+            del self._declared_meta_cache[key]
 
     def set_cached(self, project_id: str, revision: int, automaton: Automaton) -> None:
         self._automaton_cache[(project_id, revision)] = automaton
+        self._declared_meta_cache[(project_id, revision)] = (
+            automaton.project_id, automaton.family, frozenset(env_key.name for env_key in automaton.env_keys)
+        )
 
     def load_at_revision(self, project_id: str, revision: int) -> Automaton:
         cache_key = (project_id, revision)
@@ -99,7 +133,7 @@ class AutomatonLoader:
                 f"Project '{project_id}', stored revision {revision}: index.yml no longer builds — {exc}"
             ) from exc
         automaton.set_storage_location(revision)
-        self._automaton_cache[cache_key] = automaton
+        self.set_cached(project_id, revision, automaton)
         return automaton
 
     def load(self, project_id: str) -> Automaton:

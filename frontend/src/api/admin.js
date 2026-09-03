@@ -94,6 +94,14 @@ export function postWipeAllLiveSessions() {
   return apiFetch(`${API_URL}/settings/database/wipe-live-sessions`, { method: 'POST' })
 }
 
+// Settings > Manage services > Database — deletes every archive revision,
+// across every project, that's neither published, the current draft, nor
+// pinned by any session. Returns {success, deleted} — deleted is how many
+// distinct revisions were actually removed.
+export function postCleanUnusedRevisions() {
+  return apiFetch(`${API_URL}/settings/database/clean-unused-revisions`, { method: 'POST' })
+}
+
 // Settings > Manage services — read-only snapshot of .config.yml's own
 // service sections (see backend AppConfig.public_services_snapshot).
 export function getServicesConfig() {
@@ -109,4 +117,10 @@ export function getAiUsage() {
 
 export function downloadProject(projectId) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}`, {}, { parse: 'blob' })
+}
+
+// Settings > Manage services > Scheduler — every row of the Task table,
+// soonest run_at first (see db/tasks.py's list_tasks).
+export function getScheduledTasks() {
+  return apiFetch(`${API_URL}/settings/tasks`)
 }

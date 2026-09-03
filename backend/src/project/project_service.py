@@ -174,6 +174,9 @@ class ProjectService(object):
     def wipe_all_live_sessions(self) -> None:
         self._manager.wipe_all_live_sessions()
 
+    def clean_unused_revisions(self) -> int:
+        return self._manager.clean_unused_revisions()
+
     def preview_publish(self, project_id: str) -> dict:
         return self._manager.preview_publish(project_id)
 

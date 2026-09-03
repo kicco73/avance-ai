@@ -100,6 +100,16 @@ class SettingsController(BaseController, ProjectCommitMixin):
             self.project_service.wipe_all_live_sessions()
         return {"success": True}
 
+    @post("/api/settings/database/clean-unused-revisions", role="admin")
+    async def post_clean_unused_revisions(self):
+        """Settings > Manage services > Database — deletes every archive
+        revision, across every project, that's neither published, the
+        current draft, nor pinned by any session (see
+        ProjectService.clean_unused_revisions)."""
+        async with self.chat_service.global_exclusive_access():
+            deleted = self.project_service.clean_unused_revisions()
+        return {"success": True, "deleted": deleted}
+
     @get("/api/projects")
     def get_projects(self):
         username = Session().user if Session().role == 'user' else None
@@ -111,6 +121,19 @@ class SettingsController(BaseController, ProjectCommitMixin):
         published_revision — the Settings > Runtime status view's own
         table."""
         return {"projects": self.project_service.get_runtime_status()}
+
+    @get("/api/settings/tasks", role="admin")
+    def get_scheduled_tasks(self):
+        """Settings > Manage services > Scheduler — every row of the Task
+        table (see db/tasks.py's list_tasks), soonest run_at first.
+        `payload` is omitted: it's the task type's own internal
+        hydration data, not meant for display."""
+        return {
+            "tasks": [
+                {key: value for key, value in task.items() if key != "payload"}
+                for task in self.db.list_tasks()
+            ]
+        }
 
     @put("/api/projects/{project_id}/pause", role="admin")
     def put_project_pause(self, project_id: str):

@@ -7,7 +7,6 @@ from ruamel.yaml import YAML
 
 from ai import AIServiceConfig
 
-_yaml = YAML(typ='rt')
 
 
 def _redact_database_url(url: str) -> str:
@@ -101,7 +100,7 @@ class AppConfig:
             if not path.is_file():
                 continue
             with path.open("r", encoding="utf-8") as f:
-                raw = _yaml.load(f)
+                raw = YAML(typ='rt').load(f)
                 return raw, path
         return None, None
 

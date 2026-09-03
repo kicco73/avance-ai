@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from automaton.automaton import Action, Automaton, ProjectPayload, State, StatePayload
-from automaton.automaton_builder import AutomatonBuilder
 from automaton.identifier_registry import IdentifierRegistry
 from db import Db
 from session import Session
@@ -251,11 +250,7 @@ class ProjectInspector:
         for other_id in self._db.list_projects():
             if other_id == project_id:
                 continue
-            archive = self._db.get_archive(other_id, "index.yml")
-            if archive is None:
-                continue
-            _, other_family, _ = AutomatonBuilder.read_declared_env_keys(archive.decode("utf-8"))
-            if other_family != automaton.family:
+            if self._automaton_loader.declared_family(other_id) != automaton.family:
                 continue
             registry[f"automaton.{other_id}"] = {"state": f"The '{other_id}' project's own current state."}
             try:

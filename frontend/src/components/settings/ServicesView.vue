@@ -11,7 +11,8 @@ import ProfileMenu from '../ProfileMenu.vue'
 import AiUsageTrendsChart from './AiUsageTrendsChart.vue'
 import ServicesProviderCard from './ServicesProviderCard.vue'
 import StatusToggleButton from './StatusToggleButton.vue'
-import { getAiUsage, getServicesConfig } from '../../api.js'
+import TaskCard from './TaskCard.vue'
+import { getAiUsage, getScheduledTasks, getServicesConfig } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 import { liveModelStore } from '../../chatStore.js'
 
@@ -26,12 +27,13 @@ defineProps({
 // pass-through — App.vue owns the actual fetch + confirmation logic for
 // backup restore, same as it always has; this view confirms the wipe
 // itself, same as Manage projects' own per-project wipe used to.
-const emit = defineEmits(['close', 'download-backup', 'restore-backup', 'wipe-live-sessions', 'profile', 'logout'])
+const emit = defineEmits(['close', 'download-backup', 'restore-backup', 'wipe-live-sessions', 'clean-unused-revisions', 'profile', 'logout'])
 
 const TABS = [
   { id: 'ai', label: 'AI' },
   { id: 'chat', label: 'Chat' },
   { id: 'testing', label: 'Testing' },
+  { id: 'scheduler', label: 'Scheduler' },
   { id: 'talk', label: 'Talk' },
   { id: 'listen', label: 'Listen' },
   { id: 'whatsapp', label: 'WhatsApp' },
@@ -51,6 +53,12 @@ const loading = ref(true)
 // every other Manage services tab: no live refresh while the panel
 // stays open, just whatever was true when it was last (re)opened.
 const aiUsage = ref({ today: {}, history: [] })
+
+// Settings > Manage services > Scheduler — every Task row, soonest
+// run_at first (already sorted server-side). Same "fetch once on mount"
+// contract as services/aiUsage above.
+const tasks = ref([])
+const tasksLoading = ref(true)
 
 function providerLabel(provider) {
   return `${provider.driver}/${provider.model}`
@@ -82,9 +90,23 @@ async function loadAiUsage() {
   }
 }
 
+// Independent of load() above, same reasoning as loadAiUsage: a failure
+// here shouldn't blank out the whole tab, just leave the task list empty.
+async function loadTasks() {
+  tasksLoading.value = true
+  try {
+    tasks.value = (await getScheduledTasks()).tasks
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    tasksLoading.value = false
+  }
+}
+
 onMounted(() => {
   load()
   loadAiUsage()
+  loadTasks()
 })
 
 function fieldLabel(key) {
@@ -184,6 +206,19 @@ async function selectWipeAllLiveSessions() {
   if (!ok) return
   emit('wipe-live-sessions')
 }
+
+// Only ever removes archive revisions that are already unreachable
+// (superseded drafts, never published, no session pinned to them) — safe
+// by construction, unlike the wipe above, so no danger styling.
+async function selectCleanUnusedRevisions() {
+  const ok = await confirmDialog({
+    title: 'Clean unused revisions',
+    body: 'Delete every project revision that is not published and not used by any session? This cannot be undone.',
+    okLabel: 'Clean'
+  })
+  if (!ok) return
+  emit('clean-unused-revisions')
+}
 </script>
 
 <template>
@@ -230,6 +265,12 @@ async function selectWipeAllLiveSessions() {
             <label class="services-field-label">{{ fieldLabel(key) }}</label>
             <input class="services-field-input" type="text" :value="value" disabled />
           </div>
+        </div>
+
+        <div v-show="activeTab === 'scheduler'" class="services-panel">
+          <p v-if="tasksLoading" class="services-status">Loading…</p>
+          <p v-else-if="!tasks.length" class="services-status">No scheduled tasks.</p>
+          <TaskCard v-for="task in tasks" :key="task.key" :task="task" />
         </div>
 
         <div v-show="activeTab === 'ai'" class="services-panel">
@@ -328,6 +369,7 @@ async function selectWipeAllLiveSessions() {
                 />
               </label>
               <button type="button" class="services-action-btn services-action-btn-danger" @click="selectWipeAllLiveSessions">Wipe all live sessions</button>
+              <button type="button" class="services-action-btn" @click="selectCleanUnusedRevisions">Clean unused revisions</button>
             </div>
           </div>
         </div>

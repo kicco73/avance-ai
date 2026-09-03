@@ -350,6 +350,9 @@ class ProjectManager:
     def wipe_all_live_sessions(self) -> None:
         self._db.wipe_live_sessions_for_all_projects()
 
+    def clean_unused_revisions(self) -> int:
+        return self._db.delete_unused_archive_revisions()
+
     def preview_publish(self, project_id: str) -> dict:
         """Whether publishing `project_id` needs a human state remap
         decision: the current persisted state has gone missing from the
