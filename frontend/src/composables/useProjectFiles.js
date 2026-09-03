@@ -131,13 +131,16 @@ export function useProjectFiles(projectId, emit) {
 
   // Every entry point that would discard unsaved code routes through here
   // instead of running `run` directly: dirty means ask first (via
-  // runGuardedAction's chooseDialog), clean runs immediately.
+  // runGuardedAction's chooseDialog), clean runs immediately. Returns
+  // whatever `run` itself resolves to (or undefined, if the whole action
+  // never ran at all) — most callers still just fire this and ignore the
+  // result, same as ever, but one that needs to know whether `run` (e.g.
+  // a field save) actually succeeded can now await it.
   function guardedAction(label, run) {
     if (!activeEditorIsDirty.value) {
-      run()
-      return
+      return run()
     }
-    runGuardedAction(label, run)
+    return runGuardedAction(label, run)
   }
 
   const pendingCursorTarget = ref(null)
@@ -152,20 +155,20 @@ export function useProjectFiles(projectId, emit) {
       ]
     })
     if (choice === 'save') {
-      if (await activeEditor()?.save?.()) run()
-      return
+      if (await activeEditor()?.save?.()) return run()
+      return undefined
     }
     if (choice === 'discard') {
       // The whole point of "Discard": the active editor's dirty buffer
       // actually reverts to its last-loaded content.
       activeEditor()?.discard?.()
-      run()
-      return
+      return run()
     }
     // null (Cancel/backdrop/ESC) — a cursor jump that triggered this action
     // is moot once it's declined, so it shouldn't fire on some later,
     // unrelated action either.
     pendingCursorTarget.value = null
+    return undefined
   }
 
   // Entry point for both explorer clicks and post-upload auto-open.

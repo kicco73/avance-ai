@@ -586,9 +586,9 @@ function handleTabSelect(element) {
 // handleDeleteAction actually applies, off selectedGraphElement's own kind.
 function handleSetSelectedElementField(field, value) {
   const element = selectedGraphElement.value
-  if (!element) return
-  if (element.kind === 'state') handleSetStateField(element.data.id, field, value)
-  else handleSetActionField(element.data.matchStateKey, element.data.actionName, field, value)
+  if (!element) return undefined
+  if (element.kind === 'state') return handleSetStateField(element.data.id, field, value)
+  return handleSetActionField(element.data.matchStateKey, element.data.actionName, field, value)
 }
 
 function handleDeleteSelectedElement(element) {
@@ -932,6 +932,7 @@ onBeforeUnmount(() => {
                 @select-attachment="selectFile"
                 @jump-to-attachment="handleJumpToAttachment"
                 @set-field="handleSetSelectedElementField"
+                :save-field="handleSetSelectedElementField"
                 @set-project-field="handleSetProjectField"
                 @delete="handleDeleteSelectedElement"
                 @open-actions-order="handleOpenActionsOrder"

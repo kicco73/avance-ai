@@ -144,6 +144,13 @@ def manual_actions_for(actions: list[ActionPayload], auto_tracking_enabled: bool
     return [a for a in actions if not a["has_trigger"] or not auto_tracking_enabled]
 
 
+class JsSnippet(str):
+    # FIXME: subclassing str, not a plain str, is load-bearing —
+    # render_on_enter uses isinstance(result, JsSnippet) to tell an
+    # actuator's wire-ready JS apart from actuator.prompt()'s plain text.
+    pass
+
+
 class DeferredExpression(object):
     """What a zero-argument `lambda:` in an on-enter line evaluates to:
     a callable closing over the evaluator (hence its scope) and the
@@ -434,32 +441,58 @@ class Automaton(object):
     @staticmethod
     def render_on_enter(action: Action, scope: EvaluationScope) -> str | None:
         """Evaluates `action.on_enter` — the same namespaced-expression
-        grammar as `trigger`/`env` (one call per non-blank line, e.g.
-        `actuator.celebrate()` / `actuator.notify(user.name, "Hi!")`) —
-        into the wire-ready JS text the frontend's onEnterActions.js
-        already knows how to run unchanged: each line's own return value
-        is either a JS snippet to tunnel through verbatim (`celebrate()`
-        and `notify(...)` compile to themselves, minus the "actuator."
-        prefix) or None (a pure server-side side effect, e.g. `send_mail`).
-        A line that fails to evaluate is logged and simply contributes
-        nothing, same resilience as eval_action_env."""
+        grammar as `trigger`/`env` (one `actuator.<name>(...)` call per
+        top-level statement, e.g. `actuator.celebrate()` /
+        `actuator.notify(user.name, "Hi!")`, split via
+        TriggerExpressionAnalyzer.on_enter_statements so a single call may
+        itself span several lines and a '#' comment needs no special
+        handling) — into the wire-ready JS text the frontend's
+        onEnterActions.js already knows how to run unchanged: each
+        statement's own return value is tunneled through verbatim only
+        when it's a JsSnippet (`celebrate()`, `notify(...)`, and `show(...)`
+        compile to themselves, minus the "actuator." prefix) — a plain
+        `str` (e.g. a bare `actuator.prompt(...)` statement's own reply
+        text, never wrapped by another actuator call) or None (a pure
+        server-side side effect, e.g. `send_mail`) both contribute
+        nothing. A statement may instead be a simple `name = <expr>`
+        assignment (see TriggerExpressionAnalyzer.on_enter_assignment):
+        `<expr>` is evaluated the same way but its result is stored under
+        `name` directly on `actuator_scope` — never appended to
+        `snippets`, even when it's a JsSnippet — so every later statement
+        in this same on_enter can reference `name` bare (including inside
+        an actuator.defer(...) lambda, which shares this same evaluator/
+        scope — see DeferredExpression.scope and freeze()'s own "extra"
+        capture, which already snapshots any such bare scalar). A
+        statement that fails to evaluate is logged and simply contributes
+        nothing (an assignment that fails leaves `name` unset, so a later
+        reference to it fails too, same way any other undefined name
+        would) — this only ever affects on_enter as a whole (rather than
+        one statement of it) when it fails to parse at all, which
+        build-time validation already rules out for any project this ever
+        runs against."""
         if not action.on_enter:
             return None
         actuator_scope = scope.for_actuators(action_name=action.name)
+        try:
+            statements = TriggerExpressionAnalyzer.on_enter_statements(action.on_enter)
+        except SyntaxError as exc:
+            logger.warning("on-enter parsing failed for action '%s': %s", action.name, exc)
+            return None
         snippets = []
-        for line in action.on_enter.splitlines():
-            line = line.strip()
-            if not line:
-                continue
+        for _line_number, statement in statements:
+            assignment = TriggerExpressionAnalyzer.on_enter_assignment(statement)
+            target, expression = assignment if assignment is not None else (None, statement)
             try:
-                result = _OnEnterEval(names=actuator_scope).eval(line)
+                result = _OnEnterEval(names=actuator_scope).eval(expression)
             except Exception as exc:
                 logger.warning(
                     "on-enter expression evaluation failed for action '%s' ('%s'): %s",
-                    action.name, line, exc,
+                    action.name, statement, exc,
                 )
                 continue
-            if isinstance(result, str):
+            if target is not None:
+                actuator_scope[target] = result
+            elif isinstance(result, JsSnippet):
                 snippets.append(result)
         return "\n".join(snippets) if snippets else None
 

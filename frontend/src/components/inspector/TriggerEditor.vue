@@ -15,11 +15,12 @@ import {
   highlightActiveLine,
   highlightSpecialChars,
   keymap,
+  lineNumbers,
   rectangularSelection,
   tooltips
 } from '@codemirror/view'
 import { bracketMatching, defaultHighlightStyle, foldKeymap, indentOnInput, syntaxHighlighting } from '@codemirror/language'
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete'
 import { lintKeymap } from '@codemirror/lint'
@@ -28,7 +29,20 @@ import { projectFiles } from '../../projectFiles.js'
 import { NAMESPACE_COLORS, REFERENCE_PATTERN_SOURCE, completeFilePathArgument, completeIdentifiers as completeIdentifiersFor, excludingNamespaces } from '../../triggerEditorSupport.js'
 
 const model = defineModel({ type: String, default: '' })
-const props = defineProps({ excludeNamespaces: { type: Array, default: () => [] } })
+const props = defineProps({
+  excludeNamespaces: { type: Array, default: () => [] },
+  // Taller CodeMirror content area — for a caller editing a real
+  // multi-line script (e.g. OnEnterDialog.vue) rather than the usual
+  // one-line trigger/env expression.
+  large: { type: Boolean, default: false },
+  // Where completion/hover tooltips mount — defaults to <body>, which
+  // works for every plain (non-modal) usage. A caller embedding this
+  // inside a native <dialog> (see OnEnterDialog.vue) MUST override it to
+  // an element inside that same dialog: showModal() promotes the dialog
+  // to the browser's own top layer, so a body-parented tooltip renders
+  // behind it regardless of z-index — invisible, not just occluded.
+  tooltipParent: { type: Object, default: null }
+})
 const emit = defineEmits(['blur'])
 
 const loading = ref(true)
@@ -42,8 +56,16 @@ function completeIdentifiers(context) {
   return completeIdentifiersFor(context, excludingNamespaces(identifierRegistry.value, props.excludeNamespaces))
 }
 
+// source.attachment(name)/source.search(what, where) only ever resolve a
+// real content attachment — the Behavior branch (see FileExplorer.vue's
+// identical BEHAVIOUR_PREFIX/behaviorAttachments) — never index.yml/
+// index.css, an aspect/ theme asset, or legal/terms.md, even though
+// projectFiles.value itself lists every one of those too.
+const BEHAVIOUR_PREFIX = 'behaviour/'
+
 function completeFilePath(context) {
-  return completeFilePathArgument(context, projectFiles.value)
+  const behaviourFiles = projectFiles.value.filter((name) => name.startsWith(BEHAVIOUR_PREFIX))
+  return completeFilePathArgument(context, behaviourFiles)
 }
 
 // Matches a namespace reference (e.g. "signal.mood") — group 1 is the
@@ -71,8 +93,10 @@ const namespaceHighlighter = ViewPlugin.fromClass(
 )
 
 // Same as CodeMirror's basicSetup, minus gutter pieces (lineNumbers etc.)
-// — a one-line expression needs no line-number column, and dropping just
-// lineNumbers would still leave an empty gutter strip.
+// — a one-line trigger/env expression needs no line-number column, and
+// dropping just lineNumbers would still leave an empty gutter strip.
+// `large` (a real multi-line script, e.g. OnEnterDialog.vue) adds
+// lineNumbers back in createEditor() below instead.
 const editorSetup = [
   highlightSpecialChars(),
   history(),
@@ -105,6 +129,15 @@ function createEditor() {
     parent: editorHost.value,
     extensions: [
       editorSetup,
+      props.large ? lineNumbers() : [],
+      // Tab inserts indentation instead of moving focus away — only for
+      // a real multi-line script (large), and added as its own, later
+      // keymap extension rather than folded into editorSetup's own, so
+      // it stays lower-priority than completionKeymap etc. above (Tab
+      // still accepts an open completion first) and never reaches the
+      // single-line trigger/env editors, where Tab-to-next-field is
+      // the better default.
+      props.large ? keymap.of([indentWithTab]) : [],
       EditorView.lineWrapping,
       autocompletion({ override: [completeIdentifiers, completeFilePath] }),
       namespaceHighlighter,
@@ -112,9 +145,10 @@ function createEditor() {
       // editor's own DOM (see @codemirror/view's TooltipViewManager),
       // which .trigger-editor-host clips via overflow: hidden — the
       // dropdown was getting cut off instead of floating over the rest
-      // of the Inspector. Escaping to <body> needs the standalone
-      // .cm-tooltip z-index rule below to still land above the panel.
-      tooltips({ parent: document.body }),
+      // of the Inspector. Escaping to <body> (the default — see
+      // tooltipParent below) needs the standalone .cm-tooltip z-index
+      // rule below to still land above the panel.
+      tooltips({ parent: props.tooltipParent ?? document.body }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) model.value = update.state.doc.toString()
       }),
@@ -152,7 +186,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="trigger-editor">
     <p v-if="loading" class="trigger-editor-status">Loading…</p>
-    <div v-show="!loading" ref="editorHost" class="trigger-editor-host" @click.stop></div>
+    <div v-show="!loading" ref="editorHost" class="trigger-editor-host" :class="{ 'trigger-editor-host-large': large }" @click.stop></div>
   </div>
 </template>
 
@@ -168,6 +202,7 @@ onBeforeUnmount(() => {
 .trigger-editor-host :deep(.cm-editor) { outline: none; }
 .trigger-editor-host :deep(.cm-content) { padding: 0.35rem 0.5rem; min-height: 3.2rem; }
 .trigger-editor-host :deep(.cm-scroller) { font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; }
+.trigger-editor-host-large :deep(.cm-content) { min-height: 24rem; }
 </style>
 
 <style>

@@ -445,7 +445,14 @@ onBeforeUnmount(() => {
   <SplashScreen v-else-if="bootStatus === 'failed'" variant="failed" @retry="startBootSequence" />
 
   <div v-else-if="bootStatus === 'ready'" class="app" :class="{ 'app-dialog-open': dialogOpen }">
-    <ErrorBanner />
+    <!-- Teleported out of .app itself, not just positioned on top of it —
+         .app-dialog-open's own filter/transform (below) blurs and scales
+         its *whole* subtree while a dialog is open, and neither can be
+         selectively undone on a descendant; only actually leaving that
+         subtree keeps an error legible while a dialog sits open over it. -->
+    <Teleport to="body">
+      <ErrorBanner />
+    </Teleport>
 
     <div class="app-body" :class="{ 'app-body-flip-space': currentUserRole === 'admin' }">
       <!-- Plain user: chat is the entire app, no stack, no transition. -->

@@ -59,8 +59,8 @@ export function chooseDialog({ title, body, options }) {
 // Purely informational — nothing to decide. `okLabel`, when given, adds
 // a single labeled button (e.g. "Bye!") alongside the usual × close
 // button; omitted (the default), the × is the only way to close it.
-export function infoDialog({ title, body, okLabel = null }) {
-  return enqueue({ kind: 'info', title, body, okLabel })
+export function infoDialog({ title = '', body, okLabel = null, markdown = false }) {
+  return enqueue({ kind: 'info', title, body, okLabel, markdown })
 }
 
 // SettingsMenu's "About Avance...": just the logo and the version, no
@@ -76,11 +76,13 @@ export function aboutDialog({ version }) {
 // QR code). `props` are bound onto it as-is. Resolves once the dialog
 // closes, same promise contract as every other kind, though most custom
 // content has nothing meaningful to resolve with — the × button alone
-// is enough to close it.
-export function customDialog({ component, props = {} }) {
+// is enough to close it. `wide`: the usual 420px card is cramped for
+// something like a real code editor (see OnEnterDialog.vue) — opts into
+// a roomier max-width instead (see DialogHost.vue's own .app-dialog-wide).
+export function customDialog({ component, props = {}, wide = false }) {
   // markRaw: `component` is a static component definition, not app
   // state — pushing it into queue.value (a ref) unmarked would let Vue's
   // reactivity wrap it in a Proxy, which <component :is="..."> in
   // DialogHost.vue doesn't expect to receive.
-  return enqueue({ kind: 'custom', component: markRaw(component), props })
+  return enqueue({ kind: 'custom', component: markRaw(component), props, wide })
 }

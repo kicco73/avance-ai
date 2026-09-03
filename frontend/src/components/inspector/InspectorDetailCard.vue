@@ -6,8 +6,10 @@ import { computed, ref, watch } from 'vue'
 import { vAutosize } from './textareaAutosize.js'
 import CardMenu from './CardMenu.vue'
 import TriggerEditor from './TriggerEditor.vue'
+import OnEnterDialog from './OnEnterDialog.vue'
 import { handleEnterNext } from './enterToNextField.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
+import { customDialog } from '../../dialogStore.js'
 import { useTokensBar } from '../../composables/useTokensBar.js'
 
 const props = defineProps({
@@ -45,7 +47,12 @@ const props = defineProps({
   // A plain label ("START"/"END", ...) shown in the same badge slot as
   // "Current" — for a caller that already knows which state a card
   // stands for, rather than deriving it from highlightedStateKey. State only.
-  roleBadge: { type: String, default: null }
+  roleBadge: { type: String, default: null },
+  // The On enter dialog's own OK button needs to await a real save
+  // result (see openOnEnterDialog below) — every other field here
+  // commits fire-and-forget through the set-field emit instead, which
+  // can't report back whether its write actually landed.
+  saveField: { type: Function, default: null }
 })
 
 const emit = defineEmits(['select-attachment', 'jump-to-attachment', 'close', 'select', 'set-field', 'delete', 'update:open', 'open-actions-order'])
@@ -76,7 +83,6 @@ const editUiDescription = ref('')
 const editContextualPrompt = ref('')
 const editTrigger = ref('')
 const editTarget = ref('')
-const editOnEnter = ref('')
 
 const elementIdentity = computed(() => {
   if (!props.selectedElement) return null
@@ -94,7 +100,6 @@ function resetEditBuffers() {
   editContextualPrompt.value = d.contextualPrompt ?? ''
   editTrigger.value = d.trigger ?? ''
   editTarget.value = d.target ?? ''
-  editOnEnter.value = d.onEnter ?? ''
 }
 
 watch(elementIdentity, resetEditBuffers, { immediate: true })
@@ -128,11 +133,25 @@ function commitTarget() {
   commitTextField('target', editTarget.value, props.selectedElement?.data.target ?? '')
 }
 
-// Wire key is "on-enter" (kebab-case, not "onEnter") — it's written
-// straight into the YAML under that literal key on the backend, same
-// convention every other field here follows ('ui-label', 'history-cutoff', ...).
-function commitOnEnter() {
-  commitTextField('on-enter', editOnEnter.value, props.selectedElement?.data.onEnter ?? '')
+// The "On enter" badge (action cards only) opens the same TriggerEditor
+// the inline form used to carry, just full-size in a dialog (a 20-line
+// actuator script needs real room, unlike the other one-line fields
+// above). onCommit goes through saveField (a real awaited call), not
+// commitTextField/set-field (fire-and-forget) — OnEnterDialog.vue's own
+// OK button needs the actual save result to know whether to close.
+// Wire key is "on-enter" (kebab-case, not "onEnter") — written straight
+// into the YAML under that literal key on the backend, same convention
+// every other field here follows ('ui-label', 'history-cutoff', ...).
+function openOnEnterDialog() {
+  customDialog({
+    component: OnEnterDialog,
+    wide: true,
+    props: {
+      initialValue: props.selectedElement?.data.onEnter ?? '',
+      excludeNamespaces: ['session'],
+      onCommit: (value) => props.saveField('on-enter', value)
+    }
+  })
 }
 
 // history-cutoff/chat: a plain instant toggle, not a typed field — no
@@ -191,10 +210,11 @@ const hasSelectedElementBadges = computed(() => {
     const d = props.selectedElement.data
     return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff || (d.reactionsEnabled && d.hasReactions)
   }
-  // An open action's badges are suppressed entirely — only the "Action"
-  // kind-badge in the header stays. Closed, same read-only set as
-  // non-editable.
-  if (showEditForm.value) return false
+  // "On enter" is an always-shown clickable badge once the form is open
+  // — same reasoning, and same layout position (first in this row), as
+  // No chat/History cutoff above. Closed, same read-only set as
+  // non-editable, plus "On enter" itself whenever the action has one.
+  if (showEditForm.value) return true
   const d = props.selectedElement.data
   return isSelectedActionFired.value || !d.hasTrigger || d.isInitEdge || !!d.onEnter
 })
@@ -284,11 +304,21 @@ function selectAttachment(fileName) {
             <span v-if="selectedElement.data.reactionsEnabled && selectedElement.data.hasReactions" class="inspector-detail-badge inspector-detail-badge-neutral">Reactions</span>
           </template>
         </template>
-        <template v-else-if="!showEditForm">
-          <span v-if="selectedElement.data.isInitEdge" class="inspector-detail-badge inspector-detail-badge-start">Start</span>
-          <span v-if="isSelectedActionFired" class="inspector-detail-badge inspector-detail-badge-fired">Fired</span>
-          <span v-if="!selectedElement.data.hasTrigger" class="inspector-detail-badge inspector-detail-badge-manual">Manual</span>
-          <span v-if="selectedElement.data.onEnter" class="inspector-detail-badge inspector-detail-badge-onenter">On enter</span>
+        <template v-else>
+          <button
+            v-if="showEditForm || selectedElement.data.onEnter"
+            type="button"
+            class="inspector-detail-badge inspector-detail-badge-toggle inspector-detail-badge-onenter-btn"
+            :class="selectedElement.data.onEnter ? ['inspector-detail-badge-toggle-on', 'inspector-detail-badge-onenter'] : 'inspector-detail-badge-toggle-off'"
+            :disabled="!editable"
+            title="On enter"
+            @click.stop="openOnEnterDialog()"
+          >On enter</button>
+          <template v-if="!showEditForm">
+            <span v-if="selectedElement.data.isInitEdge" class="inspector-detail-badge inspector-detail-badge-start">Start</span>
+            <span v-if="isSelectedActionFired" class="inspector-detail-badge inspector-detail-badge-fired">Fired</span>
+            <span v-if="!selectedElement.data.hasTrigger" class="inspector-detail-badge inspector-detail-badge-manual">Manual</span>
+          </template>
         </template>
       </div>
     </div>
@@ -378,11 +408,6 @@ function selectAttachment(fileName) {
               </label>
               <TriggerEditor v-model="editTrigger" :exclude-namespaces="['actuator']" @click.stop @blur="commitTrigger" />
             </template>
-            <label class="inspector-detail-form-label" title="A Python expression, evaluated server-side">
-              <span class="inspector-py-field-icon" title="Python expression">PY</span>
-              On enter
-            </label>
-            <TriggerEditor v-model="editOnEnter" :exclude-namespaces="['session']" @click.stop @blur="commitOnEnter" />
             <p class="inspector-detail-field">
               <template v-if="!selectedElement.data.isInitEdge"><strong>{{ stateLabelFor(selectedElement.data.source) }}</strong> → </template>
               <select
@@ -450,12 +475,19 @@ function selectAttachment(fileName) {
 .inspector-detail-badge-fired { background: #ad1457; }
 .inspector-detail-badge-final { background: #c62828; }
 .inspector-detail-badge-manual { background: #00695c; }
-.inspector-detail-badge-onenter { background: #4b8bbe; }
 .inspector-detail-badge-neutral { background: #4a6fa5; }
 .inspector-detail-badge-toggle { cursor: pointer; }
 .inspector-detail-badge-toggle-off { background: #ccc; color: #555; }
 .inspector-detail-badge-toggle-on { background: #4a6fa5; }
 .inspector-detail-badge-toggle-locked { cursor: not-allowed; opacity: 0.5; }
+/* Same look and feel as the toggle family above (border-radius/padding/
+   cursor/grey-when-off all come from -badge/-toggle/-toggle-off) — only
+   its own active-state color differs, so this is the one declaration
+   left to override, and only together with -toggle-on (compound
+   selector, so it wins regardless of source order). */
+.inspector-detail-badge-onenter-btn { appearance: none; border: none; margin: 0; font-family: inherit; cursor: pointer; }
+.inspector-detail-badge-onenter-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+.inspector-detail-badge-onenter.inspector-detail-badge-toggle-on { background: #4b8bbe; }
 .inspector-detail-title { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inspector-detail-title-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
 .inspector-detail-title-input:hover, .inspector-detail-title-input:focus { border-color: #ccc; background: white; }

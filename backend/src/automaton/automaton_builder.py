@@ -220,10 +220,16 @@ class AutomatonBuilder(object):
         )
 
     @staticmethod
-    def _validate_namespaced_expression(expression: str, context: str, registry: dict[str, dict[str, str]]) -> None:
+    def _validate_namespaced_expression(
+        expression: str, context: str, registry: dict[str, dict[str, str]],
+        known_locals: frozenset[str] = frozenset(),
+    ) -> None:
         """Syntax + per-namespace identifier validation shared by
-        `trigger:` and an action's `env:` expressions. Any bare
-        identifier left over must be a core metric."""
+        `trigger:`, an action's `env:` expressions, and an on-enter
+        statement. Any bare identifier left over must be a core metric —
+        or, for on-enter only, a local variable an earlier `name = ...`
+        statement in the same script already declared (`known_locals`;
+        always empty for trigger:/env:, which have no such thing)."""
         try:
             namespace_refs = TriggerExpressionAnalyzer.namespace_refs(expression)
             bare_names = TriggerExpressionAnalyzer.bare_names(expression)
@@ -234,7 +240,7 @@ class AutomatonBuilder(object):
         for namespace, refs in namespace_refs.items():
             valid = registry.get(namespace, {}).keys()
             unknown |= {f"{namespace}.{n}" for n in refs - valid}
-        unknown |= bare_names - metric_names()
+        unknown |= bare_names - metric_names() - known_locals
         if unknown:
             raise ValueError(f"{context} references undefined name(s): {', '.join(sorted(unknown))}")
 
@@ -254,24 +260,44 @@ class AutomatonBuilder(object):
     @classmethod
     def _validate_on_enter(cls, on_enter: str | None, context: str, registry: dict[str, dict[str, str]]) -> None:
         """`on-enter`: zero or more `actuator.<name>(...)` calls, one per
-        non-blank line — e.g. `actuator.celebrate()` on its own line,
-        `actuator.notify(user.name, "Hi!")` on another — validated the
-        same way a trigger is, just per line so multiple calls can fire
-        from one action, and against the actuator view of the registry
-        (see IdentifierRegistry.for_actuators): no `session.*`, since an
-        actuator.defer'd call outlives the session that fired it."""
+        top-level statement — e.g. `actuator.celebrate()` on its own line,
+        `actuator.notify(user.name, "Hi!")` on another, a single call
+        free to span several lines of its own — split via
+        TriggerExpressionAnalyzer.on_enter_statements (real Python
+        parsing, so blank lines and '#' comments need no special-casing
+        here), each validated the same way a trigger is, against the
+        actuator view of the registry (see IdentifierRegistry.
+        for_actuators): no `session.*`, since an actuator.defer'd call
+        outlives the session that fired it. A statement may instead be a
+        simple `name = <expr>` assignment (see
+        TriggerExpressionAnalyzer.on_enter_assignment) — `<expr>` is
+        validated exactly like any other on-enter statement, `name`
+        becomes usable, bare, by every later statement in this same
+        on-enter script (never earlier ones, never a different action's),
+        and must not shadow a reserved namespace or core metric name."""
         if not on_enter:
             return
-        for line_number, line in enumerate(on_enter.splitlines(), start=1):
-            line = line.strip()
-            if not line:
-                continue
+        try:
+            statements = TriggerExpressionAnalyzer.on_enter_statements(on_enter)
+        except SyntaxError as exc:
+            raise ValueError(f"{context} ('{on_enter}') is not valid on-enter source: {exc}") from exc
+        known_locals: set[str] = set()
+        for line_number, statement in statements:
             line_context = f"{context}, on-enter line {line_number}"
-            cls._validate_namespaced_expression(line, line_context, registry)
-            cls._validate_actuator_arity(line, line_context)
-            violations = TriggerExpressionAnalyzer.defer_violations(line)
+            assignment = TriggerExpressionAnalyzer.on_enter_assignment(statement)
+            target, expression = assignment if assignment is not None else (None, statement)
+            if target is not None and (target in TriggerExpressionAnalyzer.RESERVED_NAMESPACES or target in metric_names()):
+                raise ValueError(
+                    f"{line_context} ('{statement}'): '{target}' is a reserved name "
+                    "(a namespace or core metric) and can't be used as an on-enter local variable."
+                )
+            cls._validate_namespaced_expression(expression, line_context, registry, frozenset(known_locals))
+            cls._validate_actuator_arity(expression, line_context)
+            violations = TriggerExpressionAnalyzer.defer_violations(expression)
             if violations:
-                raise ValueError(f"{line_context} ('{line}'): {'; '.join(violations)}")
+                raise ValueError(f"{line_context} ('{statement}'): {'; '.join(violations)}")
+            if target is not None:
+                known_locals.add(target)
 
     @staticmethod
     def _validate_trigger_types(expression: str, context: str) -> None:

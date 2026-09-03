@@ -31,6 +31,7 @@ class IdentifierRegistry:
         "send_mail": "Sends an email — e.g. actuator.send_mail(user.email, 'Some **markdown** body').",
         "celebrate": "Plays a confetti animation in the frontend — e.g. actuator.celebrate().",
         "notify": "Shows a toast in the frontend — e.g. actuator.notify('Nice!', 'You reached **state B**.'). `body_md` is markdown.",
+        "show": "Shows a dialog in the frontend with body_md as its content — e.g. actuator.show('**Full** details here.'). `body_md` is markdown.",
         "defer": "Runs another actuator call later — e.g. actuator.defer(lambda: actuator.send_mail(user.email, 'Reminder'), datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=env.reminder_days)). The first argument must be a `lambda:` with no arguments; `when` must be built from datetime.datetime(...) or datetime.datetime.now(...), optionally ± datetime.timedelta(...). The call survives a server restart: it is stored as text with a snapshot of `user`/`signal`/`env` as they were when deferred, under the user and project (never a session — `session.*` is not available in on-enter).",
         "prompt": "Runs an extra, synchronous, read-only prompt (general-prompt + attachments + signal/env context, only its text returned — no message is added to the conversation) — e.g. actuator.notify('Note', actuator.prompt('Summarize the last exchange in one sentence.')).",
     }

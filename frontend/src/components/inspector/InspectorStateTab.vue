@@ -25,6 +25,12 @@ const props = defineProps({
   // action — its target <select> options and Env editor's key suggestions.
   availableStates: { type: Array, default: () => [] },
   availableEnvKeys: { type: Array, default: () => [] },
+  // Forwarded to InspectorDetailCard.vue's own OnEnterDialog.vue — unlike
+  // @set-field (fire-and-forget, every other field), that dialog's OK
+  // button needs to know whether the write actually landed before
+  // closing, which only a real awaited call (not a Vue emit) can answer.
+  // EditProjectView.vue's own handleSetSelectedElementField.
+  saveField: { type: Function, default: null },
   // See EditProjectView.vue's own docstring on this — 'state:<key>' while
   // `selectedElement` is the state a "+ Add state" click just created,
   // null otherwise.
@@ -163,6 +169,7 @@ onMounted(loadProjectMetadata)
       :recently-added-key="recentlyAddedKey"
       :selectable="!readOnly"
       :editable="!readOnly"
+      :save-field="saveField"
       :closable="false"
       :open="open"
       @update:open="open = $event"

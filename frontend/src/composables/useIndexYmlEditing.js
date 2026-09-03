@@ -88,8 +88,14 @@ export function useIndexYmlEditing(
     })
   }
 
+  // Returns whether the write actually succeeded (via guardedAction, see
+  // its own comment) — OnEnterDialog.vue's own OK button awaits this
+  // through EditProjectView.vue's handleSetSelectedElementField, so a
+  // validation failure (e.g. a malformed on-enter script) keeps the
+  // dialog open instead of closing on a save that never landed. Every
+  // other caller here still just fires it and ignores the result.
   function handleSetActionField(stateName, actionName, field, value) {
-    guardedAction(`edit "${field}"`, async () => {
+    return guardedAction(`edit "${field}"`, async () => {
       try {
         // The init-action (stateName '') lives outside `states:` entirely,
         // so putActionField's state/action lookup can't reach it — its
@@ -102,8 +108,10 @@ export function useIndexYmlEditing(
         selectedGraphElement.value = indexYmlEditorRef.value?.actionsForState(stateName).find(
           (a) => a.data.actionName === actionName
         ) ?? null
+        return true
       } catch {
         // already surfaced via apiFetch
+        return false
       }
     })
   }

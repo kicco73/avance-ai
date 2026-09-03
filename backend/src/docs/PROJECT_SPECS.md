@@ -1,49 +1,30 @@
 # Project format specification (`index.yml`)
 
-Authoritative, exhaustive, self-contained reference for the `.yml`/`.zip`
+Authoritative, exhaustive, self-contained reference for the `index.yml`
 "project" format that drives the Avance state engine — enough to build a
 valid project with no other context, by hand or programmatically (e.g. an
-LLM generating one). Every rule below is enforced at upload time and at
-backend boot.
-
-## 1. What a project is, on disk/in the API
+LLM generating one). Every rule below is enforced when the project is
+validated.
 
 A project is one YAML file, `index.yml`, plus zero or more attachment
-files it references by name. Uploaded as either:
+files it references by name (§6).
 
-- **A `.zip` archive** — `index.yml` at its root plus attachments flat
-  (no subdirectories) alongside it. Only format that can carry attachments.
-- **A lone `.yml`/`.yaml` file** — becomes `index.yml` with no
-  attachments; any `attachments:` it references must already exist for
-  that project from a previous zip upload.
-
-`POST /api/projects/upload` accepts either (told apart by `Content-Type`
-or by sniffing the zip signature) — no project id in the URL; the id
-comes from the upload's own `project.id` (§2.1). Fully validated before
-anything is committed — an invalid upload changes nothing. See §2.2 for
-uploading over an id that already exists.
-
-`backend/samples/` holds example projects for local dev (`<name>/index.yml`
-plus attachments, plus a matching `<name>.zip`); `backend/tests/` reuses
-the same zips as fixtures. Neither is read by the running backend — it
-stores every project as a zip blob in its own database.
-
-## 2. Top-level fields
+## 1. Top-level fields
 
 | Field | Required | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
 | `avance-version` | no | string | — | Informational only, never read/validated. Conventionally the first line. |
-| `init-action` | **yes** | mapping | — | Where the conversation starts. §6. |
-| `states` | **yes** | mapping (name → state) | — | Every state. §5. Must include `init-action.target`. |
-| `signals` | no | mapping (name → signal) | `{}` | Numeric values the model estimates each turn. §4. |
-| `general-prompt` | no | string | `""` | Appended to a state's `contextual-prompt` for a normal reply; also sent alone ahead of an `actuator.prompt(...)` call (§6.4) — never combined with the state's own prompt in that case. |
-| `attachments` | no | list of filenames | `[]` | Global attachments, sent with every call that also sends `general-prompt`. §7. |
-| `env` | no | mapping (name → fields) | `{}` | Declares every `env.<name>` a trigger/env expression may reference. An action's `env:` (§6.3) can only update a key declared here. |
-| `project` | no | mapping | — | Identity/display metadata + auto-tracking mode. §2.1. |
+| `init-action` | **yes** | mapping | — | Where the conversation starts. §5. |
+| `states` | **yes** | mapping (name → state) | — | Every state. §4. Must include `init-action.target`. |
+| `signals` | no | mapping (name → signal) | `{}` | Numeric values the model estimates each turn. §3. |
+| `general-prompt` | no | string | `""` | Appended to a state's `contextual-prompt` for a normal reply; also sent alone ahead of an `actuator.prompt(...)` call (§5.4) — never combined with the state's own prompt in that case. |
+| `attachments` | no | list of filenames | `[]` | Global attachments, sent with every call that also sends `general-prompt`. §6. |
+| `env` | no | mapping (name → fields) | `{}` | Declares every `env.<name>` a trigger/env expression may reference. An action's `env:` (§5.3) can only update a key declared here. |
+| `project` | no | mapping | — | Identity/display metadata + auto-tracking mode. §1.1. |
 
 Any other top-level key is ignored.
 
-### 2.1 `project:`
+### 1.1 `project:`
 
 ```yaml
 project:
@@ -58,29 +39,15 @@ project:
 
 | Field | Required | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `id` | **yes** | string, valid Python identifier | — | This project's DB primary key and how *other* projects reach it via `automaton.<id>.*` (§6.2). Must satisfy `str.isidentifier()` — letters/digits/underscore, not starting with a digit; no dots/hyphens/spaces. Globally unique — re-uploading an existing id adds a revision, never a second project (§2.2). |
+| `id` | **yes** | string, valid Python identifier | — | This project's own globally unique identity, and how *other* projects reach it via `automaton.<id>.*` (§5.2). Must satisfy `str.isidentifier()` — letters/digits/underscore, not starting with a digit; no dots/hyphens/spaces. |
 | `family` | no | string, free-form | `None` | Visibility scope for `automaton.<id>.*` — never parsed/validated for format. Two projects can observe each other only if they declare the **exact same** `family` string. Unset means neither observes nor is observed by anything, including itself. |
-| `revision` | no | non-negative integer | `0` | Auto-stamped on every publish; don't hand-edit — on upload it instead drives §2.2's logic. |
+| `revision` | no | non-negative integer | `0` | This project's own revision number, auto-stamped on every publish — don't hand-edit it going in. |
 | `ui-label` | no | string | — | The only "name" ever shown to a user; `id` is never displayed. |
 | `ui-description` | no | string | — | Shown in the frontend. |
-| `signal-tracking-on-ai-message` | no | boolean | `false` | `false`: auto-tracking runs after the user's message, before the reply. `true`: runs after the reply instead (may reuse model-reported inline values, §4.3). |
+| `signal-tracking-on-ai-message` | no | boolean | `false` | `false`: auto-tracking runs after the user's message, before the reply. `true`: runs after the reply instead (may reuse model-reported inline values, §3.2). |
 | `talk-enabled` | no | boolean | `true` | Whether this project asks for `audio` metadata at all — can only narrow the server's own talk-service switch, never enable it. |
 
-### 2.2 Uploading over an existing `id`
-
-Adds a revision on the existing project, never a second one. Outcome
-depends on the uploaded `project.revision` vs. the id's currently
-published revision:
-
-- **No `revision` declared** — accepted at `published + 1`.
-- **`revision` greater than published** — accepted at exactly that number.
-- **`revision` ≤ published** — **rejected outright**, nothing persisted (frontend shows a dialog, not the usual auto-dismissing banner).
-
-Either accepted case publishes immediately — no separate draft step for
-this endpoint. A brand-new id is created and published at its declared
-revision (default `0`).
-
-## 3. Names, identifiers, and reserved words
+## 2. Names, identifiers, and reserved words
 
 - **State keys** — arbitrary non-empty strings, case-sensitive, matched
   literally by `target:`. `""` is reserved for the engine's implicit
@@ -105,9 +72,9 @@ revision (default `0`).
   These are the engine's own domain-agnostic metrics, computed from
   stored session history (never the model). Unlike a signal
   (`signal.<name>`), a metric is referenced **bare**, interchangeably with
-  namespaced values in the same expression (§6.2).
+  namespaced values in the same expression (§5.2).
 
-## 4. `signals:`
+## 3. `signals:`
 
 ```yaml
 signals:
@@ -124,29 +91,25 @@ signals:
 
 | Field | Required | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `definition` | **yes** | string | — | Instruction sent to the model when computing this signal (§4.1). Free-form; convention is integer 0–100 or binary 0/100. |
+| `definition` | **yes** | string | — | Instruction sent to the model when computing this signal (§3.1). Free-form; convention is integer 0–100 or binary 0/100. |
 | `ui-label` | no | string | the signal's name | Shown in the frontend. |
 | `ui-description` | no | string | `definition` | Shown in the frontend. |
 | `attachments` | no | list of filenames | `[]` | Sent only with this signal's own computation call. |
 
-**4.1 Computation.** Only during auto-tracking (gated by
-`project.signal-tracking-on-ai-message`, §2.1): every declared signal is
+**3.1 Computation.** Only during auto-tracking (gated by
+`project.signal-tracking-on-ai-message`, §1.1): every declared signal is
 evaluated in **one model call** — system prompt lists every `name`+
 `definition`, user turn is a recent-conversation transcript (+ each
 signal's own attachments), model replies with one JSON object mapping
 name → value. A value that fails to parse (or a failed call) leaves that
 signal `None` for this pass — a runtime concern, never build-time.
 
-**4.2 Reading.** `GET /api/chat/signals` reports the latest computed value
-per signal (`None` before first evaluation) — what the frontend's Signals
-tab and `POST /api/triggers/preview`'s default values come from.
-
-**4.3 Inline reporting.** A model reply can self-report signal values via a
+**3.2 Inline reporting.** A model reply can self-report signal values via a
 reserved `<avance>...</avance>` JSON tag — a prompting convention, not an
 `index.yml` field. When `signal-tracking-on-ai-message` is on,
 auto-tracking prefers these values over a fresh computation call.
 
-## 5. `states:`
+## 4. `states:`
 
 ```yaml
 states:
@@ -160,29 +123,29 @@ states:
     history-cutoff: false
     transition-log-level: WARNING
     attachments: []
-    actions: [ ... ]   # see §6
+    actions: [ ... ]   # see §5
 ```
 
 | Field | Required | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
 | `contextual-prompt` | conditionally | string | — | System-prompt text, combined with `general-prompt`. **Required unless `fixed-message` is set** — exactly one of the two. |
-| `fixed-message` | conditionally | string | — | Returned verbatim-in-meaning, translated to the user's language, instead of a free-form reply — §5.1. Mutually exclusive with `contextual-prompt`. |
+| `fixed-message` | conditionally | string | — | Returned verbatim-in-meaning, translated to the user's language, instead of a free-form reply — §4.1. Mutually exclusive with `contextual-prompt`. |
 | `ui-label` | no | string | the state's key | Shown in the frontend. |
 | `ui-description` | no | string | `None` | Shown in the frontend; omitted entirely when absent. |
-| `actions` | no | list of actions | `[]` | Outgoing actions — §6. **No actions ⇒ automatically `final`** (derived, never declared). |
-| `chat` | no | boolean | `true` | `false`: a chat message here is rejected (`409`) — only `actions` can proceed the conversation. Independent of `final`/`fixed-message`. |
+| `actions` | no | list of actions | `[]` | Outgoing actions — §5. **No actions ⇒ automatically `final`** (derived, never declared). |
+| `chat` | no | boolean | `true` | `false`: a chat message here is rejected outright — only `actions` can proceed the conversation. Independent of `final`/`fixed-message`. |
 | `history-cutoff` | no | boolean | `false` | `true`: excludes every message from before the most recent transition into this state, both from the model's view and from auto-tracking. Combines (doesn't replace) the server-wide token-budget cutoff in `.config.yml`. |
 | `transition-log-level` | no | `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL` | `"WARNING"` | Log level when a transition **lands on** this state (property of the destination). Operational only. |
-| `attachments` | no | list of filenames | `[]` | Sent with every call this state is "current" for (normal reply, or `actuator.prompt(...)` — §6.4). Not sent for `fixed-message`. |
+| `attachments` | no | list of filenames | `[]` | Sent with every call this state is "current" for (normal reply, or `actuator.prompt(...)` — §5.4). Not sent for `fixed-message`. |
 
-**5.1 `fixed-message` states.** The model is never asked for free-form
+**4.1 `fixed-message` states.** The model is never asked for free-form
 content: every reply is a translation of `fixed-message` into the user's
 last-message language, instructed not to alter meaning/add/react.
 Typical use: a safety/compliance message that must not be paraphrased.
 `contextual-prompt`, `general-prompt`, and this state's `attachments` are
 unused for that call.
 
-## 6. `actions:` (nested under a state)
+## 5. `actions:` (nested under a state)
 
 ```yaml
 actions:
@@ -201,23 +164,21 @@ actions:
 
 | Field | Required | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `name` | **yes** | string | — | What `POST /api/chat/sessions/{session_id}/action` and `POST /api/triggers/preview` reference. |
+| `name` | **yes** | string | — | This action's own identifier — what a manual firing references. |
 | `target` | no | string | this action's own state | Destination state; must be a real key (or the current state itself). Omitted/self-referential ⇒ self-loop (only the action's own effects happen). |
-| `trigger` | no | string (expression) | `None` | Boolean expression over signal/metric names — §6.2. Absent ⇒ manual-only (never auto-fired). |
-| `on-enter` | no | string | `None` | One or more `actuator.<name>(...)` calls, one per line — side effect of firing, same timing as `env:`. §6.4. Per-action, not per-destination-state: two actions landing on the same state can each carry a different (or no) value. |
-| `env` | no | mapping key → expression | `None` | Updates the project's environment memory when this action fires. §6.3. |
+| `trigger` | no | string (expression) | `None` | Boolean expression over signal/metric names — §5.2. Absent ⇒ manual-only (never auto-fired). |
+| `on-enter` | no | string | `None` | One or more `actuator.<name>(...)` calls, one per line — side effect of firing, same timing as `env:`. §5.4. Per-action, not per-destination-state: two actions landing on the same state can each carry a different (or no) value. |
+| `env` | no | mapping key → expression | `None` | Updates the project's environment memory when this action fires. §5.3. |
 | `ui-label` | no | string | `name` | Shown in the frontend. |
 | `ui-button` | no | string | `ui-label`, then `name` | Manual-action button text. |
 | `ui-description` | no | string | `None` | Shown in the frontend. |
-| `attachments` | no | list of filenames | `[]` | Validated to exist and shown in the Inspector — **never sent to the model**. To reach the model on firing, list it on the destination state's or the top-level `attachments:` instead. |
+| `attachments` | no | list of filenames | `[]` | Validated to exist — **never sent to the model**. To reach the model on firing, list it on the destination state's or the top-level `attachments:` instead. |
 
-**6.1 Manual vs. triggered.** Any action fires manually via
-`POST /api/chat/sessions/{session_id}/action {action_name}` — the trigger
-(if any) is never evaluated for a manual call. Actions **with** a
-`trigger` are also evaluated by auto-tracking after every signal
-computation, in **YAML declaration order** — first `true` wins, FIFO,
-remaining ones skipped that turn. `POST /api/triggers/preview` reports
-every triggerable action's result regardless, without applying anything.
+**5.1 Manual vs. triggered.** Any action can be fired manually, by name —
+its trigger (if any) is never evaluated for a manual firing. Actions
+**with** a `trigger` are also evaluated by auto-tracking after every
+signal computation, in **YAML declaration order** — first `true` wins,
+FIFO, remaining ones skipped that turn.
 
 Leave an action manual-only (no `trigger`, no signal needed) when it's a
 **deterministic** user choice rather than something inferred from what
@@ -226,7 +187,7 @@ triggers to evaluate, and a UI button instead of something the system
 might read wrong). Reserve `trigger` for transitions that genuinely
 depend on interpreting the conversation.
 
-**6.2 Trigger expressions.** A boolean-ish expression evaluated with
+**5.2 Trigger expressions.** A boolean-ish expression evaluated with
 [`simpleeval`](https://pypi.org/project/simpleeval/) — comparisons,
 boolean logic, arithmetic, plus attribute access/calls **only** on the
 namespaces below (never arbitrary Python — no imports, no other calls):
@@ -242,16 +203,16 @@ user.role == "admin"
 | Namespace | Resolves to | Access |
 | --- | --- | --- |
 | `signal.<name>` | A declared signal | attribute (value, or `None` before first computation) |
-| `env.<name>` | A key declared in top-level `env:` (§6.3) — never a model-reported free-form value | attribute |
+| `env.<name>` | A key declared in top-level `env:` (§5.3) — never a model-reported free-form value | attribute |
 | `session.<name>` | Engine fact about the current user+project session (`current_session_duration_in_minutes`, `last_user_session_datetime`, `number_of_user_sessions`, `state_duration_in_minutes`) | **call**, e.g. `session.number_of_user_sessions()` |
 | `user.<name>` | Current user's account field (`email`, `name`, `picture_url`, `provider`, `provider_user_id`, `created_at`, `last_login`, `active_project`, `role`) | attribute |
 | `source.<name>(...)` | A data source — below | call with its own args |
 | `automaton.<id>` | A different project's live state/env — below | `.state`, or `.env.<key>` |
 | `datetime.<name>` | Python's `datetime`/`timedelta`/`timezone` only, mainly for `actuator.defer`'s `when` | call, e.g. `datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc)` |
 
-A **bare** name is only ever a core metric (§3) — nothing else may appear
+A **bare** name is only ever a core metric (§2) — nothing else may appear
 unnamespaced. `actuator.<name>(...)` is reserved but only valid inside
-`on-enter:` (§6.4), never in `trigger:`/`env:`.
+`on-enter:` (§5.4), never in `trigger:`/`env:`.
 
 **`automaton.<id>.*`** reads a different project's live state/env for the
 same logged-in user: `automaton.<id>.state` (current state key, or `None`
@@ -265,8 +226,8 @@ identically — indistinguishable by design. Enforced both at build time
 **Data sources** (`source.<name>(...)`) are code-defined plugins, not
 project-declared. Two exist:
 
-- `source.attachment(name)` — reads one of the project's own uploaded
-  files by exact path or unique basename, directly from storage (not the
+- `source.attachment(name)` — reads one of the project's own files by
+  exact path or unique basename, directly from storage (not the
   `attachments:` mechanism — nothing is eagerly loaded). Returns text
   content; a binary file raises. Reads at the conversation's own pinned
   automaton revision, never "whatever's published now". Often combined
@@ -279,8 +240,8 @@ project-declared. Two exist:
 
 New data sources are a code change, not something a project author adds.
 
-Every reference is validated at build/upload time (`signal.<name>` must
-be declared, `env.<name>` must be set by some action somewhere,
+Every reference is validated at build time (`signal.<name>` must be
+declared, `env.<name>` must be set by some action somewhere,
 `session`/`user`/`source` names must be from the fixed lists, bare names
 must be a recognized metric) — anything else fails with an "undefined
 name(s)" or parse error. At evaluation time: a referenced `signal.<name>`
@@ -288,13 +249,13 @@ still `None` short-circuits the whole expression to `false`; any other
 failure (e.g. an `env.<name>` never actually set) is logged and also
 treated as `false` — a trigger can never crash a turn.
 
-**6.3 Action `env`.** Every project has a free-form environment memory:
+**5.3 Action `env`.** Every project has a free-form environment memory:
 `key: value` facts the model reports (always strings, via the
 `[env]...[/env]` prompt block), persisted per user+project. `session`
-facts (§6.2) are never part of this. An action's own `env:` updates a
+facts (§5.2) are never part of this. An action's own `env:` updates a
 **separate**, deterministic part of it — the same `env.<name>` namespace
 triggers read — whose valid keys are fixed by the project's top-level
-`env:` (§2):
+`env:` (§1):
 
 ```yaml
 env:
@@ -312,7 +273,7 @@ An action's `env:` can only update a key declared here, never invent one
 itself update it on any turn.
 
 Each `env:` entry is `key: expression`, same namespaced scope/mechanics
-as `trigger` (§6.2) minus the boolean cast — any simple value (string,
+as `trigger` (§5.2) minus the boolean cast — any simple value (string,
 number, bool, `None`, ...):
 
 ```yaml
@@ -341,30 +302,50 @@ the destination state's opening message, or a normal chat turn) — the
 very next prompt already reflects it.
 
 Persisted separately from the model's own free-form `[env]` values; only
-this action-set store feeds a trigger's `env.<name>`. The Inspector Env
-tab shows the two separately (**ACTION** vs. **AI**) — the action-set one
-is never directly editable, only a side effect of its action firing again.
+this action-set store feeds a trigger's `env.<name>`. The action-set one
+is never directly editable — only ever a side effect of its action
+firing again.
 
-**6.4 Action `on-enter`.** One or more `actuator.<name>(...)` calls, one
-per non-blank line, same namespaced scope as `trigger`/`env` (§6.2) as a
-firing side effect, same timing as `env:` — except it additionally sees
-`actuator` and does **not** see `session.*`/`session.metric.*` (a call may
-be deferred past the firing session's own lifetime, so the whole scope is
-built without a session rather than allowing it selectively).
+**5.4 Action `on-enter`.** One or more statements, one per non-blank
+line, same namespaced scope as `trigger`/`env` (§5.2) as a firing side
+effect, same timing as `env:` — except it additionally sees `actuator`
+and does **not** see `session.*`/`session.metric.*` (a call may be
+deferred past the firing session's own lifetime, so the whole scope is
+built without a session rather than allowing it selectively). Each
+statement is either an `actuator.<name>(...)` call, or a simple
+`name = <expr>` local-variable assignment — the only other shape
+allowed — making `name` usable, bare, by every *later* statement in this
+same on-enter script (never an earlier one, never a different action's
+own on-enter). This exists to let one `actuator.prompt(...)` call's
+result reach more than one later call without re-running the model each
+time:
 
 ```yaml
 on-enter: |
   actuator.celebrate()
   actuator.notify('Nice!', 'You reached **state B**.')
+  summary = actuator.prompt('Summarize the last exchange in one sentence.')
+  actuator.notify('Recap', summary)
+  actuator.send_mail(user.email, summary)
 ```
 
-**Actuators** are code-defined plugins, not project-declared. Five exist:
+`name` can't shadow a reserved namespace or a core metric name (§2) —
+rejected at build time. Assigning is itself never tunneled to the
+frontend, even when `<expr>` alone would have been (e.g.
+`x = actuator.celebrate()`); referencing `name` bare on a later line is
+what tunnels it, if it's still JS at that point. `name` is visible inside
+an `actuator.defer(...)` lambda too, the same way `user`/`signal`/`env`
+are — frozen at the moment `defer` runs, not re-evaluated later.
 
-- `actuator.celebrate()` / `actuator.notify(title, body_md)` — compile
-  straight to `onEnterActions.js` locals of the same name (confetti /
-  toast). Nothing runs server-side beyond building that JS snippet — the
-  tunnel is exact, e.g. `actuator.notify('Nice!', 'Well done')` reaches
-  the browser as literal `notify("Nice!", "Well done")`.
+**Actuators** are code-defined plugins, not project-declared. Six exist:
+
+- `actuator.celebrate()` / `actuator.notify(title, body_md)` / `actuator.show(body_md)` —
+  compile straight to `onEnterActions.js` locals of the same name
+  (confetti / toast / dialog). Nothing runs server-side beyond building
+  that JS snippet — the tunnel is exact, e.g. `actuator.notify('Nice!', 'Well done')`
+  reaches the browser as literal `notify("Nice!", "Well done")`. `show`
+  renders `body_md` (markdown) in the app's existing generic dialog
+  (DialogHost.vue) rather than a toast — no title, closed via its × button.
 - `actuator.send_mail(to, body_md)` — queues an email on the job queue,
   fire-and-forget, no frontend-visible effect.
 - `actuator.defer(act, when)` — schedules another actuator call for
@@ -392,8 +373,8 @@ on-enter: |
   ```
 
   System prompt: `general-prompt` + `prompt` (never the state's own
-  `contextual-prompt`). Attachments: global (§2) + this action's
-  on-enter-evaluation state's own (§5). Signal definitions and current
+  `contextual-prompt`). Attachments: global (§1) + this action's
+  on-enter-evaluation state's own (§4). Signal definitions and current
   `env:` are included as context; unlike a normal turn, no `[signals]`/
   `[env]`/`[audio]` reply is requested. History is the same real history a
   normal reply would see (subject to `history-cutoff`). Nothing is
@@ -410,17 +391,17 @@ contributes nothing either. Multiple lines concatenate in order.
 
 `send_mail`/`defer`/`actuator.prompt(...)` never run during a test
 replay/benchmark. A real side effect (`send_mail`, `defer`) also never
-runs during EditProjectView's embedded "Test" chat unless that session's
-"Run actuators" toggle is on — while off (default) it's suppressed and
-reported back as a `notify(...)` toast describing what would have
-happened. `celebrate`/`notify`/`prompt` have no real-world side effect to
+runs in a draft/test conversation unless actuators are explicitly enabled
+for it — while off (the default there) it's suppressed and reported back
+as a `notify(...)` toast describing what would have happened instead.
+`celebrate`/`notify`/`show`/`prompt` have no real-world side effect to
 suppress, so they always run.
 
-## 7. Attachments
+## 6. Attachments
 
 A filename under any `attachments:` (global, a signal's, or a state's —
-**not** an action's, §6) must be present alongside `index.yml` in the same
-upload — missing files fail validation by name.
+**not** an action's, §5) must be present alongside `index.yml` — missing
+files fail validation by name.
 
 | Extension | Sent as | Guaranteed to reach the model? |
 | --- | --- | --- |
@@ -432,7 +413,7 @@ Every applicable attachment list is prepended as one synthetic (never
 persisted) "user"/"assistant: Understood." exchange ahead of the real
 conversation.
 
-## 8. `init-action`
+## 7. `init-action`
 
 ```yaml
 init-action:
@@ -443,18 +424,18 @@ init-action:
 | Field | Required | Type | Meaning |
 | --- | --- | --- | --- |
 | `target` | **yes** | string | Starting state — must be a real key under `states:`. |
-| `on-enter` | no | string | Same mechanics as any action's (§6.4), sent alongside the first state, the one time init-action fires. |
+| `on-enter` | no | string | Same mechanics as any action's (§5.4), sent alongside the first state, the one time init-action fires. |
 
 A mapping, not a list item — otherwise a regular action with no
 `name`/`ui-label`/`trigger`/`attachments` (fixed internally).
 
-## 9. Validation checklist
+## 8. Validation checklist
 
-Enforced at upload/boot — an invalid project is rejected outright,
-nothing partially applied. Roughly in order of how you're likely to hit them:
+Every rule below must hold for a project to be valid — roughly in order
+of how you're likely to hit them:
 
-- `project.id` (§2.1) present, a valid Python identifier — no dots/hyphens/spaces.
-- `project.revision` (§2.1), if given, a non-negative integer.
+- `project.id` (§1.1) present, a valid Python identifier — no dots/hyphens/spaces.
+- `project.revision` (§1.1), if given, a non-negative integer.
 - `states:` present, a mapping, no key `""`.
 - `init-action` present, a mapping, non-empty `target` naming a real state.
 - Every state entry is itself a mapping (a common mistake: `actions:`
@@ -464,17 +445,19 @@ nothing partially applied. Roughly in order of how you're likely to hit them:
 - Every state's `transition-log-level`, if given, is a valid level.
 - Every action's `target` (incl. `init-action`'s) names a real state (or is a self-loop).
 - Every action's `trigger`, if given: syntactically valid and every
-  reference resolves (§6.2's rules per namespace).
+  reference resolves (§5.2's rules per namespace).
 - Every action's `env`, if given: a mapping, each expression validated the same way as `trigger`.
-- Every action's `on-enter`, if given: one `actuator.<name>(...)` call per
-  non-blank line, validated the same way plus its own argument-count check.
-- No signal named after a reserved core metric (§3).
-- Every `attachments:` entry (global/signal/state, not action) names a file actually present in the upload.
-- A `.zip` upload: exactly one `index.yml` at the root, attachments flat.
+- Every action's `on-enter`, if given: one `actuator.<name>(...)` call (or
+  `name = <expr>` assignment — §5.4) per non-blank line, validated the
+  same way plus its own argument-count check; an assignment's `name` may
+  not shadow a reserved namespace or core metric, and may only be
+  referenced by a *later* line.
+- No signal named after a reserved core metric (§2).
+- Every `attachments:` entry (global/signal/state, not action) names a file actually present alongside `index.yml`.
 
-## 10. Worked examples
+## 9. Worked examples
 
-**Minimal** (`Hello world.zip`):
+**Minimal** (the "Hello world" sample project):
 
 ```yaml
 init-action:
@@ -486,14 +469,14 @@ states:
       Ignore all user input. You always respond "hello, world!".
 ```
 
-**Signals/metrics/triggers**: `Metrics Playground.zip` (self-looping) and
-`Metrics Playground (states).zip` (each trigger lands on its own final
-state) — one signal + one action per core metric, with an extensive
-comment block on exercising each from a running backend.
+**Signals/metrics/triggers**: the "Metrics Playground" sample (self-looping)
+and its "Metrics Playground (states)" sibling (each trigger lands on its
+own final state) — one signal + one action per core metric, with an
+extensive comment block on exercising each one.
 
-**Richer real-world examples**: `default/index.yml` (multiple signals with
-attachments, a `fixed-message` state, per-state `transition-log-level`);
-`Aprendr català/index.yml` (`history-cutoff`, a `fixed-message` state,
-`on-enter: actuator.celebrate()`, `actuator.notify(...)`/`actuator.prompt(...)`
-combos surfacing generated hints as toasts); `Drogodependencia/index.yml`
-(simpler, neither).
+**Richer real-world examples**: the "default" sample (multiple signals
+with attachments, a `fixed-message` state, per-state
+`transition-log-level`); "Aprendr català" (`history-cutoff`, a
+`fixed-message` state, `on-enter: actuator.celebrate()`,
+`actuator.notify(...)`/`actuator.prompt(...)` combos surfacing generated
+hints as toasts); "Drogodependencia" (simpler, neither).

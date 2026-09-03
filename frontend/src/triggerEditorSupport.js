@@ -10,7 +10,8 @@ const CALL_PARAMS = {
   'source.attachment': ['name'],
   'source.search': ['what', 'where'],
   'actuator.send_mail': ['to', 'body_md'],
-  'actuator.notify': ['title', 'body_md']
+  'actuator.notify': ['title', 'body_md'],
+  'actuator.show': ['body_md']
 }
 
 const STRING_LITERAL_SOURCE = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/.source

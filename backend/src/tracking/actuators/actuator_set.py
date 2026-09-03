@@ -7,7 +7,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from automaton.automaton import DeferredExpression
+from automaton.automaton import DeferredExpression, JsSnippet
 from job import JobService
 from logging_factory import LoggerFactory
 from notification.notification_service import NotificationService
@@ -24,11 +24,11 @@ _SEND_MAIL_SUBJECT = "Notification from Avance"
 
 
 class ActuatorSet(ABC):
-    """`celebrate`/`notify`/`prompt` compile straight to the frontend's
+    """`celebrate`/`notify`/`show`/`prompt` compile straight to the frontend's
     own onEnterActions.js locals of the same name (see
     Automaton.render_on_enter) or, for `prompt`, run a read-only
     generation call — no real-world side effect either subclass could
-    meaningfully suppress, so all three behave identically regardless of
+    meaningfully suppress, so all four behave identically regardless of
     a test session's "Run actuators" toggle. Only `send_mail`/`defer`
     (real side effects) are each subclass's own concern."""
 
@@ -37,11 +37,14 @@ class ActuatorSet(ABC):
         # never set any other way (see EvaluationScopeBuilder.build).
         self._prompt_context: "PromptContext | None" = None
 
-    def celebrate(self) -> str | None:
-        return "celebrate()"
+    def celebrate(self) -> JsSnippet | None:
+        return JsSnippet("celebrate()")
 
-    def notify(self, title: str, body_md: str) -> str | None:
-        return f"notify({json.dumps(title)}, {json.dumps(body_md)})"
+    def notify(self, title: str, body_md: str) -> JsSnippet | None:
+        return JsSnippet(f"notify({json.dumps(title)}, {json.dumps(body_md)})")
+
+    def show(self, body_md: str) -> JsSnippet | None:
+        return JsSnippet(f"show({json.dumps(body_md)})")
 
     def prompt(self, prompt: str) -> str:
         """Runs `prompt` as one extra, synchronous, read-only generation
@@ -65,11 +68,11 @@ class ActuatorSet(ABC):
         return bound
 
     @abstractmethod
-    def send_mail(self, to: str, body_md: str) -> str | None:
+    def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
         raise NotImplementedError
 
     @abstractmethod
-    def defer(self, act: Callable[[], None], when: datetime) -> str | None:
+    def defer(self, act: Callable[[], None], when: datetime) -> JsSnippet | None:
         raise NotImplementedError
 
 
@@ -89,7 +92,7 @@ class LiveActuatorSet(ActuatorSet):
         self._hydrator = hydrator
         self._project_id = project_id
 
-    def send_mail(self, to: str, body_md: str) -> str | None:
+    def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
         # Raises (NotificationError) if this deployment's own .config.yml
         # declares no notification-service section — see
         # NotificationService's own docstring on why that's deferred to
@@ -97,7 +100,7 @@ class LiveActuatorSet(ActuatorSet):
         self._notification_service.enqueue_mail(to, _SEND_MAIL_SUBJECT, body_md)
         return None
 
-    def defer(self, act: Callable[[], None], when: datetime) -> str | None:
+    def defer(self, act: Callable[[], None], when: datetime) -> JsSnippet | None:
         # Both refusals are unreachable from a built index.yml — the
         # AutomatonBuilder already requires a zero-argument lambda and a
         # datetime-shaped `when` (see TriggerExpressionAnalyzer.defer_violations);
@@ -124,12 +127,12 @@ class FakeActuatorSet(ActuatorSet):
     reported to the frontend via `notify(...)` instead of actually
     happening (see PROJECT_SPECS.md §6.5)."""
 
-    def send_mail(self, to: str, body_md: str) -> str | None:
+    def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
         message = f"send_mail(to={to!r}) — Run actuators is off, no email was sent."
         logger.info(message)
         return self.notify("Actuator (test)", message)
 
-    def defer(self, act: Callable[[], None], when: datetime) -> str | None:
+    def defer(self, act: Callable[[], None], when: datetime) -> JsSnippet | None:
         message = f"defer(when={when.isoformat()!r}) — Run actuators is off, nothing was scheduled."
         logger.info(message)
         return self.notify("Actuator (test)", message)

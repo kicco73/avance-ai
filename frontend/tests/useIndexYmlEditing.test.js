@@ -128,6 +128,22 @@ describe('useIndexYmlEditing', () => {
       expect(putActionField).toHaveBeenCalledWith('proj', 'greeting', 'go', 'target', 'farewell')
       expect(selectedGraphElement.value).toEqual(actionEl)
     })
+
+    // OnEnterDialog.vue's own OK button awaits exactly this return value
+    // (through EditProjectView.vue's handleSetSelectedElementField) to
+    // decide whether to close — it must never resolve true for a write
+    // that never actually landed.
+    it('resolves true once the write succeeds', async () => {
+      putActionField.mockResolvedValue({})
+
+      await expect(s.handleSetActionField('greeting', 'go', 'on-enter', 'actuator.celebrate()')).resolves.toBe(true)
+    })
+
+    it('resolves false (never throws) when the write is rejected — e.g. a malformed on-enter script', async () => {
+      putActionField.mockRejectedValue(new Error('invalid on-enter'))
+
+      await expect(s.handleSetActionField('greeting', 'go', 'on-enter', 'not.a.real.call()')).resolves.toBe(false)
+    })
   })
 
   describe('handleSetSignalField', () => {

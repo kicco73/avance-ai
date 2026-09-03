@@ -132,6 +132,47 @@ class TriggerExpressionAnalyzer:
             calls.append((ref[1], len(node.args) + len(node.keywords)))
         return calls
 
+    @staticmethod
+    def on_enter_statements(source: str) -> list[tuple[int, str]]:
+        """Splits `on-enter` source into one (line_number, statement source)
+        pair per top-level statement — one `actuator.<name>(...)` call each
+        — using Python's own parser rather than naively splitting on '\\n'.
+        This is what lets a single call span several lines (implicit
+        continuation inside its own parens) and lets both a whole-line and
+        a trailing '# ...' comment work exactly like they do in any other
+        Python source, with no special-casing needed here at all — the
+        tokenizer already strips comments and skips blank lines before the
+        parser ever sees them. `line_number` is where that statement's own
+        source starts, for error messages elsewhere. Each returned segment
+        is handed to the exact same single-expression validators/evaluator
+        every other caller here already uses (they parse it again
+        themselves, in `mode="eval"` — multi-line is fine there too, only
+        a real statement, e.g. an assignment, isn't). Raises SyntaxError,
+        uncaught, for source that isn't valid Python at all — every caller
+        already turns that into the same error a single malformed
+        expression gets."""
+        tree = ast.parse(source, mode="exec")
+        return [(stmt.lineno, ast.get_source_segment(source, stmt)) for stmt in tree.body]
+
+    @staticmethod
+    def on_enter_assignment(statement: str) -> tuple[str, str] | None:
+        """(target_name, rhs_source) if `statement` (one already-split
+        on_enter_statements() segment) is a simple single-name assignment
+        — `name = <expr>`, the only assignment shape an on-enter line may
+        take — None for anything else (a bare actuator/source call, or a
+        shape (tuple/attribute/subscript target, chained `a = b = ...`)
+        this deliberately doesn't support, left to fail the normal
+        mode="eval" parse everywhere else the way any other malformed
+        on-enter line already does). Never raises on `statement` itself:
+        it already parsed once, as part of on_enter_statements()."""
+        tree = ast.parse(statement, mode="exec")
+        if len(tree.body) != 1 or not isinstance(tree.body[0], ast.Assign):
+            return None
+        stmt = tree.body[0]
+        if len(stmt.targets) != 1 or not isinstance(stmt.targets[0], ast.Name):
+            return None
+        return stmt.targets[0].id, ast.get_source_segment(statement, stmt.value)
+
     # Every identifier whose runtime *type* is fixed by its own contract, well
     # enough to check statically. `env.*` is absent: it's a free-form store any
     # expression can set to anything, so its type is treated as unknown.
