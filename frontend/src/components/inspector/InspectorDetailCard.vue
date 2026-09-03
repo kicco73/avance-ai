@@ -196,7 +196,7 @@ const hasSelectedElementBadges = computed(() => {
   // non-editable.
   if (showEditForm.value) return false
   const d = props.selectedElement.data
-  return isSelectedActionFired.value || !d.hasTrigger || d.isInitEdge
+  return isSelectedActionFired.value || !d.hasTrigger || d.isInitEdge || !!d.onEnter
 })
 
 // Only reachable while the edit form's attachment list is showing. A
@@ -288,6 +288,7 @@ function selectAttachment(fileName) {
           <span v-if="selectedElement.data.isInitEdge" class="inspector-detail-badge inspector-detail-badge-start">Start</span>
           <span v-if="isSelectedActionFired" class="inspector-detail-badge inspector-detail-badge-fired">Fired</span>
           <span v-if="!selectedElement.data.hasTrigger" class="inspector-detail-badge inspector-detail-badge-manual">Manual</span>
+          <span v-if="selectedElement.data.onEnter" class="inspector-detail-badge inspector-detail-badge-onenter">On enter</span>
         </template>
       </div>
     </div>
@@ -402,7 +403,6 @@ function selectAttachment(fileName) {
               <code v-for="[key, value] in envEntries" :key="key" class="inspector-detail-code">{{ key }} = {{ value }}</code>
             </p>
             <p v-if="selectedElement.data.trigger" class="inspector-detail-field"><strong>Trigger:</strong><code class="inspector-detail-code">{{ selectedElement.data.trigger }}</code></p>
-            <p v-if="selectedElement.data.onEnter" class="inspector-detail-field"><strong>On enter:</strong><code class="inspector-detail-code">{{ selectedElement.data.onEnter }}</code></p>
           </div>
         </Transition>
       </template>
@@ -450,6 +450,7 @@ function selectAttachment(fileName) {
 .inspector-detail-badge-fired { background: #ad1457; }
 .inspector-detail-badge-final { background: #c62828; }
 .inspector-detail-badge-manual { background: #00695c; }
+.inspector-detail-badge-onenter { background: #4b8bbe; }
 .inspector-detail-badge-neutral { background: #4a6fa5; }
 .inspector-detail-badge-toggle { cursor: pointer; }
 .inspector-detail-badge-toggle-off { background: #ccc; color: #555; }

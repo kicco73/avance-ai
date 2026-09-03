@@ -25,10 +25,7 @@ import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } 
 import { lintKeymap } from '@codemirror/lint'
 import { identifierRegistry, refreshIdentifierRegistry } from '../../identifierRegistry.js'
 import { projectFiles } from '../../projectFiles.js'
-import {
-  NAMESPACE_COLORS, REFERENCE_PATTERN_SOURCE,
-  completeIdentifiers as completeIdentifiersFor, completeFilePathArgument
-} from '../../triggerEditorSupport.js'
+import { NAMESPACE_COLORS, REFERENCE_PATTERN_SOURCE, completeFilePathArgument, completeIdentifiers as completeIdentifiersFor, excludingNamespaces } from '../../triggerEditorSupport.js'
 
 const model = defineModel({ type: String, default: '' })
 const props = defineProps({ excludeNamespaces: { type: Array, default: () => [] } })
@@ -42,13 +39,7 @@ let view = null
 // snapshot, so an identifier added elsewhere while this editor is open is
 // visible on the very next keystroke.
 function completeIdentifiers(context) {
-  const registry = identifierRegistry.value
-  if (!props.excludeNamespaces.length) return completeIdentifiersFor(context, registry)
-  // By prefix, so excluding "session" also drops "session.metric" — same
-  // rule as the backend's IdentifierRegistry.excluding.
-  const excluded = (ns) => props.excludeNamespaces.some((x) => ns === x || ns.startsWith(x + '.'))
-  const filtered = Object.fromEntries(Object.entries(registry).filter(([ns]) => !excluded(ns)))
-  return completeIdentifiersFor(context, filtered)
+  return completeIdentifiersFor(context, excludingNamespaces(identifierRegistry.value, props.excludeNamespaces))
 }
 
 function completeFilePath(context) {

@@ -50,11 +50,14 @@ class JobService:
     the Task table, only ever *gains* rows: nothing is claimed, so a
     task can never run against a half-built process."""
 
-    def __init__(self, max_concurrent: int, broadcaster: "QueueProgressBroadcaster", db: "Db") -> None:
+    def __init__(
+        self, max_concurrent: int, broadcaster: "QueueProgressBroadcaster", db: "Db", *,
+        task_lease_seconds: float = 600.0,
+    ) -> None:
         self._broadcaster = broadcaster
         self._queue = JobQueue(max_concurrent=max_concurrent, broadcaster=broadcaster)
         self._hydrators: dict[str, Hydrator] = {}
-        self._scheduler = PersistedScheduler(self._queue, db, self._hydrators)
+        self._scheduler = PersistedScheduler(self._queue, db, self._hydrators, lease_seconds=task_lease_seconds)
         self._started = False
 
     def register_task_type(self, task_type: str, hydrator: Hydrator) -> None:

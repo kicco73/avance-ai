@@ -18,18 +18,21 @@ TYPE -> hydrator mapping. What "the environment the task carries"
 means, and how to rebuild it faithfully, is the hydrator's problem
 (see tracking/actuators/deferred_task.py for the actuator.defer one).
 
-Delivery semantics: a row found `dispatched` at boot means the previous
-process claimed it and died before it settled — it goes back to
-pending and runs again (at-least-once), logged as such. A row whose
-type has no hydrator, or whose hydrator refuses it, is marked failed
-with the reason, never silently dropped. The claim being an atomic
-UPDATE guarded on status='pending', two backend instances over the same
-database never run the same row twice."""
+Delivery semantics: the claim is an atomic UPDATE guarded on
+status='pending', so two schedulers over the same database (two
+threads, two backend instances) never claim the same row. A row still
+`dispatched` after `lease_seconds` with no settlement belongs to a
+process that died mid-run: it goes back to pending and runs again
+(at-least-once), logged as such — checked at start and on every poll,
+never by blindly requeueing whatever is dispatched at boot, which
+would re-run a task another live instance is executing right now. A
+row whose type has no hydrator, or whose hydrator refuses it, is
+marked failed with the reason, never silently dropped."""
 from __future__ import annotations
 
 import threading
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, TYPE_CHECKING
 
 from jobs.job import CancelableJob, DependentJob
@@ -49,13 +52,17 @@ Hydrator = Callable[[str, str, dict[str, Any]], Task]
 class PersistedScheduler(Scheduler):
 
     def __init__(
-        self, queue: AbstractJobQueue, db: "Db", hydrators: dict[str, Hydrator], *, poll_interval_seconds: float = 60.0,
+        self, queue: AbstractJobQueue, db: "Db", hydrators: dict[str, Hydrator], *,
+        poll_interval_seconds: float = 60.0, lease_seconds: float = 600.0,
     ) -> None:
         self._queue = queue
         self._db = db
         # Shared with the owner, which may keep registering types until start().
         self._hydrators = hydrators
         self._poll_interval = poll_interval_seconds
+        # How long a claimed row may stay unsettled before it is presumed
+        # orphaned. Longer than any task honestly takes to run.
+        self._lease = timedelta(seconds=lease_seconds)
         self._wakeup = threading.Condition(threading.Lock())
         self._thread: threading.Thread | None = None
         self._stopping = False
@@ -65,12 +72,7 @@ class PersistedScheduler(Scheduler):
         adds rows — a process still wiring itself up claims nothing."""
         if self._thread is not None:
             return
-        requeued = self._db.requeue_dispatched_tasks()
-        if requeued:
-            logger.warning(
-                "%d task(s) were dispatched by a previous process but never settled — running them again: %s",
-                len(requeued), ", ".join(requeued),
-            )
+        self._recover_stale_claims()
         self._thread = threading.Thread(target=self._run, name="persisted-scheduler", daemon=True)
         self._thread.start()
 
@@ -118,9 +120,18 @@ class PersistedScheduler(Scheduler):
 
     # --- the loop --------------------------------------------------------
 
+    def _recover_stale_claims(self) -> None:
+        requeued = self._db.requeue_stale_dispatched_tasks(datetime.now(timezone.utc) - self._lease)
+        if requeued:
+            logger.warning(
+                "%d task(s) were claimed over %s ago and never settled — presumed orphaned by a dead process, "
+                "running them again: %s", len(requeued), self._lease, ", ".join(requeued),
+            )
+
     def _run(self) -> None:
         while not self._stopping:
             try:
+                self._recover_stale_claims()
                 row = self._db.claim_due_task(datetime.now(timezone.utc))
             except Exception as exc:  # the database being briefly unavailable must not kill the loop
                 logger.exception("PersistedScheduler could not read the Task table: %s", exc)

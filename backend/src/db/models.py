@@ -436,6 +436,10 @@ class Task(BaseModel):
     status = CharField(default='pending', index=True)
     error = TextField(null=True)
     created_at = DateTimeField(default=datetime.utcnow)
+    # When the row was claimed (see TaskMixin.claim_due_task) — a claim
+    # older than the scheduler's lease with no settlement is a dead
+    # process's, and goes back to pending (requeue_stale_dispatched_tasks).
+    dispatched_at = DateTimeField(null=True)
     settled_at = DateTimeField(null=True)
 
     class Meta:

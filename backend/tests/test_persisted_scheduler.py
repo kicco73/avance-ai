@@ -5,7 +5,6 @@ just continues: pending rows at their time, rows a dead process left
 `dispatched` right away, rows nobody can hydrate as `failed`."""
 from __future__ import annotations
 
-import threading
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -97,9 +96,14 @@ def _stop_schedulers():
         _live_schedulers.pop().stop()
 
 
-def _make(file_db: Db, sink: list, *, start: bool = True, hydrators: dict | None = None) -> PersistedScheduler:
+def _make(
+    file_db: Db, sink: list, *, start: bool = True, hydrators: dict | None = None, lease_seconds: float = 600.0,
+) -> PersistedScheduler:
     queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-    scheduler = PersistedScheduler(queue, file_db, hydrators if hydrators is not None else _hydrators(sink), poll_interval_seconds=0.2)
+    scheduler = PersistedScheduler(
+        queue, file_db, hydrators if hydrators is not None else _hydrators(sink),
+        poll_interval_seconds=0.2, lease_seconds=lease_seconds,
+    )
     _live_schedulers.append(scheduler)
     if start:
         scheduler.start()
@@ -236,14 +240,47 @@ class TestTheTableIsTheQueue:
         assert sink == [1]
         assert [row["key"] for row in file_db.list_tasks()] == ["stub:1"]  # never duplicated
 
-    def test_a_row_left_dispatched_by_a_dead_process_runs_again(self, file_db):
+    def test_a_row_claimed_longer_than_the_lease_ago_and_never_settled_runs_again(self, file_db):
+        """A dead process's claim: older than the lease, no settlement."""
         file_db.create_task("stub:1", "stub", "user", "p", datetime.now(timezone.utc) - timedelta(minutes=1), {"value": 7}, "l", "d")
-        TaskRow.update(status="dispatched").where(TaskRow.key == "stub:1").execute()
+        TaskRow.update(status="dispatched", dispatched_at=datetime.utcnow() - timedelta(hours=1)).where(TaskRow.key == "stub:1").execute()
         sink: list = []
 
         _make(file_db, sink)
 
         assert _wait_until(lambda: _status(file_db, "stub:1") == "done")
+        assert sink == [7]
+
+    def test_a_row_claimed_before_the_lease_column_existed_runs_again(self, file_db):
+        file_db.create_task("stub:1", "stub", "user", "p", datetime.now(timezone.utc) - timedelta(minutes=1), {"value": 7}, "l", "d")
+        TaskRow.update(status="dispatched", dispatched_at=None).where(TaskRow.key == "stub:1").execute()
+        sink: list = []
+
+        _make(file_db, sink)
+
+        assert _wait_until(lambda: _status(file_db, "stub:1") == "done")
+        assert sink == [7]
+
+    def test_a_fresh_claim_is_left_to_whoever_holds_it(self, file_db):
+        """Another live instance (or a worker of this one) is running it:
+        a new scheduler must not re-run it just because it is dispatched."""
+        file_db.create_task("stub:1", "stub", "user", "p", datetime.now(timezone.utc) - timedelta(minutes=1), {"value": 7}, "l", "d")
+        TaskRow.update(status="dispatched", dispatched_at=datetime.utcnow()).where(TaskRow.key == "stub:1").execute()
+        sink: list = []
+
+        _make(file_db, sink)
+
+        time.sleep(0.6)
+        assert _status(file_db, "stub:1") == "dispatched"
+        assert sink == []
+
+    def test_a_stale_claim_is_recovered_by_a_running_scheduler_too_not_only_at_boot(self, file_db):
+        sink: list = []
+        _make(file_db, sink, lease_seconds=0.3)
+        file_db.create_task("stub:1", "stub", "user", "p", datetime.now(timezone.utc) - timedelta(minutes=1), {"value": 7}, "l", "d")
+        TaskRow.update(status="dispatched", dispatched_at=datetime.utcnow()).where(TaskRow.key == "stub:1").execute()
+
+        assert _wait_until(lambda: _status(file_db, "stub:1") == "done", timeout=3.0)
         assert sink == [7]
 
     def test_settled_rows_are_never_run(self, file_db):

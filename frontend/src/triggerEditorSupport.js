@@ -55,6 +55,16 @@ export const NAMESPACE_COLORS = {
 // (one per tracking/sources/ module, e.g. attachment(name)) take theirs
 // inside the same parens completion inserts empty. This decides a
 // completion's `type`/`apply` (append "()" or not), never a label.
+// The registry minus `excluded` namespaces, by prefix: excluding "session"
+// also drops "session.metric" — the same rule as the backend's
+// IdentifierRegistry.excluding, so the editor's autocomplete and the
+// build-time validation can never disagree about a field's scope.
+export function excludingNamespaces(registry, excluded) {
+  if (!excluded || !excluded.length) return registry
+  const isExcluded = (ns) => excluded.some((x) => ns === x || ns.startsWith(x + '.'))
+  return Object.fromEntries(Object.entries(registry).filter(([ns]) => !isExcluded(ns)))
+}
+
 export function isProxyNamespace(namespace) {
   return namespace !== 'signal' && namespace !== 'env' && namespace !== 'user' && namespace !== 'automaton' &&
     namespace !== 'datetime.timezone' && !namespace.startsWith('automaton.')

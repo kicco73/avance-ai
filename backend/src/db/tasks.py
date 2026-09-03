@@ -39,6 +39,7 @@ class TaskMixin:
             'status': row.status,
             'error': row.error,
             'created_at': row.created_at.replace(tzinfo=timezone.utc) if row.created_at else None,
+            'dispatched_at': row.dispatched_at.replace(tzinfo=timezone.utc) if row.dispatched_at else None,
             'settled_at': row.settled_at.replace(tzinfo=timezone.utc) if row.settled_at else None,
         }
 
@@ -86,9 +87,12 @@ class TaskMixin:
             )
             if row is None:
                 return None
-            claimed = Task.update(status='dispatched').where((Task.key == row.key) & (Task.status == 'pending')).execute()
+            claimed = Task.update(status='dispatched', dispatched_at=now).where(
+                (Task.key == row.key) & (Task.status == 'pending')
+            ).execute()
             if claimed == 1:
                 row.status = 'dispatched'
+                row.dispatched_at = now
                 return self._task_to_dict(row)
 
     def cancel_task(self, key: str) -> bool:
@@ -104,11 +108,21 @@ class TaskMixin:
             raise ValueError(f"'{status}' is not a terminal task status — expected one of {TASK_TERMINAL_STATUSES}.")
         Task.update(status=status, error=error, settled_at=datetime.utcnow()).where(Task.key == key).execute()
 
-    def requeue_dispatched_tasks(self) -> list[str]:
-        """Boot recovery: every row a previous process claimed but never
-        settled (it died mid-run) goes back to pending, to be claimed
-        again. Returns their keys, for the log."""
-        keys = [row.key for row in Task.select(Task.key).where(Task.status == 'dispatched')]
+    def requeue_stale_dispatched_tasks(self, older_than: datetime) -> list[str]:
+        """Recovery: every row claimed before `older_than` and never
+        settled belongs to a process that died mid-run — it goes back to
+        pending, to be claimed again. Rows claimed more recently are
+        assumed to be running somewhere (this process, or another
+        instance over the same database) and are left alone; that is
+        what makes a scheduler's lease the only window in which a task
+        can be run twice. Returns the requeued keys, for the log."""
+        older_than = _to_naive_utc(older_than)
+        stale = Task.select(Task.key).where(
+            (Task.status == 'dispatched') & (Task.dispatched_at.is_null() | (Task.dispatched_at < older_than))
+        )
+        keys = [row.key for row in stale]
         if keys:
-            Task.update(status='pending').where(Task.key.in_(keys)).execute()
+            Task.update(status='pending', dispatched_at=None).where(
+                Task.key.in_(keys) & (Task.status == 'dispatched')
+            ).execute()
         return keys

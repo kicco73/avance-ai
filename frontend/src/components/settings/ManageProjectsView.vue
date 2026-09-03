@@ -688,13 +688,9 @@ defineExpose({ refresh: load })
 }
 
 .manage-projects-col-status-actions {
-  /* Column width = the button's own 2.88rem plus this column's own
-     (reduced) right padding — table-layout: fixed treats the declared
-     width as the column's whole allotment, so the padding must be
-     added on top here or the button would overflow it. */
-  width: 3.13rem;
+  width: 2.88rem;
   padding-left: 0;
-  padding-right: 0.25rem;
+  padding-right: 0;
 }
 
 .manage-projects-status-actions-row {
@@ -805,7 +801,11 @@ defineExpose({ refresh: load })
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  background: rgba(74, 111, 165, 0.04);
+  /* White, not the card's own blue — a blue-tinted wash at any real
+     strength competed with the (also blue) pencil icon sitting on top
+     of it, so this lightens the card as a clear "you're hovering the
+     edit target" cue instead. */
+  background: rgba(255, 255, 255, 0.75);
   color: #4a6fa5;
   opacity: 0;
   transition: opacity 0.15s ease;
