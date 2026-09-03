@@ -18,7 +18,6 @@ from .turn_callbacks import OnMetadata
 from .env import PersistedEnv
 from .evaluation_scope import EvaluationScopeBuilder
 from .session_facts import SessionFacts
-from .system_facts import SystemFacts
 from .user_facts import UserFacts
 from .definitions import Signals
 from .session_import import SessionImportManager
@@ -280,7 +279,6 @@ class TrackingService(object):
 
 		fixed_context = FixedProjectContext(automaton=automaton, project_id=project_id)
 		env = PersistedEnv(self._db, fixed_context)
-		system_facts = SystemFacts()
 		session_facts = SessionFacts(self._db, fixed_context)
 		user_facts = UserFacts(self._db)
 		automaton_namespace = AutomatonNamespace(self._db, self._project_service)
@@ -289,7 +287,7 @@ class TrackingService(object):
 			self._db, fixed_context, max_session_duration_in_minutes=self._metrics.max_session_duration_in_minutes
 		)
 		scope_builder = EvaluationScopeBuilder(
-			env, metrics, system_facts, session_facts, user_facts, self._db, automaton_namespace, actuator_set,
+			env, metrics, session_facts, user_facts, self._db, automaton_namespace, actuator_set,
 			ai_service=ai_service,
 		)
 

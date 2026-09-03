@@ -256,9 +256,10 @@ class AutomatonBuilder(object):
         """`on-enter`: zero or more `actuator.<name>(...)` calls, one per
         non-blank line — e.g. `actuator.celebrate()` on its own line,
         `actuator.notify(user.name, "Hi!")` on another — validated the
-        same way a lone `actuator:` expression always was (full registry,
-        since a call's own arguments may reference any namespace), just
-        per line so multiple calls can fire from one action."""
+        same way a trigger is, just per line so multiple calls can fire
+        from one action, and against the actuator view of the registry
+        (see IdentifierRegistry.for_actuators): no `session.*`, since an
+        actuator.defer'd call outlives the session that fired it."""
         if not on_enter:
             return
         for line_number, line in enumerate(on_enter.splitlines(), start=1):
@@ -268,6 +269,9 @@ class AutomatonBuilder(object):
             line_context = f"{context}, on-enter line {line_number}"
             cls._validate_namespaced_expression(line, line_context, registry)
             cls._validate_actuator_arity(line, line_context)
+            violations = TriggerExpressionAnalyzer.defer_violations(line)
+            if violations:
+                raise ValueError(f"{line_context} ('{line}'): {'; '.join(violations)}")
 
     @staticmethod
     def _validate_trigger_types(expression: str, context: str) -> None:
@@ -311,7 +315,8 @@ class AutomatonBuilder(object):
         writes against each key's own declared type (see
         _validate_env_key_type below). `known_projects`: None skips the
         automaton.* existence check entirely."""
-        registry_without_actuator = {ns: names for ns, names in registry.items() if ns != "actuator"}
+        registry_without_actuator = IdentifierRegistry.for_triggers(registry)
+        registry_without_session = IdentifierRegistry.for_actuators(registry)
         for action in state.actions:
             if action.target not in declared_states:
                 raise ValueError(
@@ -353,7 +358,7 @@ class AutomatonBuilder(object):
                     )
             if action.on_enter:
                 self._validate_on_enter(
-                    action.on_enter, f"State {key}, action '{action.name}'", registry,
+                    action.on_enter, f"State {key}, action '{action.name}'", registry_without_session,
                 )
 
     @staticmethod

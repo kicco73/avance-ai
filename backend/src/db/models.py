@@ -410,3 +410,33 @@ class Settings(BaseModel):
 
     class Meta:
         table_name = 'Settings'
+
+class Task(BaseModel):
+    """A hibernated scheduled task (see jobs/task.py and
+    job/persisted_scheduler.py) — this table *is* the persisted
+    scheduler's queue: one row per task still owed to the future, plus
+    a terminal row once it settled (kept as an audit trail, never run
+    again). `type` selects the hydrator that turns `payload` (JSON, the
+    task's own dehydrate()) back into a live Task; `user` and `project`
+    are real foreign keys cascading on delete, so erasing a user or
+    deleting a project takes their pending tasks with it. `ui_label`/
+    `ui_description` are what a listing shows, stored at submit time so
+    the UI never hydrates a row. `run_at` is naive UTC, like every
+    other DateTimeField here."""
+    id = AutoField()
+    key = CharField(unique=True)
+    type = CharField(index=True)
+    user = ForeignKeyField(User, field='id', column_name='user_id', backref='tasks', on_delete='CASCADE')
+    project = ForeignKeyField(Project, field='id', column_name='project_id', backref='tasks', on_delete='CASCADE')
+    run_at = DateTimeField(index=True)
+    payload = TextField()
+    ui_label = TextField()
+    ui_description = TextField()
+    # pending -> dispatched -> done | failed; pending -> canceled.
+    status = CharField(default='pending', index=True)
+    error = TextField(null=True)
+    created_at = DateTimeField(default=datetime.utcnow)
+    settled_at = DateTimeField(null=True)
+
+    class Meta:
+        table_name = 'Task'

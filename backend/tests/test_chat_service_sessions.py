@@ -6,8 +6,7 @@ import pytest
 
 from chat.chat_service import ChatService, ChatServiceError
 from chat.session_manager import ChatSessionManager
-from conftest import NullBroadcaster
-from jobs import JobQueue
+from conftest import make_test_job_service
 from metrics.metric_service import MetricService
 from session import Session
 from tracking.tracking_service import TrackingService
@@ -24,7 +23,7 @@ def chat_service(db):
     # ai_service/project_service are never touched: _require_own_session
     # raises before either would be used.
     metric_service = MetricService(db, project_service=None)
-    job_queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
+    job_service = make_test_job_service(db)
     # None is fine here since these tests never reach any path that reads it.
     tracking_service = TrackingService(
         db, project_service=None, metrics_service=metric_service, actuator_factory=None,
@@ -32,7 +31,7 @@ def chat_service(db):
     return ChatService(
         ai_service=None, ai_test_service=None, project_service=None, db=db, session_manager=ChatSessionManager(db),
         tracking_service=tracking_service, metric_service=metric_service,
-        job_queue=job_queue, actuator_factory=None,
+        job_service=job_service, actuator_factory=None,
     )
 
 

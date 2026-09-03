@@ -7,7 +7,8 @@ import time
 import pytest
 
 from conftest import NullBroadcaster
-from jobs import CancelableJob, JobQueue
+from jobs import CancelableJob
+from jobs.job_queue import JobQueue
 from try_again_error import TryAgainError
 
 pytestmark = pytest.mark.contract

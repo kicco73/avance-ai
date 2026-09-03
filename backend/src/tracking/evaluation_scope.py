@@ -12,6 +12,7 @@ from typing import Any, TYPE_CHECKING
 from simpleeval import ModuleWrapper
 
 from automaton.automaton import Automaton
+from automaton.scope import EvaluationScope
 from db import Db
 from metrics.metric_service import MetricService
 from tracking.actuators import ActuatorSet, FakeActuatorSet, PromptContext
@@ -19,7 +20,6 @@ from tracking.env import Env
 from tracking.evaluator import SignalEvaluator
 from tracking.session_facts import SessionFacts
 from tracking.sources import SourceNamespace
-from tracking.system_facts import SystemFacts
 from tracking.user_facts import UserFacts
 
 if TYPE_CHECKING:
@@ -37,7 +37,6 @@ class EvaluationScopeBuilder(object):
         self,
         env: Env,
         metrics: MetricService,
-        system: SystemFacts,
         session: SessionFacts,
         user: UserFacts,
         db: Db,
@@ -47,7 +46,6 @@ class EvaluationScopeBuilder(object):
     ) -> None:
         self._env = env
         self._metrics = metrics
-        self._system = system
         self._session = session
         self._user = user
         # Only for SourceNamespace (source.attachment(name) reads
@@ -69,12 +67,12 @@ class EvaluationScopeBuilder(object):
     def build(
         self, automaton: Automaton, state_key: str, raw_signal_values: dict[str, Any] | None,
         session_id: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> EvaluationScope:
         """`raw_signal_values` is always re-coerced against every declared
-        signal, never assumed pre-validated. env/system/session/user/source/
+        signal, never assumed pre-validated. env/session/user/source/
         metric are cheap, lazy proxies included unconditionally; only the
         bare core-metric names are gated, since building them is eager.
-        `source` is rebuilt fresh every call (unlike env/system/session/
+        `source` is rebuilt fresh every call (unlike env/session/
         user, never threaded through __init__) since it needs `automaton`
         itself — a `build()` parameter, not a constructor dependency any
         caller has to wire up separately — to know where source.attachment
@@ -87,7 +85,6 @@ class EvaluationScopeBuilder(object):
         scope: dict[str, Any] = {
             "signal": signal_values,
             "env": self._env.action_set(),
-            "system": self._system,
             "session": self._session,
             "user": self._user.as_dict(),
             "source": SourceNamespace(self._db, automaton),
@@ -104,4 +101,5 @@ class EvaluationScopeBuilder(object):
             scope["actuator"] = self._actuator_set.with_prompt_context(prompt_context)
         else:
             scope["actuator"] = self._actuator_set
-        return self._metrics.merge_if_referenced(automaton, state_key, scope)
+        merged = self._metrics.merge_if_referenced(automaton, state_key, scope)
+        return EvaluationScope(merged, automaton=automaton, state_key=state_key)

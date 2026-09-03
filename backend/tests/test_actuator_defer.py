@@ -1,39 +1,43 @@
 from __future__ import annotations
 
 import threading
-import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pytest
 import simpleeval
 
-from automaton.automaton import _OnEnterEval
-from conftest import NullBroadcaster
-from jobs import JobQueue, Scheduler
+from automaton.automaton import DeferredExpression, _OnEnterEval
+from automaton.scope import EvaluationScope
+from conftest import make_test_actuator_factory
 from tracking.actuators.actuator_set import FakeActuatorSet, LiveActuatorSet
 
 pytestmark = pytest.mark.contract
 
 
-def _wait_until(predicate, timeout=2.0, interval=0.01) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return True
-        time.sleep(interval)
-    return predicate()
+def _scope(names: dict) -> EvaluationScope:
+    return EvaluationScope(names, automaton=None, state_key="a")
 
 
-def test_live_actuator_set_defer_runs_the_callable_once_due():
-    job_queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-    scheduler = Scheduler(job_queue)
-    actuator = LiveActuatorSet(notification_service=None, scheduled_job_queue=scheduler, ws_adapter=None)
-    ran = threading.Event()
+def _live_actuator_set(db) -> LiveActuatorSet:
+    factory = make_test_actuator_factory(db)
+    return factory.live(project_id="p")
 
-    result = actuator.defer(ran.set, datetime.now(timezone.utc) - timedelta(seconds=1))
 
-    assert result is None
-    assert _wait_until(ran.is_set)
+def test_live_actuator_set_defer_refuses_anything_but_an_on_enter_lambda(db):
+    """No in-memory fallback exists: a plain callable has no source to
+    hibernate, so it is refused rather than silently run once."""
+    actuator = _live_actuator_set(db)
+    with pytest.raises(TypeError, match="lambda"):
+        actuator.defer(threading.Event().set, datetime.now(timezone.utc))
+    assert db.list_tasks() == []
+
+
+def test_live_actuator_set_defer_refuses_a_non_datetime_when(db):
+    actuator = _live_actuator_set(db)
+    act = _OnEnterEval(names=_scope({})).eval("lambda: 1")
+    with pytest.raises(TypeError, match="datetime"):
+        actuator.defer(act, "2030-01-01")
+    assert db.list_tasks() == []
 
 
 def test_fake_actuator_set_defer_never_schedules_anything():
@@ -56,7 +60,7 @@ class _Recorder:
 
 def test_on_enter_eval_runs_a_zero_argument_lambda():
     recorder = _Recorder()
-    evaluator = _OnEnterEval(names={"recorder": recorder})
+    evaluator = _OnEnterEval(names=_scope({"recorder": recorder}))
 
     act = evaluator.eval("lambda: recorder.record(1)")
     assert recorder.calls == []
@@ -64,7 +68,23 @@ def test_on_enter_eval_runs_a_zero_argument_lambda():
     assert recorder.calls == [1]
 
 
+def test_a_lambda_evaluates_to_a_deferred_expression_that_knows_its_source_and_scope():
+    scope = _scope({"recorder": _Recorder()})
+    act = _OnEnterEval(names=scope).eval("lambda: recorder.record(1 + 2)")
+
+    assert isinstance(act, DeferredExpression)
+    assert act.source == "recorder.record(1 + 2)"
+    assert act.scope is scope
+
+
 def test_on_enter_eval_rejects_a_lambda_with_arguments():
-    evaluator = _OnEnterEval(names={})
+    evaluator = _OnEnterEval(names=_scope({}))
     with pytest.raises(simpleeval.FeatureNotAvailable):
         evaluator.eval("lambda x: x")
+
+
+def test_on_enter_eval_refuses_a_plain_dict_scope():
+    """A plain dict has no automaton/state behind it — nothing a deferred
+    call could be hibernated with — so it is refused up front."""
+    with pytest.raises(TypeError, match="EvaluationScope"):
+        _OnEnterEval(names={})

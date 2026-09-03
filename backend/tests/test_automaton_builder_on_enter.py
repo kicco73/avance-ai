@@ -247,7 +247,7 @@ states:
       - name: go
         target: b
         on-enter: |
-          actuator.defer(lambda: actuator.send_mail(user.email, 'Reminder'), system.today)
+          actuator.defer(lambda: actuator.send_mail(user.email, 'Reminder'), datetime.datetime(2030, 1, 1))
   b:
     contextual-prompt: there
 """
@@ -269,7 +269,7 @@ states:
       - name: go
         target: b
         on-enter: |
-          actuator.defer(lambda: actuator.celebrate(42), system.today)
+          actuator.defer(lambda: actuator.celebrate(42), datetime.datetime(2030, 1, 1))
   b:
     contextual-prompt: there
 """
@@ -289,7 +289,7 @@ states:
     actions:
       - name: go
         target: b
-        on-enter: actuator.defer(system.today)
+        on-enter: actuator.defer(datetime.datetime(2030, 1, 1))
   b:
     contextual-prompt: there
 """
@@ -317,3 +317,118 @@ states:
 """
     with pytest.raises(ValueError, match="on-enter line 2.*references undefined name\\(s\\): actuator.doStuff"):
         AutomatonBuilder().build({"index.yml": content})
+
+
+# --- actuator.defer: everything that must hold at build time -------------
+
+def _project_with_on_enter(on_enter_line: str) -> str:
+    return f"""
+project:
+  id: p
+  ui-label: P
+init-action:
+  target: a
+env:
+  reminder_days:
+    value: 3
+states:
+  a:
+    contextual-prompt: hi
+    actions:
+      - name: go
+        target: b
+        on-enter: |
+          {on_enter_line}
+  b:
+    contextual-prompt: there
+"""
+
+
+@pytest.mark.parametrize("when", [
+    "datetime.datetime(2030, 1, 1)",
+    "datetime.datetime(2030, 1, 1, 9, 0, tzinfo=datetime.timezone.utc)",
+    "datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)",
+    "datetime.datetime.now() - datetime.timedelta(hours=2)",
+    "datetime.timedelta(minutes=5) + datetime.datetime.now()",
+    "datetime.datetime.now() + datetime.timedelta(days=1) + datetime.timedelta(hours=env.reminder_days)",
+    "datetime.datetime.now() + datetime.timedelta(days=env.reminder_days)",
+    "datetime.datetime.now() + datetime.timedelta(days=signal.mood)",
+])
+def test_defer_accepts_a_when_of_datetime_shape(when):
+    content = _project_with_on_enter(f"actuator.defer(lambda: actuator.celebrate(), {when})").replace(
+        "env:\n", "signals:\n  mood:\n    definition: mood\nenv:\n"
+    )
+    automaton = AutomatonBuilder().build({"index.yml": content})
+    assert "actuator.defer" in automaton.states["a"].actions[0].on_enter
+
+
+@pytest.mark.parametrize("when", [
+    "env.reminder_days",
+    "'2030-01-01'",
+    "user.created_at",
+    "datetime.timedelta(days=1)",
+    "datetime.datetime.now() - datetime.datetime(2030, 1, 1)",
+])
+def test_defer_rejects_a_when_that_is_not_a_datetime_by_shape(when):
+    content = _project_with_on_enter(f"actuator.defer(lambda: actuator.celebrate(), {when})")
+    with pytest.raises(ValueError, match="`when` must be a datetime"):
+        AutomatonBuilder().build({"index.yml": content})
+
+
+def test_defer_rejects_a_string_inside_timedelta():
+    content = _project_with_on_enter(
+        "actuator.defer(lambda: actuator.celebrate(), datetime.datetime.now() + datetime.timedelta(days=user.name))"
+    )
+    with pytest.raises(ValueError, match="timedelta\\(\\) takes numbers"):
+        AutomatonBuilder().build({"index.yml": content})
+
+
+@pytest.mark.parametrize("act", ["actuator.celebrate", "actuator.celebrate()", "user.name", "lambda x: actuator.celebrate()"])
+def test_defer_rejects_a_first_argument_that_is_not_a_zero_argument_lambda(act):
+    content = _project_with_on_enter(f"actuator.defer({act}, datetime.datetime(2030, 1, 1))")
+    with pytest.raises(ValueError, match="lambda"):
+        AutomatonBuilder().build({"index.yml": content})
+
+
+def test_on_enter_may_not_reference_session_even_outside_a_defer():
+    """`session.*` is not part of the actuator scope at all (see
+    IdentifierRegistry.ACTUATOR_SCOPE_EXCLUDES): an on-enter line runs
+    inside a session today, but a deferred one won't — one scope, no
+    special case."""
+    content = _project_with_on_enter("actuator.notify('Hi', session.number_of_user_sessions())")
+    with pytest.raises(ValueError, match="undefined name\\(s\\): session.number_of_user_sessions"):
+        AutomatonBuilder().build({"index.yml": content})
+
+
+def test_on_enter_may_not_reference_session_metric_either():
+    content = _project_with_on_enter("actuator.defer(lambda: actuator.notify('Hi', session.metric.engagement()), datetime.datetime(2030, 1, 1))")
+    with pytest.raises(ValueError, match="undefined name\\(s\\): session.metric.engagement"):
+        AutomatonBuilder().build({"index.yml": content})
+
+
+def test_a_trigger_still_sees_session():
+    content = _project_with_on_enter("actuator.celebrate()").replace(
+        "        target: b\n", "        target: b\n        trigger: session.number_of_user_sessions() >= 1\n"
+    )
+    automaton = AutomatonBuilder().build({"index.yml": content})
+    assert automaton.states["a"].actions[0].trigger
+
+
+def test_defer_rejects_actuator_prompt_inside_the_lambda():
+    """actuator.prompt reads the firing session's own chat history — gone
+    by the time a deferred call runs — so it can only be called now."""
+    content = _project_with_on_enter(
+        "actuator.defer(lambda: actuator.notify('Later', actuator.prompt('Recap')), datetime.datetime(2030, 1, 1))"
+    )
+    with pytest.raises(ValueError, match="actuator.prompt\\(\\.\\.\\.\\) reads the conversation"):
+        AutomatonBuilder().build({"index.yml": content})
+
+
+def test_defer_accepts_actuator_prompt_evaluated_now_as_an_argument_of_when_free_code():
+    """The composition that does work: prompt now, defer the result."""
+    content = _project_with_on_enter(
+        "actuator.defer(lambda: actuator.notify('Later', env.reminder_days), datetime.datetime(2030, 1, 1))\n"
+        "          actuator.notify('Now', actuator.prompt('Recap'))"
+    )
+    automaton = AutomatonBuilder().build({"index.yml": content})
+    assert "actuator.prompt" in automaton.states["a"].actions[0].on_enter

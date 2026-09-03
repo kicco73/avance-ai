@@ -9,7 +9,8 @@ from automaton.automaton import manual_actions_for
 from chat.ws_adapter import WsAdapter
 from db.db import Db
 from events import EnvChanged, StateChanged, subscribe
-from jobs import CancelableJob, JobQueue
+from job import JobService
+from jobs import CancelableJob
 from logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
@@ -20,7 +21,6 @@ from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
-from tracking.system_facts import SystemFacts
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 from tracking.tracking_service import TrackingService
 from tracking.user_facts import UserFacts
@@ -53,13 +53,13 @@ class WakeupJob(CancelableJob):
 
 class WakeupService:
     def __init__(
-        self, db: Db, project_service: ProjectService, job_queue: JobQueue, actuator_factory: ActuatorSetFactory,
+        self, db: Db, project_service: ProjectService, job_service: JobService, actuator_factory: ActuatorSetFactory,
         ws_adapter: WsAdapter | None = None, tracking_service: TrackingService | None = None,
         ai_service: AiService | None = None,
     ) -> None:
         self._db = db
         self._project_service = project_service
-        self._job_queue = job_queue
+        self._job_service = job_service
         self._actuator_factory = actuator_factory
         # None whenever no websocket transport is configured — push is
         # simply skipped in that case; a re-evaluated self-loop is still
@@ -111,7 +111,6 @@ class WakeupService:
             project_context = FixedProjectContext(project_id=observer_project_id)
             env = PersistedEnv(self._db, project_context)
             metrics = MetricService(self._db, project_context)
-            system = SystemFacts()
             session_facts = SessionFacts(self._db, project_context)
             user_facts = UserFacts(self._db)
             # The real project_service here, unlike project_context above:
@@ -120,8 +119,8 @@ class WakeupService:
             # mechanism from "the current one's own active project".
             automaton_namespace = AutomatonNamespace(self._db, self._project_service)
             scope_builder = EvaluationScopeBuilder(
-                env, metrics, system, session_facts, user_facts, self._db, automaton_namespace, self._actuator_factory.live(),
-                ai_service=self._ai_service,
+                env, metrics, session_facts, user_facts, self._db, automaton_namespace,
+                self._actuator_factory.live(project_id=observer_project_id), ai_service=self._ai_service,
             )
             tracking_engine = TrackingEngine(DbTrackingSink(self._db), env, scope_builder)
 
@@ -158,4 +157,4 @@ class WakeupService:
                     })
 
     def _wake(self, username: str, observer_project_id: str) -> None:
-        self._job_queue.submit(WakeupJob(self, username, observer_project_id))
+        self._job_service.submit(WakeupJob(self, username, observer_project_id))

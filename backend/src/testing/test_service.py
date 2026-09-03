@@ -14,7 +14,8 @@ from automaton.automaton import Automaton
 from ai.ai_service import AiService
 from db import Db
 from db.tests import _USERNAME_UNSPECIFIED
-from jobs import CancelableJob, JobQueue
+from jobs import CancelableJob
+from jobs.job_queue import JobQueue
 from project.project_service import ProjectService
 from testing.errors import TestServiceError
 from testing.cache import TestCache

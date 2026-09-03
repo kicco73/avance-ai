@@ -19,14 +19,13 @@ from tracking.automaton_namespace import AutomatonNamespace
 from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.session_facts import SessionFacts
-from tracking.system_facts import SystemFacts
 from tracking.user_facts import UserFacts
 from chat.errors import ChatServiceError
 from chat.session_manager import ChatSessionManager, SessionNotWritable
 from chat.session_summary_manager import SessionSummaryManager
 from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from auth.roles import role_satisfies
-from jobs import JobQueue
+from job import JobService
 from logging_factory import LoggerFactory
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 from tracking.turn_callbacks import OnMetadata
@@ -46,7 +45,7 @@ class ChatService(object):
 		session_manager: ChatSessionManager,
 		tracking_service: TrackingService,
 		metric_service: MetricService,
-		job_queue: JobQueue,
+		job_service: JobService,
 		actuator_factory: ActuatorSetFactory,
 	) -> None:
 		self._db = db
@@ -57,12 +56,11 @@ class ChatService(object):
 		self._tracking_service = tracking_service
 		self.metric_service = metric_service
 		self._actuator_factory = actuator_factory
-		# Shares the general job_queue (see main.py's own wiring) —
+		# Shares the platform JobService (see main.py's own wiring) —
 		# never its own private queue.
-		self._session_summary_manager = SessionSummaryManager(db, ai_service, job_queue, session_manager)
+		self._session_summary_manager = SessionSummaryManager(db, ai_service, job_service, session_manager)
 		session_manager.set_session_summary_manager(self._session_summary_manager)
 		self.env = PersistedEnv(db, project_service)
-		self._system_facts = SystemFacts()
 		self._session_facts = SessionFacts(db, project_service)
 		self._user_facts = UserFacts(db)
 		self._automaton_namespace = AutomatonNamespace(db, project_service)
@@ -79,7 +77,7 @@ class ChatService(object):
 	def _tracking_engine_for_session(self, session_id: int) -> tuple[TrackingEngine, "ActuatorSet"]:
 		actuator_set = self._actuator_factory.for_session(session_id)
 		scope_builder = EvaluationScopeBuilder(
-			self.env, self.metric_service, self._system_facts, self._session_facts, self._user_facts,
+			self.env, self.metric_service, self._session_facts, self._user_facts,
 			self._db, self._automaton_namespace, actuator_set, ai_service=self._ai_service_for_session(session_id),
 		)
 		return TrackingEngine(DbTrackingSink(self._db), self.env, scope_builder), actuator_set
@@ -102,7 +100,7 @@ class ChatService(object):
 			tracking_engine, _ = self._tracking_engine_for_session(session_id)
 		else:
 			scope_builder = EvaluationScopeBuilder(
-				self.env, self.metric_service, self._system_facts, self._session_facts, self._user_facts,
+				self.env, self.metric_service, self._session_facts, self._user_facts,
 				self._db, self._automaton_namespace,
 			)
 			tracking_engine = TrackingEngine(DbTrackingSink(self._db), self.env, scope_builder)

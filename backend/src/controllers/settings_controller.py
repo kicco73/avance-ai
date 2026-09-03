@@ -14,7 +14,7 @@ from fastapi import HTTPException, Request, Response
 
 from chat.chat_service import ChatService
 from db import Db
-from jobs import JobQueue, stream_job_progress
+from job import JobService
 from testing.last_status_broadcaster import LastStatusBroadcaster
 from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from project.project_service import ProjectService
@@ -31,7 +31,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
 
     def __init__(
         self, chat_service: ChatService, project_service: ProjectService, db: Db, version: str,
-        test_event_broadcaster: QueueProgressBroadcaster | LastStatusBroadcaster, job_queue: JobQueue,
+        test_event_broadcaster: QueueProgressBroadcaster | LastStatusBroadcaster, job_service: JobService,
         services_config: dict,
     ) -> None:
         self.chat_service = chat_service
@@ -39,7 +39,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         self.db = db
         self.version = version
         self.test_event_broadcaster = test_event_broadcaster
-        self.job_queue = job_queue
+        self.job_service = job_service
         self.services_config = services_config
 
     @get("/api/settings/about", role="supervisor")
@@ -197,7 +197,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
             _, job = await self.project_service.put_project(content, content_type, self._activate_project)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return stream_job_progress(self.job_queue, self.test_event_broadcaster, job)
+        return self.job_service.stream_progress(job)
 
     @delete("/api/projects/{project_id}", role="admin")
     async def delete_project(self, project_id: str):

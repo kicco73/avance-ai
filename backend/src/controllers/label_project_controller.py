@@ -13,7 +13,7 @@ from fastapi import HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
 from chat.chat_service import ChatService
-from jobs import JobQueue, stream_job_progress
+from job import JobService
 from project.project_service import ProjectService
 from session import Session
 from testing.test_service import TestService
@@ -43,14 +43,14 @@ class LabelProjectController(BaseController):
         tracking_service: TrackingService,
         test_service: TestService,
         test_event_broadcaster: LastStatusBroadcaster,
-        job_queue: JobQueue,
+        job_service: JobService,
     ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
         self.tracking_service = tracking_service
         self.test_service = test_service
         self.test_event_broadcaster = test_event_broadcaster
-        self.job_queue = job_queue
+        self.job_service = job_service
 
     @get("/api/projects/{project_id}/tests/metrics", role="supervisor")
     def get_test_metrics(self, project_id: str, session_id: int | None = None):
@@ -69,7 +69,7 @@ class LabelProjectController(BaseController):
         — no separate status endpoint, no separate connection."""
         uploads = [(file.filename or "", await file.read()) for file in files]
         job = self.tracking_service.build_import_sessions_job(project_id, uploads)
-        return stream_job_progress(self.job_queue, self.test_event_broadcaster, job)
+        return self.job_service.stream_progress(job)
 
     @delete("/api/projects/{project_id}/sessions/imported", role="supervisor")
     def delete_imported_sessions(self, project_id: str):

@@ -15,7 +15,6 @@ from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
-from tracking.system_facts import SystemFacts
 from tracking.tracking_processor import UserVariables
 from tracking.user_facts import UserFacts
 from tracking.tracking_processor_user import TrackingProcessorAfterUserMessage
@@ -90,7 +89,7 @@ async def test_regeneration_call_does_not_request_signals(db):
     metrics = MetricService(db, project_service)
     env = PersistedEnv(db, project_service)
     scope_builder = EvaluationScopeBuilder(
-        env, metrics, SystemFacts(), SessionFacts(db, project_service), UserFacts(db), db
+        env, metrics, SessionFacts(db, project_service), UserFacts(db), db
     )
 
     processor = TrackingProcessorAfterUserMessage(
@@ -118,7 +117,7 @@ async def test_a_turn_that_fires_a_trigger_records_origin_trigger(db):
     metrics = MetricService(db, project_service)
     env = PersistedEnv(db, project_service)
     scope_builder = EvaluationScopeBuilder(
-        env, metrics, SystemFacts(), SessionFacts(db, project_service), UserFacts(db), db
+        env, metrics, SessionFacts(db, project_service), UserFacts(db), db
     )
 
     processor = TrackingProcessorAfterUserMessage(
@@ -147,7 +146,7 @@ async def test_regeneration_prompt_includes_existing_and_the_firing_actions_own_
     env = PersistedEnv(db, project_service)
     env.update({"greeting": "hi"})
     scope_builder = EvaluationScopeBuilder(
-        env, metrics, SystemFacts(), SessionFacts(db, project_service), UserFacts(db), db
+        env, metrics, SessionFacts(db, project_service), UserFacts(db), db
     )
 
     processor = TrackingProcessorAfterUserMessage(

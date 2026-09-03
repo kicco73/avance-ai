@@ -44,7 +44,10 @@ let view = null
 function completeIdentifiers(context) {
   const registry = identifierRegistry.value
   if (!props.excludeNamespaces.length) return completeIdentifiersFor(context, registry)
-  const filtered = Object.fromEntries(Object.entries(registry).filter(([ns]) => !props.excludeNamespaces.includes(ns)))
+  // By prefix, so excluding "session" also drops "session.metric" — same
+  // rule as the backend's IdentifierRegistry.excluding.
+  const excluded = (ns) => props.excludeNamespaces.some((x) => ns === x || ns.startsWith(x + '.'))
+  const filtered = Object.fromEntries(Object.entries(registry).filter(([ns]) => !excluded(ns)))
   return completeIdentifiersFor(context, filtered)
 }
 

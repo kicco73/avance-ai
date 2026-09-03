@@ -1,6 +1,6 @@
 """TriggerExpressionAnalyzer.type_violations — static (build-time) type-checking of a
 trigger expression's ordering comparisons (`<`/`<=`/`>`/`>=`). E.g.
-`system.today() >= 5` compares a date string against a number, which
+`user.name >= 5` compares a string against a number, which
 raises TypeError the instant it's actually evaluated.
 """
 from __future__ import annotations
@@ -22,39 +22,39 @@ def test_no_violation_for_a_bool_compared_to_a_number():
 
 
 def test_flags_a_string_returning_proxy_compared_numerically():
-    violations = TriggerExpressionAnalyzer.type_violations("system.today() >= 5")
+    violations = TriggerExpressionAnalyzer.type_violations("user.name >= 5")
     assert len(violations) == 1
-    assert "system.today()" in violations[0]
+    assert "user.name" in violations[0]
     assert "string" in violations[0]
     assert "number" in violations[0]
 
 
 def test_flags_regardless_of_operand_order():
-    assert len(TriggerExpressionAnalyzer.type_violations("5 <= system.today()")) == 1
+    assert len(TriggerExpressionAnalyzer.type_violations("5 <= user.name")) == 1
 
 
 def test_flags_only_the_offending_leg_of_a_chained_comparison():
-    violations = TriggerExpressionAnalyzer.type_violations("0 <= signal.mood < system.time()")
+    violations = TriggerExpressionAnalyzer.type_violations("0 <= signal.mood < user.email")
     assert len(violations) == 1
-    assert "system.time()" in violations[0]
+    assert "user.email" in violations[0]
 
 
 def test_two_string_typed_identifiers_may_be_compared():
     # Lexicographic string ordering is legal Python, not a type error.
-    assert TriggerExpressionAnalyzer.type_violations("system.today() >= system.time()") == []
+    assert TriggerExpressionAnalyzer.type_violations("user.name >= user.email") == []
 
 
 def test_equality_is_never_checked_regardless_of_type():
     # == and != never raise in Python, whatever the two types are.
-    assert TriggerExpressionAnalyzer.type_violations("system.today() == 5") == []
-    assert TriggerExpressionAnalyzer.type_violations("system.today() != signal.mood") == []
+    assert TriggerExpressionAnalyzer.type_violations("user.name == 5") == []
+    assert TriggerExpressionAnalyzer.type_violations("user.name != signal.mood") == []
 
 
 def test_no_violation_when_either_side_is_not_statically_typeable():
     # env.* is a free-form dynamic store (see Action.env's own
     # docstring) — never guessed at.
     assert TriggerExpressionAnalyzer.type_violations("env.visits >= 5") == []
-    assert TriggerExpressionAnalyzer.type_violations("system.today() >= env.threshold") == []
+    assert TriggerExpressionAnalyzer.type_violations("user.name >= env.threshold") == []
 
 
 def test_no_violation_for_two_unresolvable_operands():
@@ -77,5 +77,5 @@ def test_numeric_session_fields_are_not_flagged():
 
 
 def test_combines_multiple_violations_in_one_expression():
-    violations = TriggerExpressionAnalyzer.type_violations("system.today() >= 5 and system.time() <= 10")
+    violations = TriggerExpressionAnalyzer.type_violations("user.name >= 5 and user.email <= 10")
     assert len(violations) == 2

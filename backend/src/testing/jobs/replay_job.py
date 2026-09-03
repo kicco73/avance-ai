@@ -15,7 +15,6 @@ from tracking.env import Env, PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
-from tracking.system_facts import SystemFacts
 from tracking.tracking_engine import TestObservationSink, TrackingEngine
 from tracking.user_facts import UserFacts
 
@@ -134,11 +133,10 @@ class TestReplayJob(CancelableJob):
         if session is None:
             return [], f"session {session_id}: not found, skipped"
         env = self._build_seed_env(session)
-        system_facts = SystemFacts()
         session_facts = SessionFacts(db, FixedProjectContext(project_id=self._run['project_id']))
         user_facts = UserFacts(db)
         metrics = TestMetricsProvider(db, self._run['username'], self._run['project_id'], session_id)
-        scope_builder = EvaluationScopeBuilder(env, metrics, system_facts, session_facts, user_facts, db)
+        scope_builder = EvaluationScopeBuilder(env, metrics, session_facts, user_facts, db)
         sink = TestObservationSink(self._run['id'])
         tracking_engine = TrackingEngine(sink, env, scope_builder)
         self._signal_source = self._signal_source_cls(

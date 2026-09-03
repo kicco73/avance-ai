@@ -7,16 +7,15 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from jobs import Scheduler
+from automaton.automaton import DeferredExpression
+from job import JobService
 from logging_factory import LoggerFactory
 from notification.notification_service import NotificationService
 from session import Session
 
-from .deferred_job import DeferredActuatorJob
+from .deferred_task import DeferredActuatorTask, ScopeHydrator
 
 if TYPE_CHECKING:
-    from chat.ws_adapter import WsAdapter
-
     from .prompt_context import PromptContext
 
 logger = LoggerFactory.get_logger(__name__)
@@ -75,15 +74,20 @@ class ActuatorSet(ABC):
 
 
 class LiveActuatorSet(ActuatorSet):
+    """Always bound to one project: defer() hibernates its call under
+    (the current user, this project), the two things a Task row keys on
+    (see jobs/task.py) — never a session, which will be over by the
+    time a deferred call runs (see deferred_task.py)."""
 
     def __init__(
-        self, notification_service: NotificationService, scheduled_job_queue: Scheduler,
-        ws_adapter: "WsAdapter | None",
+        self, notification_service: NotificationService, job_service: JobService, hydrator: ScopeHydrator,
+        *, project_id: str,
     ) -> None:
         super().__init__()
         self._notification_service = notification_service
-        self._scheduled_job_queue = scheduled_job_queue
-        self._ws_adapter = ws_adapter
+        self._job_service = job_service
+        self._hydrator = hydrator
+        self._project_id = project_id
 
     def send_mail(self, to: str, body_md: str) -> str | None:
         # Raises (NotificationError) if this deployment's own .config.yml
@@ -94,8 +98,23 @@ class LiveActuatorSet(ActuatorSet):
         return None
 
     def defer(self, act: Callable[[], None], when: datetime) -> str | None:
-        job = DeferredActuatorJob(act, Session().user, self._ws_adapter)
-        self._scheduled_job_queue.submit(job, timestamp=when)
+        # Both refusals are unreachable from a built index.yml — the
+        # AutomatonBuilder already requires a zero-argument lambda and a
+        # datetime-shaped `when` (see TriggerExpressionAnalyzer.defer_violations);
+        # they guard the Python-level API only.
+        if not isinstance(act, DeferredExpression):
+            raise TypeError(
+                f"actuator.defer needs a `lambda: ...` evaluated from an on-enter line, got {type(act).__name__}."
+            )
+        if not isinstance(when, datetime):
+            raise TypeError(f"actuator.defer needs a datetime as `when`, got {type(when).__name__}.")
+        if act.scope.automaton.project_id != self._project_id:
+            raise ValueError(
+                f"actuator.defer: the lambda was evaluated for project '{act.scope.automaton.project_id}' "
+                f"but this actuator set belongs to '{self._project_id}'."
+            )
+        task = DeferredActuatorTask.from_expression(act, when, username=Session().user, hydrator=self._hydrator)
+        self._job_service.schedule(task, when)
         return None
 
 

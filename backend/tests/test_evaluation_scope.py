@@ -1,6 +1,6 @@
 """Tests for tracking.evaluation_scope.EvaluationScopeBuilder — the one
 place a trigger/`env:`-expression evaluation scope gets assembled: the
-`signal`/`env`/`system`/`session` namespaces plus any referenced core metric.
+`signal`/`env`/`session` namespaces plus any referenced core metric.
 """
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.sources import SourceNamespace
-from tracking.system_facts import SystemFacts
 from tracking.user_facts import UserFacts
 
 pytestmark = pytest.mark.contract
@@ -28,7 +27,7 @@ def _builder(db) -> EvaluationScopeBuilder:
     project_service = FixedProjectContext(project_id=PROJECT_ID)
     env = PersistedEnv(db, project_service)
     metrics = MetricService(db, project_service)
-    return EvaluationScopeBuilder(env, metrics, SystemFacts(), SessionFacts(db, project_service), UserFacts(db), db)
+    return EvaluationScopeBuilder(env, metrics, SessionFacts(db, project_service), UserFacts(db), db)
 
 
 def _automaton_with_trigger(trigger_expr: str, attachments: dict[str, MemoryArchive] | None = None) -> Automaton:
@@ -56,7 +55,6 @@ def test_scope_always_includes_every_namespace(db):
 
     assert set(scope["signal"]) == set()
     assert scope["env"] == {}
-    assert scope["system"].today().count("-") == 2
     assert scope["session"].number_of_user_sessions() == 0
     assert scope["session"].metric.engagement() is not None
     assert scope["user"]["email"] == USERNAME
@@ -180,3 +178,17 @@ def test_env_namespace_excludes_free_form_stored_values(db):
     scope = _builder(db).build(automaton, "a", {})
 
     assert "favorite_color" not in scope["env"]
+
+
+def test_the_actuator_view_of_a_scope_has_no_session(db):
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
+    automaton = _automaton_with_trigger("signal.mood >= 1")
+
+    scope = _builder(db).build(automaton, "a", {})
+    actuator_scope = scope.for_actuators()
+
+    assert "session" in scope
+    assert "session" not in actuator_scope
+    assert set(actuator_scope) == set(scope) - {"session"}
+    assert actuator_scope.automaton is automaton and actuator_scope.state_key == "a"

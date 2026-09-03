@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 
 import simpleeval
 
+from automaton.scope import EvaluationScope
+
 from logging_factory import LoggerFactory
 
 from .trigger_expression_analyzer import TriggerExpressionAnalyzer
@@ -142,16 +144,48 @@ def manual_actions_for(actions: list[ActionPayload], auto_tracking_enabled: bool
     return [a for a in actions if not a["has_trigger"] or not auto_tracking_enabled]
 
 
+class DeferredExpression(object):
+    """What a zero-argument `lambda:` in an on-enter line evaluates to:
+    a callable closing over the evaluator (hence its scope) and the
+    lambda's body, exactly like the plain closure it replaces — but one
+    that also *knows its own source* (`source`, the body re-emitted by
+    ast.unparse) and the EvaluationScope it was built against. Those two
+    are what let actuator.defer hibernate the call instead of holding a
+    live closure (see tracking/actuators/deferred_task.py)."""
+
+    def __init__(self, evaluator: "_OnEnterEval", body: ast.expr) -> None:
+        self._evaluator = evaluator
+        self._body = body
+        self.source: str = ast.unparse(body)
+
+    @property
+    def scope(self) -> EvaluationScope:
+        return self._evaluator.names
+
+    def __call__(self):
+        return self._evaluator._eval(self._body)
+
+    def __repr__(self) -> str:
+        return f"DeferredExpression({self.source!r})"
+
+
 class _OnEnterEval(simpleeval.SimpleEval):
-    def __init__(self, names: dict) -> None:
+    """Evaluates one on-enter line. Only ever against an EvaluationScope
+    — a plain dict has no automaton/state to hibernate a deferred call
+    with, so it is refused up front rather than failing at defer time."""
+
+    names: EvaluationScope
+
+    def __init__(self, names: EvaluationScope) -> None:
+        if not isinstance(names, EvaluationScope):
+            raise TypeError(f"_OnEnterEval needs an EvaluationScope, got {type(names).__name__}.")
         super().__init__(names=names)
         self.nodes[ast.Lambda] = self._eval_lambda
 
     def _eval_lambda(self, node: ast.Lambda):
         if node.args.args or node.args.vararg or node.args.kwonlyargs or node.args.kwarg or node.args.posonlyargs:
             raise simpleeval.FeatureNotAvailable("Sorry, only zero-argument lambdas are supported.")
-        body = node.body
-        return lambda: self._eval(body)
+        return DeferredExpression(self, node.body)
 
 class SignalPayload(TypedDict):
     name: str
@@ -398,7 +432,7 @@ class Automaton(object):
         return result
 
     @staticmethod
-    def render_on_enter(action: Action, scope: dict[str, Any]) -> str | None:
+    def render_on_enter(action: Action, scope: EvaluationScope) -> str | None:
         """Evaluates `action.on_enter` — the same namespaced-expression
         grammar as `trigger`/`env` (one call per non-blank line, e.g.
         `actuator.celebrate()` / `actuator.notify(user.name, "Hi!")`) —
@@ -411,13 +445,14 @@ class Automaton(object):
         nothing, same resilience as eval_action_env."""
         if not action.on_enter:
             return None
+        actuator_scope = scope.for_actuators(action_name=action.name)
         snippets = []
         for line in action.on_enter.splitlines():
             line = line.strip()
             if not line:
                 continue
             try:
-                result = _OnEnterEval(names=scope).eval(line)
+                result = _OnEnterEval(names=actuator_scope).eval(line)
             except Exception as exc:
                 logger.warning(
                     "on-enter expression evaluation failed for action '%s' ('%s'): %s",

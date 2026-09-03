@@ -51,5 +51,5 @@ def test_a_non_self_loop_action_referencing_automaton_env_is_rejected():
 
 
 def test_a_non_self_loop_action_with_no_automaton_reference_still_builds_fine():
-    automaton = _build("system.today() != None", target="b")
+    automaton = _build("user.name != None", target="b")
     assert automaton.states["a"].actions[0].target == "b"

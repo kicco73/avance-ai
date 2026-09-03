@@ -381,7 +381,7 @@ function selectAttachment(fileName) {
               <span class="inspector-py-field-icon" title="Python expression">PY</span>
               On enter
             </label>
-            <TriggerEditor v-model="editOnEnter" @click.stop @blur="commitOnEnter" />
+            <TriggerEditor v-model="editOnEnter" :exclude-namespaces="['session']" @click.stop @blur="commitOnEnter" />
             <p class="inspector-detail-field">
               <template v-if="!selectedElement.data.isInitEdge"><strong>{{ stateLabelFor(selectedElement.data.source) }}</strong> → </template>
               <select

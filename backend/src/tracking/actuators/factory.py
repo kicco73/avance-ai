@@ -3,36 +3,56 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from db import Db
-from jobs import AbstractJobQueue, Scheduler
+from job import JobService
 from notification.notification_service import NotificationService
 
 from .actuator_set import ActuatorSet, FakeActuatorSet, LiveActuatorSet
+from .deferred_task import DeferredActuatorTask, ScopeHydrator
 
 if TYPE_CHECKING:
     from chat.ws_adapter import WsAdapter
+    from project.project_service import ProjectService
 
 
 class ActuatorSetFactory:
+    """Registers the actuator.defer task type with the JobService at
+    construction — before the service is started (main.py starts it
+    last), so a hibernated row can never be claimed with nobody to
+    hydrate it. The websocket adapter is the one late binding left
+    (WsAdapter needs ChatService, which needs this factory): a task
+    reads it through the hydrator at run time, and no task runs before
+    main.py has bound it and started the JobService."""
 
-    def __init__(self, notification_service: NotificationService, db: Db, job_queue: AbstractJobQueue) -> None:
+    def __init__(
+        self, notification_service: NotificationService, db: Db, job_service: JobService,
+        project_service: "ProjectService",
+    ) -> None:
         self._notification_service = notification_service
         self._db = db
+        self._job_service = job_service
         self._enabled_test_sessions: set[int] = set()
-        self._scheduler = Scheduler(job_queue)
         self._ws_adapter: "WsAdapter | None" = None
+        self._hydrator = ScopeHydrator(db, project_service, self)
+        job_service.register_task_type(DeferredActuatorTask.TYPE, self._hydrator.hydrate)
 
     def set_ws_adapter(self, ws_adapter: "WsAdapter") -> None:
         self._ws_adapter = ws_adapter
 
-    def live(self) -> LiveActuatorSet:
-        return LiveActuatorSet(self._notification_service, self._scheduler, self._ws_adapter)
+    @property
+    def ws_adapter(self) -> "WsAdapter | None":
+        return self._ws_adapter
+
+    def live(self, *, project_id: str) -> LiveActuatorSet:
+        """Bound to `project_id`: what a deferred call is hibernated under."""
+        return LiveActuatorSet(self._notification_service, self._job_service, self._hydrator, project_id=project_id)
 
     def for_session(self, session_id: int) -> ActuatorSet:
         session = self._db.get_chat_session(session_id)
-        is_test = session is not None and session["type"] == "test"
-        if not is_test or self.is_enabled_for_test_session(session_id):
-            return self.live()
-        return FakeActuatorSet()
+        if session is None:
+            raise FileNotFoundError(f"Session {session_id} does not exist.")
+        if session["type"] == "test" and not self.is_enabled_for_test_session(session_id):
+            return FakeActuatorSet()
+        return self.live(project_id=session["project_id"])
 
     def is_enabled_for_test_session(self, session_id: int) -> bool:
         return session_id in self._enabled_test_sessions

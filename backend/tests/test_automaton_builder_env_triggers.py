@@ -30,11 +30,12 @@ states:
 """
 
 
-@pytest.mark.parametrize("attr", sorted(IdentifierRegistry.SYSTEM))
-def test_a_trigger_may_reference_any_system_attr(attr):
-    content = _project(f"system.{attr}() != None")
-    automaton = AutomatonBuilder().build({"index.yml": content})
-    assert automaton.states["a"].actions[0].trigger == f"system.{attr}() != None"
+def test_a_trigger_may_not_reference_the_retired_system_namespace():
+    """`system.*` (today/time) is gone — a bare name outside every
+    reserved namespace, so it fails validation like any other unknown."""
+    content = _project("system.today() != None")
+    with pytest.raises(ValueError, match="undefined name"):
+        AutomatonBuilder().build({"index.yml": content})
 
 
 @pytest.mark.parametrize("attr", sorted(IdentifierRegistry.SESSION))
@@ -150,10 +151,10 @@ states:
 
 
 def test_a_trigger_comparing_a_string_typed_identifier_against_a_number_is_rejected():
-    """system.today() is a date string, never a number, so comparing it
+    """user.name is a string, never a number, so comparing it
     with `>=` is caught statically at build time."""
-    content = _project_with_mood_signal("system.today() >= 5")
-    with pytest.raises(ValueError, match="system.today\\(\\).*>=.*5"):
+    content = _project_with_mood_signal("user.name >= 5")
+    with pytest.raises(ValueError, match="user.name.*>=.*5"):
         AutomatonBuilder().build({"index.yml": content})
 
 

@@ -310,17 +310,16 @@ imports, no calling anything else):
 signal.mood >= 70
 engagement >= 20 and retention >= 1
 (signal.mood >= 40 and engagement >= 10) or signal_stability < 20
-session.number_of_user_sessions() >= 3 and system.time() > "18:00:00"
+session.number_of_user_sessions() >= 3 and session.state_duration_in_minutes() > 30
 user.role == "admin"
 ```
 
-Eight reserved namespaces, each resolving to a dict-or-proxy object:
+Seven reserved namespaces, each resolving to a dict-or-proxy object:
 
 | Namespace | Resolves to | Access |
 | --- | --- | --- |
 | `signal.<name>` | A signal declared in this project's own `signals:` | attribute (a value, or `None` before it's ever been computed) |
 | `env.<name>` | A key **declared** in this project's own top-level `env:` section (§6.3) — never a model-reported free-form value | attribute |
-| `system.<name>` | An engine fact independent of any user/session (`today`, `time`) | **call** — `system.today()`, not `system.today` |
 | `session.<name>` | An engine fact about the current user+project's own session/transition history (`current_session_duration_in_minutes`, `last_user_session_datetime`, `number_of_user_sessions`, `state_duration_in_minutes`) | **call** — `session.number_of_user_sessions()`, not the bare attribute |
 | `user.<name>` | A field of the current user's own account (`email`, `name`, `picture_url`, `provider`, `provider_user_id`, `created_at`, `last_login`, `active_project`, `role`) | attribute — same as `env.<name>`, never called |
 | `source.<name>(...)` | A **data source** — see below | **call**, with its own arguments |
@@ -394,7 +393,7 @@ own — this table just lists what's currently available.
 
 Every reference is validated at build/upload time: `signal.<name>` must
 name a declared signal, `env.<name>` must name a key **some** action's
-own `env:` field sets somewhere in the project, `system.<name>`/
+own `env:` field sets somewhere in the project,
 `session.<name>`/`user.<name>`/`source.<name>` must be
 one of the fixed names above, and a bare name must be a recognized metric — anything
 else fails with an "undefined name(s)" error, and a syntactically
@@ -413,7 +412,7 @@ logged and also treated as `false` — a trigger can never crash a turn.
 Every project also has a free-form **environment memory**: `key: value`
 facts the model itself reports (always strings — see the
 `[env]...[/env]` block every prompt embeds) persisted per user+project
-and rendered back into every subsequent prompt. `system`/`session`
+and rendered back into every subsequent prompt. `session`
 facts (§6.2) are never part of this — they're evaluation-scope-only,
 never rendered into any prompt.
 
@@ -446,7 +445,7 @@ Declaring a key here only makes it a legitimate `env.<name>` reference
 and gives it a default — it does **not** by itself update that key on
 any given turn. Each entry in an action's own `env:` field is `key:
 expression`, evaluated with the exact same namespaced scope/mechanics as
-`trigger` (§6.2: `signal.`/`env.`/`system.`/`session.`/`user.`/
+`trigger` (§6.2: `signal.`/`env.`/`session.`/`user.`/
 `source.`, plus any bare metric name), just without the boolean cast —
 a result can be any simple value (string, number, bool, `None`, ...),
 not only true/false:
@@ -504,11 +503,16 @@ action that set them firing again.
 ### 6.4 Action `on-enter`
 
 An action's `on-enter` field is one or more `actuator.<name>(...)`
-calls, one per non-blank line, each evaluated with the exact same
-namespaced scope/mechanics as `trigger`/`env` (§6.2, plus `actuator`
-itself — see the reserved-namespaces note above) as a side effect of
-the action firing (manually or via its `trigger`), same timing as
-`env:` (§6.3):
+calls, one per non-blank line, each evaluated with the same
+namespaced scope/mechanics as `trigger`/`env` (§6.2) as a side effect
+of the action firing (manually or via its `trigger`), same timing as
+`env:` (§6.3) — with one difference of scope: `on-enter` sees
+`actuator` (which `trigger`/`env` never do) and does **not** see
+`session.*` (nor `session.metric.*`). An on-enter call may be deferred
+(`actuator.defer`, below) to a moment long after the session that fired
+it is over, so the whole on-enter scope is built without a session
+rather than allowing it in some calls and not others; the editor's
+autocomplete reflects the same split.
 
 ```yaml
 on-enter: |
@@ -533,13 +537,29 @@ in YAML. Five exist today:
   own job queue — fire-and-forget, never awaited by the turn that
   triggered it — with no frontend-visible effect at all.
 - `actuator.defer(act, when)` schedules another actuator call to run
-  later, at `when` — a **timezone-aware** `datetime.datetime` (§6.2), e.g.
-  `datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)`.
-  `act` is a zero-argument lambda wrapping the actual call, e.g.
-  `actuator.defer(lambda: actuator.send_mail(user.email, 'Reminder'), when)`
-  — everything inside that lambda is validated exactly like a top-level
-  `on-enter:` call (arity included), but only actually runs, server-side,
-  once `when` arrives.
+  later, at `when`. `act` **must** be a zero-argument `lambda:` wrapping
+  the actual call, and `when` **must** be a datetime by its shape:
+  `datetime.datetime(...)` or `datetime.datetime.now(...)`, optionally
+  `±` one or more `datetime.timedelta(...)` — e.g.
+  `actuator.defer(lambda: actuator.send_mail(user.email, 'Reminder'),
+  datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=env.reminder_days))`.
+  A `timedelta`'s arguments may come from `env.*`/`signal.*` (any
+  number), but `when` itself can never be a bare `env.<key>` or a
+  string; both rules, and everything inside the lambda (arity included),
+  are checked at build/upload time, so a project that builds can always
+  schedule. A naive datetime is read as UTC.
+
+  A deferred call is a **task**: it is hibernated in the database the
+  moment `defer` runs (as the lambda's source text plus a snapshot of
+  `signal`, `env` and `user` as they were at that moment), keyed on the
+  current user and this project at its published revision, and rebuilt
+  only when `when` arrives — restarts and deploys change nothing about
+  when it runs, a republish never reinterprets it, and deleting the
+  project or erasing the user removes it. Inside the lambda, `user`,
+  `signal` and `env` therefore read as they were when deferred, while
+  `actuator`, `metric`, `source` and `automaton` are live at run time
+  (a deferred call may itself `defer`, and the chain is hibernated too).
+  `session.*` is not available anywhere in `on-enter` (see above).
 - `actuator.prompt(prompt)` runs one extra, **synchronous, read-only**
   model call and returns its reply text (a plain string), for another
   actuator call in the same `on-enter` to use — most often
@@ -653,7 +673,7 @@ how you're likely to hit them:
 - Every action's `trigger`, if given, is syntactically valid and every
   reference resolves: `signal.<name>` to a declared signal, `env.<name>`
   to a key declared in the project's own top-level `env:` section (§2,
-  §6.3), `system.<name>`/`session.<name>` to one of the fixed proxy methods,
+  §6.3), `session.<name>` to one of the fixed proxy methods,
   `user.<name>` to one of the fixed user fields, `source.<name>` to one
   of the fixed data sources (§6.2), `automaton.<id>`/`automaton.<id>.env.<key>`
   to another project that declares the same `family` as this one (§2.1,

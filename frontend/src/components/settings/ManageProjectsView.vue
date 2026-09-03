@@ -367,34 +367,44 @@ defineExpose({ refresh: load })
       <table v-else class="manage-projects-table">
         <tbody>
           <tr v-for="row in rows" :key="row.id">
-            <td class="manage-projects-name">
-              <div
-                class="project-card"
-                role="button"
-                tabindex="0"
-                title="Open chat"
-                @click="selectChat(row.id)"
-                @keydown.enter="selectChat(row.id)"
-                @keydown.space.prevent="selectChat(row.id)"
-              >
-                <img
-                  v-if="iconFileById[row.id] && !iconFailedById[row.id]"
-                  :src="projectFileContentUrl(row.id, iconFileById[row.id])"
-                  class="project-card-icon"
-                  alt=""
-                  @error="iconFailedById[row.id] = true"
+            <td class="manage-projects-col-status-actions">
+              <div class="manage-projects-status-actions-row">
+                <StatusToggleButton
+                  :status="row.status"
+                  :disabled="row.status === 'paused' || togglingProject === row.id"
+                  :title="statusTitle(row)"
+                  @click="toggleStatus(row)"
                 />
-                <img v-else :src="avanceLogoUrl" class="project-card-fallback-logo" alt="" />
-                <span class="project-card-body">
+              </div>
+            </td>
+            <td class="manage-projects-name">
+              <div class="project-card">
+                <button type="button" class="project-card-icon-btn" title="Open chat" @click="selectChat(row.id)">
+                  <img
+                    v-if="iconFileById[row.id] && !iconFailedById[row.id]"
+                    :src="projectFileContentUrl(row.id, iconFileById[row.id])"
+                    class="project-card-icon"
+                    alt=""
+                    @error="iconFailedById[row.id] = true"
+                  />
+                  <img v-else :src="avanceLogoUrl" class="project-card-fallback-logo" alt="" />
+                </button>
+                <button type="button" class="project-card-body" title="Edit project" @click="selectEdit(row.id)">
                   <span class="project-card-title-row">
                     <span class="project-card-title">{{ projectTitle(row.id) }}</span>
                     <span v-if="row.published_revision != null" class="project-card-rev">rev. {{ row.published_revision }}</span>
                   </span>
                   <span v-if="projectDescription(row.id)" class="project-card-desc">{{ projectDescription(row.id) }}</span>
-                </span>
-                <!-- Own click/keydown stop: this sits inside the card's own
-                     "open chat" click target above, and must never trigger it. -->
-                <div class="project-card-menu" @click.stop @keydown.stop>
+                  <!-- Hover/focus-only hint that clicking the body enters
+                       edit — the icon button above stays its own separate
+                       "open chat" target, so this only overlays the body. -->
+                  <span class="project-card-edit-hint">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+                    </svg>
+                  </span>
+                </button>
+                <div class="project-card-menu" @click.stop>
                   <div class="manage-projects-actions-menu">
                     <button type="button" class="manage-projects-menu-btn" title="More actions" @click="toggleActionsMenu(row.id)">⋮</button>
                     <Transition name="manage-projects-menu-panel">
@@ -443,23 +453,9 @@ defineExpose({ refresh: load })
                 </div>
               </div>
             </td>
-            <td class="manage-projects-col-status-actions">
-              <div class="manage-projects-status-actions-row">
-                <button type="button" class="manage-projects-edit-btn" title="Edit project" @click="selectEdit(row.id)">
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-                  </svg>
-                </button>
-                <StatusToggleButton
-                  :status="row.status"
-                  :disabled="row.status === 'paused' || togglingProject === row.id"
-                  :title="statusTitle(row)"
-                  @click="toggleStatus(row)"
-                />
-              </div>
-            </td>
           </tr>
           <tr v-if="uploading">
+            <td class="manage-projects-col-status-actions"></td>
             <td class="manage-projects-name">
               <div class="project-card project-card-placeholder">
                 <span class="project-card-icon-wrap">
@@ -483,7 +479,6 @@ defineExpose({ refresh: load })
                 </span>
               </div>
             </td>
-            <td class="manage-projects-col-status-actions"></td>
           </tr>
         </tbody>
       </table>
@@ -671,7 +666,12 @@ defineExpose({ refresh: load })
 }
 
 .manage-projects-table {
-  width: 100%;
+  /* No width: 100% — with table-layout: fixed and only two columns of
+     fixed width now (the play/pause button and the card, see below),
+     a stretched table would proportionally grow both on a wide screen
+     instead of just leaving the rest of the row unused. Auto-width
+     shrinks the table to those columns' own combined width and keeps
+     it left-aligned, same as any other block-level element. */
   table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.88rem;
@@ -679,6 +679,7 @@ defineExpose({ refresh: load })
 
 .manage-projects-name {
   width: 320px;
+  padding: 0 0.75rem 0 0;
 }
 
 .manage-projects-table td {
@@ -687,7 +688,13 @@ defineExpose({ refresh: load })
 }
 
 .manage-projects-col-status-actions {
-  width: 96px;
+  /* Column width = the button's own 2.88rem plus this column's own
+     (reduced) right padding — table-layout: fixed treats the declared
+     width as the column's whole allotment, so the padding must be
+     added on top here or the button would overflow it. */
+  width: 3.13rem;
+  padding-left: 0;
+  padding-right: 0.25rem;
 }
 
 .manage-projects-status-actions-row {
@@ -702,7 +709,11 @@ defineExpose({ refresh: load })
   position: relative;
   box-sizing: border-box;
   display: flex;
-  align-items: center;
+  /* stretch, not center — the icon/body buttons below must each span
+     the card's full height themselves, or hovering/clicking the empty
+     vertical space beside a short title (no description) would miss
+     both the edit hint and the edit click target entirely. */
+  align-items: stretch;
   gap: 0.6rem;
   width: 100%;
   max-width: 320px;
@@ -713,14 +724,6 @@ defineExpose({ refresh: load })
   border: 1px solid #eee;
   border-radius: 8px;
   background: #fafafa;
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
-}
-
-.project-card:hover {
-  border-color: #4a6fa5;
-  background: #f3f6fb;
 }
 
 /* The "..." more-actions menu — top-right corner of the card itself
@@ -738,12 +741,25 @@ defineExpose({ refresh: load })
   font-size: 1rem;
 }
 
+.project-card-icon-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 15px;
+  background: none;
+  cursor: pointer;
+}
+
 .project-card-icon {
   flex-shrink: 0;
   width: 65px;
   height: 65px;
   border-radius: 15px;
   object-fit: cover;
+  transition: transform 0.15s ease;
 }
 
 .project-card-fallback-logo {
@@ -752,6 +768,14 @@ defineExpose({ refresh: load })
   height: 65px;
   object-fit: contain;
   opacity: 0.25;
+  transition: transform 0.15s ease;
+}
+
+.project-card-icon-btn:hover .project-card-icon,
+.project-card-icon-btn:hover .project-card-fallback-logo,
+.project-card-icon-btn:focus-visible .project-card-icon,
+.project-card-icon-btn:focus-visible .project-card-fallback-logo {
+  transform: scale(1.12);
 }
 
 .project-card-body {
@@ -759,7 +783,38 @@ defineExpose({ refresh: load })
   min-width: 0;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 0.1rem;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Hidden until the body itself is hovered/focused — hints that clicking
+   it (as opposed to the icon button, which opens live chat instead)
+   enters edit. Sized off .project-card itself (the nearest positioned
+   ancestor, since project-card-body no longer is one) so it covers the
+   whole card, not just the body's own narrower box. */
+.project-card-edit-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(74, 111, 165, 0.04);
+  color: #4a6fa5;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.project-card-body:hover .project-card-edit-hint,
+.project-card-body:focus-visible .project-card-edit-hint {
+  opacity: 1;
 }
 
 .project-card-title-row {
@@ -853,24 +908,6 @@ defineExpose({ refresh: load })
   border-radius: 999px;
   background: #4a6fa5;
   transition: width 0.3s ease;
-}
-
-.manage-projects-edit-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.88rem;
-  height: 2.88rem;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: #4a6fa5;
-  cursor: pointer;
-}
-
-.manage-projects-edit-btn:hover {
-  background: #f0f4fa;
 }
 
 .manage-projects-actions-menu {

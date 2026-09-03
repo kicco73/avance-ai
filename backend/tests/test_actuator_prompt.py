@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from automaton.automaton import Action, Automaton, Signal, State, _OnEnterEval
+from automaton.scope import EvaluationScope
 from conftest import FakeAiService, parse_sse_result
 from db import Db
 from tracking.actuators.actuator_set import FakeActuatorSet, LiveActuatorSet
@@ -88,7 +89,7 @@ async def test_prompt_context_leaves_no_message_persisted(db: Db):
 
 def test_actuator_set_prompt_returns_empty_string_with_no_bound_context():
     assert FakeActuatorSet().prompt("Say hi.") == ""
-    assert LiveActuatorSet(notification_service=None, scheduled_job_queue=None, ws_adapter=None).prompt("Say hi.") == ""
+    assert LiveActuatorSet(notification_service=None, job_service=None, hydrator=None, project_id="p").prompt("Say hi.") == ""
 
 
 async def test_with_prompt_context_never_mutates_the_original_instance(db: Db):
@@ -113,7 +114,8 @@ async def test_on_enter_can_compose_prompt_with_notify(db: Db):
     context = PromptContext(ai_service, db, Env(), automaton, state, session_id)
     actuator = FakeActuatorSet().with_prompt_context(context)
 
-    result = _OnEnterEval(names={"actuator": actuator}).eval(
+    scope = EvaluationScope({"actuator": actuator}, automaton=automaton, state_key="a")
+    result = _OnEnterEval(names=scope).eval(
         "actuator.notify('Note', actuator.prompt('Summarize the situation.'))"
     )
 

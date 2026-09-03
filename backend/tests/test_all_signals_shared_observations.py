@@ -12,7 +12,7 @@ import time
 
 import pytest
 
-from jobs import JobQueue
+from jobs.job_queue import JobQueue
 from testing.test_service import AllSignalsAggregationJob
 from testing.jobs.base import _AggregationJob
 
