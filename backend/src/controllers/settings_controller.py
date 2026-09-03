@@ -100,6 +100,16 @@ class SettingsController(BaseController, ProjectCommitMixin):
             self.project_service.wipe_all_live_sessions()
         return {"success": True}
 
+    @post("/api/settings/database/clean-unused-revisions", role="admin")
+    async def post_clean_unused_revisions(self):
+        """Settings > Manage services > Database — deletes every archive
+        revision, across every project, that's neither published, the
+        current draft, nor pinned by any session (see
+        ProjectService.clean_unused_revisions)."""
+        async with self.chat_service.global_exclusive_access():
+            deleted = self.project_service.clean_unused_revisions()
+        return {"success": True, "deleted": deleted}
+
     @get("/api/projects")
     def get_projects(self):
         username = Session().user if Session().role == 'user' else None

@@ -267,3 +267,58 @@ def test_archive_content_type_is_persisted_and_updated_on_resave(db):
 
     db.save_project_file("user", "proj", "logo.png", b"\x89PNG-2", "image/png")
     assert db.get_archive_content_type("proj", "logo.png") == "image/png"
+
+
+@pytest.mark.regression
+def test_delete_unused_archive_revisions_removes_a_superseded_unpublished_draft(db):
+    db.save_project_files("proj", {"index.yml": b"v0"}, {"index.yml": "text/yaml"})
+    db.publish_project("proj")  # revision 0 published
+    db.save_project_files("proj", {"index.yml": b"v1"}, {"index.yml": "text/yaml"})  # forks to revision 1
+    db.publish_project("proj")  # revision 1 published — revision 0 is now unused
+    db.save_project_files("proj", {"index.yml": b"v2"}, {"index.yml": "text/yaml"})  # forks to revision 2 (draft)
+
+    deleted = db.delete_unused_archive_revisions()
+
+    assert deleted == 1
+    assert db.list_archives("proj", revision=0) == []
+    assert db.list_archives("proj", revision=1) == ["index.yml"]  # published, kept
+    assert db.list_archives("proj", revision=2) == ["index.yml"]  # current draft, kept
+
+
+@pytest.mark.regression
+def test_delete_unused_archive_revisions_keeps_a_revision_pinned_by_a_session(db):
+    db.save_project_files("proj", {"index.yml": b"v0"}, {"index.yml": "text/yaml"})
+    db.publish_project("proj")  # revision 0 published
+    db.create_chat_session(username="user", project_id="proj", revision=0, start_state="a")
+    db.save_project_files("proj", {"index.yml": b"v1"}, {"index.yml": "text/yaml"})  # forks to revision 1
+    db.publish_project("proj")  # revision 1 published — revision 0 is unpublished now, but still pinned by a session
+
+    deleted = db.delete_unused_archive_revisions()
+
+    assert deleted == 0
+    assert db.list_archives("proj", revision=0) == ["index.yml"]
+
+
+@pytest.mark.regression
+def test_delete_unused_archive_revisions_covers_every_project_at_once(db):
+    db.save_project_files("proj-a", {"index.yml": b"a-v0"}, {"index.yml": "text/yaml"})
+    db.publish_project("proj-a")
+    db.save_project_files("proj-a", {"index.yml": b"a-v1"}, {"index.yml": "text/yaml"})
+    db.publish_project("proj-a")  # proj-a's revision 0 is now unused
+
+    db.save_project_files("proj-b", {"index.yml": b"b-v0"}, {"index.yml": "text/yaml"})
+    db.publish_project("proj-b")  # proj-b has a single revision — nothing to clean
+
+    deleted = db.delete_unused_archive_revisions()
+
+    assert deleted == 1
+    assert db.list_archives("proj-a", revision=0) == []
+    assert db.list_archives("proj-b", revision=0) == ["index.yml"]
+
+
+@pytest.mark.contract
+def test_delete_unused_archive_revisions_is_a_noop_when_nothing_is_unused(db):
+    db.save_project_files("proj", {"index.yml": b"v0"}, {"index.yml": "text/yaml"})
+    db.publish_project("proj")
+
+    assert db.delete_unused_archive_revisions() == 0

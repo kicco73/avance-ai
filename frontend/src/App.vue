@@ -21,6 +21,7 @@ import {
   activateProject,
   deleteProject,
   postWipeAllLiveSessions,
+  postCleanUnusedRevisions,
   downloadProject,
   getBackup,
   postRestoreBackup,
@@ -326,6 +327,25 @@ async function handleWipeAllLiveSessions() {
   }
 }
 
+// Settings > Manage services > Database's own confirm already ran (see
+// ServicesView.vue's selectCleanUnusedRevisions) — this performs it, then
+// reports how many revisions actually came out, the one action here
+// whose whole point is a number the operator can't see any other way.
+async function handleCleanUnusedRevisions() {
+  let deleted
+  try {
+    ({ deleted } = await postCleanUnusedRevisions())
+  } catch {
+    return // already surfaced via apiFetch
+  }
+  await infoDialog({
+    title: 'Clean unused revisions',
+    body: deleted > 0
+      ? `Deleted ${deleted} unused revision${deleted === 1 ? '' : 's'}.`
+      : 'No unused revisions found.'
+  })
+}
+
 // Whole-database download (every project, session, message, signal — not
 // scoped to the active project), unlike handleModelDownload's per-project
 // zip. No UI state changes on success, same reasoning as that one.
@@ -550,6 +570,7 @@ onBeforeUnmount(() => {
             @download-backup="handleDownloadBackup"
             @restore-backup="handleRestoreBackup"
             @wipe-live-sessions="handleWipeAllLiveSessions"
+            @clean-unused-revisions="handleCleanUnusedRevisions"
             @profile="openProfile"
             @logout="handleLogout"
           />

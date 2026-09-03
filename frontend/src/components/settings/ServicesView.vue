@@ -26,7 +26,7 @@ defineProps({
 // pass-through — App.vue owns the actual fetch + confirmation logic for
 // backup restore, same as it always has; this view confirms the wipe
 // itself, same as Manage projects' own per-project wipe used to.
-const emit = defineEmits(['close', 'download-backup', 'restore-backup', 'wipe-live-sessions', 'profile', 'logout'])
+const emit = defineEmits(['close', 'download-backup', 'restore-backup', 'wipe-live-sessions', 'clean-unused-revisions', 'profile', 'logout'])
 
 const TABS = [
   { id: 'ai', label: 'AI' },
@@ -184,6 +184,19 @@ async function selectWipeAllLiveSessions() {
   if (!ok) return
   emit('wipe-live-sessions')
 }
+
+// Only ever removes archive revisions that are already unreachable
+// (superseded drafts, never published, no session pinned to them) — safe
+// by construction, unlike the wipe above, so no danger styling.
+async function selectCleanUnusedRevisions() {
+  const ok = await confirmDialog({
+    title: 'Clean unused revisions',
+    body: 'Delete every project revision that is not published and not used by any session? This cannot be undone.',
+    okLabel: 'Clean'
+  })
+  if (!ok) return
+  emit('clean-unused-revisions')
+}
 </script>
 
 <template>
@@ -328,6 +341,7 @@ async function selectWipeAllLiveSessions() {
                 />
               </label>
               <button type="button" class="services-action-btn services-action-btn-danger" @click="selectWipeAllLiveSessions">Wipe all live sessions</button>
+              <button type="button" class="services-action-btn" @click="selectCleanUnusedRevisions">Clean unused revisions</button>
             </div>
           </div>
         </div>

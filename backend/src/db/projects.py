@@ -370,6 +370,39 @@ class ProjectMixin:
             EditHistory.delete().where(EditHistory.project_id == project_id).execute()
             self.delete_draft_test_sessions(project_id)
 
+    def delete_unused_archive_revisions(self) -> int:
+        """Settings > Manage services > Data > "Clean unused revisions" —
+        deletes every Archive row belonging to a revision that's neither
+        a project's current draft/published revision nor pinned by any
+        session (see ChatSession.project_revision), across every project
+        at once. Frees space accumulated by _ensure_draft_revision's own
+        fork-on-edit and import_new_revision's history of superseded
+        uploads. Returns how many distinct revisions were removed (a
+        revision may span several Archive rows, one per file)."""
+        deleted_revisions = 0
+        with database.atomic():
+            for project in Project.select(Project.id, Project.revision, Project.published_revision):
+                keep_revisions = {project.revision}
+                if project.published_revision is not None:
+                    keep_revisions.add(project.published_revision)
+                keep_revisions |= {
+                    row.project_revision for row in ChatSession.select(ChatSession.project_revision).where(
+                        ChatSession.project == project.id
+                    ).distinct()
+                }
+                stale_revisions = {
+                    row.revision for row in Archive.select(Archive.revision).where(
+                        (Archive.project == project.id) & (Archive.revision.not_in(keep_revisions))
+                    ).distinct()
+                }
+                if not stale_revisions:
+                    continue
+                Archive.delete().where(
+                    (Archive.project == project.id) & (Archive.revision.in_(stale_revisions))
+                ).execute()
+                deleted_revisions += len(stale_revisions)
+        return deleted_revisions
+
     def get_state_remap(self, project_id: str, old_key: str) -> str | None:
         row = StateRemap.get_or_none((StateRemap.project_id == project_id) & (StateRemap.old_key == old_key))
         return row.new_key if row is not None else None
