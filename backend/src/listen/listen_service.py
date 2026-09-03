@@ -5,11 +5,16 @@ across every configured provider hidden inside.
 """
 from __future__ import annotations
 
+import threading
+
 from config import ListenServiceConfig
 from cascade import ProviderError
 from listen.listen_provider import ListenProvider
 from listen.cascading_listen_provider import CascadingListenProvider
 from listen.faster_whisper_provider import FasterWhisperProvider
+from logging_factory import LoggerFactory
+
+logger = LoggerFactory.get_logger(__name__)
 
 
 class ListenServiceError(Exception):
@@ -34,16 +39,27 @@ class ListenService(ListenProvider):
         "faster-whisper": FasterWhisperProvider,
     }
 
-    def __init__(self, provider: ListenProvider) -> None:
-        self._provider = provider
+    def __init__(self, listen_service_config: list[ListenServiceConfig]) -> None:
+        self._config = listen_service_config
+        self._provider: ListenProvider | None = None
+        self.enabled = False
+        threading.Thread(target=self._initialize, name="listen-service-init", daemon=True).start()
 
     @classmethod
     def from_config(cls, listen_service_config: list[ListenServiceConfig]) -> "ListenService":
-        providers = [
-            (f"{service.driver}/{service.model}", cls._build_provider(service))
-            for service in listen_service_config
-        ]
-        return cls(CascadingListenProvider(providers))
+        return cls(listen_service_config)
+
+    def _initialize(self) -> None:
+        try:
+            providers = [
+                (f"{service.driver}/{service.model}", self._build_provider(service))
+                for service in self._config
+            ]
+        except Exception:
+            logger.exception("listen-service failed to initialize — staying disabled.")
+            return
+        self._provider = CascadingListenProvider(providers)
+        self.enabled = True
 
     @classmethod
     def _build_provider(cls, service: ListenServiceConfig) -> ListenProvider:
@@ -60,6 +76,8 @@ class ListenService(ListenProvider):
         """Transcribed text for `audio`. Raises ListenServiceError if the
         underlying provider fails — any cascade.ProviderError, not just
         the unavailable/rate-limited subclasses that trigger retry/fallback."""
+        if not self.enabled or self._provider is None:
+            raise ListenServiceError("Speech-to-text is still starting up.")
         try:
             return await self._provider.transcribe(audio)
         except ProviderError as exc:

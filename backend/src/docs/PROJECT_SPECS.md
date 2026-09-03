@@ -17,7 +17,7 @@ files it references by name (§6).
 | `init-action` | **yes** | mapping | — | Where the conversation starts. §5. |
 | `states` | **yes** | mapping (name → state) | — | Every state. §4. Must include `init-action.target`. |
 | `signals` | no | mapping (name → signal) | `{}` | Numeric values the model estimates each turn. §3. |
-| `general-prompt` | no | string | `""` | Appended to a state's `contextual-prompt` for a normal reply; also sent alone ahead of an `actuator.prompt(...)` call (§5.4) — never combined with the state's own prompt in that case. |
+| `general-prompt` | no | string | `""` | Appended to a state's `contextual-prompt` for a normal reply. Never sent to an `actuator.prompt(...)` call (§5.4), which is fully isolated. |
 | `attachments` | no | list of filenames | `[]` | Global attachments, sent with every call that also sends `general-prompt`. §6. |
 | `env` | no | mapping (name → fields) | `{}` | Declares every `env.<name>` a trigger/env expression may reference. An action's `env:` (§5.3) can only update a key declared here. |
 | `project` | no | mapping | — | Identity/display metadata + auto-tracking mode. §1.1. |
@@ -136,7 +136,7 @@ states:
 | `chat` | no | boolean | `true` | `false`: a chat message here is rejected outright — only `actions` can proceed the conversation. Independent of `final`/`fixed-message`. |
 | `history-cutoff` | no | boolean | `false` | `true`: excludes every message from before the most recent transition into this state, both from the model's view and from auto-tracking. Combines (doesn't replace) the server-wide token-budget cutoff in `.config.yml`. |
 | `transition-log-level` | no | `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL` | `"WARNING"` | Log level when a transition **lands on** this state (property of the destination). Operational only. |
-| `attachments` | no | list of filenames | `[]` | Sent with every call this state is "current" for (normal reply, or `actuator.prompt(...)` — §5.4). Not sent for `fixed-message`. |
+| `attachments` | no | list of filenames | `[]` | Sent with every normal reply this state is "current" for. Not sent for `fixed-message`, nor to an `actuator.prompt(...)` call (§5.4), which is fully isolated. |
 
 **4.1 `fixed-message` states.** The model is never asked for free-form
 content: every reply is a translation of `fixed-message` into the user's
@@ -155,7 +155,7 @@ actions:
     target: next_state          # omit for a self-loop (stays on this state)
     trigger: "signal.mood >= 70 and engagement >= 20"
     on-enter: |
-      actuator.notify('Nice!', actuator.prompt('Briefly acknowledge the mood/engagement trigger.'))
+      actuator.notify('Nice!', actuator.prompt('Write a short celebratory one-liner.'))
     env:
       reset_counter: True
       number_of_steps: env.number_of_steps + 1
@@ -324,9 +324,9 @@ time:
 on-enter: |
   actuator.celebrate()
   actuator.notify('Nice!', 'You reached **state B**.')
-  summary = actuator.prompt('Summarize the last exchange in one sentence.')
-  actuator.notify('Recap', summary)
-  actuator.send_mail(user.email, summary)
+  translated = actuator.prompt('Translate to Catalan: The party starts at 9pm.')
+  actuator.notify('Recap', translated)
+  actuator.send_mail(user.email, translated)
 ```
 
 **Every on-enter script runs as a task, never inside the request that
@@ -351,7 +351,7 @@ what tunnels it, if it's still JS at that point. `name` is visible inside
 an `actuator.defer(...)` lambda too, the same way `user`/`signal`/`env`
 are — frozen at the moment `defer` runs, not re-evaluated later.
 
-**Actuators** are code-defined plugins, not project-declared. Six exist:
+**Actuators** are code-defined plugins, not project-declared. Seven exist:
 
 - `actuator.celebrate()` / `actuator.notify(title, body_md)` / `actuator.show(body_md)` —
   compile straight to `onEnterActions.js` locals of the same name
@@ -362,6 +362,21 @@ are — frozen at the moment `defer` runs, not re-evaluated later.
   (DialogHost.vue) rather than a toast — no title, closed via its × button.
 - `actuator.send_mail(to, body_md)` — queues an email on the job queue,
   fire-and-forget, no frontend-visible effect.
+- `actuator.whatsapp(phone_number, message_md)` — sends a WhatsApp
+  message to `phone_number` (E.164 digits, `+` optional) through the same
+  Cloud API the WhatsApp channel itself sends replies with, markdown
+  converted the same way. Unlike `send_mail` it isn't fire-and-forget:
+  the on-enter task blocks on the API call and the statement's own value
+  is `True` once it's accepted, `False` — nothing sent — for a
+  `phone_number` with no linked user account or a failed API call, so a
+  script can react to it, e.g. `sent = actuator.whatsapp(to, body)`. Once
+  sent, `message_md` is also appended as an `assistant` message to the
+  recipient's own live session on *this* action's project (the one
+  bound to the actuator set the on-enter script is running under, not
+  necessarily the recipient's own active project) — the recipient's
+  currently open one if there is any (any channel), or a freshly opened
+  `whatsapp-chat` one otherwise. Best-effort: a failure recording it
+  never turns a successful send back into `False`.
 - `actuator.defer(act, when)` — schedules another actuator call for
   later. `act` **must** be a zero-argument `lambda:` wrapping the real
   call; `when` **must** be `datetime.datetime(...)`/`.now(...)`,
@@ -377,22 +392,19 @@ are — frozen at the moment `defer` runs, not re-evaluated later.
   `signal`/`env` read as snapshotted, while `actuator`/`metric`/`source`/
   `automaton` are live at run time (a deferred call may itself defer).
   `session.*` is unavailable throughout `on-enter`.
-- `actuator.prompt(prompt)` — one extra synchronous, read-only model call,
-  returns its reply text for another actuator call to use (usually
+- `actuator.prompt(prompt)` — one extra synchronous model call, fully
+  isolated from the conversation: no system prompt beyond `prompt`
+  itself, no `general-prompt`/`contextual-prompt`, no attachments, no
+  signal/env context, no chat history. `prompt` is the entire request.
+  Returns its reply text for another actuator call to use (usually
   `actuator.notify`'s `body_md`):
 
   ```yaml
   on-enter: |
-    actuator.notify('Nice!', actuator.prompt('Briefly acknowledge that state B was reached.'))
+    actuator.notify('Nice!', actuator.prompt('Translate to Catalan: Nice to reach this state!'))
   ```
 
-  System prompt: `general-prompt` + `prompt` (never the state's own
-  `contextual-prompt`). Attachments: global (§1) + this action's
-  on-enter-evaluation state's own (§4). Signal definitions and current
-  `env:` are included as context; unlike a normal turn, no `[signals]`/
-  `[env]`/`[audio]` reply is requested. History is the same real history a
-  normal reply would see (subject to `history-cutoff`). Nothing is
-  persisted, and it never updates `env`/evaluates a signal/fires a
+  Nothing is persisted, and it never updates `env`/evaluates a signal/fires a
   transition — read-only, like `send_mail`, but its return value is real
   text. This is what replaced the old, removed `action-prompt` field.
 
@@ -400,16 +412,18 @@ Every call's return value (if any) becomes wire-ready JS the frontend
 runs verbatim, **except** `actuator.prompt(...)`'s — meant only for
 another actuator call in the same line to consume (always wrap it, e.g.
 in `actuator.notify(...)`; a bare `actuator.prompt(...)` line contributes
-nothing). A call with nothing to tunnel (`send_mail`, `defer`)
-contributes nothing either. Multiple lines concatenate in order.
+nothing). A call with nothing to tunnel (`send_mail`, `whatsapp`, `defer`)
+contributes nothing either, even though `whatsapp`'s own `True`/`False`
+is available to an assignment the same way `prompt`'s text is. Multiple
+lines concatenate in order.
 
-`send_mail`/`defer`/`actuator.prompt(...)` never run during a test
-replay/benchmark. A real side effect (`send_mail`, `defer`) also never
-runs in a draft/test conversation unless actuators are explicitly enabled
-for it — while off (the default there) it's suppressed and reported back
-as a `notify(...)` toast describing what would have happened instead.
-`celebrate`/`notify`/`show`/`prompt` have no real-world side effect to
-suppress, so they always run.
+`send_mail`/`whatsapp`/`defer`/`actuator.prompt(...)` never run during a
+test replay/benchmark. A real side effect (`send_mail`, `whatsapp`,
+`defer`) also never runs in a draft/test conversation unless actuators
+are explicitly enabled for it — while off (the default there) it's
+suppressed and reported back as a `notify(...)` toast describing what
+would have happened instead. `celebrate`/`notify`/`show`/`prompt` have
+no real-world side effect to suppress, so they always run.
 
 ## 6. Attachments
 

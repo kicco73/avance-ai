@@ -21,6 +21,7 @@ from ai.llm_provider import (
 	AIServiceProviderPermanentError,
 	AIServiceProviderRateLimitedError,
 	AIServiceProviderUnavailableError,
+	AIServiceRequestError,
 	LLMProvider,
 	MetadataCallback,
 	content_to_text,
@@ -67,6 +68,12 @@ def _handle_anthropic_errors() -> Generator[None, None, None]:
 			raise AIServiceProviderUnavailableError(
 				f"The Anthropic service is temporarily unavailable "
 				f"(status {status_code})."
+			) from exc
+
+		if status_code == 400:
+			raise AIServiceRequestError(
+				f"Error from the Anthropic API "
+				f"(status {status_code}): {exc}"
 			) from exc
 
 		raise AIServiceProviderPermanentError(

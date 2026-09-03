@@ -36,7 +36,7 @@ from talk.talk_service import TalkService
 from whatsapp.whatsapp_service import WhatsAppService
 from listen.listen_service import ListenService
 
-__version__ = "1.28.0"
+__version__ = "1.28.1"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -193,6 +193,7 @@ def create_app() -> FastAPI:
             )
             if config.whatsapp_service_config is not None else None
         )
+        actuator_factory.set_whatsapp_service(whatsapp_service)
 
         controller = AvanceController(
             chat_service, project_service, talk_service, listen_service, db, tracking_service, test_service,

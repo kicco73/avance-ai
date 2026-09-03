@@ -29,11 +29,12 @@ class IdentifierRegistry:
 
     ACTUATOR: dict[str, str] = {
         "send_mail": "Sends an email — e.g. actuator.send_mail(user.email, 'Some **markdown** body').",
+        "whatsapp": "Sends a WhatsApp message to a phone number already linked to a user account — e.g. actuator.whatsapp('34600000001', 'Some **markdown** body'). `phone_number` is E.164 digits, '+' optional. Returns True once sent, False for a number with no linked account or a failed delivery — nothing is sent in the False case. Once sent, it's also logged as an assistant message in the recipient's open session on this project, opening a new whatsapp session for them if they don't have one open.",
         "celebrate": "Plays a confetti animation in the frontend — e.g. actuator.celebrate().",
         "notify": "Shows a toast in the frontend — e.g. actuator.notify('Nice!', 'You reached **state B**.'). `body_md` is markdown.",
         "show": "Shows a dialog in the frontend with body_md as its content — e.g. actuator.show('**Full** details here.'). `body_md` is markdown.",
         "defer": "Runs another actuator call later — e.g. actuator.defer(lambda: actuator.send_mail(user.email, 'Reminder'), datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=env.reminder_days)). The first argument must be a `lambda:` with no arguments; `when` must be built from datetime.datetime(...) or datetime.datetime.now(...), optionally ± datetime.timedelta(...). The call survives a server restart: it is stored as text with a snapshot of `user`/`signal`/`env` as they were when deferred, under the user and project (never a session — `session.*` is not available in on-enter).",
-        "prompt": "Runs an extra, synchronous, read-only prompt (general-prompt + attachments + signal/env context, only its text returned — no message is added to the conversation) — e.g. actuator.notify('Note', actuator.prompt('Summarize the last exchange in one sentence.')).",
+        "prompt": "Runs an extra, synchronous, fully isolated model call — no conversation history, no attachments, no signal/env context, nothing persisted, just `prompt` in and its text back — e.g. actuator.notify('Note', actuator.prompt('Summarize the last exchange in one sentence.')).",
     }
 
     DATETIME: dict[str, str] = {
@@ -57,6 +58,7 @@ class IdentifierRegistry:
         "last_login": "This account's most recent login (UTC ISO-8601).",
         "active_project": "The name of this user's currently active project, or None if none is set.",
         "role": "This user's platform role: \"user\", \"supervisor\", or \"admin\".",
+        "whatsapp_phone_number": "The WhatsApp number linked to this account (E.164 digits), or None if none is linked.",
     }
 
     @staticmethod

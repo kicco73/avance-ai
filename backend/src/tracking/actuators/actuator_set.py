@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, TypeVar
 
 from automaton.automaton import Action, Automaton, DeferredExpression, JsSnippet
 from automaton.scope import EvaluationScope
@@ -17,11 +19,21 @@ from session import Session
 from .on_enter_task import OnEnterTask, ScopeHydrator
 
 if TYPE_CHECKING:
-    from .prompt_context import PromptContext
+    from whatsapp.whatsapp_service import WhatsAppService
+
+    from ai import AiService
+
 
 logger = LoggerFactory.get_logger(__name__)
 
 _SEND_MAIL_SUBJECT = "Notification from Avance"
+
+_T = TypeVar("_T")
+
+
+def _run_sync(coro: Coroutine[Any, Any, _T]) -> _T:
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(asyncio.run, coro).result()
 
 
 class ActuatorSet(ABC):
@@ -34,9 +46,9 @@ class ActuatorSet(ABC):
     (real side effects) are each subclass's own concern."""
 
     def __init__(self, dispatcher: "OnEnterDispatcher | None" = None) -> None:
-        # Bound fresh per on-enter evaluation via with_prompt_context —
+        # Bound fresh per on-enter evaluation via with_ai_service —
         # never set any other way (see EvaluationScopeBuilder.build).
-        self._prompt_context: "PromptContext | None" = None
+        self._ai_service: "AiService | None" = None
         # How this set gets an on-enter script run as a Task. None only
         # for a bare set nobody wired to a JobService (a test replay's
         # own FakeActuatorSet default): the script then runs inline and
@@ -65,28 +77,30 @@ class ActuatorSet(ABC):
         return JsSnippet(f"show({json.dumps(body_md)})")
 
     def prompt(self, prompt: str) -> str:
-        """Runs `prompt` as one extra, synchronous, read-only generation
-        call — general-prompt + attachments (global and the current
-        state's own) + signal/env context, only the resulting text
-        aggregated back — and returns its text. No message is persisted
-        and no env/signal/audio channel is applied (see PromptContext).
-        Returns "" (logged) wherever no session context is bound, e.g. a
-        project-wide test reset with no real session behind it."""
-        if self._prompt_context is None:
-            logger.warning("actuator.prompt() called with no session context bound — returning ''.")
+        """Runs `prompt` as one extra, synchronous, fully isolated
+        generation call — no history, no attachments, no signal/env
+        context, nothing persisted — and returns its text. Returns ""
+        (logged) wherever no AI service is bound, e.g. a project-wide
+        test reset with no real session behind it."""
+        if self._ai_service is None:
+            logger.warning("actuator.prompt() called with no AI service bound — returning ''.")
             return ""
-        return self._prompt_context.run(prompt)
+        return _run_sync(self._ai_service.prompt(prompt))
 
-    def with_prompt_context(self, prompt_context: "PromptContext") -> "ActuatorSet":
-        """A copy of this actuator set bound to `prompt_context` — never
+    def with_ai_service(self, ai_service: "AiService") -> "ActuatorSet":
+        """A copy of this actuator set bound to `ai_service` — never
         mutates `self`, so the long-lived instance a factory hands out
-        stays reusable across calls with different automaton/state/session context."""
+        stays reusable across calls."""
         bound = copy.copy(self)
-        bound._prompt_context = prompt_context
+        bound._ai_service = ai_service
         return bound
 
     @abstractmethod
     def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def whatsapp(self, phone_number: str, message_md: str) -> JsSnippet | bool | None:
         raise NotImplementedError
 
     @abstractmethod
@@ -139,9 +153,13 @@ class LiveActuatorSet(ActuatorSet):
     that project) — never a session, which will be over by the time a
     deferred call runs (see on_enter_task.py)."""
 
-    def __init__(self, notification_service: NotificationService, dispatcher: "OnEnterDispatcher") -> None:
+    def __init__(
+        self, notification_service: NotificationService, dispatcher: "OnEnterDispatcher",
+        whatsapp_service: "WhatsAppService | None" = None,
+    ) -> None:
         super().__init__(dispatcher)
         self._notification_service = notification_service
+        self._whatsapp_service = whatsapp_service
 
     def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
         # Raises (NotificationError) if this deployment's own .config.yml
@@ -150,6 +168,12 @@ class LiveActuatorSet(ActuatorSet):
         # here rather than failing at app boot.
         self._notification_service.enqueue_mail(to, _SEND_MAIL_SUBJECT, body_md)
         return None
+
+    def whatsapp(self, phone_number: str, message_md: str) -> bool:
+        if self._whatsapp_service is None:
+            logger.warning("actuator.whatsapp() called but no 'whatsapp-service' section in .config.yml — message not sent.")
+            return False
+        return _run_sync(self._whatsapp_service.send_message(phone_number, message_md, self._dispatcher.project_id))
 
     def defer(self, act: Callable[[], None], when: datetime) -> JsSnippet | None:
         # Both refusals are unreachable from a built index.yml — the
@@ -174,6 +198,11 @@ class FakeActuatorSet(ActuatorSet):
 
     def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
         message = f"send_mail(to={to!r}) — Run actuators is off, no email was sent."
+        logger.info(message)
+        return self.notify("Actuator (test)", message)
+
+    def whatsapp(self, phone_number: str, message_md: str) -> JsSnippet | None:
+        message = f"whatsapp(to={phone_number!r}) — Run actuators is off, no message was sent."
         logger.info(message)
         return self.notify("Actuator (test)", message)
 

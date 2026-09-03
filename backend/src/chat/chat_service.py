@@ -21,6 +21,7 @@ from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.user_facts import UserFacts
+from chat.channels import WHATSAPP_CHAT
 from chat.errors import ChatServiceError
 from chat.session_manager import ChatSessionManager, SessionNotWritable
 from chat.session_summary_manager import SessionSummaryManager
@@ -118,7 +119,7 @@ class ChatService(object):
 		test-session reset). `session_id=None` (no session yet, e.g. a
 		project-wide test reset) always goes through a FakeActuatorSet,
 		same as any other actuator-off default — and actuator.prompt()
-		itself returns "" there (no session to read conversation history from)."""
+		itself returns "" there (no AiService wired for this scope)."""
 		if not action.on_enter:
 			return
 		if session_id is not None:
@@ -295,6 +296,16 @@ class ChatService(object):
 			except ValueError as exc:
 				raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		return self._session_response(session, active=True)
+
+	async def record_whatsapp_send(self, username: str, project_id: str, content: str) -> None:
+		async with self._session_lifecycle_scope(username, project_id):
+			session = self._session_manager.get_active_session(username, project_id)
+			if session is None:
+				Session().channel = WHATSAPP_CHAT
+				session = self._session_manager.create_session(
+					get_session_type_strategy('live'), self._project_service, username, project_id,
+				)
+			self._db.save_message('assistant', content, session["id"])
 
 	async def _create_session_of_type(self, strategy: SessionTypeStrategy, project_id: str) -> dict:
 		async with self._session_lifecycle_scope(self._username, project_id):

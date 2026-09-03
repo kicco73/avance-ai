@@ -203,6 +203,9 @@ class AiService(object):
 			chunks.append(chunk)
 		return "".join(chunks)
 
+	async def prompt(self, prompt: str) -> str:
+		return await self.generate("", [{"role": "user", "content": prompt}])
+
 	def generate_stream(
 		self,
 		system_prompt: str,

@@ -414,14 +414,15 @@ def test_a_trigger_still_sees_session():
     assert automaton.states["a"].actions[0].trigger
 
 
-def test_defer_rejects_actuator_prompt_inside_the_lambda():
-    """actuator.prompt reads the firing session's own chat history — gone
-    by the time a deferred call runs — so it can only be called now."""
+def test_defer_accepts_actuator_prompt_inside_the_lambda():
+    """actuator.prompt is a fully isolated model call — no session/chat
+    history involved — so it's as usable inside a deferred lambda as any
+    other actuator."""
     content = _project_with_on_enter(
         "actuator.defer(lambda: actuator.notify('Later', actuator.prompt('Recap')), datetime.datetime(2030, 1, 1))"
     )
-    with pytest.raises(ValueError, match="actuator.prompt\\(\\.\\.\\.\\) reads the conversation"):
-        AutomatonBuilder().build({"index.yml": content})
+    automaton = AutomatonBuilder().build({"index.yml": content})
+    assert "actuator.prompt" in automaton.states["a"].actions[0].on_enter
 
 
 def test_defer_accepts_actuator_prompt_evaluated_now_as_an_argument_of_when_free_code():

@@ -135,6 +135,9 @@ class FakeAiService:
         self.calls.append((system_prompt, history))
         return "Fake AI reply."
 
+    async def prompt(self, prompt: str) -> str:
+        return await self.generate("", [{"role": "user", "content": prompt}])
+
     async def generate_stream(self, system_prompt: str, history: list[dict], on_retry=None):
         self.calls.append((system_prompt, history))
         # Must be an actual async generator, not just a coroutine, since

@@ -18,6 +18,7 @@ from ai.llm_provider import (
 	AIServiceProviderPermanentError,
 	AIServiceProviderRateLimitedError,
 	AIServiceProviderUnavailableError,
+	AIServiceRequestError,
 	LLMProvider,
 	MetadataCallback,
 	content_to_text,
@@ -49,6 +50,10 @@ def _handle_gemini_errors() -> Generator[None, None, None]:
 		if code in (503, 504):
 			raise AIServiceProviderUnavailableError(
 				f"The Gemini service is temporarily overloaded (status {code}): {message}"
+			) from exc
+		if code == 400:
+			raise AIServiceRequestError(
+				f"Error from the Gemini API (status {code}): {message}"
 			) from exc
 		raise AIServiceProviderPermanentError(
 			f"Error from the Gemini API (status {code}): {message}"
