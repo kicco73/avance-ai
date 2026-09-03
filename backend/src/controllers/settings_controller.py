@@ -122,6 +122,19 @@ class SettingsController(BaseController, ProjectCommitMixin):
         table."""
         return {"projects": self.project_service.get_runtime_status()}
 
+    @get("/api/settings/tasks", role="admin")
+    def get_scheduled_tasks(self):
+        """Settings > Manage services > Scheduler — every row of the Task
+        table (see db/tasks.py's list_tasks), soonest run_at first.
+        `payload` is omitted: it's the task type's own internal
+        hydration data, not meant for display."""
+        return {
+            "tasks": [
+                {key: value for key, value in task.items() if key != "payload"}
+                for task in self.db.list_tasks()
+            ]
+        }
+
     @put("/api/projects/{project_id}/pause", role="admin")
     def put_project_pause(self, project_id: str):
         """An operator's own explicit override — only ever allowed while

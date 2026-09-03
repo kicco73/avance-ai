@@ -14,6 +14,9 @@ const CALL_PARAMS = {
   'actuator.show': ['body_md']
 }
 
+const AUTOMATON_EMPTY_HINT =
+  "No other project declares the same project.family — set it in this project's and a sibling's index.yml to reference automaton.<id>."
+
 const STRING_LITERAL_SOURCE = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/.source
 
 const FILE_PATH_ARG_PATTERN = new RegExp(
@@ -161,7 +164,18 @@ export function completeIdentifiers(context, registry) {
     for (const child of directChildNamespaces(registry, namespace)) {
       options.push({ label: child, type: 'namespace', apply: child })
     }
-    if (!options.length) return null
+    if (!options.length) {
+      if (namespace !== 'automaton') return null
+      return {
+        from,
+        options: [{
+          label: '(no sibling project shares this family)',
+          type: 'text',
+          apply: () => {},
+          info: () => completionInfo('automaton', AUTOMATON_EMPTY_HINT, 'namespace')
+        }]
+      }
+    }
     return { from, options }
   }
 

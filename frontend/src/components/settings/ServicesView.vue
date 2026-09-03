@@ -11,7 +11,8 @@ import ProfileMenu from '../ProfileMenu.vue'
 import AiUsageTrendsChart from './AiUsageTrendsChart.vue'
 import ServicesProviderCard from './ServicesProviderCard.vue'
 import StatusToggleButton from './StatusToggleButton.vue'
-import { getAiUsage, getServicesConfig } from '../../api.js'
+import TaskCard from './TaskCard.vue'
+import { getAiUsage, getScheduledTasks, getServicesConfig } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 import { liveModelStore } from '../../chatStore.js'
 
@@ -32,6 +33,7 @@ const TABS = [
   { id: 'ai', label: 'AI' },
   { id: 'chat', label: 'Chat' },
   { id: 'testing', label: 'Testing' },
+  { id: 'scheduler', label: 'Scheduler' },
   { id: 'talk', label: 'Talk' },
   { id: 'listen', label: 'Listen' },
   { id: 'whatsapp', label: 'WhatsApp' },
@@ -51,6 +53,12 @@ const loading = ref(true)
 // every other Manage services tab: no live refresh while the panel
 // stays open, just whatever was true when it was last (re)opened.
 const aiUsage = ref({ today: {}, history: [] })
+
+// Settings > Manage services > Scheduler — every Task row, soonest
+// run_at first (already sorted server-side). Same "fetch once on mount"
+// contract as services/aiUsage above.
+const tasks = ref([])
+const tasksLoading = ref(true)
 
 function providerLabel(provider) {
   return `${provider.driver}/${provider.model}`
@@ -82,9 +90,23 @@ async function loadAiUsage() {
   }
 }
 
+// Independent of load() above, same reasoning as loadAiUsage: a failure
+// here shouldn't blank out the whole tab, just leave the task list empty.
+async function loadTasks() {
+  tasksLoading.value = true
+  try {
+    tasks.value = (await getScheduledTasks()).tasks
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    tasksLoading.value = false
+  }
+}
+
 onMounted(() => {
   load()
   loadAiUsage()
+  loadTasks()
 })
 
 function fieldLabel(key) {
@@ -243,6 +265,12 @@ async function selectCleanUnusedRevisions() {
             <label class="services-field-label">{{ fieldLabel(key) }}</label>
             <input class="services-field-input" type="text" :value="value" disabled />
           </div>
+        </div>
+
+        <div v-show="activeTab === 'scheduler'" class="services-panel">
+          <p v-if="tasksLoading" class="services-status">Loading…</p>
+          <p v-else-if="!tasks.length" class="services-status">No scheduled tasks.</p>
+          <TaskCard v-for="task in tasks" :key="task.key" :task="task" />
         </div>
 
         <div v-show="activeTab === 'ai'" class="services-panel">

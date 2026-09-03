@@ -13,7 +13,18 @@ from pathlib import Path
 
 logger = LoggerFactory.get_logger(__name__)
 
-_yaml = YAML(typ='rt')
+
+
+def _load_yaml(text: str):
+    """A fresh ruamel YAML per call, never a module-level instance: a
+    YAML object keeps its reader/scanner/parser/composer as attributes
+    of itself for the duration of load(), so one shared instance driven
+    from two threads at once (every sync endpoint runs in Starlette's
+    threadpool, and the SPA fetches several projects' metadata in
+    parallel) interleaves two documents' tokens — ParserError pointing
+    at another project's lines, IndexError in the reader, "pop from
+    empty list". Constructing one is cheap next to the parse itself."""
+    return YAML(typ='rt').load(text)
 
 EXTENSION_TO_MEDIA_TYPE = {
     ".yml": "text/plain",
@@ -506,7 +517,7 @@ class AutomatonBuilder(object):
         validate automaton.* references without building every other
         project. Malformed id/env reports nothing."""
         try:
-            raw = _yaml.load(index_yml_text)
+            raw = _load_yaml(index_yml_text)
         except Exception as exc:
             logger.warning("Failed to parse index.yml for known_projects_env_keys: %s", exc)
             return None, None, frozenset()
@@ -531,7 +542,7 @@ class AutomatonBuilder(object):
         case as a back-compat import); an invalid-but-present value
         surfaces properly through the real build() call right after."""
         try:
-            raw = _yaml.load(index_yml_text)
+            raw = _load_yaml(index_yml_text)
         except Exception:
             return None
         if not isinstance(raw, dict):
@@ -554,7 +565,7 @@ class AutomatonBuilder(object):
         skips that check. `legacy_project_id`: see _build_project_metadata."""
         all_archives = self._convert_contents_to_archives(contents=contents)
 
-        raw = _yaml.load(contents['index.yml'])
+        raw = _load_yaml(contents['index.yml'])
         if not isinstance(raw, dict):
             raise ValueError(f"index.yml must be a YAML mapping at the top level, got {type(raw).__name__}.")
 

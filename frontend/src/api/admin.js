@@ -118,3 +118,9 @@ export function getAiUsage() {
 export function downloadProject(projectId) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}`, {}, { parse: 'blob' })
 }
+
+// Settings > Manage services > Scheduler — every row of the Task table,
+// soonest run_at first (see db/tasks.py's list_tasks).
+export function getScheduledTasks() {
+  return apiFetch(`${API_URL}/settings/tasks`)
+}
