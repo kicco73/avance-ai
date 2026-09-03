@@ -21,8 +21,8 @@ def _wait_until(predicate, timeout=8.0, interval=0.05):
     return predicate()
 
 
-def _make_labeled_session_for(client, app_db, project_name, username):
-    app_db.set_active_project_name(project_name, username)
+def _make_labeled_session_for(client, app_db, project_id, username):
+    app_db.set_active_project_id(project_id, username)
     with Session().impersonate(username):
         session = client.get("/api/chat/session").json()
         turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}))

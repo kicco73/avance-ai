@@ -88,12 +88,13 @@ setTestProject(props.projectName)
 const emit = defineEmits(['saved', 'back', 'profile', 'logout'])
 
 const {
-  filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile,
+  filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile, renamingFile,
   designPanelRef, codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
   currentFileIsImage, currentFileIsMarkdown, isBehaviorNodeSelected, hasTheme,
   activeEditorIsDirty, activeEditor,
   loadFiles, switchFile, guardedAction, selectFile, jumpToDefinition,
-  handleUploadFile, handleNewAttachment, handleNewAspect, handleNewLegal, handleDeleteFile, handleFileSaved,
+  handleUploadFile, handleNewAttachment, handleNewAspect, handleNewLegal, handleDeleteFile, handleRenameFile,
+  handleFileRenamedByHistory, handleFileSaved,
 } = useProjectFiles(props.projectName, emit)
 
 // Inspect panel: the shared Inspector component shows the last-saved
@@ -848,6 +849,7 @@ onBeforeUnmount(() => {
           @jump-to-definition="(target) => jumpToDefinition(target, { silent: true })"
           @select="selectedGraphElement = $event"
           @saved="handleFileSaved"
+          @renamed="handleFileRenamedByHistory"
         />
 
         <Transition name="panel-slide-bottom">
@@ -925,6 +927,7 @@ onBeforeUnmount(() => {
                 :recently-added-key="recentlyAddedKey"
                 :current-file-name="mode === 'edit' ? currentFileName : null"
                 :deleting-file="deletingFile"
+                :renaming-file="renamingFile"
                 @select="handleTabSelect"
                 @select-attachment="selectFile"
                 @jump-to-attachment="handleJumpToAttachment"
@@ -935,6 +938,7 @@ onBeforeUnmount(() => {
                 @add-state="handleAddState"
                 @add-action="handleAddAction"
                 @delete-file="handleDeleteFile"
+                @rename-file="handleRenameFile"
               />
             </template>
             <template #tab-user="{ registerTab }">

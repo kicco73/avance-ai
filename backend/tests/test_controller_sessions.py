@@ -12,6 +12,8 @@ from db import Db
 from session import Session
 
 CHANNEL_CODES_PROJECT_YAML = """
+project:
+  id: channel_codes_proj
 init-action:
   target: a
 states:
@@ -36,7 +38,7 @@ def _setup_channel_codes_project(app_db, project_name="channel-codes-proj"):
         project_name, {"index.yml": CHANNEL_CODES_PROJECT_YAML.encode("utf-8")}, {"index.yml": "text/yaml"},
     )
     app_db.publish_project(project_name)
-    app_db.set_active_project_name(project_name, "user")
+    app_db.set_active_project_id(project_name, "user")
 
 
 @pytest.mark.contract
@@ -45,7 +47,7 @@ def test_bootstrap_creates_a_session(client, hello_project):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["project_name"] == hello_project
+    assert body["project_id"] == hello_project
     assert body["open"] is True
     assert body["active"] is True
     assert body["has_annotations"] is False
@@ -179,6 +181,53 @@ def test_chat_turn_rejects_a_session_closed_by_a_manual_new_session(client, hell
     error = parse_chat_turn_sse_error(response)
     assert "closed" in error["message"].lower()
     assert error["code"] == "session_closed"
+
+
+@pytest.mark.regression
+def test_close_session_ends_it_without_creating_a_replacement(client, hello_project):
+    session = client.get("/api/chat/session").json()
+
+    response = client.post(f"/api/chat/sessions/{session['id']}/close")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == session["id"]
+    assert body["active"] is False
+    assert body["open"] is False
+    assert body["close_reason"] == "manual-user"
+
+    sessions = {s["id"]: s for s in client.get(f"/api/projects/{hello_project}/sessions").json()}
+    assert sessions[session["id"]]["active"] is False
+    assert sessions[session["id"]]["open"] is False
+
+
+@pytest.mark.regression
+def test_close_session_is_idempotent(client, hello_project):
+    session = client.get("/api/chat/session").json()
+    client.post(f"/api/chat/sessions/{session['id']}/close")
+
+    response = client.post(f"/api/chat/sessions/{session['id']}/close")
+
+    assert response.status_code == 200
+    assert response.json()["active"] is False
+
+
+@pytest.mark.regression
+def test_chat_turn_rejects_a_manually_closed_session(client, hello_project):
+    session = client.get("/api/chat/session").json()
+    client.post(f"/api/chat/sessions/{session['id']}/close")
+
+    response = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
+
+    assert response.status_code == 200  # the turn endpoint always streams 200; failures arrive as an SSE `error` event
+    error = parse_chat_turn_sse_error(response)
+    assert error["code"] == "session_closed"
+
+
+@pytest.mark.contract
+def test_close_session_rejects_an_unknown_session(client, hello_project):
+    response = client.post("/api/chat/sessions/999999/close")
+    assert response.status_code == 404
 
 
 def _someone_elses_session(app_db, project_name="channel-codes-proj"):
@@ -336,10 +385,11 @@ def test_manual_new_session_starts_at_the_automatons_current_state_not_the_initi
     init_action.target."""
     samples_dir = Path(__file__).resolve().parent.parent / "samples" / "projects"
     content = (samples_dir / "Aprendr català.zip").read_bytes()
-    resp = client.put("/api/projects/cat", content=content, headers={"Content-Type": "application/zip"})
+    resp = client.post("/api/projects/upload", content=content, headers={"Content-Type": "application/zip"})
     assert resp.status_code == 200, resp.text
-    client.put("/api/projects/cat/activate")
-    client.post("/api/projects/cat/publish", json={})
+    project_id = parse_sse_result(resp)["project_id"]
+    client.put(f"/api/projects/{project_id}/activate")
+    client.post(f"/api/projects/{project_id}/publish", json={})
 
     bootstrap = client.get("/api/chat/session").json()
     assert bootstrap["start_state"] == "welcome"  # this project's init_action.target
@@ -361,9 +411,9 @@ def test_switching_projects_does_not_delete_the_previous_projects_sessions(clien
     names = {}
     for key, sample in (("hello", "Hello world.zip"), ("cat", "Aprendr català.zip")):
         content = (samples_dir / sample).read_bytes()
-        resp = client.put(f"/api/projects/{key}", content=content, headers={"Content-Type": "application/zip"})
+        resp = client.post("/api/projects/upload", content=content, headers={"Content-Type": "application/zip"})
         assert resp.status_code == 200, resp.text
-        names[key] = parse_sse_result(resp)["project_name"]
+        names[key] = parse_sse_result(resp)["project_id"]
         resp = client.post(f"/api/projects/{names[key]}/publish", json={})
         assert resp.status_code == 200, resp.text
 
@@ -385,9 +435,9 @@ def test_sessions_list_is_scoped_by_the_url_never_the_active_project(client):
     names = {}
     for key, sample in (("hello", "Hello world.zip"), ("cat", "Aprendr català.zip")):
         content = (samples_dir / sample).read_bytes()
-        resp = client.put(f"/api/projects/{key}", content=content, headers={"Content-Type": "application/zip"})
+        resp = client.post("/api/projects/upload", content=content, headers={"Content-Type": "application/zip"})
         assert resp.status_code == 200, resp.text
-        names[key] = parse_sse_result(resp)["project_name"]
+        names[key] = parse_sse_result(resp)["project_id"]
         resp = client.post(f"/api/projects/{names[key]}/publish", json={})
         assert resp.status_code == 200, resp.text
 
@@ -399,7 +449,7 @@ def test_sessions_list_is_scoped_by_the_url_never_the_active_project(client):
     # "cat" is now active, but the URL decides, not the active project.
     explicit_hello = client.get(f"/api/projects/{names['hello']}/sessions").json()
     assert [s["id"] for s in explicit_hello] == [hello_session["id"]]
-    assert all(s["project_name"] == names["hello"] for s in explicit_hello)
+    assert all(s["project_id"] == names["hello"] for s in explicit_hello)
 
-    explicit_cat = client.get("/api/projects/cat/sessions").json()
-    assert all(s["project_name"] == "cat" for s in explicit_cat)
+    explicit_cat = client.get(f"/api/projects/{names['cat']}/sessions").json()
+    assert all(s["project_id"] == names["cat"] for s in explicit_cat)

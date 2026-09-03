@@ -13,7 +13,7 @@ from fastapi import HTTPException, Request, Response
 from automaton.automaton_yaml_editor import InitActionTargetError
 from chat.chat_service import ChatService
 from project.project_service import ProjectService
-from schemas import AiEditRequest, PublishProjectRequest, ReorderActionRequest, SetProjectFieldRequest
+from schemas import AiEditRequest, PublishProjectRequest, RenameProjectFileRequest, ReorderActionRequest, SetProjectFieldRequest
 from session import Session
 
 from .base_controller import BaseController, delete, get, post, put
@@ -300,6 +300,21 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         try:
             result = await self.project_service.put_project_file(
                 project_id, file_name, content, content_type_header, self._activate_project
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return result
+
+    @post("/api/projects/{project_id}/files/{file_name:path}/rename", role="admin")
+    async def rename_project_file(self, project_id: str, file_name: str, req: RenameProjectFileRequest):
+        """Renames one file in place — see ProjectEditor.rename_project_file
+        for the auto-rewrite of any index.yml/index.css reference to its
+        old basename this also does."""
+        try:
+            result = await self.project_service.rename_project_file(
+                project_id, file_name, req.new_name, self._activate_project
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc

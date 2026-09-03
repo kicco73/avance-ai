@@ -11,11 +11,12 @@ import zipfile
 
 import pytest
 
+from conftest import parse_sse_result
 from session import Session
 
 pytestmark = pytest.mark.contract
 
-MINIMAL_YML = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+MINIMAL_YML = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
 
 
 def _zip_of(files: dict[str, bytes]) -> bytes:
@@ -26,14 +27,14 @@ def _zip_of(files: dict[str, bytes]) -> bytes:
     return buffer.getvalue()
 
 
-def _upload_zip(client, project_name: str, files: dict[str, bytes]):
-    return client.put(
-        f"/api/projects/{project_name}", content=_zip_of(files), headers={"Content-Type": "application/zip"}
+def _upload_zip(client, files: dict[str, bytes]):
+    return client.post(
+        "/api/projects/upload", content=_zip_of(files), headers={"Content-Type": "application/zip"}
     )
 
 
-def _download_zip(client, project_name: str) -> dict[str, bytes]:
-    response = client.get(f"/api/projects/{project_name}")
+def _download_zip(client, project_id: str) -> dict[str, bytes]:
+    response = client.get(f"/api/projects/{project_id}")
     assert response.status_code == 200, response.text
     with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
         return {name: zf.read(name) for name in zf.namelist()}
@@ -45,7 +46,7 @@ def test_download_has_no_sessions_json_when_there_are_no_imported_sessions(clien
 
 
 def test_download_includes_both_live_and_imported_sessions_relabeled_as_imported(client, app_db, hello_project):
-    app_db.set_active_project_name(hello_project, "alice")
+    app_db.set_active_project_id(hello_project, "alice")
     with Session().impersonate("alice"):
         native_session = client.get("/api/chat/session").json()
     assert native_session["type"] == "live"
@@ -86,14 +87,15 @@ def test_uploading_a_zip_with_sessions_json_imports_them_automatically(client):
             ],
         }
     ]
-    resp = _upload_zip(client, "proj", {
+    resp = _upload_zip(client, {
         "index.yml": MINIMAL_YML.encode(),
         "sessions.json": json.dumps(sessions_payload).encode(),
     })
     assert resp.status_code == 200, resp.text
+    project_id = parse_sse_result(resp)["project_id"]
 
     Session().user = "User 1"
-    sessions = client.get("/api/projects/proj/sessions?include_imported=true").json()
+    sessions = client.get(f"/api/projects/{project_id}/sessions?include_imported=true").json()
     assert len(sessions) == 1
     assert sessions[0]["type"] == "imported"
     assert sessions[0]["title"] == "Reference transcript"
@@ -102,58 +104,62 @@ def test_uploading_a_zip_with_sessions_json_imports_them_automatically(client):
 
 
 def test_download_then_reupload_round_trips_the_imported_session(client):
-    resp = client.put(
-        "/api/projects/roundtrip", content=MINIMAL_YML.encode(), headers={"Content-Type": "application/x-yaml"}
+    yml = "project:\n  id: roundtrip\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+    resp = client.post(
+        "/api/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"}
     )
     assert resp.status_code == 200, resp.text
-    resp = client.post("/api/projects/roundtrip/publish", json={})
+    project_id = parse_sse_result(resp)["project_id"]
+    resp = client.post(f"/api/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
     resp = client.post(
-        "/api/projects/roundtrip/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))]
+        f"/api/projects/{project_id}/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))]
     )
     assert resp.status_code == 200, resp.text
 
-    zip_bytes = client.get("/api/projects/roundtrip").content
+    zip_bytes = client.get(f"/api/projects/{project_id}").content
 
-    resp = client.put(
-        "/api/projects/roundtrip-copy", content=zip_bytes, headers={"Content-Type": "application/zip"}
+    resp = client.post(
+        "/api/projects/upload", content=zip_bytes, headers={"Content-Type": "application/zip"}
     )
     assert resp.status_code == 200, resp.text
+    reuploaded_project_id = parse_sse_result(resp)["project_id"]
+    assert reuploaded_project_id == project_id
 
-    resp = client.put("/api/projects/roundtrip-copy/activate")
-    assert resp.status_code == 200, resp.text
-    sessions = client.get("/api/projects/roundtrip-copy/sessions?include_imported=true").json()
-    assert len(sessions) == 1
-    assert sessions[0]["title"] == "t.txt"
+    sessions = client.get(f"/api/projects/{project_id}/sessions?include_imported=true").json()
+    assert "t.txt" in {s["title"] for s in sessions}
 
 
 def test_download_then_reupload_round_trips_a_live_session_from_another_user(client, app_db):
-    resp = client.put(
-        "/api/projects/roundtrip2", content=MINIMAL_YML.encode(), headers={"Content-Type": "application/x-yaml"}
+    yml = "project:\n  id: roundtrip2\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+    resp = client.post(
+        "/api/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"}
     )
     assert resp.status_code == 200, resp.text
-    resp = client.post("/api/projects/roundtrip2/publish", json={})
+    project_id = parse_sse_result(resp)["project_id"]
+    resp = client.post(f"/api/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
-    app_db.set_active_project_name("roundtrip2", "alice")
+    app_db.set_active_project_id(project_id, "alice")
     with Session().impersonate("alice"):
         live_session = client.get("/api/chat/session").json()
         client.post(f"/api/chat/sessions/{live_session['id']}/messages", json={"message": "hi"})
 
-    zip_bytes = client.get("/api/projects/roundtrip2").content
+    zip_bytes = client.get(f"/api/projects/{project_id}").content
 
-    resp = client.put(
-        "/api/projects/roundtrip2-copy", content=zip_bytes, headers={"Content-Type": "application/zip"}
+    resp = client.post(
+        "/api/projects/upload", content=zip_bytes, headers={"Content-Type": "application/zip"}
     )
     assert resp.status_code == 200, resp.text
+    reuploaded_project_id = parse_sse_result(resp)["project_id"]
+    assert reuploaded_project_id == project_id
 
-    sessions = app_db.list_chat_sessions(None, "roundtrip2-copy", type=None)
+    sessions = app_db.list_chat_sessions(None, project_id, type="imported")
     assert len(sessions) == 1
-    assert sessions[0]["type"] == "imported"
     assert sessions[0]["username"] == "alice"
 
 
 def test_upload_rejects_the_whole_project_when_sessions_json_is_not_valid_json(client):
-    resp = _upload_zip(client, "proj", {
+    resp = _upload_zip(client, {
         "index.yml": MINIMAL_YML.encode(),
         "sessions.json": b"not valid json {{{",
     })
@@ -164,7 +170,7 @@ def test_upload_rejects_the_whole_project_when_sessions_json_is_not_valid_json(c
 
 
 def test_upload_rejects_the_whole_project_when_sessions_json_is_not_a_list(client):
-    resp = _upload_zip(client, "proj", {
+    resp = _upload_zip(client, {
         "index.yml": MINIMAL_YML.encode(),
         "sessions.json": json.dumps({"not": "a list"}).encode(),
     })
@@ -177,13 +183,14 @@ def test_a_malformed_individual_session_is_skipped_others_still_import(client):
         {"messages": [{"role": "user"}]},  # missing required 'text' — malformed
         {"name": "Good one", "username": "User 1", "messages": [{"role": "user", "text": "hi"}]},
     ]
-    resp = _upload_zip(client, "proj", {
+    resp = _upload_zip(client, {
         "index.yml": MINIMAL_YML.encode(),
         "sessions.json": json.dumps(sessions_payload).encode(),
     })
     assert resp.status_code == 200, resp.text
+    project_id = parse_sse_result(resp)["project_id"]
 
     Session().user = "User 1"
-    sessions = client.get("/api/projects/proj/sessions?include_imported=true").json()
+    sessions = client.get(f"/api/projects/{project_id}/sessions?include_imported=true").json()
     assert len(sessions) == 1
     assert sessions[0]["title"] == "Good one"

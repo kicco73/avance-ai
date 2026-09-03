@@ -29,11 +29,11 @@ class _FakeDb:
     def __init__(self) -> None:
         self._accessible: set[tuple[str, str]] = set()
 
-    def grant(self, username: str, project_name: str) -> None:
-        self._accessible.add((username, project_name))
+    def grant(self, username: str, project_id: str) -> None:
+        self._accessible.add((username, project_id))
 
-    def user_has_project_access(self, username: str, project_name: str) -> bool:
-        return (username, project_name) in self._accessible
+    def user_has_project_access(self, username: str, project_id: str) -> bool:
+        return (username, project_id) in self._accessible
 
 
 @pytest.fixture(autouse=True)
@@ -70,9 +70,9 @@ def client(identity, fake_db) -> TestClient:
     def protected():
         return {"user": Session().user}
 
-    @app.get("/api/projects/{project_name}/protected")
-    def protected_project(project_name: str):
-        return {"project_name": project_name}
+    @app.get("/api/projects/{project_id}/protected")
+    def protected_project(project_id: str):
+        return {"project_id": project_id}
 
     return TestClient(app)
 
@@ -103,7 +103,7 @@ class TestProtectedRoute:
 
 class TestProjectOwnershipGate:
     """A plain 'user' (identity's own default role — see the identity
-    fixture) only ever reaches a {project_name}-scoped route for a
+    fixture) only ever reaches a {project_id}-scoped route for a
     project Db.user_has_project_access says they belong to — checked
     once here for every such route at once, rather than in each
     controller method (see ProjectService.resolve_invite_link for how a
@@ -119,7 +119,7 @@ class TestProjectOwnershipGate:
         client.cookies.set(SESSION_COOKIE_NAME, "good-token")
         response = client.get("/api/projects/proj-a/protected")
         assert response.status_code == 200
-        assert response.json()["project_name"] == "proj-a"
+        assert response.json()["project_id"] == "proj-a"
 
     def test_a_non_user_role_bypasses_the_check_entirely(self, client, fake_db):
         admin = AuthenticatedUser(provider_user_id="sub-2", email="admin@example.com", name="Admin", picture_url=None, role="admin")

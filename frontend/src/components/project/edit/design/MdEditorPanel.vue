@@ -20,7 +20,7 @@ const props = defineProps({
   initialSegment: { type: String, default: 'preview' }
 })
 
-const emit = defineEmits(['saved'])
+const emit = defineEmits(['saved', 'renamed'])
 
 const segment = ref(props.initialSegment)
 const codeEditorRef = ref(null)
@@ -84,6 +84,7 @@ defineExpose({ content, isDirty, saving, save, discard, undo, redo, reload })
         :project-name="projectName"
         :file-name="fileName"
         @saved="emit('saved', $event)"
+        @renamed="emit('renamed', $event)"
       />
     </div>
   </div>

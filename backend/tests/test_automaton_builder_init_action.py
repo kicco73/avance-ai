@@ -13,6 +13,8 @@ pytestmark = pytest.mark.contract
 
 def test_ui_description_is_read_from_the_init_action():
     content = """
+project:
+  id: test_project
 init-action:
   target: a
   ui-description: Where every session begins.
@@ -26,6 +28,8 @@ states:
 
 def test_ui_description_absent_on_the_init_action_is_none():
     content = """
+project:
+  id: test_project
 init-action:
   target: a
 states:

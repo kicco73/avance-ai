@@ -24,7 +24,7 @@ from tracking.tracking_service import TrackingService
 pytestmark = pytest.mark.contract
 
 LIVE = get_session_type_strategy('live')
-PROJECT_NAME = "channels-proj"
+PROJECT_ID = "channels-proj"
 USERNAME = "user"
 CHANNELS = (NATIVE_CHAT, WHATSAPP_CHAT)
 EXISTING_STATES = ("same_channel_open", "other_channel_open", "expired", "closed", "absent")
@@ -56,7 +56,7 @@ class _FakeProjectService:
     def get_active_automaton_and_state(self, username=None):
         return self._automaton, self._automaton.states["a"]
 
-    def get_automaton_and_state(self, project_name, type='live', username=None):
+    def get_automaton_and_state(self, project_id, type='live', username=None):
         return self._automaton, self._automaton.states["a"]
 
     def get_automaton_and_state_for_session(self, session_id):
@@ -65,19 +65,19 @@ class _FakeProjectService:
     def get_automaton_for_session(self, session_id):
         return self._automaton
 
-    def get_active_project_name(self):
-        return PROJECT_NAME
+    def get_active_project_id(self):
+        return PROJECT_ID
 
-    def get_published_revision(self, project_name):
+    def get_published_revision(self, project_id):
         return 0
 
-    def get_draft_revision(self, project_name):
+    def get_draft_revision(self, project_id):
         return 0
 
-    def legal_terms_pending(self, username, project_name):
+    def legal_terms_pending(self, username, project_id):
         return False
 
-    def get_project_availability(self, project_name):
+    def get_project_availability(self, project_id):
         return (False, None)
 
     def apply_manual_action(self, action_name, session_id):
@@ -88,8 +88,8 @@ class _FakeProjectService:
 
 
 def _setup_project(db) -> None:
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
 
 
 def _chat_service(db, *, session_manager: ChatSessionManager | None = None) -> ChatService:
@@ -112,7 +112,7 @@ def _chat_service(db, *, session_manager: ChatSessionManager | None = None) -> C
 def _make_open_session(db, channel: str, *, now=None) -> dict:
     now = now or datetime.utcnow()
     session_id = db.create_chat_session(
-        USERNAME, PROJECT_NAME, 0, datetime_start=now, datetime_end=now,
+        USERNAME, PROJECT_ID, 0, datetime_start=now, datetime_end=now,
         start_state="a", end_state="a", type="live", channel=channel,
     )
     return db.get_chat_session(session_id)
@@ -122,7 +122,7 @@ def _make_expired_session(db, manager: ChatSessionManager, *, now=None) -> dict:
     now = now or datetime.utcnow()
     stale = now - manager.open_window - timedelta(seconds=1)
     session_id = db.create_chat_session(
-        USERNAME, PROJECT_NAME, 0, datetime_start=stale, datetime_end=stale,
+        USERNAME, PROJECT_ID, 0, datetime_start=stale, datetime_end=stale,
         start_state="a", end_state="a", type="live", channel=NATIVE_CHAT,
     )
     return db.get_chat_session(session_id)
@@ -131,7 +131,7 @@ def _make_expired_session(db, manager: ChatSessionManager, *, now=None) -> dict:
 def _make_closed_session(db, *, now=None) -> dict:
     now = now or datetime.utcnow()
     session_id = db.create_chat_session(
-        USERNAME, PROJECT_NAME, 0, datetime_start=now, datetime_end=now,
+        USERNAME, PROJECT_ID, 0, datetime_start=now, datetime_end=now,
         start_state="a", end_state="a", type="live", channel=NATIVE_CHAT,
     )
     db.close_chat_session(session_id, now, "manual-user")
@@ -163,7 +163,7 @@ def test_get_current_session_if_any_or_create_new_matrix(db, channel, state_name
     existing = _build_existing(db, manager, channel, state_name)
 
     result = manager.get_current_session_if_any_or_create_new(
-        LIVE, project_service, USERNAME, PROJECT_NAME, None, "a"
+        LIVE, project_service, USERNAME, PROJECT_ID, None, "a"
     )
 
     if state_name == "same_channel_open":
@@ -201,7 +201,7 @@ def test_acquire_exclusive_session_matrix(db, channel, state_name):
     Session().channel = channel
     existing = _build_existing(db, manager, channel, state_name)
 
-    result = manager.acquire_exclusive_session(LIVE, project_service, USERNAME, PROJECT_NAME, "a")
+    result = manager.acquire_exclusive_session(LIVE, project_service, USERNAME, PROJECT_ID, "a")
 
     if state_name == "same_channel_open":
         assert result["id"] == existing["id"]

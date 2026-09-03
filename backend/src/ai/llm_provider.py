@@ -26,6 +26,11 @@ class AIServiceConfig:
 	ui_label: str
 	ui_description: str | None = None
 	max_output_tokens: int = 1024
+	# Advisory ceiling for Manage services' own consumption bar (see
+	# AiService.generate_stream_with_metadata's on_metadata tap and
+	# db/ai_usage.py) — display-only, like total_token_budget_per_session;
+	# nothing here throttles or blocks a call that goes over it.
+	token_budget_per_day: int = 1_000_000
 	# Which cascade(s) this entry participates in (see AiService.for_live/
 	# for_test, which each filter on this independently) — some
 	# combination of "live"/"test", or empty to sit in neither. Defaults

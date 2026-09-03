@@ -77,16 +77,16 @@ def test_upgrade_readds_a_dropped_invite_column_and_preserves_data(tmp_path):
     db_path = tmp_path / "test.db"
     Db(f"sqlite:///{db_path}")
     _run_sql(db_path, [
-        "INSERT INTO Project (name, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
+        "INSERT INTO Project (id, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
         "INSERT INTO User (id, email, role, created_at) VALUES ('enrico@example.com', 'enrico@example.com', 'user', '2026-01-01 00:00:00')",
         "DROP TABLE Invite",
         "DROP TABLE UserProject",
         "CREATE TABLE UserProject ("
         "user_id VARCHAR(255) NOT NULL REFERENCES User(id), "
-        "project_name VARCHAR(255) NOT NULL REFERENCES Project(name), "
+        "project_id VARCHAR(255) NOT NULL REFERENCES Project(id), "
         "accepted_terms_id INTEGER, "
-        "PRIMARY KEY (user_id, project_name))",
-        "INSERT INTO UserProject (user_id, project_name) VALUES ('enrico@example.com', 'lluna')",
+        "PRIMARY KEY (user_id, project_id))",
+        "INSERT INTO UserProject (user_id, project_id) VALUES ('enrico@example.com', 'lluna')",
         "CREATE TABLE legacy_junk (id INTEGER PRIMARY KEY, stuff TEXT)",
     ])
 
@@ -97,7 +97,7 @@ def test_upgrade_readds_a_dropped_invite_column_and_preserves_data(tmp_path):
     tables = {row[0] for row in _query(db_path, "SELECT name FROM sqlite_master WHERE type='table'")}
     assert "Invite" in tables
     assert "legacy_junk" not in tables
-    assert _query(db_path, "SELECT user_id, project_name FROM UserProject") == [("enrico@example.com", "lluna")]
+    assert _query(db_path, "SELECT user_id, project_id FROM UserProject") == [("enrico@example.com", "lluna")]
     rows = list(UserProject.select(UserProject.user, UserProject.invite).dicts())
     assert rows == [{"user": "enrico@example.com", "invite": None}]
     assert len(_backups(tmp_path, "test")) == 1
@@ -107,15 +107,15 @@ def test_upgrade_survives_the_leftovers_of_an_interrupted_column_rebuild(tmp_pat
     db_path = tmp_path / "test.db"
     Db(f"sqlite:///{db_path}")
     _run_sql(db_path, [
-        "INSERT INTO Project (name, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
+        "INSERT INTO Project (id, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
         "INSERT INTO User (id, email, role, created_at) VALUES ('enrico@example.com', 'enrico@example.com', 'user', '2026-01-01 00:00:00')",
         'ALTER TABLE "UserProject" RENAME TO "UserProject__tmp__"',
         "CREATE TABLE UserProject ("
         "user_id VARCHAR(255) NOT NULL REFERENCES User(id), "
-        "project_name VARCHAR(255) NOT NULL REFERENCES Project(name), "
+        "project_id VARCHAR(255) NOT NULL REFERENCES Project(id), "
         "accepted_terms_id INTEGER, "
-        "PRIMARY KEY (user_id, project_name))",
-        "INSERT INTO UserProject (user_id, project_name) VALUES ('enrico@example.com', 'lluna')",
+        "PRIMARY KEY (user_id, project_id))",
+        "INSERT INTO UserProject (user_id, project_id) VALUES ('enrico@example.com', 'lluna')",
     ])
     orphaned = _query(db_path, "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='UserProject__tmp__'")
     assert any("invite_id" in name for (name,) in orphaned)
@@ -126,7 +126,7 @@ def test_upgrade_survives_the_leftovers_of_an_interrupted_column_rebuild(tmp_pat
     assert "UserProject__tmp__" not in tables
     columns = {row[1] for row in _query(db_path, "PRAGMA table_info(UserProject)")}
     assert {"invite_id", "invite_timestamp"} <= columns
-    assert _query(db_path, "SELECT user_id, project_name FROM UserProject") == [("enrico@example.com", "lluna")]
+    assert _query(db_path, "SELECT user_id, project_id FROM UserProject") == [("enrico@example.com", "lluna")]
     rows = list(UserProject.select(UserProject.user, UserProject.invite).dicts())
     assert rows == [{"user": "enrico@example.com", "invite": None}]
 
@@ -146,9 +146,9 @@ def test_boot_reindexes_a_database_whose_indexes_are_out_of_sync(tmp_path):
     db_path = tmp_path / "test.db"
     Db(f"sqlite:///{db_path}")
     _run_sql(db_path, [
-        "INSERT INTO Project (name, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
+        "INSERT INTO Project (id, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
         "INSERT INTO User (id, email, role, created_at) VALUES ('enrico@example.com', 'enrico@example.com', 'user', '2026-01-01 00:00:00')",
-        "INSERT INTO UserProject (user_id, project_name) VALUES ('enrico@example.com', 'lluna')",
+        "INSERT INTO UserProject (user_id, project_id) VALUES ('enrico@example.com', 'lluna')",
     ])
     _desync_index(db_path, "userproject_invite_id", "UserProject", "user_id")
     assert _query(db_path, "PRAGMA integrity_check") != [("ok",)]
@@ -156,7 +156,7 @@ def test_boot_reindexes_a_database_whose_indexes_are_out_of_sync(tmp_path):
     db = Db(f"sqlite:///{db_path}")
 
     assert _query(db_path, "PRAGMA integrity_check") == [("ok",)]
-    assert _query(db_path, "SELECT user_id, project_name FROM UserProject") == [("enrico@example.com", "lluna")]
+    assert _query(db_path, "SELECT user_id, project_id FROM UserProject") == [("enrico@example.com", "lluna")]
     assert len(_backups(tmp_path, "test")) == 1
     db.erase_user_data("enrico@example.com")
     assert _query(db_path, "SELECT user_id FROM UserProject") == []
@@ -240,9 +240,9 @@ def test_upgrade_relaxes_a_not_null_constraint_and_preserves_data(tmp_path):
     db_path = tmp_path / "test.db"
     Db(f"sqlite:///{db_path}")
     _run_sql(db_path, [
-        "INSERT INTO Project (name, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
+        "INSERT INTO Project (id, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
         "INSERT INTO User (id, email, role, created_at) VALUES ('enrico@example.com', 'enrico@example.com', 'user', '2026-01-01 00:00:00')",
-        "INSERT INTO ChatSession (username, user_id, project_name, type, project_revision, labeled, labeling_revision, channel) "
+        "INSERT INTO ChatSession (username, user_id, project_id, type, project_revision, labeled, labeling_revision, channel) "
         "VALUES ('enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0, 'native-chat')",
         "PRAGMA legacy_alter_table = ON",
         'ALTER TABLE "User" RENAME TO "User__old__"',
@@ -253,7 +253,7 @@ def test_upgrade_relaxes_a_not_null_constraint_and_preserves_data(tmp_path):
         "email VARCHAR(255) NOT NULL, "
         "name VARCHAR(255), picture_url VARCHAR(255), "
         "created_at DATETIME NOT NULL, last_login DATETIME, "
-        "active_project_id VARCHAR(255) REFERENCES Project(name), "
+        "active_project_id VARCHAR(255) REFERENCES Project(id), "
         "role VARCHAR(255) NOT NULL)",
         "INSERT INTO User (id, provider, provider_user_id, email, name, picture_url, created_at, last_login, active_project_id, role) "
         "SELECT id, provider, provider_user_id, email, name, picture_url, created_at, last_login, active_project_id, role FROM User__old__",
@@ -266,7 +266,7 @@ def test_upgrade_relaxes_a_not_null_constraint_and_preserves_data(tmp_path):
     assert notnull["email"] is False
     assert "whatsapp_phone_number" in notnull
     assert _query(db_path, "SELECT id, email, role FROM User") == [("enrico@example.com", "enrico@example.com", "user")]
-    assert _query(db_path, "SELECT username, project_name, channel FROM ChatSession") == [("enrico@example.com", "lluna", "native-chat")]
+    assert _query(db_path, "SELECT username, project_id, channel FROM ChatSession") == [("enrico@example.com", "lluna", "native-chat")]
     assert _query(db_path, "PRAGMA foreign_key_check") == []
 
 
@@ -278,7 +278,7 @@ def test_upgrade_relaxes_a_constraint_even_when_every_column_already_matches(tmp
     db_path = tmp_path / "test.db"
     Db(f"sqlite:///{db_path}")
     _run_sql(db_path, [
-        "INSERT INTO Project (name, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
+        "INSERT INTO Project (id, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
         "INSERT INTO User (id, email, role, created_at) VALUES ('enrico@example.com', 'enrico@example.com', 'user', '2026-01-01 00:00:00')",
         "PRAGMA legacy_alter_table = ON",
         'ALTER TABLE "User" RENAME TO "User__old__"',
@@ -289,7 +289,7 @@ def test_upgrade_relaxes_a_constraint_even_when_every_column_already_matches(tmp
         "email VARCHAR(255) NOT NULL, "
         "name VARCHAR(255), picture_url VARCHAR(255), "
         "created_at DATETIME NOT NULL, last_login DATETIME, "
-        "active_project_id VARCHAR(255) REFERENCES Project(name), "
+        "active_project_id VARCHAR(255) REFERENCES Project(id), "
         "role VARCHAR(255) NOT NULL, "
         "whatsapp_phone_number VARCHAR(255))",
         "INSERT INTO User (id, provider, provider_user_id, email, name, picture_url, created_at, last_login, active_project_id, role, whatsapp_phone_number) "
@@ -321,7 +321,7 @@ def test_upgrade_rebuild_does_not_collide_with_the_tables_own_pre_existing_index
     db_path = tmp_path / "test.db"
     Db(f"sqlite:///{db_path}")
     _run_sql(db_path, [
-        "INSERT INTO Project (name, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
+        "INSERT INTO Project (id, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
         "INSERT INTO User (id, email, role, created_at) VALUES ('enrico@example.com', 'enrico@example.com', 'user', '2026-01-01 00:00:00')",
         "PRAGMA legacy_alter_table = ON",
         'ALTER TABLE "User" RENAME TO "User__old__"',
@@ -332,7 +332,7 @@ def test_upgrade_rebuild_does_not_collide_with_the_tables_own_pre_existing_index
         "email VARCHAR(255) NOT NULL, "
         "name VARCHAR(255), picture_url VARCHAR(255), "
         "created_at DATETIME NOT NULL, last_login DATETIME, "
-        "active_project_id VARCHAR(255) REFERENCES Project(name), "
+        "active_project_id VARCHAR(255) REFERENCES Project(id), "
         "role VARCHAR(255) NOT NULL, "
         "whatsapp_phone_number VARCHAR(255))",
         "INSERT INTO User (id, provider, provider_user_id, email, name, picture_url, created_at, last_login, active_project_id, role, whatsapp_phone_number) "
@@ -357,7 +357,7 @@ def test_upgrade_rebuilds_a_table_needing_both_a_constraint_change_and_a_new_not
     db_path = tmp_path / "test.db"
     Db(f"sqlite:///{db_path}")
     _run_sql(db_path, [
-        "INSERT INTO Project (name, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
+        "INSERT INTO Project (id, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
         "INSERT INTO User (id, email, role, created_at) VALUES ('enrico@example.com', 'enrico@example.com', 'user', '2026-01-01 00:00:00')",
         "PRAGMA legacy_alter_table = ON",
         'ALTER TABLE "ChatSession" RENAME TO "ChatSession__old__"',
@@ -366,7 +366,7 @@ def test_upgrade_rebuilds_a_table_needing_both_a_constraint_change_and_a_new_not
         "id INTEGER NOT NULL PRIMARY KEY, "
         "username VARCHAR(255) NOT NULL, "
         "user_id VARCHAR(255) REFERENCES User(id), "
-        "project_name VARCHAR(255) NOT NULL REFERENCES Project(name), "
+        "project_id VARCHAR(255) NOT NULL REFERENCES Project(id), "
         "type VARCHAR(255) NOT NULL, "
         "title VARCHAR(255), "
         "project_revision INTEGER NOT NULL, "
@@ -375,7 +375,7 @@ def test_upgrade_rebuilds_a_table_needing_both_a_constraint_change_and_a_new_not
         "labeled INTEGER NOT NULL, "
         "comment TEXT, "
         "labeling_revision INTEGER)",
-        "INSERT INTO ChatSession (id, username, user_id, project_name, type, project_revision, labeled, labeling_revision) "
+        "INSERT INTO ChatSession (id, username, user_id, project_id, type, project_revision, labeled, labeling_revision) "
         "VALUES (1, 'enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0)",
         "DROP TABLE ChatSession__old__",
         "INSERT INTO Message (role, content, session_id) VALUES ('user', 'hi', 1)",
@@ -386,7 +386,7 @@ def test_upgrade_rebuilds_a_table_needing_both_a_constraint_change_and_a_new_not
     notnull = {row[1]: bool(row[3]) for row in _query(db_path, "PRAGMA table_info(ChatSession)")}
     assert notnull["labeling_revision"] is True
     assert notnull["channel"] is True
-    assert _query(db_path, "SELECT id, username, project_name, labeling_revision, channel FROM ChatSession") == [
+    assert _query(db_path, "SELECT id, username, project_id, labeling_revision, channel FROM ChatSession") == [
         (1, "enrico@example.com", "lluna", 0, "native-chat"),
     ]
     assert _query(db_path, "SELECT session_id, content FROM Message") == [(1, "hi")]
@@ -402,3 +402,108 @@ def test_drop_removes_a_parent_table_referenced_by_a_still_existing_child(tmp_pa
     assert db.get_chat_session(1) is None
     db.save_project_file("user", "proj", "index.yml", b"fresh content", "text/yaml")
     assert db.get_archive("proj", "index.yml") == b"fresh content"
+
+
+# --- The project_name/project_id merge (SchemaMigrator.migrate_legacy_project_identity) ---
+
+PRE_MERGE_PROJECT_DDL = [
+    "CREATE TABLE Project (name TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER, "
+    "draft_edit_count INTEGER, is_paused INTEGER, paused_reason TEXT, manually_paused INTEGER, "
+    "project_id TEXT UNIQUE, ui_label TEXT, ui_description TEXT)",
+    "CREATE TABLE Archive (id INTEGER PRIMARY KEY, project_name TEXT REFERENCES Project(name), "
+    "archive_name TEXT, revision INTEGER, content BLOB, content_type TEXT)",
+]
+
+
+def test_upgrade_merges_a_declared_project_id_onto_the_primary_key(tmp_path):
+    """A project that already declared its own project.id (kept in sync
+    on Project.project_id pre-merge) gets that value as its new Project.id
+    — the old free-text name is gone, and every dependent row follows it."""
+    db_path = tmp_path / "test.db"
+    _make_sqlite_file(db_path, PRE_MERGE_PROJECT_DDL + [
+        "INSERT INTO Project (name, revision, published_revision, draft_edit_count, is_paused, manually_paused, project_id, ui_label) "
+        "VALUES ('Lluna Edu Torras', 0, 0, 0, 0, 0, 'lluna', 'Lluna')",
+        "INSERT INTO Archive (project_name, archive_name, revision, content, content_type) "
+        "VALUES ('Lluna Edu Torras', 'index.yml', 0, 'content', 'text/yaml')",
+    ])
+
+    Db(f"sqlite:///{db_path}", migration_strategy="upgrade")
+
+    columns = {row[1] for row in _query(db_path, "PRAGMA table_info(Project)")}
+    assert "project_id" not in columns
+    assert "id" in columns
+    assert _query(db_path, "SELECT id, ui_label FROM Project") == [("lluna", "Lluna")]
+    assert _query(db_path, "SELECT project_id, archive_name FROM Archive") == [("lluna", "index.yml")]
+
+
+def test_upgrade_invents_an_id_for_a_project_that_never_declared_one(tmp_path):
+    """No project.id at all pre-merge (the common case) -> a slug of the
+    old name/ui_label, per SchemaMigrator._slugify/_unique_legacy_id."""
+    db_path = tmp_path / "test.db"
+    _make_sqlite_file(db_path, PRE_MERGE_PROJECT_DDL + [
+        "INSERT INTO Project (name, revision, published_revision, draft_edit_count, is_paused, manually_paused) "
+        "VALUES ('Aprendr català', 0, 0, 0, 0, 0)",
+        "INSERT INTO Archive (project_name, archive_name, revision, content, content_type) "
+        "VALUES ('Aprendr català', 'index.yml', 0, 'content', 'text/yaml')",
+    ])
+
+    Db(f"sqlite:///{db_path}", migration_strategy="upgrade")
+
+    assert _query(db_path, "SELECT id FROM Project") == [("aprendr_catala",)]
+    assert _query(db_path, "SELECT project_id FROM Archive") == [("aprendr_catala",)]
+
+
+def test_upgrade_deduplicates_invented_ids_across_several_id_less_projects(tmp_path):
+    db_path = tmp_path / "test.db"
+    _make_sqlite_file(db_path, PRE_MERGE_PROJECT_DDL + [
+        "INSERT INTO Project (name, revision, published_revision, draft_edit_count, is_paused, manually_paused) "
+        "VALUES ('demo', 0, 0, 0, 0, 0)",
+        "INSERT INTO Project (name, revision, published_revision, draft_edit_count, is_paused, manually_paused) "
+        "VALUES ('Demo', 0, 0, 0, 0, 0)",
+    ])
+
+    Db(f"sqlite:///{db_path}", migration_strategy="upgrade")
+
+    ids = {row[0] for row in _query(db_path, "SELECT id FROM Project")}
+    assert ids == {"demo", "demo_2"}
+
+
+def test_upgrade_is_idempotent_across_two_boots(tmp_path):
+    db_path = tmp_path / "test.db"
+    _make_sqlite_file(db_path, PRE_MERGE_PROJECT_DDL + [
+        "INSERT INTO Project (name, revision, published_revision, draft_edit_count, is_paused, manually_paused, project_id) "
+        "VALUES ('proj', 0, 0, 0, 0, 0, 'proj_id')",
+    ])
+
+    Db(f"sqlite:///{db_path}", migration_strategy="upgrade")
+    Db(f"sqlite:///{db_path}", migration_strategy="upgrade")  # must not raise or double-migrate
+
+    assert _query(db_path, "SELECT id FROM Project") == [("proj_id",)]
+
+
+def test_stop_refuses_a_pre_merge_database_untouched(tmp_path):
+    db_path = tmp_path / "test.db"
+    _make_sqlite_file(db_path, PRE_MERGE_PROJECT_DDL + [
+        "INSERT INTO Project (name, revision, published_revision, draft_edit_count, is_paused, manually_paused, project_id) "
+        "VALUES ('proj', 0, 0, 0, 0, 0, 'proj_id')",
+    ])
+
+    with pytest.raises(ValueError, match="migration-strategy"):
+        Db(f"sqlite:///{db_path}")
+
+    assert _query(db_path, "SELECT name, project_id FROM Project") == [("proj", "proj_id")]
+    assert _backups(tmp_path, "test") == []
+
+
+def test_drop_wipes_a_pre_merge_database_same_as_any_other_incompatible_one(tmp_path):
+    db_path = tmp_path / "test.db"
+    _make_sqlite_file(db_path, PRE_MERGE_PROJECT_DDL + [
+        "INSERT INTO Project (name, revision, published_revision, draft_edit_count, is_paused, manually_paused, project_id) "
+        "VALUES ('proj', 0, 0, 0, 0, 0, 'proj_id')",
+    ])
+
+    db = Db(f"sqlite:///{db_path}", migration_strategy="drop")
+
+    assert db.list_projects() == []
+    db.save_project_file("user", "fresh", "index.yml", b"fresh content", "text/yaml")
+    assert db.get_archive("fresh", "index.yml") == b"fresh content"

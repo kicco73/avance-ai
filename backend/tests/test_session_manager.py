@@ -152,7 +152,7 @@ def test_creates_a_new_session_when_none_exists(manager, project_service):
     session = _resolve_or_create(manager, project_service, "user", "proj", None, "start")
 
     assert session["username"] == "user"
-    assert session["project_name"] == "proj"
+    assert session["project_id"] == "proj"
     assert session["start_state"] == "start"
     assert session["end_state"] == "start"
     assert manager.is_open(session)

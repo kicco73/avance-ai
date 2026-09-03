@@ -105,6 +105,10 @@ ai-service:
       # ui-description is an optional longer blurb shown alongside it.
       # ui-label: Gemini Flash Lite
       # ui-description: Google's fastest Gemini model.
+      # Optional, defaults to 1000000. Display-only ceiling for Manage
+      # services' own daily consumption bar for this entry — nothing here
+      # throttles or blocks a call that goes over it.
+      # token-budget-per-day: 1000000
 
 talk-service:
   # Optional, defaults to false (and the whole section can be omitted

@@ -9,6 +9,8 @@ import zipfile
 
 import pytest
 
+from conftest import parse_sse_result
+
 
 def _zip_of(files: dict[str, str]) -> bytes:
     buffer = io.BytesIO()
@@ -18,15 +20,16 @@ def _zip_of(files: dict[str, str]) -> bytes:
     return buffer.getvalue()
 
 
-MINIMAL_YML = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+MINIMAL_YML = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
 
 
-def _upload(client, project_name: str, files: dict[str, str] | None = None):
+def _upload(client, project_id: str, files: dict[str, str] | None = None):
     files = files or {"index.yml": MINIMAL_YML, "notes.txt": "hello attachment"}
-    response = client.put(
-        f"/api/projects/{project_name}", content=_zip_of(files), headers={"Content-Type": "application/zip"}
+    response = client.post(
+        "/api/projects/upload", content=_zip_of(files), headers={"Content-Type": "application/zip"}
     )
     assert response.status_code == 200, response.text
+    assert parse_sse_result(response)["project_id"] == project_id
     return files
 
 
@@ -47,7 +50,7 @@ def test_uploading_a_project_saves_index_yml_with_no_undo_or_redo_yet(client):
 def test_editing_a_file_enables_undo(client):
     _upload(client, "proj")
 
-    new_yml = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi again\n"
+    new_yml = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi again\n"
     response = client.put("/api/projects/proj/files/index.yml", content=new_yml.encode())
 
     assert response.status_code == 200
@@ -63,7 +66,7 @@ def test_editing_one_file_does_not_touch_a_siblings_undo_state(client):
     was never itself re-saved."""
     _upload(client, "proj")
 
-    new_yml = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi again\n"
+    new_yml = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi again\n"
     client.put("/api/projects/proj/files/index.yml", content=new_yml.encode())
 
     notes = client.get("/api/projects/proj/files/notes.txt").json()
@@ -84,7 +87,7 @@ def test_saving_a_file_with_unchanged_content_is_a_no_op(client):
 @pytest.mark.regression
 def test_undo_previews_the_previous_content_without_saving_it(client):
     _upload(client, "proj")
-    v1_yml = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v1\n"
+    v1_yml = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v1\n"
     client.put("/api/projects/proj/files/index.yml", content=v1_yml.encode())
 
     response = client.post("/api/projects/proj/files/index.yml/undo", content=v1_yml.encode())
@@ -110,7 +113,7 @@ def test_undo_with_nothing_to_undo_is_a_400(client):
 @pytest.mark.regression
 def test_redo_previews_the_undone_content_without_saving_it(client):
     _upload(client, "proj")
-    v1_yml = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v1\n"
+    v1_yml = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v1\n"
     client.put("/api/projects/proj/files/index.yml", content=v1_yml.encode())
     client.post("/api/projects/proj/files/index.yml/undo", content=v1_yml.encode())
 
@@ -137,11 +140,11 @@ def test_redo_with_nothing_to_redo_is_a_400(client):
 @pytest.mark.regression
 def test_a_fresh_edit_after_undo_clears_redo(client):
     _upload(client, "proj")
-    v1_yml = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v1\n"
+    v1_yml = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v1\n"
     client.put("/api/projects/proj/files/index.yml", content=v1_yml.encode())
     client.post("/api/projects/proj/files/index.yml/undo", content=v1_yml.encode())
 
-    v2_yml = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v2\n"
+    v2_yml = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v2\n"
     response = client.put("/api/projects/proj/files/index.yml", content=v2_yml.encode())
 
     assert response.json()["can_redo"] is False
@@ -157,7 +160,7 @@ def test_undo_for_an_unknown_project_is_404(client):
 @pytest.mark.regression
 def test_clear_history_disables_undo_and_redo_but_keeps_current_content(client):
     _upload(client, "proj")
-    v1_yml = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v1\n"
+    v1_yml = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v1\n"
     client.put("/api/projects/proj/files/index.yml", content=v1_yml.encode())
 
     response = client.delete("/api/projects/proj/history")
@@ -191,12 +194,17 @@ def test_deleting_a_project_file_removes_its_undo_history_too(client):
 def test_reuploading_an_identical_zip_is_a_no_op(client):
     files = _upload(client, "proj")
 
-    client.put("/api/projects/proj", content=_zip_of(files), headers={"Content-Type": "application/zip"})
+    response = client.post(
+        "/api/projects/upload", content=_zip_of(files), headers={"Content-Type": "application/zip"}
+    )
+    assert response.status_code == 200, response.text
+    assert parse_sse_result(response)["project_id"] == "proj"
 
     assert client.get("/api/projects/proj/files/index.yml").json()["can_undo"] is False
 
 
 TWO_STATE_YML = (
+    "project:\n  id: proj2\n"
     "init-action:\n  target: a\n"
     "states:\n"
     "  a:\n"
@@ -215,10 +223,11 @@ TWO_STATE_YML = (
 def test_undo_does_not_reset_or_reload_the_active_conversation(client):
     """Undo (and, by the same code path, redo) must never trigger the
     active-conversation reconciliation a real Save does."""
-    resp = client.put(
-        "/api/projects/proj2", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"}
+    resp = client.post(
+        "/api/projects/upload", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"}
     )
     assert resp.status_code == 200, resp.text
+    assert parse_sse_result(resp)["project_id"] == "proj2"
     resp = client.post("/api/projects/proj2/publish", json={})
     assert resp.status_code == 200, resp.text
     session = client.get("/api/chat/session").json()

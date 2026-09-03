@@ -102,7 +102,7 @@ def test_undo_returns_previous_content_and_enables_redo(db):
 
     restored = db.undo_project_file("user", "proj", "index.yml", b"v1")
 
-    assert restored == b"v0"
+    assert restored.content == b"v0"
     assert db.has_undo("user", "proj", "index.yml") is False
     assert db.has_redo("user", "proj", "index.yml") is True
 
@@ -136,7 +136,7 @@ def test_redo_replays_undone_content_and_enables_undo_again(db):
 
     replayed = db.redo_project_file("user", "proj", "index.yml", b"v0")  # editor currently shows "v0"
 
-    assert replayed == b"v1"
+    assert replayed.content == b"v1"
     assert db.has_undo("user", "proj", "index.yml") is True
     assert db.has_redo("user", "proj", "index.yml") is False
     # Neither undo nor redo ever touched Archive — still whatever the
@@ -152,12 +152,12 @@ def test_multiple_undo_then_multiple_redo_walk_the_full_trail(db):
 
     # Each call passes whatever the editor is currently previewing —
     # exactly what the previous call just returned.
-    assert db.undo_project_file("user", "proj", "index.yml", b"v2") == b"v1"
-    assert db.undo_project_file("user", "proj", "index.yml", b"v1") == b"v0"
+    assert db.undo_project_file("user", "proj", "index.yml", b"v2").content == b"v1"
+    assert db.undo_project_file("user", "proj", "index.yml", b"v1").content == b"v0"
     assert db.undo_project_file("user", "proj", "index.yml", b"v0") is None  # nothing before v0
 
-    assert db.redo_project_file("user", "proj", "index.yml", b"v0") == b"v1"
-    assert db.redo_project_file("user", "proj", "index.yml", b"v1") == b"v2"
+    assert db.redo_project_file("user", "proj", "index.yml", b"v0").content == b"v1"
+    assert db.redo_project_file("user", "proj", "index.yml", b"v1").content == b"v2"
     assert db.redo_project_file("user", "proj", "index.yml", b"v2") is None  # nothing past v2
     # Archive was never touched by any of the above.
     assert db.get_archive("proj", "index.yml") == b"v2"

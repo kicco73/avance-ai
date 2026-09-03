@@ -207,7 +207,7 @@ describe('the real Test-mode bootstrap sequence (loadMessages -> ensureSession) 
     vi.resetModules()
     document.head.innerHTML = ''
     testChatStore = await import('../src/testChatStore.js')
-    testChatStore.setTestProject('TTM prototype 2')
+    testChatStore.setTestProject('ttm_prototype_2')
     chatSkin = await import('../src/chatSkin.js')
     chatSkin.activeChatMode.value = 'test'
     api = await import('../src/api.js')
@@ -225,7 +225,7 @@ describe('the real Test-mode bootstrap sequence (loadMessages -> ensureSession) 
     // The exact payload the real backend returned for this bug report.
     api.getCurrentTestSession.mockResolvedValue({
       id: 2,
-      project_name: 'TTM prototype 2',
+      project_id: 'ttm_prototype_2',
       source: 'test',
       title: null,
       datetime_start: '2026-08-21T11:12:46.022813+00:00',
@@ -240,7 +240,7 @@ describe('the real Test-mode bootstrap sequence (loadMessages -> ensureSession) 
 
     await testChatStore.loadMessages()
 
-    expect(testChatStore.currentProjectName.value).toBe('TTM prototype 2')
+    expect(testChatStore.currentProjectName.value).toBe('ttm_prototype_2')
     expect(testChatStore.currentSessionId.value).toBe(2)
 
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))

@@ -15,6 +15,8 @@ pytestmark = pytest.mark.contract
 
 # A single, final, no-chat state (no outgoing actions).
 INDEX_YML = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -34,10 +36,11 @@ def _zip_of(files: dict[str, str]) -> bytes:
 
 
 def test_reading_an_imported_sessions_messages_survives_a_final_live_state(client):
-    response = client.put(
-        "/api/projects/proj", content=_zip_of({"index.yml": INDEX_YML}), headers={"Content-Type": "application/zip"}
+    response = client.post(
+        "/api/projects/upload", content=_zip_of({"index.yml": INDEX_YML}), headers={"Content-Type": "application/zip"}
     )
     assert response.status_code == 200, response.text
+    assert parse_sse_result(response)["project_id"] == "proj"
     assert client.put("/api/projects/proj/activate").status_code == 200
     assert client.post("/api/projects/proj/publish", json={}).status_code == 200
 

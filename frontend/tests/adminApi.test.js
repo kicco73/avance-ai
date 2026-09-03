@@ -35,24 +35,24 @@ describe('putProject', () => {
     vi.unstubAllGlobals()
   })
 
-  it('PUTs the zip to /api/projects/<name>, forwards progress, and resolves with the final result', async () => {
+  it('POSTs the zip to /api/projects/upload, forwards progress, and resolves with the final result', async () => {
     fetch.mockResolvedValue(fakeSseResponse([
       { key: 'import:hello', queue_status: 'running', percentage: 50 },
-      { key: 'import:hello', queue_status: 'exited', job_status: 'completed', result: { success: true, project_name: 'hello' } }
+      { key: 'import:hello', queue_status: 'exited', job_status: 'completed', result: { success: true, project_id: 'hello_world' } }
     ]))
     const file = new File(['zip-bytes'], 'hello.zip')
     const onProgress = vi.fn()
 
-    const result = await putProject('hello', file, onProgress)
+    const result = await putProject(file, onProgress)
 
     expect(fetch).toHaveBeenCalledTimes(1)
     const [url, options] = fetch.mock.calls[0]
-    expect(url).toBe('http://localhost:8000/api/projects/hello')
-    expect(options.method).toBe('PUT')
+    expect(url).toBe('http://localhost:8000/api/projects/upload')
+    expect(options.method).toBe('POST')
     expect(options.headers['Content-Type']).toBe('application/zip')
     expect(options.body).toBe(file)
     expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ percentage: 50 }))
-    expect(result).toEqual({ success: true, project_name: 'hello' })
+    expect(result).toEqual({ success: true, project_id: 'hello_world' })
   })
 
   it('sends application/x-yaml for a bare .yml upload', async () => {
@@ -60,7 +60,7 @@ describe('putProject', () => {
       { queue_status: 'exited', job_status: 'completed', result: {} }
     ]))
 
-    await putProject('bare', new File(['a: b'], 'bare.yml'))
+    await putProject(new File(['a: b'], 'bare.yml'))
 
     expect(fetch.mock.calls[0][1].headers['Content-Type']).toBe('application/x-yaml')
   })
@@ -70,6 +70,6 @@ describe('putProject', () => {
       { queue_status: 'exited', job_status: 'failed', error: 'Invalid project archive.' }
     ]))
 
-    await expect(putProject('broken', new File(['x'], 'broken.zip'))).rejects.toThrow('Invalid project archive.')
+    await expect(putProject(new File(['x'], 'broken.zip'))).rejects.toThrow('Invalid project archive.')
   })
 })

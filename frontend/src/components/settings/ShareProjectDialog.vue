@@ -1,6 +1,6 @@
 <script setup>
 // Manage projects' own "Share project" — generates a fresh invite (see
-// postCreateInvite, POST /api/projects/{name}/invites) every time this
+// postCreateInvite, POST /api/projects/{project_id}/invites) every time this
 // dialog opens, then shows a QR code and copyable link for it: a Web tab
 // (see shareLink.js/useAppBoot.js for the landing half: ?invite=<code>,
 // resolved and activated once the scanning session is authenticated, or
@@ -21,7 +21,7 @@ import { buildInviteUrl } from '../../shareLink.js'
 import InviteQrCard from './InviteQrCard.vue'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  projectId: { type: String, required: true },
   uiLabel: { type: String, default: null }
 })
 
@@ -39,7 +39,7 @@ const hasWhatsapp = computed(() => !!whatsappUrl.value)
 
 onMounted(async () => {
   try {
-    const invite = await postCreateInvite(props.projectName)
+    const invite = await postCreateInvite(props.projectId)
     expiresAt.value = invite.expires_at
     maxShares.value = invite.max_shares
     webUrl.value = buildInviteUrl(invite.code)

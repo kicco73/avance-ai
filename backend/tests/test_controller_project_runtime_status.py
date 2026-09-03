@@ -15,7 +15,7 @@ def test_runtime_status_lists_every_project(client, hello_project):
     assert response.status_code == 200
     body = response.json()
     [row] = body["projects"]
-    assert row["name"] == hello_project
+    assert row["id"] == hello_project
     assert row["status"] == "running"
     assert row["paused_reason"] is None
     assert row["revision"] == 0

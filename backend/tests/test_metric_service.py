@@ -36,7 +36,7 @@ def _automaton_with_trigger(trigger_expr: str) -> Automaton:
 
 
 def _metrics(db) -> MetricService:
-    return MetricService(db, FixedProjectContext(project_name="proj"))
+    return MetricService(db, FixedProjectContext(project_id="proj"))
 
 
 def test_calculate_values_returns_a_flat_name_to_value_mapping(db):

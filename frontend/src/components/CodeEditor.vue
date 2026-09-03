@@ -28,7 +28,7 @@ const props = defineProps({
   yamlAttachmentFiles: { type: Array, default: () => [] }
 })
 
-const emit = defineEmits(['saved'])
+const emit = defineEmits(['saved', 'renamed'])
 
 const loading = ref(true)
 const saving = ref(false)
@@ -185,12 +185,21 @@ function setContent(newContent) {
 
 // Previews the previous/next content from history without persisting —
 // no 'saved' emitted. `originalContent` stays put, so the resulting
-// diff from it is what re-enables Save.
+// diff from it is what re-enables Save. A rename step (file.renamed_to
+// set — see db/history.py's own rename-marker) has no content of *this*
+// file's own to preview: this instance is scoped to `props.fileName` for
+// its whole lifetime (see the module comment up top), so it can't just
+// keep going under a different name — 'renamed' tells the parent to
+// remount a fresh instance at renamed_to instead.
 async function applyHistoryNavigation(action) {
   const token = ++requestToken
   try {
     const file = await action(props.projectName, props.fileName, content.value)
     if (token !== requestToken) return
+    if (file.renamed_to) {
+      emit('renamed', file.renamed_to)
+      return
+    }
     setEditorDoc(file.content)
     canUndo.value = file.can_undo
     canRedo.value = file.can_redo

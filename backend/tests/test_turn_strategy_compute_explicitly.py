@@ -12,13 +12,13 @@ from tracking.turn_protocol_using_text_extraction import TurnProcotolUsingTextEx
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 
 USERNAME = "user"
-PROJECT_NAME = "proj"
+PROJECT_ID = "proj"
 
 pytestmark = pytest.mark.contract
 
 
 def _env(db) -> PersistedEnv:
-    return PersistedEnv(db, FixedProjectContext(project_name=PROJECT_NAME))
+    return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID))
 
 
 class FakeAiServiceV1:

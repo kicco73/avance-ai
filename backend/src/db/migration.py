@@ -19,10 +19,13 @@ def _slugify(text: str) -> str:
 
 
 def _unique_legacy_id(seed: str, used_ids: set[str]) -> str:
-    """A fresh `legacy.<slug>` id for a project that never declared its
-    own — not already in `used_ids` (every id assigned so far, this call
-    included, plus every project.id that already existed)."""
-    base = f'legacy.{_slugify(seed)}'
+    """A fresh id for a project that never declared its own — not already
+    in `used_ids` (every id assigned so far, this call included, plus
+    every project.id that already existed). No family is assigned (project.
+    family is a separate, independent opt-in — see automaton_builder.py):
+    a project migrated this way behaves exactly as it always did, isolated
+    from automaton.* observation either way."""
+    base = _slugify(seed)
     candidate = base
     suffix = 2
     while candidate in used_ids:
@@ -102,10 +105,11 @@ class SchemaMigrator:
         against a database still in the pre-merge shape.
 
         A project that never declared a project_id gets one invented
-        here: 'legacy.<slug of its ui_label or old name>' (see _slugify/
+        here: a slug of its ui_label or old name (see _slugify/
         _unique_legacy_id above) — every project must have a real id
-        going forward, dot-allowed, family 'legacy' for anything migrated
-        this way."""
+        going forward. No project.family is assigned either way: family
+        is a separate, independent opt-in a project author declares in
+        its own index.yml, never inferred from identity."""
         if 'project_id' not in actual.get('Project', set()):
             return
         rows = self._database.execute_sql('SELECT "name", "project_id", "ui_label" FROM "Project"').fetchall()
@@ -129,7 +133,17 @@ class SchemaMigrator:
                             f'UPDATE "{table}" SET "{old_column}" = ? WHERE "{old_column}" = ?', (new_id, old_name),
                         )
                 self.rename_column('Project', 'name', 'id')
-                migrate(SqliteMigrator(self._database).drop_column('Project', 'project_id'))
+                # project_id was declared unique=True pre-merge — SQLite
+                # refuses a plain ALTER TABLE DROP COLUMN on a column a
+                # UNIQUE constraint still covers (inline column-level
+                # UNIQUE has no separately-droppable index to remove
+                # first), so this needs the same rename-rebuild-copy-drop
+                # dance _rebuild_table already does for a NOT NULL change:
+                # a fresh Project table in the model's own expected shape
+                # naturally has no project_id column to copy into.
+                project_model = {m._meta.table_name: m for m in self._models}['Project']
+                post_rename_columns = (actual['Project'] - {'name'}) | {'id'}
+                self._rebuild_table('Project', project_model, post_rename_columns)
                 for table, old_column, new_column in self._PROJECT_NAME_COLUMNS:
                     if table in actual and old_column != new_column:
                         self.rename_column(table, old_column, new_column)

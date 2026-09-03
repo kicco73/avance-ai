@@ -1,5 +1,5 @@
 import { computed, nextTick, ref } from 'vue'
-import { getProjectFiles, putProjectFile, putProjectFileBinary, deleteProjectFile, postAddLegalTerms } from '../api.js'
+import { getProjectFiles, putProjectFile, putProjectFileBinary, deleteProjectFile, renameProjectFile, postAddLegalTerms } from '../api.js'
 import { setApiError, clearApiError } from '../errorStore.js'
 import { confirmDialog, promptDialog, chooseDialog } from '../dialogStore.js'
 import { findActionLine, findAttachmentLine, findEnvKeyLine, findInitActionLine, findSignalLine, findStateLine } from '../indexYmlLineFinder.js'
@@ -223,7 +223,7 @@ export function useProjectFiles(projectName, emit) {
     const invalidNames = uploadedFiles.filter((file) => !UPLOADABLE_PATTERN.test(file.name)).map((file) => file.name)
     if (invalidNames.length) {
       setApiError(
-        `Only .txt, .yml/.yaml, .css, or image (.png/.jpg/.gif/.webp/.svg) files can be uploaded — ` +
+        `Only .txt, .md, .csv, .yml/.yaml, .css, or image (.png/.jpg/.gif/.webp/.svg) files can be uploaded — ` +
         `${invalidNames.map((name) => `"${name}"`).join(', ')} ${invalidNames.length === 1 ? "isn't" : "aren't"}.`
       )
       return
@@ -356,16 +356,62 @@ export function useProjectFiles(projectName, emit) {
     }
   }
 
+  function basenameOf(name) {
+    const idx = name.lastIndexOf('/')
+    return idx === -1 ? name : name.slice(idx + 1)
+  }
+
+  // index.yml/index.css/legal/terms.md are fixed names the rest of the
+  // system assumes exist exactly as spelled (see editor.py's own
+  // rename_project_file) — never offered for rename.
+  const renamingFile = ref(null)
+
+  async function handleRenameFile(fileName, newBasename) {
+    const trimmed = newBasename.trim()
+    if (!trimmed || trimmed === basenameOf(fileName)) return
+    renamingFile.value = fileName
+    clearApiError()
+    try {
+      const result = await renameProjectFile(projectName, fileName, trimmed)
+      await loadFiles()
+      if (fileName === currentFileName.value) {
+        // The editor remounts fresh under the new :key, picking up the
+        // (unchanged) content itself — see ProjectDesignPanel.vue.
+        switchFile(result.new_name)
+      } else {
+        // index.yml/index.css may have had a reference to the old
+        // basename auto-rewritten server-side — refresh whichever of them
+        // is open (renaming one of *them* is never allowed, so this is
+        // always a genuinely different file) so its buffer doesn't go stale.
+        if (currentFileName.value === 'index.yml') await indexYmlEditorRef.value?.reload?.()
+        if (currentFileName.value === 'index.css') await indexCssEditorRef.value?.reload?.()
+      }
+    } catch {
+      // already surfaced via apiFetch
+    } finally {
+      renamingFile.value = null
+    }
+  }
+
+  // The currently-open file's own Undo/Redo just walked into a rename
+  // step (see CodeEditor.vue's own 'renamed' emit) — the server already
+  // renamed it, this just catches the explorer/tab up to that new name.
+  async function handleFileRenamedByHistory(newName) {
+    await loadFiles()
+    switchFile(newName)
+  }
+
   function handleFileSaved() {
     emit('saved')
   }
 
   return {
-    filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile,
+    filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile, renamingFile,
     designPanelRef, codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
     currentFileIsImage, currentFileIsMarkdown, isBehaviorNodeSelected, hasTheme,
     activeEditorIsDirty, activeEditor,
     loadFiles, switchFile, guardedAction, selectFile, jumpToDefinition,
-    handleUploadFile, handleNewAttachment, handleNewAspect, handleNewLegal, handleDeleteFile, handleFileSaved,
+    handleUploadFile, handleNewAttachment, handleNewAspect, handleNewLegal, handleDeleteFile, handleRenameFile,
+    handleFileRenamedByHistory, handleFileSaved,
   }
 }

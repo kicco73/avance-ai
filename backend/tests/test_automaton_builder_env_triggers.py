@@ -14,6 +14,8 @@ pytestmark = pytest.mark.contract
 
 def _project(trigger: str) -> str:
     return f"""
+project:
+  id: test_project
 init-action:
   target: a
 states:
@@ -81,6 +83,8 @@ def test_a_trigger_referencing_an_undeclared_env_key_is_rejected():
 
 def test_a_trigger_may_reference_a_declared_env_key():
     content = f"""
+project:
+  id: test_project
 env:
   visits: {{}}
 init-action:
@@ -103,6 +107,8 @@ def test_a_trigger_referencing_a_leftover_bare_signal_name_is_rejected():
     """A bare name (`mood >= 50` instead of `signal.mood >= 50`) must
     fail loudly, not silently resolve to nothing."""
     content = f"""
+project:
+  id: test_project
 init-action:
   target: a
 signals:
@@ -124,6 +130,8 @@ states:
 
 def _project_with_mood_signal(trigger: str) -> str:
     return f"""
+project:
+  id: test_project
 init-action:
   target: a
 signals:

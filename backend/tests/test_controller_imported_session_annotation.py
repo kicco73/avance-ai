@@ -44,17 +44,19 @@ states:
       - name: stay
         target: a
 project:
+  id: proj
   signal-tracking-on-ai-message: {str(autotracking_on_ai_message).lower()}
 """
 
 
 def _setup_project(client, *, autotracking_on_ai_message: bool) -> int:
-    response = client.put(
-        "/api/projects/proj",
+    response = client.post(
+        "/api/projects/upload",
         content=_zip_of({"index.yml": _index_yml(autotracking_on_ai_message=autotracking_on_ai_message)}),
         headers={"Content-Type": "application/zip"},
     )
     assert response.status_code == 200, response.text
+    assert parse_sse_result(response)["project_id"] == "proj"
     assert client.put("/api/projects/proj/activate").status_code == 200
     assert client.post("/api/projects/proj/publish", json={}).status_code == 200
     # A live session must exist and already be opened first — otherwise a
@@ -138,6 +140,8 @@ def test_annotation_validates_against_the_messages_own_project_not_whatever_is_n
     # A second, unrelated project becomes active — its own automaton has
     # no state "a" (and no signal "mood") at all, only state "x".
     other_index_yml = """
+project:
+  id: other
 init-action:
   target: x
 states:
@@ -145,12 +149,13 @@ states:
     contextual-prompt: hi
     actions: []
 """
-    response = client.put(
-        "/api/projects/other",
+    response = client.post(
+        "/api/projects/upload",
         content=_zip_of({"index.yml": other_index_yml}),
         headers={"Content-Type": "application/zip"},
     )
     assert response.status_code == 200, response.text
+    assert parse_sse_result(response)["project_id"] == "other"
     assert client.put("/api/projects/other/activate").status_code == 200
     assert client.post("/api/projects/other/publish", json={}).status_code == 200
 

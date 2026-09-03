@@ -10,7 +10,7 @@ pytestmark = pytest.mark.contract
 
 
 def test_metrics_history_spans_every_session_chronologically(client, app_db, hello_project):
-    app_db.set_active_project_name(hello_project, "alice")
+    app_db.set_active_project_id(hello_project, "alice")
     with Session().impersonate("alice"):
         older = client.get("/api/chat/session").json()
         client.post(f"/api/chat/sessions/{older['id']}/messages", json={"message": "hi"})
@@ -29,11 +29,11 @@ def test_metrics_history_spans_every_session_chronologically(client, app_db, hel
 
 
 def test_metrics_history_is_scoped_to_the_given_user_and_project(client, app_db, hello_project):
-    app_db.set_active_project_name(hello_project, "alice")
+    app_db.set_active_project_id(hello_project, "alice")
     with Session().impersonate("alice"):
         client.get("/api/chat/session")
 
-    app_db.set_active_project_name(hello_project, "carol")
+    app_db.set_active_project_id(hello_project, "carol")
     with Session().impersonate("carol"):
         session = client.get("/api/chat/session").json()
         client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
@@ -47,7 +47,7 @@ def test_metrics_history_is_scoped_to_the_given_user_and_project(client, app_db,
 
 
 def test_metrics_history_includes_one_session_start_per_session(client, app_db, hello_project):
-    app_db.set_active_project_name(hello_project, "alice")
+    app_db.set_active_project_id(hello_project, "alice")
     with Session().impersonate("alice"):
         older = client.get("/api/chat/session").json()
         client.post(f"/api/chat/sessions/{older['id']}/messages", json={"message": "hi"})
@@ -67,7 +67,7 @@ def test_metrics_history_orders_points_by_end_time_even_when_sessions_overlap(cl
     ended last push a shorter, later-started-but-earlier-ended session's
     point out of order — Chart.js then draws the line jumping backward
     in time instead of left to right."""
-    app_db.set_active_project_name(hello_project, "dave")
+    app_db.set_active_project_id(hello_project, "dave")
     revision = app_db.get_project_published_revision(hello_project)
     app_db.create_chat_session(
         "dave", hello_project, revision,

@@ -13,6 +13,8 @@ pytestmark = pytest.mark.contract
 
 def _build(trigger: str, target: str) -> object:
     content = f"""
+project:
+  id: test_project
 init-action:
   target: a
 states:

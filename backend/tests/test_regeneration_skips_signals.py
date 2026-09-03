@@ -23,7 +23,7 @@ from tracking.tracking_processor_user import TrackingProcessorAfterUserMessage
 pytestmark = pytest.mark.regression
 
 USERNAME = "user"
-PROJECT_NAME = "proj"
+PROJECT_ID = "proj"
 
 
 def _automaton(action_env: dict[str, str] | None = None) -> Automaton:
@@ -72,21 +72,21 @@ class RecordingSchemaAiService:
 
 
 def _user_variables(automaton: Automaton, session_id: int) -> UserVariables:
-    return UserVariables(automaton=automaton, state=automaton.states["a"], project_name=PROJECT_NAME, session_id=session_id)
+    return UserVariables(automaton=automaton, state=automaton.states["a"], project_id=PROJECT_ID, session_id=session_id)
 
 
 async def test_regeneration_call_does_not_request_signals(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     session_id = db.create_chat_session(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
         start_state="a", end_state="a",
     )
     automaton = _automaton()
     ai_service = RecordingSchemaAiService()
-    project_service = FixedProjectContext(project_name=PROJECT_NAME)
+    project_service = FixedProjectContext(project_id=PROJECT_ID)
     metrics = MetricService(db, project_service)
     env = PersistedEnv(db, project_service)
     scope_builder = EvaluationScopeBuilder(
@@ -104,17 +104,17 @@ async def test_regeneration_call_does_not_request_signals(db):
 
 
 async def test_a_turn_that_fires_a_trigger_records_origin_trigger(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     session_id = db.create_chat_session(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
         start_state="a", end_state="a",
     )
     automaton = _automaton()
     ai_service = RecordingSchemaAiService()
-    project_service = FixedProjectContext(project_name=PROJECT_NAME)
+    project_service = FixedProjectContext(project_id=PROJECT_ID)
     metrics = MetricService(db, project_service)
     env = PersistedEnv(db, project_service)
     scope_builder = EvaluationScopeBuilder(
@@ -132,17 +132,17 @@ async def test_a_turn_that_fires_a_trigger_records_origin_trigger(db):
 
 
 async def test_regeneration_prompt_includes_existing_and_the_firing_actions_own_env(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     session_id = db.create_chat_session(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
         start_state="a", end_state="a",
     )
     automaton = _automaton(action_env={"mood_score": "signal.mood"})
     ai_service = RecordingSchemaAiService()
-    project_service = FixedProjectContext(project_name=PROJECT_NAME)
+    project_service = FixedProjectContext(project_id=PROJECT_ID)
     metrics = MetricService(db, project_service)
     env = PersistedEnv(db, project_service)
     env.update({"greeting": "hi"})

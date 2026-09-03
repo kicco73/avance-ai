@@ -16,6 +16,7 @@ MINIMAL_STATES = "init-action:\n  target: a\nstates:\n  a:\n    contextual-promp
 
 def _build(trigger: str, known_projects: dict | None = None):
     yml = (
+        "project:\n  id: test_project\n"
         "init-action:\n  target: a\n"
         "states:\n"
         "  a:\n"
@@ -98,30 +99,41 @@ class TestReadDeclaredEnvKeys:
 
     def test_reads_id_and_declared_env_key_names(self):
         yml = "project:\n  id: dep_id\nenv:\n  k1:\n    value: \"'a'\"\n  k2:\n    value: \"'b'\"\n" + MINIMAL_STATES
-        project_id, env_keys = AutomatonBuilder.read_declared_env_keys(yml)
+        project_id, family, env_keys = AutomatonBuilder.read_declared_env_keys(yml)
         assert project_id == "dep_id"
+        assert family is None
         assert env_keys == frozenset({"k1", "k2"})
 
+    def test_reads_the_declared_family_too(self):
+        yml = "project:\n  id: dep_id\n  family: shared_family\n" + MINIMAL_STATES
+        project_id, family, env_keys = AutomatonBuilder.read_declared_env_keys(yml)
+        assert project_id == "dep_id"
+        assert family == "shared_family"
+        assert env_keys == frozenset()
+
     def test_no_project_section_reports_no_id(self):
-        project_id, env_keys = AutomatonBuilder.read_declared_env_keys(MINIMAL_STATES)
+        project_id, family, env_keys = AutomatonBuilder.read_declared_env_keys(MINIMAL_STATES)
         assert project_id is None
+        assert family is None
         assert env_keys == frozenset()
 
     def test_no_env_section_reports_an_empty_set(self):
         yml = "project:\n  id: dep_id\n" + MINIMAL_STATES
-        project_id, env_keys = AutomatonBuilder.read_declared_env_keys(yml)
+        project_id, family, env_keys = AutomatonBuilder.read_declared_env_keys(yml)
         assert project_id == "dep_id"
+        assert family is None
         assert env_keys == frozenset()
 
     def test_an_invalid_identifier_id_reports_no_id(self):
         """This method never raises on a malformed id, it just reports
         no id, so it never blocks validating a different project."""
         yml = "project:\n  id: 'not a valid id'\n" + MINIMAL_STATES
-        project_id, _ = AutomatonBuilder.read_declared_env_keys(yml)
+        project_id, _, _ = AutomatonBuilder.read_declared_env_keys(yml)
         assert project_id is None
 
     def test_a_non_mapping_project_section_reports_no_id_rather_than_raising(self):
         yml = "project: not-a-mapping\n" + MINIMAL_STATES
-        project_id, env_keys = AutomatonBuilder.read_declared_env_keys(yml)
+        project_id, family, env_keys = AutomatonBuilder.read_declared_env_keys(yml)
         assert project_id is None
+        assert family is None
         assert env_keys == frozenset()

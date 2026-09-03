@@ -49,7 +49,7 @@ async def test_get_messages_raises_for_a_deleted_session(chat_service, db):
     db.publish_project("proj")
     session_id = db.create_chat_session(
         username="user",
-        project_name="proj",
+        project_id="proj",
         revision=db.get_project_published_revision("proj"),
         datetime_start=datetime(2026, 1, 1, 10, 0, 0),
         datetime_end=datetime(2026, 1, 1, 10, 0, 0),
@@ -70,7 +70,7 @@ async def test_get_messages_raises_for_someone_elses_session(chat_service, db):
     db.publish_project("proj")
     session_id = db.create_chat_session(
         username="other-user",
-        project_name="proj",
+        project_id="proj",
         revision=db.get_project_published_revision("proj"),
         datetime_start=datetime(2026, 1, 1, 10, 0, 0),
         datetime_end=datetime(2026, 1, 1, 10, 0, 0),
@@ -95,7 +95,7 @@ def test_delete_session_raises_for_someone_elses_session(chat_service, db):
     db.publish_project("proj")
     session_id = db.create_chat_session(
         username="other-user",
-        project_name="proj",
+        project_id="proj",
         revision=db.get_project_published_revision("proj"),
         datetime_start=datetime(2026, 1, 1, 10, 0, 0),
         datetime_end=datetime(2026, 1, 1, 10, 0, 0),

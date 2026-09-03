@@ -55,6 +55,14 @@ class SettingsController(BaseController, ProjectCommitMixin):
         public_services_snapshot), one tab per section on the frontend."""
         return self.services_config
 
+    @get("/api/settings/services/ai-usage", role="admin")
+    def get_ai_usage(self):
+        """Settings > Manage services > AI — each ai-service provider's
+        own daily token spend (see db/ai_usage.py), fetched once when the
+        panel opens, same as get_services above: {today, history}."""
+        labels = [f"{p['driver']}/{p['model']}" for p in self.services_config["ai"]["providers"]]
+        return self.db.get_ai_token_usage_snapshot(labels)
+
     @get("/api/settings/backup", role="admin")
     async def get_backup(self):
         """Downloads the whole working SQLite database file — every

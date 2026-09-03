@@ -20,7 +20,7 @@ class FakeAnalyticsDb:
         self._messages_by_session = messages_by_session or {}
         self._signals_by_session = signals_by_session or {}
 
-    def list_chat_sessions(self, username, project_name):
+    def list_chat_sessions(self, username, project_id):
         return self._sessions
 
     def get_messages(self, session_id, last_n=None, since=None):
@@ -40,7 +40,7 @@ class TestUserAnalyticsDataBuilder:
         data = UserAnalyticsDataBuilder(FakeAnalyticsDb(), "user", "proj").build()
 
         assert data.username == "user"
-        assert data.project_name == "proj"
+        assert data.project_id == "proj"
         assert data.messages.empty
         assert data.sessions.empty
         assert data.signals.empty

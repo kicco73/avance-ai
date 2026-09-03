@@ -16,8 +16,10 @@ class BaseModel(Model):
 
 class Project(BaseModel):
     # The project's own declared `project.id` — mandatory, globally unique,
-    # dot-segmented (e.g. "luna.edu"; see automaton_builder.family_of). What
-    # *other* projects reach this one as through automaton.*, and the sole
+    # a plain identifier (letters/digits/underscore). What *other* projects
+    # in the same declared `project.family` (see automaton_builder.py,
+    # never stored here — always read fresh off each project's own
+    # index.yml) reach this one as through automaton.*, and the sole
     # identity every other table keys on.
     id = CharField(primary_key=True)
     revision = IntegerField(null=False, default=0)
@@ -294,6 +296,24 @@ class SystemWarning(BaseModel):
     class Meta:
         table_name = 'SystemWarning'
 
+class AiTokenUsage(BaseModel):
+    """One row per successful ai-service generate call (see AiService.
+    generate_stream_with_metadata's on_metadata tap) — raw, un-aggregated,
+    the same way Tracking rows are: day/provider totals for Manage
+    services' own consumption bar and trend chart are grouped from these
+    at read time (db/ai_usage.py), not maintained as a running counter."""
+    id = AutoField()
+    # "<driver>/<model>", matching AiService._build_labeled_providers'
+    # own label — shared across the live and test cascades, since both
+    # bill against the same real-world provider/model either way.
+    provider_label = CharField(index=True)
+    timestamp = DateTimeField(index=True, default=datetime.utcnow)
+    input_tokens = IntegerField(default=0)
+    output_tokens = IntegerField(default=0)
+
+    class Meta:
+        table_name = 'AiTokenUsage'
+
 class ProjectObserverIndex(BaseModel):
     """Reverse index of automaton.* cross-project references, rebuilt
     from scratch for `observer_project_id` on every index.yml build.
@@ -321,7 +341,15 @@ class EditHistory(BaseModel):
     archive_name = CharField(index=True, null=False)
     kind = CharField(null=False)
     seq = IntegerField(null=False)
-    content = BlobField(null=False)
+    # Null for a rename-marker row (see rename_target below); set for an
+    # ordinary content-snapshot row.
+    content = BlobField(null=True)
+    # Set only on a rename-marker row — the *other* name involved in this
+    # rename step (see HistoryMixin.rename_project_file/undo_project_file/
+    # redo_project_file in db/history.py): for an 'undo' row, the name to
+    # rename back to; for a 'redo' row, the name to rename forward to.
+    # Null for an ordinary content-snapshot row.
+    rename_target = CharField(null=True)
 
     class Meta:
         table_name = 'EditHistory'

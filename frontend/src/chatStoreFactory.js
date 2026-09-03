@@ -1,7 +1,7 @@
 import { nextTick, ref } from 'vue'
 import {
   getMessages, getSessionState, postAction, getAutoTracking, postAutoTracking, getActuators, postActuators,
-  postTruncateSession, deleteSession, putMessageReaction, postListenTranscribe, messageAudioUrl,
+  postTruncateSession, deleteSession, postCloseSession, putMessageReaction, postListenTranscribe, messageAudioUrl,
   getAiModels, postAiModelSelection
 } from './api.js'
 import { sendMessage as sendChatMessage, onNotification } from './chatClient.js'
@@ -186,7 +186,7 @@ export function createChatStore({
     if (session.legal_terms_pending) return null
     currentSessionId.value = session.id
     selectedSessionActive.value = session.active
-    currentProjectName.value = session.project_name
+    currentProjectName.value = session.project_id
     state.value = session.state
     if (useAutoTracking) await loadAutoTracking()
     if (useActuatorsToggle) await loadActuators()
@@ -645,6 +645,17 @@ export function createChatStore({
     }
   }
 
+  async function handleCloseSession() {
+    if (currentSessionId.value == null) return
+    try {
+      const session = await postCloseSession(currentSessionId.value)
+      selectedSessionActive.value = session.active
+      if (sessionsPanelOpen.value) await loadSessions()
+    } catch {
+      // already surfaced via apiFetch
+    }
+  }
+
   return {
     state, currentSessionId, selectedSessionActive, projectPaused, projectPausedReason,
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectName,
@@ -653,6 +664,6 @@ export function createChatStore({
     handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
     selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking, toggleActuators,
     toggleAudio, handleSend, handleVoiceMessage, handleResend, handleReact, handleAction,
-    clearChatUi, handleReset: resetSession ? handleReset : null, handleNewSession,
+    clearChatUi, handleReset: resetSession ? handleReset : null, handleNewSession, handleCloseSession,
   }
 }

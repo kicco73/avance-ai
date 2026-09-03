@@ -34,6 +34,7 @@ const props = defineProps({
   // excluded here since it has no delete and its own dedicated tabs.
   currentFileName: { type: String, default: null },
   deletingFile: { type: String, default: null },
+  renamingFile: { type: String, default: null },
   // Auto mode's own selection (see EditProjectView.vue's autoSelected*
   // computeds) — a session read-only, in place of selectedElement's
   // state/action. { id, title, comment, type, ... }, same shape as
@@ -56,7 +57,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'select', 'select-attachment', 'jump-to-attachment', 'set-field', 'set-project-field', 'delete',
-  'add-state', 'add-action', 'delete-file', 'open-actions-order'
+  'add-state', 'add-action', 'delete-file', 'rename-file', 'open-actions-order'
 ])
 
 // True whenever there's no active file browsing to defer to (currentFileName
@@ -127,7 +128,9 @@ onMounted(loadProjectMetadata)
       :project-name="projectName"
       :file-name="currentFileName"
       :deleting="deletingFile === currentFileName"
+      :renaming="renamingFile === currentFileName"
       @delete="emit('delete-file', currentFileName)"
+      @rename="(newBasename) => emit('rename-file', currentFileName, newBasename)"
     />
 
     <template v-if="selectedSession">

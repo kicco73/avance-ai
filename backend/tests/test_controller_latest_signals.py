@@ -18,7 +18,7 @@ pytestmark = pytest.mark.contract
 
 
 def test_latest_signals_returns_the_most_recent_sessions_latest_snapshot(client, app_db, hello_project):
-    app_db.set_active_project_name(hello_project, "alice")
+    app_db.set_active_project_id(hello_project, "alice")
     with Session().impersonate("alice"):
         session = client.get("/api/chat/session").json()
         turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}))
@@ -35,7 +35,7 @@ def test_latest_signals_returns_the_most_recent_sessions_latest_snapshot(client,
 
 
 def test_latest_signals_falls_back_to_an_earlier_session_when_the_latest_has_none(client, app_db, hello_project):
-    app_db.set_active_project_name(hello_project, "carol")
+    app_db.set_active_project_id(hello_project, "carol")
     with Session().impersonate("carol"):
         older = client.get("/api/chat/session").json()
         app_db.save_signal_snapshot({"foo": 7}, older["id"])
@@ -51,7 +51,7 @@ def test_latest_signals_falls_back_to_an_earlier_session_when_the_latest_has_non
 
 
 def test_latest_signals_has_no_values_for_a_session_with_no_signal_snapshot(client, app_db, hello_project):
-    app_db.set_active_project_name(hello_project, "bob")
+    app_db.set_active_project_id(hello_project, "bob")
     with Session().impersonate("bob"):
         session = client.get("/api/chat/session").json()
 

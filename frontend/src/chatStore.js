@@ -31,5 +31,5 @@ export const {
   handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
   selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking,
   toggleAudio, handleSend, handleVoiceMessage, handleResend, handleReact, handleAction,
-  clearChatUi, handleNewSession,
+  clearChatUi, handleNewSession, handleCloseSession,
 } = liveStore

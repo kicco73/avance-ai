@@ -71,9 +71,16 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI):
         # --- STARTUP ---
         logger.info(f"Booting avance headless server v{__version__}.")
-        
-        ai_live_service = AiService.for_live(config.ai_services)
-        ai_test_service = AiService.for_test(config.ai_services)
+
+        # Built before AiService.for_live/for_test below, so both cascades
+        # can be given it directly — Manage services' own daily token
+        # usage (see AiService.generate_stream_with_metadata's on_metadata
+        # tap and db/ai_usage.py) is written straight through it, the same
+        # `db` every other service here depends on.
+        db = Db(config.database_url, migration_strategy=config.database_migration_strategy)
+
+        ai_live_service = AiService.for_live(config.ai_services, db=db)
+        ai_test_service = AiService.for_test(config.ai_services, db=db)
         talk_service = TalkService.from_config(config.talk_services) if config.talk_services is not None else None
         listen_service = ListenService.from_config(config.listen_services) if config.listen_services is not None else None
         
@@ -90,7 +97,6 @@ def create_app() -> FastAPI:
         notification_service = NotificationService(config.notification_service_config, job_queue)
         app.state.notification_service = notification_service
 
-        db = Db(config.database_url, migration_strategy=config.database_migration_strategy)
         actuator_factory = ActuatorSetFactory(notification_service, db, job_queue)
         # Bridged onto app.state for the same reason auth_service is below:
         # AuthMiddleware was already registered before this existed, and

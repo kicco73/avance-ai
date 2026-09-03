@@ -1,15 +1,15 @@
 """The `automaton` scope namespace: automaton.<project>.state/env.<key>
-resolve a DIFFERENT project's live state/env for the SAME user, using
-project_id, only within the calling project's own family (see
-automaton_builder.family_of) — a cross-family id resolves exactly like
-an unknown one, so another family is never distinguishable from "doesn't
+resolve a DIFFERENT project's live state/env for the SAME user, only
+within the calling project's own declared family (project.family, plain
+string equality, never parsed — see automaton_builder.py's own
+docstring) — a cross-family or family-less id resolves exactly like an
+unknown one, so another family is never distinguishable from "doesn't
 exist" (see scoped_to below). Failures resolve to None + SystemWarning
 rather than raising, so a broken reference never crashes the caller's turn."""
 from __future__ import annotations
 
 from typing import Any
 
-from automaton.automaton_builder import family_of
 from db.db import Db
 from project.project_service import ProjectService
 from session import Session
@@ -17,7 +17,7 @@ from session import Session
 
 class AutomatonNamespace:
     """Long-lived and shared across every evaluation — scoped_to binds it
-    to one particular calling project right before use (see
+    to one particular calling project's own family right before use (see
     tracking.evaluation_scope.EvaluationScopeBuilder.build), since family
     membership depends on who's asking, not on this object itself."""
 
@@ -25,45 +25,48 @@ class AutomatonNamespace:
         self._db = db
         self._project_service = project_service
 
-    def scoped_to(self, caller_project_id: str) -> "_ScopedAutomatonNamespace":
-        return _ScopedAutomatonNamespace(self._db, self._project_service, caller_project_id)
+    def scoped_to(self, caller_family: str | None) -> "_ScopedAutomatonNamespace":
+        return _ScopedAutomatonNamespace(self._db, self._project_service, caller_family)
 
 
 class _ScopedAutomatonNamespace:
-    def __init__(self, db: Db, project_service: ProjectService, caller_project_id: str) -> None:
+    def __init__(self, db: Db, project_service: ProjectService, caller_family: str | None) -> None:
         self._db = db
         self._project_service = project_service
-        self._caller_project_id = caller_project_id
+        self._caller_family = caller_family
 
     def __getattr__(self, project_id: str) -> "_ProjectProxy":
         if project_id.startswith("__"):
             raise AttributeError(project_id)
-        return _ProjectProxy(self._db, self._project_service, Session().user, self._caller_project_id, project_id)
+        return _ProjectProxy(self._db, self._project_service, Session().user, self._caller_family, project_id)
 
 
 class _ProjectProxy:
-    def __init__(self, db: Db, project_service: ProjectService, username: str, caller_project_id: str, project_id: str) -> None:
+    def __init__(self, db: Db, project_service: ProjectService, username: str, caller_family: str | None, project_id: str) -> None:
         self._db = db
         self._project_service = project_service
         self._username = username
-        self._caller_project_id = caller_project_id
+        self._caller_family = caller_family
         self._project_id = project_id
 
     def _warn(self, project_id: str, kind: str, message: str) -> None:
         self._db.save_system_warning(self._username, project_id, kind, message)
 
+    def _not_found(self) -> None:
+        self._warn(
+            self._project_id, "project_not_found",
+            f"automaton.{self._project_id}: no project declares this as its own project.id.",
+        )
+
     def _resolve(self) -> tuple[Any, Any, str] | None:
         """(automaton, state, project_id) for this project, or None if
         resolution fails at any step — a SystemWarning is recorded in
         that case instead of raising, since this must never crash the
-        caller. A project outside the caller's own family is reported the
-        exact same "project_not_found" way as one that plain doesn't
-        exist — see this module's own docstring."""
-        if not self._db.project_exists(self._project_id) or family_of(self._project_id) != family_of(self._caller_project_id):
-            self._warn(
-                self._project_id, "project_not_found",
-                f"automaton.{self._project_id}: no project declares this as its own project.id.",
-            )
+        caller. A caller with no family at all, or a target outside the
+        caller's own family, is reported the exact same "project_not_found"
+        way as one that plain doesn't exist — see this module's own docstring."""
+        if self._caller_family is None or not self._db.project_exists(self._project_id):
+            self._not_found()
             return None
         try:
             resolved = self._project_service.get_automaton_and_state_for_observer(self._project_id, self._username)
@@ -77,6 +80,9 @@ class _ProjectProxy:
             )
             return None
         automaton, state = resolved
+        if automaton.family != self._caller_family:
+            self._not_found()
+            return None
         return automaton, state, self._project_id
 
     @property

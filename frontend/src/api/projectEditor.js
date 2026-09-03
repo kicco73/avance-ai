@@ -91,6 +91,18 @@ export function putProjectFile(projectName, fileName, content) {
   })
 }
 
+// Renames one file in place — the new basename only, same folder as
+// fileName (see ProjectEditor.rename_project_file, which also
+// auto-rewrites any index.yml/index.css reference to the old basename).
+// Response: {old_name, content, can_undo, can_redo, ...} for newName.
+export function renameProjectFile(projectName, fileName, newName) {
+  return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}/rename`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_name: newName })
+  })
+}
+
 // Image attachments: same PUT route as putProjectFile, but the raw File
 // as body with its own Content-Type — the backend validates an image
 // save against the request header, unlike a text save.

@@ -19,7 +19,18 @@ class ProjectMixin:
         column must move together with Project.id in one transaction,
         foreign_keys off for its duration — same technique
         SchemaMigrator.migrate_legacy_project_identity uses for the
-        one-off historical merge, just live and single-project here)."""
+        one-off historical merge, just live and single-project here).
+
+        Deliberately leaves ProjectObserverIndex.project_id (the
+        *observed* side) untouched: those rows are a cache of what some
+        *other* project's own raw trigger text currently says, recomputed
+        from scratch on that other project's own next build (see
+        set_project_observers) — silently rewriting them here would erase
+        the very signal ProjectManager._recheck_dependents_of_changed_id
+        relies on to find and pause whoever's left pointing at the now-
+        stale old id. observer_project_id (this project's *own* side, as
+        an observer of something else) is this project's own data and
+        does need to move with it."""
         database.execute_sql('PRAGMA foreign_keys = OFF')
         try:
             with database.atomic():
@@ -34,7 +45,6 @@ class ProjectMixin:
                 TestAggregateResult.update(project_id=new_id).where(TestAggregateResult.project_id == old_id).execute()
                 SystemWarning.update(project_id=new_id).where(SystemWarning.project_id == old_id).execute()
                 EditHistory.update(project_id=new_id).where(EditHistory.project_id == old_id).execute()
-                ProjectObserverIndex.update(project_id=new_id).where(ProjectObserverIndex.project_id == old_id).execute()
                 ProjectObserverIndex.update(observer_project_id=new_id).where(ProjectObserverIndex.observer_project_id == old_id).execute()
         finally:
             database.execute_sql('PRAGMA foreign_keys = ON')
@@ -254,10 +264,35 @@ class ProjectMixin:
             for row in Archive.select(Archive.project, Archive.archive_name).distinct()
         ]
 
-    def rename_archive_everywhere(self, project_id: str, old_name: str, new_name: str) -> None:
-        Archive.update(archive_name=new_name).where(
-            (Archive.project == project_id) & (Archive.archive_name == old_name)
-        ).execute()
+    def rename_archive(
+        self, project_id: str, old_name: str, new_name: str,
+        updated_files: dict[str, bytes] | None = None, content_types: dict[str, str] | None = None,
+    ) -> None:
+        """Moves one Archive row from old_name to new_name within the
+        *current* draft revision only (forking first via
+        _ensure_draft_revision, same as save_project_files) — an
+        already-published revision keeps old_name exactly as it was, since
+        reads are always exact-match on (project, archive_name, revision)
+        with no fallback. `updated_files`/`content_types`: any other files
+        (index.yml/index.css) whose own text needed a reference update for
+        the rename, persisted in the same revision right alongside it."""
+        self.ensure_project(project_id)
+        revision = self._ensure_draft_revision(project_id)
+        Project.update(draft_edit_count=Project.draft_edit_count + 1).where(Project.id == project_id).execute()
+        row = Archive.get(
+            (Archive.project == project_id) & (Archive.archive_name == old_name) & (Archive.revision == revision)
+        )
+        row.archive_name = new_name
+        row.save()
+        for archive_name, content in (updated_files or {}).items():
+            content_type = (content_types or {})[archive_name]
+            existing = Archive.get_or_none(
+                (Archive.project == project_id) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
+            )
+            if existing is None:
+                Archive.create(project=project_id, archive_name=archive_name, revision=revision, content=content, content_type=content_type)
+            else:
+                Archive.update(content=content, content_type=content_type).where(Archive.id == existing.id).execute()
 
     def list_archives(self, project_id: str, revision: int | None = None) -> list[str]:
         if revision is None:

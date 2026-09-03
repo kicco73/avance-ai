@@ -21,11 +21,11 @@ from tracking.user_facts import UserFacts
 pytestmark = pytest.mark.contract
 
 USERNAME = "user"
-PROJECT_NAME = "proj"
+PROJECT_ID = "proj"
 
 
 def _builder(db) -> EvaluationScopeBuilder:
-    project_service = FixedProjectContext(project_name=PROJECT_NAME)
+    project_service = FixedProjectContext(project_id=PROJECT_ID)
     env = PersistedEnv(db, project_service)
     metrics = MetricService(db, project_service)
     return EvaluationScopeBuilder(env, metrics, SystemFacts(), SessionFacts(db, project_service), UserFacts(db), db)
@@ -48,8 +48,8 @@ def _automaton_with_trigger(trigger_expr: str, attachments: dict[str, MemoryArch
 
 
 def test_scope_always_includes_every_namespace(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     automaton = _automaton_with_trigger("signal.mood >= 1")
 
     scope = _builder(db).build(automaton, "a", {})
@@ -65,8 +65,8 @@ def test_scope_always_includes_every_namespace(db):
 
 
 def test_session_metric_is_usable_in_a_trigger_end_to_end(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     automaton = _automaton_with_trigger("session.metric.state_stability() >= 50")
 
     scope = _builder(db).build(automaton, "a", {})
@@ -76,8 +76,8 @@ def test_session_metric_is_usable_in_a_trigger_end_to_end(db):
 
 
 def test_metric_namespace_is_usable_in_a_trigger_end_to_end(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     automaton = _automaton_with_trigger("metric.retention() >= 0")
 
     scope = _builder(db).build(automaton, "a", {})
@@ -86,8 +86,8 @@ def test_metric_namespace_is_usable_in_a_trigger_end_to_end(db):
 
 
 def test_session_fact_is_usable_in_a_trigger_end_to_end(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     automaton = _automaton_with_trigger("session.number_of_user_sessions() >= 1")
     builder = _builder(db)
 
@@ -96,8 +96,8 @@ def test_session_fact_is_usable_in_a_trigger_end_to_end(db):
     assert automaton.evaluate_triggers("a", scope) is None
 
     db.create_chat_session(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a",
     )
@@ -106,8 +106,8 @@ def test_session_fact_is_usable_in_a_trigger_end_to_end(db):
 
 
 def test_user_fact_is_usable_in_a_trigger_end_to_end(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     db.set_user_role(USERNAME, "admin")
     automaton = _automaton_with_trigger("user.role == 'admin'")
 
@@ -123,9 +123,9 @@ def test_source_attachment_is_usable_in_an_env_expression_end_to_end(db):
     Automaton.set_storage_location) — never automaton.attachments'
     in-memory copy, which is why this seeds the file through
     save_project_files rather than constructing a MemoryArchive."""
-    db.ensure_project(PROJECT_NAME)
-    db.save_project_files(PROJECT_NAME, {"notes.txt": b"hello from the archive"}, {"notes.txt": "text/plain"})
-    revision = db.get_project_revision(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.save_project_files(PROJECT_ID, {"notes.txt": b"hello from the archive"}, {"notes.txt": "text/plain"})
+    revision = db.get_project_revision(PROJECT_ID)
     action = Action(
         name="advance", ui_label="Advance", ui_button="Advance", target="b",
         trigger="signal.mood >= 1", env={"notes": "source.attachment('notes.txt')"},
@@ -135,9 +135,9 @@ def test_source_attachment_is_usable_in_an_env_expression_end_to_end(db):
         init_action=Action(name="init_action", ui_label="init_action", ui_button="", target="a"),
         states={"": State(key="", ui_label="", final=False, actions=[]), "a": state_a},
         general_prompt="", signals=[], attachments={}, general_attachments={},
-        autotracking_on_ai_message=False,
+        autotracking_on_ai_message=False, project_id=PROJECT_ID,
     )
-    automaton.set_storage_location(PROJECT_NAME, revision)
+    automaton.set_storage_location(revision)
 
     scope = _builder(db).build(automaton, "a", {})
 
@@ -146,15 +146,15 @@ def test_source_attachment_is_usable_in_an_env_expression_end_to_end(db):
 
 
 def test_env_action_set_value_is_usable_in_a_trigger_end_to_end(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     session_id = db.create_chat_session(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a",
     )
-    db.set_action_env(PROJECT_NAME, {"number_of_steps": 3}, USERNAME)
+    db.set_action_env(PROJECT_ID, {"number_of_steps": 3}, USERNAME)
     automaton = _automaton_with_trigger("env.number_of_steps >= 3")
 
     scope = _builder(db).build(automaton, "a", {})
@@ -166,15 +166,15 @@ def test_env_action_set_value_is_usable_in_a_trigger_end_to_end(db):
 def test_env_namespace_excludes_free_form_stored_values(db):
     """Only action_set() feeds the `env` namespace — a model-reported
     free-form stored() value must never leak into it."""
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
     db.create_chat_session(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a",
     )
-    db.set_env(PROJECT_NAME, {"favorite_color": "blue"}, USERNAME)
+    db.set_env(PROJECT_ID, {"favorite_color": "blue"}, USERNAME)
     automaton = _automaton_with_trigger("signal.mood >= 1")
 
     scope = _builder(db).build(automaton, "a", {})

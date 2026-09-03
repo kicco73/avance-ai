@@ -16,6 +16,7 @@ vi.mock('../src/api.js', () => ({
   getSessions: vi.fn(),
   getTestSessions: vi.fn(),
   deleteSession: vi.fn(),
+  postCloseSession: vi.fn(),
   getMessages: vi.fn(),
   postAction: vi.fn(),
   getAutoTracking: vi.fn(),
@@ -132,5 +133,24 @@ describe('the live store and the test store always route to their own endpoints'
 
   it('the live store has no handleReset at all — nothing in the real app ever calls it', () => {
     expect(chatStore.liveStore.handleReset).toBeNull()
+  })
+
+  it("the live store's handleCloseSession closes the current session, no confirmation, and reflects the closed state back", async () => {
+    api.getCurrentSession.mockResolvedValue({ id: 7, active: true, state: { key: 'x', ui_label: 'X', actions: [] } })
+    await chatStore.loadMessages()
+    const dialogStore = await import('../src/dialogStore.js')
+
+    api.postCloseSession.mockResolvedValue({ id: 7, active: false })
+    await chatStore.handleCloseSession()
+
+    expect(dialogStore.confirmDialog).not.toHaveBeenCalled()
+    expect(api.postCloseSession).toHaveBeenCalledWith(7)
+    expect(chatStore.selectedSessionActive.value).toBe(false)
+  })
+
+  it('handleCloseSession is a no-op with no current session yet', async () => {
+    await chatStore.handleCloseSession()
+
+    expect(api.postCloseSession).not.toHaveBeenCalled()
   })
 })

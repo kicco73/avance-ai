@@ -14,6 +14,7 @@ from ai.llm_provider import (
 )
 from ai.cascading_llm_provider import AutoLiveLLMProvider, AutoTestLLMProvider
 from ai import gemini_provider_v2, openai_provider_v2, anthropic_provider_v2
+from db import Db
 from logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
@@ -49,6 +50,7 @@ class AiService(object):
 		auto_provider: LLMProvider,
 		selectable_providers: Sequence[LLMProvider] | None = None,
 		configs: list[AIServiceConfig] | None = None,
+		db: Db | None = None,
 	) -> None:
 		self._auto_provider = auto_provider
 		# Index-aligned with `configs`; both empty for a hand-built
@@ -63,9 +65,16 @@ class AiService(object):
 		# provider, so the label is part of the key, not just the hash.
 		self._input_tokens_cache: LRUCache = LRUCache(maxsize=32)
 		self._input_tokens_cache_lock = threading.Lock()
+		# Optional: persists each call's input/output tokens for Manage
+		# services' own daily consumption bar/trend chart (see
+		# generate_stream_with_metadata's on_metadata tap and
+		# db/ai_usage.py) — None in the many tests that build an AiService
+		# by hand just to exercise the in-memory TokenCounter/cascade
+		# logic, which stays entirely unaffected by this.
+		self._db = db
 
 	@classmethod
-	def for_live(cls, ai_service_config: list[AIServiceConfig]) -> "AiService":
+	def for_live(cls, ai_service_config: list[AIServiceConfig], db: Db | None = None) -> "AiService":
 		"""Builds the live-chat cascade from only the entries whose own
 		`modes` includes "live" (defaults to both live and test — see
 		AIServiceConfig.modes) — entirely independent of for_test below:
@@ -77,16 +86,16 @@ class AiService(object):
 		live_config = cls._filter_by_mode(ai_service_config, "live")
 		labeled = cls._build_labeled_providers(live_config)
 		selectable = [AutoLiveLLMProvider([entry]) for entry in labeled]
-		return cls(AutoLiveLLMProvider(labeled), selectable_providers=selectable, configs=live_config)
+		return cls(AutoLiveLLMProvider(labeled), selectable_providers=selectable, configs=live_config, db=db)
 
 	@classmethod
-	def for_test(cls, ai_service_config: list[AIServiceConfig]) -> "AiService":
+	def for_test(cls, ai_service_config: list[AIServiceConfig], db: Db | None = None) -> "AiService":
 		"""The test-panel/batch-run cascade — see for_live's own docstring
 		for why this stays fully independent of it."""
 		test_config = cls._filter_by_mode(ai_service_config, "test")
 		labeled = cls._build_labeled_providers(test_config)
 		selectable = [AutoLiveLLMProvider([entry]) for entry in labeled]
-		return cls(AutoTestLLMProvider(labeled), selectable_providers=selectable, configs=test_config)
+		return cls(AutoTestLLMProvider(labeled), selectable_providers=selectable, configs=test_config, db=db)
 
 	@staticmethod
 	def _filter_by_mode(ai_service_config: list[AIServiceConfig], mode: str) -> list[AIServiceConfig]:
@@ -207,6 +216,29 @@ class AiService(object):
 	def is_provider_with_schema(self) -> bool:
 		return isinstance(self._current_leaf_provider, LLMProvider)
 
+	def _tap_token_usage(self, on_metadata: MetadataCallback, provider_label: str) -> MetadataCallback:
+		"""Wraps `on_metadata` to also persist input_tokens/output_tokens
+		(see each LLMProvider's own on_metadata calls) as one AiTokenUsage
+		row once both have arrived — a no-op passthrough when this
+		AiService wasn't built with a `db` (most tests). `provider_label`
+		is the entry-time active provider, not re-read live off the
+		cascade's own pointer: a *different* concurrent call through the
+		same cascade could have already advanced that pointer past a
+		failover by the time these events actually fire."""
+		if self._db is None:
+			return on_metadata
+		db = self._db
+		captured: dict[str, int] = {}
+
+		def tap(name: str, value: Any) -> None:
+			if name in ("input_tokens", "output_tokens"):
+				captured[name] = value
+				if "input_tokens" in captured and "output_tokens" in captured:
+					db.record_ai_token_usage(provider_label, captured["input_tokens"], captured["output_tokens"])
+			on_metadata(name, value)
+
+		return tap
+
 	async def generate_stream_with_metadata(
 		self,
 		system_prompt: str,
@@ -219,8 +251,11 @@ class AiService(object):
 		emitted: set[str] = set()
 		last_text_length = 0
 
-		logger.info(f"generate_stream_with_metadata: provider={self._current_provider_label} fields={list(schema.keys())}")
-		response_stream = self._active_provider.generate_stream_with_schema(system_prompt, history, schema=schema, on_metadata=on_metadata) # type: ignore
+		provider_label = self._current_provider_label
+		logger.info(f"generate_stream_with_metadata: provider={provider_label} fields={list(schema.keys())}")
+		response_stream = self._active_provider.generate_stream_with_schema(
+			system_prompt, history, schema=schema, on_metadata=self._tap_token_usage(on_metadata, provider_label),
+		) # type: ignore
 
 		try:
 			async for chunk in response_stream:
@@ -264,7 +299,7 @@ class AiService(object):
 			# quietly (see chat/sse_turn.py's SseChatTurn._run).
 			raise
 
-		logger.info(f"generate_stream_with_metadata: stream ended normally, provider={self._current_provider_label} accumulated_json_length={len(accumulated_json)}")
+		logger.info(f"generate_stream_with_metadata: stream ended normally, provider={provider_label} accumulated_json_length={len(accumulated_json)}")
 		final_parsed = partial_json_parser.parse_json(accumulated_json)
 		if not isinstance(final_parsed, dict) or not final_parsed:			
 			return

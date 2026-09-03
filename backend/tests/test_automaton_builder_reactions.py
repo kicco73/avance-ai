@@ -13,6 +13,8 @@ pytestmark = pytest.mark.contract
 
 def test_reaction_fields_parse_with_ui_description_fallback_to_definition():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 reactions:
@@ -40,6 +42,8 @@ states:
 
 def test_reaction_ui_label_falls_back_to_the_reaction_name():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 reactions:
@@ -55,6 +59,8 @@ states:
 
 def test_no_reactions_section_leaves_an_empty_list():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -67,6 +73,8 @@ states:
 
 def test_duplicate_reaction_ui_label_is_rejected():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 reactions:
@@ -86,6 +94,8 @@ states:
 
 def test_reactions_must_be_a_mapping():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 reactions:
@@ -100,6 +110,8 @@ states:
 
 def test_reactions_enabled_defaults_to_false():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -112,6 +124,8 @@ states:
 
 def test_reactions_enabled_parses_per_state():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -135,6 +149,8 @@ class TestReactionsEnabledFor:
 
     def test_true_when_the_state_opts_in_and_the_project_declares_reactions(self):
         automaton = AutomatonBuilder().build({"index.yml": """
+project:
+  id: proj
 init-action:
   target: a
 reactions:
@@ -149,6 +165,8 @@ states:
 
     def test_false_when_the_state_opts_in_but_the_project_declares_no_reactions(self):
         automaton = AutomatonBuilder().build({"index.yml": """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -160,6 +178,8 @@ states:
 
     def test_false_when_the_project_declares_reactions_but_the_state_opts_out(self):
         automaton = AutomatonBuilder().build({"index.yml": """
+project:
+  id: proj
 init-action:
   target: a
 reactions:

@@ -19,10 +19,12 @@ from tracking.tracking_service import TrackingService
 
 pytestmark = pytest.mark.regression
 
-PROJECT_NAME = "proj"
+PROJECT_ID = "proj"
 USERNAME = "user"
 
 INDEX_YML = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -36,13 +38,13 @@ TERMS_MD = b"# Terms\n\nAccept to continue.\n"
 
 @pytest.fixture
 def project_service(db) -> ProjectService:
-    db.ensure_project(PROJECT_NAME)
+    db.ensure_project(PROJECT_ID)
     db.save_project_files(
-        PROJECT_NAME,
+        PROJECT_ID,
         {"index.yml": INDEX_YML.encode("utf-8"), "legal/terms.md": TERMS_MD},
         {"index.yml": "text/yaml", "legal/terms.md": "text/markdown"},
     )
-    db.publish_project(PROJECT_NAME)  # published_revision = 0
+    db.publish_project(PROJECT_ID)  # published_revision = 0
     return ProjectService(db)
 
 
@@ -71,27 +73,27 @@ def test_accept_legal_terms_resolves_pending_even_with_a_diverged_draft(db, proj
     # exactly what happened to "TTM prototype" in production
     # (revision=1, published_revision=0, 5 draft edits).
     db.save_project_files(
-        PROJECT_NAME, {"index.yml": INDEX_YML.encode("utf-8")}, {"index.yml": "text/yaml"}
+        PROJECT_ID, {"index.yml": INDEX_YML.encode("utf-8")}, {"index.yml": "text/yaml"}
     )
-    assert db.get_project_revision(PROJECT_NAME) != db.get_project_published_revision(PROJECT_NAME)
+    assert db.get_project_revision(PROJECT_ID) != db.get_project_published_revision(PROJECT_ID)
 
-    assert project_service.legal_terms_pending(USERNAME, PROJECT_NAME) is True
+    assert project_service.legal_terms_pending(USERNAME, PROJECT_ID) is True
 
-    project_service.accept_legal_terms(USERNAME, PROJECT_NAME)
+    project_service.accept_legal_terms(USERNAME, PROJECT_ID)
 
-    assert project_service.legal_terms_pending(USERNAME, PROJECT_NAME) is False
+    assert project_service.legal_terms_pending(USERNAME, PROJECT_ID) is False
 
 
 def test_accept_legal_terms_still_asks_again_if_the_published_terms_later_change(db, project_service):
-    project_service.accept_legal_terms(USERNAME, PROJECT_NAME)
-    assert project_service.legal_terms_pending(USERNAME, PROJECT_NAME) is False
+    project_service.accept_legal_terms(USERNAME, PROJECT_ID)
+    assert project_service.legal_terms_pending(USERNAME, PROJECT_ID) is False
 
     db.save_project_files(
-        PROJECT_NAME, {"legal/terms.md": b"# Terms\n\nNew content.\n"}, {"legal/terms.md": "text/markdown"}
+        PROJECT_ID, {"legal/terms.md": b"# Terms\n\nNew content.\n"}, {"legal/terms.md": "text/markdown"}
     )
-    db.publish_project(PROJECT_NAME)  # published_revision advances to the new terms
+    db.publish_project(PROJECT_ID)  # published_revision advances to the new terms
 
-    assert project_service.legal_terms_pending(USERNAME, PROJECT_NAME) is True
+    assert project_service.legal_terms_pending(USERNAME, PROJECT_ID) is True
 
 
 async def test_an_already_open_session_is_never_blocked_by_terms_published_since(db, project_service):
@@ -100,18 +102,18 @@ async def test_an_already_open_session_is_never_blocked_by_terms_published_since
     retroactively ask that user to accept terms mid-conversation — only a
     session about to be *created* is pinned to whatever's newly published
     (see ChatService._get_current_session_if_any_or_create_new_of_type)."""
-    project_service.accept_legal_terms(USERNAME, PROJECT_NAME)
+    project_service.accept_legal_terms(USERNAME, PROJECT_ID)
     chat_service = _chat_service_for(db, project_service)
 
     first = await chat_service.get_current_session_if_any_or_create_new(None)
     assert first.get("legal_terms_pending") is not True
     session_id = first["id"]
 
-    db.save_project_files(PROJECT_NAME, {"index.yml": INDEX_YML.encode("utf-8")}, {"index.yml": "text/yaml"})
-    db.publish_project(PROJECT_NAME)
+    db.save_project_files(PROJECT_ID, {"index.yml": INDEX_YML.encode("utf-8")}, {"index.yml": "text/yaml"})
+    db.publish_project(PROJECT_ID)
     # Sanity: a brand new session would indeed be gated by this — the
     # already-open one below just isn't.
-    assert project_service.legal_terms_pending(USERNAME, PROJECT_NAME) is True
+    assert project_service.legal_terms_pending(USERNAME, PROJECT_ID) is True
 
     second = await chat_service.get_current_session_if_any_or_create_new(None)
     assert second.get("legal_terms_pending") is not True

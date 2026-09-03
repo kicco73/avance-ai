@@ -6,9 +6,12 @@ from __future__ import annotations
 
 import pytest
 
+from conftest import parse_sse_result
+
 pytestmark = pytest.mark.contract
 
 YML = (
+    "project:\n  id: proj\n"
     "init-action:\n  target: a\n"
     "states:\n"
     "  a:\n"
@@ -25,9 +28,12 @@ YML = (
 
 
 def _upload_and_get_session(client):
-    resp = client.put("/api/projects/proj", content=YML.encode(), headers={"Content-Type": "application/x-yaml"})
+    resp = client.post("/api/projects/upload", content=YML.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
-    resp = client.post("/api/projects/proj/publish", json={})
+    project_id = parse_sse_result(resp)["project_id"]
+    resp = client.put(f"/api/projects/{project_id}/activate")
+    assert resp.status_code == 200, resp.text
+    resp = client.post(f"/api/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
     return client.get("/api/chat/session").json()
 

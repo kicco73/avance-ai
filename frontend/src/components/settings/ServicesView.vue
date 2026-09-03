@@ -5,12 +5,13 @@
 // wipe-all-live-sessions actions (moved here from the Settings menu and
 // Manage projects respectively), and the live chat model picker (moved
 // here from Manage projects' own header).
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import AppHeader from '../AppHeader.vue'
 import ProfileMenu from '../ProfileMenu.vue'
+import AiUsageTrendsChart from './AiUsageTrendsChart.vue'
 import ServicesProviderCard from './ServicesProviderCard.vue'
 import StatusToggleButton from './StatusToggleButton.vue'
-import { getServicesConfig } from '../../api.js'
+import { getAiUsage, getServicesConfig } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 import { liveModelStore } from '../../chatStore.js'
 
@@ -45,6 +46,21 @@ const activeTab = ref(TABS[0].id)
 const services = ref(null)
 const loading = ref(true)
 
+// Today's spend + trailing-30-days history per ai-service provider (see
+// db/ai_usage.py) — loaded once alongside `services` below, same as
+// every other Manage services tab: no live refresh while the panel
+// stays open, just whatever was true when it was last (re)opened.
+const aiUsage = ref({ today: {}, history: [] })
+
+function providerLabel(provider) {
+  return `${provider.driver}/${provider.model}`
+}
+
+const aiProviderLabels = computed(() => {
+  if (!services.value) return {}
+  return Object.fromEntries(services.value.ai.providers.map((p) => [providerLabel(p), p['ui-label'] || p.driver]))
+})
+
 async function load() {
   loading.value = true
   try {
@@ -55,7 +71,21 @@ async function load() {
     loading.value = false
   }
 }
-onMounted(load)
+
+// Independent of load() above: a failure here shouldn't blank out the
+// whole tab, just leave the consumption bars/chart empty.
+async function loadAiUsage() {
+  try {
+    aiUsage.value = await getAiUsage()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+onMounted(() => {
+  load()
+  loadAiUsage()
+})
 
 function fieldLabel(key) {
   return key.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase())
@@ -187,6 +217,9 @@ async function selectWipeAllLiveSessions() {
         </div>
 
         <div v-show="activeTab === 'ai'" class="services-panel">
+          <div v-if="services.ai.providers.length" class="services-ai-usage-chart">
+            <AiUsageTrendsChart :history="aiUsage.history" :provider-labels="aiProviderLabels" />
+          </div>
           <label class="services-checkbox-field services-checkbox-field-active">
             <input type="checkbox" :checked="liveModelStore.auto.value" @click.prevent="toggleAutoLive" />
             Auto-live cascading enabled
@@ -196,7 +229,11 @@ async function selectWipeAllLiveSessions() {
             <input class="services-field-input" type="text" :value="services.ai['max-output-tokens']" disabled />
           </div>
           <div v-for="(provider, i) in services.ai.providers" :key="i" class="services-provider-row">
-            <ServicesProviderCard class="services-provider-row-card" :provider="provider" />
+            <ServicesProviderCard
+              class="services-provider-row-card"
+              :provider="provider"
+              :usage-today="aiUsage.today[providerLabel(provider)] ?? null"
+            />
             <StatusToggleButton
               :status="isProviderActive(i) ? 'running' : 'manually_paused'"
               :disabled="isProviderActive(i) || liveModelStore.selectionLoading.value"
@@ -465,6 +502,14 @@ async function selectWipeAllLiveSessions() {
 
 .services-provider-row-card :deep(.inspector-detail-card) {
   margin: 0;
+}
+
+.services-ai-usage-chart {
+  width: 100%;
+  height: 200px;
+  max-height: 200px;
+  flex-shrink: 0;
+  margin: 0.75rem 0;
 }
 
 .services-section {

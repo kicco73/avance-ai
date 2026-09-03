@@ -13,6 +13,8 @@ pytestmark = pytest.mark.contract
 
 
 BASE_YAML = """\
+project:
+  id: proj
 init-action:
   target: a
 signals:
@@ -350,6 +352,8 @@ class TestDeleteState:
         # State "a" owns go-b/go-c — deleting "a" removes them implicitly,
         # not via any special-cased cascade of its own.
         editor = _editor("""\
+project:
+  id: proj
 init-action:
   target: b
 states:
@@ -408,6 +412,8 @@ class TestDeleteSignal:
 
     def test_a_trigger_not_referencing_the_deleted_signal_is_untouched(self):
         editor = _editor("""\
+project:
+  id: proj
 init-action:
   target: a
 signals:
@@ -436,6 +442,8 @@ states:
 
     def test_all_operands_referencing_the_signal_empties_the_trigger_field(self):
         editor = _editor("""\
+project:
+  id: proj
 init-action:
   target: a
 signals:
@@ -461,6 +469,8 @@ states:
 
 
 ENV_BASE_YAML = """\
+project:
+  id: proj
 init-action:
   target: a
 env:

@@ -273,10 +273,12 @@ class ProjectManager:
         merged = {**existing, **files}
 
         # Peeked ahead of the real build only to seed known_projects_env_keys
-        # with the right family — relevant only in the rare case this same
-        # edit is also changing project.id itself (see finalize_update).
-        declared_id, _ = AutomatonBuilder.read_declared_env_keys(merged["index.yml"])
-        automaton = AutomatonBuilder().build(merged, self._automaton_loader.known_projects_env_keys(declared_id or project_id))
+        # with the right id/family — relevant only in the rare case this
+        # same edit is also changing project.id/family itself (see finalize_update).
+        declared_id, declared_family, _ = AutomatonBuilder.read_declared_env_keys(merged["index.yml"])
+        automaton = AutomatonBuilder().build(
+            merged, self._automaton_loader.known_projects_env_keys(declared_id or project_id, declared_family)
+        )
         self._validate_project_id_globally_unique(project_id, automaton.project_id)
 
         if not self._project_update_changed(existing, files):
@@ -297,21 +299,32 @@ class ProjectManager:
             )
 
     async def finalize_update(
-        self, project_id: str, automaton: Automaton, commit: CommitCallback
-    ) -> bool:
+        self, project_id: str, automaton: Automaton, commit: CommitCallback, *, is_new_project: bool = False
+    ) -> str:
         """Called by every project-mutating path before awaiting `commit`.
         `project_id` is this project's own *current* id; if `automaton`'s
         own just-built project.id differs, that's a live rename request
         (the "Edit project" form's id field) — cascaded across every
         table via Db.rename_project_id before anything else here uses the
-        new identity. Refreshes the automaton cache and resets the active
-        project's live conversation only when its current state no longer exists."""
+        new identity. Returns the *final* project id — every caller must
+        use this, not the `project_id` it originally passed in, for
+        anything it does afterward (see e.g. ProjectEditor.put_project_file's
+        own response, which names the project it just edited). `is_new_project`
+        (set only by the upload/create paths, which already had to call
+        ensure_project themselves before this) triggers the same dangling-
+        reference rescan a rename does: some other project may already
+        have an unresolvable automaton.* reference to this id, saved
+        before it ever existed. Refreshes the automaton cache and resets
+        the active project's live conversation only when its current
+        state no longer exists."""
         if automaton.project_id != project_id:
             old_project_id = project_id
             self._db.rename_project_id(old_project_id, automaton.project_id)
             self._automaton_loader.invalidate_cache(old_project_id)
             project_id = automaton.project_id
             self._recheck_dependents_of_changed_id(project_id, old_project_id, project_id)
+        elif is_new_project:
+            self._recheck_dependents_of_changed_id(project_id, project_id, project_id)
 
         self._db.set_project_metadata(project_id, automaton.project_ui_label, automaton.project_ui_description)
 
@@ -329,8 +342,7 @@ class ProjectManager:
             if current_state_key is None or current_state_key not in automaton.states:
                 self._db.reset_project(project_id)
             await commit(project_id, automaton)
-            return True
-        return False
+        return project_id
 
     def reset_test_sessions(self, project_id: str) -> None:
         self._db.reset_project_for_user(Session().user, project_id, type='test')
@@ -401,7 +413,7 @@ class ProjectManager:
         self._db.revert_to_published(project_id)
         self._automaton_loader.invalidate_cache(project_id)
         new_automaton = self._automaton_loader.load(project_id)
-        await self.finalize_update(project_id, new_automaton, commit)
+        project_id = await self.finalize_update(project_id, new_automaton, commit)
         return self._inspector.get_project_revision_info(project_id)
 
     async def activate_project(self, project_id: str, commit: CommitCallback) -> Automaton:
@@ -482,13 +494,15 @@ class ProjectManager:
                 editor = AutomatonYamlEditor(index_yml)
                 editor.set_project_field("id", force_project_id)
                 files["index.yml"] = index_yml = editor.serialize()
-            declared_id, _ = AutomatonBuilder.read_declared_env_keys(index_yml)
+            declared_id, declared_family, _ = AutomatonBuilder.read_declared_env_keys(index_yml)
             if declared_id is None:
                 raise ValueError(
-                    "project.id is required and must be one or more dot-separated identifiers "
-                    "(letters, digits, underscores) — e.g. 'concierge' or 'luna.edu'."
+                    "project.id is required and must be a valid identifier "
+                    "(letters, digits, underscores, not starting with a digit)."
                 )
-            automaton = AutomatonBuilder().build(files, self._automaton_loader.known_projects_env_keys(declared_id))
+            automaton = AutomatonBuilder().build(
+                files, self._automaton_loader.known_projects_env_keys(declared_id, declared_family)
+            )
         except (zipfile.BadZipFile, ValueError) as exc:
             raise ValueError(str(exc)) from exc
         except Exception as exc:
@@ -567,9 +581,10 @@ class ProjectManager:
             )
             for name in files
         }
+        is_new_project = not self._db.project_exists(project_id)
         self._db.import_new_revision(project_id, revision, files_bytes, content_types)
         self._db.set_active_project_id(project_id, Session().user)
-        await self.finalize_update(project_id, automaton, commit)
+        await self.finalize_update(project_id, automaton, commit, is_new_project=is_new_project)
         self.publish_project(project_id)
 
         job = ProjectImportBundleJob(
@@ -625,8 +640,8 @@ class ProjectManager:
         template can't be reused verbatim on a second click."""
         content = NEW_PROJECT_TEMPLATE.read_bytes()
         template_files, _, _ = self._extract_upload_files(content, "application/zip")
-        base_id, _ = AutomatonBuilder.read_declared_env_keys(template_files["index.yml"])
-        project_id = self._unique_project_id(base_id or "legacy.hello_world")
+        base_id, _, _ = AutomatonBuilder.read_declared_env_keys(template_files["index.yml"])
+        project_id = self._unique_project_id(base_id or "hello_world")
         automaton, files, sessions_to_import, tests_to_import = self._build_from_upload(
             content, "application/zip", force_project_id=project_id,
         )

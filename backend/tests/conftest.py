@@ -294,17 +294,17 @@ def live_server(app: FastAPI):
 def hello_project(client: TestClient) -> str:
     """Uploads, activates, and publishes the bundled "Hello world" sample
     project — a project needs a published revision before it can have
-    chat sessions. Returns the project's actual name: put_project derives
-    it from the upload's own project.ui-label ("Hello, world!"), not the
-    "hello" URL this is requested under."""
+    chat sessions. Returns the project's own id (its index.yml declares
+    "legacy.hello_world" — put_project.py always uses whatever the
+    upload's own project.id says, there's no separate name to request)."""
     content = (SAMPLES_DIR / "Hello world.zip").read_bytes()
-    response = client.put(
-        "/api/projects/hello", content=content, headers={"Content-Type": "application/zip"}
+    response = client.post(
+        "/api/projects/upload", content=content, headers={"Content-Type": "application/zip"}
     )
     assert response.status_code == 200, response.text
-    project_name = parse_sse_result(response)["project_name"]
-    response = client.put(f"/api/projects/{project_name}/activate")
+    project_id = parse_sse_result(response)["project_id"]
+    response = client.put(f"/api/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
-    response = client.post(f"/api/projects/{project_name}/publish", json={})
+    response = client.post(f"/api/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
-    return project_name
+    return project_id

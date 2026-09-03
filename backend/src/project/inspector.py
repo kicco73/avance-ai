@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from automaton.automaton import Action, Automaton, ProjectPayload, State, StatePayload
-from automaton.automaton_builder import family_of
+from automaton.automaton_builder import AutomatonBuilder
 from automaton.identifier_registry import IdentifierRegistry
 from db import Db
 from session import Session
@@ -216,6 +216,7 @@ class ProjectInspector:
         automaton = self._automaton_loader.load(project_id)
         return {
             "id": automaton.project_id,
+            "family": automaton.family,
             "revision": automaton.project_revision,
             "ui_label": automaton.project_ui_label,
             "ui_description": automaton.project_ui_description,
@@ -227,20 +228,28 @@ class ProjectInspector:
     def get_identifier_registry(self, project_id: str) -> dict[str, dict[str, str]]:
         """Every identifier `project_id`'s trigger/`env:` expressions can
         reference, plus an "automaton.<id>"/"automaton.<id>.env" entry per
-        *other* project in the same family (see automaton_builder.
-        family_of) — a project outside it is never offered here, same
-        boundary AutomatonLoader.known_projects_env_keys enforces at build
-        time and AutomatonNamespace enforces at runtime. Only ever called
-        from the design view (TriggerEditor's autocomplete), so — like
+        *other* project declaring this exact same family — a project
+        outside it (or `project_id` itself having no family at all) is
+        never offered here, same boundary AutomatonLoader.
+        known_projects_env_keys enforces at build time and
+        AutomatonNamespace enforces at runtime. Only ever called from the
+        design view (TriggerEditor's autocomplete), so — like
         get_project_signals/get_project_env_keys — this reads the
         in-progress draft, not the published revision: a signal/env key
         just declared must be offerable before the project is published."""
         automaton = self._automaton_loader.load(project_id)
         registry = IdentifierRegistry.build(automaton.signals, automaton.env_keys)
         registry["automaton"] = {}
-        family = family_of(project_id)
+        if automaton.family is None:
+            return registry
         for other_id in self._db.list_projects():
-            if other_id == project_id or family_of(other_id) != family:
+            if other_id == project_id:
+                continue
+            archive = self._db.get_archive(other_id, "index.yml")
+            if archive is None:
+                continue
+            _, other_family, _ = AutomatonBuilder.read_declared_env_keys(archive.decode("utf-8"))
+            if other_family != automaton.family:
                 continue
             registry[f"automaton.{other_id}"] = {"state": f"The '{other_id}' project's own current state."}
             try:

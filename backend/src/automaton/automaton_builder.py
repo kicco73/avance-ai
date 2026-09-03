@@ -9,7 +9,6 @@ from tracking.actuators import ActuatorSet
 from ruamel.yaml import YAML
 import base64
 import inspect
-import re
 from pathlib import Path
 
 logger = LoggerFactory.get_logger(__name__)
@@ -24,23 +23,6 @@ EXTENSION_TO_MEDIA_TYPE = {
 }
 
 VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
-
-# One or more identifier segments joined by single dots — e.g. "concierge",
-# "luna.edu". Each segment follows Python's own identifier rule (letters,
-# digits, underscore, not starting with a digit); the dot is the only
-# extra character allowed, and only as a segment separator (no leading/
-# trailing/doubled dots, no empty segments).
-_PROJECT_ID_SEGMENT = r"[A-Za-z_][A-Za-z0-9_]*"
-_PROJECT_ID_RE = re.compile(rf"^{_PROJECT_ID_SEGMENT}(\.{_PROJECT_ID_SEGMENT})*$")
-
-
-def family_of(project_id: str) -> str:
-    """The scope a project.id's own family/ecosystem is named by: every
-    character before the *first* dot, or '' if there's no dot at all.
-    Two projects observe/notify each other (automaton.<id>.*) only when
-    family_of(a) == family_of(b) — see automaton_builder.py's own
-    docstring and PROJECT_SPECS.md §2.1/§6.2."""
-    return project_id.split(".", 1)[0] if "." in project_id else ""
 
 class AutomatonBuilder(object):
     """Builds an Automaton from a project's index.yml: parses the YAML,
@@ -430,57 +412,72 @@ class AutomatonBuilder(object):
 
 
     @staticmethod
-    def _build_project_metadata(raw: dict) -> tuple[str, int, str | None, str | None, bool, bool]:
-        """The `project:` section — id/revision/ui-label/ui-description/
-        signal-tracking-on-ai-message/talk-enabled. `id` is mandatory:
-        what *other* projects in the same family (see family_of) reach
-        this one as through automaton.*, and this project's own sole
-        identity everywhere else too; global uniqueness is ProjectService's
-        concern. `revision` defaults to 0 for a project that never
-        declared one (e.g. a fresh import) — automatically overwritten on
-        every publish (see ProjectManager.publish_project)."""
+    def _build_project_metadata(raw: dict) -> tuple[str, str | None, int, str | None, str | None, bool, bool]:
+        """The `project:` section — id/family/revision/ui-label/
+        ui-description/signal-tracking-on-ai-message/talk-enabled. `id`
+        is mandatory: a plain identifier (letters, digits, underscores,
+        not starting with a digit — the same grammar Python's own
+        attribute access requires, since `automaton.<id>.*` is exactly
+        that), this project's sole identity everywhere; global uniqueness
+        is ProjectService's concern. `family` is optional, free-form text
+        (never parsed — e.g. a reverse-DNS style "com.example.app" is
+        fine), never displayed, and never itself referenced anywhere: it
+        only ever gates automaton.* visibility (see AutomatonLoader.
+        known_projects_env_keys) — two projects can observe/notify each
+        other only when both declare the exact same family. Absent
+        (None) means this project can neither observe anything nor be
+        observed by anything, itself included. `revision`
+        defaults to 0 for a project that never declared one (e.g. a fresh
+        import) — automatically overwritten on every publish (see
+        ProjectManager.publish_project)."""
         raw_project = raw.get("project")
         if not isinstance(raw_project, dict):
             raise ValueError(
-                "'project' is required and must be a mapping of fields (id, ui-label, "
+                "'project' is required and must be a mapping of fields (id, family, ui-label, "
                 "ui-description, signal-tracking-on-ai-message, talk-enabled), got "
                 f"{type(raw_project).__name__ if raw_project is not None else 'nothing'}."
             )
         project_id = raw_project.get("id")
-        if not isinstance(project_id, str) or not _PROJECT_ID_RE.match(project_id):
+        if not isinstance(project_id, str) or not project_id.isidentifier():
             raise ValueError(
-                f"project.id {project_id!r} is required and must be one or more dot-separated "
-                "identifiers (letters, digits, underscores; no segment starting with a digit) — "
-                "e.g. 'concierge' or 'luna.edu'."
+                f"project.id {project_id!r} is required and must be a valid identifier — letters, "
+                "digits, and underscores only, and it can't start with a digit."
             )
+        family = raw_project.get("family") or None
+        if family is not None and not isinstance(family, str):
+            raise ValueError(f"project.family {family!r} must be a string.")
         revision = raw_project.get("revision", 0)
         if not isinstance(revision, int) or isinstance(revision, bool) or revision < 0:
             raise ValueError(f"project.revision {revision!r} must be a non-negative integer.")
         return (
-            project_id, revision, raw_project.get("ui-label"), raw_project.get("ui-description"),
+            project_id, family, revision, raw_project.get("ui-label"), raw_project.get("ui-description"),
             raw_project.get("signal-tracking-on-ai-message", False),
             raw_project.get("talk-enabled", True),
         )
 
     @staticmethod
-    def read_declared_env_keys(index_yml_text: str) -> tuple[str | None, frozenset[str]]:
-        """Reads only `project.id` and the top-level `env:` key names,
-        never a full build — lets ProjectService validate automaton.*
-        references without building every other project. Malformed id/env reports nothing."""
+    def read_declared_env_keys(index_yml_text: str) -> tuple[str | None, str | None, frozenset[str]]:
+        """Reads only `project.id`/`project.family` and the top-level
+        `env:` key names, never a full build — lets ProjectService
+        validate automaton.* references without building every other
+        project. Malformed id/env reports nothing."""
         try:
             raw = _yaml.load(index_yml_text)
         except Exception as exc:
             logger.warning("Failed to parse index.yml for known_projects_env_keys: %s", exc)
-            return None, frozenset()
+            return None, None, frozenset()
         if not isinstance(raw, dict):
-            return None, frozenset()
+            return None, None, frozenset()
         raw_project = raw.get("project")
         project_id = raw_project.get("id") if isinstance(raw_project, dict) else None
-        if not isinstance(project_id, str) or not _PROJECT_ID_RE.match(project_id):
+        if not isinstance(project_id, str) or not project_id.isidentifier():
             project_id = None
+        family = raw_project.get("family") if isinstance(raw_project, dict) else None
+        if not isinstance(family, str) or not family:
+            family = None
         raw_env = raw.get("env")
         env_keys = frozenset(raw_env.keys()) if isinstance(raw_env, dict) else frozenset()
-        return project_id, env_keys
+        return project_id, family, env_keys
 
     @staticmethod
     def peek_declared_revision(index_yml_text: str) -> int | None:
@@ -505,14 +502,14 @@ class AutomatonBuilder(object):
         """`known_projects`: every *other* project's own project.id
         mapped to its declared env key names, for validating an
         automaton.<id>.env.<key> reference — already narrowed to this
-        project's own family (see family_of/AutomatonLoader.
-        known_projects_env_keys), so a cross-family id simply isn't here.
-        None skips that check."""
+        project's own family (see AutomatonLoader.known_projects_env_keys),
+        so a cross-family (or family-less) id simply isn't here. None
+        skips that check."""
         all_archives = self._convert_contents_to_archives(contents=contents)
 
         raw = _yaml.load(contents['index.yml'])
 
-        project_id, project_revision, project_ui_label, project_ui_description, autotracking_on_ai_message, talk_enabled = (
+        project_id, project_family, project_revision, project_ui_label, project_ui_description, autotracking_on_ai_message, talk_enabled = (
             self._build_project_metadata(raw)
         )
 
@@ -635,6 +632,7 @@ class AutomatonBuilder(object):
             attachments=all_archives,
             autotracking_on_ai_message=autotracking_on_ai_message,
             project_id=project_id,
+            project_family=project_family,
             project_revision=project_revision,
             project_ui_label=project_ui_label,
             project_ui_description=project_ui_description,

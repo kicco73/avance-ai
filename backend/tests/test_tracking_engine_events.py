@@ -1,7 +1,7 @@
 """TrackingEngine.notify_transition/apply_action_env's own event
 publishing: StateChanged for a real (non-self-loop) transition,
 EnvChanged for each action-set key an action's `env:` field wrote. Both
-are no-ops when username/project_name aren't given at all.
+are no-ops when username/project_id aren't given at all.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from tracking.tracking_engine import TrackingEngine
 pytestmark = pytest.mark.contract
 
 USERNAME = "user"
-PROJECT_NAME = "proj"
+PROJECT_ID = "proj"
 
 
 class FakeSink:
@@ -77,9 +77,9 @@ def test_apply_transition_publishes_state_changed_for_a_real_transition():
     engine, sink, _ = _engine()
     received = _collect(StateChanged)
 
-    engine.apply_transition(automaton, state, action, {}, session_id=1, origin='trigger', username=USERNAME, project_name=PROJECT_NAME)
+    engine.apply_transition(automaton, state, action, {}, session_id=1, origin='trigger', username=USERNAME, project_id=PROJECT_ID)
 
-    assert received == [StateChanged(username=USERNAME, project_name=PROJECT_NAME, from_state="a", to_state="b")]
+    assert received == [StateChanged(username=USERNAME, project_id=PROJECT_ID, from_state="a", to_state="b")]
 
 
 def test_apply_transition_does_not_publish_for_a_self_loop():
@@ -87,7 +87,7 @@ def test_apply_transition_does_not_publish_for_a_self_loop():
     engine, sink, _ = _engine()
     received = _collect(StateChanged)
 
-    engine.apply_transition(automaton, state, action, {}, session_id=1, origin='trigger', username=USERNAME, project_name=PROJECT_NAME)
+    engine.apply_transition(automaton, state, action, {}, session_id=1, origin='trigger', username=USERNAME, project_id=PROJECT_ID)
 
     assert sink.transitions == [("a", "go", "a")]  # still saved — see apply_transition's own docstring
     assert received == []
@@ -98,7 +98,7 @@ def test_apply_transition_publishes_nothing_when_no_identity_is_given():
     engine, sink, _ = _engine()
     received = _collect(StateChanged)
 
-    engine.apply_transition(automaton, state, action, {}, session_id=1, origin='trigger')  # no username/project_name
+    engine.apply_transition(automaton, state, action, {}, session_id=1, origin='trigger')  # no username/project_id
 
     assert sink.transitions == [("a", "go", "b")]
     assert received == []
@@ -117,11 +117,11 @@ def test_apply_action_env_publishes_env_changed_per_written_key():
     engine, sink, env = _engine()
     received = _collect(EnvChanged)
 
-    engine.apply_action_env(automaton, action, {}, state.key, username=USERNAME, project_name=PROJECT_NAME)
+    engine.apply_action_env(automaton, action, {}, state.key, username=USERNAME, project_id=PROJECT_ID)
 
     assert env.updates == [{"counter": 1, "flag": True}]
     assert {(e.key, e.value) for e in received} == {("counter", 1), ("flag", True)}
-    assert all(e.username == USERNAME and e.project_name == PROJECT_NAME for e in received)
+    assert all(e.username == USERNAME and e.project_id == PROJECT_ID for e in received)
 
 
 def test_apply_action_env_publishes_nothing_when_no_identity_is_given():
@@ -129,7 +129,7 @@ def test_apply_action_env_publishes_nothing_when_no_identity_is_given():
     engine, sink, env = _engine()
     received = _collect(EnvChanged)
 
-    engine.apply_action_env(automaton, action, {}, state.key)  # no username/project_name
+    engine.apply_action_env(automaton, action, {}, state.key)  # no username/project_id
 
     assert env.updates == [{"counter": 1}]  # still applied locally
     assert received == []
@@ -141,6 +141,6 @@ def test_notify_transition_is_also_reachable_as_a_bare_staticmethod():
     off the class, with no TrackingEngine instance of its own to hand."""
     received = _collect(StateChanged)
 
-    TrackingEngine.notify_transition(USERNAME, PROJECT_NAME, "a", "b")
+    TrackingEngine.notify_transition(USERNAME, PROJECT_ID, "a", "b")
 
-    assert received == [StateChanged(username=USERNAME, project_name=PROJECT_NAME, from_state="a", to_state="b")]
+    assert received == [StateChanged(username=USERNAME, project_id=PROJECT_ID, from_state="a", to_state="b")]

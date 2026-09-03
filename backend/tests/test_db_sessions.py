@@ -27,7 +27,7 @@ def test_create_and_get_chat_session(db):
     session = db.get_chat_session(session_id)
 
     assert session["username"] == "user"
-    assert session["project_name"] == "proj"
+    assert session["project_id"] == "proj"
     assert session["start_state"] == "start"
     assert session["end_state"] == "start"
 

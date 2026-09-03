@@ -39,11 +39,11 @@ def _wait_for_aggregate_result(client, project_name, kind, strategy, target=None
 
 
 def _make_labeled_session_for(client, app_db, project_name, username):
-    # set_active_project_name directly, not PUT .../activate: that
+    # set_active_project_id directly, not PUT .../activate: that
     # endpoint's idempotent check reads the user's *current* active
     # project first, which raises for a user who's never activated
     # anything yet — unrelated to what's under test here.
-    app_db.set_active_project_name(project_name, username)
+    app_db.set_active_project_id(project_name, username)
     with Session().impersonate(username):
         session = client.get("/api/chat/session").json()
         client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})

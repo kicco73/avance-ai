@@ -46,12 +46,12 @@ class TestPostResolveInviteCode:
 
         response = client.post(f"/api/projects/by-invite/{code}")
         assert response.status_code == 200
-        assert response.json() == {"project_name": hello_project}
+        assert response.json() == {"project_id": hello_project}
 
     def test_an_unresolved_code_reports_none_rather_than_404ing(self, client):
         response = client.post("/api/projects/by-invite/NOSUCH")
         assert response.status_code == 200
-        assert response.json() == {"project_name": None}
+        assert response.json() == {"project_id": None}
 
 
 class TestPostResolveInviteCodeAsUser:
@@ -66,7 +66,7 @@ class TestPostResolveInviteCodeAsUser:
         response = client.post(f"/api/projects/by-invite/{code}")
 
         assert response.status_code == 200
-        assert response.json() == {"project_name": hello_project}
+        assert response.json() == {"project_id": hello_project}
         assert app_db.user_has_project_access(Session().user, hello_project) is True
 
     def test_an_expired_link_is_forbidden_with_no_existing_access(self, app_db, client, hello_project):
@@ -86,4 +86,4 @@ class TestPostResolveInviteCodeAsUser:
         response = client.post("/api/projects/by-invite/OLDONE")
 
         assert response.status_code == 200
-        assert response.json() == {"project_name": hello_project}
+        assert response.json() == {"project_id": hello_project}

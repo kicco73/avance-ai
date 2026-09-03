@@ -738,7 +738,7 @@ def test_paused_project_gate_is_relayed(env):
 
 def test_pending_terms_send_the_content_with_an_accept_button(env):
     client, _, chat, _, api = env
-    chat.session_payload = {"legal_terms_pending": True, "project_name": "demo-project"}
+    chat.session_payload = {"legal_terms_pending": True, "project_id": "demo-project"}
     chat.terms_content = "## Terms\n\nBe nice."
     _post(client, _payload(text="hola"))
     assert [c for c in chat.calls if c[0] == "turn"] == []
@@ -752,7 +752,7 @@ def test_pending_terms_send_the_content_with_an_accept_button(env):
 def test_registration_with_pending_terms_sends_terms_instead_of_the_welcome(env):
     client, service, chat, db, api = env
     service._auth_service.valid_codes["GOODCODE"] = "demo-project"
-    chat.session_payload = {"legal_terms_pending": True, "project_name": "demo-project"}
+    chat.session_payload = {"legal_terms_pending": True, "project_id": "demo-project"}
     _post(client, _payload(sender="34699999999", text="GOODCODE"))
     assert db.users["34699999999"]["role"] == "user"
     assert [body for _, body in api.sent] == [REPLY_REGISTERED]
@@ -763,7 +763,7 @@ def test_registration_with_pending_terms_sends_terms_instead_of_the_welcome(env)
 
 def test_accepting_terms_calls_accept_legal_terms_and_bootstraps(env):
     client, _, chat, _, api = env
-    chat.session_payload = {"legal_terms_pending": True, "project_name": "demo-project"}
+    chat.session_payload = {"legal_terms_pending": True, "project_id": "demo-project"}
     chat.resolved_session_payload = {"id": 7}
     chat.opening_message = "Bienvenida."
     _post(client, _interactive_payload(reply={"id": "__whatsapp_accept_terms__", "title": "Accept"}))
@@ -773,7 +773,7 @@ def test_accepting_terms_calls_accept_legal_terms_and_bootstraps(env):
 
 def test_accepting_terms_with_no_new_content_gets_a_plain_confirmation(env):
     client, _, chat, _, api = env
-    chat.session_payload = {"legal_terms_pending": True, "project_name": "demo-project"}
+    chat.session_payload = {"legal_terms_pending": True, "project_id": "demo-project"}
     chat.resolved_session_payload = {"id": 7}
     _post(client, _interactive_payload(reply={"id": "__whatsapp_accept_terms__", "title": "Accept"}))
     assert api.sent == [(LINKED_NUMBER, REPLY_TERMS_ACCEPTED)]
@@ -782,7 +782,7 @@ def test_accepting_terms_with_no_new_content_gets_a_plain_confirmation(env):
 def test_accepting_terms_does_not_resend_a_sessions_prior_history(env):
     client, _, chat, db, api = env
     db.add(7, "assistant", "mensaje de ayer")
-    chat.session_payload = {"legal_terms_pending": True, "project_name": "demo-project"}
+    chat.session_payload = {"legal_terms_pending": True, "project_id": "demo-project"}
     chat.resolved_session_payload = {"id": 7}
     _post(client, _interactive_payload(reply={"id": "__whatsapp_accept_terms__", "title": "Accept"}))
     assert api.sent == [(LINKED_NUMBER, REPLY_TERMS_ACCEPTED)]

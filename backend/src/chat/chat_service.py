@@ -342,6 +342,19 @@ class ChatService(object):
 		self._require_own_session(session_id)
 		self._db.delete_chat_session(session_id)
 
+	async def close_session(self, session_id: int) -> dict:
+		"""Explicit "close session" action (the live chat's own
+		applications menu) — ends session_id outright, unlike
+		create_session's own close-and-replace. A no-op (see
+		ChatSessionManager.close_session) if it's already closed."""
+		self._require_own_session(session_id)
+		project_id = self._project_id_for_session(session_id)
+		async with self._session_lifecycle_scope(self._username, project_id):
+			session = self._db.get_chat_session(session_id)
+			assert session is not None
+			self._session_manager.close_session(session, "manual-user")
+		return self._reloaded_session_payload(session_id)
+
 	def _reloaded_session_payload(self, session_id: int) -> dict:
 		"""Common tail for every "write one field, then hand back a fresh
 		payload" mutation below."""

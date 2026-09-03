@@ -10,7 +10,7 @@ def _make_session(db, *, username="user", project_name="proj", start, start_stat
     db.publish_project(project_name)
     return db.create_chat_session(
         username=username,
-        project_name=project_name,
+        project_id=project_name,
         revision=db.get_project_published_revision(project_name),
         datetime_start=start,
         datetime_end=start,
@@ -388,6 +388,8 @@ def test_save_transition_persists_a_valid_origin(db):
 
 
 _ORIGIN_PROJECT_YAML = """
+project:
+  id: origin_proj
 init-action:
   target: a
 states:
@@ -411,7 +413,7 @@ def _publish_origin_project(db, project_name="origin-proj"):
         project_name, {"index.yml": _ORIGIN_PROJECT_YAML.encode("utf-8")}, {"index.yml": "text/yaml"},
     )
     db.publish_project(project_name)
-    db.set_active_project_name(project_name, "user")
+    db.set_active_project_id(project_name, "user")
 
 
 @pytest.mark.contract

@@ -109,7 +109,7 @@ watch(
         ref="fileInputRef"
         type="file"
         multiple
-        accept=".txt,.yml,.yaml,.css,.png,.jpg,.jpeg,.gif,.webp,.svg"
+        accept=".txt,.md,.csv,.yml,.yaml,.css,.png,.jpg,.jpeg,.gif,.webp,.svg"
         class="file-explorer-upload-input"
         @change="emit('upload-file', $event)"
       />
@@ -138,7 +138,7 @@ watch(
               <button
                 class="file-explorer-item file-explorer-item-child"
                 :class="{ 'file-explorer-item-active': name === currentFileName }"
-                :title="name"
+                :title="basename(name)"
                 @click="emit('select-file', name)"
               >
                 {{ basename(name) }}
@@ -167,7 +167,7 @@ watch(
               <button
                 class="file-explorer-item file-explorer-item-child"
                 :class="{ 'file-explorer-item-active': name === currentFileName }"
-                :title="name"
+                :title="basename(name)"
                 @click="emit('select-file', name)"
               >
                 {{ basename(name) }}

@@ -24,12 +24,11 @@ import {
   downloadProject,
   getBackup,
   postRestoreBackup,
-  postPublishProject,
   getAbout
 } from './api.js'
 import { disconnect as disconnectChat } from './chatClient.js'
 import { needsLogin } from './authStore.js'
-import { activeDialog, aboutDialog, confirmDialog } from './dialogStore.js'
+import { activeDialog, aboutDialog, confirmDialog, infoDialog } from './dialogStore.js'
 import {
   handleStateChange,
   loadMessages,
@@ -105,7 +104,7 @@ const uploadingProject = ref(false)
 // 0-100, or null before the first progress chunk has arrived — see
 // SessionsTree.vue's identical importProgress for the same reasoning.
 const uploadProgress = ref(null)
-const uploadProjectName = ref(null)
+const uploadProjectId = ref(null)
 const uploadIconReady = ref(false)
 // Fetched once, up front (see resolveLandingView) — the role-based
 // landing routing needs it before the very first render, and ProfileMenu.vue's
@@ -143,15 +142,13 @@ async function refreshStateAndProjects() {
 
 // "New project": same server-side effect as picking samples/Hello
 // world.zip in the upload dialog (see postNewProject), so it reloads
-// state the same way a real upload does — including auto-publishing (see
-// handleModelUploadChange's own identical reasoning below): a freshly
-// created project has never been published either, so without this it'd
-// look usable right away but couldn't actually chat yet.
+// state the same way a real upload does. Publishing is no longer a
+// separate step here — ProjectManager.create_new_project/put_project
+// both auto-publish server-side now, as part of the same call.
 async function handleNewProject() {
   clearChatUi()
   try {
-    const result = await postNewProject()
-    await postPublishProject(result.project_name)
+    await postNewProject()
     await refreshStateAndProjects()
   } catch {
     // already surfaced via apiFetch
@@ -163,31 +160,33 @@ async function handleModelUploadChange(event) {
   event.target.value = '' // allow re-selecting the same file afterward
   if (!file) return
 
-  const projectName = file.name.replace(/\.(zip|ya?ml)$/i, '')
   clearChatUi()
   uploadingProject.value = true
   uploadProgress.value = null
-  uploadProjectName.value = projectName
+  uploadProjectId.value = null
   uploadIconReady.value = false
   try {
-    await putProject(projectName, file, (message) => {
+    // The upload's own project.id is always what's used — there's no
+    // longer a name to guess from the filename ahead of time (see
+    // ProjectManager.put_project). Publishing is no longer a separate
+    // step either: a re-upload of an existing id is rejected outright
+    // (with a dialog) unless its own project.revision is newer, and
+    // every accepted upload auto-publishes server-side, same as create_new_project.
+    const result = await putProject(file, (message) => {
       uploadProgress.value = message.percentage
-    }, () => {
-      uploadIconReady.value = true
     })
-    // A freshly uploaded project has never been published — nothing can
-    // chat with it yet (see db.create_chat_session, which requires a
-    // published_revision) until someone opens "Edit project" and clicks
-    // Publish. Doing that automatically here means an upload is usable
-    // right away, same as it always visibly appeared to be.
-    await postPublishProject(projectName)
+    uploadProjectId.value = result.project_id
+    uploadIconReady.value = true
     await refreshStateAndProjects()
-  } catch {
-    // already surfaced via apiFetch
+  } catch (err) {
+    if (err.status === 400) {
+      await infoDialog({ title: 'Import rejected', body: err.message })
+    }
+    // otherwise already surfaced via apiFetch
   } finally {
     uploadingProject.value = false
     uploadProgress.value = null
-    uploadProjectName.value = null
+    uploadProjectId.value = null
     uploadIconReady.value = false
   }
 }
@@ -490,7 +489,7 @@ onBeforeUnmount(() => {
           }"
           :uploading="uploadingProject"
           :upload-progress="uploadProgress"
-          :upload-project-name="uploadProjectName"
+          :upload-project-id="uploadProjectId"
           :upload-icon-ready="uploadIconReady"
           role="admin"
           :profile="currentUserProfile"

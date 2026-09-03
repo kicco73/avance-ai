@@ -126,3 +126,5 @@ states:
         action-prompt: |
           Briefly acknowledge to the user that the signal-stability
           trigger just fired, then continue the conversation normally.
+project:
+  id: metrics_playground

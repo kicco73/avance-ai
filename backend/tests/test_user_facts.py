@@ -37,7 +37,7 @@ def test_exposes_every_user_field_except_id(db):
 def test_reflects_role_and_active_project_changes(db):
     db.set_user_role("user", "admin")
     db.ensure_project("proj")
-    db.set_active_project_name("proj", "user")
+    db.set_active_project_id("proj", "user")
 
     facts = UserFacts(db).as_dict()
 

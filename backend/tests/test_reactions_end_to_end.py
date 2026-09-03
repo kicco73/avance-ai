@@ -40,15 +40,15 @@ states:
 
 @pytest.fixture
 def reactions_project(client):
-    response = client.put(
-        "/api/projects/reactions-demo", content=PROJECT_YAML.encode("utf-8"),
+    response = client.post(
+        "/api/projects/upload", content=PROJECT_YAML.encode("utf-8"),
         headers={"Content-Type": "application/x-yaml"},
     )
     assert response.status_code == 200, response.text
-    project_name = parse_sse_result(response)["project_name"]
-    assert client.put(f"/api/projects/{project_name}/activate").status_code == 200
-    assert client.post(f"/api/projects/{project_name}/publish", json={}).status_code == 200
-    return project_name
+    project_id = parse_sse_result(response)["project_id"]
+    assert client.put(f"/api/projects/{project_id}/activate").status_code == 200
+    assert client.post(f"/api/projects/{project_id}/publish", json={}).status_code == 200
+    return project_id
 
 
 def test_get_state_carries_the_reactions_vocabulary(client, reactions_project):
@@ -135,15 +135,15 @@ def no_reactions_project(client):
     which AutomatonBuilder happily parses (no build-time error, see
     test_automaton_builder_reactions.py) but Automaton.reactions_enabled_for
     should make a no-op at runtime regardless."""
-    response = client.put(
-        "/api/projects/no-reactions-demo", content=NO_REACTIONS_PROJECT_YAML.encode("utf-8"),
+    response = client.post(
+        "/api/projects/upload", content=NO_REACTIONS_PROJECT_YAML.encode("utf-8"),
         headers={"Content-Type": "application/x-yaml"},
     )
     assert response.status_code == 200, response.text
-    project_name = parse_sse_result(response)["project_name"]
-    assert client.put(f"/api/projects/{project_name}/activate").status_code == 200
-    assert client.post(f"/api/projects/{project_name}/publish", json={}).status_code == 200
-    return project_name
+    project_id = parse_sse_result(response)["project_id"]
+    assert client.put(f"/api/projects/{project_id}/activate").status_code == 200
+    assert client.post(f"/api/projects/{project_id}/publish", json={}).status_code == 200
+    return project_id
 
 
 def test_a_states_reactions_enabled_has_no_effect_without_a_declared_reactions_section(

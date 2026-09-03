@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from automaton.automaton import ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, StatePayload
 from automaton.automaton_builder import AutomatonBuilder, EXTENSION_TO_MEDIA_TYPE
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
-from db import Db
+from db import ContentRestored, Db, FileRenamed
 from logging_factory import LoggerFactory
 from session import Session
 
@@ -17,7 +17,8 @@ from .archive.automaton_loader import AutomatonLoader
 from .archive.css_validator import CssValidator
 from .archive.layout import (
     ASPECT_DIR, BEHAVIOUR_DIR, ArchiveLayout, IMAGE_CONTENT_TYPE_BY_EXTENSION, LEGAL_TERMS_FILE_NAME,
-    LEGAL_TERMS_SKELETON, MAX_IMAGE_UPLOAD_BYTES, TEXT_CONTENT_TYPE_BY_EXTENSION, TEXT_EDITABLE_EXTENSIONS,
+    LEGAL_TERMS_SKELETON, MAX_IMAGE_UPLOAD_BYTES, ROOT_FILE_NAMES, TEXT_CONTENT_TYPE_BY_EXTENSION,
+    TEXT_EDITABLE_EXTENSIONS,
 )
 from .types import CommitCallback
 
@@ -320,9 +321,88 @@ class ProjectEditor:
 
         if to_persist is not None:
             self._db.save_project_file(Session().user, project_id, file_name, to_save, content_type)
-        await self._manager.finalize_update(project_id, new_automaton, commit)
+        project_id = await self._manager.finalize_update(project_id, new_automaton, commit)
 
         return {"success": True, "project_id": project_id, **self._file_undo_redo_info(project_id, file_name)}
+
+    async def rename_project_file(self, project_id: str, old_name: str, new_name: str, commit: CommitCallback) -> dict:
+        """Renames one file within the current draft revision, keeping its
+        content and its own category (aspect/behaviour) unchanged — only
+        the basename is user-editable, same as an upload's target name is
+        derived from its extension, never a free path. Auto-rewrites any
+        literal occurrence of the old basename in index.yml (attachments:,
+        source.attachment(...)/source.search(...)) and index.css (url(...))
+        so the rename can never leave a dangling reference behind; both
+        are just plain text at this level, so one substring replace covers
+        every reference syntax. index.yml/index.css/legal/terms.md — fixed
+        names the rest of the system assumes exist exactly as spelled —
+        can never be the file being renamed."""
+        if project_id not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_id}' does not exist.")
+        existing_names = self._db.list_archives(project_id)
+        old_name = self._resolve_file_name(project_id, old_name)
+        if old_name not in existing_names:
+            raise FileNotFoundError(f"File '{old_name}' does not exist in project '{project_id}'.")
+        if old_name in ROOT_FILE_NAMES or old_name == LEGAL_TERMS_FILE_NAME:
+            raise ValueError(f"'{old_name}' can't be renamed.")
+
+        old_basename = Path(old_name).name
+        new_basename = new_name.strip()
+        # A plain file name only — never a path. Rejected outright rather
+        # than silently taking Path(new_name).name: this is the one place
+        # the category (aspect/behaviour) a rename keeps fixed could
+        # otherwise look changeable to a caller who just typed a folder
+        # prefix, matching how upload/_check_editable_file_name reject one too.
+        if not new_basename or "/" in new_basename or "\\" in new_basename or new_basename in (".", ".."):
+            raise ValueError(f"Invalid file name: '{new_name}' — expected a plain file name, not a path.")
+        try:
+            canonical_new_name = ArchiveLayout.canonicalize_name(new_basename)
+        except ValueError as exc:
+            raise ValueError(f"Invalid file name: '{new_basename}' — {exc}") from exc
+        if Path(canonical_new_name).parent != Path(old_name).parent:
+            raise ValueError(f"'{new_basename}' would change '{old_name}''s file type — rename within the same type instead.")
+        new_name = canonical_new_name
+        if new_name == old_name:
+            raise ValueError("The new name is the same as the current one.")
+        if new_name in existing_names:
+            raise ValueError(f"'{new_name}' already exists.")
+
+        archives = self._db.get_archives(project_id)
+        archives[new_name] = archives.pop(old_name)
+
+        updated_files: dict[str, bytes] = {}
+        content_types: dict[str, str] = {}
+        for reference_file in ("index.yml", "index.css"):
+            content = archives.get(reference_file)
+            if content is None:
+                continue
+            text = content.decode("utf-8")
+            if old_basename not in text:
+                continue
+            new_content = text.replace(old_basename, new_basename).encode("utf-8")
+            archives[reference_file] = new_content
+            updated_files[reference_file] = new_content
+            content_types[reference_file] = TEXT_CONTENT_TYPE_BY_EXTENSION[Path(reference_file).suffix.lower()]
+
+        if "index.css" in updated_files:
+            known_names = {Path(name).name for name in archives if name.startswith(f"{ASPECT_DIR}/")}
+            missing = CssValidator.missing_references(archives["index.css"].decode("utf-8"), known_names)
+            if missing:
+                raise ValueError(f"index.css references missing file(s): {', '.join(sorted(missing))}.")
+
+        try:
+            _, family, _ = AutomatonBuilder.read_declared_env_keys(archives["index.yml"])
+            new_automaton = AutomatonBuilder().build(archives, self._automaton_loader.known_projects_env_keys(project_id, family))
+        except Exception as exc:
+            raise ValueError(f"Invalid project update: {exc}") from exc
+
+        self._db.rename_project_file(Session().user, project_id, old_name, new_name, updated_files, content_types)
+        project_id = await self._manager.finalize_update(project_id, new_automaton, commit)
+
+        return {
+            "success": True, "project_id": project_id, "old_name": old_name, "new_name": new_name,
+            **self._file_undo_redo_info(project_id, new_name),
+        }
 
     async def add_legal_terms(self, project_id: str, commit: CommitCallback) -> dict:
         """Seeds a fresh legal/terms.md with LEGAL_TERMS_SKELETON — the
@@ -414,10 +494,31 @@ class ProjectEditor:
             project_id, commit, lambda editor: editor.reorder_actions(state_name, action_name, position)
         )
 
+    def _undo_redo_response(self, project_id: str, file_name: str, outcome: ContentRestored | FileRenamed, is_text: bool) -> dict:
+        """Shared by undo_project_file/redo_project_file below: a plain
+        content outcome reports on `file_name` itself; a rename outcome
+        reports on the name the file actually moved to instead — the
+        caller's own open file/tab must follow it, so the full {content,
+        can_undo, can_redo, ...} is for that new name, not `file_name`."""
+        if isinstance(outcome, FileRenamed):
+            return {
+                "success": True, "project_id": project_id, "renamed_to": outcome.active_name,
+                **self._file_undo_redo_info(project_id, outcome.active_name),
+            }
+        user = Session().user
+        return {
+            "success": True,
+            "project_id": project_id,
+            "content": outcome.content.decode("utf-8") if is_text and outcome.content is not None else None,
+            "can_undo": self._db.has_undo(user, project_id, file_name),
+            "can_redo": self._db.has_redo(user, project_id, file_name),
+        }
+
     async def undo_project_file(self, project_id: str, file_name: str, content: bytes) -> dict:
         """A pure editor preview, not a persisted change — never touches
         Archive or the automaton cache. `content` is the editor's current
-        unsaved state, kept so a later redo can restore it."""
+        unsaved state, kept so a later redo can restore it (a rename step
+        ignores it — see db/history.py's own undo_project_file)."""
         if project_id not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_id}' does not exist.")
         existing_names = self._db.list_archives(project_id)
@@ -429,17 +530,11 @@ class ProjectEditor:
         raw_content = content.encode("utf-8") if is_text and isinstance(content, str) else content
 
         user = Session().user
-        previous = self._db.undo_project_file(user, project_id, file_name, raw_content)
-        if previous is None:
+        outcome = self._db.undo_project_file(user, project_id, file_name, raw_content)
+        if outcome is None:
             raise ValueError(f"Nothing to undo for file '{file_name}'.")
 
-        return {
-            "success": True,
-            "project_id": project_id,
-            "content": previous.decode("utf-8") if is_text else None,
-            "can_undo": self._db.has_undo(user, project_id, file_name),
-            "can_redo": self._db.has_redo(user, project_id, file_name),
-        }
+        return self._undo_redo_response(project_id, file_name, outcome, is_text)
 
     async def redo_project_file(self, project_id: str, file_name: str, content: bytes) -> dict:
         """Mirror of undo_project_file, replaying the current user's own
@@ -455,17 +550,11 @@ class ProjectEditor:
         raw_content = content.encode("utf-8") if is_text and isinstance(content, str) else content
 
         user = Session().user
-        next_content = self._db.redo_project_file(user, project_id, file_name, raw_content)
-        if next_content is None:
+        outcome = self._db.redo_project_file(user, project_id, file_name, raw_content)
+        if outcome is None:
             raise ValueError(f"Nothing to redo for file '{file_name}'.")
 
-        return {
-            "success": True,
-            "project_id": project_id,
-            "content": next_content.decode("utf-8") if is_text else None,
-            "can_undo": self._db.has_undo(user, project_id, file_name),
-            "can_redo": self._db.has_redo(user, project_id, file_name),
-        }
+        return self._undo_redo_response(project_id, file_name, outcome, is_text)
 
     def clear_project_history(self, project_id: str) -> None:
         """Deletes the current user's undo/redo history for every file
@@ -521,7 +610,8 @@ class ProjectEditor:
             )
             for name in cascade_names:
                 del archives[name]
-            new_automaton = AutomatonBuilder().build(archives, self._automaton_loader.known_projects_env_keys(project_id))
+            _, family, _ = AutomatonBuilder.read_declared_env_keys(archives["index.yml"])
+            new_automaton = AutomatonBuilder().build(archives, self._automaton_loader.known_projects_env_keys(project_id, family))
         except Exception as exc:
             raise ValueError(f"Invalid project definition: {exc}") from exc
 

@@ -238,7 +238,7 @@ class TestRegisterViaWhatsapp:
     def test_sets_the_invited_project_as_active(self, db, auth_service, invite_code):
         auth_service.register_via_whatsapp("34600000001", invite_code)
 
-        assert db.get_active_project_name("34600000001") == "invite-project"
+        assert db.get_active_project_id("34600000001") == "invite-project"
 
     def test_an_unknown_code_is_refused_with_the_same_message_as_the_web(self, db, auth_service):
         with pytest.raises(PermissionError):

@@ -228,6 +228,9 @@ class ProjectService(object):
     ) -> dict:
         return await self._editor.put_project_file(project_id, file_name, content, content_type_header, commit)
 
+    async def rename_project_file(self, project_id: str, old_name: str, new_name: str, commit: CommitCallback) -> dict:
+        return await self._editor.rename_project_file(project_id, old_name, new_name, commit)
+
     async def add_legal_terms(self, project_id: str, commit: CommitCallback) -> dict:
         return await self._editor.add_legal_terms(project_id, commit)
 

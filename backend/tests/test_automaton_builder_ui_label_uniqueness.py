@@ -14,6 +14,8 @@ pytestmark = pytest.mark.contract
 
 def test_duplicate_signal_ui_label_is_rejected():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 signals:
@@ -35,6 +37,8 @@ def test_duplicate_signal_ui_label_via_the_name_fallback_is_rejected():
     # ui-label absent falls back to the signal's own name — a fallback
     # colliding with an explicit ui-label elsewhere is still a collision.
     content = """
+project:
+  id: proj
 init-action:
   target: a
 signals:
@@ -53,6 +57,8 @@ states:
 
 def test_duplicate_state_ui_label_is_rejected():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -71,6 +77,8 @@ def test_duplicate_state_ui_label_via_the_key_fallback_is_rejected():
     # ui-label absent falls back to the state's own key (see
     # _build_state's raw_state.get("ui-label", key)).
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -86,6 +94,8 @@ states:
 
 def test_duplicate_action_ui_label_within_the_same_state_is_rejected():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -109,6 +119,8 @@ states:
 
 def test_same_action_ui_label_is_allowed_across_different_states():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -132,6 +144,8 @@ states:
 
 def test_unique_ui_labels_everywhere_build_without_error():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 signals:

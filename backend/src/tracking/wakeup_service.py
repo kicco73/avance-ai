@@ -139,7 +139,13 @@ class WakeupService:
                     )
                     await self._ws_adapter.push(username, {
                         "type": "notification",
-                        "project_id": observer_project_id,
+                        # Deliberately still "project_name", not "project_id":
+                        # chatClient.js (frontend, off-limits — "NEVER TOUCH
+                        # THIS FILE") parses this exact WS message shape by
+                        # that literal key name. This is the one wire format
+                        # kept stable for that frozen consumer; everywhere
+                        # else (HTTP responses, DB) already uses project_id.
+                        "project_name": observer_project_id,
                         "state": {**state_payload, "manual_actions": manual_actions_for(state_payload["actions"], auto_tracking_enabled)},
                         "on-enter": on_enter,
                     })

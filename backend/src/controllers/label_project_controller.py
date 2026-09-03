@@ -127,6 +127,14 @@ class LabelProjectController(BaseController):
         self.chat_service.delete_session(session_id)
         return {"success": True}
 
+    @post("/api/chat/sessions/{session_id}/close")
+    async def post_close_session(self, session_id: int):
+        """The live chat's own "Close session" option — ends session_id
+        without starting a replacement (see chat_controller.py's own
+        POST /api/chat/sessions for that). Raises ChatServiceError (404)
+        if it doesn't exist or belongs to someone else."""
+        return await self.chat_service.close_session(session_id)
+
     @put("/api/chat/sessions/{session_id}/labeled", role="supervisor")
     def put_session_labeled(self, session_id: int, req: SetSessionLabeledRequest):
         """The "Label sessions" view's "Mark done" button. Raises

@@ -7,12 +7,26 @@
 // form: closed shows the essential fields, open adds the description.
 import { computed, ref } from 'vue'
 import { renderMarkdown } from '../../markdown.js'
+import { useTokensBar } from '../../composables/useTokensBar.js'
+import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 
 const props = defineProps({
-  provider: { type: Object, required: true } // {driver, model, url?, ui-label, ui-description, modes?, language?}
+  provider: { type: Object, required: true }, // {driver, model, url?, ui-label, ui-description, modes?, language?, token-budget-per-day?}
+  // Today's own token spend for this provider (see db/ai_usage.py) —
+  // null while Manage services > AI hasn't loaded it yet, or for a
+  // talk/listen provider (only ai-service ones carry a daily budget).
+  usageToday: { type: Number, default: null }
 })
 
 const open = ref(false)
+
+const dailyBudget = computed(() => props.provider['token-budget-per-day'])
+const { width: tokensBarWidth, level: tokensBarLevel } = useTokensBar(
+  computed(() => props.usageToday), dailyBudget
+)
+const {
+  visible: tokensTooltipVisible, style: tokensTooltipStyle, show: showTokensTooltip, hide: hideTokensTooltip
+} = useFloatingTooltip()
 
 function toggle() {
   open.value = !open.value
@@ -27,7 +41,7 @@ function fieldLabel(key) {
 // (driver, model, url, ...) is shown as a field row.
 const fields = computed(() => {
   return Object.entries(props.provider)
-    .filter(([key, value]) => !['ui-label', 'ui-description', 'modes', 'language'].includes(key) && value != null && value !== '')
+    .filter(([key, value]) => !['ui-label', 'ui-description', 'modes', 'language', 'token-budget-per-day'].includes(key) && value != null && value !== '')
     .map(([key, value]) => [fieldLabel(key), String(value)])
 })
 
@@ -51,7 +65,29 @@ const flagBadges = computed(() => {
       <div v-if="flagBadges.length" class="inspector-detail-badges">
         <span v-for="badge in flagBadges" :key="badge" class="inspector-detail-badge inspector-detail-badge-flag">{{ badge }}</span>
       </div>
+      <div v-if="dailyBudget != null && usageToday != null" class="services-provider-tokens">
+        <span class="services-provider-tokens-label">Today</span>
+        <div
+          class="services-provider-tokens-bar-track"
+          @click.stop
+          @mouseenter="showTokensTooltip($event.currentTarget)"
+          @mouseleave="hideTokensTooltip"
+        >
+          <div
+            class="services-provider-tokens-bar-fill"
+            :class="`services-provider-tokens-bar-fill-${tokensBarLevel}`"
+            :style="{ width: tokensBarWidth }"
+          ></div>
+        </div>
+      </div>
     </div>
+    <Teleport to="body">
+      <span
+        v-if="tokensTooltipVisible"
+        class="services-provider-tokens-tooltip-floating"
+        :style="tokensTooltipStyle"
+      >{{ usageToday.toLocaleString() }} / {{ dailyBudget.toLocaleString() }} tokens today</span>
+    </Teleport>
     <div class="inspector-detail-body">
       <Transition name="crossfade" mode="out-in">
         <div v-if="open" key="open">
@@ -105,4 +141,35 @@ const flagBadges = computed(() => {
 .services-field-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
 .services-field-input { width: 100%; box-sizing: border-box; padding: 0.4rem 0.6rem; border: 1px solid #ddd; border-radius: 6px; background: #f5f5f7; color: #333; font: inherit; font-size: 0.85rem; }
 .services-field-input:disabled { opacity: 1; cursor: default; -webkit-text-fill-color: #333; }
+
+/* Daily consumption bar — same green/orange/red idiom as
+   SessionDetailCard.vue's own .session-detail-tokens (duplicated here
+   for the same scoped-styles-don't-cross-boundaries reason as
+   .services-field above), shown regardless of open/closed. */
+.services-provider-tokens { display: flex; align-items: center; gap: 0.4rem; }
+.services-provider-tokens-label { flex-shrink: 0; font-size: 0.68rem; color: #888; }
+.services-provider-tokens-bar-track { position: relative; flex: 1; min-width: 40px; height: 6px; border-radius: 999px; background: #eee; overflow: hidden; cursor: default; }
+.services-provider-tokens-bar-fill { height: 100%; border-radius: 999px; transition: width 0.3s ease; }
+.services-provider-tokens-bar-fill-green { background: #2e7d32; }
+.services-provider-tokens-bar-fill-orange { background: #f5a623; }
+.services-provider-tokens-bar-fill-red { background: #c62828; }
+</style>
+
+<style>
+/* FIXME: unscoped on purpose — teleported to <body>, outside scoped CSS reach. */
+.services-provider-tokens-tooltip-floating {
+  position: fixed;
+  width: max-content;
+  max-width: 200px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: #333;
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: left;
+  pointer-events: none;
+  z-index: 1000;
+}
 </style>

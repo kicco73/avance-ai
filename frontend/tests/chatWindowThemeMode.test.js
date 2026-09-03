@@ -77,8 +77,8 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
     const chatSkin = await import('../src/chatSkin.js')
     const testChatStore = await import('../src/testChatStore.js')
     testChatStore.setTestProject('test-proj')
-    api.getCurrentSession.mockResolvedValue({ id: 1, project_name: 'live-proj', active: true, state: { key: 'live', ui_label: 'Live', actions: [] } })
-    api.getCurrentTestSession.mockResolvedValue({ id: 99, project_name: 'test-proj', active: true, state: { key: 'test', ui_label: 'Test', actions: [] } })
+    api.getCurrentSession.mockResolvedValue({ id: 1, project_id: 'live-proj', active: true, state: { key: 'live', ui_label: 'Live', actions: [] } })
+    api.getCurrentTestSession.mockResolvedValue({ id: 99, project_id: 'test-proj', active: true, state: { key: 'test', ui_label: 'Test', actions: [] } })
     api.getMessages.mockResolvedValue([])
 
     const ChatWindow = (await import('../src/components/chat/ChatView.vue')).default

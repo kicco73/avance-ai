@@ -1,10 +1,12 @@
-"""GET /api/projects/{name}/graph (ProjectService.get_project_graph). Includes
+"""GET /api/projects/{project_id}/graph (ProjectService.get_project_graph). Includes
 an edge with source="" for the automaton's init_action alongside each
 state's real outgoing edges.
 """
 from __future__ import annotations
 
 import pytest
+
+from conftest import parse_sse_result
 
 pytestmark = pytest.mark.contract
 
@@ -32,6 +34,7 @@ def test_on_enter_is_reported_per_edge_not_per_node(client):
     """on-enter belongs to the action (edge), not its destination state
     (node) — see automaton.Action.on_enter."""
     yml = (
+        "project:\n  id: on_enter_proj\n"
         "init-action:\n  target: a\n"
         "states:\n"
         "  a:\n"
@@ -45,10 +48,11 @@ def test_on_enter_is_reported_per_edge_not_per_node(client):
         "  b:\n"
         "    contextual-prompt: there\n"
     )
-    resp = client.put("/api/projects/on-enter-proj", content=yml.encode(), headers={"Content-Type": "application/x-yaml"})
+    resp = client.post("/api/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
+    project_id = parse_sse_result(resp)["project_id"]
 
-    graph = client.get("/api/projects/on-enter-proj/graph").json()
+    graph = client.get(f"/api/projects/{project_id}/graph").json()
 
     assert "on-enter" not in graph["nodes"][0]["state"]
     edges_by_name = {e["action"]["name"]: e for e in graph["edges"]}

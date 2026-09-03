@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from automaton.automaton import Automaton
-from automaton.automaton_builder import AutomatonBuilder, family_of
+from automaton.automaton_builder import AutomatonBuilder
 from db import Db
 
 from .layout import ArchiveLayout
@@ -29,23 +29,29 @@ class AutomatonLoader:
             return False
         return Path(project_id).name == project_id
 
-    def known_projects_env_keys(self, project_id: str) -> dict[str, frozenset[str]]:
+    def known_projects_env_keys(self, project_id: str, family: str | None) -> dict[str, frozenset[str]]:
         """Every *other* project's declared project.id mapped to its
         declared env key names, for AutomatonBuilder.build's automaton.*
-        existence check — narrowed to `project_id`'s own family
-        (family_of): a project outside it is invisible here, so an
-        out-of-family automaton.<id> reference fails build validation
-        exactly like referencing an id that doesn't exist at all."""
-        family = family_of(project_id)
+        existence check — narrowed to projects declaring this exact same
+        `family` (never parsed, plain string equality): a project outside
+        it (or `family` itself being None) is invisible here, so an
+        out-of-family — or family-less — automaton.<id> reference fails
+        build validation exactly like referencing an id that doesn't
+        exist at all. `family` is `project_id`'s own declared family —
+        the caller peeks it (AutomatonBuilder.read_declared_env_keys) off
+        whatever index.yml it's about to build, since that project's own
+        Automaton doesn't exist yet at this point."""
+        if family is None:
+            return {}
         known: dict[str, frozenset[str]] = {}
         for other_id in self._db.list_projects():
-            if other_id == project_id or family_of(other_id) != family:
+            if other_id == project_id:
                 continue
             archive = self._db.get_archive(other_id, "index.yml")
             if archive is None:
                 continue
-            other_declared_id, env_keys = AutomatonBuilder.read_declared_env_keys(archive.decode("utf-8"))
-            if other_declared_id is not None:
+            other_declared_id, other_family, env_keys = AutomatonBuilder.read_declared_env_keys(archive.decode("utf-8"))
+            if other_declared_id is not None and other_family == family:
                 known[other_declared_id] = env_keys
         return known
 
@@ -75,9 +81,9 @@ class AutomatonLoader:
         if 'index.yml' not in archives:
             raise  FileNotFoundError(f"Project '{project_id}' does not contain 'index.yml'.")
 
-        automaton = AutomatonBuilder().build(
-            ArchiveLayout.decode_text(archives), self.known_projects_env_keys(project_id)
-        )
+        decoded = ArchiveLayout.decode_text(archives)
+        _, family, _ = AutomatonBuilder.read_declared_env_keys(decoded['index.yml'])
+        automaton = AutomatonBuilder().build(decoded, self.known_projects_env_keys(project_id, family))
         automaton.set_storage_location(revision)
         self._automaton_cache[cache_key] = automaton
         return automaton

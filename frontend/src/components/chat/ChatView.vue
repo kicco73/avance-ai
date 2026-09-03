@@ -1,8 +1,9 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-// A Test/draft session is a single, ephemeral conversation, so the
-// embedded test chat hides the sessions panel entirely.
+// A Test/draft session is a single, ephemeral conversation with no
+// project to switch away from and no paused/no-project splash screen of
+// its own, so the embedded test chat hides this header entirely.
 //
 // themeMode: 'auto' (default, LiveChatWindow.vue's own instance) shows
 // the project's index.css skin the whole time, same as the live chat
@@ -20,7 +21,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ActionButtons from './ActionButtons.vue'
 import ChatInput from './ChatInput.vue'
 import MessageBubble from './MessageBubble.vue'
-import SessionsPanel from './SessionsPanel.vue'
 import ProjectsMenu from '../ProjectsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import AppHeader from '../AppHeader.vue'
@@ -66,13 +66,8 @@ const {
   draft,
   currentSessionId,
   selectedSessionActive,
-  sessions,
-  sessionsLoading,
-  sessionsPanelOpen,
-  toggleSessionsPanel,
-  selectSession,
   handleNewSession,
-  handleDeleteSession,
+  handleCloseSession,
   handleSend,
   handleResend,
   handleReact,
@@ -93,39 +88,14 @@ const projectsMenuRef = ref(null)
 // to; a plain user's chat is their whole app, with no base to return to.
 const canBackToManageProjects = computed(() => roleSatisfies(props.role, 'admin'))
 
-// No transcript import here: imported sessions are a separate pool that
-// never shows up in this component's own sessions list, so importing
-// from here would silently succeed and then vanish from view.
-
-function createSession() {
-  handleNewSession()
-}
-
-// The sessions panel overlays the chat rather than sharing space with it
-// (see .sessions-panel-wrap), so any click into the chat pane behind it
-// reads as "dismiss the panel" — same as tapping outside a drawer/sheet.
-function closeSessionsPanelOnChatClick() {
-  if (!props.hideSessionsPanel && sessionsPanelOpen.value) toggleSessionsPanel()
-}
-
 const scrollEl = ref(null)
 const chatInputRef = ref(null)
 const recording = ref(false)
-const deletingSessionId = ref(null)
 
 defineExpose({
   refreshProjectsMenu: () => projectsMenuRef.value?.refresh(),
   focus: () => chatInputRef.value?.focus()
 })
-
-async function onDeleteSession(session) {
-  deletingSessionId.value = session.id
-  try {
-    await handleDeleteSession(session)
-  } finally {
-    deletingSessionId.value = null
-  }
-}
 
 // selectedSessionActive reflects the backend's "active" verdict for the
 // displayed session, never recomputed here from a timestamp — only the
@@ -144,85 +114,6 @@ const chatDisabledReason = computed(() => {
       : 'This session is no longer active.'
   }
   return null
-})
-
-// Draggable divider between the sessions panel and the chat itself.
-const sessionsWidth = ref(240)
-let draggingSessions = false
-
-function startSessionsDrag(event) {
-  draggingSessions = true
-  event.preventDefault()
-}
-
-function onSessionsDrag(event) {
-  if (!draggingSessions) return
-  sessionsWidth.value = Math.min(420, Math.max(160, sessionsWidth.value + event.movementX))
-}
-
-function stopSessionsDrag() {
-  draggingSessions = false
-}
-
-// Swipe-left-to-close on touch — the divider drag above is mouse-only
-// (mousedown/mousemove), and on a full-width mobile drawer (see
-// .sessions-panel's own mobile width below) there's no divider to grab
-// anyway. Tracks whether the gesture reads as more horizontal than
-// vertical before committing, so it doesn't hijack a vertical scroll
-// inside the panel's own session list.
-const SWIPE_CLOSE_THRESHOLD_PX = 60
-let swipeStartX = 0
-let swipeStartY = 0
-let swipeTracking = false
-
-function onSessionsPanelTouchStart(event) {
-  const touch = event.touches[0]
-  if (!touch) return
-  swipeStartX = touch.clientX
-  swipeStartY = touch.clientY
-  swipeTracking = true
-}
-
-function onSessionsPanelTouchMove(event) {
-  if (!swipeTracking) return
-  const touch = event.touches[0]
-  if (!touch) return
-  const dx = touch.clientX - swipeStartX
-  const dy = touch.clientY - swipeStartY
-  if (Math.abs(dx) < SWIPE_CLOSE_THRESHOLD_PX || Math.abs(dx) < Math.abs(dy)) return
-  swipeTracking = false
-  if (dx < 0) toggleSessionsPanel()
-}
-
-function onSessionsPanelTouchEnd() {
-  swipeTracking = false
-}
-
-// Auto-collapses the sessions panel after 5s of no interaction inside it —
-// reset on every mousemove/click/keydown/scroll there (see the template's
-// own listeners on .sessions-panel-wrap), started/stopped by the watch
-// below whenever sessionsPanelOpen itself changes.
-const SESSIONS_PANEL_AUTO_COLLAPSE_MS = 5000
-let sessionsPanelIdleTimer = null
-
-function clearSessionsPanelIdleTimer() {
-  if (sessionsPanelIdleTimer) {
-    clearTimeout(sessionsPanelIdleTimer)
-    sessionsPanelIdleTimer = null
-  }
-}
-
-function resetSessionsPanelIdleTimer() {
-  clearSessionsPanelIdleTimer()
-  if (props.hideSessionsPanel || !sessionsPanelOpen.value) return
-  sessionsPanelIdleTimer = setTimeout(() => {
-    if (sessionsPanelOpen.value) toggleSessionsPanel()
-  }, SESSIONS_PANEL_AUTO_COLLAPSE_MS)
-}
-
-watch(sessionsPanelOpen, (open) => {
-  if (open) resetSessionsPanelIdleTimer()
-  else clearSessionsPanelIdleTimer()
 })
 
 // Mobile backgrounds the page constantly (app switch, screen lock) — iOS
@@ -245,22 +136,16 @@ function onVisibilityChange() {
 
 onMounted(() => {
   connectChat()
-  window.addEventListener('mousemove', onSessionsDrag)
-  window.addEventListener('mouseup', stopSessionsDrag)
   document.addEventListener('visibilitychange', onVisibilityChange)
   if (props.themeMode === 'manual') applyAspect.value = manualApplyAspectPreference.value
-  if (sessionsPanelOpen.value) resetSessionsPanelIdleTimer()
 })
 onBeforeUnmount(() => {
   disconnectChat()
-  window.removeEventListener('mousemove', onSessionsDrag)
-  window.removeEventListener('mouseup', stopSessionsDrag)
   document.removeEventListener('visibilitychange', onVisibilityChange)
   if (props.themeMode === 'manual') {
     manualApplyAspectPreference.value = applyAspect.value
     applyAspect.value = true
   }
-  clearSessionsPanelIdleTimer()
 })
 
 function submit() {
@@ -392,73 +277,12 @@ watch(
     :data-state="state?.key ?? null"
     :data-prev-state="prevStateKey"
   >
-    <Transition name="sessions-slide">
-      <div
-        v-if="!hideSessionsPanel && sessionsPanelOpen"
-        class="sessions-panel-wrap"
-        @mousemove="resetSessionsPanelIdleTimer"
-        @click="resetSessionsPanelIdleTimer"
-        @keydown="resetSessionsPanelIdleTimer"
-        @scroll.capture="resetSessionsPanelIdleTimer"
-        @touchstart.passive="resetSessionsPanelIdleTimer"
-        @touchmove.passive="resetSessionsPanelIdleTimer"
-      >
-        <div
-          class="sessions-panel"
-          :style="{ width: sessionsWidth + 'px' }"
-          @touchstart.passive="onSessionsPanelTouchStart"
-          @touchmove.passive="onSessionsPanelTouchMove"
-          @touchend.passive="onSessionsPanelTouchEnd"
-        >
-          <div class="sessions-panel-project-menu">
-            <ProjectsMenu
-              ref="projectsMenuRef"
-              @select="(name) => emit('project-select', name)"
-              @download="(name) => emit('project-download', name)"
-            />
-            <button
-              class="sessions-panel-close-btn"
-              title="Collapse sessions"
-              @click="toggleSessionsPanel"
-            >✕</button>
-          </div>
-          <SessionsPanel
-            :sessions="sessions"
-            :loading="sessionsLoading"
-            :current-session-id="currentSessionId"
-            :deleting-session-id="deletingSessionId"
-            :create-disabled="!state?.key"
-            hide-collapse-toggle
-            restrict-selection-to-native
-            @select="selectSession"
-            @create="createSession"
-            @delete="onDeleteSession"
-          />
-        </div>
-
-        <div class="split-divider" @mousedown="startSessionsDrag"></div>
-      </div>
-    </Transition>
-
-    <div
-      class="chat-window"
-      :class="{ 'chat-window-dimmed': !hideSessionsPanel && sessionsPanelOpen }"
-      @click="closeSessionsPanelOnChatClick"
-    >
+    <div class="chat-window">
     <AppHeader
       v-if="!hideSessionsPanel"
       variant="overlay"
-      class="chat-header-overlay"
-      :class="{ 'chat-header-overlay-hidden': sessionsPanelOpen }"
     >
       <template #left>
-        <button
-          v-if="!sessionsPanelOpen"
-          type="button"
-          class="app-header-icon-btn"
-          title="Show sessions"
-          @click.stop="toggleSessionsPanel"
-        >☰</button>
         <button
           v-if="canBackToManageProjects"
           type="button"
@@ -468,6 +292,15 @@ watch(
         >«</button>
       </template>
       <template #right>
+        <ProjectsMenu
+          ref="projectsMenuRef"
+          session-actions
+          :close-session-disabled="!selectedSessionActive"
+          @select="(name) => emit('project-select', name)"
+          @download="(name) => emit('project-download', name)"
+          @new-session="handleNewSession"
+          @close-session="handleCloseSession"
+        />
         <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
       </template>
     </AppHeader>
@@ -556,147 +389,6 @@ watch(
   flex: 1;
   min-height: 0;
   min-width: 0;
-  /* Leaving (dimmed class removed) targets this rule, so un-blurring is
-     instant — no animation back to full focus. */
-  transition: filter 0s;
-  will-change: filter;
-  /* Promotes the whole pane to its own compositing layer so the browser
-     doesn't repaint the entire message list (markdown, images, code
-     blocks) on every frame of the blur transition — without this the
-     animation drops frames on anything but a trivial conversation. */
-  transform: translateZ(0);
-  backface-visibility: hidden;
-}
-
-.chat-window-dimmed {
-  filter: blur(2.5px);
-  /* Entering targets this rule instead of the base one above: waits for
-     the sessions panel's own 0.32s slide-in to finish, then the blur
-     snaps on instantly (0s duration) rather than fading in — no animated
-     blur in either direction, only the panel/overlay-icon movement is. */
-  transition: filter 0s 0.32s;
-}
-
-/* Fades out in lockstep with the sessions panel sliding open — same
-   reasoning as ChatWindow.vue's own .chat-window-dimmed (see below): once
-   the panel covers this corner, its own controls take over. */
-.chat-header-overlay {
-  transition: opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.chat-header-overlay-hidden {
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* Overlays the chat rather than sitting in the flex flow — opening it
-   must never resize/reflow the chat pane underneath. z-index above
-   LiveChatWindow.vue's own .topbar-overlay (30): open, this panel must
-   cover those fixed buttons, never sit under them (though
-   .topbar-overlay-hidden already fades them out in lockstep with this
-   opening anyway). */
-.sessions-panel-wrap {
-  position: absolute;
-  /* Not top: 0 — this overlay sits inside .chat-window, a *sibling* of
-     .chat-header (the element that actually reserves the notch, see its
-     own comment), not a descendant of it, so it never inherited that
-     padding: it invaded the notch itself, right where its own project
-     menu/close button became unreachable. Same for the bottom edge and
-     the home indicator. */
-  top: var(--safe-area-top);
-  left: 0;
-  bottom: var(--safe-area-bottom);
-  z-index: 35;
-  display: flex;
-  flex-direction: row;
-  min-width: 0;
-  min-height: 0;
-}
-
-.sessions-slide-enter-active,
-.sessions-slide-leave-active {
-  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.sessions-slide-enter-from,
-.sessions-slide-leave-to {
-  transform: translateX(-100%);
-}
-
-.sessions-panel {
-  display: flex;
-  flex-direction: column;
-  flex: none;
-  min-height: 0;
-  border-right: 1px solid #ddd;
-  background: #f9fafb;
-  box-shadow: 1px 0 3px rgba(0, 0, 0, 0.55), 6px 0 24px rgba(0, 0, 0, 0.35);
-}
-
-.sessions-panel-project-menu {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 0.9rem;
-  border-bottom: 1px solid #ddd;
-}
-
-.sessions-panel-project-menu .projects-menu {
-  flex: 1;
-  min-width: 0;
-}
-
-.sessions-panel-close-btn {
-  flex-shrink: 0;
-  width: 1.4rem;
-  height: 1.4rem;
-  line-height: 1;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: #666;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-
-.sessions-panel-close-btn:hover {
-  background: #eee;
-}
-
-.split-divider {
-  flex-shrink: 0;
-  width: 6px;
-  border-radius: 3px;
-  background: transparent;
-  cursor: col-resize;
-}
-
-.split-divider:hover {
-  background: #dbe4f0;
-}
-
-/* A fixed 240px drawer left an 80px sliver of chat visible beside it on
-   a 320px phone — full-width sheet instead, same convention as a mobile
-   nav drawer. The resize divider (mousedown/mousemove only, inert on
-   touch anyway) has nothing to do at full width, so it's hidden too. */
-@media (max-width: 640px) {
-  /* .sessions-panel-wrap otherwise has no explicit width (only
-     top/left/bottom) — shrink-to-fit around its content, which left
-     .sessions-panel's own 100% below resolving against that same
-     shrink-to-fit content width instead of the viewport. right: 0 gives
-     it a real, viewport-wide box for that percentage to resolve against. */
-  .sessions-panel-wrap {
-    right: 0;
-  }
-
-  .sessions-panel {
-    width: 100% !important;
-  }
-
-  .split-divider {
-    display: none;
-  }
 }
 
 .messages {
@@ -749,28 +441,4 @@ watch(
   padding-bottom: var(--safe-area-bottom);
 }
 
-/* While the sessions panel is open, the chat behind it is inert — dimmed
-   and non-interactive, so a click anywhere just reaches
-   closeSessionsPanelOnChatClick above instead of the chat's own controls. */
-.chat-window-dimmed .chat-header,
-.chat-window-dimmed .messages,
-.chat-window-dimmed .chat-ended-notice,
-.chat-window-dimmed .chat-footer {
-  pointer-events: none;
-}
-
-.chat-window::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.14);
-  z-index: 15;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.chat-window-dimmed::after {
-  opacity: 1;
-}
 </style>

@@ -12,32 +12,32 @@ from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 
 USERNAME = "user"
-PROJECT_NAME = "proj"
+PROJECT_ID = "proj"
 
 
 def _session_facts(db) -> SessionFacts:
-    return SessionFacts(db, FixedProjectContext(project_name=PROJECT_NAME))
+    return SessionFacts(db, FixedProjectContext(project_id=PROJECT_ID))
 
 
 @pytest.mark.regression
 def test_number_of_user_sessions_counts_every_session_for_the_project(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
-    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
+    db.set_active_project_id(PROJECT_ID, USERNAME)
     session_facts = _session_facts(db)
     assert session_facts.number_of_user_sessions() == 0
 
     db.create_chat_session(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a",
     )
     assert session_facts.number_of_user_sessions() == 1
 
     db.create_chat_session(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime(2026, 1, 2), datetime_end=datetime(2026, 1, 2),
         start_state="a", end_state="a",
     )
@@ -46,21 +46,21 @@ def test_number_of_user_sessions_counts_every_session_for_the_project(db):
 
 @pytest.mark.regression
 def test_current_session_duration_in_minutes_is_zero_with_no_session(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
-    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
+    db.set_active_project_id(PROJECT_ID, USERNAME)
     assert _session_facts(db).current_session_duration_in_minutes() == 0.0
 
 
 @pytest.mark.regression
 def test_current_session_duration_in_minutes_uses_the_most_recent_session(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
-    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
+    db.set_active_project_id(PROJECT_ID, USERNAME)
     ten_minutes_ago = datetime.utcnow() - timedelta(minutes=10)
     db.create_chat_session(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=ten_minutes_ago, datetime_end=ten_minutes_ago,
         start_state="a", end_state="a",
     )
@@ -72,12 +72,12 @@ def test_current_session_duration_in_minutes_uses_the_most_recent_session(db):
 
 @pytest.mark.regression
 def test_last_user_session_datetime_is_none_for_a_first_ever_session(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
-    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
+    db.set_active_project_id(PROJECT_ID, USERNAME)
     db.create_chat_session(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a",
     )
@@ -87,18 +87,18 @@ def test_last_user_session_datetime_is_none_for_a_first_ever_session(db):
 
 @pytest.mark.regression
 def test_last_user_session_datetime_is_the_previous_sessions_start(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
-    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
+    db.set_active_project_id(PROJECT_ID, USERNAME)
     db.create_chat_session(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime(2026, 1, 1, 9, 0), datetime_end=datetime(2026, 1, 1, 9, 30),
         start_state="a", end_state="a",
     )
     db.create_chat_session(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime(2026, 1, 2, 9, 0), datetime_end=datetime(2026, 1, 2, 9, 30),
         start_state="a", end_state="a",
     )
@@ -117,20 +117,20 @@ def test_last_user_session_datetime_is_the_previous_sessions_start(db):
 
 @pytest.mark.regression
 def test_state_duration_in_minutes_is_zero_with_no_transition_yet(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
-    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
+    db.set_active_project_id(PROJECT_ID, USERNAME)
     assert _session_facts(db).state_duration_in_minutes() == 0.0
 
 
 @pytest.mark.regression
 def test_state_duration_in_minutes_since_the_last_real_transition(db):
-    db.ensure_project(PROJECT_NAME)
-    db.publish_project(PROJECT_NAME)
-    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
+    db.set_active_project_id(PROJECT_ID, USERNAME)
     session_id = db.create_chat_session(
-        username=USERNAME, project_name=PROJECT_NAME,
-        revision=db.get_project_published_revision(PROJECT_NAME),
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="b",
     )

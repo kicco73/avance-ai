@@ -80,6 +80,6 @@ class EvaluationScopeBuilder(object):
             "datetime": ModuleWrapper(datetime, allowed_attrs={"datetime", "timedelta", "timezone"}),
         }
         if self._automaton_namespace is not None:
-            scope["automaton"] = self._automaton_namespace.scoped_to(automaton.project_id)
+            scope["automaton"] = self._automaton_namespace.scoped_to(automaton.family)
         scope["actuator"] = self._actuator_set
         return self._metrics.merge_if_referenced(automaton, state_key, scope)

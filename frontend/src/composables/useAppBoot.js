@@ -159,10 +159,10 @@ export function useAppBoot(
     const code = consumeInviteCode()
     if (!code) return null
     try {
-      const { project_name: projectName } = await postRedeemInviteCode(code)
-      if (!projectName) return null
-      await activateProject(projectName)
-      return projectName
+      const { project_id: projectId } = await postRedeemInviteCode(code)
+      if (!projectId) return null
+      await activateProject(projectId)
+      return projectId
     } catch {
       return null // already surfaced via apiFetch; falls back to the normal landing
     }

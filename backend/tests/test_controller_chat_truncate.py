@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import parse_sse_result
 from session import Session
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
@@ -67,10 +68,11 @@ def test_truncate_deletes_trailing_turns_and_rolls_the_live_state_back(client):
     a manual action, then truncate at that transition's timestamp — the
     transition and the state it produced must both be gone."""
     content = (SAMPLES_DIR / "Aprendr català.zip").read_bytes()
-    resp = client.put("/api/projects/cat", content=content, headers={"Content-Type": "application/zip"})
+    resp = client.post("/api/projects/upload", content=content, headers={"Content-Type": "application/zip"})
     assert resp.status_code == 200, resp.text
-    client.put("/api/projects/cat/activate")
-    client.post("/api/projects/cat/publish", json={})
+    project_id = parse_sse_result(resp)["project_id"]
+    client.put(f"/api/projects/{project_id}/activate")
+    client.post(f"/api/projects/{project_id}/publish", json={})
 
     session = client.get("/api/chat/session").json()
     assert session["start_state"] == "welcome"

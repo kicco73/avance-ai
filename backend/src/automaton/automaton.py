@@ -169,6 +169,7 @@ class EnvKeyPayload(TypedDict):
 
 class ProjectPayload(TypedDict):
     id: str
+    family: str | None
     revision: int
     ui_label: str | None
     ui_description: str | None
@@ -198,11 +199,17 @@ class Automaton(object):
         # project's own mandatory, globally unique identity — what
         # *other* projects reach it as through automaton.* references,
         # and the sole key every DB table stores it under (see
-        # db/models.py's Project.id). `project_revision` is the YAML's
-        # own declared `project.revision` (default 0) — distinct from
-        # this object's own `revision` attribute below (which DB storage
-        # revision it was actually loaded from).
+        # db/models.py's Project.id). `project_family` gates that
+        # visibility: two projects can observe/notify each other only
+        # when both declare the exact same family (never parsed, plain
+        # string equality) — None (the default) means neither observes
+        # nor is observed by anything, itself included (see
+        # AutomatonLoader.known_projects_env_keys). `project_revision` is
+        # the YAML's own declared `project.revision` (default 0) —
+        # distinct from this object's own `revision` attribute below
+        # (which DB storage revision it was actually loaded from).
         project_id: str | None = None,
+        project_family: str | None = None,
         project_revision: int = 0,
         project_ui_label: str | None = None,
         project_ui_description: str | None = None,
@@ -217,6 +224,7 @@ class Automaton(object):
         self.reactions = reactions or []
         self.env_keys = env_keys or []
         self.project_id = project_id
+        self.family = project_family
         self.project_revision = project_revision
         self.project_ui_label = project_ui_label
         self.project_ui_description = project_ui_description

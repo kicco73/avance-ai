@@ -16,6 +16,8 @@ pytestmark = pytest.mark.contract
 
 def test_on_enter_is_read_from_an_action_not_its_target_state():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -35,6 +37,8 @@ states:
 
 def test_on_enter_absent_on_an_action_is_none():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -55,6 +59,8 @@ def test_two_different_actions_landing_on_the_same_state_can_disagree_on_on_ente
     """Two paths into the same state don't have to agree on whether
     entering it celebrates."""
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -79,6 +85,8 @@ def test_a_stray_on_enter_under_a_state_is_silently_ignored():
     """on-enter is not a recognized state field — declaring it there
     parses without error, as inert dead data like any unrecognized key."""
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -92,6 +100,8 @@ states:
 
 def test_on_enter_accepts_multiple_actuator_calls_one_per_line():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -115,6 +125,8 @@ states:
 
 def test_init_action_on_enter():
     content = """
+project:
+  id: proj
 init-action:
   target: a
   on-enter: actuator.celebrate()
@@ -128,6 +140,8 @@ states:
 
 def test_init_action_on_enter_absent_is_none():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -140,6 +154,8 @@ states:
 
 def test_get_state_payload_exposes_on_enter_per_outgoing_action_not_on_the_state():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -162,6 +178,8 @@ def test_build_rejects_an_action_with_a_bare_unnamespaced_call():
     """A bare (non-actuator) call is just an undefined bare name — the
     same "undefined name(s)" error any other unknown identifier gets."""
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -180,6 +198,8 @@ states:
 
 def test_build_rejects_an_unknown_actuator_method():
     content = """
+project:
+  id: proj
 init-action:
   target: a
   on-enter: actuator.doStuff()
@@ -193,6 +213,8 @@ states:
 
 def test_build_rejects_the_wrong_actuator_argument_count():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -214,6 +236,8 @@ def test_build_accepts_actuator_defer_with_a_lambda_argument():
     # reads that colon as its own mapping separator) — the block scalar
     # form (or an explicitly quoted line) is required in a real index.yml.
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -234,6 +258,8 @@ states:
 
 def test_build_still_validates_a_bad_arity_call_nested_inside_the_lambda():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -253,6 +279,8 @@ states:
 
 def test_build_rejects_the_wrong_defer_argument_count():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:
@@ -271,6 +299,8 @@ states:
 
 def test_build_reports_the_offending_line_number_in_a_multi_line_script():
     content = """
+project:
+  id: proj
 init-action:
   target: a
 states:

@@ -41,7 +41,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'start-explorer-drag', 'new-attachment', 'new-aspect', 'new-legal', 'select-file', 'upload-file',
-  'jump-to-definition', 'select', 'saved'
+  'jump-to-definition', 'select', 'saved', 'renamed'
 ])
 
 // The Behavior branch's own attachments (see FileExplorer.vue's identical
@@ -122,6 +122,7 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
           :file-name="currentFileName"
           :initial-segment="currentFileName === justAddedFileName ? 'edit' : 'preview'"
           @saved="emit('saved', $event)"
+          @renamed="emit('renamed', $event)"
         />
         <div v-else-if="currentFileName !== 'index.yml' && currentFileName !== 'index.css'" class="edit-project-editor-attachment">
           <div class="edit-project-editor-toolbar">
@@ -153,6 +154,7 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
               :project-name="projectName"
               :file-name="currentFileName"
               @saved="emit('saved', $event)"
+              @renamed="emit('renamed', $event)"
             />
           </div>
         </div>
