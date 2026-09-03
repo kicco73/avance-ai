@@ -31,4 +31,5 @@ exec ./build/bin/llama-server \
     -np 1 \
     --device Vulkan0 \
     --reasoning-budget 0 \
+    --host 0.0.0.0 \
     --port 8081

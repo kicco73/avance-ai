@@ -25,6 +25,13 @@ from ai.llm_provider import (
 
 logger = LoggerFactory.get_logger(__name__)
 
+# google-genai sends no timeout at all unless told to (HttpOptions.timeout
+# defaults to None, passed straight through to httpx) — an upstream that
+# stops answering would otherwise hang a chat turn, or a JobQueue worker,
+# forever. Milliseconds, per HttpOptions; httpx applies it to connect and
+# to the longest silence between streamed chunks, not to the whole reply.
+REQUEST_TIMEOUT_MS: int = 60_000
+
 
 @contextmanager
 def _handle_gemini_errors() -> Generator[None, None, None]:
@@ -77,10 +84,10 @@ class GeminiProvider(LLMProvider):
 		self.__sync_client: genai.Client = self.__new_client()
 
 	def __new_client(self) -> genai.Client:
-		return genai.Client(
-			api_key=self.__api_key,
-			http_options={"base_url": self.__base_url} if self.__base_url else None,
-		)
+		http_options: dict[str, Any] = {"timeout": REQUEST_TIMEOUT_MS}
+		if self.__base_url:
+			http_options["base_url"] = self.__base_url
+		return genai.Client(api_key=self.__api_key, http_options=http_options)
 
 	def __client(self) -> genai.Client:
 		loop = asyncio.get_running_loop()
