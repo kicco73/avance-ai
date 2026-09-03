@@ -37,6 +37,7 @@ Meta ──POST /api/whatsapp/webhook──▶ WhatsAppController   (role=None, 
 - `controllers/auth_controller.py` — `PUT /api/auth/me/whatsapp-phone-number`, ProfileView.vue's own save action.
 - `auth/auth_service.py` — `register_via_whatsapp`, the WhatsApp-native signup path (shares `_register_with_invite` with the web's own `complete_registration`).
 - `project/invites.py` — `whatsapp_url` on a created invite's payload, `ShareProjectDialog.vue`'s WhatsApp QR.
+- `tracking/actuators/actuator_set.py` — `actuator.whatsapp(phone_number, message_md)`, the proactive-send entry point (see below).
 - `tests/test_whatsapp_channel.py` — contract tests with fake ChatService/Db/Cloud API.
 
 ## Identity
@@ -136,6 +137,26 @@ intent to write (`get_current_session_if_any_or_create_new`, the web's own
 `GET /api/chat/session`) never closes anything: a session from the other
 channel comes back as-is, exposed with `active: false` — read-only until
 that client explicitly starts a new one.
+
+## Proactive sends
+
+`actuator.whatsapp(phone_number, message_md)` (see PROJECT_SPECS.md §5.4)
+is the one path out of the Cloud API that isn't a reply to an inbound
+turn: an on-enter script can message any `phone_number` already linked
+to a `User` row, through `WhatsAppService.send_message` →
+`WhatsAppCloudApiClient.send_text`, the same Markdown flattening as
+every other outbound message. `False` — nothing sent — for a number with
+no linked account, a failed API call, or no `whatsapp-service` section
+configured at all. Same 24h free-form window constraint as any other
+send (below): a proactive message outside it will be rejected by the API.
+
+Once sent, `ChatService.record_whatsapp_send` gives the message a home in
+that recipient's own Sessions panel: their currently open session (any
+channel) on the action's own project if there is one, else a freshly
+opened `whatsapp-chat` one — `message_md` lands in it as an `assistant`
+row. This never runs the automaton (no transition, no `env:`, no
+tracking row) — it's a transcript entry, not a turn. A failure here is
+logged and swallowed; it never flips a successful send back to `False`.
 
 ## Constraints worth knowing
 

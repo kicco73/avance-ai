@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from ai import AiService
     from chat.ws_adapter import WsAdapter
     from project.project_service import ProjectService
+    from whatsapp.whatsapp_service import WhatsAppService
 
 
 class ActuatorSetFactory:
@@ -34,6 +35,7 @@ class ActuatorSetFactory:
         self._job_service = job_service
         self._enabled_test_sessions: set[int] = set()
         self._ws_adapter: "WsAdapter | None" = None
+        self._whatsapp_service: "WhatsAppService | None" = None
         self._hydrator = ScopeHydrator(db, project_service, self, ai_service)
         job_service.register_task_type(OnEnterTask.TYPE, self._hydrator.hydrate)
 
@@ -44,12 +46,18 @@ class ActuatorSetFactory:
     def ws_adapter(self) -> "WsAdapter | None":
         return self._ws_adapter
 
+    def set_whatsapp_service(self, whatsapp_service: "WhatsAppService | None") -> None:
+        self._whatsapp_service = whatsapp_service
+
     def _dispatcher(self, project_id: str, actuators: str) -> OnEnterDispatcher:
         return OnEnterDispatcher(self._job_service, self._hydrator, project_id=project_id, actuators=actuators)
 
     def live(self, *, project_id: str) -> LiveActuatorSet:
         """Bound to `project_id`: what its on-enter tasks are hibernated under."""
-        return LiveActuatorSet(self._notification_service, self._dispatcher(project_id, ACTUATORS_LIVE))
+        return LiveActuatorSet(
+            self._notification_service, self._dispatcher(project_id, ACTUATORS_LIVE),
+            whatsapp_service=self._whatsapp_service,
+        )
 
     def fake(self, *, project_id: str) -> FakeActuatorSet:
         """Same binding, real side effects suppressed (a test session

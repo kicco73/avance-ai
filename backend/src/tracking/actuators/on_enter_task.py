@@ -39,9 +39,8 @@ rebuilds a scope for a user who is not the current request —
 Session().impersonate(username) and a FixedProjectContext pinned on the
 project, at the *revision* the script was written against (published
 revisions are kept in Archive; a later republish never reinterprets a
-pending script). `session_id` rides along only for an immediate run:
-actuator.prompt's own conversation history is that session's, still
-open a few hundred milliseconds later; a deferred call has none."""
+pending script). `session_id` rides along only for an immediate run
+(see is_deferred below) — a deferred call has none."""
 from __future__ import annotations
 
 import json
@@ -260,13 +259,8 @@ class ScopeHydrator(object):
             AutomatonNamespace(self._db, self._project_service), actuator_set,
             ai_service=self._ai_service,
         )
-        # actuator.prompt's conversation history: the firing session's,
-        # for an immediate run — only while that session still exists.
-        session_id = payload.get("session_id")
-        if session_id is not None and self._db.get_chat_session(session_id) is None:
-            session_id = None
         snapshot = payload["snapshot"]
-        scope = builder.build(automaton, payload["state_key"], snapshot.get("signal") or {}, session_id=session_id)
+        scope = builder.build(automaton, payload["state_key"], snapshot.get("signal") or {})
         # The frozen part wins over whatever the live proxies would say
         # now — exactly what the in-turn evaluation would have seen.
         for name in _FROZEN_NAMESPACES:

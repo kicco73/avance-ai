@@ -175,6 +175,7 @@ class UserMixin:
             "last_login": _utc_iso(user.last_login),
             "active_project": user.active_project_id,
             "role": user.role,
+            "whatsapp_phone_number": user.whatsapp_phone_number,
         }
 
     def set_user_role(self, user_id: str, role: str) -> None:

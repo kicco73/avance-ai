@@ -338,9 +338,11 @@ class ProjectManager:
         self._db.set_project_observers(project_id, observed_project_ids)
         self.recompute_availability(project_id)
         if project_id == self._inspector.get_active_project_id():
-            current_state_key = self._db.get_current_state(project_id)
-            if current_state_key is None or current_state_key not in automaton.states:
-                self._db.reset_project(project_id)
+            username = Session().user
+            for session_type in ('live', 'test'):
+                session = self._session_manager.get_active_session(username, project_id, type=session_type)
+                if session is not None and session["end_state"] not in automaton.states:
+                    self._db.delete_chat_session(session["id"])
             await commit(project_id, automaton)
         return project_id
 
@@ -585,6 +587,8 @@ class ProjectManager:
             for name in files
         }
         is_new_project = not self._db.project_exists(project_id)
+        if not is_new_project:
+            self._db.reset_project(project_id)
         self._db.import_new_revision(project_id, revision, files_bytes, content_types)
         self._db.set_active_project_id(project_id, Session().user)
         await self.finalize_update(project_id, automaton, commit, is_new_project=is_new_project)

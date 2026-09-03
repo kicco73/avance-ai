@@ -224,10 +224,10 @@ class TrackingEngine:
         is a model call, send_mail a network call, and the browser gets
         whatever they produce over the websocket (see
         tracking/actuators/on_enter_task.py). `session_id`: the firing
-        session, for actuator.prompt's own conversation history."""
+        session, for the OnEnterTask itself."""
         if not action.env and not action.on_enter:
             return
-        scope = self._scope_builder.build(automaton, state_key, signal_values, session_id=session_id)
+        scope = self._scope_builder.build(automaton, state_key, signal_values)
         if action.env:
             updates = automaton.eval_action_env(action, scope)
             if updates:
@@ -248,5 +248,5 @@ class TrackingEngine:
         irrelevant or already handled elsewhere."""
         if not action.on_enter:
             return
-        scope = self._scope_builder.build(automaton, state_key, None, session_id=session_id)
+        scope = self._scope_builder.build(automaton, state_key, None)
         scope["actuator"].schedule_on_enter(action, scope, session_id=session_id)

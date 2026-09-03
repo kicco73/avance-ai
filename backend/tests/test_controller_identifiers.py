@@ -86,7 +86,7 @@ def test_returns_one_dict_per_namespace_for_the_active_project(client):
     assert set(body["session.metric"]) == {"engagement", "state_stability", "signal_stability"}
     assert set(body["user"]) == {
         "email", "name", "picture_url", "provider", "provider_user_id",
-        "created_at", "last_login", "active_project", "role",
+        "created_at", "last_login", "active_project", "role", "whatsapp_phone_number",
     }
     assert set(body["source"]) == {"attachment", "search"}
     assert set(body["metric"]) == {"retention", "activity_consistency"}

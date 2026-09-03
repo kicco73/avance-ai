@@ -28,6 +28,7 @@ def test_exposes_every_user_field_except_id(db):
         "last_login": None,
         "active_project": None,
         "role": "user",
+        "whatsapp_phone_number": None,
     }
     assert facts["created_at"] is not None
     assert "id" not in facts

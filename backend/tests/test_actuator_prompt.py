@@ -10,8 +10,6 @@ from automaton.scope import EvaluationScope
 from conftest import FakeAiService, parse_sse_result, run_on_enter_tasks
 from db import Db
 from tracking.actuators.actuator_set import FakeActuatorSet, LiveActuatorSet
-from tracking.actuators.prompt_context import PromptContext
-from tracking.env import Env
 
 pytestmark = pytest.mark.contract
 
@@ -35,54 +33,25 @@ def _automaton() -> Automaton:
     )
 
 
-def _session_id(db: Db, project_id: str = "proj") -> int:
-    db.ensure_project(project_id)
-    return db.create_chat_session("tester", project_id, revision=0, type="test")
-
-
-async def test_prompt_context_returns_the_aggregated_text_and_replaces_contextual_prompt(db: Db):
+def test_actuator_prompt_sends_an_isolated_single_turn():
     ai_service = FakeAiService()
-    automaton = _automaton()
-    state = automaton.states["a"]
-    session_id = _session_id(db)
-    context = PromptContext(ai_service, db, Env(), automaton, state, session_id)
+    actuator = FakeActuatorSet().with_ai_service(ai_service)
 
-    text = context.run("Say hi to the user.")
+    text = actuator.prompt("Translate to Catalan: hello.")
 
     assert text == "Fake AI reply."
-    system_prompt, _ = ai_service.calls[0]
-    assert "General instructions." in system_prompt
-    assert "Say hi to the user." in system_prompt
-    # The passed-in prompt stands in for the state's own contextual-prompt
-    # — it is never also included (see PromptContext._build_system_prompt).
-    assert "You are in A." not in system_prompt
+    system_prompt, history = ai_service.calls[0]
+    assert system_prompt == ""
+    assert history == [{"role": "user", "content": "Translate to Catalan: hello."}]
 
 
-async def test_prompt_context_sends_env_and_triggerable_signal_definitions(db: Db):
+def test_actuator_prompt_leaves_no_message_persisted(db: Db):
+    db.ensure_project("proj")
+    session_id = db.create_chat_session("tester", "proj", revision=0, type="test")
     ai_service = FakeAiService()
-    automaton = _automaton()
-    state = automaton.states["a"]
-    action = Action(name="go", ui_label="Go", ui_button="Go", target="a", trigger="signal.mood >= 50")
-    state.actions.append(action)
-    session_id = _session_id(db)
-    env = Env(stored={"favorite_color": "blue"})
-    context = PromptContext(ai_service, db, env, automaton, state, session_id)
+    actuator = FakeActuatorSet().with_ai_service(ai_service)
 
-    context.run("Extra prompt text.")
-
-    system_prompt, _ = ai_service.calls[0]
-    assert "mood" in system_prompt
-    assert "favorite_color: blue" in system_prompt
-
-
-async def test_prompt_context_leaves_no_message_persisted(db: Db):
-    ai_service = FakeAiService()
-    automaton = _automaton()
-    state = automaton.states["a"]
-    session_id = _session_id(db)
-    context = PromptContext(ai_service, db, Env(), automaton, state, session_id)
-
-    context.run("Say hi.")
+    actuator.prompt("Say hi.")
 
     assert db.get_messages(session_id) == []
 
@@ -92,27 +61,20 @@ def test_actuator_set_prompt_returns_empty_string_with_no_bound_context():
     assert LiveActuatorSet(notification_service=None, dispatcher=None).prompt("Say hi.") == ""
 
 
-async def test_with_prompt_context_never_mutates_the_original_instance(db: Db):
+def test_with_ai_service_never_mutates_the_original_instance():
     ai_service = FakeAiService()
-    automaton = _automaton()
-    state = automaton.states["a"]
-    session_id = _session_id(db)
-    context = PromptContext(ai_service, db, Env(), automaton, state, session_id)
     original = FakeActuatorSet()
 
-    bound = original.with_prompt_context(context)
+    bound = original.with_ai_service(ai_service)
 
     assert bound.prompt("Say hi.") == "Fake AI reply."
     assert original.prompt("Say hi.") == ""
 
 
-async def test_on_enter_can_compose_prompt_with_notify(db: Db):
+def test_on_enter_can_compose_prompt_with_notify():
     ai_service = FakeAiService()
     automaton = _automaton()
-    state = automaton.states["a"]
-    session_id = _session_id(db)
-    context = PromptContext(ai_service, db, Env(), automaton, state, session_id)
-    actuator = FakeActuatorSet().with_prompt_context(context)
+    actuator = FakeActuatorSet().with_ai_service(ai_service)
 
     scope = EvaluationScope({"actuator": actuator}, automaton=automaton, state_key="a")
     result = _OnEnterEval(names=scope).eval(

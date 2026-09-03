@@ -275,11 +275,6 @@ class TriggerExpressionAnalyzer:
 
     _KIND_DATETIME = "datetime"
     _KIND_TIMEDELTA = "timedelta"
-    # Actuators bound to the live session (see PromptContext: the model
-    # call sees the session's own chat history) — meaningless, hence
-    # refused, inside a deferred lambda. actuator.prompt is the one for
-    # now; revisit if a session-free variant is ever added.
-    _SESSION_BOUND_ACTUATORS = (("actuator", "prompt"),)
 
     @classmethod
     def _temporal_kind(cls, node: ast.AST) -> str | None:
@@ -341,14 +336,6 @@ class TriggerExpressionAnalyzer:
                 )
             elif act.args.args or act.args.vararg or act.args.kwonlyargs or act.args.kwarg or act.args.posonlyargs:
                 violations.append("actuator.defer(...): the lambda must take no arguments")
-            else:
-                for inner in ast.walk(act.body):
-                    if isinstance(inner, ast.Call) and cls._dotted_chain(inner.func) in cls._SESSION_BOUND_ACTUATORS:
-                        violations.append(
-                            f"actuator.defer(...): {ast.unparse(inner.func)}(...) reads the conversation of the "
-                            "session that fired it, which will be over by the time a deferred call runs — "
-                            "call it now and defer only what it produces"
-                        )
             if cls._temporal_kind(when) != cls._KIND_DATETIME:
                 violations.append(
                     f"actuator.defer(...): `when` must be a datetime built from datetime.datetime(...) or "

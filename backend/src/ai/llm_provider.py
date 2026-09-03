@@ -61,6 +61,10 @@ class AIServiceProviderPermanentError(AIServiceError):
 	message = "The AI service rejected the request."
 
 
+class AIServiceRequestError(AIServiceError):
+	message = "The AI service rejected the request as malformed."
+
+
 class AIServiceProviderOutputTruncatedError(Exception):
 	"""Raised by a provider's generate_stream_with_schema when its own
 	native stop/finish reason confirms the response was cut short by

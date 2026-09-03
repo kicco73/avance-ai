@@ -13,6 +13,7 @@ from ai.llm_provider import (
     AIServiceProviderPermanentError,
     AIServiceProviderRateLimitedError,
     AIServiceProviderUnavailableError,
+    AIServiceRequestError,
     LLMProvider,
     MetadataCallback,
     content_to_text,
@@ -175,6 +176,10 @@ class OpenAICompatibleProvider(LLMProvider):
             if exc.status_code in (503, 504):
                 raise AIServiceProviderUnavailableError(
                     f"Service unavailable ({exc.status_code}): {exc}"
+                ) from exc
+            if exc.status_code == 400:
+                raise AIServiceRequestError(
+                    f"API error ({exc.status_code}): {exc}"
                 ) from exc
             raise AIServiceProviderPermanentError(
                 f"API error ({exc.status_code}): {exc}"

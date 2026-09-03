@@ -276,7 +276,10 @@ function chooseOption(id) {
 
 .dialog-card-visible {
   opacity: 1;
-  transform: scale(1) translateY(0);
+  /* FIXME: transform: none, not scale(1) translateY(0) — any non-none
+     transform value breaks position: fixed for descendants (e.g.
+     TriggerEditor.vue's completion tooltip), which is why it was clipped. */
+  transform: none;
 }
 
 .dialog-close-btn {
