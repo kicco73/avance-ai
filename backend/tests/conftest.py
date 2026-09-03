@@ -173,6 +173,7 @@ def make_test_job_service(db: Db, broadcaster=None) -> JobService:
 
 def make_test_actuator_factory(
     db: Db, job_service: JobService | None = None, project_service: ProjectService | None = None,
+    ai_service=None,
 ) -> ActuatorSetFactory:
     """A real ActuatorSetFactory, wired the same way main.py does — every
     test project's own YAML only ever calls actuator.celebrate()/notify(),
@@ -187,7 +188,7 @@ def make_test_actuator_factory(
         ),
         job_service,
     )
-    return ActuatorSetFactory(notification_service, db, job_service, project_service)
+    return ActuatorSetFactory(notification_service, db, job_service, project_service, ai_service)
 
 
 @pytest.fixture
@@ -202,7 +203,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     job_service = make_test_job_service(app_db, test_event_broadcaster)
     # TestService's own pool, as in main.py — never the platform JobService's.
     test_job_queue = JobQueue(max_concurrent=1, broadcaster=test_event_broadcaster)
-    actuator_factory = make_test_actuator_factory(app_db, job_service, project_service)
+    actuator_factory = make_test_actuator_factory(app_db, job_service, project_service, fake_ai_service)
     tracking_service = TrackingService(
         app_db, project_service, metric_service, actuator_factory,
     )
@@ -246,7 +247,52 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     fastapi_app.include_router(controller.router)
     fastapi_app.state.test_service = test_service
     fastapi_app.state.chat_service = chat_service
+    # For tests that need to watch an on-enter task run: start the
+    # service and register a fake websocket on the factory (see
+    # run_on_enter_tasks below). Never started here — most tests only
+    # ever assert on the Task rows an on-enter leaves behind.
+    fastapi_app.state.job_service = job_service
+    fastapi_app.state.actuator_factory = actuator_factory
     return fastapi_app
+
+
+class FakeWebSocket:
+    """Just enough to stand in for a real connection in WsAdapter's
+    username -> WebSocket _connections registry — push only calls
+    send_json on it."""
+
+    def __init__(self):
+        self.sent: list[dict] = []
+
+    async def send_json(self, payload: dict):
+        self.sent.append(payload)
+
+
+def run_on_enter_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0) -> list[dict]:
+    """Starts the app fixture's JobService (once), attaches a FakeWebSocket
+    for `username`, waits until no on-enter task is pending or dispatched,
+    and returns the frames the browser would have received. Stops the
+    service afterwards so its thread never outlives the test."""
+    import time
+    from chat.ws_adapter import WsAdapter
+
+    factory = app.state.actuator_factory
+    websocket = FakeWebSocket()
+    ws_adapter = WsAdapter(chat_service=app.state.chat_service, db=None, auth_service=None)
+    ws_adapter._connections[username] = websocket
+    factory.set_ws_adapter(ws_adapter)
+    job_service = app.state.job_service
+    job_service.start()
+    try:
+        from db.models import Task as TaskRow
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not TaskRow.select().where(TaskRow.status.in_(("pending", "dispatched"))).exists():
+                break
+            time.sleep(0.02)
+    finally:
+        job_service.stop()
+    return websocket.sent
 
 
 @pytest.fixture

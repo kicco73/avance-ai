@@ -58,7 +58,7 @@ function providerLabel(provider) {
 
 const aiProviderLabels = computed(() => {
   if (!services.value) return {}
-  return Object.fromEntries(services.value.ai.providers.map((p) => [providerLabel(p), p['ui-label'] || p.driver]))
+  return Object.fromEntries(liveProviders.value.map((p) => [providerLabel(p), p['ui-label'] || p.driver]))
 })
 
 async function load() {
@@ -146,6 +146,22 @@ async function toggleAutoLive() {
   await liveModelStore.select(liveModelStore.currentIndex.value)
 }
 
+// The AI tab only ever shows/selects live providers — a test-only entry
+// belongs to ai_test_service's own cascade, never this view. This is
+// also what keeps liveModelStore's own currentIndex/select() (indices
+// into ai_live_service's already-live-filtered provider list — see
+// AiService.for_live) aligned with this list's own index: both only
+// ever count live providers, in the same order, so a plain loop index
+// works directly, with no separate index-mapping step needed.
+const liveProviders = computed(() => {
+  if (!services.value) return []
+  return services.value.ai.providers.filter(isProviderLive)
+})
+
+function isProviderLive(provider) {
+  return !Array.isArray(provider.modes) || provider.modes.includes('live')
+}
+
 // Whichever provider is actually serving right now, auto-picked by the
 // cascade or manually pinned either way — same "which one is really in
 // effect" ModelMenu.vue's own checkmark used to show next to "Auto
@@ -217,7 +233,7 @@ async function selectWipeAllLiveSessions() {
         </div>
 
         <div v-show="activeTab === 'ai'" class="services-panel">
-          <div v-if="services.ai.providers.length" class="services-ai-usage-chart">
+          <div v-if="liveProviders.length" class="services-ai-usage-chart">
             <AiUsageTrendsChart :history="aiUsage.history" :provider-labels="aiProviderLabels" />
           </div>
           <label class="services-checkbox-field services-checkbox-field-active">
@@ -228,7 +244,7 @@ async function selectWipeAllLiveSessions() {
             <label class="services-field-label">Max output tokens</label>
             <input class="services-field-input" type="text" :value="services.ai['max-output-tokens']" disabled />
           </div>
-          <div v-for="(provider, i) in services.ai.providers" :key="i" class="services-provider-row">
+          <div v-for="(provider, i) in liveProviders" :key="i" class="services-provider-row">
             <ServicesProviderCard
               class="services-provider-row-card"
               :provider="provider"

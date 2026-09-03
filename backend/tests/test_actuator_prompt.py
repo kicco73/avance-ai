@@ -7,7 +7,7 @@ import pytest
 
 from automaton.automaton import Action, Automaton, Signal, State, _OnEnterEval
 from automaton.scope import EvaluationScope
-from conftest import FakeAiService, parse_sse_result
+from conftest import FakeAiService, parse_sse_result, run_on_enter_tasks
 from db import Db
 from tracking.actuators.actuator_set import FakeActuatorSet, LiveActuatorSet
 from tracking.actuators.prompt_context import PromptContext
@@ -89,7 +89,7 @@ async def test_prompt_context_leaves_no_message_persisted(db: Db):
 
 def test_actuator_set_prompt_returns_empty_string_with_no_bound_context():
     assert FakeActuatorSet().prompt("Say hi.") == ""
-    assert LiveActuatorSet(notification_service=None, job_service=None, hydrator=None, project_id="p").prompt("Say hi.") == ""
+    assert LiveActuatorSet(notification_service=None, dispatcher=None).prompt("Say hi.") == ""
 
 
 async def test_with_prompt_context_never_mutates_the_original_instance(db: Db):
@@ -123,7 +123,7 @@ async def test_on_enter_can_compose_prompt_with_notify(db: Db):
 
 
 @pytest.mark.regression
-def test_aprendr_catala_sample_fires_actuator_prompt_through_the_real_app(client):
+def test_aprendr_catala_sample_fires_actuator_prompt_through_the_real_app(client, app):
     """End-to-end: the real upload/build/manual-action pipeline, exercising
     'grammar''s own on-enter (actuator.notify(..., actuator.prompt(...)))
     — the migration this sample project got when action-prompt was removed."""
@@ -140,5 +140,8 @@ def test_aprendr_catala_sample_fires_actuator_prompt_through_the_real_app(client
     action_response = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "grammar"})
 
     assert action_response.status_code == 200, action_response.text
-    on_enter = action_response.json()["on-enter"]
-    assert on_enter == f'notify({json.dumps("Gramàtica")}, "Fake AI reply.")'
+    assert "on-enter" not in action_response.json()
+    # The model call runs in the on-enter task, off the request; its
+    # result reaches the browser as a notification frame.
+    frames = run_on_enter_tasks(app)
+    assert frames == [{"type": "notification", "on-enter": f'notify({json.dumps("Gramàtica")}, "Fake AI reply.")'}]

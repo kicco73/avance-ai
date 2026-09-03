@@ -4,16 +4,17 @@ import copy
 import json
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from automaton.automaton import DeferredExpression, JsSnippet
+from automaton.automaton import Action, Automaton, DeferredExpression, JsSnippet
+from automaton.scope import EvaluationScope
 from job import JobService
 from logging_factory import LoggerFactory
 from notification.notification_service import NotificationService
 from session import Session
 
-from .deferred_task import DeferredActuatorTask, ScopeHydrator
+from .on_enter_task import OnEnterTask, ScopeHydrator
 
 if TYPE_CHECKING:
     from .prompt_context import PromptContext
@@ -32,10 +33,27 @@ class ActuatorSet(ABC):
     a test session's "Run actuators" toggle. Only `send_mail`/`defer`
     (real side effects) are each subclass's own concern."""
 
-    def __init__(self) -> None:
+    def __init__(self, dispatcher: "OnEnterDispatcher | None" = None) -> None:
         # Bound fresh per on-enter evaluation via with_prompt_context —
         # never set any other way (see EvaluationScopeBuilder.build).
         self._prompt_context: "PromptContext | None" = None
+        # How this set gets an on-enter script run as a Task. None only
+        # for a bare set nobody wired to a JobService (a test replay's
+        # own FakeActuatorSet default): the script then runs inline and
+        # its output is dropped, since no browser is listening anyway.
+        self._dispatcher = dispatcher
+
+    def schedule_on_enter(self, action: Action, scope: EvaluationScope, *, session_id: int | None) -> None:
+        """Runs `action.on_enter` as an OnEnterTask due now (see
+        on_enter_task.py) — never inline in the request that fired it.
+        `scope`: the full scope the transition was evaluated in; the
+        task keeps its actuator view."""
+        if not action.on_enter:
+            return
+        if self._dispatcher is None:
+            Automaton.render_on_enter(action, scope)
+            return
+        self._dispatcher.schedule_now(action, scope, session_id=session_id)
 
     def celebrate(self) -> JsSnippet | None:
         return JsSnippet("celebrate()")
@@ -76,21 +94,54 @@ class ActuatorSet(ABC):
         raise NotImplementedError
 
 
-class LiveActuatorSet(ActuatorSet):
-    """Always bound to one project: defer() hibernates its call under
-    (the current user, this project), the two things a Task row keys on
-    (see jobs/task.py) — never a session, which will be over by the
-    time a deferred call runs (see deferred_task.py)."""
+class OnEnterDispatcher(object):
+    """What turns an on-enter (now) or a deferred lambda (later) into an
+    OnEnterTask on the JobService, under (the current user, one project)
+    — the two things a Task row keys on (see jobs/task.py) — and marked
+    with which actuator set (live or fake) must be rebuilt to run it."""
 
-    def __init__(
-        self, notification_service: NotificationService, job_service: JobService, hydrator: ScopeHydrator,
-        *, project_id: str,
-    ) -> None:
-        super().__init__()
-        self._notification_service = notification_service
+    def __init__(self, job_service: JobService, hydrator: ScopeHydrator, *, project_id: str, actuators: str) -> None:
         self._job_service = job_service
         self._hydrator = hydrator
         self._project_id = project_id
+        self._actuators = actuators
+
+    @property
+    def project_id(self) -> str:
+        return self._project_id
+
+    def _check_project(self, scope: EvaluationScope) -> None:
+        if scope.automaton.project_id != self._project_id:
+            raise ValueError(
+                f"on-enter evaluated for project '{scope.automaton.project_id}' but this actuator set "
+                f"belongs to '{self._project_id}'."
+            )
+
+    def schedule_now(self, action: Action, scope: EvaluationScope, *, session_id: int | None) -> None:
+        self._check_project(scope)
+        task = OnEnterTask.now(
+            action, scope, username=Session().user, actuators=self._actuators, session_id=session_id,
+            hydrator=self._hydrator,
+        )
+        self._job_service.schedule(task, datetime.now(timezone.utc))
+
+    def schedule_later(self, act: DeferredExpression, when: datetime) -> None:
+        self._check_project(act.scope)
+        task = OnEnterTask.later(
+            act, when, username=Session().user, actuators=self._actuators, hydrator=self._hydrator,
+        )
+        self._job_service.schedule(task, when)
+
+
+class LiveActuatorSet(ActuatorSet):
+    """Always bound to one project through its dispatcher: every
+    on-enter and every defer() is hibernated under (the current user,
+    that project) — never a session, which will be over by the time a
+    deferred call runs (see on_enter_task.py)."""
+
+    def __init__(self, notification_service: NotificationService, dispatcher: "OnEnterDispatcher") -> None:
+        super().__init__(dispatcher)
+        self._notification_service = notification_service
 
     def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
         # Raises (NotificationError) if this deployment's own .config.yml
@@ -111,13 +162,7 @@ class LiveActuatorSet(ActuatorSet):
             )
         if not isinstance(when, datetime):
             raise TypeError(f"actuator.defer needs a datetime as `when`, got {type(when).__name__}.")
-        if act.scope.automaton.project_id != self._project_id:
-            raise ValueError(
-                f"actuator.defer: the lambda was evaluated for project '{act.scope.automaton.project_id}' "
-                f"but this actuator set belongs to '{self._project_id}'."
-            )
-        task = DeferredActuatorTask.from_expression(act, when, username=Session().user, hydrator=self._hydrator)
-        self._job_service.schedule(task, when)
+        self._dispatcher.schedule_later(act, when)
         return None
 
 

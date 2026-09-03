@@ -158,7 +158,7 @@ class DeferredExpression(object):
     that also *knows its own source* (`source`, the body re-emitted by
     ast.unparse) and the EvaluationScope it was built against. Those two
     are what let actuator.defer hibernate the call instead of holding a
-    live closure (see tracking/actuators/deferred_task.py)."""
+    live closure (see tracking/actuators/on_enter_task.py)."""
 
     def __init__(self, evaluator: "_OnEnterEval", body: ast.expr) -> None:
         self._evaluator = evaluator
@@ -472,11 +472,20 @@ class Automaton(object):
         runs against."""
         if not action.on_enter:
             return None
-        actuator_scope = scope.for_actuators(action_name=action.name)
+        return Automaton.render_on_enter_script(action.on_enter, scope.for_actuators(action_name=action.name))
+
+    @staticmethod
+    def render_on_enter_script(script: str, actuator_scope: EvaluationScope) -> str | None:
+        """render_on_enter's own engine, on a bare script and an already
+        actuator-view scope — also what an OnEnterTask runs, later and
+        possibly in another process, against a rehydrated scope (see
+        tracking/actuators/on_enter_task.py): the same code path whether
+        the on-enter fires now or was deferred."""
+        action_name = actuator_scope.action_name
         try:
-            statements = TriggerExpressionAnalyzer.on_enter_statements(action.on_enter)
+            statements = TriggerExpressionAnalyzer.on_enter_statements(script)
         except SyntaxError as exc:
-            logger.warning("on-enter parsing failed for action '%s': %s", action.name, exc)
+            logger.warning("on-enter parsing failed for action '%s': %s", action_name, exc)
             return None
         snippets = []
         for _line_number, statement in statements:
@@ -487,7 +496,7 @@ class Automaton(object):
             except Exception as exc:
                 logger.warning(
                     "on-enter expression evaluation failed for action '%s' ('%s'): %s",
-                    action.name, statement, exc,
+                    action_name, statement, exc,
                 )
                 continue
             if target is not None:

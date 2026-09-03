@@ -4,9 +4,9 @@ import {
   postTruncateSession, deleteSession, postCloseSession, putMessageReaction, postListenTranscribe, messageAudioUrl,
   getAiModels, postAiModelSelection
 } from './api.js'
-import { sendMessage as sendChatMessage, onNotification } from './chatClient.js'
+import { sendMessage as sendChatMessage } from './chatClient.js'
+import { subscribeToStateNotifications } from './notificationBus.js'
 import { playMessageChime, playMessageAudio, playReactionChime, unlockAudioPlayback } from './audio.js'
-import { runOnEnterScript } from './onEnterActions.js'
 import { clearApiError, setApiError } from './errorStore.js'
 import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
@@ -124,27 +124,21 @@ export function createChatStore({
     turnCount.value++
   }
 
-  // `onEnter` is the fired action's own "on-enter" script — not part of
-  // `newState` itself. Callers with nothing to report simply omit it.
-  // Deliberately not gated on the state key having changed — a self-loop
-  // still fires its own on-enter.
-  function handleStateChange(newState, onEnter) {
+  // A fired action's own "on-enter" script is never part of a turn's
+  // response: the backend runs it as a task and pushes its output over
+  // the websocket, where notificationBus.js runs it once, globally.
+  function handleStateChange(newState) {
     state.value = newState
-    if (onEnter) {
-      runOnEnterScript(onEnter)
-    }
   }
 
   if (subscribeToNotifications) {
     // A server-pushed cross-project wake-up — can land for a project
     // other than the one currently open. Only applies state.value when
     // the notification is about the currently displayed project.
-    onNotification(({ project_name, state: newState, 'on-enter': onEnter }) => {
+    subscribeToStateNotifications(({ project_name, state: newState }) => {
       if (project_name === currentProjectId.value) {
-        handleStateChange(newState, onEnter)
-        return
+        handleStateChange(newState)
       }
-      if (onEnter) runOnEnterScript(onEnter)
     })
   }
 
@@ -452,7 +446,7 @@ export function createChatStore({
       }
 
       if (result.state) {
-        handleStateChange(result.state, result['on-enter'])
+        handleStateChange(result.state)
       }
       if (result.ai_model) {
         applyAiModelInfo(result.ai_model)
@@ -553,7 +547,7 @@ export function createChatStore({
         playMessageChime()
         maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
       }
-      handleStateChange(result.state, result['on-enter'])
+      handleStateChange(result.state)
       if (result.ai_model) {
         applyAiModelInfo(result.ai_model)
       }
@@ -595,11 +589,11 @@ export function createChatStore({
     clearChatUi()
     try {
       // A reset re-enters the automaton through init-action, same as a
-      // session's very first transition — its on-enter rides along under
-      // the same "on-enter" wire key as any other real transition.
-      const { 'on-enter': onEnter, ...newState } = await resetSession()
+      // session's very first transition — its on-enter arrives over the
+      // websocket like any other, never in this response.
+      const newState = await resetSession()
       state.value = null
-      handleStateChange(newState, onEnter)
+      handleStateChange(newState)
       await loadMessages()
       bumpTurn()
     } catch {
@@ -631,9 +625,7 @@ export function createChatStore({
       clearApiError()
       messages.value = []
       // A brand new session enters init_action.target through init_action
-      // itself, reported under the same "on-enter" wire key as any other
-      // real transition.
-      if (session['on-enter']) runOnEnterScript(session['on-enter'])
+      // itself; its on-enter arrives over the websocket like any other.
       await loadMessages()
       // Opened unconditionally so the new session is visible right away,
       // regardless of whether the panel was already open.

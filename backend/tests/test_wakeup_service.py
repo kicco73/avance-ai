@@ -143,7 +143,7 @@ class _FakeWebSocket:
 
 class TestWsAdapterPush:
     """A fired self-loop wake-up pushes a "notification" frame (state/
-    on-enter/project_name) to whichever connection is registered for
+    project_name) to whichever connection is registered for
     `username`, never keyed on project_id (which only rides along
     inside the payload). The payload key is deliberately still
     "project_name", not "project_id": chatClient.js (frontend, off-limits)
@@ -170,7 +170,9 @@ class TestWsAdapterPush:
         assert websocket.sent[0]["type"] == "notification"
         assert websocket.sent[0]["project_name"] == "watcher"
         assert websocket.sent[0]["state"]["key"] == "x"  # self-loop — the state itself never changes
-        assert "on-enter" in websocket.sent[0]
+        # The fired action's on-enter is a task of its own (see
+        # tracking/actuators/on_enter_task.py), never part of this frame.
+        assert "on-enter" not in websocket.sent[0]
         # The fired action has a trigger and no tracking_service was wired
         # in (defaults to "always auto-tracked") — filtered out of
         # manual_actions same as a live session's own state payload would.

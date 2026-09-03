@@ -329,6 +329,20 @@ on-enter: |
   actuator.send_mail(user.email, summary)
 ```
 
+**Every on-enter script runs as a task, never inside the request that
+fired it.** The transition and the action's `env:` writes are applied
+synchronously (they feed the very next prompt); the script itself is
+hibernated in the database as a task due immediately and executed by a
+background worker — `actuator.prompt` is a model call and
+`actuator.send_mail` a network call, and neither belongs in a chat
+turn's own response time. Consequently whatever the script tunnels
+(`celebrate()`, `notify(...)`, `show(...)`) reaches the browser over the
+websocket as a `notification` frame, a moment after the turn's own
+response, never inside it; a script that fails to evaluate is logged
+and its task settles with nothing to push, exactly as the in-turn
+evaluation used to skip a failing line. `actuator.defer` (below) is the
+same task with a later due time.
+
 `name` can't shadow a reserved namespace or a core metric name (§2) —
 rejected at build time. Assigning is itself never tunneled to the
 frontend, even when `<expr>` alone would have been (e.g.
@@ -424,7 +438,7 @@ init-action:
 | Field | Required | Type | Meaning |
 | --- | --- | --- | --- |
 | `target` | **yes** | string | Starting state — must be a real key under `states:`. |
-| `on-enter` | no | string | Same mechanics as any action's (§5.4), sent alongside the first state, the one time init-action fires. |
+| `on-enter` | no | string | Same mechanics as any action's (§5.4), fired (as a task, delivered over the websocket) the one time init-action fires. |
 
 A mapping, not a list item — otherwise a regular action with no
 `name`/`ui-label`/`trigger`/`attachments` (fixed internally).

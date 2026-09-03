@@ -16,7 +16,7 @@ it is about to run, never at boot, so no live object waits for days.
 The scheduler is ignorant of what a task *does*: it only knows a
 TYPE -> hydrator mapping. What "the environment the task carries"
 means, and how to rebuild it faithfully, is the hydrator's problem
-(see tracking/actuators/deferred_task.py for the actuator.defer one).
+(see tracking/actuators/on_enter_task.py for the actuator.defer one).
 
 Delivery semantics: the claim is an atomic UPDATE guarded on
 status='pending', so two schedulers over the same database (two

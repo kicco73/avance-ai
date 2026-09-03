@@ -130,13 +130,15 @@ class WakeupService:
             # the build-time guarantee, since a wake-up must never apply a
             # real, non-self-loop transition on the user's behalf.
             if action is not None and action.target == state.key:
-                _, on_enter = tracking_engine.apply_transition(
+                tracking_engine.apply_transition(
                     automaton, state, action, {}, session["id"],
                     origin='system', username=username, project_id=observer_project_id,
                 )
                 # A "notification" frame, never "done" — chatClient.js drops a
                 # "done" with no pendingTurn in flight, which a push never is.
-                # Best-effort live nudge only; the transition above is already persisted regardless.
+                # Best-effort live nudge only; the transition above is already
+                # persisted regardless, and its on-enter arrives in its own
+                # frame, from the OnEnterTask apply_transition scheduled.
                 if self._ws_adapter is not None:
                     state_payload = automaton.get_state_payload(state)
                     auto_tracking_enabled = (
@@ -153,7 +155,6 @@ class WakeupService:
                         # else (HTTP responses, DB) already uses project_id.
                         "project_name": observer_project_id,
                         "state": {**state_payload, "manual_actions": manual_actions_for(state_payload["actions"], auto_tracking_enabled)},
-                        "on-enter": on_enter,
                     })
 
     def _wake(self, username: str, observer_project_id: str) -> None:

@@ -94,13 +94,15 @@ def test_new_live_session_from_a_chatless_final_state_still_resumes_there(client
     assert resp.json()["state"]["key"] == "crisis"
 
 
-def test_new_test_session_still_restarts_at_init_every_time(client):
+def test_new_test_session_still_restarts_at_init_every_time(client, app_db):
     project_id = _upload_and_publish(client)
     resp = client.post(f"/api/projects/{project_id}/test-sessions")
     assert resp.status_code == 200, resp.text
     first = resp.json()
     assert first["start_state"] == "a"
-    assert first["on-enter"] == "celebrate()"
+    # init-action's on-enter fires as a task, never inside this response.
+    assert "on-enter" not in first
+    assert [t["payload"]["script"].strip() for t in app_db.list_tasks()] == ["actuator.celebrate()"]
 
     resp = client.post(f"/api/chat/sessions/{first['id']}/action", json={"action_name": "go"})
     assert resp.status_code == 200, resp.text
@@ -110,4 +112,5 @@ def test_new_test_session_still_restarts_at_init_every_time(client):
     assert resp.status_code == 200, resp.text
     second = resp.json()
     assert second["start_state"] == "a"
-    assert second["on-enter"] == "celebrate()"
+    assert "on-enter" not in second
+    assert [t["payload"]["script"].strip() for t in app_db.list_tasks()] == ["actuator.celebrate()"] * 2

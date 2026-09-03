@@ -82,29 +82,27 @@ class ChatService(object):
 		)
 		return TrackingEngine(DbTrackingSink(self._db), self.env, scope_builder), actuator_set
 
-	def _render_on_enter(self, automaton: Automaton, action: Action, session_id: int | None) -> str | None:
+	def _schedule_on_enter(self, automaton: Automaton, action: Action, session_id: int | None, project_id: str) -> None:
 		"""`action.on_enter` (celebrate/notify/send_mail/prompt-style
-		actuator.* calls, or nothing) rendered into the wire-ready JS text
-		the frontend's on-enter runner already knows how to execute — the
-		"perfect tunnel" from a server-side actuator call to its
-		client-side equivalent. Used wherever an action's on-enter reaches
-		the client outside a real trigger/apply_transition path (new-
-		session bootstrap, test-session reset). `session_id=None` (no
-		session yet, e.g. a project-wide test reset) always renders
-		through a FakeActuatorSet, same as any other actuator-off default —
-		and actuator.prompt() itself returns "" there (no session to read
-		conversation history from)."""
+		actuator.* calls, or nothing) scheduled as an OnEnterTask — what
+		it produces reaches the browser over the websocket, never inside
+		this response. Used wherever an action's on-enter fires outside a
+		real trigger/apply_transition path (new-session bootstrap,
+		test-session reset). `session_id=None` (no session yet, e.g. a
+		project-wide test reset) always goes through a FakeActuatorSet,
+		same as any other actuator-off default — and actuator.prompt()
+		itself returns "" there (no session to read conversation history from)."""
 		if not action.on_enter:
-			return None
+			return
 		if session_id is not None:
 			tracking_engine, _ = self._tracking_engine_for_session(session_id)
 		else:
 			scope_builder = EvaluationScopeBuilder(
 				self.env, self.metric_service, self._session_facts, self._user_facts,
-				self._db, self._automaton_namespace,
+				self._db, self._automaton_namespace, self._actuator_factory.fake(project_id=project_id),
 			)
 			tracking_engine = TrackingEngine(DbTrackingSink(self._db), self.env, scope_builder)
-		return tracking_engine.render_on_enter(automaton, action, action.target, session_id=session_id)
+		tracking_engine.schedule_on_enter(automaton, action, action.target, session_id=session_id)
 
 	@property
 	def _active_project_id(self) -> str:
@@ -288,9 +286,8 @@ class ChatService(object):
 				raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		automaton = self._project_service.get_automaton_for_session(session["id"])
 		payload = self._session_payload(session, active=True)
-		on_enter = strategy.on_enter_for_new_session(automaton)
-		if on_enter is not None:
-			payload["on-enter"] = self._render_on_enter(automaton, automaton.init_action, session["id"])
+		if strategy.on_enter_for_new_session(automaton) is not None:
+			self._schedule_on_enter(automaton, automaton.init_action, session["id"], project_id)
 		return payload
 
 	async def create_session(self) -> dict:
@@ -306,8 +303,8 @@ class ChatService(object):
 	def reset_test_sessions(self, project_id: str) -> dict:
 		self._project_service.reset_test_sessions(project_id)
 		automaton, state = self._project_service.get_automaton_and_state(project_id, type='test')
-		on_enter = self._render_on_enter(automaton, automaton.init_action, None)
-		return {**automaton.get_state_payload(state), "on-enter": on_enter}
+		self._schedule_on_enter(automaton, automaton.init_action, None, project_id)
+		return automaton.get_state_payload(state)
 
 	def _list_sessions_by_type(self, project_id: str, type: str | tuple[str, ...], active_type: str) -> list[dict]:
 		sessions = self._db.list_chat_sessions(None, project_id, type=type)
@@ -810,7 +807,7 @@ class ChatService(object):
 			)
 			automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
 			tracking_engine, _ = self._tracking_engine_for_session(session["id"])
-			on_enter = tracking_engine.apply_action_env(
+			tracking_engine.apply_action_env(
 				automaton, action, {}, source_state_key, username=Session().user, project_id=project_id,
 				session_id=session["id"],
 			)
@@ -821,7 +818,6 @@ class ChatService(object):
 			return {
 				"state": self._with_manual_actions(session["id"], state_payload),
 				"reply": reply,
-				"on-enter": on_enter,
 				"ai_model": self.get_ai_models_info(),
 				"session_id": session["id"],
 			}

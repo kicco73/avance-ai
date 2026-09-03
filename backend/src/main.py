@@ -123,7 +123,7 @@ def create_app() -> FastAPI:
         # After ProjectService (a hibernated actuator.defer is rebuilt
         # against a project revision through it) and before the JobService
         # is started: this registers the task type the scheduler hydrates.
-        actuator_factory = ActuatorSetFactory(notification_service, db, job_service, project_service)
+        actuator_factory = ActuatorSetFactory(notification_service, db, job_service, project_service, ai_live_service)
 
         # Built once here (not a global singleton — see auth/auth_service.py's
         # own module docstring), passed explicitly to whatever needs it.

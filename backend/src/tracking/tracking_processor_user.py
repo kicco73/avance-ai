@@ -96,9 +96,11 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 
 			self.out.reply = ""
 
-			# FIXME: must run before the regenerated prompt below, and not
-			# again via apply_transition further down — see record_transition.
-			self.out.on_enter = self._tracking_engine.apply_action_env(
+			# Must run before the regenerated prompt below (the action's
+			# env: writes feed it), and not again via apply_transition
+			# further down — see record_transition. The action's on-enter
+			# is scheduled as a task from here, once.
+			self._tracking_engine.apply_action_env(
 				self.user.automaton, self.out.action, self.metadata.signals, self.user.state.key,
 				username=Session().user, project_id=self.user.project_id, session_id=self.user.session_id,
 			)
@@ -128,7 +130,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 					origin='trigger', username=Session().user, project_id=self.user.project_id,
 				)
 			else:
-				self.out.tracking_id, self.out.on_enter = self._tracking_engine.apply_transition(
+				self.out.tracking_id = self._tracking_engine.apply_transition(
 					self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
 					message_id=self.user.message_id if has_real_user_message else None,
 					origin='trigger', username=Session().user, project_id=self.user.project_id,
