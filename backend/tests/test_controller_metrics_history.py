@@ -86,3 +86,25 @@ def test_metrics_history_orders_points_by_end_time_even_when_sessions_overlap(cl
     timestamps = [entry["timestamp"] for entry in response.json()["metrics"]]
     assert len(timestamps) == 2
     assert timestamps == sorted(timestamps)
+
+
+@pytest.mark.regression
+def test_metrics_history_survives_an_imported_transcript_without_timestamps(client, app_db, hello_project):
+    """An imported plain-text transcript has neither datetime_start nor
+    datetime_end (see SessionImportManager.import_transcript) — sorting
+    it by that instant compared None with None and 500'd the whole
+    user's history. It has no instant to plot at, so it just contributes
+    no point."""
+    from conftest import parse_sse_result
+
+    response = client.post(
+        f"/api/projects/{hello_project}/sessions/import",
+        files=[("files", ("t.txt", "user: hi\nassistant: hello\n", "text/plain"))],
+    )
+    assert response.status_code == 200, response.text
+    username = app_db.get_chat_session(parse_sse_result(response)["last_session_id"])["username"]
+
+    response = client.get(f"/api/projects/{hello_project}/users/{username}/metrics-history")
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"metrics": [], "session_starts": []}

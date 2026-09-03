@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from ai.ai_service import AiService
+from ai import AiService
 from ai.llm_provider import AIServiceConfig
 
 pytestmark = pytest.mark.contract

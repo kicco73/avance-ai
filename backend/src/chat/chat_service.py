@@ -9,7 +9,7 @@ from http import HTTPStatus
 
 from automaton.automaton import Action, Automaton, SignalPayload, State, manual_actions_for
 from db import Db, _utc_iso
-from ai.ai_service import AiService
+from ai import AiService
 from keyed_lock_registry import KeyedLockRegistry
 from project_rw_lock import ProjectRwLock
 from session import Session
@@ -18,6 +18,7 @@ from tracking.actuators import ActuatorSet, ActuatorSetFactory
 from tracking.automaton_namespace import AutomatonNamespace
 from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
+from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.user_facts import UserFacts
 from chat.errors import ChatServiceError
@@ -74,13 +75,39 @@ class ChatService(object):
 		session = self._db.get_chat_session(session_id)
 		return self._ai_test_service if session is not None and session["type"] == "test" else self._ai_service
 
+	def _env_for_session(self, session_id: int) -> PersistedEnv:
+		"""The env `session_id` actually lives in: its own project and its
+		own user — never `self.env`, which is the *request user's active
+		project*. The two differ whenever a session of another project
+		is opened (the Sessions panel, a supervisor reading someone
+		else's session, WhatsApp): keyed on the active project,
+		_apply_declared_env_defaults read one project's env to decide
+		what was "missing" and wrote the other project's declared
+		defaults into it — and, since the read kept answering for the
+		wrong project, re-wrote them on every open."""
+		session = self._db.get_chat_session(session_id)
+		if session is None:
+			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
+		return PersistedEnv(
+			self._db, FixedProjectContext(project_id=session["project_id"]), username=session["username"],
+		)
+
 	def _tracking_engine_for_session(self, session_id: int) -> tuple[TrackingEngine, "ActuatorSet"]:
+		"""Same per-session pinning TrackingService.process already does
+		with its own FixedProjectContext: env and session facts are the
+		session's, not the request user's active project's."""
+		session = self._db.get_chat_session(session_id)
+		if session is None:
+			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
+		fixed_context = FixedProjectContext(project_id=session["project_id"])
+		env = PersistedEnv(self._db, fixed_context, username=session["username"])
+		session_facts = SessionFacts(self._db, fixed_context)
 		actuator_set = self._actuator_factory.for_session(session_id)
 		scope_builder = EvaluationScopeBuilder(
-			self.env, self.metric_service, self._session_facts, self._user_facts,
+			env, self.metric_service, session_facts, self._user_facts,
 			self._db, self._automaton_namespace, actuator_set, ai_service=self._ai_service_for_session(session_id),
 		)
-		return TrackingEngine(DbTrackingSink(self._db), self.env, scope_builder), actuator_set
+		return TrackingEngine(DbTrackingSink(self._db), env, scope_builder), actuator_set
 
 	def _schedule_on_enter(self, automaton: Automaton, action: Action, session_id: int | None, project_id: str) -> None:
 		"""`action.on_enter` (celebrate/notify/send_mail/prompt-style
@@ -479,8 +506,17 @@ class ChatService(object):
 		# lands after a later-started, shorter one's) put a later point
 		# before an earlier one, which Chart.js then draws as the line
 		# jumping backward in time instead of connecting points left to right.
+		# An imported transcript can carry no timestamps at all
+		# (datetime_start/datetime_end both NULL — see
+		# SessionImportManager.import_transcript): there's no instant to
+		# plot it at, so it contributes no point rather than making the
+		# sort below compare None with None (a 500 for every user of a
+		# project with such sessions).
 		sessions = sorted(
-			self._db.list_chat_sessions(username, project_id, type=None),
+			(
+				session for session in self._db.list_chat_sessions(username, project_id, type=None)
+				if (session['datetime_end'] or session['datetime_start']) is not None
+			),
 			key=lambda session: session['datetime_end'] or session['datetime_start'],
 		)
 		history = []
@@ -690,8 +726,14 @@ class ChatService(object):
 		action = automaton.init_action
 		if not action.env:
 			return
-		current = {**self.env.stored(), **self.env.action_set()}
+		# The session's own env (see _env_for_session) — the same one
+		# tracking_engine below writes through, so "already has a value"
+		# is answered by the project the defaults belong to.
+		env = self._env_for_session(session_id)
+		current = {**env.stored(), **env.action_set()}
 		missing = {key: expression for key, expression in action.env.items() if key not in current}
+		if not missing:
+			return
 		tracking_engine, _ = self._tracking_engine_for_session(session_id)
 		for key, expression in missing.items():
 			tracking_engine.apply_action_env(

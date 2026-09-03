@@ -13,7 +13,7 @@ from .archive.automaton_loader import AutomatonLoader
 from .archive.layout import LEGAL_TERMS_FILE_NAME
 
 if TYPE_CHECKING:
-    from ai.ai_service import AiService
+    from ai import AiService
 
 
 class ProjectInspector:
@@ -64,7 +64,13 @@ class ProjectInspector:
         if current is None:
             return {"pending": False, "content": None}
         accepted_id = self._db.get_accepted_terms_archive_id(username, project_id)
-        pending = accepted_id != current.id
+        # Every publish forks every Archive row (a new id for the same
+        # bytes — see Db.publish_project), so comparing ids alone asked
+        # every user to accept the very same terms again after each
+        # publish. Pending means the *text* changed since acceptance.
+        pending = accepted_id != current.id and (
+            accepted_id is None or self._db.get_archive_content_by_id(accepted_id) != current.content
+        )
         return {"pending": pending, "content": current.content.decode("utf-8") if pending else None}
 
     def legal_terms_pending(self, username: str, project_id: str, revision: int | None = None) -> bool:

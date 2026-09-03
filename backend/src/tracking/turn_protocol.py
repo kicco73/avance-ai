@@ -3,8 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import AsyncIterator
 
-from ai.ai_service import AiService
-from ai.llm_provider import MetadataCallback
+from ai import AiService
+from ai import MetadataCallback
 from tracking.env import Env
 
 class TurnProtocol(ABC):

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from ai.ai_service import AiService
-from ai.cascading_llm_provider import AutoLiveLLMProvider
+from ai import AiService
+from ai._providers.cascading_llm_provider import AutoLiveLLMProvider
 
 pytestmark = pytest.mark.contract
 

@@ -6,7 +6,7 @@ one-sided transcript (see its own docstring)."""
 from __future__ import annotations
 
 from db import Db
-from ai.ai_service import AiService
+from ai import AiService
 from automaton.automaton import Automaton
 from session import Session
 from tracking.definitions import Signals

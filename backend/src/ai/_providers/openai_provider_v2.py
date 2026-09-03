@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, AsyncIterator, Dict, List, Optional
 
+import httpx
 import tiktoken
 from openai import AsyncOpenAI, APIConnectionError, APIStatusError, RateLimitError
 
@@ -28,6 +29,11 @@ DEFAULT_ENCODING_NAME = "cl100k_base"
 # only if tiktoken's own encoding files can't be loaded at all (e.g. an
 # air-gapped llama.cpp deployment with no outbound network access).
 CHARS_PER_TOKEN_ESTIMATE = 4
+# The SDK's own default is 600s of read timeout and 2 silent retries. The
+# cascade (ai/_providers/cascading_llm_provider.py) is the one retry policy here, and
+# a minute of silence between streamed chunks is already a dead upstream.
+REQUEST_TIMEOUT = httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=30.0)
+SDK_MAX_RETRIES = 0
 
 
 class OpenAICompatibleProvider(LLMProvider):
@@ -41,6 +47,8 @@ class OpenAICompatibleProvider(LLMProvider):
         self._client: AsyncOpenAI = AsyncOpenAI(
             base_url=base_url,
             api_key=config.key or "lm-studio",
+            timeout=REQUEST_TIMEOUT,
+            max_retries=SDK_MAX_RETRIES,
         )
         self._model_name: str = config.model or "default-model"
         self._max_output_tokens: int = config.max_output_tokens

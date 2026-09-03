@@ -5,7 +5,7 @@ from http import HTTPStatus
 from typing import Any
 
 from automaton.automaton import Automaton, SignalPayload
-from ai.ai_service import AiService
+from ai import AiService
 from project.project_service import ProjectService
 from db import Db
 from metrics.metric_service import MetricService

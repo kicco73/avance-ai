@@ -13,7 +13,7 @@ from logging_factory import LoggerFactory
 from tracking.priming import build_priming_messages
 
 if TYPE_CHECKING:
-    from ai.ai_service import AiService
+    from ai import AiService
     from automaton.automaton import Automaton, State
     from db.db import Db
     from tracking.env import Env

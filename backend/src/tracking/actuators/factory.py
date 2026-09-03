@@ -10,7 +10,7 @@ from .actuator_set import ActuatorSet, FakeActuatorSet, LiveActuatorSet, OnEnter
 from .on_enter_task import ACTUATORS_FAKE, ACTUATORS_LIVE, OnEnterTask, ScopeHydrator
 
 if TYPE_CHECKING:
-    from ai.ai_service import AiService
+    from ai import AiService
     from chat.ws_adapter import WsAdapter
     from project.project_service import ProjectService
 

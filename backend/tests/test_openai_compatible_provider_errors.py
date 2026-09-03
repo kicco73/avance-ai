@@ -7,7 +7,7 @@ import pytest
 from openai import APIConnectionError
 
 from ai.llm_provider import AIServiceConfig, AIServiceProviderPermanentError
-from ai.openai_provider_v2 import OpenAICompatibleProvider
+from ai._providers.openai_provider_v2 import OpenAICompatibleProvider
 
 
 def _provider() -> OpenAICompatibleProvider:

@@ -12,8 +12,8 @@ from ai.llm_provider import (
 	LLMProvider,
 	MetadataCallback,
 )
-from ai.cascading_llm_provider import AutoLiveLLMProvider, AutoTestLLMProvider
-from ai import gemini_provider_v2, openai_provider_v2, anthropic_provider_v2
+from ai._providers.cascading_llm_provider import AutoLiveLLMProvider, AutoTestLLMProvider
+from ai._providers import gemini_provider_v2, openai_provider_v2, anthropic_provider_v2
 from db import Db
 from logging_factory import LoggerFactory
 

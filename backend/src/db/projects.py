@@ -144,6 +144,13 @@ class ProjectMixin:
         row = self.get_archive_row(project_id, archive_name, revision=revision)
         return row.content if row is not None else None
 
+    def get_archive_content_by_id(self, archive_id: int) -> bytes | None:
+        """By row id — for a reference held elsewhere (e.g.
+        UserProject.accepted_terms_id) to a row that may since have been
+        superseded by a copy under a newer revision."""
+        row = Archive.get_or_none(Archive.id == archive_id)
+        return row.content if row is not None else None
+
     def get_archive_content_type(self, project_id: str, archive_name: str, revision: int | None = None) -> str | None:
         if revision is None:
             revision = self._current_revision(project_id)

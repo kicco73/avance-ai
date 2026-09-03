@@ -25,7 +25,7 @@ from logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from notification.notification_service import NotificationService
 from project.project_service import ProjectService
-from ai.ai_service import AiService
+from ai import AiService
 from testing.test_service import TestService
 from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from testing.last_status_broadcaster import LastStatusBroadcaster
