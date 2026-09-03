@@ -5,7 +5,7 @@ import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ai.ai_service import AiService
+    from ai import AiService
 
 DEFAULT_BATCH_WINDOW_SECONDS = 0.10
 

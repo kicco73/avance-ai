@@ -441,7 +441,9 @@ class AutomatonBuilder(object):
 
 
     @staticmethod
-    def _build_project_metadata(raw: dict) -> tuple[str, str | None, int, str | None, str | None, bool, bool]:
+    def _build_project_metadata(
+        raw: dict, *, legacy_project_id: str | None = None,
+    ) -> tuple[str, str | None, int, str | None, str | None, bool, bool]:
         """The `project:` section — id/family/revision/ui-label/
         ui-description/signal-tracking-on-ai-message/talk-enabled. `id`
         is mandatory: a plain identifier (letters, digits, underscores,
@@ -458,8 +460,21 @@ class AutomatonBuilder(object):
         observed by anything, itself included. `revision`
         defaults to 0 for a project that never declared one (e.g. a fresh
         import) — automatically overwritten on every publish (see
-        ProjectManager.publish_project)."""
+        ProjectManager.publish_project).
+
+        `legacy_project_id`: only AutomatonLoader passes this, for a
+        revision already stored in the Archive table — a stored revision
+        predating the `project.id` requirement (every session pinned to
+        it via ChatSession.project_revision must stay loadable forever)
+        has no `project:` section at all, or one without `id`, and its
+        identity is the Archive row's own project_id, which the loader
+        knows. An upload/edit never passes it: a new index.yml without
+        project.id is still rejected exactly as before."""
         raw_project = raw.get("project")
+        if raw_project is None and legacy_project_id is not None:
+            raw_project = {"id": legacy_project_id}
+        elif isinstance(raw_project, dict) and "id" not in raw_project and legacy_project_id is not None:
+            raw_project = {**raw_project, "id": legacy_project_id}
         if not isinstance(raw_project, dict):
             raise ValueError(
                 "'project' is required and must be a mapping of fields (id, family, ui-label, "
@@ -527,19 +542,24 @@ class AutomatonBuilder(object):
         revision = raw_project.get("revision")
         return revision if isinstance(revision, int) and not isinstance(revision, bool) else None
 
-    def build(self, contents: dict, known_projects: dict[str, frozenset[str]] | None = None) -> Automaton:
+    def build(
+        self, contents: dict, known_projects: dict[str, frozenset[str]] | None = None, *,
+        legacy_project_id: str | None = None,
+    ) -> Automaton:
         """`known_projects`: every *other* project's own project.id
         mapped to its declared env key names, for validating an
         automaton.<id>.env.<key> reference — already narrowed to this
         project's own family (see AutomatonLoader.known_projects_env_keys),
         so a cross-family (or family-less) id simply isn't here. None
-        skips that check."""
+        skips that check. `legacy_project_id`: see _build_project_metadata."""
         all_archives = self._convert_contents_to_archives(contents=contents)
 
         raw = _yaml.load(contents['index.yml'])
+        if not isinstance(raw, dict):
+            raise ValueError(f"index.yml must be a YAML mapping at the top level, got {type(raw).__name__}.")
 
         project_id, project_family, project_revision, project_ui_label, project_ui_description, autotracking_on_ai_message, talk_enabled = (
-            self._build_project_metadata(raw)
+            self._build_project_metadata(raw, legacy_project_id=legacy_project_id)
         )
 
         raw_signals = raw.get("signals", {})

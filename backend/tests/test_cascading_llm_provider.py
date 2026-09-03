@@ -4,7 +4,7 @@ from typing import AsyncIterator
 
 import pytest
 
-from ai.cascading_llm_provider import AutoTestLLMProvider
+from ai._providers.cascading_llm_provider import AutoTestLLMProvider
 from ai.llm_provider import (
     AIServiceProviderPermanentError,
     AIServiceProviderRateLimitedError,

@@ -11,7 +11,7 @@ from http import HTTPStatus
 from typing import cast
 
 from automaton.automaton import Automaton
-from ai.ai_service import AiService
+from ai import AiService
 from db import Db
 from db.tests import _USERNAME_UNSPECIFIED
 from jobs import CancelableJob

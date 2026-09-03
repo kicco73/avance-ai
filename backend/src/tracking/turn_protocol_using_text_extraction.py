@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from ai.llm_provider import MetadataCallback
+from ai import MetadataCallback
 from logging_factory import LoggerFactory
 from tracking.env import Env
 from tracking.tag_prompt_builder import TagPromptBuilder

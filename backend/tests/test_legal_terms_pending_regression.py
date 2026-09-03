@@ -108,7 +108,9 @@ async def test_an_already_open_session_is_never_blocked_by_terms_published_since
     assert first.get("legal_terms_pending") is not True
     session_id = first["id"]
 
-    db.save_project_files(PROJECT_ID, {"index.yml": INDEX_YML.encode("utf-8")}, {"index.yml": "text/yaml"})
+    db.save_project_files(
+        PROJECT_ID, {"legal/terms.md": b"# Terms\n\nChanged mid-conversation.\n"}, {"legal/terms.md": "text/markdown"}
+    )
     db.publish_project(PROJECT_ID)
     # Sanity: a brand new session would indeed be gated by this — the
     # already-open one below just isn't.
@@ -125,3 +127,21 @@ async def test_a_brand_new_session_is_still_blocked_by_currently_pending_terms(d
     payload = await chat_service.get_current_session_if_any_or_create_new(None)
 
     assert payload.get("legal_terms_pending") is True
+
+
+def test_republishing_identical_terms_never_asks_again(db, project_service):
+    """Every publish copies every Archive row under the new revision
+    (same bytes, new id) — legal/terms.md included. Acceptance is
+    recorded as an Archive id, so an id-only comparison re-asked every
+    user, on every channel, after *any* publish of the project: pending
+    means the terms' text changed since they were accepted, nothing else."""
+    project_service.accept_legal_terms(USERNAME, PROJECT_ID)
+    assert project_service.legal_terms_pending(USERNAME, PROJECT_ID) is False
+
+    for _ in range(3):
+        db.save_project_files(PROJECT_ID, {"index.yml": INDEX_YML.encode("utf-8")}, {"index.yml": "text/yaml"})
+        db.publish_project(PROJECT_ID)
+        assert db.get_archive_row(PROJECT_ID, "legal/terms.md").id != db.get_accepted_terms_archive_id(USERNAME, PROJECT_ID)
+
+    assert project_service.legal_terms_pending(USERNAME, PROJECT_ID) is False
+    assert project_service.get_legal_terms_status(USERNAME, PROJECT_ID) == {"pending": False, "content": None}

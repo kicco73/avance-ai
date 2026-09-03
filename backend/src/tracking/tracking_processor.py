@@ -4,8 +4,8 @@ from http import HTTPStatus
 from typing import AsyncIterator
 
 from db.db import Db
-from ai.ai_service import AiService
-from ai.llm_provider import MetadataCallback, content_to_text
+from ai import AiService
+from ai import MetadataCallback, content_to_text
 from automaton.automaton import Action, Automaton, State, StatePayload
 from logging_factory import LoggerFactory
 

@@ -57,7 +57,7 @@ from logging_factory import LoggerFactory
 from session import Session
 
 if TYPE_CHECKING:
-    from ai.ai_service import AiService
+    from ai import AiService
     from chat.ws_adapter import WsAdapter
     from db import Db
     from project.project_service import ProjectService

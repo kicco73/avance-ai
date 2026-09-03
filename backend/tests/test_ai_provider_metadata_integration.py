@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from ai.ai_service import AiService
+from ai import AiService
 from tracking.turn_protocol_using_text_extraction import TurnProcotolUsingTextExtraction
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 from config import AppConfig, ConfigError

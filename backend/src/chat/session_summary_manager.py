@@ -4,7 +4,7 @@ site. No periodic scan: the only discovery point is that hook.
 """
 from __future__ import annotations
 
-from ai.ai_service import AiService
+from ai import AiService
 from chat.session_manager import ChatSessionManager
 from db import Db
 from job import JobService

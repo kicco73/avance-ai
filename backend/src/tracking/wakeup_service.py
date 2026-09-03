@@ -4,7 +4,7 @@ ever talked to gets a chance to re-evaluate its triggers. One handler
 serves both event types — neither carries anything the other doesn't."""
 from __future__ import annotations
 
-from ai.ai_service import AiService
+from ai import AiService
 from automaton.automaton import manual_actions_for
 from chat.ws_adapter import WsAdapter
 from db.db import Db

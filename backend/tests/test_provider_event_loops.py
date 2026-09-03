@@ -21,10 +21,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import anthropic
 import pytest
 
-from ai.anthropic_provider_v2 import AnthropicProvider, SDK_MAX_RETRIES as ANTHROPIC_SDK_MAX_RETRIES
-from ai.gemini_provider_v2 import GeminiProvider, REQUEST_TIMEOUT_MS
+from ai._providers.anthropic_provider_v2 import AnthropicProvider, SDK_MAX_RETRIES as ANTHROPIC_SDK_MAX_RETRIES
+from ai._providers.gemini_provider_v2 import GeminiProvider, REQUEST_TIMEOUT_MS
 from ai.llm_provider import AIServiceConfig
-from ai.openai_provider_v2 import OpenAICompatibleProvider
+from ai._providers.openai_provider_v2 import OpenAICompatibleProvider
 
 pytestmark = pytest.mark.contract
 

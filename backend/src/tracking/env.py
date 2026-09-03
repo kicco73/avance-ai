@@ -101,25 +101,41 @@ class PersistedEnv(Env):
     """Production's own Env — reads/writes through `db` instead of the
     base class's in-memory dicts."""
 
-    def __init__(self, db: Db, project_service: "ProjectService") -> None:
+    def __init__(self, db: Db, project_service: "ProjectService", username: str | None = None) -> None:
+        """`project_service`: whatever answers get_active_project_id() —
+        the real ProjectService (the request user's active project) or a
+        FixedProjectContext pinned to one project. `username`: whose env
+        this is; omitted, the request user (Session().user). Both must be
+        pinned to the *session's own* project and user whenever the
+        session being operated on isn't necessarily the request user's
+        active-project session — a supervisor opening someone else's
+        session, or any session of a non-active project (see
+        ChatService._env_for_session): keyed on the active project, an
+        env read here answers for one project and a write lands in
+        another's Tracking rows."""
         super().__init__()
         self._db = db
         self._project_service = project_service
+        self._username = username
+
+    def _project_id(self) -> str:
+        return self._project_service.get_active_project_id()
+
+    def _user(self) -> str:
+        return self._username if self._username is not None else Session().user
 
     def stored(self, until: datetime | None = None) -> dict[str, Any]:
         """`until` (naive-but-UTC): as they stood at or before that
         point, for the "Label sessions" view's point-in-time Inspector
         (see ChatService.get_env); omitted (None) means live/current."""
-        return self._db.get_env(self._project_service.get_active_project_id(), Session().user, until=until)
+        return self._db.get_env(self._project_id(), self._user(), until=until)
 
     def action_set(self, until: datetime | None = None) -> dict[str, Any]:
         """Same `until` convention as stored()."""
-        return self._db.get_action_env(self._project_service.get_active_project_id(), Session().user, until=until)
+        return self._db.get_action_env(self._project_id(), self._user(), until=until)
 
     def _write_stored(self, values: dict[str, Any], message_id: int | None = None) -> None:
-        self._db.set_env(
-            self._project_service.get_active_project_id(), values, Session().user, message_id=message_id
-        )
+        self._db.set_env(self._project_id(), values, self._user(), message_id=message_id)
 
     def _write_action_set(self, values: dict[str, Any]) -> None:
-        self._db.set_action_env(self._project_service.get_active_project_id(), values, Session().user)
+        self._db.set_action_env(self._project_id(), values, self._user())

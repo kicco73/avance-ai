@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from ruamel.yaml import YAML
 
-from ai.llm_provider import AIServiceConfig
+from ai import AIServiceConfig
 
 _yaml = YAML(typ='rt')
 

@@ -30,7 +30,7 @@ DEFAULT_ENCODING_NAME = "cl100k_base"
 # air-gapped llama.cpp deployment with no outbound network access).
 CHARS_PER_TOKEN_ESTIMATE = 4
 # The SDK's own default is 600s of read timeout and 2 silent retries. The
-# cascade (ai/cascading_llm_provider.py) is the one retry policy here, and
+# cascade (ai/_providers/cascading_llm_provider.py) is the one retry policy here, and
 # a minute of silence between streamed chunks is already a dead upstream.
 REQUEST_TIMEOUT = httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=30.0)
 SDK_MAX_RETRIES = 0

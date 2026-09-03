@@ -25,7 +25,7 @@ from .project_import_bundle_job import ProjectImportBundleJob
 from .types import CommitCallback
 
 if TYPE_CHECKING:
-    from ai.ai_service import AiService
+    from ai import AiService
 
 __all__ = ["ProjectService", "CommitCallback"]
 

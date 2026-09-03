@@ -33,7 +33,7 @@ CLAUDE_DEFAULT_MODEL: str = "claude-sonnet-5"
 # httpx semantics: connect/write/pool budget, and the longest silence
 # tolerated *between* streamed chunks — not a cap on the whole reply.
 REQUEST_TIMEOUT_SECONDS: float = 30.0
-# The SDK's own retries are off: the cascade (ai/cascading_llm_provider.py)
+# The SDK's own retries are off: the cascade (ai/_providers/cascading_llm_provider.py)
 # is the one retry policy, so a 503 surfaces here at once instead of after
 # 2 silent SDK attempts stacked under the cascade's own 5.
 SDK_MAX_RETRIES: int = 0

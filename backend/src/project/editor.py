@@ -23,7 +23,7 @@ from .archive.layout import (
 from .types import CommitCallback
 
 if TYPE_CHECKING:
-    from ai.ai_service import AiService
+    from ai import AiService
 
 logger = LoggerFactory.get_logger(__name__)
 

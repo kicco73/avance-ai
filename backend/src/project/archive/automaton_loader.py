@@ -83,7 +83,21 @@ class AutomatonLoader:
 
         decoded = ArchiveLayout.decode_text(archives)
         _, family, _ = AutomatonBuilder.read_declared_env_keys(decoded['index.yml'])
-        automaton = AutomatonBuilder().build(decoded, self.known_projects_env_keys(project_id, family))
+        try:
+            # legacy_project_id: a revision stored before `project.id`
+            # became mandatory (see AutomatonBuilder._build_project_metadata)
+            # still has sessions pinned to it — its identity is this row's.
+            automaton = AutomatonBuilder().build(
+                decoded, self.known_projects_env_keys(project_id, family), legacy_project_id=project_id,
+            )
+        except ValueError as exc:
+            # Names *which* stored revision no longer builds under the
+            # current AutomatonBuilder rules — this surfaces on whichever
+            # endpoint happens to touch a session pinned to it, far from
+            # any index.yml the caller is looking at.
+            raise ValueError(
+                f"Project '{project_id}', stored revision {revision}: index.yml no longer builds — {exc}"
+            ) from exc
         automaton.set_storage_location(revision)
         self._automaton_cache[cache_key] = automaton
         return automaton

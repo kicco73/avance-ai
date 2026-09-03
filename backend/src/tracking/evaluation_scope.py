@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from tracking.automaton_namespace import AutomatonNamespace
     # Import guarded for the same reason: ai.ai_service is a heavy,
     # unrelated dependency graph — only needed for the annotation below.
-    from ai.ai_service import AiService
+    from ai import AiService
 
 
 class EvaluationScopeBuilder(object):

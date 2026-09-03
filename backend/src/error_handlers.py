@@ -8,7 +8,7 @@ from http import HTTPStatus
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from ai.llm_provider import AIServiceError
+from ai import AIServiceError
 from logging_factory import LoggerFactory
 from service_error import ServiceError
 
