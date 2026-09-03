@@ -200,7 +200,7 @@ onBeforeUnmount(() => {
               :disabled="actuatorsLoading"
               @change="toggleActuators"
             />
-            Run actuators
+            Run external actuators
           </label>
           <label
             class="dev-mode-toggle"

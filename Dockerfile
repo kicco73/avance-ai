@@ -11,6 +11,7 @@ RUN apt-get update && \
     # Node.js 22
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
+    npm install -g npm@10.9.8 && \
     \
     apt-get update && \
     apt-get install -y nginx && \
