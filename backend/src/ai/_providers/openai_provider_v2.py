@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 import httpx
@@ -16,6 +17,8 @@ from ai.llm_provider import (
     AIServiceRequestError,
     LLMProvider,
     MetadataCallback,
+    ToolCall,
+    ToolCallsRequested,
     ToolSpec,
     content_to_text,
 )
@@ -97,6 +100,66 @@ class OpenAICompatibleProvider(LLMProvider):
             "additionalProperties": False,
         }
 
+    def _build_messages(self, history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Two more provider-neutral message shapes beyond plain
+        {role, content} — see LLMProvider.generate_stream_with_schema's own
+        docstring: an assistant turn that asked for tools (translated to
+        OpenAI's own `tool_calls` array, arguments re-encoded as a JSON
+        string — OpenAI's own wire shape, unlike ToolCall.arguments'
+        already-decoded dict), and a tool's own result (OpenAI already has
+        a `role: "tool"` message shape near-identical to the neutral one,
+        so this is close to a straight passthrough)."""
+        messages: List[Dict[str, Any]] = []
+        for message in history:
+            role: str = message["role"]
+
+            if role == "tool":
+                messages.append({
+                    "role": "tool", "tool_call_id": message["tool_call_id"], "content": message["content"],
+                })
+                continue
+
+            if role == "assistant" and message.get("tool_calls"):
+                messages.append({
+                    "role": "assistant",
+                    "content": message.get("content"),
+                    "tool_calls": [
+                        {
+                            "id": call.id, "type": "function",
+                            "function": {"name": call.name, "arguments": json.dumps(call.arguments)},
+                        }
+                        for call in message["tool_calls"]
+                    ],
+                })
+                continue
+
+            role_out = "assistant" if role == "assistant" else "user"
+            text_content: str = content_to_text(message.get("content"), "OpenAICompatible")
+            # OpenAI-compatible chat templates (llama.cpp, LM Studio) assume
+            # strict user/assistant alternation; consecutive same-role turns
+            # (e.g. an AI-initiated opening message followed by attachment
+            # priming) desync the template's role assignment instead of
+            # erroring, so merge them rather than send them as separate
+            # turns — never across a tool/tool_calls message, which always
+            # stays standalone (see the two `continue`s above).
+            if messages and messages[-1]["role"] == role_out:
+                messages[-1]["content"] = f"{messages[-1]['content']}\n\n{text_content}"
+            else:
+                messages.append({"role": role_out, "content": text_content})
+        return messages
+
+    @staticmethod
+    def _build_tools(tools: Optional[List[ToolSpec]]) -> Optional[List[Dict[str, Any]]]:
+        """None (not an empty list) when there's nothing to declare — kept
+        entirely out of the request kwargs then, so a call with no tools
+        is byte-for-byte the same request this provider always sent."""
+        if not tools:
+            return None
+        return [
+            {"type": "function", "function": {"name": spec.name, "description": spec.description, "parameters": spec.parameters}}
+            for spec in tools
+        ]
+
     async def generate_stream_with_schema(
         self,
         system_prompt: str,
@@ -105,34 +168,8 @@ class OpenAICompatibleProvider(LLMProvider):
         on_metadata: Optional[MetadataCallback] = None,
         tools: Optional[List[ToolSpec]] = None,
     ) -> AsyncIterator[str]:
-        if tools:
-            # Native tool-calling isn't implemented for this provider yet
-            # (see ai/_providers/anthropic_provider_v2.py for the one that
-            # is) — never silently ignore a state's own declared tools.
-            raise NotImplementedError(
-                "OpenAICompatibleProvider.generate_stream_with_schema: native tool-calling isn't "
-                "implemented for this provider yet."
-            )
-        messages: List[Dict[str, str]] = [
-            {"role": "system", "content": system_prompt}
-        ]
-
-        for message in history:
-            role: str = (
-                "assistant" if message.get("role") == "assistant" else "user"
-            )
-            text_content: str = content_to_text(
-                message.get("content"), "OpenAICompatible"
-            )
-            # OpenAI-compatible chat templates (llama.cpp, LM Studio) assume
-            # strict user/assistant alternation; consecutive same-role turns
-            # (e.g. an AI-initiated opening message followed by attachment
-            # priming) desync the template's role assignment instead of
-            # erroring, so merge them rather than send them as separate turns.
-            if messages[-1]["role"] == role:
-                messages[-1]["content"] = f"{messages[-1]['content']}\n\n{text_content}"
-            else:
-                messages.append({"role": role, "content": text_content})
+        messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+        messages.extend(self._build_messages(history))
 
         extra_kwargs: Dict[str, Any] = {}
         if schema:
@@ -144,11 +181,22 @@ class OpenAICompatibleProvider(LLMProvider):
                     "schema": self.build_schema(schema),
                 },
             }
+        openai_tools = self._build_tools(tools)
+        if openai_tools:
+            extra_kwargs["tools"] = openai_tools
 
         total_tokens = 0
         input_tokens = 0
         output_tokens = 0
         finish_reason: Optional[str] = None
+        # Accumulated across chunks, keyed by the delta's own `index` (a
+        # single response can request several tool calls in parallel,
+        # each streamed as its own id/name once, then its `arguments`
+        # dribbled in as a partial JSON string over further chunks).
+        tool_call_chunks: Dict[int, Dict[str, Any]] = {}
+        # Whatever text (if any) accompanied a tool-requesting response —
+        # the provider-neutral assistant_content to replay in history.
+        accumulated_text = ""
         try:
             stream = await self._client.chat.completions.create(
                 model=self._model_name,
@@ -168,7 +216,19 @@ class OpenAICompatibleProvider(LLMProvider):
                     if chunk.choices[0].finish_reason is not None:
                         finish_reason = chunk.choices[0].finish_reason
                     if chunk.choices[0].delta.content:
+                        accumulated_text += chunk.choices[0].delta.content
                         yield chunk.choices[0].delta.content
+                    for tool_call_delta in chunk.choices[0].delta.tool_calls or []:
+                        entry = tool_call_chunks.setdefault(
+                            tool_call_delta.index, {"id": None, "name": None, "arguments": ""},
+                        )
+                        if tool_call_delta.id:
+                            entry["id"] = tool_call_delta.id
+                        if tool_call_delta.function is not None:
+                            if tool_call_delta.function.name:
+                                entry["name"] = tool_call_delta.function.name
+                            if tool_call_delta.function.arguments:
+                                entry["arguments"] += tool_call_delta.function.arguments
             self._add_tokens(total_tokens)
             if on_metadata is not None:
                 on_metadata("input_tokens", input_tokens)
@@ -203,6 +263,13 @@ class OpenAICompatibleProvider(LLMProvider):
             raise AIServiceProviderPermanentError(f"Connection error: {exc}") from exc
         except Exception as exc:
             raise AIServiceError(f"Unexpected error: {exc}") from exc
+
+        if finish_reason == "tool_calls":
+            calls = [
+                ToolCall(id=entry["id"], name=entry["name"], arguments=json.loads(entry["arguments"] or "{}"))
+                for entry in tool_call_chunks.values()
+            ]
+            raise ToolCallsRequested(calls=calls, assistant_content=accumulated_text or None)
 
         if finish_reason == "length":
             raise AIServiceProviderOutputTruncatedError(finish_reason)

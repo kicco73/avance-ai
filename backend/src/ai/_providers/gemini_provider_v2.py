@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
+import uuid
 from contextlib import contextmanager
 from typing import Any, AsyncIterator, Generator
 
@@ -21,6 +23,8 @@ from ai.llm_provider import (
 	AIServiceRequestError,
 	LLMProvider,
 	MetadataCallback,
+	ToolCall,
+	ToolCallsRequested,
 	ToolSpec,
 	content_to_text,
 )
@@ -33,6 +37,14 @@ logger = LoggerFactory.get_logger(__name__)
 # forever. Milliseconds, per HttpOptions; httpx applies it to connect and
 # to the longest silence between streamed chunks, not to the whole reply.
 REQUEST_TIMEOUT_MS: int = 60_000
+
+# response_schema (controlled JSON generation) and tools (function
+# calling) don't reliably combine on this provider — see
+# generate_stream_with_schema's own docstring for the "respond as a
+# tool" fallback this name identifies: a synthetic tool whose own
+# parameters are the schema's fields, forced whenever the model isn't
+# asking for a real one, standing in for a genuine structured response.
+_RESPOND_TOOL_NAME = "respond"
 
 
 @contextmanager
@@ -135,30 +147,100 @@ class GeminiProvider(LLMProvider):
 			"required": required,
 		}
 
-	def __format_history_and_config(
-		self, system_prompt: str, history: list[dict[str, Any]], schema: dict[str, str]
-	) -> tuple[list[types.Content], types.GenerateContentConfig]:
+	def __build_contents(self, history: list[dict[str, Any]]) -> list[types.Content]:
+		"""Two more provider-neutral message shapes beyond plain
+		{role, content} — see LLMProvider.generate_stream_with_schema's own
+		docstring: an assistant turn that asked for tools (translated to a
+		"model" Content whose parts are its own text, if any, plus one
+		functionCall part per call) and a tool's own result (a "user"
+		Content holding a functionResponse part — Gemini has no separate
+		"tool" role). Gemini matches a functionResponse to its own call by
+		name, not id (its FunctionCall/FunctionResponse have no id-based
+		linking the way Anthropic/OpenAI do), so `call_name_by_id` tracks
+		each call's own name only long enough to label the result that
+		follows it. Every functionResponse for one round lands in the same
+		Content (appended to the round's own, not a fresh Content each
+		time) — the shape Gemini's own API expects for parallel calls."""
 		contents: list[types.Content] = []
+		call_name_by_id: dict[str, str] = {}
 
-		for message in history:
-			role: str = "model" if message["role"] == "assistant" else "user"
-			text_content: str = content_to_text(message["content"], "Gemini")
-
-			contents.append(
-				types.Content(
-					role=role,
-					parts=[types.Part.from_text(text=text_content)],
-				)
+		def _is_function_response_round(content: types.Content) -> bool:
+			return content.role == "user" and bool(content.parts) and all(
+				part.function_response is not None for part in content.parts
 			)
 
-		gen_config: types.GenerateContentConfig = types.GenerateContentConfig(
-			system_instruction=system_prompt,
-			max_output_tokens=self.__max_output_tokens,
-			response_mime_type="application/json",
-			response_schema=self.build_schema(schema),
+		for message in history:
+			role: str = message["role"]
+
+			if role == "assistant" and message.get("tool_calls"):
+				parts: list[types.Part] = []
+				text = message.get("content")
+				if text:
+					parts.append(types.Part.from_text(text=str(text)))
+				for call in message["tool_calls"]:
+					call_name_by_id[call.id] = call.name
+					parts.append(types.Part.from_function_call(name=call.name, args=call.arguments))
+				contents.append(types.Content(role="model", parts=parts))
+				continue
+
+			if role == "tool":
+				name = call_name_by_id.get(message["tool_call_id"], "")
+				part = types.Part.from_function_response(name=name, response={"result": message["content"]})
+				if contents and _is_function_response_round(contents[-1]):
+					contents[-1].parts.append(part)
+				else:
+					contents.append(types.Content(role="user", parts=[part]))
+				continue
+
+			if role not in ("user", "assistant"):
+				continue
+
+			gemini_role = "model" if role == "assistant" else "user"
+			text_content: str = content_to_text(message["content"], "Gemini")
+			contents.append(types.Content(role=gemini_role, parts=[types.Part.from_text(text=text_content)]))
+
+		return contents
+
+	@staticmethod
+	def __schema_to_gemini_parameters(parameters: dict) -> dict:
+		"""ToolSpec.parameters is plain JSON Schema (lowercase types,
+		ToolSet.specs' own contract: an object of all-required plain
+		strings) — Gemini's own Schema type uses uppercase type names, the
+		same convention build_schema above already follows for
+		response_schema."""
+		return {
+			"type": "OBJECT",
+			"properties": {name: {"type": "STRING"} for name in parameters.get("properties", {})},
+			"required": list(parameters.get("required", [])),
+		}
+
+	def __respond_tool_declaration(self, schema: dict[str, str]) -> types.FunctionDeclaration:
+		return types.FunctionDeclaration(
+			name=_RESPOND_TOOL_NAME,
+			description=(
+				"Call this with your final structured reply once you have everything you need — "
+				"its own arguments *are* the answer, one per field below."
+			),
+			parameters={
+				"type": "OBJECT",
+				"properties": {
+					name: {"type": "STRING", "description": description} for name, description in schema.items()
+				},
+				"required": list(schema.keys()),
+			},
 		)
 
-		return contents, gen_config
+	def __tool_declarations(self, tools: list[ToolSpec], schema: dict[str, str]) -> list[types.FunctionDeclaration]:
+		return [
+			self.__respond_tool_declaration(schema),
+			*(
+				types.FunctionDeclaration(
+					name=spec.name, description=spec.description,
+					parameters=self.__schema_to_gemini_parameters(spec.parameters),
+				)
+				for spec in tools
+			),
+		]
 
 	async def generate_stream_with_schema(
 		self,
@@ -168,20 +250,40 @@ class GeminiProvider(LLMProvider):
 		on_metadata: MetadataCallback | None = None,
 		tools: list[ToolSpec] | None = None,
 	) -> AsyncIterator[str]:
+		contents = self.__build_contents(history)
+		schema = schema or {}
+
 		if tools:
-			# Native tool-calling isn't implemented for this provider yet
-			# (see ai/_providers/anthropic_provider_v2.py for the one that
-			# is) — never silently ignore a state's own declared tools.
-			raise NotImplementedError(
-				"GeminiProvider.generate_stream_with_schema: native tool-calling isn't implemented "
-				"for this provider yet."
+			# response_schema (controlled JSON generation) and tools
+			# (function calling) don't reliably combine on this provider —
+			# never assume they do. Fold the structured answer itself into
+			# a synthetic "respond" tool instead (see _RESPOND_TOOL_NAME),
+			# forced via tool_config so every turn ends in *some* function
+			# call — a real one, or "respond" once nothing else is needed.
+			config: types.GenerateContentConfig = types.GenerateContentConfig(
+				system_instruction=system_prompt,
+				max_output_tokens=self.__max_output_tokens,
+				tools=[types.Tool(function_declarations=self.__tool_declarations(tools, schema))],
+				tool_config=types.ToolConfig(
+					function_calling_config=types.FunctionCallingConfig(mode=types.FunctionCallingConfigMode.ANY),
+				),
 			)
-		contents, config = self.__format_history_and_config(system_prompt, history, schema or {})
+		else:
+			config = types.GenerateContentConfig(
+				system_instruction=system_prompt,
+				max_output_tokens=self.__max_output_tokens,
+				response_mime_type="application/json",
+				response_schema=self.build_schema(schema),
+			)
 
 		total_tokens = 0
 		input_tokens = 0
 		output_tokens = 0
 		finish_reason: types.FinishReason | None = None
+		# Gemini delivers a function call as one complete part, never
+		# streamed argument-by-argument the way OpenAI's deltas are — so
+		# there's nothing to accumulate across chunks, just the latest one seen.
+		function_call: types.FunctionCall | None = None
 		with _handle_gemini_errors():
 			response_stream = await self.__client().aio.models.generate_content_stream(
 				model=self.__model_name,
@@ -200,6 +302,12 @@ class GeminiProvider(LLMProvider):
 						output_tokens = usage.candidates_token_count
 				if chunk.candidates and chunk.candidates[0].finish_reason is not None:
 					finish_reason = chunk.candidates[0].finish_reason
+				if tools:
+					content = chunk.candidates[0].content if chunk.candidates else None
+					for part in (content.parts if content else None) or []:
+						if part.function_call is not None:
+							function_call = part.function_call
+					continue
 				if not chunk.text:
 					continue
 				yield chunk.text
@@ -211,6 +319,24 @@ class GeminiProvider(LLMProvider):
 			f"Gemini call finished: model={self.__model_name} finish_reason={finish_reason} "
 			f"total_tokens={total_tokens} max_output_tokens={self.__max_output_tokens}"
 		)
+
+		if tools and function_call is not None:
+			if function_call.name == _RESPOND_TOOL_NAME:
+				# The model's own final structured answer, disguised as a
+				# tool call — yielded as the same JSON text a schema-based
+				# response would have produced, so AiService's own
+				# partial-JSON parser downstream needs no changes at all.
+				yield json.dumps(function_call.args or {})
+			else:
+				raise ToolCallsRequested(
+					calls=[ToolCall(
+						id=function_call.id or str(uuid.uuid4()), name=function_call.name or "",
+						arguments=dict(function_call.args or {}),
+					)],
+					# Gemini's own function-call parts carry no separate
+					# "text said alongside this call" — nothing to replay.
+					assistant_content=None,
+				)
 
 		if finish_reason == types.FinishReason.MAX_TOKENS:
 			raise AIServiceProviderOutputTruncatedError(str(finish_reason))
