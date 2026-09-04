@@ -150,17 +150,6 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_id}/sources/{source_name}/preview", role="admin")
-    def get_source_content_preview(self, project_id: str, source_name: str):
-        """The Source content panel's Preview segment — its own cache
-        archive's CSV content, rendered as a Markdown table server-side."""
-        try:
-            return {"markdown": self.project_service.get_source_content_preview(project_id, source_name)}
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-
     @get("/api/projects/{project_id}/project", role="admin")
     def get_project_metadata(self, project_id: str):
         """The optional top-level `project:` section of `project_id`'s

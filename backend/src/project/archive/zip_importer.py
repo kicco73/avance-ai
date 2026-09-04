@@ -4,14 +4,14 @@ import io
 import zipfile
 from pathlib import Path
 
-from .layout import ASPECT_DIR, BEHAVIOUR_DIR, BUNDLE_FILE_NAMES, CACHE_DIR, LEGAL_TERMS_FILE_NAME, ArchiveLayout
+from .layout import ASPECT_DIR, BEHAVIOUR_DIR, BUNDLE_FILE_NAMES, LEGAL_TERMS_FILE_NAME, SOURCES_DIR, ArchiveLayout
 
 
 class ZipImporter:
     """Recognizes and safely unpacks a project zip upload/import into a
     staging directory, in this project's own layout."""
 
-    _RESERVED_DIRS = {ASPECT_DIR, BEHAVIOUR_DIR, "legal", CACHE_DIR}
+    _RESERVED_DIRS = {ASPECT_DIR, BEHAVIOUR_DIR, "legal", SOURCES_DIR}
 
     @staticmethod
     def looks_like_zip(content_type: str | None, content: bytes) -> bool:
@@ -67,24 +67,14 @@ class ZipImporter:
                 nested_ok = (
                     "/" not in stripped
                     or stripped == LEGAL_TERMS_FILE_NAME
-                    or (top in (ASPECT_DIR, BEHAVIOUR_DIR, CACHE_DIR) and stripped.count("/") == 1)
+                    or (top in (ASPECT_DIR, BEHAVIOUR_DIR, SOURCES_DIR) and stripped.count("/") == 1)
                 )
                 if not nested_ok:
                     raise ValueError(f"Unsupported path inside zip: '{original}'.")
 
-            # cache/<id>.csv bypasses canonicalize_name entirely: it's not
-            # a file a user ever names/uploads through the editable-file
-            # path canonicalize_name serves (see layout.py's own CACHE_DIR
-            # docstring) — its ".csv" extension would otherwise get routed
-            # under behaviour/ like any other user-uploaded .csv, silently
-            # detaching it from the source that keeps its own url in sync
-            # with this exact path.
             canonical: dict[str, str] = {}
             for original, stripped in effective.items():
-                if stripped in BUNDLE_FILE_NAMES or stripped.split("/", 1)[0] == CACHE_DIR:
-                    canonical[original] = stripped
-                else:
-                    canonical[original] = ArchiveLayout.canonicalize_name(stripped)
+                canonical[original] = stripped if stripped in BUNDLE_FILE_NAMES else ArchiveLayout.canonicalize_name(stripped)
 
             by_canonical: dict[str, str] = {}
             for original, name in canonical.items():

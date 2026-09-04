@@ -63,12 +63,8 @@ BEHAVIOUR_DIR = "behaviour"
 # One `<id>.csv` archive per `sources:` entry of the "avance" driver — its
 # own backing store (tracking.sources.avance_archive), created empty
 # alongside the source (ProjectEditor.add_source) and renamed/deleted in
-# lockstep with it (set_source_field/delete_source). Never reached through
-# the generic upload/rename file-explorer path (ArchiveLayout.
-# canonicalize_name has no rule for it — see ZipImporter's own CACHE_DIR
-# bypass for why it still needs listing here at all: round-tripping an
-# exported project's zip back through import).
-CACHE_DIR = "cache"
+# lockstep with it (set_source_field/delete_source).
+SOURCES_DIR = "sources"
 ROOT_FILE_NAMES = {"index.yml", "index.css"}
 ASPECT_EXTENSIONS = IMAGE_EXTENSIONS | {".css"}
 BEHAVIOUR_EXTENSIONS = {".txt", ".md", ".csv"}
@@ -88,6 +84,18 @@ class ArchiveLayout:
                 raise ValueError(f"'{basename}' must be at the project root, not '{name}'.")
             return basename
         if name == LEGAL_TERMS_FILE_NAME:
+            return name
+        # sources/<id>.csv (a source's own backing archive — see
+        # SOURCES_DIR's own docstring) is already canonical, exactly as
+        # given: without this, its ".csv" extension would otherwise fall
+        # through to the generic BEHAVIOUR_EXTENSIONS rule below and get
+        # silently rerouted to behaviour/<id>.csv — wrong archive
+        # entirely, and exactly what ProjectEditor.put_project_file's own
+        # "does this already-known archive need canonicalizing at all?"
+        # fallback would do the moment a source's own archive isn't
+        # already in Db (e.g. one predating this driver's own auto-provisioning).
+        parts = Path(name).parts
+        if len(parts) == 2 and parts[0] == SOURCES_DIR and Path(basename).suffix.lower() == ".csv":
             return name
         extension = Path(basename).suffix.lower()
         if extension in ASPECT_EXTENSIONS:

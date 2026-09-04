@@ -10,6 +10,7 @@ import CodeEditor from '../../../CodeEditor.vue'
 import IndexYmlEditorPanel from './IndexYmlEditorPanel.vue'
 import IndexCssEditorPanel from './IndexCssEditorPanel.vue'
 import MdEditorPanel from './MdEditorPanel.vue'
+import SourceContentPanel from './SourceContentPanel.vue'
 import { projectFileContentUrl } from '../../../../api.js'
 
 const IMAGE_PATTERN = /\.(png|jpe?g|gif|webp|svg)$/i
@@ -39,14 +40,20 @@ const props = defineProps({
   selectedElement: { type: Object, default: null },
   // Declared sources (see FileExplorer.vue's own "Sources" branch) —
   // `sources`: getProjectSources' own [{ source }, ...] shape.
-  // `currentSourceName`, when set, takes the editor pane over with an
-  // empty state (see the template below) — mutually exclusive with a
-  // real file being open (EditProjectView.vue's own selectFileNode/
-  // selectSourceNode keep the two from ever both being set).
+  // `currentSourceName`, when set, takes the editor pane over with its
+  // own SourceContentPanel (below) — mutually exclusive with a real file
+  // being open (EditProjectView.vue's own selectFileNode/selectSourceNode
+  // keep the two from ever both being set).
   sources: { type: Array, default: () => [] },
   sourcesLoading: { type: Boolean, default: true },
   currentSourceName: { type: String, default: null }
 })
+
+// sources/<id>.csv — same convention ProjectEditor._source_archive
+// derives server-side, always 1:1 with the source's own current name.
+const currentSourceArchiveName = computed(() => (
+  props.currentSourceName ? `sources/${props.currentSourceName}.csv` : null
+))
 
 const emit = defineEmits([
   'start-explorer-drag', 'new-attachment', 'new-aspect', 'new-legal', 'new-source',
@@ -68,10 +75,11 @@ const codeEditorRef = ref(null)
 const indexYmlEditorRef = ref(null)
 const indexCssEditorRef = ref(null)
 const mdEditorRef = ref(null)
+const sourceContentPanelRef = ref(null)
 
 // Exposed so EditProjectView.vue can reach the editor instances directly for
 // things a prop/emit can't express (jumpToLine, save/discard/undo/redo, reload, mediaType, ...).
-defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef })
+defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef, sourceContentPanelRef })
 </script>
 
 <template>
@@ -100,13 +108,14 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
     <div class="edit-project-editor-pane">
       <p v-if="!historyCleared" class="edit-project-status">Loading…</p>
       <template v-else>
-        <div v-if="currentSourceName" class="edit-project-source-empty-state">
-          <span class="edit-project-source-empty-icon">
-            <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-          </span>
-          <p>"{{ currentSourceName }}" is a data source, not a file — nothing to show here.</p>
-          <p class="edit-project-source-empty-hint">Edit it from the Inspector's Info tab, on the right.</p>
-        </div>
+        <SourceContentPanel
+          v-if="currentSourceName"
+          :key="currentSourceName"
+          ref="sourceContentPanelRef"
+          :project-id="projectId"
+          :file-name="currentSourceArchiveName"
+          @saved="emit('saved', $event)"
+        />
         <!-- Stays mounted (v-show, not v-if) even while a different file is
              open, or a source is selected instead (see currentSourceName
              above): its InspectorGraph is the only place the Inspector's
@@ -213,8 +222,4 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
 .edit-project-editor-image { align-items: center; justify-content: center; overflow: auto; background: repeating-conic-gradient(#f0f0f0 0% 25%, #fafafa 0% 50%) 50% / 20px 20px; }
 .edit-project-editor-image img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .edit-project-status { margin: auto; color: #444; }
-.edit-project-source-empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.4rem; padding: 1rem; text-align: center; color: #777; }
-.edit-project-source-empty-icon { color: #3949ab; opacity: 0.6; }
-.edit-project-source-empty-state p { margin: 0; font-size: 0.9rem; }
-.edit-project-source-empty-hint { font-size: 0.8rem !important; color: #999; }
 </style>

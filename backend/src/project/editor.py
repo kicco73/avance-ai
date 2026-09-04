@@ -18,11 +18,10 @@ from .manager import ProjectManager
 from .archive.automaton_loader import AutomatonLoader
 from .archive.css_validator import CssValidator
 from .archive.layout import (
-    ASPECT_DIR, BEHAVIOUR_DIR, CACHE_DIR, ArchiveLayout, IMAGE_CONTENT_TYPE_BY_EXTENSION, LEGAL_TERMS_FILE_NAME,
-    LEGAL_TERMS_SKELETON, MAX_IMAGE_UPLOAD_BYTES, ROOT_FILE_NAMES, TEXT_CONTENT_TYPE_BY_EXTENSION,
+    ASPECT_DIR, BEHAVIOUR_DIR, ArchiveLayout, IMAGE_CONTENT_TYPE_BY_EXTENSION, LEGAL_TERMS_FILE_NAME,
+    LEGAL_TERMS_SKELETON, MAX_IMAGE_UPLOAD_BYTES, ROOT_FILE_NAMES, SOURCES_DIR, TEXT_CONTENT_TYPE_BY_EXTENSION,
     TEXT_EDITABLE_EXTENSIONS,
 )
-from .csv_preview import render_csv_as_markdown_table
 from .types import CommitCallback
 
 if TYPE_CHECKING:
@@ -498,24 +497,24 @@ class ProjectEditor:
         await self._edit_index_yml(project_id, commit, lambda editor: editor.delete_env_key(env_key_name))
 
     @staticmethod
-    def _source_cache_archive(source_name: str) -> str:
+    def _source_archive(source_name: str) -> str:
         """Where a source's own backing content lives — one `<id>.csv`
-        archive per source, 1:1 and always in sync with its own id (kept
-        that way by add_source/set_source_field/delete_source below), never
-        user-named or picked from existing files."""
-        return f"{CACHE_DIR}/{source_name}.csv"
+        archive per source, under sources/, 1:1 and always in sync with
+        its own id (kept that way by add_source/set_source_field/
+        delete_source below), never user-named or picked from existing files."""
+        return f"{SOURCES_DIR}/{source_name}.csv"
 
     async def add_source(self, project_id: str, commit: CommitCallback) -> SourcePayload:
-        """A source's own cache archive is created empty right alongside
-        it — `url` is never left unconfigured (contrast env keys/signals,
-        which start genuinely blank): AutomatonBuilder._build_source
-        requires `url`'s own archive to already exist, so the archive
-        write happens first, inside the same index.yml edit `operation`,
-        before serialize()/put_project_file below revalidates the whole
-        project against it."""
+        """A source's own archive is created empty right alongside it —
+        `url` is never left unconfigured (contrast env keys/signals, which
+        start genuinely blank): AutomatonBuilder._build_source requires
+        `url`'s own archive to already exist, so the archive write happens
+        first, inside the same index.yml edit `operation`, before
+        serialize()/put_project_file below revalidates the whole project
+        against it."""
         def operation(editor: AutomatonYamlEditor) -> SourcePayload:
             payload = editor.add_source()
-            archive_name = self._source_cache_archive(payload["name"])
+            archive_name = self._source_archive(payload["name"])
             self._db.save_project_file(Session().user, project_id, archive_name, b"", "text/csv")
             return editor.set_source_field(payload["name"], "url", f"avance:{archive_name}")
         return await self._edit_index_yml(project_id, commit, operation)
@@ -523,9 +522,9 @@ class ProjectEditor:
     async def set_source_field(
         self, project_id: str, source_name: str, field: str, value, commit: CommitCallback
     ) -> SourcePayload:
-        """A 'name' edit also renames the source's own cache archive (and
-        the `url` field pointing at it) to match — same "editing this
-        field renames the entry, and everything that follows it, together"
+        """A 'name' edit also renames the source's own archive (and the
+        `url` field pointing at it) to match — same "editing this field
+        renames the entry, and everything that follows it, together"
         contract set_signal_field's 'ui-label' case already has, just
         extended to a second, DB-backed side effect only sources have."""
         if field != "name":
@@ -538,8 +537,8 @@ class ProjectEditor:
             new_name = payload["name"]
             if new_name == source_name:
                 return payload
-            old_archive = self._source_cache_archive(source_name)
-            new_archive = self._source_cache_archive(new_name)
+            old_archive = self._source_archive(source_name)
+            new_archive = self._source_archive(new_name)
             if old_archive not in self._db.list_archives(project_id):
                 return payload
             self._db.rename_project_file(Session().user, project_id, old_archive, new_archive)
@@ -547,23 +546,10 @@ class ProjectEditor:
         return await self._edit_index_yml(project_id, commit, operation)
 
     async def delete_source(self, project_id: str, source_name: str, commit: CommitCallback) -> None:
-        archive_name = self._source_cache_archive(source_name)
+        archive_name = self._source_archive(source_name)
         await self._edit_index_yml(project_id, commit, lambda editor: editor.delete_source(source_name))
         if archive_name in self._db.list_archives(project_id):
             self._db.delete_archive(project_id, archive_name)
-
-    def get_source_content_preview(self, project_id: str, source_name: str) -> str:
-        """The design view's Source content panel Preview segment — a
-        source's own cache archive, rendered as a Markdown table server-side
-        (see project.csv_preview) rather than client-side the way a plain
-        .md attachment's own Preview already is: CSV needs real parsing
-        (quoted fields, embedded commas) a naive client-side split can't
-        safely do."""
-        if project_id not in self._db.list_projects():
-            raise FileNotFoundError(f"Project '{project_id}' does not exist.")
-        archive_name = self._source_cache_archive(source_name)
-        content = self._db.get_archive(project_id, archive_name)
-        return render_csv_as_markdown_table(content.decode("utf-8") if content is not None else "")
 
     async def reorder_actions(
         self, project_id: str, state_name: str, action_name: str, position: int, commit: CommitCallback

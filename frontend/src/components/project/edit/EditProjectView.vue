@@ -129,18 +129,53 @@ const {
   loadSources, selectSource, handleAddSource, handleSetSourceField, handleDeleteSource,
 } = useProjectSources(props.projectId, guardedAction, flashRecentlyAdded)
 
+// ProjectDesignPanel.vue's own exposed handle onto whichever
+// SourceContentPanel is currently mounted (only ever one, or none) —
+// same "computed proxy through designPanelRef" shape as codeEditorRef/
+// indexYmlEditorRef etc. above.
+const sourceContentPanelRef = computed(() => designPanelRef.value?.sourceContentPanelRef ?? null)
+
 // A Source node and a file/graph selection are mutually exclusive in the
 // design tree (see FileExplorer.vue's own "Sources" branch and
 // InspectorStateTab.vue's isSourceContext, which takes the whole Info tab
-// over) — selecting either clears the other.
+// over) — selecting either clears the other. Own small unsaved-changes
+// guard, parallel to useProjectFiles.js's own guardedAction/
+// runGuardedAction: a source's own content buffer (SourceContentPanel,
+// via CodeEditor) is a completely separate editing surface from
+// currentFileName's, so the generic file guard has no way to know about it.
+async function guardedSourceAction(label, run) {
+  if (!sourceContentPanelRef.value?.isDirty) return run()
+  const choice = await chooseDialog({
+    title: 'Unsaved changes',
+    body: `This source's content has unsaved changes. Save before you ${label}?`,
+    options: [
+      { id: 'save', label: 'Save' },
+      { id: 'discard', label: 'Discard' }
+    ]
+  })
+  if (choice === 'save') {
+    if (await sourceContentPanelRef.value?.save()) return run()
+    return undefined
+  }
+  if (choice === 'discard') {
+    sourceContentPanelRef.value?.discard()
+    return run()
+  }
+  return undefined
+}
+
 function selectFileNode(fileName) {
-  currentSourceName.value = null
-  selectFile(fileName)
+  guardedSourceAction(`switch to "${fileName}"`, () => {
+    currentSourceName.value = null
+    selectFile(fileName)
+  })
 }
 
 function selectSourceNode(name) {
-  selectedGraphElement.value = null
-  selectSource(name)
+  guardedSourceAction(`switch to source "${name}"`, () => {
+    selectedGraphElement.value = null
+    selectSource(name)
+  })
 }
 
 // The state key "State"/"Actions" should reflect — the selection itself
@@ -957,7 +992,6 @@ onBeforeUnmount(() => {
                 :deleting-file="deletingFile"
                 :renaming-file="renamingFile"
                 :selected-source="mode === 'edit' ? selectedSource : null"
-                :files="files"
                 :deleting-source="deletingSource"
                 @select="handleTabSelect"
                 @select-attachment="selectFile"

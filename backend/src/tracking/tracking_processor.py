@@ -198,8 +198,15 @@ class TrackingProcessor(object):
 			self.user.project_id, self.user.automaton.revision, self.user.session_id, self.talk_enabled,
 			self.user.automaton.talk_enabled, talk_enabled,
 		)
+		# The "before" strategy evaluates signals against *this turn's own
+		# user message — an AI-started turn has none (just the '...'
+		# placeholder), so there's nothing real to evaluate yet. The
+		# "after" strategy evaluates the AI's own freshly-generated reply
+		# instead, which is real content even on an AI-started turn, so it
+		# isn't affected.
+		evaluate_signals = not (has_to_evaluate_signals_before_ai_reply and self.user.has_ai_started_conversation)
 		return Protocol(
-			self.ai_service, has_to_evaluate_signals_before_ai_reply,
+			self.ai_service, has_to_evaluate_signals_before_ai_reply, evaluate_signals=evaluate_signals,
 			reactions_enabled=self.user.automaton.reactions_enabled_for(self.user.state),
 			talk_enabled=talk_enabled,
 		)

@@ -3,10 +3,12 @@
 // (see FileExplorer.vue's own "Sources" branch) — same badge/title/edit-form
 // convention as InspectorProjectCard.vue, but always showing its edit form
 // (a source has nothing worth a read-only view): a renameable id, ui-label
-// (the title), ui-description, a driver dropdown (today, only "Avance
-// Archive"), and — for that driver — which of this project's own
-// behaviour/ files it reads.
-import { computed, ref, watch } from 'vue'
+// (the title), ui-description, and a driver dropdown (today, only "Avance
+// Archive"). Unlike an ordinary attachment, there's no file to pick here —
+// every source gets its own sources/<id>.csv archive automatically (see
+// ProjectEditor.add_source), edited via the design panel's own
+// SourceContentPanel.vue when this source is selected, not from this card.
+import { ref, watch } from 'vue'
 import { vAutosize } from './textareaAutosize.js'
 import { handleEnterNext } from './enterToNextField.js'
 import CardMenu from './CardMenu.vue'
@@ -14,21 +16,10 @@ import CardMenu from './CardMenu.vue'
 const props = defineProps({
   // { name, ui_label, ui_description, url } | null, from getProjectSources
   source: { type: Object, default: null },
-  // Every project file (see useProjectFiles.js's own `files`) — filtered
-  // here to behaviour/ for the Archive dropdown, the "avance" driver's own target.
-  files: { type: Array, default: () => [] },
   deleting: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['set-field', 'delete'])
-
-const BEHAVIOUR_PREFIX = 'behaviour/'
-const behaviourFiles = computed(() => props.files.filter((name) => name.startsWith(BEHAVIOUR_PREFIX)))
-
-function basenameOf(name) {
-  const idx = name.lastIndexOf('/')
-  return idx === -1 ? name : name.slice(idx + 1)
-}
 
 // Only one driver exists today — "avance", url's own scheme — so this is
 // a single-option dropdown by design, not a stand-in for a missing feature.
@@ -38,12 +29,6 @@ const editUiLabel = ref('')
 const editUiDescription = ref('')
 const editId = ref('')
 
-function archivePathOf(url) {
-  if (!url) return ''
-  const colon = url.indexOf(':')
-  return colon === -1 ? '' : url.slice(colon + 1)
-}
-
 function resetEditBuffers() {
   editUiLabel.value = props.source?.ui_label ?? ''
   editUiDescription.value = props.source?.ui_description ?? ''
@@ -51,8 +36,6 @@ function resetEditBuffers() {
 }
 
 watch(() => props.source, resetEditBuffers, { immediate: true, deep: true })
-
-const editArchivePath = computed(() => archivePathOf(props.source?.url))
 
 function commitTextField(field, currentValue, originalValue) {
   if (currentValue === originalValue) return
@@ -69,12 +52,6 @@ function commitUiDescription() {
 
 function commitId() {
   commitTextField('name', editId.value, props.source?.name ?? '')
-}
-
-function commitArchive(event) {
-  const path = event.target.value
-  if (!path || path === editArchivePath.value) return
-  emit('set-field', 'url', `avance:${path}`)
 }
 
 function handleDelete() {
@@ -107,6 +84,16 @@ function handleDelete() {
     </div>
     <div class="inspector-detail-body">
       <div class="inspector-detail-form">
+        <label class="inspector-detail-form-label">Description</label>
+        <textarea
+          v-model="editUiDescription"
+          v-autosize
+          class="inspector-detail-textarea"
+          rows="2"
+          @click.stop
+          @blur="commitUiDescription"
+        ></textarea>
+
         <label class="inspector-detail-form-label" title="Referenced as source.<id> in a trigger/env expression">
           <span class="inspector-py-field-icon" title="Identifier">ID</span>
           Id
@@ -124,24 +111,6 @@ function handleDelete() {
         <select class="inspector-source-select" :value="'avance'">
           <option v-for="option in DRIVER_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
         </select>
-
-        <label class="inspector-detail-form-label" title="Which of this project's own behaviour/ files this source reads">Archive</label>
-        <select class="inspector-source-select" :value="editArchivePath" @change="commitArchive">
-          <option value="" disabled>
-            {{ behaviourFiles.length ? '— choose a file —' : '(no behaviour files uploaded yet)' }}
-          </option>
-          <option v-for="path in behaviourFiles" :key="path" :value="path">{{ basenameOf(path) }}</option>
-        </select>
-
-        <label class="inspector-detail-form-label">Description</label>
-        <textarea
-          v-model="editUiDescription"
-          v-autosize
-          class="inspector-detail-textarea"
-          rows="2"
-          @click.stop
-          @blur="commitUiDescription"
-        ></textarea>
       </div>
     </div>
   </div>

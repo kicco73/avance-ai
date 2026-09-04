@@ -47,7 +47,6 @@ const props = defineProps({
   // Takes over the whole tab (see isSourceContext below), same as a
   // selected file does for showFileCard.
   selectedSource: { type: Object, default: null },
-  files: { type: Array, default: () => [] },
   deletingSource: { type: String, default: null },
   // Auto mode's own selection (see EditProjectView.vue's autoSelected*
   // computeds) — a session read-only, in place of selectedElement's
@@ -142,7 +141,6 @@ onMounted(loadProjectMetadata)
     <InspectorSourceCard
       v-if="isSourceContext"
       :source="selectedSource"
-      :files="files"
       :deleting="deletingSource === selectedSource?.name"
       @set-field="(field, value) => emit('set-source-field', field, value)"
       @delete="emit('delete-source', selectedSource)"

@@ -113,9 +113,6 @@ class ProjectService(object):
     def get_project_sources(self, project_id: str, session_id: int | None = None) -> list[dict]:
         return self._inspector.get_project_sources(project_id, session_id)
 
-    def get_source_content_preview(self, project_id: str, source_name: str) -> str:
-        return self._editor.get_source_content_preview(project_id, source_name)
-
     def get_project_metadata(self, project_id: str) -> ProjectPayload:
         return self._inspector.get_project_metadata(project_id)
 
