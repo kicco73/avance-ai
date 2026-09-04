@@ -11,6 +11,7 @@ from automaton.automaton import Action, Automaton, SignalPayload, State, manual_
 from db import Db, _utc_iso
 from ai import AiService
 from keyed_lock_registry import KeyedLockRegistry
+from project.archive.layout import CACHE_DIR
 from project_rw_lock import ProjectRwLock
 from session import Session
 
@@ -381,7 +382,13 @@ class ChatService(object):
 		db.delete_chat_session) — only the current user's own sessions,
 		never someone else's by guessing an id."""
 		self._require_own_session(session_id)
+		project_id = self._project_id_for_session(session_id)
 		self._db.delete_chat_session(session_id)
+		# A source's own per-session read cache (tracking.sources.
+		# avance_archive) — same cleanup ChatSessionManager.close_session
+		# does, needed here too since a session can be deleted outright
+		# without ever going through close_session first.
+		self._db.delete_archives_with_prefix(project_id, f"{CACHE_DIR}/sessions/{session_id}/")
 
 	def clear_session_env(self, session_id: int) -> None:
 		self._require_own_session(session_id)

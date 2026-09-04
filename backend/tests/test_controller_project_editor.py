@@ -474,6 +474,24 @@ class TestPutFileDirectlyToASourcesPath:
         assert client.get(f"/api/projects/{hello_project}/files/behaviour/behaviour.csv").status_code == 404
 
 
+class TestExportOmitsCache:
+    """A source's own per-session read cache (cache/sessions/<id>/...,
+    see tracking.sources.avance_archive) is pure runtime scratch space,
+    never part of a project's own versioned definition — ProjectManager.
+    export_project_zip must never include it, even though it's a real
+    Archive row like any canonical file."""
+
+    def test_downloaded_zip_excludes_every_cache_prefixed_archive(self, client, hello_project, app_db):
+        revision = app_db.get_project_revision(hello_project)
+        app_db.write_archive_at_revision(hello_project, "cache/sessions/1/sources/pino.csv", revision, b"scratch", "text/csv")
+
+        download = client.get(f"/api/projects/{hello_project}")
+
+        assert download.status_code == 200
+        with zipfile.ZipFile(io.BytesIO(download.content)) as zf:
+            assert not any(name.startswith("cache/") for name in zf.namelist())
+
+
 class TestSourceZipRoundTrip:
     """A source's own sources/<id>.csv archive must survive GET
     /api/projects/{id} (download) -> POST /api/projects/upload (re-import)

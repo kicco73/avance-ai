@@ -125,8 +125,8 @@ function flashRecentlyAdded(key) {
 onBeforeUnmount(() => { if (recentlyAddedTimer) clearTimeout(recentlyAddedTimer) })
 
 const {
-  sourcesLoading, sources, currentSourceName, selectedSource, deletingSource,
-  loadSources, selectSource, handleAddSource, handleSetSourceField, handleDeleteSource,
+  sourcesLoading, sources, currentSourceName, sourcesRootSelected, selectedSource, deletingSource,
+  loadSources, selectSource, selectSourcesRoot, handleAddSource, handleSetSourceField, handleDeleteSource,
 } = useProjectSources(props.projectId, guardedAction, flashRecentlyAdded)
 
 // ProjectDesignPanel.vue's own exposed handle onto whichever
@@ -167,6 +167,7 @@ async function guardedSourceAction(label, run) {
 function selectFileNode(fileName) {
   guardedSourceAction(`switch to "${fileName}"`, () => {
     currentSourceName.value = null
+    sourcesRootSelected.value = false
     selectFile(fileName)
   })
 }
@@ -175,6 +176,13 @@ function selectSourceNode(name) {
   guardedSourceAction(`switch to source "${name}"`, () => {
     selectedGraphElement.value = null
     selectSource(name)
+  })
+}
+
+function selectSourcesRootNode() {
+  guardedSourceAction('view sources', () => {
+    selectedGraphElement.value = null
+    selectSourcesRoot()
   })
 }
 
@@ -311,8 +319,9 @@ const autoSessionEndElement = computed(() => (
 // showing whichever of a state/action the Graph selection actually is.
 // Test mode only ever shows Info — plain read-only viewing, no Signals/
 // Env-keys editing surface makes sense while browsing test results. A
-// selected Source (currentSourceName) gets the same Info-only treatment as
-// any non-Behavior file: nothing about Signals/Env applies to it either.
+// selected Source (currentSourceName), or the Sources branch header
+// itself (sourcesRootSelected), gets the same Info-only treatment as any
+// non-Behavior file: nothing about Signals/Env applies to either.
 const inspectorTabs = computed(() => {
   if (mode.value === 'run') {
     return [
@@ -325,7 +334,7 @@ const inspectorTabs = computed(() => {
   if (mode.value === 'test') {
     return [{ id: 'state', label: 'Info' }, { id: 'user', label: 'User' }]
   }
-  if (mode.value === 'edit' && (currentSourceName.value != null || !isBehaviorNodeSelected.value)) {
+  if (mode.value === 'edit' && (currentSourceName.value != null || sourcesRootSelected.value || !isBehaviorNodeSelected.value)) {
     return [{ id: 'state', label: 'Info' }]
   }
   return [
@@ -901,6 +910,7 @@ onBeforeUnmount(() => {
           :sources="sources"
           :sources-loading="sourcesLoading"
           :current-source-name="currentSourceName"
+          :sources-root-selected="sourcesRootSelected"
           @start-explorer-drag="startExplorerDrag"
           @new-attachment="handleNewAttachment"
           @new-aspect="handleNewAspect"
@@ -908,6 +918,7 @@ onBeforeUnmount(() => {
           @new-source="handleAddSource"
           @select-file="selectFileNode"
           @select-source="selectSourceNode"
+          @select-sources-root="selectSourcesRootNode"
           @upload-file="handleUploadFile"
           @jump-to-definition="(target) => jumpToDefinition(target, { silent: true })"
           @select="selectedGraphElement = $event"
@@ -993,6 +1004,7 @@ onBeforeUnmount(() => {
                 :renaming-file="renamingFile"
                 :selected-source="mode === 'edit' ? selectedSource : null"
                 :deleting-source="deletingSource"
+                :sources-root-selected="mode === 'edit' && sourcesRootSelected"
                 @select="handleTabSelect"
                 @select-attachment="selectFile"
                 @jump-to-attachment="handleJumpToAttachment"

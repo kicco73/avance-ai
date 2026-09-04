@@ -116,14 +116,17 @@ class TrackingEngine:
         # are still evaluated); manual actions bypass this and always fire.
         self._auto_tracking_enabled = auto_tracking_enabled
 
-    def evaluate_triggered_action(self, automaton: Automaton, state: State, signal_values: dict) -> Action | None:
+    def evaluate_triggered_action(
+        self, automaton: Automaton, state: State, signal_values: dict, session_id: int | None = None,
+    ) -> Action | None:
         """None whenever auto-tracking is frozen or `state` has nothing
         triggerable. Only decides which action fires from already-computed
-        signals — never whether they get computed at all."""
+        signals — never whether they get computed at all. `session_id`:
+        see EvaluationScopeBuilder.build."""
         if not self._auto_tracking_enabled or not state.has_triggerable_actions:
             return None
 
-        scope = self._scope_builder.build(automaton, state.key, signal_values)
+        scope = self._scope_builder.build(automaton, state.key, signal_values, session_id=session_id)
         return automaton.evaluate_triggers_action(state.key, scope)
 
     def apply_transition(
@@ -227,7 +230,7 @@ class TrackingEngine:
         session, for the OnEnterTask itself."""
         if not action.env and not action.on_enter:
             return
-        scope = self._scope_builder.build(automaton, state_key, signal_values)
+        scope = self._scope_builder.build(automaton, state_key, signal_values, session_id=session_id)
         if action.env:
             updates = automaton.eval_action_env(action, scope)
             if updates:
@@ -248,5 +251,5 @@ class TrackingEngine:
         irrelevant or already handled elsewhere."""
         if not action.on_enter:
             return
-        scope = self._scope_builder.build(automaton, state_key, None)
+        scope = self._scope_builder.build(automaton, state_key, None, session_id=session_id)
         scope["actuator"].schedule_on_enter(action, scope, session_id=session_id)

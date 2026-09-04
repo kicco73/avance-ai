@@ -46,7 +46,13 @@ const props = defineProps({
   // keep the two from ever both being set).
   sources: { type: Array, default: () => [] },
   sourcesLoading: { type: Boolean, default: true },
-  currentSourceName: { type: String, default: null }
+  currentSourceName: { type: String, default: null },
+  // True while the "Sources" branch header itself is selected — no
+  // individual source chosen yet (see FileExplorer.vue's own header
+  // click) — takes the editor pane over with an empty state, same as
+  // currentSourceName does for a real source, and just as mutually
+  // exclusive with a real file being open.
+  sourcesRootSelected: { type: Boolean, default: false }
 })
 
 // sources/<id>.csv — same convention ProjectEditor._source_archive
@@ -55,9 +61,13 @@ const currentSourceArchiveName = computed(() => (
   props.currentSourceName ? `sources/${props.currentSourceName}.csv` : null
 ))
 
+// Gates every "real file" view below — true only when neither a source
+// nor the Sources root itself is the current selection.
+const noSourceSelection = computed(() => !props.currentSourceName && !props.sourcesRootSelected)
+
 const emit = defineEmits([
   'start-explorer-drag', 'new-attachment', 'new-aspect', 'new-legal', 'new-source',
-  'select-file', 'select-source', 'upload-file',
+  'select-file', 'select-source', 'select-sources-root', 'upload-file',
   'jump-to-definition', 'select', 'saved', 'renamed'
 ])
 
@@ -94,12 +104,14 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
       :sources="sources"
       :sources-loading="sourcesLoading"
       :current-source-name="currentSourceName"
+      :sources-root-selected="sourcesRootSelected"
       @new-attachment="emit('new-attachment')"
       @new-aspect="emit('new-aspect')"
       @new-legal="emit('new-legal')"
       @new-source="emit('new-source')"
       @select-file="emit('select-file', $event)"
       @select-source="emit('select-source', $event)"
+      @select-sources-root="emit('select-sources-root')"
       @upload-file="emit('upload-file', $event)"
     />
 
@@ -108,6 +120,12 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
     <div class="edit-project-editor-pane">
       <p v-if="!historyCleared" class="edit-project-status">Loading…</p>
       <template v-else>
+        <div v-if="sourcesRootSelected" class="edit-project-source-empty-state">
+          <span class="edit-project-source-empty-icon">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          </span>
+          <p>Select a source, or add one.</p>
+        </div>
         <SourceContentPanel
           v-if="currentSourceName"
           :key="currentSourceName"
@@ -117,13 +135,13 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
           @saved="emit('saved', $event)"
         />
         <!-- Stays mounted (v-show, not v-if) even while a different file is
-             open, or a source is selected instead (see currentSourceName
-             above): its InspectorGraph is the only place the Inspector's
-             "State"/"Actions" selection is resolved from, so unmounting it
-             would drop a still-valid selection whenever an attachment (or
-             now a source) is viewed. -->
+             open, or a source (or the Sources root itself) is selected
+             instead (see noSourceSelection above): its InspectorGraph is
+             the only place the Inspector's "State"/"Actions" selection is
+             resolved from, so unmounting it would drop a still-valid
+             selection whenever an attachment (or now a source) is viewed. -->
         <IndexYmlEditorPanel
-          v-show="!currentSourceName && currentFileName === 'index.yml'"
+          v-show="noSourceSelection && currentFileName === 'index.yml'"
           ref="indexYmlEditorRef"
           :project-id="projectId"
           :attachment-files="attachmentFiles"
@@ -136,19 +154,19 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
           @saved="emit('saved', $event)"
         />
         <IndexCssEditorPanel
-          v-show="!currentSourceName && currentFileName === 'index.css'"
+          v-show="noSourceSelection && currentFileName === 'index.css'"
           ref="indexCssEditorRef"
           :project-id="projectId"
           :files="files"
           @saved="emit('saved', $event)"
         />
-        <div v-if="!currentSourceName && currentFileIsImage" class="edit-project-editor-attachment">
+        <div v-if="noSourceSelection && currentFileIsImage" class="edit-project-editor-attachment">
           <div class="edit-project-editor-content edit-project-editor-image">
             <img :key="currentFileName" :src="projectFileContentUrl(projectId, currentFileName)" :alt="currentFileName" />
           </div>
         </div>
         <MdEditorPanel
-          v-else-if="!currentSourceName && currentFileIsMarkdown"
+          v-else-if="noSourceSelection && currentFileIsMarkdown"
           :key="currentFileName"
           ref="mdEditorRef"
           :project-id="projectId"
@@ -158,7 +176,7 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
           @renamed="emit('renamed', $event)"
         />
         <div
-          v-else-if="!currentSourceName && currentFileName !== 'index.yml' && currentFileName !== 'index.css'"
+          v-else-if="noSourceSelection && currentFileName !== 'index.yml' && currentFileName !== 'index.css'"
           class="edit-project-editor-attachment"
         >
           <div class="edit-project-editor-toolbar">
@@ -222,4 +240,7 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
 .edit-project-editor-image { align-items: center; justify-content: center; overflow: auto; background: repeating-conic-gradient(#f0f0f0 0% 25%, #fafafa 0% 50%) 50% / 20px 20px; }
 .edit-project-editor-image img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .edit-project-status { margin: auto; color: #444; }
+.edit-project-source-empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.4rem; padding: 1rem; text-align: center; color: #777; }
+.edit-project-source-empty-icon { color: #3949ab; opacity: 0.6; }
+.edit-project-source-empty-state p { margin: 0; font-size: 0.9rem; }
 </style>

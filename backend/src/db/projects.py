@@ -186,6 +186,34 @@ class ProjectMixin:
             else:
                 Archive.update(content=content, content_type=content_type).where(Archive.id == existing.id).execute()
 
+    def write_archive_at_revision(self, project_id: str, archive_name: str, revision: int, content: bytes, content_type: str) -> None:
+        """Upserts one Archive row at an *exact* revision, bypassing
+        _ensure_draft_revision's own draft-fork/current-revision
+        resolution entirely — for a source's own per-session read cache
+        (tracking.sources.avance_archive), which must live alongside
+        whatever revision the reading session's own automaton is actually
+        pinned to, never wherever the project's current draft happens to
+        be by the time the cache write runs (a long-open session can
+        easily outlive a later publish)."""
+        existing = Archive.get_or_none(
+            (Archive.project == project_id) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
+        )
+        if existing is None:
+            Archive.create(project=project_id, archive_name=archive_name, revision=revision, content=content, content_type=content_type)
+        else:
+            Archive.update(content=content, content_type=content_type).where(Archive.id == existing.id).execute()
+
+    def delete_archives_with_prefix(self, project_id: str, prefix: str) -> None:
+        """Deletes every Archive row (any revision) whose name starts with
+        `prefix` — cache/sessions/<id>/'s own cleanup on session close
+        (ChatSessionManager.close_session) or delete (ChatService.
+        delete_session): a revision-agnostic scratch namespace written by
+        write_archive_at_revision above, never touched by the normal
+        draft/publish machinery, so it's cleaned up on its own schedule too."""
+        Archive.delete().where(
+            (Archive.project == project_id) & (Archive.archive_name.startswith(prefix))
+        ).execute()
+
     def overwrite_current_draft_file(self, project_id: str, archive_name: str, content: bytes, content_type: str) -> None:
         """In-place content overwrite of the *current* draft revision's own
         Archive row — unlike save_project_files, never forks a new draft

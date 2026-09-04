@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from db import Db
 from logging_factory import LoggerFactory
+from project.archive.layout import CACHE_DIR
 from session import Session
 
 if TYPE_CHECKING:
@@ -138,6 +139,10 @@ class ChatSessionManager(object):
             return session
         now = now if now is not None else datetime.utcnow()
         self._db.close_chat_session(session["id"], now, reason)
+        # A source's own per-session read cache (tracking.sources.
+        # avance_archive) — scratch space scoped to this session's whole
+        # lifetime, never needed again once it's over.
+        self._db.delete_archives_with_prefix(session["project_id"], f"{CACHE_DIR}/sessions/{session['id']}/")
         logger.info(
             "close_session(): session_id=%s username=%s project_id=%s session_channel=%s "
             "current_channel=%s reason=%s",

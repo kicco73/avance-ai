@@ -40,8 +40,10 @@ def _automaton(project_id: str, revision: int, sources: list[Source] | None = No
     return automaton
 
 
-def _driver(automaton: Automaton, db, archive_path: str, name: str = "pino") -> AvanceArchiveSource:
-    return AvanceArchiveSource(db, automaton, name, archive_path)
+def _driver(
+    automaton: Automaton, db, archive_path: str, name: str = "pino", session_id: int | None = None,
+) -> AvanceArchiveSource:
+    return AvanceArchiveSource(db, automaton, name, archive_path, session_id=session_id)
 
 
 def test_parse_source_url_splits_scheme_and_path():
@@ -125,3 +127,59 @@ def test_source_namespace_raises_for_an_undeclared_name(db):
 
     with pytest.raises(ValueError):
         SourceNamespace(db, automaton).nope
+
+
+class TestPerSessionReadCache:
+    """With no session_id (a wake-up re-evaluation, a test replay),
+    read()/select() go straight to the canonical archive and never write
+    a cache copy — same behavior as before this cache existed. With one,
+    they read through cache/sessions/<id>/<archive path> instead,
+    duplicating the canonical content into it on a miss."""
+
+    def test_no_session_id_reads_canonical_directly_and_writes_no_cache_copy(self, db):
+        revision = _seed(db, {"notes.txt": b"hello"}, {"notes.txt": "text/plain"})
+        automaton = _automaton(PROJECT_ID, revision)
+
+        assert _driver(automaton, db, "notes.txt", session_id=None).read() == "hello"
+        assert not any(name.startswith("cache/") for name in db.list_archives(PROJECT_ID, revision=revision))
+
+    def test_a_session_id_duplicates_the_canonical_content_into_its_own_cache_copy_on_first_read(self, db):
+        revision = _seed(db, {"notes.txt": b"hello"}, {"notes.txt": "text/plain"})
+        automaton = _automaton(PROJECT_ID, revision)
+
+        assert _driver(automaton, db, "notes.txt", session_id=42).read() == "hello"
+
+        cached = db.get_archive(PROJECT_ID, "cache/sessions/42/notes.txt", revision=revision)
+        assert cached == b"hello"
+
+    def test_a_cache_hit_is_read_straight_from_its_own_copy_without_touching_the_canonical_content(self, db):
+        revision = _seed(db, {"notes.txt": b"original"}, {"notes.txt": "text/plain"})
+        automaton = _automaton(PROJECT_ID, revision)
+        _driver(automaton, db, "notes.txt", session_id=42).read()  # populates the cache copy
+
+        # The project gets edited/republished underneath the still-open
+        # session — the canonical archive now reads differently...
+        db.save_project_files(PROJECT_ID, {"notes.txt": b"edited"}, {"notes.txt": "text/plain"})
+
+        # ...but this session's own cached copy is untouched, so it keeps
+        # seeing exactly what it first read, all conversation long.
+        assert _driver(automaton, db, "notes.txt", session_id=42).read() == "original"
+
+    def test_two_different_sessions_get_their_own_independent_cache_copies(self, db):
+        revision = _seed(db, {"notes.txt": b"hello"}, {"notes.txt": "text/plain"})
+        automaton = _automaton(PROJECT_ID, revision)
+
+        _driver(automaton, db, "notes.txt", session_id=1).read()
+        _driver(automaton, db, "notes.txt", session_id=2).read()
+
+        assert db.get_archive(PROJECT_ID, "cache/sessions/1/notes.txt", revision=revision) == b"hello"
+        assert db.get_archive(PROJECT_ID, "cache/sessions/2/notes.txt", revision=revision) == b"hello"
+
+    def test_select_also_reads_through_the_session_cache(self, db):
+        revision = _seed(db, {"cities.csv": CSV.encode()}, {"cities.csv": "text/csv"})
+        automaton = _automaton(PROJECT_ID, revision)
+
+        result = _driver(automaton, db, "cities.csv", session_id=7).select("paris")
+
+        assert result == "city,country\nParis,France\nparis,Texas\n"
+        assert db.get_archive(PROJECT_ID, "cache/sessions/7/cities.csv", revision=revision) == CSV.encode()

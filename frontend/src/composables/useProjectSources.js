@@ -15,6 +15,13 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
   // exclusive with currentFileName's own selection (see EditProjectView.vue's
   // selectSource/selectFile wiring): never both truthy at once.
   const currentSourceName = ref(null)
+  // True while the "Sources" branch header itself is the selection — no
+  // individual source chosen yet (see FileExplorer.vue's own header
+  // click). Distinct from currentSourceName being merely null/falsy, so
+  // ProjectDesignPanel.vue's file-view conditions and InspectorStateTab.vue's
+  // isBehaviorContext can tell "nothing to do with Sources" apart from
+  // "Sources itself, no pick made" without a false-negative on either.
+  const sourcesRootSelected = ref(false)
   const deletingSource = ref(null)
 
   const selectedSource = computed(
@@ -33,7 +40,13 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
   }
 
   function selectSource(name) {
+    sourcesRootSelected.value = false
     currentSourceName.value = name
+  }
+
+  function selectSourcesRoot() {
+    currentSourceName.value = null
+    sourcesRootSelected.value = true
   }
 
   function handleAddSource() {
@@ -41,6 +54,7 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
       try {
         const source = await postAddSource(projectId)
         await loadSources()
+        sourcesRootSelected.value = false
         currentSourceName.value = source.name
         flashRecentlyAdded(`source:${source.name}`)
       } catch {
@@ -71,7 +85,10 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
       try {
         await deleteProjectSource(projectId, name)
         await loadSources()
-        if (currentSourceName.value === name) currentSourceName.value = null
+        if (currentSourceName.value === name) {
+          currentSourceName.value = null
+          sourcesRootSelected.value = true
+        }
       } catch {
         // already surfaced via apiFetch
       } finally {
@@ -81,7 +98,7 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
   }
 
   return {
-    sourcesLoading, sources, currentSourceName, selectedSource, deletingSource,
-    loadSources, selectSource, handleAddSource, handleSetSourceField, handleDeleteSource,
+    sourcesLoading, sources, currentSourceName, sourcesRootSelected, selectedSource, deletingSource,
+    loadSources, selectSource, selectSourcesRoot, handleAddSource, handleSetSourceField, handleDeleteSource,
   }
 }

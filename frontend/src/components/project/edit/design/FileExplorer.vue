@@ -12,10 +12,14 @@ const props = defineProps({
   // [{ source: { name, ui_label, ... } }, ...] shape.
   sources: { type: Array, default: () => [] },
   sourcesLoading: { type: Boolean, default: true },
-  currentSourceName: { type: String, default: null }
+  currentSourceName: { type: String, default: null },
+  sourcesRootSelected: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['new-attachment', 'new-aspect', 'new-legal', 'new-source', 'select-file', 'select-source', 'upload-file'])
+const emit = defineEmits([
+  'new-attachment', 'new-aspect', 'new-legal', 'new-source',
+  'select-file', 'select-source', 'select-sources-root', 'upload-file',
+])
 
 const fileInputRef = ref(null)
 
@@ -88,6 +92,17 @@ const showSourcesBranch = computed(() => declaredSources.value.length > 0)
 const expanded = ref({ behavior: false, theme: false, sources: false })
 function toggleBranch(key) {
   expanded.value[key] = !expanded.value[key]
+}
+
+// Clicking the "Sources" label itself now selects that branch's own root
+// context (see EditProjectView.vue's selectSourcesRootNode/ProjectDesignPanel.vue's
+// empty state) — same interaction as Behavior/Aspect's own header button
+// below, which selects index.yml/index.css while the caret alone toggles
+// the branch. Also expands the branch, so the list it's showing an empty
+// state for is right there to pick from.
+function selectSourcesRoot() {
+  expanded.value.sources = true
+  emit('select-sources-root')
 }
 
 // Reveals whichever branch holds the file a jump-to-definition or attachment
@@ -198,24 +213,17 @@ watch(
         </div>
       </li>
 
-      <li v-if="hasLegalTerms" class="file-explorer-branch">
-        <div class="file-explorer-node-row">
-          <span class="file-explorer-caret-spacer"></span>
-          <button
-            class="file-explorer-item"
-            :class="{ 'file-explorer-item-active': currentFileName === LEGAL_TERMS_FILE_NAME }"
-            title="legal/terms.md"
-            @click="emit('select-file', LEGAL_TERMS_FILE_NAME)"
-          >
-            Legal
-          </button>
-        </div>
-      </li>
-
       <li v-if="showSourcesBranch" class="file-explorer-branch">
         <div class="file-explorer-node-row">
           <button class="file-explorer-caret" :class="{ 'file-explorer-caret-open': expanded.sources }" title="Toggle" @click="toggleBranch('sources')">▸</button>
-          <span class="file-explorer-item file-explorer-item-static" @click="toggleBranch('sources')">Sources</span>
+          <button
+            class="file-explorer-item"
+            :class="{ 'file-explorer-item-active': sourcesRootSelected }"
+            title="Sources"
+            @click="selectSourcesRoot"
+          >
+            Sources
+          </button>
         </div>
         <div class="file-explorer-children-wrap" :class="{ 'file-explorer-children-wrap-open': expanded.sources }">
           <ul class="file-explorer-children">
@@ -230,6 +238,20 @@ watch(
               </button>
             </li>
           </ul>
+        </div>
+      </li>
+
+      <li v-if="hasLegalTerms" class="file-explorer-branch">
+        <div class="file-explorer-node-row">
+          <span class="file-explorer-caret-spacer"></span>
+          <button
+            class="file-explorer-item"
+            :class="{ 'file-explorer-item-active': currentFileName === LEGAL_TERMS_FILE_NAME }"
+            title="legal/terms.md"
+            @click="emit('select-file', LEGAL_TERMS_FILE_NAME)"
+          >
+            Legal
+          </button>
         </div>
       </li>
     </ul>
@@ -282,7 +304,4 @@ watch(
 .file-explorer-item-child { font-size: 0.82rem; color: #555; }
 .file-explorer-item:hover { background: #f0f4fa; }
 .file-explorer-item-active { background: #e4ecf9; color: #2c4d7a; font-weight: 600; }
-/* "Sources" itself (unlike Behavior/Aspect/Legal) has no file of its own
-   to open — clicking it just toggles the branch, same as its caret. */
-.file-explorer-item-static { font-weight: 600; color: #555; }
 </style>

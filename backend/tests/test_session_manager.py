@@ -406,6 +406,22 @@ def test_close_session_does_not_touch_datetime_end_or_end_state(manager, project
     assert closed["close_reason"] == "manual-user"
 
 
+@pytest.mark.contract
+def test_close_session_deletes_its_own_source_read_cache_but_nothing_else(manager, project_service, db):
+    session = _create(manager, project_service, "user", "proj", "start")
+    session_id = session["id"]
+    db.write_archive_at_revision("proj", f"cache/sessions/{session_id}/sources/pino.csv", 0, b"cached", "text/csv")
+    db.write_archive_at_revision("proj", "cache/sessions/999/sources/pino.csv", 0, b"other session", "text/csv")
+    db.write_archive_at_revision("proj", "sources/pino.csv", 0, b"canonical", "text/csv")
+
+    manager.close_session(session, "manual-user")
+
+    names = db.list_archives("proj", revision=0)
+    assert f"cache/sessions/{session_id}/sources/pino.csv" not in names
+    assert "cache/sessions/999/sources/pino.csv" in names
+    assert "sources/pino.csv" in names
+
+
 @pytest.mark.regression
 def test_touch_chat_session_is_a_noop_on_a_closed_session(manager, project_service, db):
     session = _create(manager, project_service, "user", "proj", "start")

@@ -65,6 +65,17 @@ BEHAVIOUR_DIR = "behaviour"
 # alongside the source (ProjectEditor.add_source) and renamed/deleted in
 # lockstep with it (set_source_field/delete_source).
 SOURCES_DIR = "sources"
+# A purely runtime, per-chat-session scratch namespace — never part of a
+# project's own versioned definition (ProjectManager.export_project_zip
+# omits every archive under here entirely), never user-facing, never
+# reached through ArchiveLayout.canonicalize_name below. Today the only
+# thing living under it is AvanceArchiveSource's own per-session read
+# cache, at `{CACHE_DIR}/sessions/<chat session id>/{SOURCES_DIR}/<id>.csv`
+# (Db.write_archive_at_revision writes it, Db.delete_archives_with_prefix
+# — called from ChatSessionManager.close_session/ChatService.
+# delete_session — cleans up everything under a closed/deleted session's
+# own subtree).
+CACHE_DIR = "cache"
 ROOT_FILE_NAMES = {"index.yml", "index.css"}
 ASPECT_EXTENSIONS = IMAGE_EXTENSIONS | {".css"}
 BEHAVIOUR_EXTENSIONS = {".txt", ".md", ".csv"}

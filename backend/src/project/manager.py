@@ -22,7 +22,7 @@ from tracking.session_import import SessionImportManager
 from .inspector import ProjectInspector
 from .archive.automaton_loader import AutomatonLoader
 from .archive.layout import (
-    ArchiveLayout, IMAGE_CONTENT_TYPE_BY_EXTENSION, IMAGE_EXTENSIONS, LEGAL_TERMS_FILE_NAME,
+    CACHE_DIR, ArchiveLayout, IMAGE_CONTENT_TYPE_BY_EXTENSION, IMAGE_EXTENSIONS, LEGAL_TERMS_FILE_NAME,
     SESSIONS_EXPORT_FILENAME, TESTS_EXPORT_FILENAME, TEXT_CONTENT_TYPE_BY_EXTENSION,
 )
 from .archive.zip_importer import ZipImporter
@@ -659,7 +659,10 @@ class ProjectManager:
     def export_project_zip(self, project_id: str) -> bytes:
         """`project_id`'s files, round-trippable back through
         put_project, plus a SESSIONS_EXPORT_FILENAME holding every
-        *imported* session, omitted when there are none."""
+        *imported* session, omitted when there are none. Everything under
+        CACHE_DIR (a source's own per-session read cache — see
+        tracking.sources.avance_archive) is omitted entirely: pure runtime
+        scratch space, never part of a project's own versioned definition."""
         archives = self._db.get_archives(project_id)
         if archives is None:
             raise FileNotFoundError(f"Project '{project_id}' does not exist.")
@@ -667,6 +670,8 @@ class ProjectManager:
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
             for archive_name, archive_content in archives.items():
+                if archive_name.startswith(f"{CACHE_DIR}/"):
+                    continue
                 zf.writestr(archive_name, archive_content)
             exported_sessions = self._session_export_manager.export_sessions(
                 None, project_id, type=('live', 'imported'),

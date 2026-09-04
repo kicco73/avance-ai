@@ -48,6 +48,13 @@ const props = defineProps({
   // selected file does for showFileCard.
   selectedSource: { type: Object, default: null },
   deletingSource: { type: String, default: null },
+  // True while the design tree's "Sources" branch header itself is
+  // selected — no individual source chosen yet (see FileExplorer.vue's
+  // own header click). Takes the tab over the same way isSourceContext
+  // does for a real source, except there's no card to show for it: just
+  // suppresses the project/state/file cards that would otherwise leak
+  // through from whatever was selected before.
+  sourcesRootSelected: { type: Boolean, default: false },
   // Auto mode's own selection (see EditProjectView.vue's autoSelected*
   // computeds) — a session read-only, in place of selectedElement's
   // state/action. { id, title, comment, type, ... }, same shape as
@@ -87,8 +94,10 @@ const isSourceContext = computed(() => props.selectedSource != null)
 // Behavior node is selected. The state/action detail card and "+ Add state"
 // only make sense then; a Theme file or a Behavior attachment gets the file
 // card below instead.
-const isBehaviorContext = computed(() => !isSourceContext.value && (!props.currentFileName || props.currentFileName === 'index.yml'))
-const showFileCard = computed(() => !isSourceContext.value && !isBehaviorContext.value)
+const isBehaviorContext = computed(() => (
+  !isSourceContext.value && !props.sourcesRootSelected && (!props.currentFileName || props.currentFileName === 'index.yml')
+))
+const showFileCard = computed(() => !isSourceContext.value && !isBehaviorContext.value && !props.sourcesRootSelected)
 
 // Same session, shown once with a combined badge rather than two
 // identical cards — mirrors LabelProjectView.vue's own Info tab.
@@ -146,7 +155,7 @@ onMounted(loadProjectMetadata)
       @delete="emit('delete-source', selectedSource)"
     />
     <InspectorProjectCard
-      v-if="!readOnly && !selectedElement && !isSourceContext"
+      v-if="!readOnly && !selectedElement && !isSourceContext && !sourcesRootSelected"
       :project="projectMetadata"
       :editable="!readOnly"
       @set-field="(field, value) => emit('set-project-field', field, value)"

@@ -25,9 +25,14 @@ SOURCE_DRIVERS: dict[str, type[SourceDriver]] = {
 
 
 class SourceNamespace:
-    def __init__(self, db: Db, automaton: Automaton) -> None:
+    def __init__(self, db: Db, automaton: Automaton, session_id: int | None = None) -> None:
         self._db = db
         self._automaton = automaton
+        # None outside a real chat session (see tracking.evaluation_scope.
+        # EvaluationScopeBuilder.build) — passed straight through to every
+        # driver so it can decide for itself whether/how to use it
+        # (AvanceArchiveSource's own per-session read cache).
+        self._session_id = session_id
 
     def __getattr__(self, name: str) -> Any:
         if name.startswith("__"):
@@ -37,4 +42,4 @@ class SourceNamespace:
             raise ValueError(f"source.{name}: no such source declared in this project's own 'sources:' section.")
         scheme, path = parse_source_url(source.url)
         driver_cls = SOURCE_DRIVERS[scheme]
-        return driver_cls(self._db, self._automaton, name, path)
+        return driver_cls(self._db, self._automaton, name, path, session_id=self._session_id)

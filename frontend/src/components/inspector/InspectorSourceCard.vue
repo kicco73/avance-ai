@@ -117,8 +117,13 @@ function handleDelete() {
 </template>
 
 <style scoped>
+/* No max-height cap here (unlike other cards reusing this same class
+   name in their own scoped styles): this card is the Info tab's only
+   content while a source is selected (see InspectorStateTab.vue's own
+   isSourceContext, which hides every other card), so it should use
+   whatever height the tab actually has, not an arbitrary fraction of it. */
 .inspector-source-card { margin-top: 0; cursor: default; }
-.inspector-detail-card { max-height: 45%; display: flex; flex-direction: column; border-radius: 8px; border: 1px solid #eee; background: #fafafa; overflow: visible; }
+.inspector-detail-card { display: flex; flex-direction: column; border-radius: 8px; border: 1px solid #eee; background: #fafafa; overflow: visible; }
 .inspector-detail-header { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem 0.6rem; border-bottom: 1px solid #eee; flex-shrink: 0; }
 .inspector-detail-header-top { display: flex; align-items: center; gap: 0.5rem; }
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
