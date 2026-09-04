@@ -79,6 +79,15 @@ class WsAdapter(object):
                             "type": "text",
                             "content": value,
                         })
+                    elif key == "tool_call":
+                        await websocket.send_json({
+                            "type": "tool_call",
+                            "status_text": value.get("status_text", ""),
+                        })
+                    elif key == "tool_result":
+                        await websocket.send_json({
+                            "type": "tool_result",
+                        })
 
                 try:
 

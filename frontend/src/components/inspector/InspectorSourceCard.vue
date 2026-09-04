@@ -23,7 +23,7 @@ const emit = defineEmits(['set-field', 'delete'])
 
 // Only one driver exists today — "avance", url's own scheme — so this is
 // a single-option dropdown by design, not a stand-in for a missing feature.
-const DRIVER_OPTIONS = [{ value: 'avance', label: 'Avance Archive' }]
+const DRIVER_OPTIONS = [{ value: 'avance', label: 'Avance Embedded' }]
 
 const editUiLabel = ref('')
 const editUiDescription = ref('')

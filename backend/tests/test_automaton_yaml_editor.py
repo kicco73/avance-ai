@@ -624,11 +624,11 @@ states:
       - name: go-b
         ui-label: Go to B
         target: b
-        trigger: source.pino.read() != 'nope'
+        trigger: source.pino.select('x') != 'nope'
       - name: go-c
         ui-label: Go to C
         target: c
-        trigger: source.pino.select('x') != 'nope' and source.cities.read() != 'nope'
+        trigger: source.pino.select('x') != 'nope' and source.cities.select('x') != 'nope'
   b:
     ui-label: State B
     contextual-prompt: there
@@ -716,15 +716,15 @@ class TestRenameSource:
         automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
         go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
-        assert go_b.trigger == "source.flight_records.read() != 'nope'"
-        assert go_c.trigger == "source.flight_records.select('x') != 'nope' and source.cities.read() != 'nope'"
+        assert go_b.trigger == "source.flight_records.select('x') != 'nope'"
+        assert go_c.trigger == "source.flight_records.select('x') != 'nope' and source.cities.select('x') != 'nope'"
 
     def test_a_trigger_not_referencing_the_source_is_left_untouched(self):
         editor = _editor(SOURCE_BASE_YAML)
         editor.rename_source("pino", "flight_records")
         automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
         go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
-        assert "source.cities.read() != 'nope'" in go_c.trigger
+        assert "source.cities.select('x') != 'nope'" in go_c.trigger
 
 
 class TestDeleteSource:
@@ -793,3 +793,77 @@ class TestSerializeRoundTrip:
         assert len(before_lines) == len(after_lines)
         diffs = [i for i, (a, b) in enumerate(zip(before_lines, after_lines)) if a != b]
         assert diffs == [before_lines.index("  b:") + 1]
+
+
+ON_ENTER_SOURCE_READ_YAML = """\
+project:
+  id: proj
+init-action:
+  target: a
+sources:
+  pino:
+    url: avance:flights.csv
+  unconfigured:
+    ui-label: Not set up yet
+states:
+  a:
+    ui-label: State A
+    contextual-prompt: hi
+    actions:
+      - name: go-b
+        ui-label: Go to B
+        target: b
+        on-enter: |
+          actuator.notify('Hi', source.pino.read())
+  b:
+    ui-label: State B
+    contextual-prompt: there
+"""
+
+ON_ENTER_SOURCE_READ_ARCHIVES = {"flights.csv": "a,b\n1,2\n"}
+
+
+class TestRewriteLegacySourceReadCalls:
+    def test_rewrites_a_zero_arg_read_call_into_attachment_read(self):
+        editor = _editor(ON_ENTER_SOURCE_READ_YAML)
+        unresolved = editor.rewrite_legacy_source_read_calls()
+        assert unresolved == set()
+        automaton = _builds(editor.serialize(), ON_ENTER_SOURCE_READ_ARCHIVES)
+        go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
+        assert go_b.on_enter.strip() == "actuator.notify('Hi', attachment.read('flights.csv'))"
+
+    def test_leaves_on_enter_untouched_when_it_has_no_read_call(self):
+        content = ON_ENTER_SOURCE_READ_YAML.replace("source.pino.read()", "'nothing to migrate here'")
+        editor = _editor(content)
+        unresolved = editor.rewrite_legacy_source_read_calls()
+        assert unresolved == set()
+        assert editor.serialize() == content
+
+    def test_returns_the_source_name_when_no_declared_avance_url_resolves_it(self):
+        content = ON_ENTER_SOURCE_READ_YAML.replace("source.pino.read()", "source.unconfigured.read()")
+        editor = _editor(content)
+        unresolved = editor.rewrite_legacy_source_read_calls()
+        assert unresolved == {"unconfigured"}
+        assert editor.serialize() == content  # left exactly as it was
+
+    def test_a_trigger_s_own_read_call_is_never_touched(self):
+        content = ON_ENTER_SOURCE_READ_YAML.replace(
+            "        on-enter: |\n          actuator.notify('Hi', source.pino.read())\n",
+            "        trigger: \"source.pino.read() != 'nope'\"\n",
+        )
+        editor = _editor(content)
+        unresolved = editor.rewrite_legacy_source_read_calls()
+        assert unresolved == set()
+        assert editor.serialize() == content  # trigger: has no attachment.read equivalent
+
+    def test_an_untouched_sibling_statement_keeps_its_exact_original_text(self):
+        content = ON_ENTER_SOURCE_READ_YAML.replace(
+            "on-enter: |\n          actuator.notify('Hi', source.pino.read())\n",
+            "on-enter: |\n          actuator.celebrate()\n          actuator.notify('Hi', source.pino.read())\n",
+        )
+        editor = _editor(content)
+        editor.rewrite_legacy_source_read_calls()
+        automaton = _builds(editor.serialize(), ON_ENTER_SOURCE_READ_ARCHIVES)
+        go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
+        assert "actuator.celebrate()" in go_b.on_enter
+        assert "attachment.read('flights.csv')" in go_b.on_enter

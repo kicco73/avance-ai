@@ -100,6 +100,9 @@ class _FakeToolSet:
     def specs(self) -> list[ToolSpec]:
         return self._specs
 
+    def status_text(self, name: str) -> str:
+        return f"Searching {name}…"
+
     async def call(self, name: str, arguments: dict) -> str:
         self.calls.append((name, arguments))
         return self._results.pop(0)

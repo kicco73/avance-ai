@@ -40,6 +40,7 @@ class SessionExportManager:
             for row in self._db.get_signals(session_id)
             if row['message_id'] is not None
         }
+        tool_calls_by_message = self._db.get_tool_calls_by_message(session_id)
         return {
             'name': session['title'],
             'username': session['username'],
@@ -53,13 +54,15 @@ class SessionExportManager:
             'closed_at': _utc_iso(session['closed_at']),
             'close_reason': session['close_reason'],
             'messages': [
-                self._export_message(message, tracking_by_message.get(message['id']))
+                self._export_message(
+                    message, tracking_by_message.get(message['id']), tool_calls_by_message.get(message['id']),
+                )
                 for message in self._db.get_messages(session_id)
             ],
         }
 
     @staticmethod
-    def _export_message(message: dict, tracking: dict | None) -> dict:
+    def _export_message(message: dict, tracking: dict | None, tool_calls: list[dict] | None) -> dict:
         entry = {
             'role': message['role'],
             'text': message['content'],
@@ -68,6 +71,8 @@ class SessionExportManager:
         }
         if message['tokens'] is not None:
             entry['tokens'] = message['tokens']
+        if tool_calls is not None:
+            entry['tool_calls'] = tool_calls
         if tracking is None:
             return entry
         entry.update({

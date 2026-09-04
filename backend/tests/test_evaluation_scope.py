@@ -10,6 +10,7 @@ import pytest
 
 from automaton.automaton import Action, Automaton, MemoryArchive, Source, State
 from metrics.metric_service import MetricService
+from tracking.actuators import AttachmentNamespace
 from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
@@ -59,6 +60,7 @@ def test_scope_always_includes_every_namespace(db):
     assert scope["session"].metric.engagement() is not None
     assert scope["user"]["email"] == USERNAME
     assert isinstance(scope["source"], SourceNamespace)
+    assert isinstance(scope["attachment"], AttachmentNamespace)
     assert scope["metric"].retention() is not None
 
 
@@ -116,7 +118,7 @@ def test_user_fact_is_usable_in_a_trigger_end_to_end(db):
 
 
 def test_declared_source_is_usable_in_an_env_expression_end_to_end(db):
-    """source.<name>.read() reads straight from Db, at the same
+    """source.<name>.select(...) reads straight from Db, at the same
     (project_name, revision) the automaton itself was loaded from (see
     Automaton.set_storage_location) — never automaton.attachments'
     in-memory copy, which is why this seeds the file through
@@ -126,7 +128,7 @@ def test_declared_source_is_usable_in_an_env_expression_end_to_end(db):
     revision = db.get_project_revision(PROJECT_ID)
     action = Action(
         name="advance", ui_label="Advance", ui_button="Advance", target="b",
-        trigger="signal.mood >= 1", env={"notes": "source.pino.read()"},
+        trigger="signal.mood >= 1", env={"notes": "source.pino.select('hello')"},
     )
     state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
     automaton = Automaton(
@@ -140,8 +142,56 @@ def test_declared_source_is_usable_in_an_env_expression_end_to_end(db):
 
     scope = _builder(db).build(automaton, "a", {})
 
-    assert scope["source"].pino.read() == "hello from the archive"
+    assert scope["source"].pino.select("hello") == "hello from the archive"
     assert Automaton.eval_action_env(action, scope) == {"notes": "hello from the archive"}
+
+
+def test_attachment_read_is_usable_from_the_actuator_view_of_a_scope_end_to_end(db):
+    """attachment.read(name), like source.<name>.select, reads straight
+    from Db at the automaton's own pinned (project_id, revision) — never
+    automaton.attachments' in-memory copy — and stays present in the
+    actuator view of the scope an on-enter line actually runs against
+    (see test_the_actuator_view_of_a_scope_has_no_session, which drops
+    only `session`)."""
+    db.ensure_project(PROJECT_ID)
+    db.save_project_files(PROJECT_ID, {"behaviour/policy.txt": b"be kind"}, {"behaviour/policy.txt": "text/plain"})
+    revision = db.get_project_revision(PROJECT_ID)
+    automaton = _automaton_with_trigger("signal.mood >= 1")
+    automaton.project_id = PROJECT_ID
+    automaton.set_storage_location(revision)
+
+    scope = _builder(db).build(automaton, "a", {})
+    actuator_scope = scope.for_actuators()
+
+    assert scope["attachment"].read("policy.txt") == "be kind"
+    assert actuator_scope["attachment"].read("policy.txt") == "be kind"
+
+
+def test_attachment_read_raises_for_an_unknown_name(db):
+    db.ensure_project(PROJECT_ID)
+    revision = db.get_project_revision(PROJECT_ID)
+    automaton = _automaton_with_trigger("signal.mood >= 1")
+    automaton.project_id = PROJECT_ID
+    automaton.set_storage_location(revision)
+
+    scope = _builder(db).build(automaton, "a", {})
+
+    with pytest.raises(ValueError, match="not found"):
+        scope["attachment"].read("nope.txt")
+
+
+def test_attachment_read_raises_for_a_binary_file(db):
+    db.ensure_project(PROJECT_ID)
+    db.save_project_files(PROJECT_ID, {"logo.png": b"\x89PNG"}, {"logo.png": "image/png"})
+    revision = db.get_project_revision(PROJECT_ID)
+    automaton = _automaton_with_trigger("signal.mood >= 1")
+    automaton.project_id = PROJECT_ID
+    automaton.set_storage_location(revision)
+
+    scope = _builder(db).build(automaton, "a", {})
+
+    with pytest.raises(ValueError, match="binary file"):
+        scope["attachment"].read("logo.png")
 
 
 def test_env_action_set_value_is_usable_in_a_trigger_end_to_end(db):

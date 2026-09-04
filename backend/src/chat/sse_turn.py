@@ -26,6 +26,15 @@ class SseChatTurn(object):
             await self._events.put(("chunk", {"content": value}))
         elif key == "text":
             await self._events.put(("text", {"content": value}))
+        elif key == "tool_call":
+            # Backend-composed status_text (e.g. "Searching Flights…"),
+            # shown verbatim as a transient line while the call is in
+            # flight — see ai.ai_service.AiService's own tool-call loop.
+            await self._events.put(("tool_call", {"status_text": value.get("status_text", "")}))
+        elif key == "tool_result":
+            # No payload needed — this event's only job is telling
+            # whoever's showing the 'tool_call' line above to clear it.
+            await self._events.put(("tool_result", {}))
 
     def response(self) -> StreamingResponse:
         return StreamingResponse(self._stream(), media_type="text/event-stream")

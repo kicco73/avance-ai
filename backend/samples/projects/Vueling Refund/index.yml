@@ -36,7 +36,7 @@ states:
         target: verify_entitlement
         trigger: "env.customer_record != '' and signal.pnr_provided"
         env:
-          flight_record: source.flight_records.read()
+          flight_record: source.flight_records.select('')
       - name: go_to_booking_not_found
         ui-label: "Booking not found"
         target: booking_not_found

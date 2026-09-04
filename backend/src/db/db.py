@@ -154,6 +154,23 @@ class Db(
         finally:
             dest_conn.close()
 
+    def backup_now(self, reason: str) -> str | None:
+        """Same timestamped-backup-plus-warning dance
+        _apply_migration_strategy/_repair_indexes_if_inconsistent already
+        do for themselves before mutating data in bulk — exposed here for
+        any other one-off, boot-time data migration that needs the same
+        safety net before it starts rewriting rows. None (no backup
+        taken) when there's no real database file yet to back up — a
+        fresh :memory: database, e.g. in tests — mirroring the same
+        os.path.exists guard _apply_migration_strategy already uses."""
+        path = self.backup_file_path()
+        if not os.path.exists(path):
+            return None
+        backup_path = self._timestamped_backup_path(path)
+        self._backup_to_path(backup_path)
+        logger.warning("Database at '%s' is about to be bulk-migrated (%s) — backed it up to '%s' first.", path, reason, backup_path)
+        return backup_path
+
     def export_backup(self) -> bytes:
         fd, tmp_path = tempfile.mkstemp(suffix='.db')
         os.close(fd)

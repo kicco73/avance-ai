@@ -9,8 +9,6 @@ the Gemini SDK's async client stubbed, never a real network call.
 """
 from __future__ import annotations
 
-import json
-
 import pytest
 from google.genai import types
 
@@ -106,6 +104,9 @@ class _FakeToolSet:
 
     def specs(self) -> list[ToolSpec]:
         return self._specs
+
+    def status_text(self, name: str) -> str:
+        return f"Searching {name}…"
 
     async def call(self, name: str, arguments: dict) -> str:
         self.calls.append((name, arguments))

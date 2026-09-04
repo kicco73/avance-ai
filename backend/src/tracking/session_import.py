@@ -179,6 +179,10 @@ class SessionImportManager:
             tokens=message.get('tokens'),
             timestamp=_parse_iso(message.get('timestamp')),
         )
+        if message.get('tool_calls') is not None:
+            self._db.record_tool_calls(
+                session_id, message['tool_calls'], message_id=message_id, timestamp=_parse_iso(message.get('timestamp')),
+            )
         if not any(message.get(field) is not None for field in self._TRACKING_FIELDS):
             return
         self._db.import_tracking_row(

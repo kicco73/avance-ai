@@ -318,6 +318,16 @@ class ProjectMixin:
             for row in Archive.select(Archive.project, Archive.archive_name).distinct()
         ]
 
+    def list_index_yml_revisions(self) -> list[tuple[str, int]]:
+        """Every (project_id, revision) pair with its own 'index.yml' row
+        — every revision ever stored, not just a project's current or
+        published one. For a boot-time migration that must inspect every
+        historical index.yml, not just the live ones."""
+        return [
+            (row.project_id, row.revision)
+            for row in Archive.select(Archive.project, Archive.revision).where(Archive.archive_name == "index.yml")
+        ]
+
     def rename_archive(
         self, project_id: str, old_name: str, new_name: str,
         updated_files: dict[str, bytes] | None = None, content_types: dict[str, str] | None = None,

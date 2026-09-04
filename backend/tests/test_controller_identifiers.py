@@ -73,8 +73,8 @@ def test_returns_one_dict_per_namespace_for_the_active_project(client):
     body = response.json()
     # "automaton" is always present, even empty with no other project.
     assert set(body) == {
-        "signal", "env", "session", "session.metric", "user", "source", "actuator", "metric", "automaton",
-        "datetime", "datetime.timezone",
+        "signal", "env", "session", "session.metric", "user", "source", "actuator", "attachment", "metric",
+        "automaton", "datetime", "datetime.timezone",
     }
     assert body["automaton"] == {}
     assert body["signal"] == {"myOwnSignal": "whatever this measures"}
@@ -190,7 +190,7 @@ def test_source_namespace_lists_one_entry_per_declared_source(client):
 
     assert response.status_code == 200
     body = response.json()
-    assert set(body["source.pino"]) == {"read", "select"}
+    assert set(body["source.pino"]) == {"select"}
     # A source with no url yet (see AutomatonBuilder._build_source) is
     # still listed under its own name, just with nothing to call on it.
     assert body["source.unconfigured"] == {}

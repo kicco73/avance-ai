@@ -101,6 +101,7 @@ class SessionImportMessageJson(BaseModel):
     expected_values: dict[str, int | float | None] | None = None
     comment: str | None = None
     origin: str | None = None
+    tool_calls: list[dict] | None = None
 
 
 class SessionImportJsonRequest(BaseModel):

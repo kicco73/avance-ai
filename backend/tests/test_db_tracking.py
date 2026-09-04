@@ -148,6 +148,65 @@ def test_get_signals_includes_message_id_field(db):
     assert rows[0]["message_id"] == message_id
 
 
+@pytest.mark.regression
+def test_record_tool_calls_is_readable_back_by_message(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    message_id = db.save_message("assistant", "hi", session_id)
+    calls = [{"name": "source_flights_select", "arguments": {"value": "paris"}, "result": "row"}]
+
+    db.record_tool_calls(session_id, calls, message_id=message_id)
+
+    assert db.get_tool_calls_by_message(session_id) == {message_id: calls}
+
+
+@pytest.mark.regression
+def test_get_tool_calls_by_message_is_scoped_to_its_own_session(db):
+    session_a = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    session_b = _make_session(db, start=datetime(2026, 1, 2, 10, 0, 0))
+    message_a = db.save_message("assistant", "hi", session_a)
+    message_b = db.save_message("assistant", "hi", session_b)
+    db.record_tool_calls(session_a, [{"name": "a"}], message_id=message_a)
+    db.record_tool_calls(session_b, [{"name": "b"}], message_id=message_b)
+
+    assert db.get_tool_calls_by_message(session_a) == {message_a: [{"name": "a"}]}
+    assert db.get_tool_calls_by_message(session_b) == {message_b: [{"name": "b"}]}
+
+
+@pytest.mark.regression
+def test_get_tool_calls_by_message_omits_a_row_with_no_message_id(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    db.record_tool_calls(session_id, [{"name": "a"}])  # no message_id
+
+    assert db.get_tool_calls_by_message(session_id) == {}
+
+
+@pytest.mark.regression
+def test_get_signals_never_includes_a_tool_calls_only_row(db):
+    """A record_tool_calls row is its own kind, same as env/action_env —
+    never mistaken for a signals row by get_signals' own event log."""
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    message_id = db.save_message("assistant", "hi", session_id)
+    db.save_signal_snapshot({"foo": 1}, session_id)
+    db.record_tool_calls(session_id, [{"name": "source_flights_select"}], message_id=message_id)
+
+    rows = db.get_signals(session_id)
+
+    assert len(rows) == 1
+    assert rows[0]["values"] == '{"foo": 1}'
+
+
+@pytest.mark.regression
+def test_get_timeline_never_includes_a_tool_calls_only_row(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    message_id = db.save_message("assistant", "hi", session_id)
+    db.save_signal_snapshot({"foo": 1}, session_id)
+    db.record_tool_calls(session_id, [{"name": "source_flights_select"}], message_id=message_id)
+
+    timeline = db.get_timeline("proj", "user")
+
+    assert timeline["signals"] == [{"timestamp": timeline["signals"][0]["timestamp"], "values": {"foo": 1}}]
+
+
 @pytest.mark.contract
 def test_get_signals_includes_expected_state_field(db):
     """Nothing writes expected_state yet — it's just always present,

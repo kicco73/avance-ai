@@ -1,10 +1,13 @@
 """The `avance` source driver — read-only access to one of a project's
 own stored archive files, addressed by a `sources:` entry's own
 `url: avance:<archive path>` (e.g. `avance:sources/flights.csv`).
-`read()` is source.attachment(name)'s exact successor — same content-type
-guard — resolved once from the declared url instead of a per-call
-argument. `select(value)` replaces search(): the same per-line
-case-insensitive match against that one file.
+`select(value)` replaces search(): the same per-line case-insensitive
+match against that one file, bounded (see SourceDriver._bounded)
+regardless of how big a match set it finds. A whole-file read is
+`attachment.read(name)`'s job now (on-enter only, see
+tracking.actuators.attachment_namespace) — SourceDriver itself no longer
+has one at all: every method here must return a bounded result, and a
+whole file is exactly what bounding a result doesn't make sense for.
 
 Every read goes through a per-chat-session cache copy under
 `{CACHE_DIR}/sessions/<session id>/<archive path>` rather than the
@@ -21,9 +24,8 @@ SCHEME = "avance"
 
 
 class AvanceArchiveSource(SourceDriver):
-    SUPPORTED_METHODS = frozenset({"read", "select"})
+    SUPPORTED_METHODS = frozenset({"select"})
     METHOD_DESCRIPTIONS = {
-        "read": "This source's own archive file, read as plain text — e.g. source.<name>.read().",
         "select": (
             "Grep over this source's own archive file: the header row plus every row containing "
             "`value` (case-insensitive) — e.g. source.<name>.select('Paris')."
@@ -90,13 +92,10 @@ class AvanceArchiveSource(SourceDriver):
         )
         return content
 
-    def read(self) -> str:
-        return self._read_text()
-
     def select(self, value: str) -> str:
         lines = self._read_text().splitlines(keepends=True)
         if not lines:
             return ""
         needle = value.lower()
         matches = [line for line in lines[1:] if needle in line.lower()]
-        return lines[0] + "".join(matches)
+        return self._bounded(lines[0] + "".join(matches))

@@ -12,6 +12,7 @@ import pytest
 from ai.ai_service import AiService, MAX_TOOL_ROUNDS
 from ai._providers.anthropic_provider_v2 import AnthropicProvider
 from ai.llm_provider import AIServiceConfig, AIServiceRequestError, ToolCall, ToolCallsRequested, ToolSpec
+from db.models import AiTokenUsage
 
 _SELECT_SPEC = ToolSpec(
     name="source_flights_select",
@@ -107,6 +108,9 @@ class _FakeToolSet:
 
     def specs(self) -> list[ToolSpec]:
         return self._specs
+
+    def status_text(self, name: str) -> str:
+        return f"Searching {name}…"
 
     async def call(self, name: str, arguments: dict) -> str:
         self.calls.append((name, arguments))
@@ -207,6 +211,39 @@ async def test_ai_service_resolves_one_tool_call_then_streams_the_final_response
     }
 
 
+async def test_a_tool_call_emits_a_tool_call_event_then_a_tool_result_event():
+    """See ai_service.py's own tool-call loop: 'tool_call' fires before
+    the call itself (status_text only, for a live transient bubble
+    line), 'tool_result' fires after (the durable {name, arguments,
+    result} record TrackingProcessor persists to Tracking.tool_calls)."""
+    tool_call_response = _FakeFinalMessage(
+        "tool_use", content=[_FakeToolUseBlock("call_1", "source_flights_select", {"value": "paris"})],
+    )
+    final_response = _FakeFinalMessage("end_turn")
+    provider, _ = _provider([([], tool_call_response), (['{"text": "Paris it is."}'], final_response)])
+    ai_service = AiService(provider)
+    tool_set = _FakeToolSet([_SELECT_SPEC], results=["city,country\nParis,France\n"])
+    events: list[tuple[str, object]] = []
+
+    async for _ in ai_service.generate_stream_with_metadata(
+        "sys", [{"role": "user", "content": "where's my flight?"}],
+        on_metadata=lambda k, v: events.append((k, v)), schema={"text": "t"}, tool_set=tool_set,
+    ):
+        pass
+
+    tool_events = [event for event in events if event[0] in ("tool_call", "tool_result")]
+    assert tool_events == [
+        ("tool_call", {"status_text": "Searching source_flights_select…"}),
+        ("tool_result", {
+            "name": "source_flights_select", "arguments": {"value": "paris"},
+            "result": "city,country\nParis,France\n",
+        }),
+    ]
+    # 'tool_call' strictly before 'tool_result' — the frontend's own
+    # transient line must appear, then clear, never the other way round.
+    assert [event[0] for event in events].index("tool_call") < [event[0] for event in events].index("tool_result")
+
+
 # (c) two rounds before the real response.
 async def test_ai_service_resolves_two_tool_call_rounds_before_the_final_response():
     round_1 = _FakeFinalMessage("tool_use", content=[_FakeToolUseBlock("call_1", "source_flights_select", {"value": "paris"})])
@@ -228,6 +265,34 @@ async def test_ai_service_resolves_two_tool_call_rounds_before_the_final_respons
         ("source_flights_select", {"value": "berlin"}),
     ]
     assert len(fake_client.messages.calls) == 3
+
+
+async def test_the_token_usage_tap_never_pairs_a_round_s_input_with_a_stale_output(db):
+    """Regression: without resetting `captured` between rounds (see
+    AiService._tap_token_usage), round 2's own input_tokens would
+    momentarily pair with round 1's still-cached output_tokens (and
+    round 3's with round 2's), writing an extra, wrong AiTokenUsage row
+    before the correct pair overwrote it — inflating summed usage totals."""
+    round_1 = _FakeFinalMessage(
+        "tool_use", content=[_FakeToolUseBlock("call_1", "source_flights_select", {"value": "paris"})],
+        usage=_FakeUsage(input_tokens=10, output_tokens=20),
+    )
+    round_2 = _FakeFinalMessage(
+        "tool_use", content=[_FakeToolUseBlock("call_2", "source_flights_select", {"value": "berlin"})],
+        usage=_FakeUsage(input_tokens=30, output_tokens=40),
+    )
+    final_response = _FakeFinalMessage("end_turn", usage=_FakeUsage(input_tokens=50, output_tokens=60))
+    provider, _ = _provider([([], round_1), ([], round_2), (['{"text": "Found both."}'], final_response)])
+    ai_service = AiService(provider, db=db)
+    tool_set = _FakeToolSet([_SELECT_SPEC], results=["paris row", "berlin row"])
+
+    async for _ in ai_service.generate_stream_with_metadata(
+        "sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}, tool_set=tool_set,
+    ):
+        pass
+
+    pairs = sorted((row.input_tokens, row.output_tokens) for row in AiTokenUsage.select())
+    assert pairs == [(10, 20), (30, 40), (50, 60)]
 
 
 # (d) exceeding MAX_TOOL_ROUNDS.

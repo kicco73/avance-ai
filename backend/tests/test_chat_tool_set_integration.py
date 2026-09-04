@@ -45,7 +45,12 @@ class FakeToolAwareAiService:
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None):
         if self._tool_call is not None and tool_set is not None and self.call_count == 0:
             name, arguments = self._tool_call
-            self.tool_results.append(await tool_set.call(name, arguments))
+            result = await tool_set.call(name, arguments)
+            self.tool_results.append(result)
+            # Real AiService emits this unconditionally, not gated by
+            # schema (see its own tool-call loop) — TrackingProcessor's
+            # own on_metadata handler is what persists it to Tracking.tool_calls.
+            on_metadata("tool_result", {"name": name, "arguments": arguments, "result": result})
         index = min(self.call_count, len(self._metadata_per_call) - 1)
         metadata = self._metadata_per_call[index]
         self.call_count += 1
@@ -153,6 +158,22 @@ async def test_a_real_chat_turn_resolves_a_tool_call_against_the_state_s_own_dec
 
     assert result["reply"] == []  # FakeToolAwareAiService.generate_stream_with_metadata's own "Hi!" chunk
     assert ai_service.tool_results == ["city,country\nParis,France\n"]
+
+
+@pytest.mark.regression
+async def test_a_real_chat_turn_persists_its_own_tool_calls_onto_the_assistant_message(chat_service_for, file_db):
+    ai_service = FakeToolAwareAiService(
+        [{"env": "stage: greeted"}], tool_call=("source_flights_select", {"value": "paris"}),
+    )
+    chat_service = chat_service_for(_automaton_with_a_tool(), ai_service=ai_service)
+    session_id = await _bootstrap_session(chat_service)
+
+    result = await chat_service.process_turn(session_id, "where's my flight to Paris?")
+
+    tool_calls_by_message = file_db.get_tool_calls_by_message(session_id)
+    assert tool_calls_by_message[result["assistant_message_id"]] == [
+        {"name": "source_flights_select", "arguments": {"value": "paris"}, "result": "city,country\nParis,France\n"},
+    ]
 
 
 def test_build_tool_set_is_none_for_a_state_with_no_tools(file_db):

@@ -1,9 +1,9 @@
 """The `source` namespace a trigger/`env:` expression resolves against —
 "data sources" a project's own `sources:` section declares by name, each
 bound (via its own `url:` field, see tracking.sources.url) to a driver
-that implements the uniform create/read/update/delete/select interface
-(tracking.sources.base.SourceDriver). `source.<name>` is resolved
-dynamically, per project, against that declaration — nothing is
+whose every method is bounded by construction (tracking.sources.base.
+SourceDriver — select is the only one today). `source.<name>` is
+resolved dynamically, per project, against that declaration — nothing is
 registered ahead of time, unlike the old fixed source.attachment/
 source.search dispatch table this replaces. Adding a driver means adding
 a module plus one SOURCE_DRIVERS entry below, never touching
@@ -55,6 +55,12 @@ class ToolSet:
         self._namespace = namespace
         # tool name ("source_<name>_<method>") -> (source name, method name)
         self._resolved: dict[str, tuple[str, str]] = {}
+        # tool name -> its own source's ui_label, for status_text() below —
+        # kept separate from _resolved rather than folded in: nothing else
+        # needs it, and a driver could one day expose a method with no
+        # single "source" behind it (e.g. cross-source), which would still
+        # need to resolve here but wouldn't have one ui_label to report.
+        self._ui_labels: dict[str, str] = {}
         self._specs: list[ToolSpec] = []
         for source in sources:
             scheme, _path = parse_source_url(source.url)
@@ -69,6 +75,7 @@ class ToolSet:
                 if source.ui_description:
                     description = f"{description}\n\n{source.ui_description}" if description else source.ui_description
                 self._resolved[tool_name] = (source.name, method)
+                self._ui_labels[tool_name] = source.ui_label
                 self._specs.append(ToolSpec(
                     name=tool_name, description=description,
                     parameters=_method_parameters(getattr(driver_cls, method)),
@@ -76,6 +83,16 @@ class ToolSet:
 
     def specs(self) -> list[ToolSpec]:
         return list(self._specs)
+
+    def status_text(self, name: str) -> str:
+        """A short, human line describing what calling `name` is about to
+        do — e.g. "Searching Flights…" — the backend-composed text
+        AiService's own tool-call loop attaches to its 'tool_call' event
+        for the frontend to show verbatim as a transient line while the
+        call is in flight. Falls back to the raw tool name for one this
+        ToolSet doesn't itself recognize (defensive only: every name
+        AiService's loop passes here came straight out of specs())."""
+        return f"Searching {self._ui_labels.get(name, name)}…"
 
     async def call(self, name: str, arguments: dict) -> str:
         """Never raises — an unknown tool name, a bad argument, or the

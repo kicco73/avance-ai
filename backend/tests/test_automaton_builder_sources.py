@@ -76,8 +76,8 @@ def test_a_source_with_no_url_yet_builds_fine_but_can_t_be_referenced():
     automaton = _build("sources:\n  pino:\n    ui-label: Flights\n")
     assert automaton.sources[0].url == ""
 
-    with pytest.raises(ValueError, match="undefined name\\(s\\).*source.pino.read"):
-        _build("sources:\n  pino:\n    ui-label: Flights\n", trigger="source.pino.read() != 'x'")
+    with pytest.raises(ValueError, match="undefined name\\(s\\).*source.pino.select"):
+        _build("sources:\n  pino:\n    ui-label: Flights\n", trigger="source.pino.select('x') != 'x'")
 
 
 def test_url_without_a_scheme_is_rejected():
@@ -95,14 +95,14 @@ def test_avance_url_referencing_a_missing_archive_is_rejected():
         _build("sources:\n  pino:\n    url: avance:flights.csv\n")
 
 
-def test_a_trigger_may_call_a_declared_source_s_read_and_select():
+def test_a_trigger_may_call_a_declared_source_s_select():
     automaton = _build(
         """
 sources:
   pino:
     url: avance:flights.csv
 """,
-        trigger="source.pino.read() != 'nope' and source.pino.select('x') != 'nope'",
+        trigger="source.pino.select('x') != 'nope'",
         contents={"flights.csv": "a,b\n1,2\n"},
     )
     assert automaton.sources[0].name == "pino"
@@ -110,7 +110,7 @@ sources:
 
 def test_a_trigger_referencing_an_undeclared_source_is_rejected():
     with pytest.raises(ValueError, match="undefined name\\(s\\).*source.pino"):
-        _build("", trigger="source.pino.read() == 'x'")
+        _build("", trigger="source.pino.select('x') == 'x'")
 
 
 def test_a_trigger_calling_an_unsupported_method_on_a_declared_source_is_rejected():

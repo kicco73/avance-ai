@@ -178,7 +178,10 @@ const {
         @pointerleave="onBubblePointerEnd"
         @click.capture="onBubbleClickCapture"
       >
-        <span v-if="isAwaitingReply" class="typing-dots" aria-label="Waiting for reply">
+        <span v-if="isAwaitingReply && message.statusText" class="tool-status-text" aria-live="polite">
+          {{ message.statusText }}
+        </span>
+        <span v-else-if="isAwaitingReply" class="typing-dots" aria-label="Waiting for reply">
           <span class="typing-dot"></span>
           <span class="typing-dot"></span>
           <span class="typing-dot"></span>
@@ -376,6 +379,13 @@ const {
 
 .bubble-failed {
   background: #c62828;
+}
+
+.tool-status-text {
+  display: inline-block;
+  font-style: italic;
+  opacity: 0.7;
+  padding: 0.15rem 0;
 }
 
 .typing-dots {

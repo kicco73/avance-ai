@@ -73,7 +73,7 @@ function connectSocket() {
   return socketConnectingPromise
 }
 
-async function readSseTurnStream(res, { onChunk } = {}) {
+async function readSseTurnStream(res, { onChunk, onStatus } = {}) {
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -96,6 +96,14 @@ async function readSseTurnStream(res, { onChunk } = {}) {
 
       if (eventType === 'chunk') {
         if (data.content && onChunk) onChunk(data.content)
+        continue
+      }
+      if (eventType === 'tool_call') {
+        if (onStatus) onStatus(data.status_text || '')
+        continue
+      }
+      if (eventType === 'tool_result') {
+        if (onStatus) onStatus('')
         continue
       }
       if (eventType === 'error') {

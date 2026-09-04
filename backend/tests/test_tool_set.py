@@ -64,7 +64,7 @@ def test_specs_covers_every_named_source_and_every_supported_method(db):
     tool_set = SourceNamespace(db, automaton).tool_set(["flights", "tickets"])
 
     names = {spec.name for spec in tool_set.specs()}
-    assert names == {"source_flights_read", "source_flights_select", "source_tickets_read", "source_tickets_select"}
+    assert names == {"source_flights_select", "source_tickets_select"}
 
 
 def test_only_the_named_sources_are_included_even_when_more_are_declared(db):
@@ -72,7 +72,7 @@ def test_only_the_named_sources_are_included_even_when_more_are_declared(db):
     tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
 
     names = {spec.name for spec in tool_set.specs()}
-    assert names == {"source_flights_read", "source_flights_select"}
+    assert names == {"source_flights_select"}
 
 
 def test_an_unknown_name_passed_to_tool_set_raises(db):
@@ -100,7 +100,22 @@ def test_description_is_just_the_method_blurb_when_the_source_has_no_ui_descript
     assert "\n\n" not in select_spec.description
 
 
-def test_every_parameter_is_a_required_string_select_takes_one_read_takes_none(db):
+def test_status_text_reports_the_source_s_own_ui_label(db):
+    automaton = _two_sources(db)
+    tool_set = SourceNamespace(db, automaton).tool_set(["flights", "tickets"])
+
+    assert tool_set.status_text("source_flights_select") == "Searching Flights…"
+    assert tool_set.status_text("source_tickets_select") == "Searching Tickets…"
+
+
+def test_status_text_falls_back_to_the_raw_name_for_an_unknown_tool(db):
+    automaton = _two_sources(db)
+    tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
+
+    assert tool_set.status_text("source_nope_select") == "Searching source_nope_select…"
+
+
+def test_select_s_parameters_schema_is_one_required_string(db):
     automaton = _two_sources(db)
     tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
     specs = {spec.name: spec for spec in tool_set.specs()}
@@ -108,7 +123,6 @@ def test_every_parameter_is_a_required_string_select_takes_one_read_takes_none(d
     assert specs["source_flights_select"].parameters == {
         "type": "object", "properties": {"value": {"type": "string"}}, "required": ["value"],
     }
-    assert specs["source_flights_read"].parameters == {"type": "object", "properties": {}, "required": []}
 
 
 async def test_call_resolves_to_the_named_source_s_own_driver(file_db):
@@ -116,7 +130,7 @@ async def test_call_resolves_to_the_named_source_s_own_driver(file_db):
     tool_set = SourceNamespace(file_db, automaton).tool_set(["flights", "tickets"])
 
     assert await tool_set.call("source_flights_select", {"value": "paris"}) == "city,country\nParis,France\n"
-    assert await tool_set.call("source_tickets_read", {}) == "id,seat\n1,12A\n"
+    assert await tool_set.call("source_tickets_select", {"value": "12A"}) == "id,seat\n1,12A\n"
 
 
 async def test_call_with_an_unknown_tool_name_returns_an_error_string_not_an_exception(db):
@@ -147,6 +161,6 @@ async def test_call_never_blocks_the_event_loop(file_db):
     automaton = _two_sources(file_db)
     tool_set = SourceNamespace(file_db, automaton).tool_set(["flights"])
 
-    result = await tool_set.call("source_flights_read", {})
+    result = await tool_set.call("source_flights_select", {"value": "paris"})
 
     assert result == "city,country\nParis,France\n"

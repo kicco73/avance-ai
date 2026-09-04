@@ -309,7 +309,14 @@ class AiService(object):
 		is the entry-time active provider, not re-read live off the
 		cascade's own pointer: a *different* concurrent call through the
 		same cascade could have already advanced that pointer past a
-		failover by the time these events actually fire."""
+		failover by the time these events actually fire. `captured` is
+		reset right after each write, not just left to accumulate: a
+		tool-calling turn fires this same tap once per round (see
+		generate_stream_with_metadata's own loop below), and without the
+		reset, round 2's own input_tokens would pair with round 1's still-
+		cached output_tokens for one spurious extra row before round 2's
+		own output_tokens overwrites it — one real row per round, not one
+		real plus one wrong."""
 		if self._db is None:
 			return on_metadata
 		db = self._db
@@ -320,6 +327,7 @@ class AiService(object):
 				captured[name] = value
 				if "input_tokens" in captured and "output_tokens" in captured:
 					db.record_ai_token_usage(provider_label, captured["input_tokens"], captured["output_tokens"])
+					captured.clear()
 			on_metadata(name, value)
 
 		return tap
@@ -380,8 +388,16 @@ class AiService(object):
 					# Sequential, never parallel — ToolSet.call's own
 					# contract; each result must land in the history
 					# before the next call runs, matching what a real
-					# multi-step lookup actually depends on.
+					# multi-step lookup actually depends on. 'tool_call'
+					# fires before the call itself, carrying only the
+					# backend-composed status_text a live turn shows as a
+					# transient bubble line; 'tool_result' fires after,
+					# both clearing that line and — via TrackingProcessor's
+					# own on_metadata handler — the durable record persisted
+					# to Tracking.tool_calls (see db.tracking.record_tool_calls).
+					tapped_on_metadata("tool_call", {"status_text": tool_set.status_text(call.name)})
 					result = await tool_set.call(call.name, call.arguments)
+					tapped_on_metadata("tool_result", {"name": call.name, "arguments": call.arguments, "result": result})
 					turn_history.append({"role": "tool", "tool_call_id": call.id, "content": result})
 				continue
 

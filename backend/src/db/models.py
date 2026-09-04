@@ -157,6 +157,11 @@ class Tracking(BaseModel):
     values = TextField(null=True)
     env = TextField(null=True)
     action_env = TextField(null=True)
+    # JSON list of {name, arguments, result} — one entry per tool call
+    # the model made this turn (see ai.ai_service.AiService's own
+    # tool-call loop), in the order they ran. Written as its own row,
+    # same shape as env/action_env above, never merged into `values`.
+    tool_calls = TextField(null=True)
     expected_state = CharField(null=True)
     expected_values = TextField(null=True)
     # A domain expert's free-text note on this row's linked message —

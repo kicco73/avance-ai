@@ -386,7 +386,12 @@ export function createChatStore({
       content: '',
       audioText: null,
       messageId: null,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      // Backend-composed line (e.g. "Searching Flights…") shown in place
+      // of the typing dots while a tool call is in flight — see
+      // MessageBubble.vue's own isAwaitingReply branch. Cleared by the
+      // matching tool_result event, same as chatStatus below.
+      statusText: ''
     }
     messages.value.push(assistantMsg)
 
@@ -395,6 +400,13 @@ export function createChatStore({
         onStatus: (text) => {
           if (currentSessionId.value !== turnSessionId) return
           chatStatus.value = text
+          const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
+          if (idx !== -1) {
+            messages.value[idx] = {
+              ...messages.value[idx],
+              statusText: text
+            }
+          }
         },
         onChunk: (chunkText) => {
           if (currentSessionId.value !== turnSessionId) return

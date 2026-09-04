@@ -145,6 +145,24 @@ def test_restore_backup_preserves_the_working_files_permissions(file_db):
     assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
 
 
+@pytest.mark.contract
+def test_backup_now_writes_a_timestamped_copy_of_the_working_file(file_db):
+    path = file_db.backup_now("test reason")
+    assert path is not None
+    assert path != file_db.backup_file_path()
+    assert os.path.exists(path)
+    with open(path, "rb") as backup_file:
+        assert backup_file.read(len(b"SQLite format 3\x00")) == b"SQLite format 3\x00"
+
+
+@pytest.mark.contract
+def test_backup_now_is_a_noop_for_a_database_with_no_real_file_yet(db):
+    """An in-memory (or otherwise not-yet-materialized) database has
+    nothing on disk to back up — same os.path.exists guard
+    _apply_migration_strategy already uses before touching one."""
+    assert db.backup_now("test reason") is None
+
+
 @pytest.mark.regression
 def test_restore_backup_replaces_data_and_reconnects(file_db):
     file_db.ensure_project("proj")

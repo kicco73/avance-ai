@@ -37,6 +37,10 @@ class IdentifierRegistry:
         "prompt": "Runs an extra, synchronous, fully isolated model call — no conversation history, no attachments, no signal/env context, nothing persisted, just `prompt` in and its text back — e.g. actuator.notify('Note', actuator.prompt('Summarize the last exchange in one sentence.')).",
     }
 
+    ATTACHMENT: dict[str, str] = {
+        "read": "Returns one of this project's own archive files' whole text content — e.g. attachment.read('policy.txt'). On-enter only. `name` must be a string literal (exact archive path, or a unique basename under behaviour/); the file must exist, be text, and be under the size limit — all checked when the project is built, not when this runs.",
+    }
+
     DATETIME: dict[str, str] = {
         "datetime": "Builds a specific date and time — e.g. datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc). Mainly used as actuator.defer's own `when` argument, which must be timezone-aware.",
         "timedelta": "A duration, for offsetting a datetime — e.g. datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1).",
@@ -82,11 +86,13 @@ class IdentifierRegistry:
     # The two places an expression can live see two different views of
     # the registry below. A `trigger:`/`env:` expression is evaluated
     # *inside* a session and may do nothing but read, so `actuator` is
-    # out. An `on-enter` line is where actuators are called — and an
-    # actuator.defer'd call runs long after the session that fired it is
-    # over, so `session` (and everything under it) is out there instead.
+    # out — and so is `attachment`, a whole-file read with no place in a
+    # boolean condition or a simple value. An `on-enter` line is where
+    # actuators (and attachment.read) are called — and an actuator.defer'd
+    # call runs long after the session that fired it is over, so `session`
+    # (and everything under it) is out there instead.
     # Exclusion is by prefix: naming a namespace drops its nested ones too.
-    TRIGGER_SCOPE_EXCLUDES: tuple[str, ...] = ("actuator",)
+    TRIGGER_SCOPE_EXCLUDES: tuple[str, ...] = ("actuator", "attachment")
     ACTUATOR_SCOPE_EXCLUDES: tuple[str, ...] = ("session",)
 
     @staticmethod
@@ -116,6 +122,7 @@ class IdentifierRegistry:
             "session.metric": dict(cls.SESSION_METRIC),
             "user": dict(cls.USER),
             "actuator": dict(cls.ACTUATOR),
+            "attachment": dict(cls.ATTACHMENT),
             "metric": dict(cls.METRIC),
             "datetime": dict(cls.DATETIME),
             "datetime.timezone": dict(cls.DATETIME_TIMEZONE),

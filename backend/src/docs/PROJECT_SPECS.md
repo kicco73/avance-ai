@@ -242,10 +242,11 @@ sources:
 | `ui-label` | no | string | this source's own key | Shown in the frontend. |
 | `ui-description` | no | string | `None` | Shown in the frontend. |
 
-Every source — whatever its driver — exposes the same five methods:
-`create(key, value)`, `read()`, `update(key, value)`, `delete(key)`,
-`select(value)`. A given driver only ever implements the ones that make
-sense for it; calling one it doesn't is rejected the same way an
+Every source — whatever its driver — is bounded by construction: every
+method it exposes returns at most `MAX_SOURCE_RESULT_CHARS`, truncated
+with a trailing `[truncated: N more characters]` line rather than left
+to grow unbounded. A given driver only ever implements the methods that
+make sense for it; calling one it doesn't is rejected the same way an
 undeclared source is.
 
 One driver exists today, scheme `avance` — read-only access to one of
@@ -255,14 +256,13 @@ the conversation's own pinned automaton revision, never "whatever's
 published now" — not the `attachments:` mechanism, nothing is eagerly
 loaded):
 
-- `read()` — that file's full text content. A binary file raises. Often
-  combined with `env:` to load a file once, e.g.
-  `policy: source.pino.read()`.
 - `select(value)` — grep-like lookup over that same file. Assumes a
   normalized CSV (header + one row per record); returns the header plus
   every row containing `value` as a case-insensitive substring anywhere
-  in the line. E.g. `source.pino.select('Paris')`.
-- `create`/`update`/`delete` — always rejected; `avance` is read-only.
+  in the line. E.g. `source.pino.select('Paris')`. This is the only
+  method `avance` implements — `create`/`update`/`delete` don't exist on
+  any driver, and a whole-file read is `attachment.read(name)`'s job
+  (on-enter only), not a `source.*` capability.
 
 New drivers are a code change, not something a project author adds.
 

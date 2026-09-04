@@ -4,7 +4,7 @@ from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from typing import Any
 from logging_factory import LoggerFactory
 from metrics.metrics_framework import metric_names
-from tracking.actuators import ActuatorSet
+from tracking.actuators import ActuatorSet, MAX_ATTACHMENT_READ_BYTES
 from tracking.sources import SOURCE_DRIVERS
 from tracking.sources.url import parse_source_url
 
@@ -328,13 +328,40 @@ class AutomatonBuilder(object):
                 )
 
     @classmethod
+    def _validate_attachment_read(cls, expression: str, context: str, all_archives: dict[str, MemoryArchive]) -> None:
+        """Every `attachment.read(name)` call in `expression`: `name` must
+        be a string literal (see TriggerExpressionAnalyzer.
+        attachment_read_violations) resolving — exact path or unique
+        basename under `behaviour/`, see _extract_required_archives — to a
+        text archive no bigger than MAX_ATTACHMENT_READ_BYTES. All checked
+        here, once, so a bad call fails the build instead of a real
+        on-enter run."""
+        violations = TriggerExpressionAnalyzer.attachment_read_violations(expression)
+        if violations:
+            raise ValueError(f"{context} ('{expression}'): {'; '.join(violations)}")
+        for name in TriggerExpressionAnalyzer.attachment_read_names(expression):
+            archive = cls._extract_required_archives([name], all_archives, context)[name]
+            if archive.source["type"] != "text":
+                raise ValueError(
+                    f"{context} ('{expression}'): attachment.read('{name}') targets a binary file — "
+                    "only text files can be read this way."
+                )
+            size = len(archive.source["data"].encode("utf-8"))
+            if size > MAX_ATTACHMENT_READ_BYTES:
+                raise ValueError(
+                    f"{context} ('{expression}'): attachment.read('{name}') is {size} bytes, over the "
+                    f"{MAX_ATTACHMENT_READ_BYTES}-byte limit."
+                )
+
+    @classmethod
     def _validate_on_enter(
         cls, on_enter: str | None, context: str, registry: dict[str, dict[str, str]], sources: dict[str, Source],
+        all_archives: dict[str, MemoryArchive],
     ) -> None:
-        """`on-enter`: zero or more `actuator.<name>(...)` calls, one per
-        top-level statement — e.g. `actuator.celebrate()` on its own line,
-        `actuator.notify(user.name, "Hi!")` on another, a single call
-        free to span several lines of its own — split via
+        """`on-enter`: zero or more `actuator.<name>(...)`/`attachment.read(...)`
+        calls, one per top-level statement — e.g. `actuator.celebrate()`
+        on its own line, `actuator.notify(user.name, "Hi!")` on another, a
+        single call free to span several lines of its own — split via
         TriggerExpressionAnalyzer.on_enter_statements (real Python
         parsing, so blank lines and '#' comments need no special-casing
         here), each validated the same way a trigger is, against the
@@ -365,6 +392,7 @@ class AutomatonBuilder(object):
                 )
             cls._validate_namespaced_expression(expression, line_context, registry, sources, frozenset(known_locals))
             cls._validate_actuator_arity(expression, line_context)
+            cls._validate_attachment_read(expression, line_context, all_archives)
             violations = TriggerExpressionAnalyzer.defer_violations(expression)
             if violations:
                 raise ValueError(f"{line_context} ('{statement}'): {'; '.join(violations)}")
@@ -406,14 +434,17 @@ class AutomatonBuilder(object):
 
     def _actions_sanity_check(
         self, key: str, state: State, declared_states: set[str], registry: dict[str, dict[str, str]],
-        env_keys: dict[str, EnvKey], sources: dict[str, Source], known_projects: dict[str, frozenset[str]] | None = None,
+        env_keys: dict[str, EnvKey], sources: dict[str, Source], all_archives: dict[str, MemoryArchive],
+        known_projects: dict[str, frozenset[str]] | None = None,
     ):
         """`registry`: every valid identifier for this project, one set
         per namespace. `env_keys`: for checking an action's own `env:`
         writes against each key's own declared type (see
         _validate_env_key_type below). `sources`: this project's own
         declared `sources:`, keyed by name — see _validate_namespaced_expression.
-        `known_projects`: None skips the automaton.* existence check entirely."""
+        `all_archives`: for checking an on-enter's own attachment.read(...)
+        calls (see _validate_attachment_read). `known_projects`: None skips
+        the automaton.* existence check entirely."""
         registry_without_actuator = IdentifierRegistry.for_triggers(registry)
         registry_without_session = IdentifierRegistry.for_actuators(registry)
         for tool_name in state.tools:
@@ -464,6 +495,7 @@ class AutomatonBuilder(object):
             if action.on_enter:
                 self._validate_on_enter(
                     action.on_enter, f"State {key}, action '{action.name}'", registry_without_session, sources,
+                    all_archives,
                 )
 
     @staticmethod
@@ -753,7 +785,7 @@ class AutomatonBuilder(object):
         for key, state in states.items():
             context_key = init_action.name if key == "" else key
             self._actions_sanity_check(
-                context_key, state, set(raw_states.keys()), registry, env_keys, sources, known_projects,
+                context_key, state, set(raw_states.keys()), registry, env_keys, sources, all_archives, known_projects,
             )
 
         general_attachments = self._extract_required_archives(raw.get('attachments', []), all_archives, for_field="global")

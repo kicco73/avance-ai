@@ -18,7 +18,7 @@ class TriggerExpressionAnalyzer:
     # express — same reason `source.<name>.<method>` is never matched through
     # here either (see source_refs, matched directly instead).
     RESERVED_NAMESPACES = (
-        "signal", "env", "session", "user", "source", "actuator", "metric", "automaton", "datetime",
+        "signal", "env", "session", "user", "source", "actuator", "attachment", "metric", "automaton", "datetime",
     )
 
     # Dotted sub-namespaces nested one level under a reserved namespace above —
@@ -372,6 +372,43 @@ class TriggerExpressionAnalyzer:
                                 f"'{ast.unparse(argument)}'"
                             )
         return violations
+
+    # --- attachment.read(name) ---------------------------------------------
+
+    @classmethod
+    def attachment_read_violations(cls, expression: str) -> list[str]:
+        """Every `attachment.read(...)` call in `expression` whose single
+        argument isn't a string literal — the only shape
+        AutomatonBuilder._validate_attachment_read can resolve against
+        this project's own archives at build time (name must be known
+        without evaluating anything). Returns messages, never raises."""
+        tree = ast.parse(expression, mode="eval")
+        violations: list[str] = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or cls._dotted_chain(node.func) != ("attachment", "read"):
+                continue
+            if len(node.args) != 1 or node.keywords or not (
+                isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
+            ):
+                violations.append(
+                    f"attachment.read(...): takes exactly one string literal argument, "
+                    f"got '{ast.unparse(node)}'"
+                )
+        return violations
+
+    @classmethod
+    def attachment_read_names(cls, expression: str) -> set[str]:
+        """Every literal `name` passed to a well-shaped `attachment.read(name)`
+        call in `expression` — only call after attachment_read_violations(expression)
+        is empty, since a malformed call is silently skipped here rather than raised."""
+        tree = ast.parse(expression, mode="eval")
+        names: set[str] = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or cls._dotted_chain(node.func) != ("attachment", "read"):
+                continue
+            if len(node.args) == 1 and not node.keywords and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+                names.add(node.args[0].value)
+        return names
 
     @classmethod
     def expression_kind(cls, expression: str) -> str | None:

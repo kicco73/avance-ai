@@ -1,5 +1,5 @@
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from http import HTTPStatus
 from typing import AsyncIterator
 
@@ -44,6 +44,12 @@ class Metadata:
 	reaction: str | None = None
 	input_tokens: int | None = None
 	output_tokens: int | None = None
+	# One {name, arguments, result} entry per tool call this turn's own
+	# AI generation made (see AiService's own tool-call loop and each
+	# _get_ai_reply's on_receiving_metadata_* handler's 'tool_result'
+	# branch), in the order they ran — empty for a turn with no tools:
+	# declared, or one that never actually called any.
+	tool_calls: list[dict] = field(default_factory=list)
 
 @dataclass(frozen=True, slots=True)
 class UserVariables:
@@ -141,6 +147,9 @@ class TrackingProcessor(object):
 		# reply is what actually reported these env values, unlike
 		# self.out.tracking_id, which may already be linked to an earlier message.
 		self.env.update(self.metadata.env, message_id=assistant_id)
+
+		if self.metadata.tool_calls:
+			self.db.record_tool_calls(self.user.session_id, self.metadata.tool_calls, message_id=assistant_id)
 
 		if self.out.tracking_id is not None and not self.out.tracking_linked_to_message:
 			self.db.link_signal_to_message(self.out.tracking_id, assistant_id)

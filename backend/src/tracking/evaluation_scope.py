@@ -15,7 +15,7 @@ from automaton.automaton import Automaton
 from automaton.scope import EvaluationScope
 from db import Db
 from metrics.metric_service import MetricService
-from tracking.actuators import ActuatorSet, FakeActuatorSet
+from tracking.actuators import ActuatorSet, AttachmentNamespace, FakeActuatorSet
 from tracking.env import Env
 from tracking.evaluator import SignalEvaluator
 from tracking.session_facts import SessionFacts
@@ -69,16 +69,19 @@ class EvaluationScopeBuilder(object):
     ) -> EvaluationScope:
         """`raw_signal_values` is always re-coerced against every declared
         signal, never assumed pre-validated. env/session/user/source/
-        metric are cheap, lazy proxies included unconditionally; only the
-        bare core-metric names are gated, since building them is eager.
-        `source` is rebuilt fresh every call (unlike env/session/
-        user, never threaded through __init__) since it needs `automaton`
-        itself — a `build()` parameter, not a constructor dependency any
-        caller has to wire up separately — to know where a declared
-        source's own driver should actually read from (see
-        Automaton.set_storage_location). `session_id`: the firing chat
-        session, forwarded to SourceNamespace for its own per-session read
-        cache (tracking.sources.avance_archive) — None outside a real chat
+        attachment/metric are cheap, lazy proxies included unconditionally
+        (attachment.read is only ever reachable from on-enter — see
+        IdentifierRegistry.TRIGGER_SCOPE_EXCLUDES — but nothing stops it
+        being present for trigger/env too, the same as `actuator` already
+        is); only the bare core-metric names are gated, since building
+        them is eager. `source`/`attachment` are rebuilt fresh every call
+        (unlike env/session/user, never threaded through __init__) since
+        they need `automaton` itself — a `build()` parameter, not a
+        constructor dependency any caller has to wire up separately — to
+        know where to actually read from (see Automaton.
+        set_storage_location). `session_id`: the firing chat session,
+        forwarded to SourceNamespace for its own per-session read cache
+        (tracking.sources.avance_archive) — None outside a real chat
         session (a wake-up re-evaluation, a test replay), where a source
         driver just reads its canonical archive directly instead."""
         signal_values = SignalEvaluator().validate(automaton, raw_signal_values)
@@ -89,6 +92,7 @@ class EvaluationScopeBuilder(object):
             "session": self._session,
             "user": self._user.as_dict(),
             "source": source_namespace,
+            "attachment": AttachmentNamespace(self._db, automaton),
             "metric": self._metrics.for_turn(),
             # FIXME: simpleeval rejects a raw module ("modules are not allowed") — ModuleWrapper is its
             # sanctioned opt-in; don't replace this with the bare `datetime` module.

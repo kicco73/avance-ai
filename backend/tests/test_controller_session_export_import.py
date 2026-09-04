@@ -101,6 +101,36 @@ def test_import_json_round_trips_an_exported_session_exactly(client, hello_proje
 
 
 @pytest.mark.regression
+def test_export_includes_a_message_s_own_tool_calls(client, app_db, hello_project):
+    session_id = _import_transcript(client, hello_project)
+    user_message_id = _messages(client, session_id)[0]["id"]
+    app_db.record_tool_calls(
+        session_id, [{"name": "source_flights_select", "arguments": {"value": "paris"}, "result": "row"}],
+        message_id=user_message_id,
+    )
+
+    [exported] = client.get(f"/api/projects/{hello_project}/sessions/export").json()
+
+    first = exported["messages"][0]
+    assert first["tool_calls"] == [
+        {"name": "source_flights_select", "arguments": {"value": "paris"}, "result": "row"},
+    ]
+
+
+@pytest.mark.regression
+def test_import_json_round_trips_a_message_s_own_tool_calls(client, app_db, hello_project):
+    session_id = _import_transcript(client, hello_project)
+    user_message_id = _messages(client, session_id)[0]["id"]
+    app_db.record_tool_calls(session_id, [{"name": "source_flights_select"}], message_id=user_message_id)
+    [exported] = client.get(f"/api/projects/{hello_project}/sessions/export").json()
+
+    _import_json(client, hello_project, [exported])
+
+    [_, reimported] = client.get(f"/api/projects/{hello_project}/sessions/export").json()
+    assert reimported["messages"][0]["tool_calls"] == [{"name": "source_flights_select"}]
+
+
+@pytest.mark.regression
 def test_reimporting_the_same_export_twice_for_the_same_user_is_a_no_op_the_second_time(client, hello_project):
     payload = {
         "name": "Real session",

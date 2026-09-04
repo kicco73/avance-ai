@@ -28,6 +28,8 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 			rv = self.metadata.input_tokens = value
 		elif key == 'output_tokens':
 			rv = self.metadata.output_tokens = value
+		elif key == 'tool_result':
+			self.metadata.tool_calls.append(value)
 		self.metadata.on_metadata(key, rv)
 	
 	async def _get_ai_reply(self) -> OutVariables:

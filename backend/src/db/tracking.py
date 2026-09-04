@@ -27,7 +27,7 @@ class TrackingMixin:
         return json.loads(row.values)
 
     def get_signals(self, session_id: int) -> list[dict]:
-        rows = Tracking.select().where((Tracking.session == session_id) & Tracking.env.is_null(True) & Tracking.action_env.is_null(True)).order_by(Tracking.timestamp.asc(), Tracking.id.asc())
+        rows = Tracking.select().where((Tracking.session == session_id) & Tracking.env.is_null(True) & Tracking.action_env.is_null(True) & Tracking.tool_calls.is_null(True)).order_by(Tracking.timestamp.asc(), Tracking.id.asc())
         return [{'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id, 'origin': row.origin} for row in rows]
 
     def get_timeline(self, project_id: str, username: str) -> dict:
@@ -37,7 +37,7 @@ class TrackingMixin:
             .join(ChatSession, on=Tracking.session == ChatSession.id)
             .where(
                 (ChatSession.project == project_id) & (ChatSession.username == username)
-                & Tracking.env.is_null(True) & Tracking.action_env.is_null(True)
+                & Tracking.env.is_null(True) & Tracking.action_env.is_null(True) & Tracking.tool_calls.is_null(True)
             )
             .order_by(Tracking.timestamp.asc(), Tracking.id.asc())
         )
@@ -240,3 +240,32 @@ class TrackingMixin:
         if session is None:
             return
         Tracking.create(session=session['id'], action_env=json.dumps(action_env))
+
+    def record_tool_calls(
+        self, session_id: int, tool_calls: list[dict], message_id: int | None = None, timestamp: datetime | None = None,
+    ) -> int:
+        """One row per turn that actually made at least one tool call
+        (see ai.ai_service.AiService's own tool-call loop) — `tool_calls`
+        is every {name, arguments, result} entry from that turn, in the
+        order they ran. Same "its own row" shape as env/action_env above,
+        never merged into a signals row (see get_signals' own
+        tool_calls.is_null(True) exclusion). `timestamp`: explicit only
+        for session_import.py restoring an exported row exactly — a live
+        turn omits it and gets "now", same convention as
+        import_tracking_row's own."""
+        row = Tracking.create(
+            session=session_id, message=message_id, tool_calls=json.dumps(tool_calls),
+            **({'timestamp': timestamp} if timestamp is not None else {}),
+        )
+        return row.id
+
+    def get_tool_calls_by_message(self, session_id: int) -> dict[int, list[dict]]:
+        """Every message_id in this session that has its own tool_calls
+        row (see record_tool_calls), mapped to that row's decoded list —
+        one bulk query per session rather than one per message, same
+        shape session_export.py's own tracking_by_message already uses
+        for get_signals."""
+        rows = Tracking.select(Tracking.message, Tracking.tool_calls).where(
+            (Tracking.session == session_id) & Tracking.tool_calls.is_null(False) & Tracking.message.is_null(False)
+        )
+        return {row.message_id: json.loads(row.tool_calls) for row in rows}

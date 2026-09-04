@@ -160,6 +160,26 @@ describe('submitMessage correlates ids directly, never through result.reply', ()
     expect(userMessage.reaction).toBe('listening')
   })
 
+  it('sets statusText on the streaming bubble on a tool_call event, and clears it on tool_result', async () => {
+    let duringCall = null
+    let afterResult = null
+    chatClient.sendMessage.mockImplementation(async (text, sessionId, { onStatus }) => {
+      onStatus('Searching Flights…')
+      duringCall = chatStore.messages.value.find((m) => m.role === 'assistant')?.statusText
+      onStatus('')
+      afterResult = chatStore.messages.value.find((m) => m.role === 'assistant')?.statusText
+      return {
+        reply: [], user_message_id: 42, assistant_message_id: 5,
+        state: { key: 'a', ui_label: 'A', actions: [] }, 'on-enter': null, session_id: 1
+      }
+    })
+
+    await chatStore.handleSend('hello')
+
+    expect(duringCall).toBe('Searching Flights…')
+    expect(afterResult).toBe('')
+  })
+
   it('clears any stale reaction on the local user bubble when this turn carries none', async () => {
     chatClient.sendMessage.mockResolvedValue({
       reply: [],

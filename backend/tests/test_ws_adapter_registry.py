@@ -134,6 +134,30 @@ class TestChatLoopRegistration:
         assert adapter._connections == {}  # disconnected at the end — see the cleanup test below
 
 
+class TestPushMetadataToolEvents:
+    def test_tool_call_and_tool_result_are_forwarded_as_their_own_frame_types(self, db):
+        """See ai.ai_service.AiService's own tool-call loop: 'tool_call'
+        carries only status_text (a live transient bubble line),
+        'tool_result' carries nothing (its only job is telling the
+        frontend to clear that line)."""
+        _publish_project(db, "proj")
+        session_id = db.create_chat_session(username=USERNAME, project_id="proj", revision=db.get_project_published_revision("proj"))
+
+        class _ToolCallingChatService(_FakeChatService):
+            async def process_turn(self, sid, text, on_metadata=None):
+                await on_metadata("tool_call", {"status_text": "Searching Flights…"})
+                await on_metadata("tool_result", {"name": "source_flights_select", "arguments": {}, "result": "row"})
+                return await super().process_turn(sid, text, on_metadata)
+
+        adapter = WsAdapter(_ToolCallingChatService(), db, _FakeAuthService())
+        websocket = _FakeWebSocket([{"message": "hi", "session_id": session_id}])
+
+        asyncio.run(adapter.chat_loop(websocket))
+
+        assert {"type": "tool_call", "status_text": "Searching Flights…"} in websocket.sent
+        assert {"type": "tool_result"} in websocket.sent
+
+
 class TestCleanupOnDisconnect:
     def test_the_registration_is_removed_on_disconnect(self, db):
         _publish_project(db, "proj")

@@ -14,6 +14,7 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from automaton.automaton import ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
+from tracking.sources.url import parse_source_url
 
 
 class InitActionTargetError(Exception):
@@ -673,3 +674,89 @@ class AutomatonYamlEditor:
             for n in ast.walk(node)
         )
         return None if references_name else node
+
+    # ------------------------------------------------------------------
+    # Legacy migration support: source.<name>.read() -> attachment.read(path).
+    # ------------------------------------------------------------------
+
+    def rewrite_legacy_source_read_calls(self) -> set[str]:
+        """Rewrites every on-enter's own zero-arg `source.<name>.read()`
+        call — the now-removed "read the whole file" method — into
+        `attachment.read('<path>')`, `<path>` resolved from this same
+        project's own declared `sources:` section (an `avance:` url only
+        — any other scheme has no archive path to resolve to). on-enter
+        is the only place this has an equivalent (attachment.read is
+        on-enter only, see IdentifierRegistry.TRIGGER_SCOPE_EXCLUDES) — a
+        `trigger:`/`env:` expression's own `.read()` call is never
+        touched, there's nothing to rewrite it into. Returns every source
+        name an on-enter `.read()` call referenced but couldn't resolve
+        (no declared `avance:` url for that name) — left exactly as it
+        was, for the caller to decide what to do about it."""
+        source_paths = self._declared_avance_source_paths()
+        unresolved: set[str] = set()
+        for raw_state in self._states().values():
+            for raw_action in raw_state.get("actions") or []:
+                on_enter = raw_action.get("on-enter")
+                if not on_enter or "source." not in on_enter or ".read(" not in on_enter:
+                    continue
+                rewritten, missing = self._rewrite_on_enter_source_reads(on_enter, source_paths)
+                unresolved |= missing
+                if rewritten is not None:
+                    raw_action["on-enter"] = rewritten
+        return unresolved
+
+    def _declared_avance_source_paths(self) -> dict[str, str]:
+        paths: dict[str, str] = {}
+        for name, raw_source in self._sources().items():
+            url = (raw_source or {}).get("url")
+            if not url:
+                continue
+            try:
+                scheme, path = parse_source_url(url)
+            except ValueError:
+                continue
+            if scheme == "avance":
+                paths[name] = path
+        return paths
+
+    @staticmethod
+    def _rewrite_on_enter_source_reads(on_enter: str, source_paths: Mapping[str, str]) -> tuple[str | None, set[str]]:
+        """(new on-enter text, unresolved names) for one action's own
+        on-enter script — None for the first element if no statement in
+        it actually needed rewriting, so the caller leaves the original
+        text (comments, exact formatting) untouched. A statement that IS
+        rewritten loses its own comments/formatting (ast.unparse
+        regenerates it from the parsed tree); every untouched sibling
+        statement keeps its exact original source."""
+        statements = TriggerExpressionAnalyzer.on_enter_statements(on_enter)
+        unresolved: set[str] = set()
+        changed = False
+        lines: list[str] = []
+        for _, statement in statements:
+            tree = ast.parse(statement, mode="eval")
+            statement_changed = False
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call) and not node.args and not node.keywords):
+                    continue
+                func = node.func
+                if not (
+                    isinstance(func, ast.Attribute) and func.attr == "read"
+                    and isinstance(func.value, ast.Attribute)
+                    and isinstance(func.value.value, ast.Name) and func.value.value.id == "source"
+                ):
+                    continue
+                source_name = func.value.attr
+                path = source_paths.get(source_name)
+                if path is None:
+                    unresolved.add(source_name)
+                    continue
+                node.func = ast.Attribute(value=ast.Name(id="attachment", ctx=ast.Load()), attr="read", ctx=ast.Load())
+                node.args = [ast.Constant(value=path)]
+                statement_changed = True
+            if statement_changed:
+                ast.fix_missing_locations(tree)
+                lines.append(ast.unparse(tree))
+                changed = True
+            else:
+                lines.append(statement)
+        return ("\n".join(lines) if changed else None), unresolved
