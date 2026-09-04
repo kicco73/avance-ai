@@ -3,21 +3,39 @@ from __future__ import annotations
 import hashlib
 import threading
 from collections import OrderedDict
-from typing import Any, AsyncIterator, Sequence, overload
+from typing import Any, AsyncIterator, Sequence, TYPE_CHECKING, overload
 
 import partial_json_parser
 from ai.llm_provider import (
 	AIServiceConfig,
 	AIServiceProviderOutputTruncatedError,
+	AIServiceRequestError,
 	LLMProvider,
 	MetadataCallback,
+	ToolCallsRequested,
 )
 from ai._providers.cascading_llm_provider import AutoLiveLLMProvider, AutoTestLLMProvider
 from ai._providers import gemini_provider_v2, openai_provider_v2, anthropic_provider_v2
 from db import Db
 from logging_factory import LoggerFactory
 
+if TYPE_CHECKING:
+	# Import guarded: tracking.sources -> ai.llm_provider (for ToolSpec)
+	# would close a circular import if this were eager, since importing
+	# anything under the `ai` package first runs ai/__init__.py, which
+	# imports this module. Only needed for the annotations below, never
+	# at runtime — same pattern as tracking.actuators.actuator_set's own
+	# `if TYPE_CHECKING: from ai import AiService`.
+	from tracking.sources import ToolSet
+
 logger = LoggerFactory.get_logger(__name__)
+
+# A tool-call round-trip (model asks for tools -> AiService resolves them
+# -> model is called again with the results) per turn — well past any
+# legitimate lookup chain; beyond this the model is almost certainly
+# looping, so AiService gives up with a clear error rather than running
+# away with API calls.
+MAX_TOOL_ROUNDS = 5
 
 class LRUCache(OrderedDict):
 	def __init__(self, maxsize: int = 128) -> None:
@@ -237,20 +255,23 @@ class AiService(object):
 	async def generate(
 		self,
 		system_prompt: str,
-		history: list[dict]
+		history: list[dict],
+		tool_set: "ToolSet | None" = None,
 	) -> str:
 		chunks: list[str] = []
-		async for chunk in self.generate_stream(system_prompt, history):
+		async for chunk in self.generate_stream(system_prompt, history, tool_set=tool_set):
 			chunks.append(chunk)
 		return "".join(chunks)
 
 	@overload
-	async def prompt(self, prompt: str, channels: None = None) -> str: ...
+	async def prompt(self, prompt: str, channels: None = None, tool_set: "ToolSet | None" = None) -> str: ...
 	@overload
-	async def prompt(self, prompt: str, channels: list[str]) -> dict[str, str]: ...
-	async def prompt(self, prompt: str, channels: list[str] | None = None) -> str | dict[str, str]:
+	async def prompt(self, prompt: str, channels: list[str], tool_set: "ToolSet | None" = None) -> dict[str, str]: ...
+	async def prompt(
+		self, prompt: str, channels: list[str] | None = None, tool_set: "ToolSet | None" = None,
+	) -> str | dict[str, str]:
 		if not channels:
-			return await self.generate("", [{"role": "user", "content": prompt}])
+			return await self.generate("", [{"role": "user", "content": prompt}], tool_set=tool_set)
 		schema = {"text": "Normal textual response, in markdown format, rendered as text."}
 		schema.update({name: f"The requested '{name}', rendered as plain text." for name in channels})
 		values: dict[str, str] = {}
@@ -259,6 +280,7 @@ class AiService(object):
 			"", [{"role": "user", "content": prompt}],
 			on_metadata=lambda name, value: values.__setitem__(name, str(value)),
 			schema=schema,
+			tool_set=tool_set,
 		):
 			chunks.append(chunk)
 		values["text"] = "".join(chunks)
@@ -268,10 +290,12 @@ class AiService(object):
 		self,
 		system_prompt: str,
 		history: list[dict],
+		tool_set: "ToolSet | None" = None,
 	) -> AsyncIterator[str]:
 		return self.generate_stream_with_metadata(
 			system_prompt, history, on_metadata=lambda name, value: None,
 			schema={"text": "Normal textual response, in markdown format, rendered as text."},
+			tool_set=tool_set,
 		)
 
 	def is_provider_with_schema(self) -> bool:
@@ -305,18 +329,97 @@ class AiService(object):
 		system_prompt: str,
 		history: list[dict[str, Any]],
 		on_metadata: MetadataCallback,
-		schema: dict[str, str]
+		schema: dict[str, str],
+		tool_set: "ToolSet | None" = None,
 	) -> AsyncIterator[str]:
+		"""With no tool_set, this is exactly the single call it always was
+		— same request, same live incremental parsing/yielding, byte for
+		byte (see _stream_final_answer, unchanged from before tools
+		existed). With one, the model may end a round asking for tools
+		instead of answering: that round's own text (the model rarely
+		produces any under a JSON-schema response, but nothing here
+		assumes it doesn't) is drained and discarded, never yielded here —
+		only the round that finally completes without a further
+		ToolCallsRequested streams outward, so the partial-JSON parser
+		below never has to reason about a tool-only interruption."""
+		provider_label = self._current_provider_label
+		tapped_on_metadata = self._tap_token_usage(on_metadata, provider_label)
 
+		if tool_set is None:
+			logger.info(f"generate_stream_with_metadata: provider={provider_label} fields={list(schema.keys())}")
+			response_stream = self._active_provider.generate_stream_with_schema(
+				system_prompt, history, schema=schema, on_metadata=tapped_on_metadata,
+			) # type: ignore
+			async for chunk in self._stream_final_answer(response_stream, schema, tapped_on_metadata, provider_label):
+				yield chunk
+			return
+
+		# Extended with the assistant's own tool_calls message and one
+		# 'tool' result message per call, round after round — local to
+		# this turn only. Never written back to `history` (the caller's
+		# own list) or persisted anywhere: TrackingProcessor never sees it,
+		# and it's gone once this generator returns.
+		turn_history = list(history)
+		tool_specs = tool_set.specs()
+
+		for round_number in range(1, MAX_TOOL_ROUNDS + 1):
+			logger.info(
+				f"generate_stream_with_metadata: provider={provider_label} fields={list(schema.keys())} "
+				f"tool_round={round_number} tools={[spec.name for spec in tool_specs]}"
+			)
+			response_stream = self._active_provider.generate_stream_with_schema(
+				system_prompt, turn_history, schema=schema, on_metadata=tapped_on_metadata, tools=tool_specs,
+			) # type: ignore
+			try:
+				round_chunks = [chunk async for chunk in response_stream]
+			except ToolCallsRequested as requested:
+				turn_history.append({
+					"role": "assistant", "tool_calls": requested.calls, "content": requested.assistant_content,
+				})
+				for call in requested.calls:
+					# Sequential, never parallel — ToolSet.call's own
+					# contract; each result must land in the history
+					# before the next call runs, matching what a real
+					# multi-step lookup actually depends on.
+					result = await tool_set.call(call.name, call.arguments)
+					turn_history.append({"role": "tool", "tool_call_id": call.id, "content": result})
+				continue
+
+			# The stream ended with no further tool request — the model's
+			# real final answer, already fully collected above; replay it
+			# through the exact same parser a live stream would use.
+			async for chunk in self._stream_final_answer(
+				self._as_async_iter(round_chunks), schema, tapped_on_metadata, provider_label,
+			):
+				yield chunk
+			return
+
+		raise AIServiceRequestError(
+			f"Exceeded {MAX_TOOL_ROUNDS} tool-call rounds without a final response from the model."
+		)
+
+	@staticmethod
+	async def _as_async_iter(items: list[str]) -> AsyncIterator[str]:
+		for item in items:
+			yield item
+
+	async def _stream_final_answer(
+		self,
+		response_stream: AsyncIterator[str],
+		schema: dict[str, str],
+		on_metadata: MetadataCallback,
+		provider_label: str,
+	) -> AsyncIterator[str]:
+		"""The model's own actual answer to `schema` — incremental
+		partial-JSON parsing exactly as generate_stream_with_metadata
+		always did it, before tool calls existed. `response_stream` is
+		either the live provider call directly (no tool_set) or an
+		already-fully-collected round's chunks replayed in order (a tool
+		turn's own final round) — this method has no way to tell the two
+		apart, and doesn't need to."""
 		accumulated_json = ""
 		emitted: set[str] = set()
 		last_text_length = 0
-
-		provider_label = self._current_provider_label
-		logger.info(f"generate_stream_with_metadata: provider={provider_label} fields={list(schema.keys())}")
-		response_stream = self._active_provider.generate_stream_with_schema(
-			system_prompt, history, schema=schema, on_metadata=self._tap_token_usage(on_metadata, provider_label),
-		) # type: ignore
 
 		try:
 			async for chunk in response_stream:
@@ -362,7 +465,7 @@ class AiService(object):
 
 		logger.info(f"generate_stream_with_metadata: stream ended normally, provider={provider_label} accumulated_json_length={len(accumulated_json)}")
 		final_parsed = partial_json_parser.parse_json(accumulated_json)
-		if not isinstance(final_parsed, dict) or not final_parsed:			
+		if not isinstance(final_parsed, dict) or not final_parsed:
 			return
 		last_inserted = next(reversed(final_parsed))
 		if last_inserted != 'text' and last_inserted not in emitted:

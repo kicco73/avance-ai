@@ -68,6 +68,50 @@ class AIServiceRequestError(AIServiceError):
 	message = "The AI service rejected the request as malformed."
 
 
+@dataclass(frozen=True)
+class ToolSpec:
+	"""One callable a provider's own native tool-calling exposes to the
+	model this turn — see tracking.sources.ToolSet.specs(), the only
+	producer of these today. `name` is always "source_<source
+	name>_<method>"; `parameters` is a JSON Schema object (every property
+	a plain string, all required — ToolSet.specs()'s own contract)."""
+	name: str
+	description: str
+	parameters: dict
+
+
+@dataclass(frozen=True)
+class ToolCall:
+	"""One invocation the model asked for, already translated out of
+	whichever provider reported it — `id` is that provider's own call id
+	when it has one, else generated (see each provider's own
+	ToolCallsRequested-raising code)."""
+	id: str
+	name: str
+	arguments: dict
+
+
+class ToolCallsRequested(Exception):
+	"""Raised by generate_stream_with_schema in place of completing the
+	stream: the model ended its turn asking for one or more tools instead
+	of (or before) producing a final answer. Never a failover condition
+	(retrying another provider wouldn't change what the model asked for),
+	so — like AIServiceProviderOutputTruncatedError — this deliberately
+	doesn't subclass AIServiceError/ProviderError; it's meant to be caught
+	once, by AiService's own tool-call loop, which resolves every call in
+	`calls` and re-invokes the provider with the results appended to the
+	(turn-local, never persisted) history."""
+	def __init__(self, calls: list[ToolCall], assistant_content: Any) -> None:
+		super().__init__(f"tool calls requested: {[c.name for c in calls]}")
+		self.calls = calls
+		# The provider-neutral assistant message to replay in history —
+		# whatever text (if any) the model produced alongside asking for
+		# these calls; see the neutral {"role": "assistant", "tool_calls":
+		# ..., "content": ...} message shape each provider must translate
+		# to/from its own format.
+		self.assistant_content = assistant_content
+
+
 class AIServiceProviderOutputTruncatedError(Exception):
 	"""Raised by a provider's generate_stream_with_schema when its own
 	native stop/finish reason confirms the response was cut short by
@@ -129,7 +173,19 @@ class LLMProvider(TokenCounter, ABC):
 	@abstractmethod
 	async def generate_stream_with_schema(
 		self, system_prompt: str, history: list[dict], schema: dict[str, str], on_metadata: MetadataCallback | None = None,
+		tools: list[ToolSpec] | None = None,
 	) -> AsyncIterator[str]:
+		"""`history` is provider-neutral, including for tool turns: beyond
+		the plain {role, content} shape, two more message shapes appear —
+		{"role": "assistant", "tool_calls": list[ToolCall], "content": Any}
+		(the assistant's own turn asking for tools, exactly as replayed
+		from a prior ToolCallsRequested) and {"role": "tool",
+		"tool_call_id": str, "content": str} (one per resolved call,
+		AiService's own tool loop appends these in call order). With
+		`tools` empty/None, a provider must send the exact same request it
+		always has — no tool-call machinery engaged at all. When the model
+		ends its turn asking for tools instead of completing normally,
+		raise ToolCallsRequested in place of finishing the stream."""
 		raise NotImplementedError
 		yield
 

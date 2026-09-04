@@ -11,6 +11,7 @@ import { handleEnterNext } from './enterToNextField.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 import { customDialog } from '../../dialogStore.js'
 import { useTokensBar } from '../../composables/useTokensBar.js'
+import { identifierRegistry } from '../../identifierRegistry.js'
 
 const props = defineProps({
   selectedElement: { type: Object, default: null }, // { kind: 'state' | 'action', data } | null
@@ -160,6 +161,17 @@ function commitBoolField(field, value) {
   emit('set-field', field, value)
 }
 
+// tools: — every declared source name is a toggle, same idiom as the
+// boolean badges above; identifierRegistry.value.source is already the
+// live-refreshed source of truth ModelMenu/TriggerEditor's own
+// autocomplete uses, so no separate fetch is needed here.
+const availableSourceNames = computed(() => Object.keys(identifierRegistry.value.source ?? {}))
+function toggleTool(name) {
+  const current = props.selectedElement?.data.tools ?? []
+  const next = current.includes(name) ? current.filter((t) => t !== name) : [...current, name]
+  emit('set-field', 'tools', next)
+}
+
 const isDeleteDisabled = computed(() => {
   const d = props.selectedElement?.data
   if (!d) return false
@@ -297,11 +309,23 @@ function selectAttachment(fileName) {
               :title="selectedElement.data.hasReactions ? 'Click to toggle' : 'This project declares no reactions — add one in the Reactions tab first.'"
               @click.stop="selectedElement.data.hasReactions && commitBoolField('reactions-enabled', !selectedElement.data.reactionsEnabled)"
             >Reactions</span>
+            <span
+              v-for="name in availableSourceNames" :key="'tool-' + name"
+              class="inspector-detail-badge inspector-detail-badge-toggle"
+              :class="(selectedElement.data.tools || []).includes(name) ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
+              :title="`Let the model call source.${name} as a tool while replying in this state`"
+              @click.stop="toggleTool(name)"
+            >{{ name }}</span>
           </template>
           <template v-else>
             <span v-if="!selectedElement.data.chat" class="inspector-detail-badge inspector-detail-badge-neutral">No chat</span>
             <span v-if="selectedElement.data.historyCutoff" class="inspector-detail-badge inspector-detail-badge-neutral">History cutoff</span>
             <span v-if="selectedElement.data.reactionsEnabled && selectedElement.data.hasReactions" class="inspector-detail-badge inspector-detail-badge-neutral">Reactions</span>
+            <span
+              v-for="name in (selectedElement.data.tools || [])" :key="'tool-ro-' + name"
+              class="inspector-detail-badge inspector-detail-badge-neutral"
+              :title="`Callable by the model as source.${name}`"
+            >{{ name }}</span>
           </template>
         </template>
         <template v-else>

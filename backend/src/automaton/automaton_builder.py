@@ -247,6 +247,10 @@ class AutomatonBuilder(object):
                 f"'{transition_log_level}' must be one of {sorted(VALID_LOG_LEVELS)}"
             )
 
+        raw_tools = raw_state.get("tools", [])
+        if not isinstance(raw_tools, list) or not all(isinstance(t, str) for t in raw_tools):
+            raise ValueError(f"State '{key}': 'tools' must be a list of source names if present.")
+
         return State(
             key=key,
             ui_label=raw_state.get("ui-label", key),
@@ -260,6 +264,10 @@ class AutomatonBuilder(object):
             history_cutoff=raw_state.get("history-cutoff", False),
             chat=raw_state.get("chat", True),
             reactions_enabled=raw_state.get("reactions-enabled", False),
+            # Existence of each name (against this project's own
+            # `sources:`) is checked later, once `sources` itself is fully
+            # built — see _actions_sanity_check's own tools_violations.
+            tools=tuple(raw_tools),
         )
 
     @staticmethod
@@ -408,6 +416,12 @@ class AutomatonBuilder(object):
         `known_projects`: None skips the automaton.* existence check entirely."""
         registry_without_actuator = IdentifierRegistry.for_triggers(registry)
         registry_without_session = IdentifierRegistry.for_actuators(registry)
+        for tool_name in state.tools:
+            if tool_name not in sources:
+                raise ValueError(
+                    f"State '{state.key}': tools '{tool_name}' — 'sources.{tool_name}' is not declared "
+                    "in the project's own 'sources:' section."
+                )
         for action in state.actions:
             if action.target not in declared_states:
                 raise ValueError(

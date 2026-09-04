@@ -21,6 +21,7 @@ from ai.llm_provider import (
 	AIServiceRequestError,
 	LLMProvider,
 	MetadataCallback,
+	ToolSpec,
 	content_to_text,
 )
 
@@ -165,7 +166,16 @@ class GeminiProvider(LLMProvider):
 		history: list[dict[str, Any]],
 		schema: dict[str, str] | None = None,
 		on_metadata: MetadataCallback | None = None,
+		tools: list[ToolSpec] | None = None,
 	) -> AsyncIterator[str]:
+		if tools:
+			# Native tool-calling isn't implemented for this provider yet
+			# (see ai/_providers/anthropic_provider_v2.py for the one that
+			# is) — never silently ignore a state's own declared tools.
+			raise NotImplementedError(
+				"GeminiProvider.generate_stream_with_schema: native tool-calling isn't implemented "
+				"for this provider yet."
+			)
 		contents, config = self.__format_history_and_config(system_prompt, history, schema or {})
 
 		total_tokens = 0

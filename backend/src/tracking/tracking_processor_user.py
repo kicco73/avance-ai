@@ -114,6 +114,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 				tag_specs=[('audio', 'audio'), ('text', 'text'), ('env', 'env')],
 				chat_history=chat_history,
 				on_metadata=self.on_receiving_metadata_when_repeating_the_call,
+				tool_set=self.build_tool_set(self.out.state),
 			):
 				self.out.reply += chunk
 				self.metadata.on_metadata('chunk', chunk)

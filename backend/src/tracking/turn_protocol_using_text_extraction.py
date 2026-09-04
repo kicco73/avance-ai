@@ -5,9 +5,10 @@ from typing import AsyncIterator
 from ai import MetadataCallback
 from logging_factory import LoggerFactory
 from tracking.env import Env
+from tracking.sources import ToolSet
 from tracking.tag_prompt_builder import TagPromptBuilder
 from tracking.text_filter import ConcatTagFilter
-from tracking.turn_protocol import TurnProtocol
+from tracking.turn_protocol import TurnProtocol, tool_set_kwargs as _tool_set_kwargs
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -36,7 +37,10 @@ Definition of env metadata:
       signals, which are re-evaluated fresh every turn.
 
 Always add a [env]...[/env] tag at the end of every response:
-    - Write one "key: value" pair per line (optionally prefixed with "-").
+    - Write one "key: value" pair per line (optionally prefixed by "-").
+    - Only include a key when you are actually reporting something new or
+      changed — omit every key that hasn't changed; leave the tag empty
+      when nothing changed.
     - Never invent values for the keys shown to you below — those are inputs supplied to you.
 """
 
@@ -117,12 +121,16 @@ class TurnProcotolUsingTextExtraction(TurnProtocol):
         'env_batch': EMBED_ENV_BATCH_TAG_PROMPT,
     }
 
-    def _generate_reply(self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,) -> AsyncIterator[str]:
-        return self._stream_and_filter(prompt, chat_history, list(self.include_tags), on_metadata)
+    def _generate_reply(
+        self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,
+        tool_set: ToolSet | None = None,
+    ) -> AsyncIterator[str]:
+        return self._stream_and_filter(prompt, chat_history, list(self.include_tags), on_metadata, tool_set)
 
     def generate_reply_with_schema(
         self, base_prompt: str, env: Env, tag_specs: list[tuple[str, str]], chat_history: list[dict],
         on_metadata: MetadataCallback,
+        tool_set: ToolSet | None = None,
     ) -> AsyncIterator[str]:
         preambles = TagPromptBuilder().build(tag_specs, self.prompt_preambles)
         tag_names = [tag for tag, _ in tag_specs]
@@ -134,15 +142,16 @@ class TurnProcotolUsingTextExtraction(TurnProtocol):
         content.append(base_prompt)
         prompt = "\n\n".join(content)
 
-        return self._stream_and_filter(prompt, chat_history, tag_names, on_metadata)
+        return self._stream_and_filter(prompt, chat_history, tag_names, on_metadata, tool_set)
 
     async def _stream_and_filter(
         self, prompt: str, chat_history: list[dict], tag_names: list[str], on_metadata: MetadataCallback,
+        tool_set: ToolSet | None = None,
     ) -> AsyncIterator[str]:
         metadata_handlers = {tag: lambda value, tag=tag: on_metadata(tag, value) for tag in tag_names}
         filter = ConcatTagFilter(*tag_names, **metadata_handlers)
 
-        async for chunk in self._ai_service.generate_stream(prompt, chat_history):
+        async for chunk in self._ai_service.generate_stream(prompt, chat_history, **_tool_set_kwargs(tool_set)):
             chunk = filter.filter(chunk)
             yield chunk
 

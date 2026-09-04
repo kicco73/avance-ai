@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from whatsapp.whatsapp_service import WhatsAppService
 
     from ai import AiService
+    from tracking.sources import ToolSet
 
 
 logger = LoggerFactory.get_logger(__name__)
@@ -49,6 +50,12 @@ class ActuatorSet(ABC):
         # Bound fresh per on-enter evaluation via with_ai_service —
         # never set any other way (see EvaluationScopeBuilder.build).
         self._ai_service: "AiService | None" = None
+        # Same lifecycle as _ai_service above — the tool catalog of
+        # whichever state this on-enter is actually evaluated for (see
+        # EvaluationScopeBuilder.build's own with_ai_service call), used
+        # only by prompt() below. None wherever _ai_service is too, or
+        # for a state with no tools: declared.
+        self._tool_set: "ToolSet | None" = None
         # How this set gets an on-enter script run as a Task. None only
         # for a bare set nobody wired to a JobService (a test replay's
         # own FakeActuatorSet default): the script then runs inline and
@@ -85,14 +92,21 @@ class ActuatorSet(ABC):
         if self._ai_service is None:
             logger.warning("actuator.prompt() called with no AI service bound — returning ''.")
             return ""
-        return _run_sync(self._ai_service.prompt(prompt))
+        # tool_set only actually passed when bound — a fake AiService
+        # predating tool-calling (most existing tests' own doubles, see
+        # tests/conftest.py) declares no such parameter at all.
+        kwargs = {"tool_set": self._tool_set} if self._tool_set is not None else {}
+        return _run_sync(self._ai_service.prompt(prompt, **kwargs))
 
-    def with_ai_service(self, ai_service: "AiService") -> "ActuatorSet":
-        """A copy of this actuator set bound to `ai_service` — never
+    def with_ai_service(self, ai_service: "AiService", tool_set: "ToolSet | None" = None) -> "ActuatorSet":
+        """A copy of this actuator set bound to `ai_service` (and,
+        optionally, the tool catalog of whichever state this on-enter is
+        being evaluated for — see EvaluationScopeBuilder.build) — never
         mutates `self`, so the long-lived instance a factory hands out
         stays reusable across calls."""
         bound = copy.copy(self)
         bound._ai_service = ai_service
+        bound._tool_set = tool_set
         return bound
 
     @abstractmethod

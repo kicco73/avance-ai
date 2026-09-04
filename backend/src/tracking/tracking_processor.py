@@ -12,6 +12,7 @@ from logging_factory import LoggerFactory
 from .env import Env
 from .evaluation_scope import EvaluationScopeBuilder
 from .priming import build_priming_messages
+from .sources import SourceNamespace, ToolSet
 from .tracking_engine import DbTrackingSink, TrackingEngine
 from .turn_protocol import TurnProtocol
 from .turn_protocol_using_schema import TurnProtocolUsingSchema
@@ -170,8 +171,19 @@ class TrackingProcessor(object):
 
 		protocol = self.build_turn_protocol()
 		return protocol.generate_reply(
-			base_prompt, signal_definition, self.env, chat_history, on_metadata, reaction_definition=reaction_definition
+			base_prompt, signal_definition, self.env, chat_history, on_metadata,
+			reaction_definition=reaction_definition, tool_set=self.build_tool_set(state),
 		)
+
+	def build_tool_set(self, state: State) -> ToolSet | None:
+		"""`state`'s own tool catalog (see automaton.State.tools) — None
+		(no tools: declared) all the way down to a request identical to
+		before tool-calling existed. Resolved fresh per call against this
+		turn's own automaton/session, same SourceNamespace shape a
+		source.<name> trigger/env: reference already uses."""
+		if not state.tools:
+			return None
+		return SourceNamespace(self.db, self.user.automaton, self.user.session_id).tool_set(state.tools)
 
 	def _build_base_prompt_and_history(self, state: State) -> tuple[str, list[dict]]:
 		"""Same base_prompt/chat_history generate_reply itself builds for

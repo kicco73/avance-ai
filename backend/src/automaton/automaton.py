@@ -74,6 +74,13 @@ class State:
     # from the project's whole `reactions` dict — never a per-state subset
     # (see TurnProtocol's own conditional inclusion of the 'reaction' tag).
     reactions_enabled: bool = False
+    # Names of this project's own `sources:` the model may call as native
+    # tools while replying in this state (see tracking.sources.ToolSet) —
+    # every name already validated at build time against `sources:`
+    # (AutomatonBuilder's own sanity check). Empty means no tool catalog
+    # at all this turn — TrackingProcessor passes tool_set=None then, the
+    # same request shape a turn always sent before tool-calling existed.
+    tools: tuple[str, ...] = ()
 
     @property
     def has_triggerable_actions(self) -> bool:
@@ -152,6 +159,9 @@ class StatePayload(TypedDict):
     # own, per-state gated side of this.
     reactions: list[ReactionOptionPayload]
     actions: list[ActionPayload]
+    # Names of this project's own `sources:` this state exposes to the
+    # model as native tools — see State.tools.
+    tools: list[str]
 
 def manual_actions_for(actions: list[ActionPayload], auto_tracking_enabled: bool) -> list[ActionPayload]:
     return [a for a in actions if not a["has_trigger"] or not auto_tracking_enabled]
@@ -395,6 +405,7 @@ class Automaton(object):
             "chat": state.chat,
             "reactions": [self.get_reaction_option_payload(r) for r in self.reactions],
             "actions": [Automaton.get_action_payload(a) for a in state.actions],
+            "tools": list(state.tools),
         }
 
     def reactions_enabled_for(self, state: State) -> bool:

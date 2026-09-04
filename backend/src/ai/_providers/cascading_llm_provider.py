@@ -7,7 +7,7 @@ cascade.py's ProviderCascade for the shared pointer bookkeeping)."""
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from cascade import BASE_DELAY_SECONDS, MAX_RETRIES, ProviderCascade
 from ai.llm_provider import (
@@ -16,6 +16,7 @@ from ai.llm_provider import (
     AIServiceProviderUnavailableError,
     LLMProvider,
     MetadataCallback,
+    ToolSpec,
 )
 from logging_factory import LoggerFactory
 
@@ -26,6 +27,17 @@ _FAILOVER_ERRORS = (
     AIServiceProviderRateLimitedError,
     AIServiceProviderPermanentError,
 )
+
+
+def _forward_kwargs(on_metadata: MetadataCallback | None, tools: list[ToolSpec] | None) -> dict[str, Any]:
+    """`tools` only actually included when given — a wrapped provider
+    (real or a test fake) that predates tool-calling and so declares no
+    `tools` parameter at all must keep receiving the exact same call it
+    always did, never a stray `tools=None` it can't accept."""
+    kwargs: dict[str, Any] = {"on_metadata": on_metadata}
+    if tools is not None:
+        kwargs["tools"] = tools
+    return kwargs
 
 
 class AutoLiveLLMProvider(LLMProvider):
@@ -53,10 +65,11 @@ class AutoLiveLLMProvider(LLMProvider):
 
     async def generate_stream_with_schema(
         self, system_prompt: str, history: list[dict], schema: dict[str, str], on_metadata: MetadataCallback | None = None,
+        tools: list[ToolSpec] | None = None,
     ) -> AsyncIterator[str]:
         provider = self._cascade.current
         try:
-            async for chunk in provider.generate_stream_with_schema(system_prompt, history, schema=schema, on_metadata=on_metadata):  # type: ignore
+            async for chunk in provider.generate_stream_with_schema(system_prompt, history, schema=schema, **_forward_kwargs(on_metadata, tools)):  # type: ignore
                 yield chunk
         except _FAILOVER_ERRORS as exc:
             logger.error(f"AI (live) provider #{self._cascade.current_index + 1} failed: {type(exc).__name__}: {exc}")
@@ -86,6 +99,7 @@ class AutoTestLLMProvider(AutoLiveLLMProvider):
         history: list[dict],
         schema: dict[str, str],
         on_metadata: MetadataCallback | None = None,
+        tools: list[ToolSpec] | None = None,
     ) -> AsyncIterator[str]:
         last_error: BaseException | None = None
         for _ in range(len(self._cascade)):
@@ -95,7 +109,7 @@ class AutoTestLLMProvider(AutoLiveLLMProvider):
             yielded = False
             while True:
                 try:
-                    async for chunk in provider.generate_stream_with_schema(system_prompt, history, schema=schema, on_metadata=on_metadata):  # type: ignore
+                    async for chunk in provider.generate_stream_with_schema(system_prompt, history, schema=schema, **_forward_kwargs(on_metadata, tools)):  # type: ignore
                         yielded = True
                         yield chunk
                     return

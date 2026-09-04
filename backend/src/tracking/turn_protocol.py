@@ -6,6 +6,17 @@ from typing import AsyncIterator
 from ai import AiService
 from ai import MetadataCallback
 from tracking.env import Env
+from tracking.sources import ToolSet
+
+
+def tool_set_kwargs(tool_set: ToolSet | None) -> dict:
+	"""`tool_set` only actually forwarded when given — a fake/stub
+	AiService predating tool-calling (most existing tests' own doubles)
+	declares no `tool_set` parameter at all, so it must keep receiving
+	the exact same call it always did, never a stray `tool_set=None` it
+	can't accept. Shared by both TurnProtocol subclasses' own calls into
+	AiService.generate_stream_with_metadata/generate_stream."""
+	return {"tool_set": tool_set} if tool_set is not None else {}
 
 class TurnProtocol(ABC):
 
@@ -43,12 +54,17 @@ class TurnProtocol(ABC):
 		# Default None: every caller that never enables reactions (the
 		# common case for most existing tests) is unaffected.
 		reaction_definition: str | None = None,
+		# The current state's own tool catalog (see automaton.State.tools)
+		# — forwarded as-is to AiService; None (no tools: for this state)
+		# all the way down to a request identical to before tool-calling
+		# existed. TurnProtocol never inspects this itself.
+		tool_set: ToolSet | None = None,
 	) -> AsyncIterator[str]:
 		"""Returns chunks of text coming from the response streaming and
 		calls metadata callback to handle tags in a compatible way for V1 and V2.
 		"""
 		final_prompt = self.build_final_prompt(base_prompt, signal_definition, env, reaction_definition)
-		return self._generate_reply(final_prompt, chat_history, on_metadata)
+		return self._generate_reply(final_prompt, chat_history, on_metadata, **tool_set_kwargs(tool_set))
 
 	def build_final_prompt(
 		self, base_prompt: str, signal_definition: str | None, env: Env, reaction_definition: str | None = None,
@@ -62,13 +78,17 @@ class TurnProtocol(ABC):
 		)
 
 	@abstractmethod
-	def _generate_reply(self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,) -> AsyncIterator[str]:
+	def _generate_reply(
+		self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,
+		tool_set: ToolSet | None = None,
+	) -> AsyncIterator[str]:
 		raise NotImplementedError
 
 	@abstractmethod
 	def generate_reply_with_schema(
 		self, base_prompt: str, env: Env, tag_specs: list[tuple[str, str]], chat_history: list[dict],
 		on_metadata: MetadataCallback,
+		tool_set: ToolSet | None = None,
 	) -> AsyncIterator[str]:
 		raise NotImplementedError
 

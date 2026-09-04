@@ -82,12 +82,13 @@ class EvaluationScopeBuilder(object):
         session (a wake-up re-evaluation, a test replay), where a source
         driver just reads its canonical archive directly instead."""
         signal_values = SignalEvaluator().validate(automaton, raw_signal_values)
+        source_namespace = SourceNamespace(self._db, automaton, session_id)
         scope: dict[str, Any] = {
             "signal": signal_values,
             "env": self._env.action_set(),
             "session": self._session,
             "user": self._user.as_dict(),
-            "source": SourceNamespace(self._db, automaton, session_id),
+            "source": source_namespace,
             "metric": self._metrics.for_turn(),
             # FIXME: simpleeval rejects a raw module ("modules are not allowed") — ModuleWrapper is its
             # sanctioned opt-in; don't replace this with the bare `datetime` module.
@@ -96,7 +97,16 @@ class EvaluationScopeBuilder(object):
         if self._automaton_namespace is not None:
             scope["automaton"] = self._automaton_namespace.scoped_to(automaton.family)
         if self._ai_service is not None:
-            scope["actuator"] = self._actuator_set.with_ai_service(self._ai_service)
+            # actuator.prompt()'s own tool catalog — this on-enter's own
+            # state's tools:, resolved through the same SourceNamespace
+            # (and so the same per-session read cache) `scope["source"]`
+            # above already uses. None wherever the state itself declares
+            # none, or isn't found (a stale automaton snapshot, never a
+            # real config error — AutomatonBuilder already validated
+            # every tools: name against sources: at build time).
+            state = automaton.states.get(state_key)
+            tool_set = source_namespace.tool_set(state.tools) if state is not None and state.tools else None
+            scope["actuator"] = self._actuator_set.with_ai_service(self._ai_service, tool_set=tool_set)
         else:
             scope["actuator"] = self._actuator_set
         merged = self._metrics.merge_if_referenced(automaton, state_key, scope)

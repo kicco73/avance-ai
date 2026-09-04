@@ -5,8 +5,9 @@ from typing import AsyncIterator
 from ai import MetadataCallback
 from logging_factory import LoggerFactory
 from tracking.env import Env
+from tracking.sources import ToolSet
 from tracking.tag_prompt_builder import TagPromptBuilder
-from tracking.turn_protocol import TurnProtocol
+from tracking.turn_protocol import TurnProtocol, tool_set_kwargs as _tool_set_kwargs
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -130,7 +131,7 @@ class TurnProtocolUsingSchema(TurnProtocol):
 
 	schema = {
 		"audio": "Short textual version for text-to-speech.",
-		"env": "Updated memory state. Include all current context keys in the form key: value, one per line, rendered as text.",
+		"env": "Memory delta: only the keys that are new or whose value changed this turn, in the form key: value, one per line, rendered as text. Empty when nothing changed.",
 		"signals": "JSON dictionary containing required calculated signal values, rendered as text.",
 		"reaction": "The key of a declared reaction to react to the user's last message with, or empty if none fits, rendered as text.",
 		"text": "Normal textual response to the user, in markdown format, rendered as text.",
@@ -138,7 +139,10 @@ class TurnProtocolUsingSchema(TurnProtocol):
 		"env_batch": "Plain text (not JSON): one '<N>:' header line per turn marked in the transcript (that turn's own [Turn N] number, always 1, 2, 3, ... with no gaps), followed by that turn's own 'key=value' lines (none when nothing changed), then a final line containing only the text [eof], e.g. \"1:\\nfavorite_color=blue\\n2:\\n[eof]\", rendered as text.",
 	}
 
-	def _generate_reply(self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,) -> AsyncIterator[str]:
+	def _generate_reply(
+		self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,
+		tool_set: ToolSet | None = None,
+	) -> AsyncIterator[str]:
 
 		schema = {tag: self.schema[tag] for tag in self.include_tags}
 		order_list = [f'\t- {tag}' for tag in schema.keys()]
@@ -146,12 +150,13 @@ class TurnProtocolUsingSchema(TurnProtocol):
 		prompt = f"{prompt}\n\n{SCHEMA_ORDER_PROMPT}\n{order}"
 
 		return self._ai_service.generate_stream_with_metadata(
-			prompt, chat_history, on_metadata=on_metadata, schema=schema
+			prompt, chat_history, on_metadata=on_metadata, schema=schema, **_tool_set_kwargs(tool_set),
 		)
 
 	def generate_reply_with_schema(
 		self, base_prompt: str, env: Env, tag_specs: list[tuple[str, str]], chat_history: list[dict],
 		on_metadata: MetadataCallback,
+		tool_set: ToolSet | None = None,
 	) -> AsyncIterator[str]:
 		preambles = TagPromptBuilder().build(tag_specs, self.prompt_preambles)
 		schema = TagPromptBuilder().build(tag_specs, self.schema)
@@ -168,6 +173,6 @@ class TurnProtocolUsingSchema(TurnProtocol):
 		prompt = f"{prompt}\n\n{SCHEMA_ORDER_PROMPT}\n{order}"
 
 		return self._ai_service.generate_stream_with_metadata(
-			prompt, chat_history, on_metadata=on_metadata, schema=schema
+			prompt, chat_history, on_metadata=on_metadata, schema=schema, **_tool_set_kwargs(tool_set),
 		)
 

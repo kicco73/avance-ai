@@ -16,6 +16,7 @@ from ai.llm_provider import (
     AIServiceRequestError,
     LLMProvider,
     MetadataCallback,
+    ToolSpec,
     content_to_text,
 )
 from logging_factory import LoggerFactory
@@ -102,7 +103,16 @@ class OpenAICompatibleProvider(LLMProvider):
         history: List[Dict[str, Any]],
         schema: Optional[Dict[str, str]] = None,
         on_metadata: Optional[MetadataCallback] = None,
+        tools: Optional[List[ToolSpec]] = None,
     ) -> AsyncIterator[str]:
+        if tools:
+            # Native tool-calling isn't implemented for this provider yet
+            # (see ai/_providers/anthropic_provider_v2.py for the one that
+            # is) — never silently ignore a state's own declared tools.
+            raise NotImplementedError(
+                "OpenAICompatibleProvider.generate_stream_with_schema: native tool-calling isn't "
+                "implemented for this provider yet."
+            )
         messages: List[Dict[str, str]] = [
             {"role": "system", "content": system_prompt}
         ]

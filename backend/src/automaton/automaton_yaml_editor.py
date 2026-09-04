@@ -174,6 +174,7 @@ class AutomatonYamlEditor:
             "final": len(raw_actions) == 0,
             "chat": raw_state.get("chat", True),
             "actions": [self._action_payload_from_raw(raw_action, state_name) for raw_action in raw_actions],
+            "tools": list(raw_state.get("tools") or []),
         }
 
     @staticmethod
