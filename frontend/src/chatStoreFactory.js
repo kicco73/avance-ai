@@ -368,6 +368,16 @@ export function createChatStore({
     setMessageFailed(message.id, false)
     chatLoading.value = true
 
+    // Snapshotted once, up front: this turn's own session, never re-read
+    // off currentSessionId.value below. The AI provider can take a long
+    // time to reply — long enough that the user switches to a completely
+    // different chat before it's back. Without this, every completion
+    // effect below (including the ones that decide which session is
+    // "current") would run against whatever's on screen *then*, not the
+    // session this turn was actually sent for — silently attributing a
+    // stale reply to the wrong, now-open chat.
+    const turnSessionId = currentSessionId.value
+
     // Create the assistant bubble up front, to receive chunks as they stream in
     const assistantMsgId = ++nextMessageId
     const assistantMsg = {
@@ -381,11 +391,13 @@ export function createChatStore({
     messages.value.push(assistantMsg)
 
     try {
-      const result = await sendChatMessage(message.content, currentSessionId.value, {
+      const result = await sendChatMessage(message.content, turnSessionId, {
         onStatus: (text) => {
+          if (currentSessionId.value !== turnSessionId) return
           chatStatus.value = text
         },
         onChunk: (chunkText) => {
+          if (currentSessionId.value !== turnSessionId) return
           // Replace with a new object (not mutate in place) to trigger Vue reactivity
           const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
           if (idx !== -1) {
@@ -396,6 +408,17 @@ export function createChatStore({
           }
         }
       })
+
+      if (currentSessionId.value !== turnSessionId) {
+        // The user has since switched to a different chat — this reply is
+        // real and already persisted server-side, but has nothing to do
+        // with whatever's on screen now. Applying any of the effects below
+        // would leak session turnSessionId's own reply/state into the chat
+        // actually being viewed (and silently revert currentSessionId back
+        // to it — see the write below). Switching back to turnSessionId
+        // re-fetches its real history from the server instead (selectSession).
+        return
+      }
 
       // Correlate this bubble with its real backend id — needed by
       // testTimeline.js's effectiveTimestamp to position a pre-turn
@@ -459,13 +482,23 @@ export function createChatStore({
       if (sessionsPanelOpen.value) loadSessions()
       bumpTurn()
     } catch (err) {
-      // On send failure, remove the empty/incomplete bubble
+      // On send failure, remove the empty/incomplete bubble — a no-op if
+      // the user's since switched chats (messages.value is a different
+      // session's array by then, never containing assistantMsgId).
       const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
       if (idx !== -1) messages.value.splice(idx, 1)
-
       setMessageFailed(message.id, true)
-      handleSessionInactiveError(err)
+
+      // Only the still-current chat's own "session went inactive" banner
+      // should react to this — a stale turn's error has nothing to say
+      // about whichever different session the user's now looking at.
+      if (currentSessionId.value === turnSessionId) handleSessionInactiveError(err)
     } finally {
+      // Unconditional, unlike everything above: this is the one truly
+      // global flag (one send in flight at a time, whichever chat it's
+      // for), so it must always clear on completion — gating it on
+      // turnSessionId would leave a switched-away-from chat's input
+      // stuck "loading" forever once nothing is ever going to flip it back.
       chatLoading.value = false
       chatStatus.value = ''
     }
@@ -529,8 +562,14 @@ export function createChatStore({
 
   async function handleAction(actionName) {
     actionLoading.value = true
+    // Same staleness guard as submitMessage above — an action's own reply
+    // can arrive well after the user's moved on to a different chat.
+    const turnSessionId = currentSessionId.value
     try {
-      const result = await postAction(actionName, currentSessionId.value)
+      const result = await postAction(actionName, turnSessionId)
+
+      if (currentSessionId.value !== turnSessionId) return // see submitMessage's own comment on this check
+
       for (const { id, content, audio_text, timestamp } of result.reply) {
         messages.value.push({
           role: 'assistant',
@@ -559,7 +598,7 @@ export function createChatStore({
       bumpTurn()
     } catch (err) {
       // already surfaced via apiFetch
-      handleSessionInactiveError(err)
+      if (currentSessionId.value === turnSessionId) handleSessionInactiveError(err)
     } finally {
       actionLoading.value = false
     }
