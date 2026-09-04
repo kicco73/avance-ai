@@ -36,7 +36,8 @@ logger = LoggerFactory.get_logger(__name__)
 # stops answering would otherwise hang a chat turn, or a JobQueue worker,
 # forever. Milliseconds, per HttpOptions; httpx applies it to connect and
 # to the longest silence between streamed chunks, not to the whole reply.
-REQUEST_TIMEOUT_MS: int = 60_000
+# 30s, matching every other provider's own cap.
+REQUEST_TIMEOUT_MS: int = 30_000
 
 # response_schema (controlled JSON generation) and tools (function
 # calling) don't reliably combine on this provider — see

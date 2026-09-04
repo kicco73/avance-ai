@@ -159,14 +159,18 @@ def test_anthropic_keeps_one_client_per_loop_and_prunes_closed_ones(fake_api_url
 
 def test_sdk_retries_are_off_and_timeouts_explicit():
     """The cascade is the one retry policy; a silent upstream must time
-    out rather than hang a turn or a worker forever."""
+    out rather than hang a turn or a worker forever — and never wait
+    longer than 30s doing it, the same cap every provider shares."""
     openai_provider = OpenAICompatibleProvider(AIServiceConfig("openai", "m", "k", None, "x"))
     assert openai_provider._client.max_retries == 0
-    assert openai_provider._client.timeout.read == 60.0
+    assert openai_provider._client.timeout.read == 30.0
+    assert openai_provider._client.timeout.read <= 30.0
 
     anthropic_provider = AnthropicProvider(AIServiceConfig("anthropic", "c", "k", None, "x"))
     assert anthropic_provider._sync_client.max_retries == 0
     assert anthropic_provider._new_async_client().max_retries == 0
+    from ai._providers.anthropic_provider_v2 import REQUEST_TIMEOUT_SECONDS
+    assert REQUEST_TIMEOUT_SECONDS <= 30.0
 
     gemini_provider = GeminiProvider(AIServiceConfig("gemini", "m", "k", None, "x"))
 
@@ -174,4 +178,4 @@ def test_sdk_retries_are_off_and_timeouts_explicit():
         return gemini_provider._GeminiProvider__client()
 
     assert asyncio.run(client())._api_client._http_options.timeout == REQUEST_TIMEOUT_MS
-    assert REQUEST_TIMEOUT_MS >= 30_000
+    assert REQUEST_TIMEOUT_MS <= 30_000
