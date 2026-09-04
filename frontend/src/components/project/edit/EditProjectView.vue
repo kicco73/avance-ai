@@ -24,6 +24,7 @@ import AppHeader from '../../AppHeader.vue'
 import { useLeaveConfirmation } from '../../../composables/useLeaveConfirmation.js'
 import { useResizablePanel } from '../../../composables/useResizablePanel.js'
 import { useProjectFiles } from '../../../composables/useProjectFiles.js'
+import { useProjectSources } from '../../../composables/useProjectSources.js'
 import { useProjectPublishing } from '../../../composables/useProjectPublishing.js'
 import { useIndexYmlEditing } from '../../../composables/useIndexYmlEditing.js'
 import { onProjectChanged } from '../../../projectChangeEvents.js'
@@ -85,7 +86,7 @@ const props = defineProps({
 // its whole lifetime — the "Run" tab's own test store targets it once here.
 setTestProject(props.projectId)
 
-const emit = defineEmits(['saved', 'back', 'profile', 'logout'])
+const emit = defineEmits(['saved', 'back', 'home', 'profile', 'logout'])
 
 const {
   filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile, renamingFile,
@@ -122,6 +123,68 @@ function flashRecentlyAdded(key) {
   recentlyAddedTimer = setTimeout(() => { recentlyAddedKey.value = null }, RECENTLY_ADDED_FLASH_MS)
 }
 onBeforeUnmount(() => { if (recentlyAddedTimer) clearTimeout(recentlyAddedTimer) })
+
+const {
+  sourcesLoading, sources, currentSourceName, sourcesRootSelected, selectedSource, deletingSource,
+  loadSources, selectSource, selectSourcesRoot, handleAddSource, handleSetSourceField, handleDeleteSource,
+} = useProjectSources(props.projectId, guardedAction, flashRecentlyAdded)
+
+// ProjectDesignPanel.vue's own exposed handle onto whichever
+// SourceContentPanel is currently mounted (only ever one, or none) —
+// same "computed proxy through designPanelRef" shape as codeEditorRef/
+// indexYmlEditorRef etc. above.
+const sourceContentPanelRef = computed(() => designPanelRef.value?.sourceContentPanelRef ?? null)
+
+// A Source node and a file/graph selection are mutually exclusive in the
+// design tree (see FileExplorer.vue's own "Sources" branch and
+// InspectorStateTab.vue's isSourceContext, which takes the whole Info tab
+// over) — selecting either clears the other. Own small unsaved-changes
+// guard, parallel to useProjectFiles.js's own guardedAction/
+// runGuardedAction: a source's own content buffer (SourceContentPanel,
+// via CodeEditor) is a completely separate editing surface from
+// currentFileName's, so the generic file guard has no way to know about it.
+async function guardedSourceAction(label, run) {
+  if (!sourceContentPanelRef.value?.isDirty) return run()
+  const choice = await chooseDialog({
+    title: 'Unsaved changes',
+    body: `This source's content has unsaved changes. Save before you ${label}?`,
+    options: [
+      { id: 'save', label: 'Save' },
+      { id: 'discard', label: 'Discard' }
+    ]
+  })
+  if (choice === 'save') {
+    if (await sourceContentPanelRef.value?.save()) return run()
+    return undefined
+  }
+  if (choice === 'discard') {
+    sourceContentPanelRef.value?.discard()
+    return run()
+  }
+  return undefined
+}
+
+function selectFileNode(fileName) {
+  guardedSourceAction(`switch to "${fileName}"`, () => {
+    currentSourceName.value = null
+    sourcesRootSelected.value = false
+    selectFile(fileName)
+  })
+}
+
+function selectSourceNode(name) {
+  guardedSourceAction(`switch to source "${name}"`, () => {
+    selectedGraphElement.value = null
+    selectSource(name)
+  })
+}
+
+function selectSourcesRootNode() {
+  guardedSourceAction('view sources', () => {
+    selectedGraphElement.value = null
+    selectSourcesRoot()
+  })
+}
 
 // The state key "State"/"Actions" should reflect — the selection itself
 // when it's already a state, or the state an already-selected action
@@ -255,7 +318,10 @@ const autoSessionEndElement = computed(() => (
 // Info/Signals/Env-keys instead — Info doubles as the Actions tab used to,
 // showing whichever of a state/action the Graph selection actually is.
 // Test mode only ever shows Info — plain read-only viewing, no Signals/
-// Env-keys editing surface makes sense while browsing test results.
+// Env-keys editing surface makes sense while browsing test results. A
+// selected Source (currentSourceName), or the Sources branch header
+// itself (sourcesRootSelected), gets the same Info-only treatment as any
+// non-Behavior file: nothing about Signals/Env applies to either.
 const inspectorTabs = computed(() => {
   if (mode.value === 'run') {
     return [
@@ -268,7 +334,7 @@ const inspectorTabs = computed(() => {
   if (mode.value === 'test') {
     return [{ id: 'state', label: 'Info' }, { id: 'user', label: 'User' }]
   }
-  if (mode.value === 'edit' && !isBehaviorNodeSelected.value) {
+  if (mode.value === 'edit' && (currentSourceName.value != null || sourcesRootSelected.value || !isBehaviorNodeSelected.value)) {
     return [{ id: 'state', label: 'Info' }]
   }
   return [
@@ -737,6 +803,7 @@ const historyCleared = ref(false)
 
 onMounted(async () => {
   loadFiles()
+  loadSources()
   loadTestChatModels()
   refreshSessionStartState()
   refreshSignalsLog()
@@ -816,7 +883,7 @@ onBeforeUnmount(() => {
               </div>
             </template>
           </div>
-          <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
+          <ProfileMenu :profile="profile" @home="emit('home')" @profile="emit('profile')" @logout="emit('logout')" />
         </div>
       </template>
     </AppHeader>
@@ -840,11 +907,18 @@ onBeforeUnmount(() => {
           :highlighted-state-key="highlightedStateKey"
           :fired-action-edge="firedActionEdge"
           :selected-element="selectedGraphElement"
+          :sources="sources"
+          :sources-loading="sourcesLoading"
+          :current-source-name="currentSourceName"
+          :sources-root-selected="sourcesRootSelected"
           @start-explorer-drag="startExplorerDrag"
           @new-attachment="handleNewAttachment"
           @new-aspect="handleNewAspect"
           @new-legal="handleNewLegal"
-          @select-file="selectFile"
+          @new-source="handleAddSource"
+          @select-file="selectFileNode"
+          @select-source="selectSourceNode"
+          @select-sources-root="selectSourcesRootNode"
           @upload-file="handleUploadFile"
           @jump-to-definition="(target) => jumpToDefinition(target, { silent: true })"
           @select="selectedGraphElement = $event"
@@ -928,6 +1002,9 @@ onBeforeUnmount(() => {
                 :current-file-name="mode === 'edit' ? currentFileName : null"
                 :deleting-file="deletingFile"
                 :renaming-file="renamingFile"
+                :selected-source="mode === 'edit' ? selectedSource : null"
+                :deleting-source="deletingSource"
+                :sources-root-selected="mode === 'edit' && sourcesRootSelected"
                 @select="handleTabSelect"
                 @select-attachment="selectFile"
                 @jump-to-attachment="handleJumpToAttachment"
@@ -940,6 +1017,8 @@ onBeforeUnmount(() => {
                 @add-action="handleAddAction"
                 @delete-file="handleDeleteFile"
                 @rename-file="handleRenameFile"
+                @set-source-field="handleSetSourceField"
+                @delete-source="(source) => handleDeleteSource(source.name)"
               />
             </template>
             <template #tab-user="{ registerTab }">

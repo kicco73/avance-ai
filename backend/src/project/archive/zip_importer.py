@@ -4,14 +4,14 @@ import io
 import zipfile
 from pathlib import Path
 
-from .layout import ASPECT_DIR, BEHAVIOUR_DIR, BUNDLE_FILE_NAMES, LEGAL_TERMS_FILE_NAME, ArchiveLayout
+from .layout import ASPECT_DIR, BEHAVIOUR_DIR, BUNDLE_FILE_NAMES, LEGAL_TERMS_FILE_NAME, SOURCES_DIR, ArchiveLayout
 
 
 class ZipImporter:
     """Recognizes and safely unpacks a project zip upload/import into a
     staging directory, in this project's own layout."""
 
-    _RESERVED_DIRS = {ASPECT_DIR, BEHAVIOUR_DIR, "legal"}
+    _RESERVED_DIRS = {ASPECT_DIR, BEHAVIOUR_DIR, "legal", SOURCES_DIR}
 
     @staticmethod
     def looks_like_zip(content_type: str | None, content: bytes) -> bool:
@@ -67,7 +67,7 @@ class ZipImporter:
                 nested_ok = (
                     "/" not in stripped
                     or stripped == LEGAL_TERMS_FILE_NAME
-                    or (top in (ASPECT_DIR, BEHAVIOUR_DIR) and stripped.count("/") == 1)
+                    or (top in (ASPECT_DIR, BEHAVIOUR_DIR, SOURCES_DIR) and stripped.count("/") == 1)
                 )
                 if not nested_ok:
                     raise ValueError(f"Unsupported path inside zip: '{original}'.")

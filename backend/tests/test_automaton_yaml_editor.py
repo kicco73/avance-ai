@@ -50,8 +50,8 @@ def _editor(text: str = BASE_YAML) -> AutomatonYamlEditor:
     return AutomatonYamlEditor(text)
 
 
-def _builds(text: str):
-    return AutomatonBuilder().build({"index.yml": text})
+def _builds(text: str, archives: dict[str, str] | None = None):
+    return AutomatonBuilder().build({"index.yml": text, **(archives or {})})
 
 
 class TestToSnakeCase:
@@ -600,6 +600,150 @@ class TestDeleteEnvKey:
         editor = _editor(ENV_BASE_YAML)
         editor.delete_env_key("visits")
         automaton = _builds(editor.serialize())
+        go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
+        assert go_b.trigger is None  # action survives, now manual-only
+
+
+SOURCE_BASE_YAML = """\
+project:
+  id: proj
+init-action:
+  target: a
+sources:
+  pino:
+    ui-label: Flights
+    url: avance:flights.csv
+  cities:
+    ui-label: Cities
+    url: avance:cities.csv
+states:
+  a:
+    ui-label: State A
+    contextual-prompt: hi
+    actions:
+      - name: go-b
+        ui-label: Go to B
+        target: b
+        trigger: source.pino.read() != 'nope'
+      - name: go-c
+        ui-label: Go to C
+        target: c
+        trigger: source.pino.select('x') != 'nope' and source.cities.read() != 'nope'
+  b:
+    ui-label: State B
+    contextual-prompt: there
+  c:
+    ui-label: State C
+    contextual-prompt: elsewhere
+"""
+
+SOURCE_ARCHIVES = {"flights.csv": "a,b\n1,2\n", "cities.csv": "city\nParis\n"}
+
+
+class TestAddSource:
+    def test_generates_a_unique_valid_identifier_name(self):
+        editor = _editor()
+        payload = editor.add_source()
+
+        assert payload["name"] == "behaviour"
+        assert payload["ui_label"] == "behaviour"
+        assert payload["ui_description"] is None
+        assert payload["url"] == ""
+
+    def test_name_collisions_get_suffixed(self):
+        editor = _editor()
+        editor.add_source()  # behaviour
+        second = editor.add_source()
+        assert second["name"] == "behaviour1"
+        third = editor.add_source()
+        assert third["name"] == "behaviour2"
+
+    def test_result_still_builds(self):
+        editor = _editor()
+        payload = editor.add_source()
+        automaton = _builds(editor.serialize())
+        assert any(s.name == payload["name"] for s in automaton.sources)
+
+
+class TestSetSourceField:
+    def test_non_name_field_is_a_plain_edit(self):
+        editor = _editor(SOURCE_BASE_YAML)
+        payload = editor.set_source_field("pino", "ui-description", "Updated description")
+        assert payload["name"] == "pino"
+        assert payload["ui_description"] == "Updated description"
+
+    def test_url_field_is_a_plain_edit(self):
+        editor = _editor(SOURCE_BASE_YAML)
+        payload = editor.set_source_field("cities", "url", "avance:flights.csv")
+        assert payload["url"] == "avance:flights.csv"
+
+    def test_name_edit_that_does_not_change_the_sanitized_name_stays_in_place(self):
+        editor = _editor(SOURCE_BASE_YAML)
+        payload = editor.set_source_field("pino", "name", "pino")
+        assert payload["name"] == "pino"
+
+    def test_name_edit_that_changes_the_sanitized_name_renames_the_source(self):
+        editor = _editor(SOURCE_BASE_YAML)
+        payload = editor.set_source_field("pino", "name", "Flight Records")
+        assert payload["name"] == "flight_records"
+        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
+        assert "flight_records" in {s.name for s in automaton.sources}
+        assert "pino" not in {s.name for s in automaton.sources}
+
+
+class TestRenameSource:
+    def test_renames_the_source_and_returns_the_updated_payload(self):
+        editor = _editor(SOURCE_BASE_YAML)
+        payload = editor.rename_source("pino", "flight_records")
+        assert payload["name"] == "flight_records"
+        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
+        assert {s.name for s in automaton.sources} == {"flight_records", "cities"}
+
+    def test_collision_with_an_existing_source_name_gets_suffixed(self):
+        editor = _editor(SOURCE_BASE_YAML)
+        payload = editor.rename_source("pino", "cities")
+        assert payload["name"] == "cities_2"
+
+    def test_preserves_the_other_sources_own_order(self):
+        editor = _editor(SOURCE_BASE_YAML)
+        editor.rename_source("pino", "flight_records")
+        names = list(editor._raw["sources"].keys())
+        assert names == ["flight_records", "cities"]
+
+    def test_rewrites_every_trigger_referencing_the_old_name_via_ast_not_text(self):
+        editor = _editor(SOURCE_BASE_YAML)
+        editor.rename_source("pino", "flight_records")
+        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
+        go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
+        go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
+        assert go_b.trigger == "source.flight_records.read() != 'nope'"
+        assert go_c.trigger == "source.flight_records.select('x') != 'nope' and source.cities.read() != 'nope'"
+
+    def test_a_trigger_not_referencing_the_source_is_left_untouched(self):
+        editor = _editor(SOURCE_BASE_YAML)
+        editor.rename_source("pino", "flight_records")
+        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
+        go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
+        assert "source.cities.read() != 'nope'" in go_c.trigger
+
+
+class TestDeleteSource:
+    def test_removes_the_source_itself(self):
+        editor = _editor(SOURCE_BASE_YAML)
+        editor.delete_source("cities")
+        assert "cities" not in editor._raw["sources"]
+
+    def test_bool_op_drops_just_the_referencing_operand_when_others_survive(self):
+        editor = _editor(SOURCE_BASE_YAML)
+        editor.delete_source("cities")
+        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
+        go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
+        assert go_c.trigger == "source.pino.select('x') != 'nope'"
+
+    def test_a_lone_non_bool_op_trigger_is_removed_entirely_when_it_references_the_source(self):
+        editor = _editor(SOURCE_BASE_YAML)
+        editor.delete_source("pino")
+        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
         go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         assert go_b.trigger is None  # action survives, now manual-only
 

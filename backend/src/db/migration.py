@@ -66,11 +66,61 @@ class SchemaMigrator:
         finally:
             conn.close()
 
+    def expected_indexes(self) -> dict[str, dict[tuple[str, ...], bool]]:
+        """{table: {(columns...): unique}} — one entry per index a fresh
+        create_tables() would emit for that model: every index=True or
+        unique=True field (ForeignKeyField defaults to index=True), plus
+        every Meta.indexes entry, with field names resolved to their
+        actual DB column names (Meta.indexes lists Python field names,
+        e.g. ChatSession's bare 'project' for column 'project_id')."""
+        result: dict[str, dict[tuple[str, ...], bool]] = {}
+        for model in self._models:
+            meta = model._meta
+            indexes: dict[tuple[str, ...], bool] = {}
+            for field in meta.sorted_fields:
+                if field.unique:
+                    indexes[(field.column_name,)] = True
+                elif field.index:
+                    indexes[(field.column_name,)] = False
+            for columns, unique in meta.indexes:
+                indexes[tuple(meta.fields[name].column_name for name in columns)] = unique
+            result[meta.table_name] = indexes
+        return result
+
+    @staticmethod
+    def actual_indexes(sqlite_path: str) -> dict[str, dict[tuple[str, ...], bool]]:
+        """Same shape as expected_indexes(), read from the live database.
+        Only origin='c' rows count (an explicit CREATE INDEX) — a legacy
+        inline UNIQUE column constraint (origin='u', see the pre-merge
+        project_id comment on migrate_legacy_project_identity) is never
+        one of ours and is left alone either way."""
+        conn = sqlite3.connect(sqlite_path)
+        try:
+            tables = [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")]
+            result: dict[str, dict[tuple[str, ...], bool]] = {}
+            for table in tables:
+                indexes: dict[tuple[str, ...], bool] = {}
+                for _, name, unique, origin, _partial in conn.execute(f'PRAGMA index_list("{table}")'):
+                    if origin != 'c':
+                        continue
+                    columns = tuple(row[2] for row in conn.execute(f'PRAGMA index_info("{name}")'))
+                    indexes[columns] = bool(unique)
+                result[table] = indexes
+            return result
+        finally:
+            conn.close()
+
     def schema_differs(self, actual: dict[str, set[str]], expected: dict[str, set[str]], path: str) -> bool:
         # Column names matching isn't enough: a prior migration may have
         # already added a table's missing columns without ever revisiting
-        # an existing column's own constraint (e.g. NOT NULL -> nullable).
-        return actual != expected or bool(self._tables_needing_constraint_rebuild(actual, expected, path))
+        # an existing column's own constraint (e.g. NOT NULL -> nullable),
+        # or a field's own index=True without ever revisiting a table that
+        # already had every expected column.
+        if actual != expected or bool(self._tables_needing_constraint_rebuild(actual, expected, path)):
+            return True
+        expected_idx = self.expected_indexes()
+        actual_idx = self.actual_indexes(path)
+        return any(expected_idx.get(table, {}) != actual_idx.get(table, {}) for table in expected)
 
     def rename_column(self, table: str, old_name: str, new_name: str) -> None:
         """Peewee's own portable rename operation (every backend's migrator
@@ -150,9 +200,21 @@ class SchemaMigrator:
         finally:
             self._database.execute_sql('PRAGMA foreign_keys = ON')
 
+    # Plain same-table column renames (old name -> new name, no value
+    # transformation needed) — applied before the generic add/drop-column
+    # diff below, so a rename never reads as "drop old, add empty new"
+    # and loses the column's existing values.
+    _COLUMN_RENAMES: tuple[tuple[str, str, str], ...] = (
+        ('ChatSession', 'summary', 'ai_summary'),
+    )
+
     def migrate(self, actual: dict[str, set[str]], expected: dict[str, set[str]], path: str) -> None:
         migrator = SqliteMigrator(self._database)
         models_by_table = {model._meta.table_name: model for model in self._models}
+        for table, old_column, new_column in self._COLUMN_RENAMES:
+            if table in actual and old_column in actual[table] and new_column not in actual[table]:
+                self.rename_column(table, old_column, new_column)
+                actual[table] = (actual[table] - {old_column}) | {new_column}
         new_models = [model for table, model in models_by_table.items() if table not in actual]
         rebuild_tables = self._tables_needing_constraint_rebuild(actual, expected, path)
         self._database.execute_sql('PRAGMA foreign_keys = OFF')
@@ -174,6 +236,11 @@ class SchemaMigrator:
                     operations.append(migrator.drop_column(table, column))
             migrate(*operations)
             self._database.create_tables(new_models, safe=True)
+            # Tables just (re)created above already got every index for
+            # free from create_tables()/_rebuild_table's own create_tables
+            # call — only an existing, non-rebuilt table can still be
+            # missing an index a field newly declares.
+            self._sync_indexes((actual.keys() & expected.keys()) - rebuild_tables, path)
         finally:
             self._database.execute_sql('PRAGMA foreign_keys = ON')
 
@@ -189,6 +256,43 @@ class SchemaMigrator:
                 for column in columns & actual[table]
             )
         }
+
+    def _sync_indexes(self, tables: set[str], path: str) -> None:
+        """Brings each of `tables` to exactly the indexes its model now
+        declares: drops whatever on-disk index (by its real name, not a
+        guessed one — an index added via a past migrator.add_column call
+        is named "{table}_{column}", while create_tables() itself names
+        it "{lowercased table}_{column}", so the two must never be
+        conflated) no longer matches, and creates whatever is missing."""
+        expected = self.expected_indexes()
+        conn = sqlite3.connect(path)
+        try:
+            for table in tables:
+                wanted = expected.get(table, {})
+                present: dict[tuple[str, ...], bool] = {}
+                for _, name, unique, origin, _partial in conn.execute(f'PRAGMA index_list("{table}")'):
+                    if origin != 'c':
+                        continue
+                    columns = tuple(row[2] for row in conn.execute(f'PRAGMA index_info("{name}")'))
+                    if columns in wanted and wanted[columns] == bool(unique):
+                        present[columns] = bool(unique)
+                    else:
+                        self._database.execute_sql(f'DROP INDEX IF EXISTS "{name}"')
+                for columns, unique in wanted.items():
+                    if columns in present:
+                        continue
+                    kind = 'UNIQUE INDEX' if unique else 'INDEX'
+                    name = f"{table.lower()}_{'_'.join(columns)}"
+                    column_list = ', '.join(f'"{c}"' for c in columns)
+                    # Not IF NOT EXISTS: this exact name may already be
+                    # occupied by a stale index some other (columns, unique)
+                    # pair above spared, coincidentally matching a different
+                    # wanted entry — a silent no-op here would leave this
+                    # one permanently missing.
+                    self._database.execute_sql(f'DROP INDEX IF EXISTS "{name}"')
+                    self._database.execute_sql(f'CREATE {kind} "{name}" ON "{table}" ({column_list})')
+        finally:
+            conn.close()
 
     def _rebuild_table(self, table: str, model, actual_columns: set[str]) -> None:
         # FIXME: legacy_alter_table=ON — a plain rename must never let

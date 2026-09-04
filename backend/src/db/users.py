@@ -186,7 +186,7 @@ class UserMixin:
         is now enough on its own: ChatSession.user/Test.user/
         SystemWarning.user_id/EditHistory.user_id are real FKs onto it with
         on_delete='CASCADE' (see models.py), which in turn cascades
-        further to Message/Tracking/SessionSummary/TestObservation
+        further to Message/Tracking/TestObservation
         via their own existing FKs onto ChatSession/Test.
 
         Deleting the User row last would matter if anything above still

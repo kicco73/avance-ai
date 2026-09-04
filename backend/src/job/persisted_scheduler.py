@@ -91,13 +91,7 @@ class PersistedScheduler(Scheduler):
     # --- Scheduler -------------------------------------------------------
 
     def submit(self, job: DependentJob, *, timestamp: datetime | None = None) -> None:
-        if not isinstance(job, Task):
-            raise TypeError(
-                f"PersistedScheduler only schedules jobs.Task instances (got {type(job).__name__}) — "
-                "anything scheduled here must survive a restart."
-            )
-        if job.TYPE not in self._hydrators:
-            raise ValueError(f"Task {job.key} is of type '{job.TYPE}' but no hydrator is registered for it.")
+        self._validate(job)
         when = self._as_utc(timestamp) or datetime.now(timezone.utc)
         self._db.create_task(
             job.key, job.TYPE, job.username, job.project_id, when, job.dehydrate(), job.ui_label, job.ui_description,
@@ -111,6 +105,34 @@ class PersistedScheduler(Scheduler):
         # No longer pending: already handed to the queue (or settled, in
         # which case this is a harmless no-op there too).
         self._queue.cancel(job)
+
+    def reschedule(self, job: DependentJob, *, timestamp: datetime | None = None) -> None:
+        """submit(), but addressed by job.key: moves an already-pending
+        row of that key to the new time in place instead of adding a
+        second row — only meaningful for a job created with an explicit
+        id (see Task.make_key), since a random key never matches a prior
+        row. With nothing pending under this key, upserts instead of a
+        plain submit(): the key may belong to a settled/canceled row from
+        an earlier cycle of the same deterministic id, and create_task()'s
+        insert would fail on that row's still-there UNIQUE key."""
+        self._validate(job)
+        when = self._as_utc(timestamp) or datetime.now(timezone.utc)
+        if not self._db.reschedule_task(job.key, when):
+            self._db.upsert_task(
+                job.key, job.TYPE, job.username, job.project_id, when, job.dehydrate(),
+                job.ui_label, job.ui_description,
+            )
+        with self._wakeup:
+            self._wakeup.notify()
+
+    def _validate(self, job: DependentJob) -> None:
+        if not isinstance(job, Task):
+            raise TypeError(
+                f"PersistedScheduler only schedules jobs.Task instances (got {type(job).__name__}) — "
+                "anything scheduled here must survive a restart."
+            )
+        if job.TYPE not in self._hydrators:
+            raise ValueError(f"Task {job.key} is of type '{job.TYPE}' but no hydrator is registered for it.")
 
     def poke(self) -> None:
         """Re-read the table now rather than at the next poll — for a

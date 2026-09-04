@@ -1,0 +1,126 @@
+/* =================================================================----
+   Skin "airline-blue" — ispirata alla chat di assistenza di una compagnia
+   aerea: sfondo bianco, cornice grigio chiaro, accento blu #0052CC,
+   testo nero, bottoni a pillola blu con testo in grassetto.
+   Costruita solo sugli hook garantiti (§4.1 delle specifiche).
+   ===================================================================== */
+
+:root {
+  --skin-blue: #0052CC;
+  --skin-blue-hover: #0747A6;
+  --skin-black: #111111;
+  --skin-gray-frame: #e8e8e8;
+  --skin-gray-line: #e5e5e5;
+  --skin-gray-chip: #f2f2f2;
+  --skin-gray-text: #6b6b6b;
+  --skin-teal: #1fb2a6;
+}
+
+/* ---------- colonna intera (best-effort, non è un hook garantito) ---------- */
+.chat-window {
+  background: var(--skin-gray-frame);
+}
+
+/* ---------- header ---------- */
+.chat-header {
+  background-color: #ffffff;
+  border-bottom: 1px solid var(--skin-gray-line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* puntino blu in alto a destra, richiamo del logo */
+.chat-header::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--skin-blue);
+}
+
+.chat-header-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-repeat: no-repeat;
+  background-size: contain;
+  background-position: center;
+  background-image: url("header-icon.svg");
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  transition: transform 0.2s ease, filter 0.3s ease;
+}
+
+/* ---------- area messaggi ---------- */
+.chat-body {
+  background: #ffffff url("chat-bg.svg") repeat;
+  color: var(--skin-black);
+  border-left: 8px solid var(--skin-gray-frame);
+  border-right: 8px solid var(--skin-gray-frame);
+}
+
+/* ---------- footer ---------- */
+.chat-footer {
+  background: #ffffff;
+  border-top: 1px solid var(--skin-gray-line);
+  color: var(--skin-gray-text);
+}
+
+/* ---------- bottoni azione: pillole blu full-width ---------- */
+.action-buttons {
+  background: transparent;
+}
+
+.action-btn {
+  background: var(--skin-blue);
+  border: 1px solid var(--skin-blue);
+  color: #ffffff;
+  font-weight: 700;
+  border-radius: 999px;
+}
+
+.action-btn:hover:not(:disabled) {
+  background: var(--skin-blue-hover);
+  border-color: var(--skin-blue-hover);
+  color: #ffffff;
+}
+
+.action-btn:disabled {
+  background: var(--skin-gray-chip);
+  border-color: var(--skin-gray-chip);
+  color: var(--skin-gray-text);
+  opacity: 1;
+}
+
+/* =================================================================----
+   Varianti per stato — sostituire <key> con le chiavi reali di index.yml.
+   ===================================================================== */
+.state-crisis .chat-header-icon {
+  filter: hue-rotate(180deg) saturate(0.8);
+}
+
+.state-crisis .action-btn {
+  background: var(--skin-gray-chip);
+  border-color: var(--skin-gray-chip);
+  color: var(--skin-black);
+  font-weight: 400;
+}
+
+.state-crisis .action-btn:hover:not(:disabled) {
+  background: var(--skin-gray-line);
+  border-color: var(--skin-gray-line);
+}
+
+/* Flash del header quando si entra in crisis da qualunque stato */
+[data-state="crisis"] .chat-header {
+  animation: header-flash 0.6s ease;
+}
+
+@keyframes header-flash {
+  from { background-color: var(--skin-blue); }
+  to   { background-color: #ffffff; }
+}

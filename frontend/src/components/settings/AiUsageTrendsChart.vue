@@ -1,10 +1,10 @@
 <script setup>
-// Manage services > AI's own daily token-spend trend — one line per
-// provider/model, same chart shell (canvas/zoom/floating tooltip) as
-// ManageUsersView's own MetricsTrendsChart.vue and TimelineChart.vue,
-// just fed `history` as a prop instead of fetching it itself: there's no
-// per-user/per-project selection to re-fetch on here, ServicesView.vue
-// already loaded the whole snapshot once on mount.
+// Manage services > AI's own per-minute token-spend trend (trailing 24h)
+// — one line per provider/model, same chart shell (canvas/zoom/floating
+// tooltip) as ManageUsersView's own MetricsTrendsChart.vue and
+// TimelineChart.vue, just fed `history` as a prop instead of fetching it
+// itself: there's no per-user/per-project selection to re-fetch on here,
+// ServicesView.vue already loaded the whole snapshot once on mount.
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Chart, LineController, LineElement, PointElement, LinearScale, TimeScale, Tooltip } from 'chart.js'
 import zoomPlugin from 'chartjs-plugin-zoom'
@@ -45,7 +45,7 @@ function providerLabel(key) {
 }
 
 function formatTimestamp(timestamp) {
-  return new Date(timestamp).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })
+  return new Date(timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 function formatValue(value) {
@@ -110,7 +110,7 @@ function buildDatasets(entries) {
 }
 
 // Unlike Metrics' own 0-100% scale, token counts have no fixed ceiling —
-// 10% slack above the highest day any provider actually hit.
+// 10% slack above the highest minute any provider actually hit.
 function computeYMax(datasets) {
   const values = datasets.flatMap((dataset) => dataset.data.map((point) => point.y))
   return values.length ? Math.ceil(Math.max(...values) * 1.1) : 10
@@ -142,7 +142,7 @@ function renderChart() {
       responsive: true,
       maintainAspectRatio: false,
       scales: {
-        x: { type: 'time', time: { unit: 'day' } },
+        x: { type: 'time', time: { unit: 'minute' } },
         y: { min: 0, max: yMax, ticks: { callback: (value) => value.toLocaleString(), font: { size: 10.2 } } },
       },
       interaction: { mode: 'nearest', intersect: false },

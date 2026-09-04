@@ -1,0 +1,237 @@
+avance-version: "1.7.0"
+init-action:
+  target: intake
+states:
+  intake:
+    ui-label: "Engagement and qualification"
+    ui-description: "Understand the customer's intent."
+    contextual-prompt: |
+      Welcome the user warmly, introduce yourself as the virtual assistant for Vueling flight refunds, and ask them to describe their problem so we can understand how we can help them today. Analyze the user's request. Determine whether they want to request a refund. If the intent is unclear, ask for clarification. Only classify as out of scope if the user's intent is definitively unrelated to flight services or refund requests. Be patient if the user speaks another language, and offer assistance in that language if possible.
+    actions:
+      - name: go_to_locate_booking
+        ui-label: "I want a refund"
+        ui-button: "Request refund"
+        target: locate_booking
+        trigger: "signal.intent_refund > 70"
+        env:
+          customer_record: source.tickets.select(user.email)
+      - name: go_to_out_of_scope
+        ui-label: "Other / Complaint"
+        ui-button: "Other issue"
+        target: out_of_scope
+      - name: go_to_handoff_human
+        ui-label: "Speak with human"
+        ui-button: "Human agent"
+        target: handoff_human
+        trigger: "signal.hostility > 70 or signal.legal_threat > 70"
+  locate_booking:
+    ui-label: "Booking lookup"
+    ui-description: "Request the PNR or flight details."
+    contextual-prompt: |-
+      Look in the customer record if the user mail was found associated to a flight, present the booking details to the user and ask them to confirm if this is their correct booking. If it is, ask the user to provide the PNR code (6-character record locator) for security reasons.
+    actions:
+      - name: go_to_verify_entitlement
+        ui-label: "Booking found"
+        ui-button: "Verify booking"
+        target: verify_entitlement
+        trigger: "env.customer_record != '' and signal.pnr_provided"
+        env:
+          flight_record: source.flight_records.read()
+      - name: go_to_booking_not_found
+        ui-label: "Booking not found"
+        target: booking_not_found
+        trigger: "signal.pnr_provided and not signal.pnr_format_valid"
+  verify_entitlement:
+    ui-label: "Entitlement verification"
+    ui-description: "Identity and purchase channel check."
+    contextual-prompt: |
+      Verify whether the user is the actual purchaser of the ticket and whether the purchase was made directly with Vueling or through an agency/OTA.
+    actions:
+      - name: go_to_assess_eligibility
+        ui-label: "I am the purchaser"
+        ui-button: "I am the purchaser"
+        target: assess_eligibility
+        trigger: "signal.is_purchaser"
+      - name: go_to_redirect_agency
+        ui-label: "Purchased through an agency"
+        ui-button: "Agency / OTA"
+        target: redirect_agency
+        trigger: signal.bought_via_agency and signal.confidence > 80
+        on-enter: |
+          actuator.send_mail(user.email, 'Your Vueling refund request must be handled through the travel agency or intermediary where you originally purchased the ticket.')
+      - name: go_to_not_entitled
+        ui-label: "Not entitled"
+        ui-button: "I am not the purchaser"
+        target: not_entitled
+        trigger: "not signal.is_purchaser and signal.confidence > 80"
+  assess_eligibility:
+    ui-label: "Eligibility assessment"
+    ui-description: "Check the cause and fare conditions."
+    contextual-prompt: |
+      Determine whether the cancellation was caused by the carrier or whether it is a voluntary withdrawal, checking for any vouchers or chargebacks, and utilizing the flight record delay information available in the environment.
+    actions:
+      - name: go_to_compute_amount
+        ui-label: "Eligible"
+        target: compute_amount
+        trigger: "signal.cause_carrier > 70 or signal.within_ticket_validity"
+      - name: go_to_blocked_chargeback
+        ui-label: "Chargeback in progress"
+        target: blocked_chargeback
+        trigger: "signal.chargeback_open"
+      - name: go_to_not_eligible
+        ui-label: "Not eligible"
+        target: not_eligible
+        trigger: "signal.cause_carrier < 30 and not signal.within_ticket_validity"
+  compute_amount:
+    ui-label: "Amount calculation"
+    ui-description: "Define the breakdown and the refund due."
+    contextual-prompt: |-
+      Calculate or estimate the refund amount based on the fare type and the applicable taxes. Ask the user to
+    actions:
+      - name: go_to_propose
+        ui-label: "Proceed to proposal"
+        target: propose
+        on-enter: ''
+        trigger: '1'
+    chat: true
+  propose:
+    ui-label: "Proposal and consent"
+    ui-description: "Present the offer to the customer."
+    contextual-prompt: |
+      Clearly present to the customer the estimated amount, the payout method and the expected timing. Explicitly ask whether they accept the proposal.
+    actions:
+      - name: go_to_collect_payout
+        ui-label: "I accept"
+        ui-button: "I accept"
+        target: collect_payout
+        trigger: "signal.user_accepts_proposal"
+      - name: go_to_dispute_amount
+        ui-label: "Incorrect amount"
+        ui-button: "Dispute amount"
+        target: dispute_amount
+        trigger: "signal.user_disputes_amount"
+        on-enter: |
+          actuator.send_mail(user.email, 'We have received your dispute regarding the proposed Vueling refund amount. Our team will review your case.')
+  collect_payout:
+    ui-label: "Payout details collection"
+    ui-description: "Enter and validate the payment details."
+    contextual-prompt: |
+      Collect the details required for the payout (e.g. IBAN and account holder for a bank transfer, or card confirmation) and ask for final confirmation of the details entered.
+    actions:
+      - name: go_to_pending_approval
+        ui-label: "Details confirmed"
+        ui-button: "Yes, all correct"
+        target: pending_approval
+        trigger: "signal.payout_method_card > 50 or (signal.iban_valid and signal.payout_confirmed)"
+        on-enter: |
+          actuator.send_mail(user.email, 'Your Vueling refund has been successfully issued.')
+  pending_approval:
+    chat: false
+    fixed-message: "Your refund request has been successfully processed and forwarded. Thank you for choosing Vueling."
+  out_of_scope:
+    chat: false
+    fixed-message: "Your request falls outside the scope of automatic refunds. Please contact customer support through the dedicated channels."
+  booking_not_found:
+    chat: false
+    fixed-message: "We could not find a booking matching the details provided. Please check the PNR or the route and try again."
+  redirect_agency:
+    chat: false
+    fixed-message: "Since the ticket was purchased through an agency or an intermediary, please contact them directly to handle the refund."
+  not_entitled:
+    chat: false
+    fixed-message: "Sorry, the request can only be submitted by the registered purchaser of the booking."
+  not_eligible:
+    chat: false
+    fixed-message: "Based on the fare conditions and the stated cause, the ticket is not refundable."
+  blocked_chargeback:
+    chat: false
+    fixed-message: "There is already an active dispute (chargeback) on this transaction. The automatic refund process is temporarily blocked."
+  dispute_amount:
+    chat: false
+    fixed-message: "We have recorded your dispute regarding the proposed amount. An agent will take charge of your report."
+  handoff_human:
+    chat: false
+    fixed-message: "We are connecting you with one of our human agents. Please wait a moment."
+signals:
+  intent_refund:
+    ui-label: "Refund intent"
+    definition: "Rate from 0 to 100 how clear it is that the user wants a refund as opposed to other topics."
+  cause_carrier:
+    ui-label: "Carrier cause"
+    definition: "Rate from 0 to 100 the likelihood that the failure to travel was caused by the airline (cancellation, rescheduling)."
+  pnr_provided:
+    ui-label: "PNR provided"
+    definition: "Boolean (0 or 100): indicates whether the user has provided a PNR code or you found the flight records confirmed by the user."
+  pnr_format_valid:
+    ui-label: "Valid PNR format"
+    definition: "Boolean (0 or 100): indicates whether the PNR matches the 6-character alphanumeric format."
+  is_purchaser:
+    ui-label: "Is the purchaser"
+    definition: "Boolean (0 or 100): indicates whether the user has stated that they are the purchaser of the booking."
+  bought_via_agency:
+    ui-label: "Purchased through an agency"
+    definition: "Boolean (0 or 100): indicates whether the ticket was purchased through an intermediary or a travel agency."
+  chargeback_open:
+    ui-label: "Chargeback open"
+    definition: "Boolean (0 or 100): indicates whether a bank dispute is active."
+  within_ticket_validity:
+    ui-label: "Within ticket validity"
+    definition: "Boolean (0 or 100): indicates whether the request falls within the validity time limits."
+  user_accepts_proposal:
+    ui-label: "Accepts the proposal"
+    definition: "Boolean (0 or 100): indicates whether the user has explicitly accepted the refund proposal."
+  user_disputes_amount:
+    ui-label: "Disputes the amount"
+    definition: "Boolean (0 or 100): indicates whether the user disputes the calculated amount."
+  payout_method_card:
+    ui-label: "Card Payout Method"
+    definition: "Boolean (0 or 100): indicates whether the chosen payout method is card."
+  iban_valid:
+    ui-label: "Valid IBAN"
+    definition: "Boolean (0 or 100): indicates whether the IBAN entered is formally valid."
+  payout_confirmed:
+    ui-label: "Payment details confirmed"
+    definition: "Boolean (0 or 100): indicates whether the user has explicitly confirmed the payment details entered."
+  hostility:
+    ui-label: "Hostility"
+    definition: "Rate from 0 to 100 the level of hostility or aggressive frustration of the user."
+  legal_threat:
+    ui-label: "Legal threat"
+    definition: "Rate from 0 to 100 the likelihood that the user is threatening legal action or the involvement of authorities."
+  confidence:
+    ui-label: "AI confidence"
+    definition: "Rate from 0 to 100 the AI's confidence in the current classification of the intent or state."
+env:
+  customer_record:
+    ui-label: "Customer Record"
+    value: ""
+  user_email:
+    value: 'user.email'
+  flight_record:
+    ui-label: "Flight Record"
+    value: ""
+sources:
+  tickets:
+    ui-label: "Tickets"
+    ui-description: "Customer ticket records, looked up by email."
+    url: avance:behaviour/tickets.csv.txt
+  flight_records:
+    ui-label: "Flight Records"
+    ui-description: "Flight delay/cancellation records."
+    url: avance:behaviour/flight_records.csv.txt
+general-prompt: |
+  You are Vueling's official virtual assistant for handling airline ticket refunds. 
+
+  Act in a professional, clear and empathetic manner, paying attention to the applicable regulations (EC Reg. 261/2004). 
+
+  If the user shows high hostility or legal threats, or explicitly asks for a human agent, direct them to human assistance. 
+
+  Support multi-lingual communication if the user addresses you in a different language.
+
+  This new procedure is way more agile that the standard process. Strictly follow the prompt indication that guides you in the current step.
+project:
+  id: vueling_refunds
+  ui-label: "Vueling - Refund Management"
+  ui-description: "Automated conversational flow for handling and analyzing flight refund requests."
+  signal-tracking-on-ai-message: false
+  talk-enabled: true

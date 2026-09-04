@@ -7,10 +7,19 @@ const props = defineProps({
   currentFileName: { type: String, default: null },
   uploading: { type: Boolean, default: false },
   creatingFile: { type: Boolean, default: false },
-  explorerWidth: { type: Number, required: true }
+  explorerWidth: { type: Number, required: true },
+  // Declared sources (see useProjectSources.js) — getProjectSources' own
+  // [{ source: { name, ui_label, ... } }, ...] shape.
+  sources: { type: Array, default: () => [] },
+  sourcesLoading: { type: Boolean, default: true },
+  currentSourceName: { type: String, default: null },
+  sourcesRootSelected: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['new-attachment', 'new-aspect', 'new-legal', 'select-file', 'upload-file'])
+const emit = defineEmits([
+  'new-attachment', 'new-aspect', 'new-legal', 'new-source',
+  'select-file', 'select-source', 'select-sources-root', 'upload-file',
+])
 
 const fileInputRef = ref(null)
 
@@ -41,6 +50,11 @@ function selectNewLegal() {
   emit('new-legal')
 }
 
+function selectAddSource() {
+  newFileMenuOpen.value = false
+  emit('new-source')
+}
+
 function handleClickOutsideNewFileMenu(event) {
   if (newFileMenuOpen.value && newFileMenuRootEl.value && !newFileMenuRootEl.value.contains(event.target)) {
     newFileMenuOpen.value = false
@@ -67,12 +81,28 @@ const behaviorAttachments = computed(() => props.files.filter((name) => name.sta
 const hasIndexCss = computed(() => props.files.includes('index.css'))
 const showThemeBranch = computed(() => hasIndexCss.value || themeAssets.value.length > 0)
 const hasLegalTerms = computed(() => props.files.includes(LEGAL_TERMS_FILE_NAME))
+// A Sources section only appears once a source is actually declared — "+
+// Add source" creates the first one, which is what makes the branch show
+// up at all (see EditProjectView.vue's own handleAddSource).
+const declaredSources = computed(() => props.sources.map((entry) => entry.source))
+const showSourcesBranch = computed(() => declaredSources.value.length > 0)
 
 // Every branch starts closed on entry — the watch below reopens
 // whichever one holds a file a jump-to-definition/attachment click opens.
-const expanded = ref({ behavior: false, theme: false })
+const expanded = ref({ behavior: false, theme: false, sources: false })
 function toggleBranch(key) {
   expanded.value[key] = !expanded.value[key]
+}
+
+// Clicking the "Sources" label itself now selects that branch's own root
+// context (see EditProjectView.vue's selectSourcesRootNode/ProjectDesignPanel.vue's
+// empty state) — same interaction as Behavior/Aspect's own header button
+// below, which selects index.yml/index.css while the caret alone toggles
+// the branch. Also expands the branch, so the list it's showing an empty
+// state for is right there to pick from.
+function selectSourcesRoot() {
+  expanded.value.sources = true
+  emit('select-sources-root')
 }
 
 // Reveals whichever branch holds the file a jump-to-definition or attachment
@@ -83,6 +113,11 @@ watch(
     if (name === 'index.css' || themeAssets.value.includes(name)) expanded.value.theme = true
     else if (name === 'index.yml' || behaviorAttachments.value.includes(name)) expanded.value.behavior = true
   }
+)
+
+watch(
+  () => props.currentSourceName,
+  (name) => { if (name != null) expanded.value.sources = true }
 )
 </script>
 
@@ -102,6 +137,7 @@ watch(
             <li><button class="file-explorer-new-menu-item" @click="selectNewAttachment">New attachment</button></li>
             <li><button class="file-explorer-new-menu-item" :disabled="hasIndexCss" :title="hasIndexCss ? 'index.css already exists' : ''" @click="selectNewAspect">New aspect</button></li>
             <li><button class="file-explorer-new-menu-item" :disabled="hasLegalTerms" :title="hasLegalTerms ? 'legal/terms.md already exists' : ''" @click="selectNewLegal">New legal</button></li>
+            <li><button class="file-explorer-new-menu-item" @click="selectAddSource">Add source</button></li>
           </ul>
         </div>
       </div>
@@ -171,6 +207,34 @@ watch(
                 @click="emit('select-file', name)"
               >
                 {{ basename(name) }}
+              </button>
+            </li>
+          </ul>
+        </div>
+      </li>
+
+      <li v-if="showSourcesBranch" class="file-explorer-branch">
+        <div class="file-explorer-node-row">
+          <button class="file-explorer-caret" :class="{ 'file-explorer-caret-open': expanded.sources }" title="Toggle" @click="toggleBranch('sources')">▸</button>
+          <button
+            class="file-explorer-item"
+            :class="{ 'file-explorer-item-active': sourcesRootSelected }"
+            title="Sources"
+            @click="selectSourcesRoot"
+          >
+            Sources
+          </button>
+        </div>
+        <div class="file-explorer-children-wrap" :class="{ 'file-explorer-children-wrap-open': expanded.sources }">
+          <ul class="file-explorer-children">
+            <li v-for="source in declaredSources" :key="source.name" class="file-explorer-row">
+              <button
+                class="file-explorer-item file-explorer-item-child"
+                :class="{ 'file-explorer-item-active': source.name === currentSourceName }"
+                :title="source.ui_label || source.name"
+                @click="emit('select-source', source.name)"
+              >
+                {{ source.ui_label || source.name }}
               </button>
             </li>
           </ul>

@@ -153,12 +153,6 @@ class LabelProjectController(BaseController):
         distinct from put_message_comment's per-message one below."""
         return self.chat_service.set_session_comment(session_id, req.comment)
 
-    @get("/api/chat/sessions/{session_id}/summary", role="supervisor")
-    def get_session_summary(self, session_id: int):
-        """{content: str | None}. Auto-queued the moment this session was
-        discovered closed — never triggered by this endpoint itself, which only reads."""
-        return self.chat_service.get_session_summary(session_id)
-
     @post("/api/chat/sessions/{session_id}/truncate", role="supervisor")
     async def post_truncate_session(self, session_id: int, req: TruncateSessionRequest):
         """"Restart from here": the live state may have moved backward,

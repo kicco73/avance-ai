@@ -6,10 +6,11 @@ external caller (chat/, tracking/, controllers/) needs to know which
 collaborator actually does the work."""
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from automaton.automaton import (
-    Action, ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, State, StatePayload,
+    Action, ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, State, StatePayload,
 )
 from chat.session_manager import ChatSessionManager
 from db import Db
@@ -28,6 +29,8 @@ if TYPE_CHECKING:
     from ai import AiService
 
 __all__ = ["ProjectService", "CommitCallback"]
+
+_ICON_FILE_RE = re.compile(r'^aspect/icon\.(png|jpe?g|gif|webp|svg)$', re.IGNORECASE)
 
 
 class ProjectService(object):
@@ -106,6 +109,9 @@ class ProjectService(object):
 
     def get_project_env_keys(self, project_id: str, session_id: int | None = None) -> list[dict]:
         return self._inspector.get_project_env_keys(project_id, session_id)
+
+    def get_project_sources(self, project_id: str, session_id: int | None = None) -> list[dict]:
+        return self._inspector.get_project_sources(project_id, session_id)
 
     def get_project_metadata(self, project_id: str) -> ProjectPayload:
         return self._inspector.get_project_metadata(project_id)
@@ -287,6 +293,17 @@ class ProjectService(object):
     async def delete_env_key(self, project_id: str, env_key_name: str, commit: CommitCallback) -> None:
         await self._editor.delete_env_key(project_id, env_key_name, commit)
 
+    async def add_source(self, project_id: str, commit: CommitCallback) -> SourcePayload:
+        return await self._editor.add_source(project_id, commit)
+
+    async def set_source_field(
+        self, project_id: str, source_name: str, field: str, value, commit: CommitCallback
+    ) -> SourcePayload:
+        return await self._editor.set_source_field(project_id, source_name, field, value, commit)
+
+    async def delete_source(self, project_id: str, source_name: str, commit: CommitCallback) -> None:
+        await self._editor.delete_source(project_id, source_name, commit)
+
     async def reorder_actions(
         self, project_id: str, state_name: str, action_name: str, position: int, commit: CommitCallback
     ) -> list[ActionPayload]:
@@ -303,3 +320,48 @@ class ProjectService(object):
 
     async def delete_project_file(self, project_id: str, file_name: str, commit: CommitCallback) -> None:
         await self._editor.delete_project_file(project_id, file_name, commit)
+
+    # -- App Store --------------------------------------------------------
+
+    def list_app_store_apps(self, username: str, search: str | None = None) -> list[dict]:
+        apps = self._db.list_projects_for_app_store(username, search)
+        for app in apps:
+            app["icon_file"] = self._find_app_icon_file(app["id"])
+            app["reactions_enabled"] = self._project_has_reactions(app["id"])
+        return apps
+
+    def _find_app_icon_file(self, project_id: str) -> str | None:
+        revision = self.get_published_revision(project_id)
+        for name in self._db.list_archives(project_id, revision=revision):
+            if _ICON_FILE_RE.match(name):
+                return name
+        return None
+
+    def _project_has_reactions(self, project_id: str) -> bool:
+        automaton = self.get_automaton(project_id, self.get_published_revision(project_id))
+        return any(automaton.reactions_enabled_for(state) for state in automaton.states.values())
+
+    def install_app(self, username: str, project_id: str) -> None:
+        if not self._db.project_exists(project_id):
+            raise FileNotFoundError(f"No such project: {project_id!r}")
+        self._db.install_project(username, project_id)
+
+    def uninstall_app(self, username: str, project_id: str) -> None:
+        self._db.delete_sessions_by_username_and_project(username, project_id)
+        self._db.uninstall_project(username, project_id)
+
+    def get_app_session_summaries(self, username: str, project_id: str) -> list[dict]:
+        return self._db.list_session_summaries_for_user_project(username, project_id)
+
+    def get_app_store_file_content(self, project_id: str, file_name: str) -> tuple[bytes, str]:
+        revision = self.get_published_revision(project_id)
+        return self._editor.get_project_file_content_at_revision(project_id, file_name, revision)
+
+    def get_app_store_preview_messages(self, project_id: str) -> list[dict] | None:
+        session = self._db.get_first_imported_session(project_id)
+        if session is None:
+            return None
+        return [
+            {"id": m["id"], "role": m["role"], "content": m["content"], "timestamp": m["timestamp"]}
+            for m in self._db.get_messages(session["id"])
+        ]

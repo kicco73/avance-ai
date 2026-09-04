@@ -15,7 +15,7 @@ import { setCapabilities, setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSess
 // App.vue's own — this composable only reads/resolves them.
 export function useAppBoot(
   currentUserProfile, currentUserRole, labelProjectId, liveChatProjectId,
-  pushedView, showProfile, navDirection
+  pushedView, chatOpen, showProfile, navDirection
 ) {
   // Initial-boot backend readiness gate — entirely separate from the shared
   // error store (which is for runtime errors on an already-running app). 'checking': the
@@ -110,10 +110,10 @@ export function useAppBoot(
     // spin up a live session nobody's about to see. ChatWindow.vue only
     // mounts for them at all once they actually push into it (see
     // handleManageProjectsChat -> handleProjectSwitch's own loadMessages()).
-    // The pushedView === 'chat' case covers an admin landing straight into
+    // The chatOpen case covers an admin/customer landing straight into
     // chat via a share link (see resolveLandingView below) — same reasoning,
     // a live session is actually about to show for them too in that case.
-    if (currentUserRole.value === 'user' || pushedView.value === 'chat') {
+    if (currentUserRole.value === 'user' || chatOpen.value) {
       loadMessages()
     }
     loadAiModels()
@@ -183,6 +183,7 @@ export function useAppBoot(
     // time boot succeeds, landing the new session somewhere it never
     // actually navigated to itself.
     pushedView.value = null
+    chatOpen.value = false
     showProfile.value = false
     navDirection.value = 'forward'
     try {
@@ -198,9 +199,9 @@ export function useAppBoot(
     if (currentUserRole.value === 'user') {
       liveChatProjectId.value = sharedProjectId ?? await getActiveProjectId()
     }
-    if (currentUserRole.value === 'admin' && sharedProjectId) {
+    if ((currentUserRole.value === 'admin' || currentUserRole.value === 'customer') && sharedProjectId) {
       liveChatProjectId.value = sharedProjectId
-      pushedView.value = 'chat'
+      chatOpen.value = true
     }
   }
 

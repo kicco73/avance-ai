@@ -78,7 +78,10 @@ class FakeSchemaAiService:
     """A v2-shaped (schema) fake — reports metadata straight through
     `on_metadata`, so injecting a `signals` value never depends on any
     tag-scanning. This file's subject is TrackingService/TrackingProcessor
-    orchestration, not tag parsing."""
+    orchestration, not tag parsing. Only reports a key when it's actually
+    part of the requested `schema` — a real schema-constrained provider
+    can't emit a field it was never asked for, and callers rely on that
+    (e.g. a turn that never requests 'signals' must never evaluate them)."""
 
     def __init__(self, metadata_per_call: list[dict]) -> None:
         self._metadata_per_call = metadata_per_call
@@ -98,7 +101,8 @@ class FakeSchemaAiService:
         metadata = self._metadata_per_call[index]
         self.call_count += 1
         for key, value in metadata.items():
-            on_metadata(key, value)
+            if key in schema:
+                on_metadata(key, value)
         yield "Hi!"
 
 
@@ -278,20 +282,43 @@ async def test_set_message_expected_signals_rejects_an_out_of_range_value(db, ch
 
 
 @pytest.mark.regression
+async def test_opening_message_never_evaluates_signals_in_before_mode(db, chat_service_for):
+    # In "before" mode, an AI-started turn (opening message, or a new
+    # state's own opening line) has no real user text — just the "..."
+    # placeholder — so there is nothing genuine to evaluate a trigger
+    # against yet. Even if the model's very first call reports signals
+    # that would satisfy the trigger, no transition may fire off it: a
+    # schema-constrained provider can't emit 'signals' it was never asked
+    # for, and this turn must never ask for it in the first place.
+    ai_service = FakeSchemaAiService([{"signals": '{"foo": 1}'}])
+    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
+    session_id = await _bootstrap_session(chat_service)
+
+    await chat_service.open_if_needed(session_id)
+
+    assert db.get_current_state(PROJECT_ID) == "a", "opening message must not have fired a transition"
+    messages = await chat_service.get_messages(session_id)
+    assert len(messages) == 1
+    assert db.get_signal_row_by_message(messages[0]["id"]) is None
+
+
+@pytest.mark.regression
 async def test_message_linking_end_to_end_bootstrap_and_one_real_turn(db, chat_service_for):
     """Regression, covering a bootstrap plus one real user turn that fires
     a transition: every Tracking row must link to the message that
     actually caused it, never a temporally-adjacent one, and every real
     evaluation must leave a row even when it never fires.
 
-    The 5 rows this produces, in order: (1) the init transition, unlinked;
-    (2) the opening message's own non-firing signal evaluation; (3) the
-    env-only row the opening message reported; (4) the real transition,
-    linked to the user's message, not the assistant's; (5) the env-only
+    The 4 rows this produces, in order: (1) the init transition, unlinked;
+    (2) the env-only row the opening message reported — its 'signals' is
+    never requested at all (an AI-started turn has no real user message
+    to evaluate in "before" mode, so the fake never even sees the key,
+    same as a real schema-constrained provider); (3) the real transition,
+    linked to the user's message, not the assistant's; (4) the env-only
     row the regenerated reply reported.
     """
     ai_service = FakeSchemaAiService([
-        {"signals": '{"foo": -1}', "env": "stage: opening"},  # opening message — never fires
+        {"signals": '{"foo": -1}', "env": "stage: opening"},  # opening message — signals not requested, dropped
         {"signals": '{"foo": 1}', "env": "stage: guessed"},  # optimistic guess — fires "foo >= 0"
         {"env": "stage: crisis"},  # regenerated reply — signals never re-requested
     ])
@@ -308,15 +335,11 @@ async def test_message_linking_end_to_end_bootstrap_and_one_real_turn(db, chat_s
     assistant_message_id = result["assistant_message_id"]
 
     rows = list(Tracking.select().where(Tracking.session == session_id).order_by(Tracking.id))
-    assert len(rows) == 5
-    init_row, opening_snapshot_row, opening_env_row, transition_row, reply_env_row = rows
+    assert len(rows) == 4
+    init_row, opening_env_row, transition_row, reply_env_row = rows
 
     assert (init_row.old_state, init_row.new_state) == ("", "a")
     assert init_row.message_id is None
-
-    assert opening_snapshot_row.old_state is None and opening_snapshot_row.new_state is None
-    assert opening_snapshot_row.values == '{"foo": -1}'
-    assert opening_snapshot_row.message_id == opening_message_id
 
     assert opening_env_row.env is not None and opening_env_row.old_state is None
     assert opening_env_row.message_id == opening_message_id

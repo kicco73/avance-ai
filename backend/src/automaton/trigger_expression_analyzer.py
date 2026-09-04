@@ -14,7 +14,9 @@ class TriggerExpressionAnalyzer:
 
     # Reserved namespaces a trigger/env expression resolves against. `automaton`
     # has no entry in _NAMESPACE_PATHS below since automaton.<project>.state/
-    # env.<key> is a dynamic, per-project chain static-tuple matching can't express.
+    # env.<key> is a dynamic, per-project chain static-tuple matching can't
+    # express — same reason `source.<name>.<method>` is never matched through
+    # here either (see source_refs, matched directly instead).
     RESERVED_NAMESPACES = (
         "signal", "env", "session", "user", "source", "actuator", "metric", "automaton", "datetime",
     )
@@ -84,6 +86,24 @@ class TriggerExpressionAnalyzer:
             node.attr for node in ast.walk(tree)
             if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "automaton"
         }
+
+    @staticmethod
+    def source_refs(expression: str) -> dict[str, set[str]]:
+        """Every `source.<name>.<method>` reference in `expression`,
+        grouped by source name — `source.<name>` is a dynamic, per-project
+        namespace (like `automaton.<project>`, see automaton_project_refs)
+        static-tuple matching (_namespace_path_of/_NAMESPACE_PATHS) can't
+        express, so it's matched directly here instead."""
+        tree = ast.parse(expression, mode="eval").body
+        refs: dict[str, set[str]] = {}
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute)):
+                continue
+            name_node = node.value
+            if not isinstance(name_node.value, ast.Name) or name_node.value.id != "source":
+                continue
+            refs.setdefault(name_node.attr, set()).add(node.attr)
+        return refs
 
     @staticmethod
     def automaton_env_refs(expression: str) -> dict[str, set[str]]:
@@ -206,8 +226,10 @@ class TriggerExpressionAnalyzer:
             "active_project": _KIND_STRING,
             "role": _KIND_STRING,
         },
-        # Every data source (tracking/sources/) returns text.
-        ("source",): {"attachment": _KIND_STRING},
+        # `source.<name>.*` is absent here for the same reason
+        # `automaton.<project>.*` is: it's a dynamic, per-project chain
+        # this static path -> kind lookup can't express (see source_refs
+        # above) — its own kind is always unknown to this analyzer.
     }
     # Every identifier under these namespaces is always a number, no per-name
     # exceptions to look up — signals by contract, metrics because

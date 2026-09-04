@@ -20,7 +20,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 		if key == 'signals':
 			rv = self.metadata.signals = self.metadata_processor.parse_raw_signals(value)
 			self.out.action = self._tracking_engine.evaluate_triggered_action(
-				self.user.automaton, self.user.state, self.metadata.signals
+				self.user.automaton, self.user.state, self.metadata.signals, session_id=self.user.session_id
 			)
 			if self.out.action:
 				self.out.state = self.user.automaton.get_state(self.out.action.target)

@@ -2,6 +2,7 @@
 // same lines as the backend's own controllers — re-exported from this one
 // file so existing `from '.../api.js'` imports never need to know about
 // the split.
+export * from './api/appStore.js'
 export * from './api/auth.js'
 export * from './api/chat.js'
 export * from './api/labeling.js'

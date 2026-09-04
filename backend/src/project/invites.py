@@ -13,6 +13,7 @@ import string
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
+from auth.roles import role_satisfies
 from db import Db, _utc_iso
 
 _CODE_ALPHABET = string.ascii_letters + string.digits
@@ -64,7 +65,7 @@ class InviteManager:
         if invite is None:
             return None
         project_id = invite.project_id
-        if role != 'user' or self._db.user_has_project_access(user_id, project_id):
+        if role_satisfies(role, 'supervisor') or self._db.user_has_project_access(user_id, project_id):
             return project_id
         self._ensure_within_budget(invite)
         self.redeem(invite, user_id)

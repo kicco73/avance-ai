@@ -12,7 +12,8 @@ class TurnProtocol(ABC):
 	prompt_preambles: dict[str,str] = {}
 
 	def __init__(
-		self, ai_service: AiService, evaluate_signals_first, reactions_enabled: bool = False, talk_enabled: bool = True,
+		self, ai_service: AiService, evaluate_signals_first, evaluate_signals: bool = True,
+		reactions_enabled: bool = False, talk_enabled: bool = True,
 	) -> None:
 		self._ai_service = ai_service
 		# 'reaction' is the one conditional tag here — every other one is
@@ -20,10 +21,14 @@ class TurnProtocol(ABC):
 		# what enforces State.reactions_enabled (see automaton.State).
 		reaction_tags = ('reaction',) if reactions_enabled else ()
 		audio_tags = ('audio',) if talk_enabled else ()
+		# evaluate_signals=False drops 'signals' from the request entirely
+		# (not just its position) — for a turn with nothing real to
+		# evaluate yet, there's no value to ask the model for at all.
+		signal_tags = ('signals',) if evaluate_signals else ()
 		if evaluate_signals_first:
-			self.include_tags = ('signals', *reaction_tags, *audio_tags, 'text', 'env')
+			self.include_tags = (*signal_tags, *reaction_tags, *audio_tags, 'text', 'env')
 		else:
-			self.include_tags = (*audio_tags, 'text', 'signals', *reaction_tags, 'env')
+			self.include_tags = (*audio_tags, 'text', *signal_tags, *reaction_tags, 'env')
 
 	def generate_reply(
 		self,

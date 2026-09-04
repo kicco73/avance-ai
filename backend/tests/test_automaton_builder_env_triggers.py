@@ -60,18 +60,11 @@ def test_a_trigger_referencing_an_unknown_user_attr_is_rejected():
         AutomatonBuilder().build({"index.yml": content})
 
 
-@pytest.mark.parametrize("attr", sorted(IdentifierRegistry.SOURCE))
-def test_a_trigger_may_reference_any_source_attr(attr):
-    """Unlike system.*/session.*, a source.<name>(...) call takes its own
-    argument(s) — build-time validation only cares about the identifier
-    itself, never what's passed to it."""
-    content = _project(f"source.{attr}('whatever') != None")
-    automaton = AutomatonBuilder().build({"index.yml": content})
-    assert automaton.states["a"].actions[0].trigger == f"source.{attr}('whatever') != None"
-
-
 def test_a_trigger_referencing_an_unknown_source_is_rejected():
-    content = _project("source.bogus_source('x') != None")
+    """`source.<name>.<method>(...)` is a dynamic, per-project namespace
+    (like automaton.<project>.*) — see test_automaton_builder_sources.py
+    for full coverage of what a *declared* source may be referenced as."""
+    content = _project("source.bogus_source.read() != None")
     with pytest.raises(ValueError, match="undefined name\\(s\\).*source.bogus_source"):
         AutomatonBuilder().build({"index.yml": content})
 

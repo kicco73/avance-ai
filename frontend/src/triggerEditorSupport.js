@@ -7,8 +7,6 @@ import { snippetCompletion } from '@codemirror/autocomplete'
 // build a fill-in-the-blanks snippet completion — the registry itself
 // only carries a free-text description, never a structured signature.
 const CALL_PARAMS = {
-  'source.attachment': ['name'],
-  'source.search': ['what', 'where'],
   'actuator.send_mail': ['to', 'body_md'],
   'actuator.notify': ['title', 'body_md'],
   'actuator.show': ['body_md']
@@ -16,24 +14,6 @@ const CALL_PARAMS = {
 
 const AUTOMATON_EMPTY_HINT =
   "No other project declares the same project.family — set it in this project's and a sibling's index.yml to reference automaton.<id>."
-
-const STRING_LITERAL_SOURCE = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/.source
-
-const FILE_PATH_ARG_PATTERN = new RegExp(
-  `source\\.(?:attachment\\(|search\\(\\s*(?:${STRING_LITERAL_SOURCE})\\s*,)\\s*(['"])([^'"]*)$`
-)
-
-export function completeFilePathArgument(context, files) {
-  const text = context.state.sliceDoc(0, context.pos)
-  const match = FILE_PATH_ARG_PATTERN.exec(text)
-  if (!match) return null
-  const partial = match[2]
-  const from = context.pos - partial.length
-  return {
-    from,
-    options: files.map((file) => ({ label: file, type: 'text', apply: file }))
-  }
-}
 
 // Fixed per-namespace colors — frontend-only, the identifier registry
 // never transports styling. "session.metric" gets its own distinct
@@ -54,11 +34,12 @@ export const NAMESPACE_COLORS = {
 
 // signal/env/user are plain variables (env/user resolve straight off an
 // already-fetched dict); "datetime.timezone" is too — its only member
-// (utc) is a plain attribute, not a callable. Every other fixed namespace
-// is call-style — session takes no arguments, source's own methods
-// (one per tracking/sources/ module, e.g. attachment(name)) take theirs
-// inside the same parens completion inserts empty. This decides a
-// completion's `type`/`apply` (append "()" or not), never a label.
+// (utc) is a plain attribute, not a callable. Every other namespace is
+// call-style — session takes no arguments, a declared source's own
+// methods (registry key "source.<name>", see backend
+// ProjectInspector.get_identifier_registry) take theirs inside the same
+// parens completion inserts empty. This decides a completion's
+// `type`/`apply` (append "()" or not), never a label.
 // The registry minus `excluded` namespaces, by prefix: excluding "session"
 // also drops "session.metric" — the same rule as the backend's
 // IdentifierRegistry.excluding, so the editor's autocomplete and the

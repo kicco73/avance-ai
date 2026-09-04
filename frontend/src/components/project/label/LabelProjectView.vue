@@ -33,7 +33,7 @@ const props = defineProps({
 // project-select is ProjectsMenu.vue's own switch; profile/logout are a
 // plain pass-through of ProfileMenu.vue's own emits.
 const emit = defineEmits([
-  'close', 'project-select', 'profile', 'logout'
+  'close', 'project-select', 'home', 'profile', 'logout'
 ])
 
 // This view's own session pointer — never chatStore.js's shared
@@ -223,7 +223,7 @@ onBeforeUnmount(() => {
       </template>
       <template #right>
         <div class="test-header-actions">
-          <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
+          <ProfileMenu :profile="profile" @home="emit('home')" @profile="emit('profile')" @logout="emit('logout')" />
         </div>
       </template>
     </AppHeader>

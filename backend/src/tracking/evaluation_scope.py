@@ -48,8 +48,8 @@ class EvaluationScopeBuilder(object):
         self._metrics = metrics
         self._session = session
         self._user = user
-        # Only for SourceNamespace (source.attachment(name) reads
-        # straight from storage — see tracking.sources.attachment) —
+        # Only for SourceNamespace (a declared source's own driver reads
+        # straight from storage — see tracking.sources.avance_archive) —
         # every other namespace above wraps its own db access already.
         self._db = db
         # Optional — a test replay omits it, so its scope has no
@@ -65,6 +65,7 @@ class EvaluationScopeBuilder(object):
 
     def build(
         self, automaton: Automaton, state_key: str, raw_signal_values: dict[str, Any] | None,
+        session_id: int | None = None,
     ) -> EvaluationScope:
         """`raw_signal_values` is always re-coerced against every declared
         signal, never assumed pre-validated. env/session/user/source/
@@ -73,15 +74,20 @@ class EvaluationScopeBuilder(object):
         `source` is rebuilt fresh every call (unlike env/session/
         user, never threaded through __init__) since it needs `automaton`
         itself — a `build()` parameter, not a constructor dependency any
-        caller has to wire up separately — to know where source.attachment
-        should actually read from (see Automaton.set_storage_location)."""
+        caller has to wire up separately — to know where a declared
+        source's own driver should actually read from (see
+        Automaton.set_storage_location). `session_id`: the firing chat
+        session, forwarded to SourceNamespace for its own per-session read
+        cache (tracking.sources.avance_archive) — None outside a real chat
+        session (a wake-up re-evaluation, a test replay), where a source
+        driver just reads its canonical archive directly instead."""
         signal_values = SignalEvaluator().validate(automaton, raw_signal_values)
         scope: dict[str, Any] = {
             "signal": signal_values,
             "env": self._env.action_set(),
             "session": self._session,
             "user": self._user.as_dict(),
-            "source": SourceNamespace(self._db, automaton),
+            "source": SourceNamespace(self._db, automaton, session_id),
             "metric": self._metrics.for_turn(),
             # FIXME: simpleeval rejects a raw module ("modules are not allowed") — ModuleWrapper is its
             # sanctioned opt-in; don't replace this with the bare `datetime` module.

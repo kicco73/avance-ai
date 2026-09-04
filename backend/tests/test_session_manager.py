@@ -135,10 +135,14 @@ def test_is_open_is_false_never_a_crash_for_a_session_with_no_datetime_end(manag
 
 
 @pytest.mark.regression
-def test_is_open_never_expires_for_a_test_session(manager):
-    long_ago = datetime.utcnow() - timedelta(days=365)
-    session = {"type": "test", "datetime_end": long_ago, "closed_at": None}
+def test_is_open_expires_a_test_session_after_its_own_five_minute_window(manager):
+    recent = datetime.utcnow() - timedelta(minutes=1)
+    session = {"type": "test", "datetime_end": recent, "closed_at": None}
     assert manager.is_open(session) is True
+
+    long_ago = datetime.utcnow() - timedelta(minutes=10)
+    session = {"type": "test", "datetime_end": long_ago, "closed_at": None}
+    assert manager.is_open(session) is False
 
 
 @pytest.mark.regression
@@ -400,6 +404,22 @@ def test_close_session_does_not_touch_datetime_end_or_end_state(manager, project
     assert closed["end_state"] == session["end_state"]
     assert closed["closed_at"] is not None
     assert closed["close_reason"] == "manual-user"
+
+
+@pytest.mark.contract
+def test_close_session_deletes_its_own_source_read_cache_but_nothing_else(manager, project_service, db):
+    session = _create(manager, project_service, "user", "proj", "start")
+    session_id = session["id"]
+    db.write_archive_at_revision("proj", f"cache/sessions/{session_id}/sources/pino.csv", 0, b"cached", "text/csv")
+    db.write_archive_at_revision("proj", "cache/sessions/999/sources/pino.csv", 0, b"other session", "text/csv")
+    db.write_archive_at_revision("proj", "sources/pino.csv", 0, b"canonical", "text/csv")
+
+    manager.close_session(session, "manual-user")
+
+    names = db.list_archives("proj", revision=0)
+    assert f"cache/sessions/{session_id}/sources/pino.csv" not in names
+    assert "cache/sessions/999/sources/pino.csv" in names
+    assert "sources/pino.csv" in names
 
 
 @pytest.mark.regression

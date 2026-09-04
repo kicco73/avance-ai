@@ -8,7 +8,7 @@ from datetime import datetime
 
 import pytest
 
-from automaton.automaton import Action, Automaton, MemoryArchive, State
+from automaton.automaton import Action, Automaton, MemoryArchive, Source, State
 from metrics.metric_service import MetricService
 from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
@@ -115,8 +115,8 @@ def test_user_fact_is_usable_in_a_trigger_end_to_end(db):
     assert automaton.evaluate_triggers("a", scope) == "advance"
 
 
-def test_source_attachment_is_usable_in_an_env_expression_end_to_end(db):
-    """source.attachment(name) reads straight from Db, at the same
+def test_declared_source_is_usable_in_an_env_expression_end_to_end(db):
+    """source.<name>.read() reads straight from Db, at the same
     (project_name, revision) the automaton itself was loaded from (see
     Automaton.set_storage_location) — never automaton.attachments'
     in-memory copy, which is why this seeds the file through
@@ -126,7 +126,7 @@ def test_source_attachment_is_usable_in_an_env_expression_end_to_end(db):
     revision = db.get_project_revision(PROJECT_ID)
     action = Action(
         name="advance", ui_label="Advance", ui_button="Advance", target="b",
-        trigger="signal.mood >= 1", env={"notes": "source.attachment('notes.txt')"},
+        trigger="signal.mood >= 1", env={"notes": "source.pino.read()"},
     )
     state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
     automaton = Automaton(
@@ -134,12 +134,13 @@ def test_source_attachment_is_usable_in_an_env_expression_end_to_end(db):
         states={"": State(key="", ui_label="", final=False, actions=[]), "a": state_a},
         general_prompt="", signals=[], attachments={}, general_attachments={},
         autotracking_on_ai_message=False, project_id=PROJECT_ID,
+        sources=[Source(name="pino", url="avance:notes.txt", ui_label="pino")],
     )
     automaton.set_storage_location(revision)
 
     scope = _builder(db).build(automaton, "a", {})
 
-    assert scope["source"].attachment("notes.txt") == "hello from the archive"
+    assert scope["source"].pino.read() == "hello from the archive"
     assert Automaton.eval_action_env(action, scope) == {"notes": "hello from the archive"}
 
 

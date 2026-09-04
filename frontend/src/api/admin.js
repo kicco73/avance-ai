@@ -119,8 +119,9 @@ export function downloadProject(projectId) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}`, {}, { parse: 'blob' })
 }
 
-// Settings > Manage services > Scheduler — every row of the Task table,
-// soonest run_at first (see db/tasks.py's list_tasks).
-export function getScheduledTasks() {
-  return apiFetch(`${API_URL}/settings/tasks`)
+// Settings > Manage services > Scheduler — Task rows for one status at a
+// time, by run_at per `order` (see db/tasks.py's list_tasks).
+export function getScheduledTasks(status, order = 'asc') {
+  const params = new URLSearchParams({ status, order })
+  return apiFetch(`${API_URL}/settings/tasks?${params}`)
 }

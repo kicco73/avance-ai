@@ -72,7 +72,7 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "CREATE TABLE ChatSession (id INTEGER PRIMARY KEY, username TEXT, user_id TEXT, project_id TEXT, "
         "type TEXT, title TEXT, project_revision INTEGER, datetime_start TEXT, datetime_end TEXT, "
         "start_state TEXT, end_state TEXT, labeled INTEGER, comment TEXT, labeling_revision INTEGER, channel TEXT, "
-        "closed_at TEXT, close_reason TEXT)",
+        "closed_at TEXT, close_reason TEXT, ai_summary TEXT)",
         "CREATE TABLE Message (id INTEGER PRIMARY KEY, role TEXT, content TEXT, timestamp TEXT, audio_text TEXT)",
         "CREATE TABLE User (id TEXT PRIMARY KEY, provider TEXT, provider_user_id TEXT, email TEXT, "
         "name TEXT, picture_url TEXT, created_at TEXT, last_login TEXT, active_project_id TEXT, role TEXT)",
@@ -82,7 +82,7 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "CREATE TABLE EditHistory (id INTEGER PRIMARY KEY, user_id TEXT, project_id TEXT, "
         "archive_name TEXT, kind TEXT, seq INTEGER, content TEXT)",
         "CREATE TABLE UserProject (user_id TEXT, project_id TEXT, accepted_terms_id INTEGER, "
-        "invite_id INTEGER, invite_timestamp TEXT)",
+        "invite_id INTEGER, invite_timestamp TEXT, ai_summary TEXT)",
         "CREATE TABLE Invite (id INTEGER PRIMARY KEY, code TEXT, created_at TEXT, expires_at TEXT, "
         "project_id TEXT, max_shares INTEGER, created_by_id TEXT)",
         "CREATE TABLE StateRemap (project_id TEXT, old_key TEXT, new_key TEXT)",
@@ -93,7 +93,6 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "message_id INTEGER, timestamp TEXT, \"values\" TEXT, old_state TEXT, action TEXT, new_state TEXT)",
         "CREATE TABLE TestAggregateResult (id INTEGER PRIMARY KEY, project_id TEXT, revision INTEGER, "
         "project_draft_edit_count INTEGER, kind TEXT, target TEXT, strategy TEXT, results TEXT, created_at TEXT)",
-        "CREATE TABLE SessionSummary (id INTEGER PRIMARY KEY, session_id INTEGER, content TEXT)",
         "CREATE TABLE SystemWarning (id INTEGER PRIMARY KEY, user_id TEXT, project_id TEXT, kind TEXT, "
         "message TEXT, timestamp TEXT)",
         "CREATE TABLE ProjectObserverIndex (id INTEGER PRIMARY KEY, project_id TEXT, observer_project_id TEXT)",

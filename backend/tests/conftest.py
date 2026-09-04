@@ -135,8 +135,11 @@ class FakeAiService:
         self.calls.append((system_prompt, history))
         return "Fake AI reply."
 
-    async def prompt(self, prompt: str) -> str:
-        return await self.generate("", [{"role": "user", "content": prompt}])
+    async def prompt(self, prompt: str, channels: list[str] | None = None) -> str | dict[str, str]:
+        text = await self.generate("", [{"role": "user", "content": prompt}])
+        if not channels:
+            return text
+        return {"text": text, **{name: f"Fake {name}." for name in channels}}
 
     async def generate_stream(self, system_prompt: str, history: list[dict], on_retry=None):
         self.calls.append((system_prompt, history))

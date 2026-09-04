@@ -12,7 +12,7 @@ from typing import Any, Mapping
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
-from automaton.automaton import ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, StatePayload
+from automaton.automaton import ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 
 
@@ -62,6 +62,9 @@ class AutomatonYamlEditor:
     def _env(self) -> CommentedMap:
         return self._raw.setdefault("env", CommentedMap())
 
+    def _sources(self) -> CommentedMap:
+        return self._raw.setdefault("sources", CommentedMap())
+
     def _state(self, state_name: str) -> CommentedMap:
         try:
             return self._states()[state_name]
@@ -85,6 +88,18 @@ class AutomatonYamlEditor:
         # so every other accessor below can treat it as a plain mapping.
         if raw is None:
             raw = env[name] = CommentedMap()
+        return raw
+
+    def _source(self, name: str) -> CommentedMap:
+        sources = self._sources()
+        try:
+            raw = sources[name]
+        except KeyError:
+            raise ValueError(f"Source '{name}' not found.") from None
+        # A bare `name:` declaration (no nested fields at all) parses as
+        # None, not {} — normalized in place, same as _env_key above.
+        if raw is None:
+            raw = sources[name] = CommentedMap()
         return raw
 
     def _actions(self, state_name: str) -> CommentedSeq:
@@ -126,6 +141,19 @@ class AutomatonYamlEditor:
         while f"{base}_{suffix}" in existing_names:
             suffix += 1
         return f"{base}_{suffix}"
+
+    @staticmethod
+    def _unique_source_name(base: str, existing_names: set) -> str:
+        """"behaviour", then "behaviour1", "behaviour2", ... — unlike
+        _unique_signal_name (no separator, 1-based), since a source's own
+        id is user-facing on its own (there's no separate ui-label it's
+        derived from — see add_source)."""
+        if base not in existing_names:
+            return base
+        suffix = 1
+        while f"{base}{suffix}" in existing_names:
+            suffix += 1
+        return f"{base}{suffix}"
 
     def _existing_state_ui_labels(self) -> set:
         return {raw_state.get("ui-label", key) for key, raw_state in self._states().items()}
@@ -200,6 +228,16 @@ class AutomatonYamlEditor:
             "value": raw_env_key.get("value") or "",
         }
 
+    def _source_payload(self, name: str) -> SourcePayload:
+        raw_source = self._source(name)
+        ui_description = raw_source.get("ui-description")
+        return {
+            "name": name,
+            "ui_label": raw_source.get("ui-label", name),
+            "ui_description": ui_description.strip() if ui_description else None,
+            "url": raw_source.get("url") or "",
+        }
+
     # ------------------------------------------------------------------
     # Add
     # ------------------------------------------------------------------
@@ -232,6 +270,17 @@ class AutomatonYamlEditor:
         name = self._unique_signal_name("new_env_key", set(env.keys()))
         env[name] = CommentedMap({"value": ""})
         return self._env_key_payload(name)
+
+    def add_source(self) -> SourcePayload:
+        """`url` is deliberately left unset — same "created, not yet
+        configured" state add_env_key leaves a fresh key's `value` in —
+        until the user picks a driver/archive from the Inspector (see
+        set_source_field); AutomatonBuilder accepts a source with no url
+        (it just can't be usefully referenced yet, see _build_source)."""
+        sources = self._sources()
+        name = self._unique_source_name("behaviour", set(sources.keys()))
+        sources[name] = CommentedMap({"ui-label": name})
+        return self._source_payload(name)
 
     def add_action(self, state_name: str) -> ActionPayload:
         actions = self._actions(state_name)
@@ -306,6 +355,18 @@ class AutomatonYamlEditor:
             return self._env_key_payload(name)
         self._env_key(name)[field] = value
         return self._env_key_payload(name)
+
+    def set_source_field(self, name: str, field: str, value) -> SourcePayload:
+        """Same "editing this field renames the entry" convention as
+        set_env_key_field's 'name' case — a source has no separate
+        ui-label driving its id the way a signal's does."""
+        if field == "name":
+            derived_name = self.to_snake_case(value)
+            if derived_name and derived_name != name:
+                return self.rename_source(name, derived_name)
+            return self._source_payload(name)
+        self._source(name)[field] = value
+        return self._source_payload(name)
 
     def set_project_field(self, field: str, value) -> ProjectPayload:
         """The optional top-level `project:` mapping — id/family/ui-label/
@@ -404,6 +465,24 @@ class AutomatonYamlEditor:
 
         return self._env_key_payload(unique_new_name)
 
+    def rename_source(self, old_name: str, new_name: str) -> SourcePayload:
+        """Same shape as rename_signal/rename_env_key, but the cascade is
+        its own — `source.<name>` sits one level deeper than `env.<name>`
+        (a trigger calls `source.<name>.<method>(...)`, never bare
+        `source.<name>`), so it needs its own tree walk/rewrite (see
+        _rename_source_ref_in_triggers) rather than
+        _rename_namespaced_ref_in_triggers."""
+        sources = self._sources()
+        if old_name not in sources:
+            raise ValueError(f"Source '{old_name}' not found.")
+        existing_names = set(sources.keys()) - {old_name}
+        unique_new_name = self._unique_signal_name(new_name, existing_names)
+
+        self._rename_key_preserving_comments(sources, old_name, unique_new_name)
+        self._rename_source_ref_in_triggers(old_name, unique_new_name)
+
+        return self._source_payload(unique_new_name)
+
     # ------------------------------------------------------------------
     # Delete
     # ------------------------------------------------------------------
@@ -451,6 +530,15 @@ class AutomatonYamlEditor:
             "env", name, lambda tree: self._strip_namespaced_ref_from_trigger(tree, "env", name)
         )
 
+    def delete_source(self, name: str) -> None:
+        sources = self._sources()
+        if name in sources:
+            del sources[name]
+
+        self._transform_triggers_referencing_source(
+            name, lambda tree: self._strip_source_ref_from_trigger(tree, name)
+        )
+
     # ------------------------------------------------------------------
     # Reorder
     # ------------------------------------------------------------------
@@ -494,6 +582,61 @@ class AutomatonYamlEditor:
                     del raw_action["trigger"]
                 else:
                     raw_action["trigger"] = ast.unparse(new_node)
+
+    def _transform_triggers_referencing_source(self, name: str, transform) -> None:
+        """Same shape as _transform_triggers_referencing above, but
+        matching `source.<name>.<method>` (TriggerExpressionAnalyzer.
+        source_refs) rather than a plain `namespace.<name>` attribute —
+        `source.<name>` is never referenced bare (see SourceNamespace),
+        only ever as the base of a further `.method(...)` call."""
+        for containing_key, raw_state in self._states().items():
+            for raw_action in raw_state.get("actions") or []:
+                trigger = raw_action.get("trigger")
+                if not trigger:
+                    continue
+                if name not in TriggerExpressionAnalyzer.source_refs(trigger):
+                    continue
+                tree = ast.parse(trigger, mode="eval").body
+                new_node = transform(tree)
+                if new_node is None:
+                    del raw_action["trigger"]
+                else:
+                    raw_action["trigger"] = ast.unparse(new_node)
+
+    def _rename_source_ref_in_triggers(self, old_name: str, new_name: str) -> None:
+        def transform(tree: ast.AST) -> ast.AST:
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute)
+                    and isinstance(node.value.value, ast.Name) and node.value.value.id == "source"
+                    and node.value.attr == old_name
+                ):
+                    node.value.attr = new_name
+            return tree
+        self._transform_triggers_referencing_source(old_name, transform)
+
+    def _strip_source_ref_from_trigger(self, node: ast.AST, name: str) -> ast.AST | None:
+        """Same shape as _strip_namespaced_ref_from_trigger, matching
+        `source.<name>.<method>` instead of `namespace.<name>`."""
+        if isinstance(node, ast.BoolOp):
+            kept = [
+                child for child in (
+                    self._strip_source_ref_from_trigger(operand, name) for operand in node.values
+                )
+                if child is not None
+            ]
+            if not kept:
+                return None
+            if len(kept) == 1:
+                return kept[0]
+            node.values = kept
+            return node
+        references_name = any(
+            isinstance(n, ast.Attribute) and isinstance(n.value, ast.Attribute)
+            and isinstance(n.value.value, ast.Name) and n.value.value.id == "source" and n.value.attr == name
+            for n in ast.walk(node)
+        )
+        return None if references_name else node
 
     def _rename_namespaced_ref_in_triggers(self, namespace: str, old_name: str, new_name: str) -> None:
         def transform(tree: ast.AST) -> ast.AST:

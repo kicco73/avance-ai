@@ -25,7 +25,6 @@ import ProjectsMenu from '../ProjectsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import AppHeader from '../AppHeader.vue'
 import SplashScreen from '../SplashScreen.vue'
-import { roleSatisfies } from '../../roles.js'
 import { setApiError } from '../../errorStore.js'
 import { connect as connectChat, disconnect as disconnectChat } from '../../chatClient.js'
 import { startRecording, stopRecording } from '../../mic.js'
@@ -79,14 +78,16 @@ const {
   reloadMessages
 } = props.store
 
-const emit = defineEmits(['project-select', 'project-download', 'manage-projects', 'profile', 'logout'])
+const emit = defineEmits(['project-select', 'project-download', 'manage-projects', 'home', 'profile', 'logout'])
 
 const projectsMenuRef = ref(null)
 
-// The header's own back arrow — only an admin (whose LiveChatWindow is
-// pushed *over* ManageProjectsView, see App.vue) has anywhere to pop back
-// to; a plain user's chat is their whole app, with no base to return to.
-const canBackToManageProjects = computed(() => roleSatisfies(props.role, 'admin'))
+// The header's own back arrow — only an admin (pushed *over*
+// ManageProjectsView) or a customer (pushed *over* AppStoreView, see
+// App.vue) has anywhere to pop back to; a plain user's chat is their whole
+// app, with no base to return to.
+const canBackToManageProjects = computed(() => props.role === 'admin' || props.role === 'customer')
+const backLabel = computed(() => props.role === 'customer' ? 'Back to App store' : 'Back to Manage projects')
 
 const scrollEl = ref(null)
 const chatInputRef = ref(null)
@@ -287,7 +288,7 @@ watch(
           v-if="canBackToManageProjects"
           type="button"
           class="app-header-icon-btn"
-          title="Back to Manage projects"
+          :title="backLabel"
           @click="emit('manage-projects')"
         >«</button>
       </template>
@@ -301,7 +302,7 @@ watch(
           @new-session="handleNewSession"
           @close-session="handleCloseSession"
         />
-        <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
+        <ProfileMenu :profile="profile" @home="emit('home')" @profile="emit('profile')" @logout="emit('logout')" />
       </template>
     </AppHeader>
 

@@ -11,6 +11,7 @@ from automaton.automaton import Action, Automaton, SignalPayload, State, manual_
 from db import Db, _utc_iso
 from ai import AiService
 from keyed_lock_registry import KeyedLockRegistry
+from project.archive.layout import CACHE_DIR
 from project_rw_lock import ProjectRwLock
 from session import Session
 
@@ -24,7 +25,7 @@ from tracking.user_facts import UserFacts
 from chat.channels import WHATSAPP_CHAT
 from chat.errors import ChatServiceError
 from chat.session_manager import ChatSessionManager, SessionNotWritable
-from chat.session_summary_manager import SessionSummaryManager
+from chat.session_report_task import SessionReportHydrator, SessionReportScheduler, SessionReportTask
 from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from auth.roles import role_satisfies
 from job import JobService
@@ -60,8 +61,9 @@ class ChatService(object):
 		self._actuator_factory = actuator_factory
 		# Shares the platform JobService (see main.py's own wiring) —
 		# never its own private queue.
-		self._session_summary_manager = SessionSummaryManager(db, ai_service, job_service, session_manager)
-		session_manager.set_session_summary_manager(self._session_summary_manager)
+		session_report_hydrator = SessionReportHydrator(db, ai_service)
+		job_service.register_task_type(SessionReportTask.TYPE, session_report_hydrator.hydrate)
+		session_manager.set_session_report_scheduler(SessionReportScheduler(job_service, session_report_hydrator))
 		self.env = PersistedEnv(db, project_service)
 		self._session_facts = SessionFacts(db, project_service)
 		self._user_facts = UserFacts(db)
@@ -74,7 +76,7 @@ class ChatService(object):
 
 	def _ai_service_for_session(self, session_id: int) -> AiService:
 		session = self._db.get_chat_session(session_id)
-		return self._ai_test_service if session is not None and session["type"] == "test" else self._ai_service
+		return self._ai_test_service if session is not None and session["type"] in ("test", "preview") else self._ai_service
 
 	def _env_for_session(self, session_id: int) -> PersistedEnv:
 		"""The env `session_id` actually lives in: its own project and its
@@ -148,13 +150,6 @@ class ChatService(object):
 	def get_message_audio_text(self, message_id: int) -> str | None:
 		return self._db.get_message_audio_text(message_id)
 
-	def get_session_summary(self, session_id: int) -> dict:
-		"""{content: str | None} — None whether no SessionSummary row
-		exists yet or one does but its job hasn't completed. Only ever
-		answers "is a summary ready", never which of those two it is."""
-		summary = self._db.get_session_summary(session_id)
-		return {'content': summary['content'] if summary is not None else None}
-
 	def get_ai_models_info(self) -> dict:
 		return self._ai_service.get_models_info()
 
@@ -204,6 +199,7 @@ class ChatService(object):
 			# A domain expert's free-text note on the session as a whole —
 			# the "Label sessions" view's Info tab.
 			"comment": session["comment"],
+			"ai_summary": session["ai_summary"],
 		}
 
 	def _require_active_session(self, session_id: int | None, project_id: str, current_state: str) -> dict:
@@ -274,6 +270,9 @@ class ChatService(object):
 		active-project pointer."""
 		return await self._get_current_session_if_any_or_create_new_of_type(get_session_type_strategy('test'), project_id, session_id)
 
+	async def get_current_preview_session_if_any_or_create_new(self, session_id: int | None, project_id: str) -> dict:
+		return await self._get_current_session_if_any_or_create_new_of_type(get_session_type_strategy('preview'), project_id, session_id)
+
 	async def acquire_exclusive_session(self) -> dict:
 		"""Like get_current_session_if_any_or_create_new(None), but with
 		real intent to write through the current channel right now: an
@@ -338,6 +337,10 @@ class ChatService(object):
 		`project_id` comes from the URL, never the active-project pointer."""
 		return await self._create_session_of_type(get_session_type_strategy('test'), project_id)
 
+	async def create_preview_session(self, project_id: str) -> dict:
+		self._db.delete_sessions_by_username_and_type(self._username, 'preview')
+		return await self._create_session_of_type(get_session_type_strategy('preview'), project_id)
+
 	def reset_test_sessions(self, project_id: str) -> dict:
 		self._project_service.reset_test_sessions(project_id)
 		automaton, state = self._project_service.get_automaton_and_state(project_id, type='test')
@@ -379,7 +382,17 @@ class ChatService(object):
 		db.delete_chat_session) — only the current user's own sessions,
 		never someone else's by guessing an id."""
 		self._require_own_session(session_id)
+		project_id = self._project_id_for_session(session_id)
 		self._db.delete_chat_session(session_id)
+		# A source's own per-session read cache (tracking.sources.
+		# avance_archive) — same cleanup ChatSessionManager.close_session
+		# does, needed here too since a session can be deleted outright
+		# without ever going through close_session first.
+		self._db.delete_archives_with_prefix(project_id, f"{CACHE_DIR}/sessions/{session_id}/")
+
+	def clear_session_env(self, session_id: int) -> None:
+		self._require_own_session(session_id)
+		self._env_for_session(session_id).clear()
 
 	async def close_session(self, session_id: int) -> dict:
 		"""Explicit "close session" action (the live chat's own

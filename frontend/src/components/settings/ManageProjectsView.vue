@@ -3,13 +3,14 @@
 // status (see backend ProjectService._project_status) and revision info.
 // The status dot toggles running <-> manually_paused only; 'paused' needs an external fix.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getProjectFiles, getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, putProjectPause, putProjectResume } from '../../api.js'
+import { getAppStoreApps, getProjectFiles, getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, putProjectPause, putProjectResume } from '../../api.js'
 import { confirmDialog, customDialog } from '../../dialogStore.js'
 import { setCanvasColor, restoreCanvasColor } from '../../canvasColor.js'
 import SettingsMenu from './SettingsMenu.vue'
 import StatusToggleButton from './StatusToggleButton.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import AppHeader from '../AppHeader.vue'
+import AppDetailPanel from '../appStore/AppDetailPanel.vue'
 import ShareProjectDialog from './ShareProjectDialog.vue'
 import avanceLogoUrl from '../../assets/avance-logo.png'
 import avanceLogoLargeUrl from '../../assets/avance-logo-large.png'
@@ -39,8 +40,8 @@ const props = defineProps({
 // the same pass-through of ProfileMenu.vue's own.
 const emit = defineEmits([
   'new-project', 'upload', 'delete', 'edit', 'label', 'download', 'chat',
-  'manage-users', 'manage-services', 'about',
-  'profile', 'logout'
+  'manage-users', 'manage-services', 'app-store', 'about',
+  'home', 'profile', 'logout'
 ])
 
 const envTag = (() => {
@@ -52,6 +53,7 @@ const envTag = (() => {
 
 const rows = ref([])
 const loading = ref(true)
+const searchQuery = ref('')
 // id of the project with a pause/resume request in flight; disables
 // only that row's button.
 const togglingProject = ref(null)
@@ -78,6 +80,23 @@ function findIconFile(files) {
 
 const openMenuFor = ref(null)
 const addMenuOpen = ref(false)
+
+const appStoreAppById = ref({})
+const selectedProjectId = ref(null)
+const selectedAppStoreApp = computed(() => appStoreAppById.value[selectedProjectId.value] ?? null)
+
+function selectProject(id) {
+  selectedProjectId.value = id
+}
+
+async function loadAppStoreApps() {
+  try {
+    const { apps } = await getAppStoreApps()
+    appStoreAppById.value = Object.fromEntries(apps.map((app) => [app.id, app]))
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
 
 const headerEl = ref(null)
 const headerLeftEl = ref(null)
@@ -154,6 +173,7 @@ async function load() {
     rows.value = res.projects
     loadMetadata(rows.value.map((row) => row.id))
     loadIcons(rows.value.map((row) => row.id))
+    loadAppStoreApps()
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -168,6 +188,16 @@ function projectTitle(id) {
 function projectDescription(id) {
   return metadataById.value[id]?.ui_description || null
 }
+
+const visibleRows = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return rows.value
+  return rows.value.filter((row) => {
+    const label = projectTitle(row.id).toLowerCase()
+    const description = (projectDescription(row.id) || '').toLowerCase()
+    return label.includes(q) || description.includes(q)
+  })
+})
 
 const uploadRowTitle = computed(() => (props.uploadProgress == null ? 'Uploading' : 'Installing'))
 
@@ -303,6 +333,7 @@ defineExpose({ refresh: load })
             :role="role"
             @manage-users="emit('manage-users')"
             @manage-services="emit('manage-services')"
+            @app-store="emit('app-store')"
           />
           <div class="manage-projects-add-menu">
             <button
@@ -355,18 +386,33 @@ defineExpose({ refresh: load })
       </template>
       <template #right>
         <div class="manage-projects-header-actions" ref="headerActionsEl">
-          <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
+          <ProfileMenu :profile="profile" @home="emit('home')" @profile="emit('profile')" @logout="emit('logout')" />
         </div>
       </template>
     </AppHeader>
 
     <div class="manage-projects-body">
+      <div class="manage-projects-list">
+      <input
+        v-model="searchQuery"
+        type="search"
+        class="manage-projects-search"
+        placeholder="Search apps..."
+      />
+      <div class="manage-projects-table-wrap">
       <p v-if="loading" class="manage-projects-status">Loading…</p>
       <p v-else-if="!rows.length && !uploading" class="manage-projects-status">No projects yet.</p>
+      <p v-else-if="!visibleRows.length" class="manage-projects-status">No projects found.</p>
 
       <table v-else class="manage-projects-table">
         <tbody>
-          <tr v-for="row in rows" :key="row.id">
+          <tr
+            v-for="row in visibleRows"
+            :key="row.id"
+            class="manage-projects-row"
+            :class="{ 'manage-projects-row-selected': selectedProjectId === row.id }"
+            @click="selectProject(row.id)"
+          >
             <td class="manage-projects-col-status-actions">
               <div class="manage-projects-status-actions-row">
                 <StatusToggleButton
@@ -379,7 +425,7 @@ defineExpose({ refresh: load })
             </td>
             <td class="manage-projects-name">
               <div class="project-card">
-                <button type="button" class="project-card-icon-btn" title="Open chat" @click="selectChat(row.id)">
+                <button type="button" class="project-card-icon-btn" title="Open chat" @click.stop="selectChat(row.id)">
                   <img
                     v-if="iconFileById[row.id] && !iconFailedById[row.id]"
                     :src="projectFileContentUrl(row.id, iconFileById[row.id])"
@@ -389,7 +435,7 @@ defineExpose({ refresh: load })
                   />
                   <img v-else :src="avanceLogoUrl" class="project-card-fallback-logo" alt="" />
                 </button>
-                <button type="button" class="project-card-body" title="Edit project" @click="selectEdit(row.id)">
+                <button type="button" class="project-card-body" title="Edit project" @click.stop="selectEdit(row.id)">
                   <span class="project-card-title-row">
                     <span class="project-card-title">{{ projectTitle(row.id) }}</span>
                     <span v-if="row.published_revision != null" class="project-card-rev">rev. {{ row.published_revision }}</span>
@@ -482,6 +528,23 @@ defineExpose({ refresh: load })
           </tr>
         </tbody>
       </table>
+      </div>
+      </div>
+
+      <div class="manage-projects-preview">
+        <AppDetailPanel
+          v-if="selectedAppStoreApp"
+          :key="selectedAppStoreApp.id"
+          :app="selectedAppStoreApp"
+          :show-free-badge="false"
+          hide-install-actions
+          try-button-label="Test"
+          :timed-session="false"
+          @open="selectChat"
+        />
+        <p v-else-if="selectedProjectId" class="manage-projects-status">This project hasn't been published yet — no preview available.</p>
+        <p v-else class="manage-projects-status">Select a project to see its details.</p>
+      </div>
     </div>
   </div>
 </template>
@@ -644,9 +707,35 @@ defineExpose({ refresh: load })
 .manage-projects-body {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  display: flex;
+  gap: 1rem;
+  padding: 0 1rem 0 0;
+}
+
+.manage-projects-list {
+  flex: none;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
   padding-top: 20px;
   background: rgba(255, 255, 255, 0.65);
+}
+
+.manage-projects-search {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.manage-projects-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   /* Reserves the home indicator / gesture nav bar for the *scrollable
      content*, not the outer box — this is the flex:1 middle section,
      sized by flex distribution rather than its own content, so a
@@ -656,6 +745,26 @@ defineExpose({ refresh: load })
      only by scrolling past it, once the list is long enough to scroll
      at all. */
   padding-bottom: var(--safe-area-bottom);
+}
+
+.manage-projects-row {
+  cursor: pointer;
+}
+
+.manage-projects-row-selected .project-card {
+  border-color: #4a6fa5;
+  background: #eef3fa;
+}
+
+.manage-projects-preview {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+  padding: 20px 0 var(--safe-area-bottom);
 }
 
 .manage-projects-status {

@@ -10,6 +10,7 @@ import { indentWithTab } from '@codemirror/commands'
 import { yaml, yamlLanguage } from '@codemirror/lang-yaml'
 import { css, cssLanguage } from '@codemirror/lang-css'
 import { markdown } from '@codemirror/lang-markdown'
+import { csv } from '../csvLanguage.js'
 import { cssColorPicker } from './cssColorPicker.js'
 import { cssUrlCompletionSource } from './cssUrlCompletion.js'
 import { yamlAttachmentCompletionSource } from './yamlAttachmentCompletion.js'
@@ -99,6 +100,10 @@ function createEditor(doc) {
   // same as .md, so its CodeEditor gets the same language mode too.
   else if (contentType.value === 'text/markdown' || contentType.value === 'text/plain') {
     extensions.splice(1, 0, markdown())
+  }
+  // A source's own sources/<id>.csv (see SourceContentPanel.vue).
+  else if (contentType.value === 'text/csv') {
+    extensions.splice(1, 0, csv())
   }
   view = new EditorView({ doc, extensions, parent: editorHost.value })
 }

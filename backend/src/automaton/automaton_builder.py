@@ -1,10 +1,12 @@
-from automaton.automaton import Action, EnvKey, MemoryArchive, Automaton, Reaction, Signal, SourceDict, State
+from automaton.automaton import Action, EnvKey, MemoryArchive, Automaton, Reaction, Signal, Source, SourceDict, State
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from typing import Any
 from logging_factory import LoggerFactory
 from metrics.metrics_framework import metric_names
 from tracking.actuators import ActuatorSet
+from tracking.sources import SOURCE_DRIVERS
+from tracking.sources.url import parse_source_url
 
 from ruamel.yaml import YAML
 import base64
@@ -122,6 +124,36 @@ class AutomatonBuilder(object):
             ui_description=raw_description.strip() if raw_description else None,
         )
 
+    def _build_source(self, name: str, raw_source: dict, all_archives: dict[str, MemoryArchive]) -> Source:
+        """One `sources:` declaration. A freshly-added source (see
+        AutomatonYamlEditor.add_source) has no `url` yet — left as "" here
+        rather than rejected, the same "created, not yet configured" state
+        an env key's own empty default gets; it just can't be usefully
+        referenced by a trigger/env: expression yet (see
+        _validate_namespaced_expression). Once set, `url`'s scheme picks
+        the driver (SOURCE_DRIVERS); for the 'avance' driver, the path
+        must resolve to an already-uploaded archive — the same existence
+        check `attachments:` already gets (_extract_required_archives)."""
+        raw_source = raw_source or {}
+        url = raw_source.get("url") or ""
+        if url:
+            try:
+                scheme, path = parse_source_url(url)
+            except ValueError as exc:
+                raise ValueError(f"Source '{name}': {exc}") from exc
+            if scheme not in SOURCE_DRIVERS:
+                raise ValueError(
+                    f"Source '{name}': url scheme '{scheme}' must be one of: {', '.join(sorted(SOURCE_DRIVERS))}."
+                )
+            if scheme == "avance":
+                self._extract_required_archives([path], all_archives, f"source '{name}'")
+        return Source(
+            name=name,
+            url=url,
+            ui_label=raw_source.get("ui-label", name),
+            ui_description=raw_source.get("ui-description"),
+        )
+
     @staticmethod
     def _validate_env_key_default_order(env_keys: dict[str, EnvKey]) -> None:
         """A later env key's own default may reference an earlier one
@@ -232,7 +264,7 @@ class AutomatonBuilder(object):
 
     @staticmethod
     def _validate_namespaced_expression(
-        expression: str, context: str, registry: dict[str, dict[str, str]],
+        expression: str, context: str, registry: dict[str, dict[str, str]], sources: dict[str, Source],
         known_locals: frozenset[str] = frozenset(),
     ) -> None:
         """Syntax + per-namespace identifier validation shared by
@@ -240,10 +272,15 @@ class AutomatonBuilder(object):
         statement. Any bare identifier left over must be a core metric —
         or, for on-enter only, a local variable an earlier `name = ...`
         statement in the same script already declared (`known_locals`;
-        always empty for trigger:/env:, which have no such thing)."""
+        always empty for trigger:/env:, which have no such thing).
+        `source.<name>.<method>` is checked against `sources` directly
+        (see TriggerExpressionAnalyzer.source_refs), not `registry` —
+        it's a dynamic, per-project namespace the same way
+        `automaton.<project>.*` is (see _validate_automaton_refs_exist)."""
         try:
             namespace_refs = TriggerExpressionAnalyzer.namespace_refs(expression)
             bare_names = TriggerExpressionAnalyzer.bare_names(expression)
+            source_refs = TriggerExpressionAnalyzer.source_refs(expression)
         except SyntaxError as exc:
             raise ValueError(f"{context} ('{expression}') is not a valid expression: {exc}") from exc
 
@@ -252,6 +289,20 @@ class AutomatonBuilder(object):
             valid = registry.get(namespace, {}).keys()
             unknown |= {f"{namespace}.{n}" for n in refs - valid}
         unknown |= bare_names - metric_names() - known_locals
+        for source_name, methods in source_refs.items():
+            source = sources.get(source_name)
+            if source is None:
+                unknown.add(f"source.{source_name}")
+                continue
+            # A source with no url yet (see _build_source) supports
+            # nothing — every method reference on it is reported unknown,
+            # same as one naming an unsupported method on a configured source.
+            try:
+                scheme, _ = parse_source_url(source.url)
+                supported = SOURCE_DRIVERS[scheme].SUPPORTED_METHODS
+            except (ValueError, KeyError):
+                supported = frozenset()
+            unknown |= {f"source.{source_name}.{m}" for m in methods - supported}
         if unknown:
             raise ValueError(f"{context} references undefined name(s): {', '.join(sorted(unknown))}")
 
@@ -269,7 +320,9 @@ class AutomatonBuilder(object):
                 )
 
     @classmethod
-    def _validate_on_enter(cls, on_enter: str | None, context: str, registry: dict[str, dict[str, str]]) -> None:
+    def _validate_on_enter(
+        cls, on_enter: str | None, context: str, registry: dict[str, dict[str, str]], sources: dict[str, Source],
+    ) -> None:
         """`on-enter`: zero or more `actuator.<name>(...)` calls, one per
         top-level statement — e.g. `actuator.celebrate()` on its own line,
         `actuator.notify(user.name, "Hi!")` on another, a single call
@@ -302,7 +355,7 @@ class AutomatonBuilder(object):
                     f"{line_context} ('{statement}'): '{target}' is a reserved name "
                     "(a namespace or core metric) and can't be used as an on-enter local variable."
                 )
-            cls._validate_namespaced_expression(expression, line_context, registry, frozenset(known_locals))
+            cls._validate_namespaced_expression(expression, line_context, registry, sources, frozenset(known_locals))
             cls._validate_actuator_arity(expression, line_context)
             violations = TriggerExpressionAnalyzer.defer_violations(expression)
             if violations:
@@ -345,13 +398,14 @@ class AutomatonBuilder(object):
 
     def _actions_sanity_check(
         self, key: str, state: State, declared_states: set[str], registry: dict[str, dict[str, str]],
-        env_keys: dict[str, EnvKey], known_projects: dict[str, frozenset[str]] | None = None,
+        env_keys: dict[str, EnvKey], sources: dict[str, Source], known_projects: dict[str, frozenset[str]] | None = None,
     ):
         """`registry`: every valid identifier for this project, one set
         per namespace. `env_keys`: for checking an action's own `env:`
         writes against each key's own declared type (see
-        _validate_env_key_type below). `known_projects`: None skips the
-        automaton.* existence check entirely."""
+        _validate_env_key_type below). `sources`: this project's own
+        declared `sources:`, keyed by name — see _validate_namespaced_expression.
+        `known_projects`: None skips the automaton.* existence check entirely."""
         registry_without_actuator = IdentifierRegistry.for_triggers(registry)
         registry_without_session = IdentifierRegistry.for_actuators(registry)
         for action in state.actions:
@@ -362,7 +416,7 @@ class AutomatonBuilder(object):
                 )
             if action.trigger:
                 self._validate_namespaced_expression(
-                    action.trigger, f"State {key}, action '{action.name}': trigger", registry_without_actuator,
+                    action.trigger, f"State {key}, action '{action.name}': trigger", registry_without_actuator, sources,
                 )
                 self._validate_trigger_types(
                     action.trigger, f"State {key}, action '{action.name}': trigger",
@@ -388,14 +442,14 @@ class AutomatonBuilder(object):
                         )
                     self._validate_namespaced_expression(
                         expression, f"State {key}, action '{action.name}': env expression for '{env_key}'",
-                        registry_without_actuator,
+                        registry_without_actuator, sources,
                     )
                     self._validate_env_key_type(
                         env_keys[env_key], expression, f"State {key}, action '{action.name}'",
                     )
             if action.on_enter:
                 self._validate_on_enter(
-                    action.on_enter, f"State {key}, action '{action.name}'", registry_without_session,
+                    action.on_enter, f"State {key}, action '{action.name}'", registry_without_session, sources,
                 )
 
     @staticmethod
@@ -620,6 +674,13 @@ class AutomatonBuilder(object):
         env_keys: dict[str, EnvKey] = {
             name: self._build_env_key(name, raw_env_key) for name, raw_env_key in raw_env_keys.items()
         }
+
+        raw_sources = raw.get("sources", {})
+        if not isinstance(raw_sources, dict):
+            raise ValueError(f"'sources' must be a mapping of source name -> fields, got {type(raw_sources).__name__}.")
+        sources: dict[str, Source] = {
+            name: self._build_source(name, raw_source, all_archives) for name, raw_source in raw_sources.items()
+        }
         # Unlike every other forward reference in this file (see the
         # comment on Pass 1 below), env keys' own defaults are a real
         # exception: they're applied top-to-bottom, once, the first time
@@ -677,7 +738,9 @@ class AutomatonBuilder(object):
         registry = IdentifierRegistry.build(list(signals.values()), list(env_keys.values()))
         for key, state in states.items():
             context_key = init_action.name if key == "" else key
-            self._actions_sanity_check(context_key, state, set(raw_states.keys()), registry, env_keys, known_projects)
+            self._actions_sanity_check(
+                context_key, state, set(raw_states.keys()), registry, env_keys, sources, known_projects,
+            )
 
         general_attachments = self._extract_required_archives(raw.get('attachments', []), all_archives, for_field="global")
 
@@ -688,6 +751,7 @@ class AutomatonBuilder(object):
             signals=list(signals.values()),
             reactions=list(reactions.values()),
             env_keys=list(env_keys.values()),
+            sources=list(sources.values()),
             general_attachments=general_attachments,
             attachments=all_archives,
             autotracking_on_ai_message=autotracking_on_ai_message,

@@ -130,7 +130,7 @@ class TruncateSessionRequest(BaseModel):
 class SetUserRoleRequest(BaseModel):
     # See AuthService.set_user_role — UserController's own admin-only
     # role-change endpoint (Manage Users' role badge).
-    role: Literal["user", "supervisor", "admin"]
+    role: Literal["user", "customer", "supervisor", "admin"]
 
 
 class SetWhatsAppPhoneNumberRequest(BaseModel):

@@ -88,7 +88,7 @@ def test_returns_one_dict_per_namespace_for_the_active_project(client):
         "email", "name", "picture_url", "provider", "provider_user_id",
         "created_at", "last_login", "active_project", "role", "whatsapp_phone_number",
     }
-    assert set(body["source"]) == {"attachment", "search"}
+    assert body["source"] == {}
     assert set(body["metric"]) == {"retention", "activity_consistency"}
 
 
@@ -144,3 +144,53 @@ def test_automaton_namespace_lists_every_other_project_never_the_active_one(clie
     assert f"automaton.{project_id}" not in body  # a project never lists itself
     assert body[f"automaton.{other_id}"] == {"state": f"The '{other_id}' project's own current state."}
     assert body[f"automaton.{other_id}.env"] == {"budget": "Remaining shared budget."}
+
+
+SOURCE_PROJECT = """
+project:
+  id: source_identifiers_proj
+
+init-action:
+  target: a
+
+sources:
+  pino:
+    ui-label: Flights
+    url: avance:behaviour/flights.csv
+  unconfigured:
+    ui-label: Not set up yet
+
+states:
+  a:
+    contextual-prompt: "hi"
+"""
+
+
+def _upload_and_activate_with_archive(client, yaml_text: str, archive_name: str, archive_content: str) -> str:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("index.yml", yaml_text)
+        zf.writestr(archive_name, archive_content)
+    response = client.post(
+        "/api/projects/upload", content=buffer.getvalue(), headers={"Content-Type": "application/zip"}
+    )
+    assert response.status_code == 200, response.text
+    project_id = parse_sse_result(response)["project_id"]
+    response = client.put(f"/api/projects/{project_id}/activate")
+    assert response.status_code == 200, response.text
+    response = client.post(f"/api/projects/{project_id}/publish", json={})
+    assert response.status_code == 200, response.text
+    return project_id
+
+
+def test_source_namespace_lists_one_entry_per_declared_source(client):
+    project_id = _upload_and_activate_with_archive(client, SOURCE_PROJECT, "behaviour/flights.csv", "a,b\n1,2\n")
+
+    response = client.get(f"/api/projects/{project_id}/identifiers")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body["source.pino"]) == {"read", "select"}
+    # A source with no url yet (see AutomatonBuilder._build_source) is
+    # still listed under its own name, just with nothing to call on it.
+    assert body["source.unconfigured"] == {}

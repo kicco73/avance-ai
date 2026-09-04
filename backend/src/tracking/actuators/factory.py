@@ -70,7 +70,7 @@ class ActuatorSetFactory:
         session = self._db.get_chat_session(session_id)
         if session is None:
             raise FileNotFoundError(f"Session {session_id} does not exist.")
-        if session["type"] == "test" and not self.is_enabled_for_test_session(session_id):
+        if session["type"] in ("test", "preview") and not self.is_enabled_for_test_session(session_id):
             return self.fake(project_id=session["project_id"])
         return self.live(project_id=session["project_id"])
 

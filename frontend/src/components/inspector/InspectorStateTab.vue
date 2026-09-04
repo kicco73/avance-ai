@@ -10,6 +10,7 @@ import { getProjectMetadata } from '../../api.js'
 import InspectorDetailCard from './InspectorDetailCard.vue'
 import InspectorProjectCard from './InspectorProjectCard.vue'
 import InspectorFileCard from './InspectorFileCard.vue'
+import InspectorSourceCard from './InspectorSourceCard.vue'
 import SessionDetailCard from './SessionDetailCard.vue'
 import ActionEnvEditor from './ActionEnvEditor.vue'
 
@@ -41,6 +42,19 @@ const props = defineProps({
   currentFileName: { type: String, default: null },
   deletingFile: { type: String, default: null },
   renamingFile: { type: String, default: null },
+  // The design tree's currently selected Source node (see FileExplorer.vue's
+  // own "Sources" branch) — { name, ui_label, ui_description, url } | null.
+  // Takes over the whole tab (see isSourceContext below), same as a
+  // selected file does for showFileCard.
+  selectedSource: { type: Object, default: null },
+  deletingSource: { type: String, default: null },
+  // True while the design tree's "Sources" branch header itself is
+  // selected — no individual source chosen yet (see FileExplorer.vue's
+  // own header click). Takes the tab over the same way isSourceContext
+  // does for a real source, except there's no card to show for it: just
+  // suppresses the project/state/file cards that would otherwise leak
+  // through from whatever was selected before.
+  sourcesRootSelected: { type: Boolean, default: false },
   // Auto mode's own selection (see EditProjectView.vue's autoSelected*
   // computeds) — a session read-only, in place of selectedElement's
   // state/action. { id, title, comment, type, ... }, same shape as
@@ -63,8 +77,16 @@ const props = defineProps({
 
 const emit = defineEmits([
   'select', 'select-attachment', 'jump-to-attachment', 'set-field', 'set-project-field', 'delete',
-  'add-state', 'add-action', 'delete-file', 'rename-file', 'open-actions-order'
+  'add-state', 'add-action', 'delete-file', 'rename-file', 'open-actions-order',
+  'set-source-field', 'delete-source'
 ])
+
+// A selected Source node takes the whole tab over — no project card,
+// state/action card, file card, or "+ Add" row makes sense alongside it
+// (see FileExplorer.vue's own "Sources" branch/EditProjectView.vue's
+// selection wiring, which clears currentFileName's own graph selection
+// the same way switching files already does).
+const isSourceContext = computed(() => props.selectedSource != null)
 
 // True whenever there's no active file browsing to defer to (currentFileName
 // is only ever non-null in edit mode — see EditProjectView.vue's own
@@ -72,8 +94,10 @@ const emit = defineEmits([
 // Behavior node is selected. The state/action detail card and "+ Add state"
 // only make sense then; a Theme file or a Behavior attachment gets the file
 // card below instead.
-const isBehaviorContext = computed(() => !props.currentFileName || props.currentFileName === 'index.yml')
-const showFileCard = computed(() => !isBehaviorContext.value)
+const isBehaviorContext = computed(() => (
+  !isSourceContext.value && !props.sourcesRootSelected && (!props.currentFileName || props.currentFileName === 'index.yml')
+))
+const showFileCard = computed(() => !isSourceContext.value && !isBehaviorContext.value && !props.sourcesRootSelected)
 
 // Same session, shown once with a combined badge rather than two
 // identical cards — mirrors LabelProjectView.vue's own Info tab.
@@ -123,8 +147,15 @@ onMounted(loadProjectMetadata)
 
 <template>
   <div class="inspector-state-tab">
+    <InspectorSourceCard
+      v-if="isSourceContext"
+      :source="selectedSource"
+      :deleting="deletingSource === selectedSource?.name"
+      @set-field="(field, value) => emit('set-source-field', field, value)"
+      @delete="emit('delete-source', selectedSource)"
+    />
     <InspectorProjectCard
-      v-if="!readOnly && !selectedElement"
+      v-if="!readOnly && !selectedElement && !isSourceContext && !sourcesRootSelected"
       :project="projectMetadata"
       :editable="!readOnly"
       @set-field="(field, value) => emit('set-project-field', field, value)"

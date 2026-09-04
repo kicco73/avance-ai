@@ -5,7 +5,7 @@
 // wipe-all-live-sessions actions (moved here from the Settings menu and
 // Manage projects respectively), and the live chat model picker (moved
 // here from Manage projects' own header).
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import AppHeader from '../AppHeader.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import AiUsageTrendsChart from './AiUsageTrendsChart.vue'
@@ -27,7 +27,7 @@ defineProps({
 // pass-through — App.vue owns the actual fetch + confirmation logic for
 // backup restore, same as it always has; this view confirms the wipe
 // itself, same as Manage projects' own per-project wipe used to.
-const emit = defineEmits(['close', 'download-backup', 'restore-backup', 'wipe-live-sessions', 'clean-unused-revisions', 'profile', 'logout'])
+const emit = defineEmits(['close', 'download-backup', 'restore-backup', 'wipe-live-sessions', 'clean-unused-revisions', 'home', 'profile', 'logout'])
 
 const TABS = [
   { id: 'ai', label: 'AI' },
@@ -48,15 +48,19 @@ const activeTab = ref(TABS[0].id)
 const services = ref(null)
 const loading = ref(true)
 
-// Today's spend + trailing-30-days history per ai-service provider (see
-// db/ai_usage.py) — loaded once alongside `services` below, same as
+// Today's spend + trailing-24h per-minute history per ai-service provider
+// (see db/ai_usage.py) — loaded once alongside `services` below, same as
 // every other Manage services tab: no live refresh while the panel
 // stays open, just whatever was true when it was last (re)opened.
 const aiUsage = ref({ today: {}, history: [] })
 
-// Settings > Manage services > Scheduler — every Task row, soonest
-// run_at first (already sorted server-side). Same "fetch once on mount"
-// contract as services/aiUsage above.
+// Settings > Manage services > Scheduler — the segmented control's own
+// selected status (default 'pending', its first option) plus the sort
+// flag, each refetching just that one status's rows from the backend
+// rather than the whole table (see loadTasks below).
+const TASK_STATUSES = ['pending', 'dispatched', 'done', 'failed', 'canceled']
+const taskStatus = ref(TASK_STATUSES[0])
+const taskOrder = ref('asc')
 const tasks = ref([])
 const tasksLoading = ref(true)
 
@@ -92,16 +96,20 @@ async function loadAiUsage() {
 
 // Independent of load() above, same reasoning as loadAiUsage: a failure
 // here shouldn't blank out the whole tab, just leave the task list empty.
+// Scoped to taskStatus alone (never "all statuses at once") so switching
+// the segmented control never pulls more than one status's worth of rows.
 async function loadTasks() {
   tasksLoading.value = true
   try {
-    tasks.value = (await getScheduledTasks()).tasks
+    tasks.value = (await getScheduledTasks(taskStatus.value, taskOrder.value)).tasks
   } catch {
     // already surfaced via apiFetch
   } finally {
     tasksLoading.value = false
   }
 }
+
+watch([taskStatus, taskOrder], loadTasks)
 
 onMounted(() => {
   load()
@@ -231,7 +239,7 @@ async function selectCleanUnusedRevisions() {
         <h2 class="app-header-title services-header-title">Services</h2>
       </template>
       <template #right>
-        <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
+        <ProfileMenu :profile="profile" @home="emit('home')" @profile="emit('profile')" @logout="emit('logout')" />
       </template>
     </AppHeader>
 
@@ -268,8 +276,26 @@ async function selectCleanUnusedRevisions() {
         </div>
 
         <div v-show="activeTab === 'scheduler'" class="services-panel">
+          <div class="services-scheduler-toolbar">
+            <div class="services-segmented">
+              <button
+                v-for="status in TASK_STATUSES"
+                :key="status"
+                type="button"
+                class="services-segment-btn"
+                :class="{ 'services-segment-active': taskStatus === status }"
+                @click="taskStatus = status"
+              >{{ status }}</button>
+            </div>
+            <button
+              type="button"
+              class="services-sort-btn"
+              :title="taskOrder === 'asc' ? 'Sort ascending' : 'Sort descending'"
+              @click="taskOrder = taskOrder === 'asc' ? 'desc' : 'asc'"
+            >Time {{ taskOrder === 'asc' ? '↓' : '↑' }}</button>
+          </div>
           <p v-if="tasksLoading" class="services-status">Loading…</p>
-          <p v-else-if="!tasks.length" class="services-status">No scheduled tasks.</p>
+          <p v-else-if="!tasks.length" class="services-status">No {{ taskStatus }} tasks.</p>
           <TaskCard v-for="task in tasks" :key="task.key" :task="task" />
         </div>
 
@@ -511,6 +537,57 @@ async function selectCleanUnusedRevisions() {
 }
 
 .services-reveal-btn:hover {
+  background: #4a6fa5;
+  color: white;
+  border-color: #4a6fa5;
+}
+
+.services-scheduler-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.9rem;
+}
+
+.services-segmented {
+  display: inline-flex;
+  padding: 0.2rem;
+  border-radius: 8px;
+  background: #f0f0f2;
+}
+
+.services-segment-btn {
+  padding: 0.35rem 0.8rem;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #666;
+  font-size: 0.8rem;
+  text-transform: capitalize;
+  cursor: pointer;
+}
+
+.services-segment-active {
+  background: white;
+  color: #2c4d7a;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.services-sort-btn {
+  flex-shrink: 0;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  background: white;
+  color: #4a6fa5;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.services-sort-btn:hover {
   background: #4a6fa5;
   color: white;
   border-color: #4a6fa5;

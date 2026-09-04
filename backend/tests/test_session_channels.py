@@ -310,30 +310,6 @@ async def test_apply_manual_action_matrix(db, channel, state_name):
         await chat_service.apply_manual_action("go", existing["id"])
 
 
-# -- check_for_closed_sessions: once per live creation, any path -----------
-
-async def test_check_for_closed_sessions_fires_once_per_live_creation_including_takeover(db, monkeypatch):
-    chat_service = _chat_service(db)
-    calls = []
-    real = chat_service._session_summary_manager.check_for_closed_sessions
-
-    def spy(username, project_name):
-        calls.append((username, project_name))
-        return real(username, project_name)
-
-    monkeypatch.setattr(chat_service._session_summary_manager, "check_for_closed_sessions", spy)
-
-    await chat_service.get_current_session_if_any_or_create_new(None)
-    assert len(calls) == 1
-
-    await chat_service.create_session()
-    assert len(calls) == 2
-
-    Session().channel = WHATSAPP_CHAT
-    await chat_service.acquire_exclusive_session()
-    assert len(calls) == 3
-
-
 # -- End to end: takeover in both directions --------------------------------
 
 async def test_takeover_whatsapp_to_web_via_new_session_then_open_if_needed(db):

@@ -53,13 +53,37 @@ class TaskMixin:
         )
         return row.id
 
+    def upsert_task(
+        self, key: str, type: str, username: str, project_id: str, run_at: datetime, payload: dict[str, Any],
+        ui_label: str, ui_description: str,
+    ) -> None:
+        """create_task(), but a settled/canceled row already sitting under
+        this same deterministic key (an earlier cycle of the same id — see
+        Task.make_key) is overwritten and reset to pending in place, rather
+        than raising on the key's own UNIQUE constraint. create_task()
+        itself stays a strict insert: with today's random per-submission
+        keys, a collision there is a real uuid4 collision worth raising on,
+        never something to mask."""
+        changed = Task.update(
+            type=type, user=username, project=project_id, run_at=_to_naive_utc(run_at),
+            payload=json.dumps(payload), ui_label=ui_label, ui_description=ui_description,
+            status='pending', error=None, dispatched_at=None, settled_at=None,
+        ).where(Task.key == key).execute()
+        if changed == 0:
+            self.create_task(key, type, username, project_id, run_at, payload, ui_label, ui_description)
+
     def get_task(self, key: str) -> dict[str, Any] | None:
         row = Task.get_or_none(Task.key == key)
         return self._task_to_dict(row) if row is not None else None
 
     def list_tasks(
         self, username: str | None = None, project_id: str | None = None, status: str | None = None,
+        order: str = 'asc',
     ) -> list[dict[str, Any]]:
+        if status is not None and status not in TASK_STATUSES:
+            raise ValueError(f"'{status}' is not a valid task status — expected one of {TASK_STATUSES}.")
+        if order not in ('asc', 'desc'):
+            raise ValueError(f"'{order}' is not a valid order — expected 'asc' or 'desc'.")
         query = Task.select()
         if username is not None:
             query = query.where(Task.user == username)
@@ -67,7 +91,8 @@ class TaskMixin:
             query = query.where(Task.project == project_id)
         if status is not None:
             query = query.where(Task.status == status)
-        return [self._task_to_dict(row) for row in query.order_by(Task.run_at, Task.id)]
+        ordering = (Task.run_at, Task.id) if order == 'asc' else (Task.run_at.desc(), Task.id.desc())
+        return [self._task_to_dict(row) for row in query.order_by(*ordering)]
 
     def next_task_due_at(self) -> datetime | None:
         """When the earliest still-pending task is due (UTC), or None."""
@@ -94,6 +119,16 @@ class TaskMixin:
                 row.status = 'dispatched'
                 row.dispatched_at = now
                 return self._task_to_dict(row)
+
+    def reschedule_task(self, key: str, run_at: datetime) -> bool:
+        """Moves an already-pending task's run_at in place — True if one
+        was found and moved, False if none is pending under this key
+        (already dispatched/settled, or never created): the caller's cue
+        to create_task() instead rather than silently doing nothing."""
+        changed = Task.update(run_at=_to_naive_utc(run_at)).where(
+            (Task.key == key) & (Task.status == 'pending')
+        ).execute()
+        return changed == 1
 
     def cancel_task(self, key: str) -> bool:
         """pending -> canceled; False when the task was no longer pending

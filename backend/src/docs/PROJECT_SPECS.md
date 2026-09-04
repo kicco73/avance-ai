@@ -20,6 +20,7 @@ files it references by name (§6).
 | `general-prompt` | no | string | `""` | Appended to a state's `contextual-prompt` for a normal reply. Never sent to an `actuator.prompt(...)` call (§5.4), which is fully isolated. |
 | `attachments` | no | list of filenames | `[]` | Global attachments, sent with every call that also sends `general-prompt`. §6. |
 | `env` | no | mapping (name → fields) | `{}` | Declares every `env.<name>` a trigger/env expression may reference. An action's `env:` (§5.3) can only update a key declared here. |
+| `sources` | no | mapping (name → fields) | `{}` | Declares every `source.<name>` a trigger/env expression may reference. §5.2. |
 | `project` | no | mapping | — | Identity/display metadata + auto-tracking mode. §1.1. |
 
 Any other top-level key is ignored.
@@ -206,7 +207,7 @@ user.role == "admin"
 | `env.<name>` | A key declared in top-level `env:` (§5.3) — never a model-reported free-form value | attribute |
 | `session.<name>` | Engine fact about the current user+project session (`current_session_duration_in_minutes`, `last_user_session_datetime`, `number_of_user_sessions`, `state_duration_in_minutes`) | **call**, e.g. `session.number_of_user_sessions()` |
 | `user.<name>` | Current user's account field (`email`, `name`, `picture_url`, `provider`, `provider_user_id`, `created_at`, `last_login`, `active_project`, `role`) | attribute |
-| `source.<name>(...)` | A data source — below | call with its own args |
+| `source.<name>.<method>(...)` | A source declared in top-level `sources:` — below | method call, e.g. `.read()`/`.select(...)` |
 | `automaton.<id>` | A different project's live state/env — below | `.state`, or `.env.<key>` |
 | `datetime.<name>` | Python's `datetime`/`timedelta`/`timezone` only, mainly for `actuator.defer`'s `when` | call, e.g. `datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc)` |
 
@@ -223,28 +224,55 @@ is a literal token, never an expression. Only reachable within the same
 identically — indistinguishable by design. Enforced both at build time
 (the reference must name a same-family id) and at runtime.
 
-**Data sources** (`source.<name>(...)`) are code-defined plugins, not
-project-declared. Two exist:
+**Data sources.** A project declares its own named sources under a
+top-level `sources:` mapping — each one a handle a trigger/env
+expression addresses as `source.<name>.<method>(...)`:
 
-- `source.attachment(name)` — reads one of the project's own files by
-  exact path or unique basename, directly from storage (not the
-  `attachments:` mechanism — nothing is eagerly loaded). Returns text
-  content; a binary file raises. Reads at the conversation's own pinned
-  automaton revision, never "whatever's published now". Often combined
-  with `env:` to load a file once, e.g. `policy: source.attachment('policy.md')`.
-- `source.search(what, where)` — grep-like lookup over one of the
-  project's attachments (same resolution/pinning rules as `source.attachment`).
-  Assumes a normalized CSV (header + one row per record); returns the
-  header plus every row containing `what` as a case-insensitive substring
-  anywhere in the line. E.g. `source.search('Paris', 'geo/cities.csv')`.
+```yaml
+sources:
+  pino:
+    ui-label: Flight records
+    ui-description: This app's own flight-schedule CSV.
+    url: avance:behaviour/flights.csv
+```
 
-New data sources are a code change, not something a project author adds.
+| Field | Required | Type | Default | Meaning |
+| --- | --- | --- | --- | --- |
+| `url` | no | string, `<scheme>:<path>` | `""` (unconfigured) | Which driver resolves this source, and that driver's own target. Left unset, the source builds fine but none of its methods can be called yet — an "undefined name(s)" error, same as an undeclared source. |
+| `ui-label` | no | string | this source's own key | Shown in the frontend. |
+| `ui-description` | no | string | `None` | Shown in the frontend. |
+
+Every source — whatever its driver — exposes the same five methods:
+`create(key, value)`, `read()`, `update(key, value)`, `delete(key)`,
+`select(value)`. A given driver only ever implements the ones that make
+sense for it; calling one it doesn't is rejected the same way an
+undeclared source is.
+
+One driver exists today, scheme `avance` — read-only access to one of
+this project's own files, addressed by `url`'s own path (exact path or
+unique basename under `behaviour/`, resolved directly from storage at
+the conversation's own pinned automaton revision, never "whatever's
+published now" — not the `attachments:` mechanism, nothing is eagerly
+loaded):
+
+- `read()` — that file's full text content. A binary file raises. Often
+  combined with `env:` to load a file once, e.g.
+  `policy: source.pino.read()`.
+- `select(value)` — grep-like lookup over that same file. Assumes a
+  normalized CSV (header + one row per record); returns the header plus
+  every row containing `value` as a case-insensitive substring anywhere
+  in the line. E.g. `source.pino.select('Paris')`.
+- `create`/`update`/`delete` — always rejected; `avance` is read-only.
+
+New drivers are a code change, not something a project author adds.
 
 Every reference is validated at build time (`signal.<name>` must be
 declared, `env.<name>` must be set by some action somewhere,
-`session`/`user`/`source` names must be from the fixed lists, bare names
-must be a recognized metric) — anything else fails with an "undefined
-name(s)" or parse error. At evaluation time: a referenced `signal.<name>`
+`source.<name>` must be declared in top-level `sources:` and `<method>`
+must be one that source's own driver actually implements,
+`session`/`user` names must be from the fixed lists, bare names must be
+a recognized metric) — anything else fails with an "undefined name(s)"
+or parse error. At evaluation time: a referenced `signal.<name>`
 still `None` short-circuits the whole expression to `false`; any other
 failure (e.g. an `env.<name>` never actually set) is logged and also
 treated as `false` — a trigger can never crash a turn.
@@ -482,6 +510,7 @@ of how you're likely to hit them:
   referenced by a *later* line.
 - No signal named after a reserved core metric (§2).
 - Every `attachments:` entry (global/signal/state, not action) names a file actually present alongside `index.yml`.
+- Every `sources:` entry's own `url`, if set, has a recognized driver scheme, and (for `avance`) its path names a file actually present alongside `index.yml`.
 
 ## 9. Worked examples
 

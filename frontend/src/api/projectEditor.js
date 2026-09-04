@@ -33,6 +33,13 @@ export function getProjectMetadata(projectId) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/project`)
 }
 
+// Declared source definitions (name/ui_label/ui_description/url) of the
+// project's top-level `sources:` section.
+export function getProjectSources(projectId, sessionId) {
+  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/sources${query}`)
+}
+
 // ShareProjectDialog.vue's own trigger — a fresh Invite row every time
 // the dialog opens (see backend's InviteManager.create_invite), never
 // reused. { code, expires_at, max_shares }.
@@ -187,6 +194,10 @@ export function postAddEnvKey(projectId) {
   return projectFetch(projectId, `${API_URL}/projects/${encodeURIComponent(projectId)}/env-keys`, { method: 'POST' })
 }
 
+export function postAddSource(projectId) {
+  return projectFetch(projectId, `${API_URL}/projects/${encodeURIComponent(projectId)}/sources`, { method: 'POST' })
+}
+
 export function postAddAction(projectId, stateName) {
   return projectFetch(
     projectId,
@@ -238,6 +249,14 @@ export function putEnvKeyField(projectId, envKeyName, field, value) {
   )
 }
 
+export function putSourceField(projectId, sourceName, field, value) {
+  return projectFetch(
+    projectId,
+    `${API_URL}/projects/${encodeURIComponent(projectId)}/sources/${encodeURIComponent(sourceName)}/${encodeURIComponent(field)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
+  )
+}
+
 // 0-based index the action should end up at, within its own state's
 // actions list.
 export function putActionOrder(projectId, stateName, actionName, position) {
@@ -270,6 +289,12 @@ export function deleteProjectSignal(projectId, signalName) {
 
 export function deleteProjectEnvKey(projectId, envKeyName) {
   return projectFetch(projectId, `${API_URL}/projects/${encodeURIComponent(projectId)}/env-keys/${encodeURIComponent(envKeyName)}`, {
+    method: 'DELETE'
+  })
+}
+
+export function deleteProjectSource(projectId, sourceName) {
+  return projectFetch(projectId, `${API_URL}/projects/${encodeURIComponent(projectId)}/sources/${encodeURIComponent(sourceName)}`, {
     method: 'DELETE'
   })
 }
