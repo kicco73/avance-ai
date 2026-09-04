@@ -37,6 +37,9 @@ class AIServiceConfig:
 	# to both when `modes` is absent from config.yml entirely (see
 	# AppConfig._parse_ai_services); an explicit empty list is different
 	# from that default — it deliberately excludes the entry from both.
+	# "no-auto" is a third, separate tag applied alongside "live"/"test"
+	# (never on its own) — see AiService.for_live/for_test's own
+	# auto_config_indices for what it actually does.
 	modes: tuple[str, ...] = ("live", "test")
 
 

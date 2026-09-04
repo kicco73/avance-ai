@@ -50,6 +50,7 @@ class AiService(object):
 		auto_provider: LLMProvider,
 		selectable_providers: Sequence[LLMProvider] | None = None,
 		configs: list[AIServiceConfig] | None = None,
+		auto_config_indices: list[int] | None = None,
 		db: Db | None = None,
 	) -> None:
 		self._auto_provider = auto_provider
@@ -57,6 +58,17 @@ class AiService(object):
 		# AiService that only ever runs in auto mode.
 		self._selectable_providers = selectable_providers or []
 		self._configs = configs or []
+		# Maps auto_provider's own internal pointer (an index into
+		# whatever list it was actually built from) back to the matching
+		# index in self._configs/_selectable_providers. Only diverges from
+		# the identity mapping when for_live/for_test excluded a "no-auto"
+		# entry from the cascade while keeping it in _configs (see their
+		# own docstrings) — defaults to identity here so a hand-built
+		# AiService (most tests, and any caller that never excludes
+		# anything) needs no special handling.
+		self._auto_config_indices = (
+			auto_config_indices if auto_config_indices is not None else list(range(len(self._configs)))
+		)
 		# None = auto (use auto_provider); an index pins to that entry
 		# of selectable_providers/configs instead.
 		self._selected_index: int | None = None
@@ -82,24 +94,50 @@ class AiService(object):
 		its own fresh provider instances (_build_labeled_providers), and
 		hands them to its own AutoLiveLLMProvider/AutoTestLLMProvider
 		cascade. Nothing constructed here is shared with for_test's own
-		result."""
+		result.
+
+		An entry additionally tagged "no-auto" stays in live_config (and
+		so in _configs/_selectable_providers — still manually pickable,
+		still shown in get_models_info()'s "models") but is left out of
+		the cascade auto_provider itself actually cycles through, via
+		auto_config_indices — see _auto_eligible_indices."""
 		live_config = cls._filter_by_mode(ai_service_config, "live")
 		labeled = cls._build_labeled_providers(live_config)
 		selectable = [AutoLiveLLMProvider([entry]) for entry in labeled]
-		return cls(AutoLiveLLMProvider(labeled), selectable_providers=selectable, configs=live_config, db=db)
+		auto_config_indices = cls._auto_eligible_indices(live_config)
+		auto_labeled = [labeled[i] for i in auto_config_indices]
+		return cls(
+			AutoLiveLLMProvider(auto_labeled), selectable_providers=selectable, configs=live_config,
+			auto_config_indices=auto_config_indices, db=db,
+		)
 
 	@classmethod
 	def for_test(cls, ai_service_config: list[AIServiceConfig], db: Db | None = None) -> "AiService":
 		"""The test-panel/batch-run cascade — see for_live's own docstring
-		for why this stays fully independent of it."""
+		for why this stays fully independent of it, and for what "no-auto"
+		does here too."""
 		test_config = cls._filter_by_mode(ai_service_config, "test")
 		labeled = cls._build_labeled_providers(test_config)
 		selectable = [AutoLiveLLMProvider([entry]) for entry in labeled]
-		return cls(AutoTestLLMProvider(labeled), selectable_providers=selectable, configs=test_config, db=db)
+		auto_config_indices = cls._auto_eligible_indices(test_config)
+		auto_labeled = [labeled[i] for i in auto_config_indices]
+		return cls(
+			AutoTestLLMProvider(auto_labeled), selectable_providers=selectable, configs=test_config,
+			auto_config_indices=auto_config_indices, db=db,
+		)
 
 	@staticmethod
 	def _filter_by_mode(ai_service_config: list[AIServiceConfig], mode: str) -> list[AIServiceConfig]:
 		return [service for service in ai_service_config if mode in service.modes]
+
+	@staticmethod
+	def _auto_eligible_indices(configs: list[AIServiceConfig]) -> list[int]:
+		"""Indices into `configs` of every entry the auto cascade may
+		actually land on — everything except one tagged "no-auto", which
+		stays reachable only by an explicit select_model() pin (see
+		for_live/for_test's own docstrings on why it's still in `configs`
+		itself)."""
+		return [i for i, service in enumerate(configs) if "no-auto" not in service.modes]
 
 	@classmethod
 	def _build_labeled_providers(cls, ai_service_config: list[AIServiceConfig]) -> list[tuple[str, LLMProvider]]:
@@ -135,7 +173,10 @@ class AiService(object):
 	def _current_config_index(self) -> int:
 		if self._selected_index is not None:
 			return self._selected_index
-		return getattr(self._auto_provider, "current_index", 0)
+		auto_index = getattr(self._auto_provider, "current_index", 0)
+		if 0 <= auto_index < len(self._auto_config_indices):
+			return self._auto_config_indices[auto_index]
+		return auto_index
 
 	@property
 	def _current_provider_label(self) -> str:

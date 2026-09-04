@@ -95,3 +95,59 @@ class TestLiveAndTestAreFullyIndependent:
         AiService.for_test(configs)
 
         assert configs == original
+
+
+class TestNoAutoMode:
+    """modes: [live, no-auto] (or [test, no-auto]) — still a normal entry
+    in that mode's own manual selection list, but never chosen or
+    failed over into by that mode's *auto* cascade."""
+
+    def test_a_no_auto_entry_still_appears_in_the_manual_list(self):
+        configs = [_config("normal", modes=("live",)), _config("manual-only", modes=("live", "no-auto"))]
+
+        assert _models(AiService.for_live(configs)) == ["normal", "manual-only"]
+
+    def test_auto_never_starts_on_a_no_auto_entry_even_when_it_is_first_in_the_list(self):
+        configs = [_config("manual-only", modes=("live", "no-auto")), _config("normal", modes=("live",))]
+
+        service = AiService.for_live(configs)
+        info = service.get_models_info()
+
+        assert info["auto"] is True
+        assert info["models"][info["current_index"]]["model"] == "normal"
+
+    def test_a_no_auto_entry_is_still_manually_selectable(self):
+        configs = [_config("normal", modes=("live",)), _config("manual-only", modes=("live", "no-auto"))]
+        service = AiService.for_live(configs)
+
+        service.select_model(1)
+
+        info = service.get_models_info()
+        assert info["auto"] is False
+        assert info["models"][info["current_index"]]["model"] == "manual-only"
+
+    def test_a_simulated_failover_skips_straight_past_a_no_auto_entry(self):
+        # Same pointer-advance a real failover triggers (see
+        # AutoLiveLLMProvider.generate_stream_with_schema's own
+        # self._cascade.advance() on a transient error) — the auto
+        # cascade itself was never built with "manual-only" in it at all,
+        # so there's no index it could ever land on.
+        configs = [
+            _config("primary", modes=("live",)),
+            _config("manual-only", modes=("live", "no-auto")),
+            _config("fallback", modes=("live",)),
+        ]
+        service = AiService.for_live(configs)
+
+        service._auto_provider._cascade.advance()
+
+        info = service.get_models_info()
+        assert info["models"][info["current_index"]]["model"] == "fallback"
+
+    def test_test_mode_honors_no_auto_the_same_way_as_live(self):
+        configs = [_config("normal", modes=("test",)), _config("manual-only", modes=("test", "no-auto"))]
+
+        service = AiService.for_test(configs)
+        info = service.get_models_info()
+
+        assert info["models"][info["current_index"]]["model"] == "normal"

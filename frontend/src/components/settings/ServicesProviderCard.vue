@@ -45,12 +45,18 @@ const fields = computed(() => {
     .map(([key, value]) => [fieldLabel(key), String(value)])
 })
 
+// "no-auto" gets its own highlighted variant — it's the one badge that
+// actually changes this provider's behavior (opts it out of auto-live/
+// auto-test selection), so it shouldn't blend in with the purely
+// descriptive live/test/language ones.
 const flagBadges = computed(() => {
   const badges = []
   if (Array.isArray(props.provider.modes)) {
-    for (const mode of props.provider.modes) badges.push(fieldLabel(mode))
+    for (const mode of props.provider.modes) {
+      badges.push({ key: mode, label: fieldLabel(mode), highlight: mode === 'no-auto' })
+    }
   }
-  if (props.provider.language) badges.push(props.provider.language.toUpperCase())
+  if (props.provider.language) badges.push({ key: 'language', label: props.provider.language.toUpperCase(), highlight: false })
   return badges
 })
 </script>
@@ -63,7 +69,13 @@ const flagBadges = computed(() => {
         <span class="inspector-detail-title">{{ provider['ui-label'] || provider.driver }}</span>
       </div>
       <div v-if="flagBadges.length" class="inspector-detail-badges">
-        <span v-for="badge in flagBadges" :key="badge" class="inspector-detail-badge inspector-detail-badge-flag">{{ badge }}</span>
+        <span
+          v-for="badge in flagBadges"
+          :key="badge.key"
+          class="inspector-detail-badge"
+          :class="badge.highlight ? 'inspector-detail-badge-no-auto' : 'inspector-detail-badge-flag'"
+          :title="badge.highlight ? 'Excluded from auto-live/auto-test selection — only reachable by picking it manually' : null"
+        >{{ badge.label }}</span>
       </div>
       <div v-if="dailyBudget != null && usageToday != null" class="services-provider-tokens">
         <span class="services-provider-tokens-label">Today</span>
@@ -119,6 +131,7 @@ const flagBadges = computed(() => {
 .inspector-detail-badge-provider { background: #4a6fa5; }
 .inspector-detail-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .inspector-detail-badge-flag { background: #eee; color: #555; }
+.inspector-detail-badge-no-auto { background: #f5a623; color: #3a2600; }
 .inspector-detail-title { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inspector-detail-body { padding: 0.6rem 0.75rem; font-size: 0.8rem; color: #444; }
 .inspector-detail-ui_description { margin: 0.5rem 0 0; line-height: 1.4; }

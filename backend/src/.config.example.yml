@@ -99,6 +99,10 @@ ai-service:
       # empty list ([]) is different from omitting it: it deliberately
       # excludes the entry from both cascades rather than falling back
       # to that default.
+      # Add "no-auto" alongside live/test (e.g. [live, no-auto]) to keep
+      # an entry manually selectable in that mode's own model menu
+      # without ever letting auto-live/auto-test pick or fail over into
+      # it on their own.
       # modes: [live, test]
       # Both optional. ui-label is what the frontend's model menu shows for
       # this entry — falls back to `driver` (e.g. "gemini") if omitted.

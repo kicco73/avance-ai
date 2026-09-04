@@ -415,6 +415,40 @@ class TestAiServiceProvidersModes:
         with pytest.raises(ConfigError, match="'test'"):
             _load(monkeypatch, tmp_path, content)
 
+    def test_no_auto_alone_is_syntactically_valid_though_inert(self, monkeypatch, tmp_path):
+        # Not a mistake worth rejecting: a provider tagged only "no-auto"
+        # (no live/test) simply never appears in either cascade — same as
+        # an explicit empty modes list, harmless as long as a sibling
+        # still covers both mandatory modes.
+        content = MINIMAL_CONFIG.replace(
+            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n",
+            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n"
+            "      modes: [no-auto]\n    - driver: gemini\n      model: other-model\n      key: fake-key\n",
+        )
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.ai_services[0].modes == ("no-auto",)
+
+    def test_a_sibling_keeps_the_live_auto_cascade_covered_when_one_entry_is_no_auto(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG.replace(
+            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n",
+            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n"
+            "      modes: [live, no-auto]\n    - driver: gemini\n      model: other-model\n      key: fake-key\n",
+        )
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.ai_services[0].modes == ("live", "no-auto")
+        assert config.ai_services[1].modes == ("live", "test")
+
+    def test_rejects_when_every_live_entry_is_no_auto(self, monkeypatch, tmp_path):
+        # The sole provider is nominally "in" live mode, but tagged
+        # no-auto — its own auto cascade would end up with zero entries,
+        # the same class of misconfiguration as leaving live empty outright.
+        content = MINIMAL_CONFIG.replace(
+            "      key: fake-key\n",
+            "      key: fake-key\n      modes: [live, test, no-auto]\n",
+        )
+        with pytest.raises(ConfigError, match="'live'"):
+            _load(monkeypatch, tmp_path, content)
+
 
 class TestInviteValidDays:
     def test_defaults_to_7_when_the_section_is_omitted(self, monkeypatch, tmp_path):

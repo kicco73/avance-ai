@@ -368,6 +368,16 @@ class AppConfig:
         )
 
     _AI_SERVICE_MODES = ("live", "test")
+    # A modifier, not a cascade of its own — applied alongside "live"
+    # and/or "test" (e.g. modes: [live, no-auto]) to keep an entry in that
+    # mode's own manual selection list (AiService.get_models_info's
+    # "models") while excluding it from that mode's *auto* cascade (see
+    # AiService.for_live/for_test's own auto_config_indices). Never
+    # required to have an entry of its own the way "live"/"test" are (see
+    # _parse_ai_services' own coverage loop below) — it's an opt-out tag,
+    # not a bucket every config must fill.
+    _AI_SERVICE_NO_AUTO_MODE = "no-auto"
+    _AI_SERVICE_VALID_MODES = _AI_SERVICE_MODES + (_AI_SERVICE_NO_AUTO_MODE,)
 
     @classmethod
     def _parse_ai_service_modes(cls, entry: dict, i: int, path: Path) -> tuple[str, ...]:
@@ -380,11 +390,11 @@ class AppConfig:
             return cls._AI_SERVICE_MODES
         if not isinstance(modes, list) or not all(isinstance(m, str) for m in modes):
             raise ConfigError(f"{path}: 'ai-service.providers[{i}].modes' must be a list of strings if present.")
-        invalid = sorted(set(modes) - set(cls._AI_SERVICE_MODES))
+        invalid = sorted(set(modes) - set(cls._AI_SERVICE_VALID_MODES))
         if invalid:
             raise ConfigError(
                 f"{path}: 'ai-service.providers[{i}].modes' contains invalid entr{'y' if len(invalid) == 1 else 'ies'} "
-                f"{invalid} — must be 'live' and/or 'test'."
+                f"{invalid} — must be 'live', 'test', and/or 'no-auto'."
             )
         return tuple(dict.fromkeys(modes))  # de-duplicated, order preserved
 
@@ -434,8 +444,19 @@ class AppConfig:
         # misconfiguration worth catching here rather than as a confusing
         # runtime failure the first time that mode is actually used.
         for mode in cls._AI_SERVICE_MODES:
-            if not any(mode in service.modes for service in services):
+            matching = [service for service in services if mode in service.modes]
+            if not matching:
                 raise ConfigError(f"{path}: 'ai-service.providers' has no entry left for mode {mode!r}.")
+            # Same idea, one layer down: "no-auto" excludes an entry from
+            # that mode's own *auto* cascade specifically (still present
+            # in its manual selection list) — if every surviving entry
+            # opts out, the auto cascade itself would be empty even though
+            # the mode "has" providers.
+            if all(cls._AI_SERVICE_NO_AUTO_MODE in service.modes for service in matching):
+                raise ConfigError(
+                    f"{path}: 'ai-service.providers' has no entry left for mode {mode!r} that isn't "
+                    f"{cls._AI_SERVICE_NO_AUTO_MODE!r} — its auto cascade would be empty."
+                )
         return services
 
     def __init__(self) -> None:
