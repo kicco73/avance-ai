@@ -62,7 +62,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # supervisor/admin routes are untouched: identity.role is never
         # 'user' there.
         project_id = path_params.get("project_id")
-        if identity.role == 'user' and project_id is not None:
+        if not role_satisfies(identity.role, 'supervisor') and project_id is not None:
             db = request.app.state.db
             if not db.user_has_project_access(identity.email, project_id):
                 return self._forbidden_response()

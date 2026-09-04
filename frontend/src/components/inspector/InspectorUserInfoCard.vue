@@ -12,7 +12,7 @@ const props = defineProps({
 
 const emit = defineEmits(['change-role'])
 
-const ROLES = ['user', 'supervisor', 'admin']
+const ROLES = ['user', 'customer', 'supervisor', 'admin']
 
 const initial = computed(() => {
   const source = props.user?.name || props.user?.email
@@ -145,6 +145,7 @@ onBeforeUnmount(() => {
 }
 
 .user-info-role-user { background: #eee; color: #777; }
+.user-info-role-customer { background: #e6f4ea; color: #2e7d32; }
 .user-info-role-supervisor { background: #e3edf7; color: #4a6fa5; }
 .user-info-role-admin { background: #f7e6d9; color: #a5674a; }
 

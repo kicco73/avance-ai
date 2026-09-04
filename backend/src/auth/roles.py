@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-ROLE_LEVELS = {"pending": -1, "user": 0, "supervisor": 1, "admin": 2}
+ROLE_LEVELS = {"pending": -1, "user": 0, "customer": 1, "supervisor": 2, "admin": 3}
 
 
 def role_satisfies(user_role: str, required_role: str) -> bool:

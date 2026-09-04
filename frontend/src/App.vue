@@ -10,6 +10,7 @@ import ProfileView from './components/ProfileView.vue'
 import ManageProjectsView from './components/settings/ManageProjectsView.vue'
 import ManageUsersView from './components/settings/ManageUsersView.vue'
 import ServicesView from './components/settings/ServicesView.vue'
+import AppStoreView from './components/appStore/AppStoreView.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
 import ToastContainer from './components/ToastContainer.vue'
@@ -59,12 +60,8 @@ const editProjectId = ref(null)
 const labelProjectId = ref(null)
 const liveChatProjectId = ref(null)
 const showProfile = ref(false)
-// Admin only: what's currently pushed over the permanently-mounted
-// ManageProjectsView base — null | 'edit' | 'label' | 'manageUsers' |
-// 'services' | 'chat'. A plain 'user' has no stack at all (chat is the
-// whole app); a 'supervisor' has no stack either (LabelProjectView is
-// the whole app).
 const pushedView = ref(null)
+const chatOpen = ref(false)
 // Which way the next transition (see the <Transition>s below) should go —
 // 'forward' for anything that pushes a new view over another, 'back' only
 // for a pop. Sets, not toggles: every navigation call site names its own
@@ -89,11 +86,19 @@ function setNavBack() {
 }
 function pushView(view) {
   setNavForward()
-  pushedView.value = view
+  if (view === 'chat') {
+    chatOpen.value = true
+  } else {
+    pushedView.value = view
+  }
 }
 function popPushedView() {
   setNavBack()
-  pushedView.value = null
+  if (chatOpen.value) {
+    chatOpen.value = false
+  } else {
+    pushedView.value = null
+  }
 }
 
 const { onChatBeforeEnter, onChatEnter, onChatBeforeLeave, onChatLeave } = useChatFlipTransition(navDirection)
@@ -120,7 +125,7 @@ const {
   handleLoggedIn, handleTermsAccept, handleTermsReject, handleLogout,
 } = useAppBoot(
   currentUserProfile, currentUserRole, labelProjectId, liveChatProjectId,
-  pushedView, showProfile, navDirection
+  pushedView, chatOpen, showProfile, navDirection
 )
 
 function triggerModelUpload() {
@@ -247,6 +252,10 @@ function handleSettingsManageUsers() {
 
 function handleSettingsManageServices() {
   pushView('services')
+}
+
+function handleSettingsAppStore() {
+  pushView('appStore')
 }
 
 async function handleModelEditSaved() {
@@ -474,7 +483,7 @@ onBeforeUnmount(() => {
       <ErrorBanner />
     </Teleport>
 
-    <div class="app-body" :class="{ 'app-body-flip-space': currentUserRole === 'admin' }">
+    <div class="app-body" :class="{ 'app-body-flip-space': currentUserRole === 'admin' || currentUserRole === 'customer' }">
       <!-- Plain user: chat is the entire app, no stack, no transition. -->
       <LiveChatWindow
         v-if="currentUserRole === 'user'"
@@ -488,6 +497,50 @@ onBeforeUnmount(() => {
         @profile="openProfile"
         @logout="handleLogout"
       />
+
+      <!-- Customer: App store is the permanent base, never unmounted;
+           the only thing ever pushed over it is the live chat, which
+           3D-flips exactly like it does over ManageProjectsView for an
+           admin. -->
+      <template v-else-if="currentUserRole === 'customer'">
+        <div
+          class="view-flip-base"
+          :class="{
+            'view-flip-base-flipped': chatOpen,
+            'view-flip-base-forward': navDirection === 'forward',
+            'view-flip-base-back': navDirection === 'back'
+          }"
+        >
+          <AppStoreView
+            standalone
+            :profile="currentUserProfile"
+            @open="handleManageProjectsChat"
+            @profile="openProfile"
+            @logout="handleLogout"
+          />
+        </div>
+
+        <Transition
+          :css="false"
+          @before-enter="onChatBeforeEnter"
+          @enter="onChatEnter"
+          @before-leave="onChatBeforeLeave"
+          @leave="onChatLeave"
+        >
+          <LiveChatWindow
+            v-if="chatOpen"
+            ref="chatWindowRef"
+            :project-id="liveChatProjectId"
+            :role="currentUserRole"
+            :profile="currentUserProfile"
+            @project-select="handleLiveChatProjectSelect"
+            @project-download="handleModelDownload"
+            @manage-projects="handleSettingsManageProjects"
+            @profile="openProfile"
+            @logout="handleLogout"
+          />
+        </Transition>
+      </template>
 
       <!-- Supervisor: Label sessions is the entire app, no stack, no
            transition — its own ProjectsMenu re-points it at another
@@ -506,75 +559,87 @@ onBeforeUnmount(() => {
            unmounted; at most one view is ever pushed over it. Every push
            target 2D-slides except chat, which 3D-flips. -->
       <template v-else-if="currentUserRole === 'admin'">
-        <ManageProjectsView
-          ref="manageProjectsView"
+        <div
           class="view-flip-base"
           :class="{
-            'view-flip-base-flipped': pushedView === 'chat',
+            'view-flip-base-flipped': chatOpen,
             'view-flip-base-forward': navDirection === 'forward',
             'view-flip-base-back': navDirection === 'back'
           }"
-          :uploading="uploadingProject"
-          :upload-progress="uploadProgress"
-          :upload-project-id="uploadProjectId"
-          :upload-icon-ready="uploadIconReady"
-          role="admin"
-          :profile="currentUserProfile"
-          @new-project="handleNewProject"
-          @upload="triggerModelUpload"
-          @delete="handleModelDelete"
-          @edit="handleModelEdit"
-          @label="handleSelectLabelSessions"
-          @chat="handleManageProjectsChat"
-          @download="handleModelDownload"
-          @manage-users="handleSettingsManageUsers"
-          @manage-services="handleSettingsManageServices"
-          @about="handleShowAbout"
-          @profile="openProfile"
-          @logout="handleLogout"
-        />
+        >
+          <ManageProjectsView
+            ref="manageProjectsView"
+            :uploading="uploadingProject"
+            :upload-progress="uploadProgress"
+            :upload-project-id="uploadProjectId"
+            :upload-icon-ready="uploadIconReady"
+            role="admin"
+            :profile="currentUserProfile"
+            @new-project="handleNewProject"
+            @upload="triggerModelUpload"
+            @delete="handleModelDelete"
+            @edit="handleModelEdit"
+            @label="handleSelectLabelSessions"
+            @chat="handleManageProjectsChat"
+            @download="handleModelDownload"
+            @manage-users="handleSettingsManageUsers"
+            @manage-services="handleSettingsManageServices"
+            @app-store="handleSettingsAppStore"
+            @about="handleShowAbout"
+            @profile="openProfile"
+            @logout="handleLogout"
+          />
 
-        <Transition :name="slideTransitionName">
-          <EditProjectView
-            v-if="pushedView === 'edit'"
-            :key="editProjectId"
-            :project-id="editProjectId"
-            :profile="currentUserProfile"
-            @saved="handleModelEditSaved"
-            @back="popPushedView"
-            @profile="openProfile"
-            @logout="handleLogout"
-          />
-          <LabelProjectView
-            v-else-if="pushedView === 'label'"
-            :key="labelProjectId"
-            :project-id="labelProjectId"
-            :profile="currentUserProfile"
-            @close="popPushedView"
-            @project-select="handleLabelProjectSwitch"
-            @profile="openProfile"
-            @logout="handleLogout"
-          />
-          <ManageUsersView
-            v-else-if="pushedView === 'manageUsers'"
-            :current-user-role="currentUserRole"
-            :profile="currentUserProfile"
-            @close="popPushedView"
-            @profile="openProfile"
-            @logout="handleLogout"
-          />
-          <ServicesView
-            v-else-if="pushedView === 'services'"
-            :profile="currentUserProfile"
-            @close="popPushedView"
-            @download-backup="handleDownloadBackup"
-            @restore-backup="handleRestoreBackup"
-            @wipe-live-sessions="handleWipeAllLiveSessions"
-            @clean-unused-revisions="handleCleanUnusedRevisions"
-            @profile="openProfile"
-            @logout="handleLogout"
-          />
-        </Transition>
+          <Transition :name="slideTransitionName">
+            <EditProjectView
+              v-if="pushedView === 'edit'"
+              :key="editProjectId"
+              :project-id="editProjectId"
+              :profile="currentUserProfile"
+              @saved="handleModelEditSaved"
+              @back="popPushedView"
+              @profile="openProfile"
+              @logout="handleLogout"
+            />
+            <LabelProjectView
+              v-else-if="pushedView === 'label'"
+              :key="labelProjectId"
+              :project-id="labelProjectId"
+              :profile="currentUserProfile"
+              @close="popPushedView"
+              @project-select="handleLabelProjectSwitch"
+              @profile="openProfile"
+              @logout="handleLogout"
+            />
+            <ManageUsersView
+              v-else-if="pushedView === 'manageUsers'"
+              :current-user-role="currentUserRole"
+              :profile="currentUserProfile"
+              @close="popPushedView"
+              @profile="openProfile"
+              @logout="handleLogout"
+            />
+            <ServicesView
+              v-else-if="pushedView === 'services'"
+              :profile="currentUserProfile"
+              @close="popPushedView"
+              @download-backup="handleDownloadBackup"
+              @restore-backup="handleRestoreBackup"
+              @wipe-live-sessions="handleWipeAllLiveSessions"
+              @clean-unused-revisions="handleCleanUnusedRevisions"
+              @profile="openProfile"
+              @logout="handleLogout"
+            />
+            <AppStoreView
+              v-else-if="pushedView === 'appStore'"
+              :profile="currentUserProfile"
+              @close="popPushedView"
+              @open="handleManageProjectsChat"
+              @profile="openProfile"
+              @logout="handleLogout"
+            />
+          </Transition>
+        </div>
 
         <Transition
           :css="false"
@@ -584,7 +649,7 @@ onBeforeUnmount(() => {
           @leave="onChatLeave"
         >
           <LiveChatWindow
-            v-if="pushedView === 'chat'"
+            v-if="chatOpen"
             ref="chatWindowRef"
             :project-id="liveChatProjectId"
             :role="currentUserRole"
@@ -840,6 +905,8 @@ body {
    different timing for "rotating away" (push) vs "rotating back into
    view" (pop) on the very same transform property. */
 .view-flip-base {
+  flex: 1;
+  min-height: 0;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   will-change: transform;

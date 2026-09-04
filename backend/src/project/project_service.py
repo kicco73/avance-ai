@@ -6,6 +6,7 @@ external caller (chat/, tracking/, controllers/) needs to know which
 collaborator actually does the work."""
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from automaton.automaton import (
@@ -28,6 +29,8 @@ if TYPE_CHECKING:
     from ai import AiService
 
 __all__ = ["ProjectService", "CommitCallback"]
+
+_ICON_FILE_RE = re.compile(r'^aspect/icon\.(png|jpe?g|gif|webp|svg)$', re.IGNORECASE)
 
 
 class ProjectService(object):
@@ -303,3 +306,39 @@ class ProjectService(object):
 
     async def delete_project_file(self, project_id: str, file_name: str, commit: CommitCallback) -> None:
         await self._editor.delete_project_file(project_id, file_name, commit)
+
+    # -- App Store --------------------------------------------------------
+
+    def list_app_store_apps(self, username: str) -> list[dict]:
+        apps = self._db.list_projects_for_app_store(username)
+        for app in apps:
+            app["icon_file"] = self._find_app_icon_file(app["id"])
+        return apps
+
+    def _find_app_icon_file(self, project_id: str) -> str | None:
+        revision = self.get_published_revision(project_id)
+        for name in self._db.list_archives(project_id, revision=revision):
+            if _ICON_FILE_RE.match(name):
+                return name
+        return None
+
+    def install_app(self, username: str, project_id: str) -> None:
+        if not self._db.project_exists(project_id):
+            raise FileNotFoundError(f"No such project: {project_id!r}")
+        self._db.install_project(username, project_id)
+
+    def uninstall_app(self, username: str, project_id: str) -> None:
+        self._db.uninstall_project(username, project_id)
+
+    def get_app_store_file_content(self, project_id: str, file_name: str) -> tuple[bytes, str]:
+        revision = self.get_published_revision(project_id)
+        return self._editor.get_project_file_content_at_revision(project_id, file_name, revision)
+
+    def get_app_store_preview_messages(self, project_id: str) -> list[dict] | None:
+        session = self._db.get_first_imported_session(project_id)
+        if session is None:
+            return None
+        return [
+            {"id": m["id"], "role": m["role"], "content": m["content"], "timestamp": m["timestamp"]}
+            for m in self._db.get_messages(session["id"])
+        ]

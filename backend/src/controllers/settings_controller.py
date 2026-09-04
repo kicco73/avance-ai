@@ -12,6 +12,7 @@ from urllib.parse import quote
 
 from fastapi import HTTPException, Request, Response
 
+from auth.roles import role_satisfies
 from chat.chat_service import ChatService
 from db import Db
 from job import JobService
@@ -112,7 +113,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
 
     @get("/api/projects")
     def get_projects(self):
-        username = Session().user if Session().role == 'user' else None
+        username = Session().user if not role_satisfies(Session().role, 'supervisor') else None
         return self.project_service.list_projects(username)
 
     @get("/api/settings/projects/runtime-status", role="admin")

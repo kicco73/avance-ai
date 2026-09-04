@@ -81,7 +81,7 @@ class ProjectInspector:
     def get_automaton_and_state(
         self, project_id: str, type: str = 'live', username: str | None = None
     ) -> tuple[Automaton, State]:
-        revision = self.get_published_revision(project_id) if type == 'live' else self.get_draft_revision(project_id)
+        revision = self.get_draft_revision(project_id) if type == 'test' else self.get_published_revision(project_id)
         automaton = self.get_automaton(project_id, revision)
         return automaton, self._resolve_state(project_id, automaton, type=type, username=username)
 

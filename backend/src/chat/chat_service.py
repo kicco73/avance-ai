@@ -74,7 +74,7 @@ class ChatService(object):
 
 	def _ai_service_for_session(self, session_id: int) -> AiService:
 		session = self._db.get_chat_session(session_id)
-		return self._ai_test_service if session is not None and session["type"] == "test" else self._ai_service
+		return self._ai_test_service if session is not None and session["type"] in ("test", "preview") else self._ai_service
 
 	def _env_for_session(self, session_id: int) -> PersistedEnv:
 		"""The env `session_id` actually lives in: its own project and its
@@ -274,6 +274,9 @@ class ChatService(object):
 		active-project pointer."""
 		return await self._get_current_session_if_any_or_create_new_of_type(get_session_type_strategy('test'), project_id, session_id)
 
+	async def get_current_preview_session_if_any_or_create_new(self, session_id: int | None, project_id: str) -> dict:
+		return await self._get_current_session_if_any_or_create_new_of_type(get_session_type_strategy('preview'), project_id, session_id)
+
 	async def acquire_exclusive_session(self) -> dict:
 		"""Like get_current_session_if_any_or_create_new(None), but with
 		real intent to write through the current channel right now: an
@@ -338,6 +341,10 @@ class ChatService(object):
 		`project_id` comes from the URL, never the active-project pointer."""
 		return await self._create_session_of_type(get_session_type_strategy('test'), project_id)
 
+	async def create_preview_session(self, project_id: str) -> dict:
+		self._db.delete_sessions_by_username_and_type(self._username, 'preview')
+		return await self._create_session_of_type(get_session_type_strategy('preview'), project_id)
+
 	def reset_test_sessions(self, project_id: str) -> dict:
 		self._project_service.reset_test_sessions(project_id)
 		automaton, state = self._project_service.get_automaton_and_state(project_id, type='test')
@@ -380,6 +387,10 @@ class ChatService(object):
 		never someone else's by guessing an id."""
 		self._require_own_session(session_id)
 		self._db.delete_chat_session(session_id)
+
+	def clear_session_env(self, session_id: int) -> None:
+		self._require_own_session(session_id)
+		self._env_for_session(session_id).clear()
 
 	async def close_session(self, session_id: int) -> dict:
 		"""Explicit "close session" action (the live chat's own

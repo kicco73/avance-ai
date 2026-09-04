@@ -39,7 +39,7 @@ const props = defineProps({
 // the same pass-through of ProfileMenu.vue's own.
 const emit = defineEmits([
   'new-project', 'upload', 'delete', 'edit', 'label', 'download', 'chat',
-  'manage-users', 'manage-services', 'about',
+  'manage-users', 'manage-services', 'app-store', 'about',
   'profile', 'logout'
 ])
 
@@ -303,6 +303,7 @@ defineExpose({ refresh: load })
             :role="role"
             @manage-users="emit('manage-users')"
             @manage-services="emit('manage-services')"
+            @app-store="emit('app-store')"
           />
           <div class="manage-projects-add-menu">
             <button

@@ -129,6 +129,12 @@ class SessionMixin:
         sessions = query.order_by(ChatSession.datetime_start.desc())
         return [self._chat_session_to_dict(s) for s in sessions]
 
+    def get_first_imported_session(self, project_id: str) -> dict | None:
+        session = ChatSession.select().where(
+            (ChatSession.project == project_id) & (ChatSession.type == 'imported')
+        ).order_by(ChatSession.id.asc()).first()
+        return self._chat_session_to_dict(session) if session is not None else None
+
     def list_live_sessions_for_revision(self, project_id: str, revision: int) -> list[dict]:
         sessions = ChatSession.select().where(
             (ChatSession.project == project_id)
@@ -196,6 +202,18 @@ class SessionMixin:
                     status_code=HTTPStatus.CONFLICT,
                 )
         ChatSession.update(username=username).where(ChatSession.id.in_(session_ids)).execute()
+
+    def delete_sessions_by_username_and_type(self, username: str, type: str) -> None:
+        session_ids = [
+            row.id for row in ChatSession.select(ChatSession.id).where(
+                (ChatSession.username == username) & (ChatSession.type == type)
+            )
+        ]
+        if not session_ids:
+            return
+        Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
+        Message.delete().where(Message.session.in_(session_ids)).execute()
+        ChatSession.delete().where(ChatSession.id.in_(session_ids)).execute()
 
     def delete_sessions_by_username_and_project(self, username: str, project_id: str) -> None:
         """The "Label sessions" view's per-branch × button, for any

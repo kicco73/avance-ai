@@ -12,7 +12,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'manage-users', 'manage-services'
+  'manage-users', 'manage-services', 'app-store'
 ])
 
 const open = ref(false)
@@ -33,6 +33,11 @@ function selectManageUsers() {
 function selectManageServices() {
   open.value = false
   emit('manage-services')
+}
+
+function selectAppStore() {
+  open.value = false
+  emit('app-store')
 }
 
 function handleClickOutside(event) {
@@ -74,6 +79,15 @@ onBeforeUnmount(() => {
                 <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z" />
               </svg>
               <span>Manage services</span>
+            </button>
+          </li>
+          <li class="settings-separator" role="separator"></li>
+          <li>
+            <button class="settings-item" @click="selectAppStore">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M20 4H4v2h16V4zM4 20h4v-6h8v6h4v-8H4v8zm16-10l-.67-3.35a2.011 2.011 0 0 0-1.96-1.65H6.63c-.96 0-1.79.68-1.96 1.65L4 10v1c0 1.1.9 2 2 2s2-.9 2-2c0 1.1.9 2 2 2s2-.9 2-2c0 1.1.9 2 2 2s2-.9 2-2c0 1.1.9 2 2 2s2-.9 2-2v-1z" />
+              </svg>
+              <span>App store</span>
             </button>
           </li>
         </ul>

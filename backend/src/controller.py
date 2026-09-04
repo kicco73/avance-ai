@@ -19,6 +19,7 @@ from testing.last_status_broadcaster import LastStatusBroadcaster
 from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from tracking.tracking_service import TrackingService
 
+from controllers.app_store_controller import AppStoreController
 from controllers.auth_controller import AuthController
 from controllers.chat_controller import ChatController
 from controllers.edit_project_controller import EditProjectController
@@ -69,8 +70,11 @@ class AvanceController(object):
         )
         self.auth = AuthController(auth_service)
         self.user = UserController(auth_service)
+        self.app_store = AppStoreController(chat_service, project_service)
 
-        controllers = [self.chat, self.edit_project, self.label_project, self.settings, self.auth, self.user]
+        controllers = [
+            self.chat, self.edit_project, self.label_project, self.settings, self.auth, self.user, self.app_store,
+        ]
         # Opt-in channel (see docs/WHATSAPP.md): no service, no routes.
         self.whatsapp = WhatsAppController(whatsapp_service) if whatsapp_service is not None else None
         if self.whatsapp is not None:

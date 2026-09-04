@@ -246,6 +246,19 @@ class ProjectMixin:
             )
         ]
 
+    def list_projects_for_app_store(self, username: str) -> list[dict]:
+        installed_ids = {
+            row.project_id for row in UserProject.select(UserProject.project).where(UserProject.user == username)
+        }
+        return [
+            {
+                "id": p.id, "ui_label": p.ui_label, "ui_description": p.ui_description,
+                "is_paused": p.is_paused, "installed": p.id in installed_ids,
+            }
+            for p in Project.select(Project.id, Project.ui_label, Project.ui_description, Project.is_paused)
+            .where(Project.published_revision.is_null(False))
+        ]
+
     def list_projects_runtime_status(self) -> list[dict]:
         """One row per project — revision, published_revision, is_paused,
         paused_reason, manually_paused — for the Settings > Runtime

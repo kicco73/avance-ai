@@ -106,6 +106,30 @@ class TestSessionStrategy(SessionTypeStrategy):
         return automaton.init_action.on_enter
 
 
+class PreviewSessionStrategy(SessionTypeStrategy):
+    type_name = 'preview'
+
+    def is_expired(self, session: dict, now: datetime, open_window: timedelta) -> bool:
+        return False
+
+    def resolve_session(self, session_manager: "ChatSessionManager", username: str, project_id: str) -> dict | None:
+        return session_manager.get_active_session(username, project_id, type=self.type_name)
+
+    def is_valid_write_target(self, session: dict, active_session: dict | None) -> bool:
+        return True
+
+    def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
+        revision = self.revision_for(project_service, project_id)
+        automaton = project_service.get_automaton(project_id, revision)
+        return automaton.init_action.target
+
+    def revision_for(self, project_service: "ProjectService", project_id: str) -> int:
+        return project_service.get_published_revision(project_id)
+
+    def on_enter_for_new_session(self, automaton: "Automaton") -> dict | None:
+        return automaton.init_action.on_enter
+
+
 class ImportedSessionStrategy(SessionTypeStrategy):
     type_name = 'imported'
 
@@ -139,6 +163,7 @@ class ImportedSessionStrategy(SessionTypeStrategy):
 _STRATEGIES: dict[str, SessionTypeStrategy] = {
     'live': LiveSessionStrategy(),
     'test': TestSessionStrategy(),
+    'preview': PreviewSessionStrategy(),
     'imported': ImportedSessionStrategy(),
 }
 

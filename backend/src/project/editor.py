@@ -256,6 +256,12 @@ class ProjectEditor:
         onto the same origin — not in dev, where they're on two different
         ports with no proxy between them."""
         revision = self._inspector._resolve_inspector_revision(project_id, session_id)
+        return self._get_file_content_at_revision(project_id, file_name, revision)
+
+    def get_project_file_content_at_revision(self, project_id: str, file_name: str, revision: int) -> tuple[bytes, str]:
+        return self._get_file_content_at_revision(project_id, file_name, revision)
+
+    def _get_file_content_at_revision(self, project_id: str, file_name: str, revision: int) -> tuple[bytes, str]:
         file_name = self._resolve_file_name(project_id, file_name, revision)
         content = self._db.get_archive(project_id, file_name, revision=revision)
         if content is None:
