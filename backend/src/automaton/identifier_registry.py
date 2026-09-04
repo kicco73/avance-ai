@@ -11,20 +11,20 @@ class IdentifierRegistry:
     """The {namespace: {identifier: description}} registry every
     trigger/env: expression can reference: a project's own declared
     signals/env keys merged with the platform's fixed session/
-    user/source/metric identifiers."""
+    user/metric identifiers. `source.<name>.<method>` — like
+    `automaton.<project>.*` — is deliberately absent from `build()` below:
+    it's a dynamic, per-project namespace, so both its offline validation
+    (AutomatonBuilder._validate_namespaced_expression, via
+    TriggerExpressionAnalyzer.source_refs) and its registry entries for
+    autocomplete (see project.inspector.ProjectInspector.
+    get_identifier_registry, which merges one "source.<name>" entry per
+    this project's own declared `sources:`) live outside this class."""
 
     SESSION: dict[str, str] = {
         "current_session_duration_in_minutes": "How long the current session has been running so far, in minutes.",
         "last_user_session_datetime": "The previous session's own start timestamp (UTC ISO-8601), or None for a user's very first session.",
         "number_of_user_sessions": "How many sessions this user has ever had in this project.",
         "state_duration_in_minutes": "How long the conversation has sat in its current state, in minutes.",
-    }
-
-    # One entry per module in tracking/sources/ — the code-defined "data
-    # source" plugins an action's own `env:` field can pull data through.
-    SOURCE: dict[str, str] = {
-        "attachment": "One of the project's own attachment files, by name, read as plain text — e.g. source.attachment('notes.txt').",
-        "search": "Grep over a CSV attachment: the header row plus every row containing `what` (case-insensitive) — e.g. source.search('Paris', 'geo/cities.csv').",
     }
 
     ACTUATOR: dict[str, str] = {
@@ -115,7 +115,6 @@ class IdentifierRegistry:
             "session": dict(cls.SESSION),
             "session.metric": dict(cls.SESSION_METRIC),
             "user": dict(cls.USER),
-            "source": dict(cls.SOURCE),
             "actuator": dict(cls.ACTUATOR),
             "metric": dict(cls.METRIC),
             "datetime": dict(cls.DATETIME),

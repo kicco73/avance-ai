@@ -36,6 +36,12 @@ SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
 # Unlike a state/action/signal, an env key has no separate ui-label to
 # derive its name from — 'name' is itself directly editable here.
 ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value"}
+# Same reasoning as ENV_KEY_EDITABLE_FIELDS — a source's own id is
+# directly editable, not derived from its ui-label. 'url' is deliberately
+# absent: it's system-managed (ProjectEditor.add_source/set_source_field
+# keep it in lockstep with the source's own cache archive), never a field
+# a client sets directly.
+SOURCE_EDITABLE_FIELDS = {"name", "ui-label", "ui-description"}
 # The optional top-level `project:` section — 'id' is what other
 # projects reach this one as through automaton.<id>. 'general-prompt' is
 # actually its own separate top-level key (see AutomatonYamlEditor.
@@ -128,6 +134,28 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         Inspect panel Env tab. `session_id`: see get_project_graph above."""
         try:
             return {"env_keys": self.project_service.get_project_env_keys(project_id, session_id)}
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @get("/api/projects/{project_id}/sources", role="admin")
+    def get_project_sources(self, project_id: str, session_id: int | None = None):
+        """Declared source definitions for the "Edit project" view's
+        design tree/Inspector Source card. `session_id`: see get_project_graph above."""
+        try:
+            return {"sources": self.project_service.get_project_sources(project_id, session_id)}
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @get("/api/projects/{project_id}/sources/{source_name}/preview", role="admin")
+    def get_source_content_preview(self, project_id: str, source_name: str):
+        """The Source content panel's Preview segment — its own cache
+        archive's CSV content, rendered as a Markdown table server-side."""
+        try:
+            return {"markdown": self.project_service.get_source_content_preview(project_id, source_name)}
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:
@@ -380,6 +408,15 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
+    @post("/api/projects/{project_id}/sources", role="admin")
+    async def add_source(self, project_id: str):
+        try:
+            return await self.project_service.add_source(project_id, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
     @post("/api/projects/{project_id}/states/{state_name}/actions", role="admin")
     async def add_action(self, project_id: str, state_name: str):
         try:
@@ -449,6 +486,22 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         try:
             return await self.project_service.set_env_key_field(
                 project_id, env_key_name, field, req.value, self._activate_project
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @put("/api/projects/{project_id}/sources/{source_name}/{field}", role="admin")
+    async def put_source_field(self, project_id: str, source_name: str, field: str, req: SetProjectFieldRequest):
+        if field not in SOURCE_EDITABLE_FIELDS:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=f"'{field}' is not an editable source field — expected one of {sorted(SOURCE_EDITABLE_FIELDS)}.",
+            )
+        try:
+            return await self.project_service.set_source_field(
+                project_id, source_name, field, req.value, self._activate_project
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
@@ -542,6 +595,16 @@ class EditProjectController(BaseController, ProjectCommitMixin):
     async def delete_env_key(self, project_id: str, env_key_name: str):
         try:
             await self.project_service.delete_env_key(project_id, env_key_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return Response(status_code=HTTPStatus.NO_CONTENT)
+
+    @delete("/api/projects/{project_id}/sources/{source_name}", role="admin")
+    async def delete_source(self, project_id: str, source_name: str):
+        try:
+            await self.project_service.delete_source(project_id, source_name, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:

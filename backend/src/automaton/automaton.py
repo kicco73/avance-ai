@@ -111,6 +111,19 @@ class EnvKey:
     ui_description: str | None = None
 
 
+@dataclass
+class Source:
+    """One `sources:` declaration — binds `name` (what `source.<name>.*`
+    calls in a trigger/env: expression resolve against, see
+    tracking.sources.SourceNamespace) to a driver and its own target,
+    both encoded in `url` (`<scheme>:<path>`, e.g.
+    'avance:behaviour/flights.csv' — see tracking.sources.url)."""
+    name: str
+    url: str
+    ui_label: str
+    ui_description: str | None = None
+
+
 # Functional syntax (not the class form the other Payload types use):
 # "on-enter" isn't a valid Python identifier, so a class body can't declare it.
 ActionPayload = TypedDict("ActionPayload", {
@@ -207,6 +220,12 @@ class EnvKeyPayload(TypedDict):
     ui_description: str | None
     value: str
 
+class SourcePayload(TypedDict):
+    name: str
+    ui_label: str
+    ui_description: str | None
+    url: str
+
 class ProjectPayload(TypedDict):
     id: str
     family: str | None
@@ -235,6 +254,10 @@ class Automaton(object):
         # Same reasoning as env_keys above — only AutomatonBuilder.build
         # parses a project's declared reactions: section.
         reactions: list[Reaction] | None = None,
+        # Same reasoning again — only AutomatonBuilder.build parses a
+        # project's declared sources: section. Empty (never None) unless
+        # a project actually declares one — see tracking.sources.SourceNamespace.
+        sources: list[Source] | None = None,
         # The optional top-level `project:` section. `project_id` is this
         # project's own mandatory, globally unique identity — what
         # *other* projects reach it as through automaton.* references,
@@ -263,6 +286,7 @@ class Automaton(object):
         self.signals = signals
         self.reactions = reactions or []
         self.env_keys = env_keys or []
+        self.sources = sources or []
         self.project_id = project_id
         self.family = project_family
         self.project_revision = project_revision
@@ -285,13 +309,13 @@ class Automaton(object):
         self.revision: int | None = None
 
     def set_storage_location(self, revision: int) -> None:
-        """tracking.sources.attachment's own source.attachment(name) reads
+        """tracking.sources.avance_archive's own AvanceArchiveSource reads
         straight from Db at this exact (project_id, revision) — never
         this Automaton's own in-memory `attachments` (see that module's
         docstring for why: a large file no state/action/signal ever
         declared under its own `attachments:` would otherwise still get
         eagerly loaded/converted on every build just because it's in the
-        project, whether source.attachment ever asks for it or not)."""
+        project, whether any source ever reads it or not)."""
         self.revision = revision
 
     def get_state(self, state_key: str) -> State:
@@ -334,6 +358,17 @@ class Automaton(object):
             "name": env_key.name,
             "ui_description": env_key.ui_description,
             "value": env_key.value,
+        }
+
+    @staticmethod
+    def get_source_payload(source: Source) -> SourcePayload:
+        """Serializes `source` for the frontend — mirrors
+        get_env_key_payload's role for EnvKey."""
+        return {
+            "name": source.name,
+            "ui_label": source.ui_label,
+            "ui_description": source.ui_description,
+            "url": source.url,
         }
 
     @staticmethod

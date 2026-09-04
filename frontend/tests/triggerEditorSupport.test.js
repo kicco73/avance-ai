@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { EditorState } from '@codemirror/state'
 import { CompletionContext } from '@codemirror/autocomplete'
 import {
-  completeIdentifiers, completeFilePathArgument, completionInfo, excludingNamespaces, isProxyNamespace, namespaceOf, NAMESPACE_COLORS
+  completeIdentifiers, completionInfo, excludingNamespaces, isProxyNamespace, namespaceOf, NAMESPACE_COLORS
 } from '../src/triggerEditorSupport.js'
 
 const REGISTRY = {
@@ -24,6 +24,18 @@ const REGISTRY_WITH_AUTOMATON = {
   automaton: {},
   'automaton.other_project': { state: "The 'other_project' project's own current state." },
   'automaton.other_project.env': { budget: 'Remaining budget, shared cross-project.' }
+}
+
+// A declared source's own dynamic namespace (see backend
+// ProjectInspector.get_identifier_registry) — same "source" (empty) +
+// "source.<name>" (that source's own methods) shape as automaton above.
+const REGISTRY_WITH_SOURCE = {
+  ...REGISTRY,
+  source: {},
+  'source.pino': {
+    read: "This source's own archive file, read as plain text.",
+    select: "Grep over this source's own archive file."
+  }
 }
 
 function contextAt(text, explicit = false) {
@@ -172,44 +184,26 @@ describe('completeIdentifiers', () => {
   })
 })
 
-describe('completeFilePathArgument', () => {
-  const FILES = ['index.yml', 'behaviour/attachment.txt', 'notes.txt']
+describe('completeIdentifiers — declared sources (source.<name>.<method>)', () => {
+  it('offers every declared source as a child namespace right after "source."', () => {
+    const result = completeIdentifiers(contextAt('source.'), REGISTRY_WITH_SOURCE)
 
-  it('offers every project file right inside source.attachment(\'', () => {
-    const result = completeFilePathArgument(contextAt("source.attachment('"), FILES)
-    expect(result.options.map((o) => o.label)).toEqual(FILES)
-    expect(result.from).toBe("source.attachment('".length)
+    expect(result.options).toHaveLength(1)
+    const [option] = result.options
+    expect(option.label).toBe('pino')
+    expect(option.type).toBe('namespace')
+    // No trailing "()" — source.<name> is a namespace to descend into,
+    // never itself called.
+    expect(option.apply).toBe('pino')
   })
 
-  it('positions from right after the already-typed partial path', () => {
-    const text = "source.attachment('behav"
-    const result = completeFilePathArgument(contextAt(text), FILES)
-    expect(result.from).toBe(text.length - 'behav'.length)
-  })
+  it('offers that source\'s own methods, call-style, right after "source.<name>."', () => {
+    const result = completeIdentifiers(contextAt('source.pino.'), REGISTRY_WITH_SOURCE)
 
-  it('offers files for search\'s second (where) argument, past a complete what string', () => {
-    const result = completeFilePathArgument(contextAt("source.search('Paris', '"), FILES)
-    expect(result.options.map((o) => o.label)).toEqual(FILES)
-  })
-
-  it('returns null while still typing the first (what) argument', () => {
-    expect(completeFilePathArgument(contextAt("source.search('Par"), FILES)).toBeNull()
-  })
-
-  it('returns null outside any source.attachment/search string argument', () => {
-    expect(completeFilePathArgument(contextAt('signal.mood >= 40'), FILES)).toBeNull()
-  })
-
-  it('resolves the latest call on the line, not an earlier already-closed one', () => {
-    const text = "source.attachment('index.yml') and source.search('Paris', '"
-    const result = completeFilePathArgument(contextAt(text), FILES)
-    expect(result.options.map((o) => o.label)).toEqual(FILES)
-    expect(result.from).toBe(text.length)
-  })
-
-  it('applies the bare file path with no surrounding quotes (the quote is already there)', () => {
-    const result = completeFilePathArgument(contextAt("source.attachment('"), FILES)
-    expect(result.options[0].apply).toBe('index.yml')
+    expect(result.options.map((o) => o.label).sort()).toEqual(['read', 'select'])
+    const readOption = result.options.find((o) => o.label === 'read')
+    expect(readOption.type).toBe('function')
+    expect(readOption.apply).toBe('read()')
   })
 })
 

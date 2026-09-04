@@ -6,6 +6,8 @@ from automaton.automaton import Action, Automaton, ProjectPayload, State, StateP
 from automaton.identifier_registry import IdentifierRegistry
 from db import Db
 from session import Session
+from tracking.sources import SOURCE_DRIVERS
+from tracking.sources.url import parse_source_url
 from tracking.tracking_engine import TrackingEngine
 
 from .archive.automaton_loader import AutomatonLoader
@@ -215,6 +217,14 @@ class ProjectInspector:
         )
         return [{"env_key": Automaton.get_env_key_payload(env_key)} for env_key in automaton.env_keys]
 
+    def get_project_sources(self, project_id: str, session_id: int | None = None) -> list[dict]:
+        """Source declarations of `project_id`'s index.yml, for the
+        Inspect panel Source card — same revision contract as get_project_signals."""
+        automaton = self._automaton_loader.load_at_revision(
+            project_id, self._resolve_inspector_revision(project_id, session_id)
+        )
+        return [{"source": Automaton.get_source_payload(source)} for source in automaton.sources]
+
     def get_project_metadata(self, project_id: str) -> ProjectPayload:
         """The `project:` section of `project_id`'s last saved index.yml,
         read off the already-built Automaton rather than re-parsing the YAML."""
@@ -237,14 +247,28 @@ class ProjectInspector:
         outside it (or `project_id` itself having no family at all) is
         never offered here, same boundary AutomatonLoader.
         known_projects_env_keys enforces at build time and
-        AutomatonNamespace enforces at runtime. Only ever called from the
-        design view (TriggerEditor's autocomplete), so — like
-        get_project_signals/get_project_env_keys — this reads the
-        in-progress draft, not the published revision: a signal/env key
-        just declared must be offerable before the project is published."""
+        AutomatonNamespace enforces at runtime — and a "source.<name>"
+        entry per this project's own declared `sources:` (empty, like an
+        unconfigured source's own driver, for one with no url yet — see
+        AutomatonBuilder._build_source), same dynamic-namespace shape
+        `automaton.<id>` gets, enforced the same way at build time (see
+        AutomatonBuilder._validate_namespaced_expression) and at runtime
+        (SourceNamespace). Only ever called from the design view
+        (TriggerEditor's autocomplete), so — like get_project_signals/
+        get_project_env_keys — this reads the in-progress draft, not the
+        published revision: a signal/env key/source just declared must be
+        offerable before the project is published."""
         automaton = self._automaton_loader.load(project_id)
         registry = IdentifierRegistry.build(automaton.signals, automaton.env_keys)
         registry["automaton"] = {}
+        registry["source"] = {}
+        for source in automaton.sources:
+            try:
+                scheme, _ = parse_source_url(source.url)
+                descriptions = SOURCE_DRIVERS[scheme].METHOD_DESCRIPTIONS
+            except (ValueError, KeyError):
+                descriptions = {}
+            registry[f"source.{source.name}"] = dict(descriptions)
         if automaton.family is None:
             return registry
         for other_id in self._db.list_projects():

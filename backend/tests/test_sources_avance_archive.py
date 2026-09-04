@@ -1,0 +1,127 @@
+"""Tests for tracking.sources — the dynamic `source.<name>` namespace
+(SourceNamespace) and its first driver, AvanceArchiveSource (`url:
+avance:<archive path>`), source.attachment/source.search's replacement.
+Reads straight from Db at the automaton's own (project_name, revision)
+(see Automaton.set_storage_location) — never automaton.attachments'
+in-memory copy, so every test here seeds real Archive rows instead of
+building a MemoryArchive.
+"""
+from __future__ import annotations
+
+import pytest
+
+from automaton.automaton import Action, Automaton, Source, State
+from tracking.sources import SourceNamespace
+from tracking.sources.avance_archive import AvanceArchiveSource
+from tracking.sources.url import parse_source_url
+
+pytestmark = pytest.mark.contract
+
+PROJECT_ID = "proj"
+
+CSV = "city,country\nParis,France\nBerlin,Germany\nparis,Texas\nLondon,UK\n"
+
+
+def _seed(db, files: dict[str, bytes], content_types: dict[str, str]) -> int:
+    db.ensure_project(PROJECT_ID)
+    db.save_project_files(PROJECT_ID, files, content_types)
+    return db.get_project_revision(PROJECT_ID)
+
+
+def _automaton(project_id: str, revision: int, sources: list[Source] | None = None) -> Automaton:
+    init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
+    automaton = Automaton(
+        init_action=init_action,
+        states={"": State(key="", ui_label="", final=False, actions=[init_action])},
+        general_prompt="", signals=[], attachments={}, general_attachments={},
+        autotracking_on_ai_message=False, project_id=project_id, sources=sources,
+    )
+    automaton.set_storage_location(revision)
+    return automaton
+
+
+def _driver(automaton: Automaton, db, archive_path: str, name: str = "pino") -> AvanceArchiveSource:
+    return AvanceArchiveSource(db, automaton, name, archive_path)
+
+
+def test_parse_source_url_splits_scheme_and_path():
+    assert parse_source_url("avance:behaviour/flights.csv") == ("avance", "behaviour/flights.csv")
+
+
+def test_parse_source_url_rejects_a_url_with_no_scheme_or_path():
+    with pytest.raises(ValueError):
+        parse_source_url("no-colon-here")
+    with pytest.raises(ValueError):
+        parse_source_url(":no-scheme")
+    with pytest.raises(ValueError):
+        parse_source_url("avance:")
+
+
+def test_read_returns_a_text_archive_s_full_content(db):
+    revision = _seed(db, {"notes.txt": b"hello world"}, {"notes.txt": "text/plain"})
+    automaton = _automaton(PROJECT_ID, revision)
+
+    assert _driver(automaton, db, "notes.txt").read() == "hello world"
+
+
+def test_read_raises_for_an_unknown_archive_path(db):
+    revision = _seed(db, {}, {})
+    automaton = _automaton(PROJECT_ID, revision)
+
+    with pytest.raises(ValueError):
+        _driver(automaton, db, "notes.txt").read()
+
+
+def test_read_raises_for_a_binary_archive(db):
+    revision = _seed(db, {"logo.png": b"\x89PNG"}, {"logo.png": "image/png"})
+    automaton = _automaton(PROJECT_ID, revision)
+
+    with pytest.raises(ValueError):
+        _driver(automaton, db, "logo.png").read()
+
+
+def test_select_returns_the_header_plus_every_case_insensitive_match(db):
+    revision = _seed(db, {"cities.csv": CSV.encode()}, {"cities.csv": "text/csv"})
+    automaton = _automaton(PROJECT_ID, revision)
+
+    result = _driver(automaton, db, "cities.csv").select("paris")
+
+    assert result == "city,country\nParis,France\nparis,Texas\n"
+
+
+def test_select_returns_just_the_header_when_nothing_matches(db):
+    revision = _seed(db, {"cities.csv": CSV.encode()}, {"cities.csv": "text/csv"})
+    automaton = _automaton(PROJECT_ID, revision)
+
+    assert _driver(automaton, db, "cities.csv").select("Tokyo") == "city,country\n"
+
+
+def test_create_update_delete_are_unsupported(db):
+    revision = _seed(db, {"notes.txt": b"hello"}, {"notes.txt": "text/plain"})
+    automaton = _automaton(PROJECT_ID, revision)
+    driver = _driver(automaton, db, "notes.txt")
+
+    with pytest.raises(ValueError):
+        driver.create("k", "v")
+    with pytest.raises(ValueError):
+        driver.update("k", "v")
+    with pytest.raises(ValueError):
+        driver.delete("k")
+
+
+def test_source_namespace_resolves_a_declared_name_to_its_driver(db):
+    revision = _seed(db, {"notes.txt": b"hello from the archive"}, {"notes.txt": "text/plain"})
+    automaton = _automaton(PROJECT_ID, revision, sources=[Source(name="pino", url="avance:notes.txt", ui_label="pino")])
+
+    resolved = SourceNamespace(db, automaton).pino
+
+    assert isinstance(resolved, AvanceArchiveSource)
+    assert resolved.read() == "hello from the archive"
+
+
+def test_source_namespace_raises_for_an_undeclared_name(db):
+    revision = _seed(db, {}, {})
+    automaton = _automaton(PROJECT_ID, revision, sources=[])
+
+    with pytest.raises(ValueError):
+        SourceNamespace(db, automaton).nope

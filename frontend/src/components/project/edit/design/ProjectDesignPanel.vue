@@ -36,11 +36,21 @@ const props = defineProps({
   currentFileIsMarkdown: { type: Boolean, default: false },
   highlightedStateKey: { type: String, default: null },
   firedActionEdge: { type: Object, default: null },
-  selectedElement: { type: Object, default: null }
+  selectedElement: { type: Object, default: null },
+  // Declared sources (see FileExplorer.vue's own "Sources" branch) —
+  // `sources`: getProjectSources' own [{ source }, ...] shape.
+  // `currentSourceName`, when set, takes the editor pane over with an
+  // empty state (see the template below) — mutually exclusive with a
+  // real file being open (EditProjectView.vue's own selectFileNode/
+  // selectSourceNode keep the two from ever both being set).
+  sources: { type: Array, default: () => [] },
+  sourcesLoading: { type: Boolean, default: true },
+  currentSourceName: { type: String, default: null }
 })
 
 const emit = defineEmits([
-  'start-explorer-drag', 'new-attachment', 'new-aspect', 'new-legal', 'select-file', 'upload-file',
+  'start-explorer-drag', 'new-attachment', 'new-aspect', 'new-legal', 'new-source',
+  'select-file', 'select-source', 'upload-file',
   'jump-to-definition', 'select', 'saved', 'renamed'
 ])
 
@@ -73,10 +83,15 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
       :uploading="uploading"
       :creating-file="creatingFile"
       :explorer-width="explorerWidth"
+      :sources="sources"
+      :sources-loading="sourcesLoading"
+      :current-source-name="currentSourceName"
       @new-attachment="emit('new-attachment')"
       @new-aspect="emit('new-aspect')"
       @new-legal="emit('new-legal')"
+      @new-source="emit('new-source')"
       @select-file="emit('select-file', $event)"
+      @select-source="emit('select-source', $event)"
       @upload-file="emit('upload-file', $event)"
     />
 
@@ -85,12 +100,21 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
     <div class="edit-project-editor-pane">
       <p v-if="!historyCleared" class="edit-project-status">Loading…</p>
       <template v-else>
+        <div v-if="currentSourceName" class="edit-project-source-empty-state">
+          <span class="edit-project-source-empty-icon">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          </span>
+          <p>"{{ currentSourceName }}" is a data source, not a file — nothing to show here.</p>
+          <p class="edit-project-source-empty-hint">Edit it from the Inspector's Info tab, on the right.</p>
+        </div>
         <!-- Stays mounted (v-show, not v-if) even while a different file is
-             open: its InspectorGraph is the only place the Inspector's
+             open, or a source is selected instead (see currentSourceName
+             above): its InspectorGraph is the only place the Inspector's
              "State"/"Actions" selection is resolved from, so unmounting it
-             would drop a still-valid selection whenever an attachment is viewed. -->
+             would drop a still-valid selection whenever an attachment (or
+             now a source) is viewed. -->
         <IndexYmlEditorPanel
-          v-show="currentFileName === 'index.yml'"
+          v-show="!currentSourceName && currentFileName === 'index.yml'"
           ref="indexYmlEditorRef"
           :project-id="projectId"
           :attachment-files="attachmentFiles"
@@ -103,19 +127,19 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
           @saved="emit('saved', $event)"
         />
         <IndexCssEditorPanel
-          v-show="currentFileName === 'index.css'"
+          v-show="!currentSourceName && currentFileName === 'index.css'"
           ref="indexCssEditorRef"
           :project-id="projectId"
           :files="files"
           @saved="emit('saved', $event)"
         />
-        <div v-if="currentFileIsImage" class="edit-project-editor-attachment">
+        <div v-if="!currentSourceName && currentFileIsImage" class="edit-project-editor-attachment">
           <div class="edit-project-editor-content edit-project-editor-image">
             <img :key="currentFileName" :src="projectFileContentUrl(projectId, currentFileName)" :alt="currentFileName" />
           </div>
         </div>
         <MdEditorPanel
-          v-else-if="currentFileIsMarkdown"
+          v-else-if="!currentSourceName && currentFileIsMarkdown"
           :key="currentFileName"
           ref="mdEditorRef"
           :project-id="projectId"
@@ -124,7 +148,10 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
           @saved="emit('saved', $event)"
           @renamed="emit('renamed', $event)"
         />
-        <div v-else-if="currentFileName !== 'index.yml' && currentFileName !== 'index.css'" class="edit-project-editor-attachment">
+        <div
+          v-else-if="!currentSourceName && currentFileName !== 'index.yml' && currentFileName !== 'index.css'"
+          class="edit-project-editor-attachment"
+        >
           <div class="edit-project-editor-toolbar">
             <span class="edit-project-editor-filename">{{ currentFileName }}</span>
             <div class="edit-project-editor-toolbar-actions">
@@ -186,4 +213,8 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
 .edit-project-editor-image { align-items: center; justify-content: center; overflow: auto; background: repeating-conic-gradient(#f0f0f0 0% 25%, #fafafa 0% 50%) 50% / 20px 20px; }
 .edit-project-editor-image img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .edit-project-status { margin: auto; color: #444; }
+.edit-project-source-empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.4rem; padding: 1rem; text-align: center; color: #777; }
+.edit-project-source-empty-icon { color: #3949ab; opacity: 0.6; }
+.edit-project-source-empty-state p { margin: 0; font-size: 0.9rem; }
+.edit-project-source-empty-hint { font-size: 0.8rem !important; color: #999; }
 </style>

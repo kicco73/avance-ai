@@ -5,7 +5,13 @@ the raw text directly.
 """
 from __future__ import annotations
 
+import io
+import re
+import zipfile
+
 import pytest
+
+from conftest import parse_sse_result
 
 pytestmark = pytest.mark.contract
 
@@ -379,3 +385,130 @@ class TestDeleteSignal:
         response = client.delete(f"/api/projects/{hello_project}/signals/{signal['name']}")
         assert response.status_code == 204
         assert f"{signal['name']}:" not in _index_yml(client, hello_project)
+
+
+def _archive_content(client, project_name: str, archive_name: str):
+    response = client.get(f"/api/projects/{project_name}/files/{archive_name}")
+    assert response.status_code == 200
+    return response.json()
+
+
+class TestAddSource:
+    def test_creates_a_source_with_its_own_empty_cache_archive(self, client, hello_project):
+        response = client.post(f"/api/projects/{hello_project}/sources")
+        assert response.status_code == 200
+        payload = response.json()
+
+        assert payload["name"] == "behaviour"
+        assert payload["url"] == "avance:cache/behaviour.csv"
+        assert "behaviour:" in _index_yml(client, hello_project)
+        assert _archive_content(client, hello_project, "cache/behaviour.csv")["content"] == ""
+
+    def test_name_collisions_get_suffixed_and_get_their_own_archive_too(self, client, hello_project):
+        client.post(f"/api/projects/{hello_project}/sources")  # behaviour
+        second = client.post(f"/api/projects/{hello_project}/sources").json()
+
+        assert second["name"] == "behaviour1"
+        assert second["url"] == "avance:cache/behaviour1.csv"
+        assert _archive_content(client, hello_project, "cache/behaviour1.csv")["content"] == ""
+
+
+class TestPutSourceField:
+    def test_ui_label_and_ui_description_are_plain_edits(self, client, hello_project):
+        source = client.post(f"/api/projects/{hello_project}/sources").json()
+
+        response = client.put(
+            f"/api/projects/{hello_project}/sources/{source['name']}/ui-label", json={"value": "Flights"}
+        )
+        assert response.status_code == 200
+        assert response.json()["ui_label"] == "Flights"
+
+    def test_url_is_not_an_editable_field(self, client, hello_project):
+        source = client.post(f"/api/projects/{hello_project}/sources").json()
+
+        response = client.put(
+            f"/api/projects/{hello_project}/sources/{source['name']}/url", json={"value": "avance:behaviour/nope.csv"}
+        )
+        assert response.status_code == 400
+
+    def test_renaming_the_id_renames_the_cache_archive_and_keeps_its_content(self, client, hello_project):
+        source = client.post(f"/api/projects/{hello_project}/sources").json()
+        client.put(f"/api/projects/{hello_project}/files/cache/{source['name']}.csv", content=b"a,b\n1,2\n")
+
+        response = client.put(
+            f"/api/projects/{hello_project}/sources/{source['name']}/name", json={"value": "Flight Records"}
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["name"] == "flight_records"
+        assert payload["url"] == "avance:cache/flight_records.csv"
+
+        assert _archive_content(client, hello_project, "cache/flight_records.csv")["content"] == "a,b\n1,2\n"
+        assert client.get(f"/api/projects/{hello_project}/files/cache/{source['name']}.csv").status_code == 404
+
+
+class TestDeleteSource:
+    def test_removes_it_and_its_cache_archive(self, client, hello_project):
+        source = client.post(f"/api/projects/{hello_project}/sources").json()
+
+        response = client.delete(f"/api/projects/{hello_project}/sources/{source['name']}")
+        assert response.status_code == 204
+        assert f"{source['name']}:" not in _index_yml(client, hello_project)
+        assert client.get(f"/api/projects/{hello_project}/files/cache/{source['name']}.csv").status_code == 404
+
+
+class TestGetSourceContentPreview:
+    def test_renders_the_cache_archive_as_a_markdown_table(self, client, hello_project):
+        source = client.post(f"/api/projects/{hello_project}/sources").json()
+        client.put(f"/api/projects/{hello_project}/files/cache/{source['name']}.csv", content=b"city,country\nParis,France\n")
+
+        response = client.get(f"/api/projects/{hello_project}/sources/{source['name']}/preview")
+
+        assert response.status_code == 200
+        assert response.json()["markdown"] == "| city | country |\n| --- | --- |\n| Paris | France |"
+
+    def test_an_empty_archive_renders_the_empty_placeholder(self, client, hello_project):
+        source = client.post(f"/api/projects/{hello_project}/sources").json()
+
+        response = client.get(f"/api/projects/{hello_project}/sources/{source['name']}/preview")
+
+        assert response.json()["markdown"] == "*(empty)*"
+
+
+class TestSourceZipRoundTrip:
+    """A source's own cache/<id>.csv archive must survive GET
+    /api/projects/{id} (download) -> POST /api/projects/upload (re-import)
+    with no transformation — see settings_controller.get_project's own
+    docstring on that round-trip contract, which ZipImporter's CACHE_DIR
+    handling (zip_importer.py) has to uphold for this new archive kind too."""
+
+    def test_downloading_then_reuploading_keeps_the_source_and_its_content(self, client, hello_project):
+        source = client.post(f"/api/projects/{hello_project}/sources").json()
+        client.put(f"/api/projects/{hello_project}/files/cache/{source['name']}.csv", content=b"city,country\nParis,France\n")
+        client.post(f"/api/projects/{hello_project}/publish", json={})
+
+        download = client.get(f"/api/projects/{hello_project}")
+        assert download.status_code == 200
+
+        # Re-uploading the exact same revision is correctly rejected as
+        # "not newer" (an unrelated business rule) — bump project.revision
+        # in the downloaded zip first, same as any legitimate re-import of
+        # a newer copy would arrive with.
+        bumped_zip = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(download.content)) as src, zipfile.ZipFile(bumped_zip, "w") as dst:
+            for item in src.infolist():
+                data = src.read(item.filename)
+                if item.filename == "index.yml":
+                    data = re.sub(rb"revision:\s*\d+", b"revision: 999", data, count=1)
+                dst.writestr(item, data)
+
+        response = client.post(
+            "/api/projects/upload", content=bumped_zip.getvalue(), headers={"Content-Type": "application/zip"}
+        )
+        assert response.status_code == 200, response.text
+        assert parse_sse_result(response)["project_id"] == hello_project
+
+        sources = client.get(f"/api/projects/{hello_project}/sources").json()["sources"]
+        reimported = next(s["source"] for s in sources if s["source"]["name"] == source["name"])
+        assert reimported["url"] == f"avance:cache/{source['name']}.csv"
+        assert _archive_content(client, hello_project, f"cache/{source['name']}.csv")["content"] == "city,country\nParis,France\n"

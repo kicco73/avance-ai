@@ -4,7 +4,9 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from automaton.automaton import ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, StatePayload
+from automaton.automaton import (
+    ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload,
+)
 from automaton.automaton_builder import AutomatonBuilder, EXTENSION_TO_MEDIA_TYPE
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
 from db import ContentRestored, Db, FileRenamed
@@ -16,10 +18,11 @@ from .manager import ProjectManager
 from .archive.automaton_loader import AutomatonLoader
 from .archive.css_validator import CssValidator
 from .archive.layout import (
-    ASPECT_DIR, BEHAVIOUR_DIR, ArchiveLayout, IMAGE_CONTENT_TYPE_BY_EXTENSION, LEGAL_TERMS_FILE_NAME,
+    ASPECT_DIR, BEHAVIOUR_DIR, CACHE_DIR, ArchiveLayout, IMAGE_CONTENT_TYPE_BY_EXTENSION, LEGAL_TERMS_FILE_NAME,
     LEGAL_TERMS_SKELETON, MAX_IMAGE_UPLOAD_BYTES, ROOT_FILE_NAMES, TEXT_CONTENT_TYPE_BY_EXTENSION,
     TEXT_EDITABLE_EXTENSIONS,
 )
+from .csv_preview import render_csv_as_markdown_table
 from .types import CommitCallback
 
 if TYPE_CHECKING:
@@ -67,11 +70,11 @@ other markup tag anywhere in the file, including inside prompt/description \
 strings.
 - Only use fields, keys, and value shapes the specification above actually \
 defines — never invent one.
-- An `attachments:` entry (global, per-signal, per-state) or `source.attachment(...)` \
-call must name a file already listed below as uploaded — never invent one. \
-If the change calls for an attachment that isn't listed, leave that part \
-out (or note what's needed in a comment) rather than pointing at a file \
-that doesn't exist.
+- An `attachments:` entry (global, per-signal, per-state) or a `sources:` \
+entry's own `url: avance:<path>` must name a file already listed below as \
+uploaded — never invent one. If the change calls for an attachment or \
+source that isn't listed, leave that part out (or note what's needed in a \
+comment) rather than pointing at a file that doesn't exist.
 - Before you answer, re-check the whole file in your head against the \
 specification's own §9 validation checklist, and fix anything that would \
 fail it.
@@ -199,9 +202,10 @@ class ProjectEditor:
         (IndexYmlEditorPanel.vue): sends the AiService a prompt built from
         the format spec (PROJECT_SPECS.md), this project's current
         index.yml, the basenames of its own already-uploaded `behaviour/`
-        attachments (so the model never invents an `attachments:`/
-        `source.attachment(...)` reference to a file that doesn't exist),
-        and `instruction` describing the change to make, and returns the
+        attachments (so the model never invents an `attachments:` entry or
+        a `sources:` entry's own `url: avance:behaviour/...` pointing at a
+        file that doesn't exist), and `instruction` describing the change
+        to make, and returns the
         new index.yml content it replies with. A pure preview, same as
         undo/redo above — nothing is persisted here, the frontend drops
         the result into its own (unsaved) editor buffer."""
@@ -337,8 +341,8 @@ class ProjectEditor:
         the basename is user-editable, same as an upload's target name is
         derived from its extension, never a free path. Auto-rewrites any
         literal occurrence of the old basename in index.yml (attachments:,
-        source.attachment(...)/source.search(...)) and index.css (url(...))
-        so the rename can never leave a dangling reference behind; both
+        a `sources:` entry's own `url: avance:behaviour/...`) and index.css
+        (url(...)) so the rename can never leave a dangling reference behind; both
         are just plain text at this level, so one substring replace covers
         every reference syntax. index.yml/index.css/legal/terms.md — fixed
         names the rest of the system assumes exist exactly as spelled —
@@ -492,6 +496,74 @@ class ProjectEditor:
 
     async def delete_env_key(self, project_id: str, env_key_name: str, commit: CommitCallback) -> None:
         await self._edit_index_yml(project_id, commit, lambda editor: editor.delete_env_key(env_key_name))
+
+    @staticmethod
+    def _source_cache_archive(source_name: str) -> str:
+        """Where a source's own backing content lives — one `<id>.csv`
+        archive per source, 1:1 and always in sync with its own id (kept
+        that way by add_source/set_source_field/delete_source below), never
+        user-named or picked from existing files."""
+        return f"{CACHE_DIR}/{source_name}.csv"
+
+    async def add_source(self, project_id: str, commit: CommitCallback) -> SourcePayload:
+        """A source's own cache archive is created empty right alongside
+        it — `url` is never left unconfigured (contrast env keys/signals,
+        which start genuinely blank): AutomatonBuilder._build_source
+        requires `url`'s own archive to already exist, so the archive
+        write happens first, inside the same index.yml edit `operation`,
+        before serialize()/put_project_file below revalidates the whole
+        project against it."""
+        def operation(editor: AutomatonYamlEditor) -> SourcePayload:
+            payload = editor.add_source()
+            archive_name = self._source_cache_archive(payload["name"])
+            self._db.save_project_file(Session().user, project_id, archive_name, b"", "text/csv")
+            return editor.set_source_field(payload["name"], "url", f"avance:{archive_name}")
+        return await self._edit_index_yml(project_id, commit, operation)
+
+    async def set_source_field(
+        self, project_id: str, source_name: str, field: str, value, commit: CommitCallback
+    ) -> SourcePayload:
+        """A 'name' edit also renames the source's own cache archive (and
+        the `url` field pointing at it) to match — same "editing this
+        field renames the entry, and everything that follows it, together"
+        contract set_signal_field's 'ui-label' case already has, just
+        extended to a second, DB-backed side effect only sources have."""
+        if field != "name":
+            return await self._edit_index_yml(
+                project_id, commit, lambda editor: editor.set_source_field(source_name, field, value)
+            )
+
+        def operation(editor: AutomatonYamlEditor) -> SourcePayload:
+            payload = editor.set_source_field(source_name, field, value)
+            new_name = payload["name"]
+            if new_name == source_name:
+                return payload
+            old_archive = self._source_cache_archive(source_name)
+            new_archive = self._source_cache_archive(new_name)
+            if old_archive not in self._db.list_archives(project_id):
+                return payload
+            self._db.rename_project_file(Session().user, project_id, old_archive, new_archive)
+            return editor.set_source_field(new_name, "url", f"avance:{new_archive}")
+        return await self._edit_index_yml(project_id, commit, operation)
+
+    async def delete_source(self, project_id: str, source_name: str, commit: CommitCallback) -> None:
+        archive_name = self._source_cache_archive(source_name)
+        await self._edit_index_yml(project_id, commit, lambda editor: editor.delete_source(source_name))
+        if archive_name in self._db.list_archives(project_id):
+            self._db.delete_archive(project_id, archive_name)
+
+    def get_source_content_preview(self, project_id: str, source_name: str) -> str:
+        """The design view's Source content panel Preview segment — a
+        source's own cache archive, rendered as a Markdown table server-side
+        (see project.csv_preview) rather than client-side the way a plain
+        .md attachment's own Preview already is: CSV needs real parsing
+        (quoted fields, embedded commas) a naive client-side split can't
+        safely do."""
+        if project_id not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_id}' does not exist.")
+        archive_name = self._source_cache_archive(source_name)
+        content = self._db.get_archive(project_id, archive_name)
+        return render_csv_as_markdown_table(content.decode("utf-8") if content is not None else "")
 
     async def reorder_actions(
         self, project_id: str, state_name: str, action_name: str, position: int, commit: CommitCallback

@@ -24,6 +24,7 @@ import AppHeader from '../../AppHeader.vue'
 import { useLeaveConfirmation } from '../../../composables/useLeaveConfirmation.js'
 import { useResizablePanel } from '../../../composables/useResizablePanel.js'
 import { useProjectFiles } from '../../../composables/useProjectFiles.js'
+import { useProjectSources } from '../../../composables/useProjectSources.js'
 import { useProjectPublishing } from '../../../composables/useProjectPublishing.js'
 import { useIndexYmlEditing } from '../../../composables/useIndexYmlEditing.js'
 import { onProjectChanged } from '../../../projectChangeEvents.js'
@@ -122,6 +123,25 @@ function flashRecentlyAdded(key) {
   recentlyAddedTimer = setTimeout(() => { recentlyAddedKey.value = null }, RECENTLY_ADDED_FLASH_MS)
 }
 onBeforeUnmount(() => { if (recentlyAddedTimer) clearTimeout(recentlyAddedTimer) })
+
+const {
+  sourcesLoading, sources, currentSourceName, selectedSource, deletingSource,
+  loadSources, selectSource, handleAddSource, handleSetSourceField, handleDeleteSource,
+} = useProjectSources(props.projectId, guardedAction, flashRecentlyAdded)
+
+// A Source node and a file/graph selection are mutually exclusive in the
+// design tree (see FileExplorer.vue's own "Sources" branch and
+// InspectorStateTab.vue's isSourceContext, which takes the whole Info tab
+// over) — selecting either clears the other.
+function selectFileNode(fileName) {
+  currentSourceName.value = null
+  selectFile(fileName)
+}
+
+function selectSourceNode(name) {
+  selectedGraphElement.value = null
+  selectSource(name)
+}
 
 // The state key "State"/"Actions" should reflect — the selection itself
 // when it's already a state, or the state an already-selected action
@@ -255,7 +275,9 @@ const autoSessionEndElement = computed(() => (
 // Info/Signals/Env-keys instead — Info doubles as the Actions tab used to,
 // showing whichever of a state/action the Graph selection actually is.
 // Test mode only ever shows Info — plain read-only viewing, no Signals/
-// Env-keys editing surface makes sense while browsing test results.
+// Env-keys editing surface makes sense while browsing test results. A
+// selected Source (currentSourceName) gets the same Info-only treatment as
+// any non-Behavior file: nothing about Signals/Env applies to it either.
 const inspectorTabs = computed(() => {
   if (mode.value === 'run') {
     return [
@@ -268,7 +290,7 @@ const inspectorTabs = computed(() => {
   if (mode.value === 'test') {
     return [{ id: 'state', label: 'Info' }, { id: 'user', label: 'User' }]
   }
-  if (mode.value === 'edit' && !isBehaviorNodeSelected.value) {
+  if (mode.value === 'edit' && (currentSourceName.value != null || !isBehaviorNodeSelected.value)) {
     return [{ id: 'state', label: 'Info' }]
   }
   return [
@@ -737,6 +759,7 @@ const historyCleared = ref(false)
 
 onMounted(async () => {
   loadFiles()
+  loadSources()
   loadTestChatModels()
   refreshSessionStartState()
   refreshSignalsLog()
@@ -840,11 +863,16 @@ onBeforeUnmount(() => {
           :highlighted-state-key="highlightedStateKey"
           :fired-action-edge="firedActionEdge"
           :selected-element="selectedGraphElement"
+          :sources="sources"
+          :sources-loading="sourcesLoading"
+          :current-source-name="currentSourceName"
           @start-explorer-drag="startExplorerDrag"
           @new-attachment="handleNewAttachment"
           @new-aspect="handleNewAspect"
           @new-legal="handleNewLegal"
-          @select-file="selectFile"
+          @new-source="handleAddSource"
+          @select-file="selectFileNode"
+          @select-source="selectSourceNode"
           @upload-file="handleUploadFile"
           @jump-to-definition="(target) => jumpToDefinition(target, { silent: true })"
           @select="selectedGraphElement = $event"
@@ -928,6 +956,9 @@ onBeforeUnmount(() => {
                 :current-file-name="mode === 'edit' ? currentFileName : null"
                 :deleting-file="deletingFile"
                 :renaming-file="renamingFile"
+                :selected-source="mode === 'edit' ? selectedSource : null"
+                :files="files"
+                :deleting-source="deletingSource"
                 @select="handleTabSelect"
                 @select-attachment="selectFile"
                 @jump-to-attachment="handleJumpToAttachment"
@@ -940,6 +971,8 @@ onBeforeUnmount(() => {
                 @add-action="handleAddAction"
                 @delete-file="handleDeleteFile"
                 @rename-file="handleRenameFile"
+                @set-source-field="handleSetSourceField"
+                @delete-source="(source) => handleDeleteSource(source.name)"
               />
             </template>
             <template #tab-user="{ registerTab }">

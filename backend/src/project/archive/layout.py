@@ -60,6 +60,15 @@ BUNDLE_FILE_NAMES = {SESSIONS_EXPORT_FILENAME, TESTS_EXPORT_FILENAME}
 
 ASPECT_DIR = "aspect"
 BEHAVIOUR_DIR = "behaviour"
+# One `<id>.csv` archive per `sources:` entry of the "avance" driver — its
+# own backing store (tracking.sources.avance_archive), created empty
+# alongside the source (ProjectEditor.add_source) and renamed/deleted in
+# lockstep with it (set_source_field/delete_source). Never reached through
+# the generic upload/rename file-explorer path (ArchiveLayout.
+# canonicalize_name has no rule for it — see ZipImporter's own CACHE_DIR
+# bypass for why it still needs listing here at all: round-tripping an
+# exported project's zip back through import).
+CACHE_DIR = "cache"
 ROOT_FILE_NAMES = {"index.yml", "index.css"}
 ASPECT_EXTENSIONS = IMAGE_EXTENSIONS | {".css"}
 BEHAVIOUR_EXTENSIONS = {".txt", ".md", ".csv"}

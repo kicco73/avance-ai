@@ -10,7 +10,7 @@ import re
 from typing import TYPE_CHECKING
 
 from automaton.automaton import (
-    Action, ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, State, StatePayload,
+    Action, ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, State, StatePayload,
 )
 from chat.session_manager import ChatSessionManager
 from db import Db
@@ -109,6 +109,12 @@ class ProjectService(object):
 
     def get_project_env_keys(self, project_id: str, session_id: int | None = None) -> list[dict]:
         return self._inspector.get_project_env_keys(project_id, session_id)
+
+    def get_project_sources(self, project_id: str, session_id: int | None = None) -> list[dict]:
+        return self._inspector.get_project_sources(project_id, session_id)
+
+    def get_source_content_preview(self, project_id: str, source_name: str) -> str:
+        return self._editor.get_source_content_preview(project_id, source_name)
 
     def get_project_metadata(self, project_id: str) -> ProjectPayload:
         return self._inspector.get_project_metadata(project_id)
@@ -289,6 +295,17 @@ class ProjectService(object):
 
     async def delete_env_key(self, project_id: str, env_key_name: str, commit: CommitCallback) -> None:
         await self._editor.delete_env_key(project_id, env_key_name, commit)
+
+    async def add_source(self, project_id: str, commit: CommitCallback) -> SourcePayload:
+        return await self._editor.add_source(project_id, commit)
+
+    async def set_source_field(
+        self, project_id: str, source_name: str, field: str, value, commit: CommitCallback
+    ) -> SourcePayload:
+        return await self._editor.set_source_field(project_id, source_name, field, value, commit)
+
+    async def delete_source(self, project_id: str, source_name: str, commit: CommitCallback) -> None:
+        await self._editor.delete_source(project_id, source_name, commit)
 
     async def reorder_actions(
         self, project_id: str, state_name: str, action_name: str, position: int, commit: CommitCallback

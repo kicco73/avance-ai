@@ -25,8 +25,7 @@ import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete'
 import { lintKeymap } from '@codemirror/lint'
 import { identifierRegistry, refreshIdentifierRegistry } from '../../identifierRegistry.js'
-import { projectFiles } from '../../projectFiles.js'
-import { NAMESPACE_COLORS, REFERENCE_PATTERN_SOURCE, completeFilePathArgument, completeIdentifiers as completeIdentifiersFor, excludingNamespaces } from '../../triggerEditorSupport.js'
+import { NAMESPACE_COLORS, REFERENCE_PATTERN_SOURCE, completeIdentifiers as completeIdentifiersFor, excludingNamespaces } from '../../triggerEditorSupport.js'
 
 const model = defineModel({ type: String, default: '' })
 const props = defineProps({
@@ -54,18 +53,6 @@ let view = null
 // visible on the very next keystroke.
 function completeIdentifiers(context) {
   return completeIdentifiersFor(context, excludingNamespaces(identifierRegistry.value, props.excludeNamespaces))
-}
-
-// source.attachment(name)/source.search(what, where) only ever resolve a
-// real content attachment — the Behavior branch (see FileExplorer.vue's
-// identical BEHAVIOUR_PREFIX/behaviorAttachments) — never index.yml/
-// index.css, an aspect/ theme asset, or legal/terms.md, even though
-// projectFiles.value itself lists every one of those too.
-const BEHAVIOUR_PREFIX = 'behaviour/'
-
-function completeFilePath(context) {
-  const behaviourFiles = projectFiles.value.filter((name) => name.startsWith(BEHAVIOUR_PREFIX))
-  return completeFilePathArgument(context, behaviourFiles)
 }
 
 // Matches a namespace reference (e.g. "signal.mood") — group 1 is the
@@ -139,7 +126,7 @@ function createEditor() {
       // the better default.
       props.large ? keymap.of([indentWithTab]) : [],
       EditorView.lineWrapping,
-      autocompletion({ override: [completeIdentifiers, completeFilePath] }),
+      autocompletion({ override: [completeIdentifiers] }),
       namespaceHighlighter,
       // Without this, the completion tooltip's container defaults to the
       // editor's own DOM (see @codemirror/view's TooltipViewManager),
