@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import threading
 from collections import OrderedDict
-from typing import Any, AsyncIterator, Sequence
+from typing import Any, AsyncIterator, Sequence, overload
 
 import partial_json_parser
 from ai.llm_provider import (
@@ -203,8 +203,25 @@ class AiService(object):
 			chunks.append(chunk)
 		return "".join(chunks)
 
-	async def prompt(self, prompt: str) -> str:
-		return await self.generate("", [{"role": "user", "content": prompt}])
+	@overload
+	async def prompt(self, prompt: str, channels: None = None) -> str: ...
+	@overload
+	async def prompt(self, prompt: str, channels: list[str]) -> dict[str, str]: ...
+	async def prompt(self, prompt: str, channels: list[str] | None = None) -> str | dict[str, str]:
+		if not channels:
+			return await self.generate("", [{"role": "user", "content": prompt}])
+		schema = {"text": "Normal textual response, in markdown format, rendered as text."}
+		schema.update({name: f"The requested '{name}', rendered as plain text." for name in channels})
+		values: dict[str, str] = {}
+		chunks: list[str] = []
+		async for chunk in self.generate_stream_with_metadata(
+			"", [{"role": "user", "content": prompt}],
+			on_metadata=lambda name, value: values.__setitem__(name, str(value)),
+			schema=schema,
+		):
+			chunks.append(chunk)
+		values["text"] = "".join(chunks)
+		return values
 
 	def generate_stream(
 		self,

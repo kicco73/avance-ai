@@ -12,10 +12,12 @@ const props = defineProps({
   profile: { type: Object, default: null }
 })
 
-const emit = defineEmits(['profile', 'logout'])
+const emit = defineEmits(['home', 'profile', 'logout'])
 
 const open = ref(false)
 const rootEl = ref(null)
+
+const showHome = computed(() => !!props.profile?.role && props.profile.role !== 'user')
 
 const initial = computed(() => {
   const source = props.profile?.name || props.profile?.email
@@ -37,6 +39,11 @@ const showAvatarImg = computed(() => !!props.profile?.picture_url && !imageFaile
 
 function toggle() {
   open.value = !open.value
+}
+
+function selectHome() {
+  open.value = false
+  emit('home')
 }
 
 function selectProfile() {
@@ -72,6 +79,14 @@ onBeforeUnmount(() => {
     <Transition name="profile-panel">
       <div v-if="open" class="profile-panel">
         <ul class="profile-list">
+          <li v-if="showHome">
+            <button class="profile-item" @click="selectHome">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
+              </svg>
+              <span>Home</span>
+            </button>
+          </li>
           <li>
             <button class="profile-item" @click="selectProfile">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">

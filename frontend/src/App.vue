@@ -11,6 +11,7 @@ import ManageProjectsView from './components/settings/ManageProjectsView.vue'
 import ManageUsersView from './components/settings/ManageUsersView.vue'
 import ServicesView from './components/settings/ServicesView.vue'
 import AppStoreView from './components/appStore/AppStoreView.vue'
+import CustomerHome from './components/appStore/CustomerHome.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
 import ToastContainer from './components/ToastContainer.vue'
@@ -62,6 +63,7 @@ const liveChatProjectId = ref(null)
 const showProfile = ref(false)
 const pushedView = ref(null)
 const chatOpen = ref(false)
+const homePreviewRole = ref(null)
 // Which way the next transition (see the <Transition>s below) should go —
 // 'forward' for anything that pushes a new view over another, 'back' only
 // for a pop. Sets, not toggles: every navigation call site names its own
@@ -97,8 +99,32 @@ function popPushedView() {
   if (chatOpen.value) {
     chatOpen.value = false
   } else {
+    if (pushedView.value === 'appStore') customerHomeView.value?.refresh()
     pushedView.value = null
   }
+}
+function openHomePreview(role) {
+  setNavForward()
+  homePreviewRole.value = role
+}
+function closeHomePreview() {
+  setNavBack()
+  homePreviewRole.value = null
+}
+// ProfileMenu.vue's "Home" item — for the customer role's own real
+// session that's just its own base CustomerHome, already permanently
+// mounted underneath (see the 'customer' branch below), so this only
+// ever needs to pop back to it; every other role/preview reuses the
+// same universal CustomerHome overlay ManageUsers' own "Home screen"
+// preview button already opens.
+function goHome() {
+  if (currentUserRole.value === 'customer') {
+    setNavBack()
+    chatOpen.value = false
+    pushedView.value = null
+    return
+  }
+  openHomePreview('customer')
 }
 
 const { onChatBeforeEnter, onChatEnter, onChatBeforeLeave, onChatLeave } = useChatFlipTransition(navDirection)
@@ -106,6 +132,7 @@ const dialogOpen = computed(() => !!activeDialog.value)
 const modelUploadInput = ref(null)
 const chatWindowRef = ref(null)
 const manageProjectsView = ref(null)
+const customerHomeView = ref(null)
 const uploadingProject = ref(false)
 // 0-100, or null before the first progress chunk has arrived — see
 // SessionsTree.vue's identical importProgress for the same reasoning.
@@ -494,6 +521,7 @@ onBeforeUnmount(() => {
         @project-select="handleLiveChatProjectSelect"
         @project-download="handleModelDownload"
         @manage-projects="handleSettingsManageProjects"
+        @home="goHome"
         @profile="openProfile"
         @logout="handleLogout"
       />
@@ -511,13 +539,27 @@ onBeforeUnmount(() => {
             'view-flip-base-back': navDirection === 'back'
           }"
         >
-          <AppStoreView
-            standalone
+          <CustomerHome
+            ref="customerHomeView"
             :profile="currentUserProfile"
             @open="handleManageProjectsChat"
+            @open-store="handleSettingsAppStore"
+            @home="goHome"
             @profile="openProfile"
             @logout="handleLogout"
           />
+
+          <Transition :name="slideTransitionName">
+            <AppStoreView
+              v-if="pushedView === 'appStore'"
+              :profile="currentUserProfile"
+              @close="popPushedView"
+              @open="handleManageProjectsChat"
+              @home="goHome"
+              @profile="openProfile"
+              @logout="handleLogout"
+            />
+          </Transition>
         </div>
 
         <Transition
@@ -536,6 +578,7 @@ onBeforeUnmount(() => {
             @project-select="handleLiveChatProjectSelect"
             @project-download="handleModelDownload"
             @manage-projects="handleSettingsManageProjects"
+            @home="goHome"
             @profile="openProfile"
             @logout="handleLogout"
           />
@@ -551,6 +594,7 @@ onBeforeUnmount(() => {
         :project-id="labelProjectId"
         :profile="currentUserProfile"
         @project-select="handleLabelProjectSwitch"
+        @home="goHome"
         @profile="openProfile"
         @logout="handleLogout"
       />
@@ -586,6 +630,7 @@ onBeforeUnmount(() => {
             @manage-services="handleSettingsManageServices"
             @app-store="handleSettingsAppStore"
             @about="handleShowAbout"
+            @home="goHome"
             @profile="openProfile"
             @logout="handleLogout"
           />
@@ -598,6 +643,7 @@ onBeforeUnmount(() => {
               :profile="currentUserProfile"
               @saved="handleModelEditSaved"
               @back="popPushedView"
+              @home="goHome"
               @profile="openProfile"
               @logout="handleLogout"
             />
@@ -608,6 +654,7 @@ onBeforeUnmount(() => {
               :profile="currentUserProfile"
               @close="popPushedView"
               @project-select="handleLabelProjectSwitch"
+              @home="goHome"
               @profile="openProfile"
               @logout="handleLogout"
             />
@@ -616,6 +663,8 @@ onBeforeUnmount(() => {
               :current-user-role="currentUserRole"
               :profile="currentUserProfile"
               @close="popPushedView"
+              @home-screen="openHomePreview"
+              @home="goHome"
               @profile="openProfile"
               @logout="handleLogout"
             />
@@ -627,6 +676,7 @@ onBeforeUnmount(() => {
               @restore-backup="handleRestoreBackup"
               @wipe-live-sessions="handleWipeAllLiveSessions"
               @clean-unused-revisions="handleCleanUnusedRevisions"
+              @home="goHome"
               @profile="openProfile"
               @logout="handleLogout"
             />
@@ -635,6 +685,7 @@ onBeforeUnmount(() => {
               :profile="currentUserProfile"
               @close="popPushedView"
               @open="handleManageProjectsChat"
+              @home="goHome"
               @profile="openProfile"
               @logout="handleLogout"
             />
@@ -657,6 +708,7 @@ onBeforeUnmount(() => {
             @project-select="handleLiveChatProjectSelect"
             @project-download="handleModelDownload"
             @manage-projects="handleSettingsManageProjects"
+            @home="goHome"
             @profile="openProfile"
             @logout="handleLogout"
           />
@@ -671,6 +723,72 @@ onBeforeUnmount(() => {
         @change="handleModelUploadChange"
       />
     </div>
+
+    <!-- Universal, independent of the role/stack above: reachable from
+         any role's ProfileMenu (the "Home" item) or from ManageUsers'
+         own "Home screen" preview button — same overlay either way,
+         always laid over whatever the current role's landing/stack is. -->
+    <Transition :name="slideTransitionName">
+      <LiveChatWindow
+        v-if="homePreviewRole === 'user'"
+        role="admin"
+        :project-id="liveChatProjectId"
+        :profile="currentUserProfile"
+        @project-select="handleLiveChatProjectSelect"
+        @project-download="handleModelDownload"
+        @manage-projects="closeHomePreview"
+        @home="goHome"
+        @profile="openProfile"
+        @logout="handleLogout"
+      />
+      <CustomerHome
+        v-else-if="homePreviewRole === 'customer'"
+        :standalone="false"
+        :profile="currentUserProfile"
+        @close="closeHomePreview"
+        @open="(id) => { closeHomePreview(); handleManageProjectsChat(id) }"
+        @open-store="() => { closeHomePreview(); handleSettingsAppStore() }"
+        @home="goHome"
+        @profile="openProfile"
+        @logout="handleLogout"
+      />
+      <LabelProjectView
+        v-else-if="homePreviewRole === 'supervisor'"
+        :key="labelProjectId"
+        :project-id="labelProjectId"
+        :profile="currentUserProfile"
+        @close="closeHomePreview"
+        @project-select="handleLabelProjectSwitch"
+        @home="goHome"
+        @profile="openProfile"
+        @logout="handleLogout"
+      />
+      <div v-else-if="homePreviewRole === 'admin'" class="home-preview-admin-wrap">
+        <button type="button" class="app-header-icon-btn home-preview-admin-back-btn" title="Back" @click="closeHomePreview">«</button>
+        <ManageProjectsView
+          :uploading="uploadingProject"
+          :upload-progress="uploadProgress"
+          :upload-project-id="uploadProjectId"
+          :upload-icon-ready="uploadIconReady"
+          role="admin"
+          :profile="currentUserProfile"
+          @new-project="handleNewProject"
+          @upload="triggerModelUpload"
+          @delete="handleModelDelete"
+          @edit="handleModelEdit"
+          @label="handleSelectLabelSessions"
+          @chat="(id) => { closeHomePreview(); handleManageProjectsChat(id) }"
+          @download="handleModelDownload"
+          @manage-users="handleSettingsManageUsers"
+          @manage-services="handleSettingsManageServices"
+          @app-store="handleSettingsAppStore"
+          @about="handleShowAbout"
+          @home="goHome"
+          @profile="openProfile"
+          @logout="handleLogout"
+        />
+      </div>
+    </Transition>
 
     <!-- Universal, independent of the role/stack above: reachable from
          any of the 3 branches via the same ProfileMenu. -->
@@ -947,6 +1065,19 @@ body {
 
 .view-slide-back-leave-to {
   transform: translateX(100%);
+}
+
+.home-preview-admin-wrap {
+  position: fixed;
+  inset: 0;
+}
+
+.home-preview-admin-back-btn {
+  position: absolute;
+  top: calc(0.75rem + var(--safe-area-top));
+  left: calc(0.75rem + var(--safe-area-left));
+  z-index: 200;
+  background: white;
 }
 
 .upload-model-input {

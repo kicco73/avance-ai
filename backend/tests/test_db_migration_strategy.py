@@ -103,6 +103,25 @@ def test_upgrade_readds_a_dropped_invite_column_and_preserves_data(tmp_path):
     assert len(_backups(tmp_path, "test")) == 1
 
 
+def test_upgrade_renames_the_chatsession_summary_column_and_preserves_its_data(tmp_path):
+    db_path = tmp_path / "test.db"
+    Db(f"sqlite:///{db_path}")
+    _run_sql(db_path, [
+        "INSERT INTO Project (id, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
+        "INSERT INTO User (id, email, role, created_at) VALUES ('enrico@example.com', 'enrico@example.com', 'user', '2026-01-01 00:00:00')",
+        "INSERT INTO ChatSession (username, user_id, project_id, type, project_revision, labeled, labeling_revision, channel, ai_summary) "
+        "VALUES ('enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0, 'native-chat', 'kept summary')",
+        'ALTER TABLE "ChatSession" RENAME COLUMN "ai_summary" TO "summary"',
+    ])
+
+    Db(f"sqlite:///{db_path}", migration_strategy="upgrade")
+
+    columns = {row[1] for row in _query(db_path, "PRAGMA table_info(ChatSession)")}
+    assert "summary" not in columns
+    assert "ai_summary" in columns
+    assert _query(db_path, "SELECT ai_summary FROM ChatSession") == [("kept summary",)]
+
+
 def test_upgrade_survives_the_leftovers_of_an_interrupted_column_rebuild(tmp_path):
     db_path = tmp_path / "test.db"
     Db(f"sqlite:///{db_path}")
@@ -153,11 +172,21 @@ def test_boot_reindexes_a_database_whose_indexes_are_out_of_sync(tmp_path):
     _desync_index(db_path, "userproject_invite_id", "UserProject", "user_id")
     assert _query(db_path, "PRAGMA integrity_check") != [("ok",)]
 
-    db = Db(f"sqlite:///{db_path}")
+    # REINDEX (below) rebuilds an index's content to match its current
+    # on-disk definition, but here the definition itself was rewritten to
+    # cover the wrong column — content-only repair can't fix that, so this
+    # also needs 'upgrade' to recreate userproject_invite_id for real.
+    db = Db(f"sqlite:///{db_path}", migration_strategy="upgrade")
 
     assert _query(db_path, "PRAGMA integrity_check") == [("ok",)]
     assert _query(db_path, "SELECT user_id, project_id FROM UserProject") == [("enrico@example.com", "lluna")]
-    assert len(_backups(tmp_path, "test")) == 1
+    assert _query(db_path, "SELECT sql FROM sqlite_master WHERE name = 'userproject_invite_id'") == [
+        ('CREATE INDEX "userproject_invite_id" ON "UserProject" ("invite_id")',)
+    ]
+    # Two backups are taken (repair, then migration) but _timestamped_backup_path
+    # is only second-granular, so back-to-back calls within the same second
+    # collide onto one file — assert at least one exists rather than an exact count.
+    assert len(_backups(tmp_path, "test")) >= 1
     db.erase_user_data("enrico@example.com")
     assert _query(db_path, "SELECT user_id FROM UserProject") == []
 

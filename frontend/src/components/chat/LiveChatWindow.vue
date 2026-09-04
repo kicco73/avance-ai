@@ -29,7 +29,7 @@ const props = defineProps({
   profile: { type: Object, default: null }
 })
 
-defineEmits(['project-select', 'project-download', 'manage-projects', 'profile', 'logout'])
+defineEmits(['project-select', 'project-download', 'manage-projects', 'home', 'profile', 'logout'])
 
 const chatViewRef = ref(null)
 const termsPending = ref(null)
@@ -154,6 +154,7 @@ defineExpose({
       @project-select="(name) => $emit('project-select', name)"
       @project-download="(name) => $emit('project-download', name)"
       @manage-projects="$emit('manage-projects')"
+      @home="$emit('home')"
       @profile="$emit('profile')"
       @logout="$emit('logout')"
     />

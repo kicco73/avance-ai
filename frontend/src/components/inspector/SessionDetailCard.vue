@@ -118,6 +118,7 @@ const {
         </div>
         <span v-if="isImported" class="session-detail-badge session-detail-badge-neutral">Imported</span>
         <span v-if="session.comment" class="session-detail-comment-preview">{{ session.comment }}</span>
+        <span v-if="session.ai_summary" class="session-detail-summary-preview">{{ session.ai_summary }}</span>
         <div v-if="sessionInputTokens != null && totalTokenBudgetPerSession != null" class="session-detail-tokens">
           <span class="session-detail-tokens-label">Input tokens</span>
           <div
@@ -248,6 +249,13 @@ const {
   font-size: 0.78rem;
   color: #666;
   line-height: 1.4;
+}
+
+.session-detail-summary-preview {
+  font-size: 0.78rem;
+  color: #666;
+  line-height: 1.4;
+  font-style: italic;
 }
 
 .session-detail-tokens {

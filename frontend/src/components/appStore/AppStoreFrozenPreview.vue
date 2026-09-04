@@ -5,6 +5,8 @@ import ActionButtons from '../chat/ActionButtons.vue'
 import ChatInput from '../chat/ChatInput.vue'
 import ProgressSpinner from '../ProgressSpinner.vue'
 import { getAppPreviewTranscript } from '../../api.js'
+import { audioEnabled, talkAvailable, micAvailable, spokenTextEnabled, toggleSpokenText } from '../../chatStoreFactory.js'
+import { toggleAudio } from '../../chatStore.js'
 
 const props = defineProps({
   loading: { type: Boolean, default: false },
@@ -54,7 +56,17 @@ watch(() => props.appId, loadTranscript, { immediate: true })
       </div>
       <div class="chat-footer">
         <ActionButtons :actions="MOCK_ACTIONS" :auto-tracking-enabled="false" />
-        <ChatInput v-model="draft" disabled :recording="false" :mic-available="false" :talk-available="false" :audio-enabled="false" :spoken-text-enabled="false" />
+        <ChatInput
+          v-model="draft"
+          disabled
+          :recording="false"
+          :mic-available="micAvailable"
+          :talk-available="talkAvailable"
+          :audio-enabled="audioEnabled"
+          :spoken-text-enabled="spokenTextEnabled"
+          @toggle-audio="toggleAudio"
+          @toggle-spoken-text="toggleSpokenText"
+        />
       </div>
     </div>
     <div v-if="loading" class="app-store-frozen-spinner">

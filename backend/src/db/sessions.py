@@ -65,7 +65,7 @@ class SessionMixin:
 
     @staticmethod
     def _chat_session_to_dict(session: ChatSession) -> dict:
-        return {'id': session.id, 'username': session.username, 'project_id': session.project_id, 'type': session.type, 'title': session.title, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state, 'project_revision': session.project_revision, 'labeled': session.labeled, 'comment': session.comment, 'channel': session.channel, 'closed_at': session.closed_at, 'close_reason': session.close_reason}
+        return {'id': session.id, 'username': session.username, 'project_id': session.project_id, 'type': session.type, 'title': session.title, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state, 'project_revision': session.project_revision, 'labeled': session.labeled, 'comment': session.comment, 'channel': session.channel, 'closed_at': session.closed_at, 'close_reason': session.close_reason, 'ai_summary': session.ai_summary}
 
     def get_chat_session(self, session_id: int) -> dict | None:
         session = ChatSession.get_or_none(ChatSession.id == session_id)
@@ -182,6 +182,31 @@ class SessionMixin:
             (ChatSession.id == session_id) & ChatSession.closed_at.is_null()
         ).execute()
         return updated > 0
+
+    def set_session_summary(self, session_id: int, summary: str, title: str | None = None) -> None:
+        fields = {"ai_summary": summary}
+        if title:
+            fields["title"] = title
+        ChatSession.update(**fields).where(ChatSession.id == session_id).execute()
+
+    def get_recent_session_summaries(self, username: str, project_id: str, limit: int = 3) -> list[str]:
+        return [
+            row.ai_summary for row in ChatSession.select(ChatSession.ai_summary).where(
+                (ChatSession.username == username) & (ChatSession.project == project_id)
+                & (ChatSession.ai_summary.is_null(False))
+            ).order_by(ChatSession.closed_at.desc()).limit(limit)
+        ]
+
+    def list_session_summaries_for_user_project(self, username: str, project_id: str) -> list[dict]:
+        return [
+            {"id": row.id, "title": row.title, "ai_summary": row.ai_summary, "closed_at": row.closed_at}
+            for row in ChatSession.select(
+                ChatSession.id, ChatSession.title, ChatSession.ai_summary, ChatSession.closed_at
+            ).where(
+                (ChatSession.username == username) & (ChatSession.project == project_id)
+                & (ChatSession.ai_summary.is_null(False))
+            ).order_by(ChatSession.closed_at.desc())
+        ]
 
     def delete_chat_session(self, session_id: int) -> None:
         Tracking.delete().where(Tracking.session == session_id).execute()

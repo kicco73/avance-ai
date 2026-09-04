@@ -85,8 +85,17 @@ class LiveSessionStrategy(SessionTypeStrategy):
 class TestSessionStrategy(SessionTypeStrategy):
     type_name = 'test'
 
+    # Independent of `open_window` (that's live's configured value) — a
+    # test session's own close_reason is never worth a full AI report
+    # (SessionReportScheduler skips non-'live' sessions outright), so a
+    # short, fixed idle window is enough: reclaim it quickly rather than
+    # ever leaving it open indefinitely.
+    OPEN_WINDOW = timedelta(minutes=5)
+
     def is_expired(self, session: dict, now: datetime, open_window: timedelta) -> bool:
-        return False
+        if session["datetime_end"] is None:
+            return False
+        return now - session["datetime_end"] >= self.OPEN_WINDOW
 
     def resolve_session(self, session_manager: "ChatSessionManager", username: str, project_id: str) -> dict | None:
         return session_manager.get_active_session(username, project_id, type=self.type_name)

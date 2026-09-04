@@ -19,8 +19,8 @@ class AppStoreController(BaseController):
         self.project_service = project_service
 
     @get("/api/app-store/apps")
-    def get_apps(self):
-        return {"apps": self.project_service.list_app_store_apps(Session().user)}
+    def get_apps(self, q: str | None = None):
+        return {"apps": self.project_service.list_app_store_apps(Session().user, q)}
 
     @post("/api/app-store/apps/{app_id}/install")
     def post_install_app(self, app_id: str):
@@ -38,6 +38,10 @@ class AppStoreController(BaseController):
     @get("/api/app-store/apps/{app_id}/preview-transcript")
     def get_app_preview_transcript(self, app_id: str):
         return {"messages": self.project_service.get_app_store_preview_messages(app_id)}
+
+    @get("/api/app-store/apps/{app_id}/session-summaries")
+    def get_app_session_summaries(self, app_id: str):
+        return {"sessions": self.project_service.get_app_session_summaries(Session().user, app_id)}
 
     @get("/api/app-store/apps/{app_id}/files/{file_name:path}/content")
     def get_app_file_content(self, app_id: str, file_name: str, request: Request):

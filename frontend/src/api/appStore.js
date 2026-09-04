@@ -2,8 +2,9 @@ import { apiFetch } from './core.js'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 
-export function getAppStoreApps() {
-  return apiFetch(`${API_URL}/app-store/apps`)
+export function getAppStoreApps(search) {
+  const query = search ? `?q=${encodeURIComponent(search)}` : ''
+  return apiFetch(`${API_URL}/app-store/apps${query}`)
 }
 
 export function postInstallApp(appId) {
@@ -20,6 +21,10 @@ export function appStoreFileContentUrl(appId, fileName) {
 
 export function getAppPreviewTranscript(appId) {
   return apiFetch(`${API_URL}/app-store/apps/${encodeURIComponent(appId)}/preview-transcript`)
+}
+
+export function getAppSessionSummaries(appId) {
+  return apiFetch(`${API_URL}/app-store/apps/${encodeURIComponent(appId)}/session-summaries`)
 }
 
 export function postCreatePreviewSession(appId) {

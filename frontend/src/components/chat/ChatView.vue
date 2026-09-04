@@ -78,7 +78,7 @@ const {
   reloadMessages
 } = props.store
 
-const emit = defineEmits(['project-select', 'project-download', 'manage-projects', 'profile', 'logout'])
+const emit = defineEmits(['project-select', 'project-download', 'manage-projects', 'home', 'profile', 'logout'])
 
 const projectsMenuRef = ref(null)
 
@@ -302,7 +302,7 @@ watch(
           @new-session="handleNewSession"
           @close-session="handleCloseSession"
         />
-        <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
+        <ProfileMenu :profile="profile" @home="emit('home')" @profile="emit('profile')" @logout="emit('logout')" />
       </template>
     </AppHeader>
 

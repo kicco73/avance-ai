@@ -26,6 +26,11 @@ class UserProjectMixin:
             (UserProject.user == username) & (UserProject.project == project_id)
         ).execute()
 
+    def set_user_project_ai_summary(self, username: str, project_id: str, ai_summary: str) -> None:
+        UserProject.update(ai_summary=ai_summary).where(
+            (UserProject.user == username) & (UserProject.project == project_id)
+        ).execute()
+
     def record_terms_acceptance(self, username: str, project_id: str, archive_id: int) -> None:
         row, created = UserProject.get_or_create(
             user=username, project=project_id, defaults={"accepted_terms": archive_id},

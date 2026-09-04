@@ -1,97 +1,61 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppHeader from '../AppHeader.vue'
 import ProfileMenu from '../ProfileMenu.vue'
-import ChatView from '../chat/ChatView.vue'
-import AppStoreFrozenPreview from './AppStoreFrozenPreview.vue'
-import { getAppStoreApps, postInstallApp, deleteInstallApp, appStoreFileContentUrl } from '../../api.js'
-import { confirmDialog, infoDialog } from '../../dialogStore.js'
-import { setSkinCss, invalidateSkin } from '../../chatSkin.js'
-import { setPreviewApp, appStorePreviewStore, historyLoaded, restartPreviewSession, stopPreviewSession } from '../../appStorePreviewStore.js'
+import AppDetailPanel from './AppDetailPanel.vue'
+import CustomerAppDetailPanel from './CustomerAppDetailPanel.vue'
+import { getAppStoreApps, appStoreFileContentUrl } from '../../api.js'
 import avanceLogoUrl from '../../assets/avance-logo.png'
+import avanceLogoLargeUrl from '../../assets/avance-logo-large.png'
 
 const props = defineProps({
   standalone: { type: Boolean, default: false },
-  profile: { type: Object, default: null }
+  profile: { type: Object, default: null },
+  title: { type: String, default: 'Store' },
+  showLogo: { type: Boolean, default: false },
+  subscribedOnly: { type: Boolean, default: false },
+  showFreeBadge: { type: Boolean, default: true },
+  hideInstallActions: { type: Boolean, default: false },
+  tryButtonLabel: { type: String, default: 'Try me!' },
+  timedSession: { type: Boolean, default: true },
+  showStoreButton: { type: Boolean, default: false },
+  showUninstallMenu: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['close', 'open', 'profile', 'logout'])
+const emit = defineEmits(['close', 'open', 'open-store', 'home', 'profile', 'logout'])
 
 const apps = ref([])
 const loading = ref(true)
 const selectedId = ref(null)
-const installingId = ref(null)
 const iconFailedById = ref({})
-const previewing = ref(false)
+const searchQuery = ref('')
 
+const visibleApps = computed(() => props.subscribedOnly ? apps.value.filter((app) => app.installed) : apps.value)
 const selectedApp = computed(() => apps.value.find((app) => app.id === selectedId.value) ?? null)
 
 function appTitle(app) {
   return app?.ui_label || app?.id || ''
 }
 
-async function loadSkinForSelected() {
-  const app = selectedApp.value
-  if (!app) return
-  try {
-    const response = await fetch(appStoreFileContentUrl(app.id, 'index.css'), { credentials: 'include', cache: 'no-store' })
-    setSkinCss(response.ok ? await response.text() : '', app.id)
-  } catch {
-    setSkinCss('', app.id)
-  }
-}
-
-const PREVIEW_EXPIRY_SECONDS = 60
-const remainingSeconds = ref(PREVIEW_EXPIRY_SECONDS)
-const remainingLabel = computed(() => {
-  const s = Math.max(0, remainingSeconds.value)
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-})
-let expiryInterval = null
-
-function clearExpiryTimer() {
-  if (expiryInterval == null) return
-  clearInterval(expiryInterval)
-  expiryInterval = null
-}
-
-function armExpiryTimer() {
-  clearExpiryTimer()
-  remainingSeconds.value = PREVIEW_EXPIRY_SECONDS
-  expiryInterval = setInterval(() => {
-    remainingSeconds.value -= 1
-    if (remainingSeconds.value <= 0) handlePreviewExpiry()
-  }, 1000)
-}
-
-async function handlePreviewExpiry() {
-  clearExpiryTimer()
-  await quitPreview()
-  await infoDialog({
-    title: 'Test session expired',
-    body: 'Your test session has expired. Thanks for trying out!'
-  })
-}
-
-async function quitPreview() {
-  if (!previewing.value) return
-  clearExpiryTimer()
-  previewing.value = false
-  await stopPreviewSession()
-}
-
-async function selectApp(id) {
-  if (id === selectedId.value) return
-  await quitPreview()
+function selectApp(id) {
   selectedId.value = id
-  await loadSkinForSelected()
 }
+
+function deselectApp() {
+  selectedId.value = null
+}
+
+watch(() => selectedApp.value?.installed, (installed, wasInstalled) => {
+  if (props.subscribedOnly && wasInstalled && installed === false) {
+    selectedId.value = visibleApps.value.length ? visibleApps.value[0].id : null
+  }
+})
 
 async function load() {
   loading.value = true
   try {
-    apps.value = (await getAppStoreApps()).apps
-    if (selectedId.value == null && apps.value.length) await selectApp(apps.value[0].id)
+    apps.value = (await getAppStoreApps(searchQuery.value)).apps
+    if (selectedId.value == null && visibleApps.value.length) selectApp(visibleApps.value[0].id)
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -99,151 +63,99 @@ async function load() {
   }
 }
 
-async function toggleInstall(app) {
-  if (app.installed) {
-    const ok = await confirmDialog({
-      title: 'Uninstall',
-      body: `Uninstall "${appTitle(app)}"? You'll lose access to its live chat until you install it again.`,
-      okLabel: 'Uninstall',
-      danger: true
-    })
-    if (!ok) return
-    installingId.value = app.id
-    try {
-      await deleteInstallApp(app.id)
-      app.installed = false
-    } catch {
-      // already surfaced via apiFetch
-    } finally {
-      installingId.value = null
-    }
-    return
-  }
-  const ok = await confirmDialog({
-    title: 'Install',
-    body: `Install "${appTitle(app)}"?`,
-    okLabel: 'Install'
-  })
-  if (!ok) return
-  installingId.value = app.id
-  try {
-    await postInstallApp(app.id)
-    app.installed = true
-  } catch {
-    // already surfaced via apiFetch
-  } finally {
-    installingId.value = null
-  }
-}
+let searchDebounceHandle = null
+watch(searchQuery, () => {
+  clearTimeout(searchDebounceHandle)
+  searchDebounceHandle = setTimeout(load, 300)
+})
 
-async function selectOpen(app) {
-  await quitPreview()
-  emit('open', app.id)
-}
-
-async function startPreview() {
-  if (!selectedApp.value) return
-  setPreviewApp(selectedApp.value.id)
-  previewing.value = true
-  armExpiryTimer()
-  await appStorePreviewStore.handleNewSession()
-}
-
-async function restartPreview() {
-  armExpiryTimer()
-  await restartPreviewSession()
+function handleDetailOpen(id) {
+  emit('open', id)
 }
 
 onMounted(load)
 
-onBeforeUnmount(async () => {
-  await quitPreview()
-  invalidateSkin()
-})
+onBeforeUnmount(() => clearTimeout(searchDebounceHandle))
+
+defineExpose({ refresh: load })
 </script>
 
 <template>
-  <div class="app-store-overlay">
+  <div class="app-store-overlay" :class="{ 'app-store-detail-active': !!selectedApp }">
     <AppHeader>
       <template #left>
-        <button v-if="!standalone" type="button" class="app-header-icon-btn" title="Back" @click="emit('close')">«</button>
+        <button v-if="!standalone" type="button" class="app-header-icon-btn app-store-back-exit-btn" title="Back" @click="emit('close')">«</button>
+        <button type="button" class="app-header-icon-btn app-store-back-list-btn" title="Back to list" @click="deselectApp">«</button>
+        <button v-if="showStoreButton" type="button" class="app-store-open-store-btn" title="App store" @click="emit('open-store')">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M20 4H4v2h16V4zM4 20h4v-6h8v6h4v-8H4v8zm16-10l-.67-3.35a2.011 2.011 0 0 0-1.96-1.65H6.63c-.96 0-1.79.68-1.96 1.65L4 10v1c0 1.1.9 2 2 2s2-.9 2-2c0 1.1.9 2 2 2s2-.9 2-2c0 1.1.9 2 2 2s2-.9 2-2c0 1.1.9 2 2 2s2-.9 2-2v-1z" />
+          </svg>
+          <span>Store</span>
+        </button>
       </template>
       <template #center>
-        <h2 class="app-header-title app-store-header-title">Store</h2>
+        <img v-if="showLogo" :src="avanceLogoLargeUrl" alt="Avance" class="app-store-header-logo" />
+        <h2 v-else class="app-header-title app-store-header-title">{{ title }}</h2>
       </template>
       <template #right>
-        <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
+        <ProfileMenu :profile="profile" @home="emit('home')" @profile="emit('profile')" @logout="emit('logout')" />
       </template>
     </AppHeader>
 
     <div class="app-store-body">
       <div class="app-store-list">
-        <p v-if="loading" class="app-store-status">Loading…</p>
-        <p v-else-if="!apps.length" class="app-store-status">No apps available yet.</p>
-        <button
-          v-for="app in apps"
-          :key="app.id"
-          type="button"
-          class="app-store-card"
-          :class="{ 'app-store-card-active': app.id === selectedId }"
-          @click="selectApp(app.id)"
-        >
-          <span class="app-store-card-icon">
-            <img
-              v-if="app.icon_file && !iconFailedById[app.id]"
-              :src="appStoreFileContentUrl(app.id, app.icon_file)"
-              alt=""
-              @error="iconFailedById[app.id] = true"
-            />
-            <img v-else :src="avanceLogoUrl" class="app-store-card-fallback" alt="" />
-          </span>
-          <span class="app-store-card-body">
-            <span class="app-store-card-title">{{ appTitle(app) }}</span>
-            <span v-if="app.ui_description" class="app-store-card-desc">{{ app.ui_description }}</span>
-          </span>
-        </button>
+        <input
+          v-model="searchQuery"
+          type="search"
+          class="app-store-search"
+          placeholder="Search apps..."
+        />
+        <div class="app-store-card-list">
+          <p v-if="loading" class="app-store-status">Loading…</p>
+          <p v-else-if="!visibleApps.length" class="app-store-status">No apps found.</p>
+          <button
+            v-for="app in visibleApps"
+            :key="app.id"
+            type="button"
+            class="app-store-card"
+            :class="{ 'app-store-card-active': app.id === selectedId }"
+            @click="selectApp(app.id)"
+          >
+            <span class="app-store-card-icon">
+              <img
+                v-if="app.icon_file && !iconFailedById[app.id]"
+                :src="appStoreFileContentUrl(app.id, app.icon_file)"
+                alt=""
+                @error="iconFailedById[app.id] = true"
+              />
+              <img v-else :src="avanceLogoUrl" class="app-store-card-fallback" alt="" />
+            </span>
+            <span class="app-store-card-body">
+              <span class="app-store-card-title">{{ appTitle(app) }}</span>
+              <span v-if="app.ui_description" class="app-store-card-desc">{{ app.ui_description }}</span>
+            </span>
+          </button>
+        </div>
       </div>
 
       <div class="app-store-preview">
-        <template v-if="selectedApp">
-          <h2 class="app-store-preview-title">{{ appTitle(selectedApp) }}</h2>
-          <p class="app-store-preview-desc">{{ selectedApp.ui_description }}</p>
-
-          <div class="app-store-preview-actions">
-            <div class="app-store-preview-actions-left">
-              <button
-                v-if="!selectedApp.installed"
-                type="button"
-                class="app-store-btn app-store-btn-primary"
-                :disabled="installingId === selectedApp.id"
-                @click="toggleInstall(selectedApp)"
-              >Install</button>
-              <template v-else>
-                <button type="button" class="app-store-btn app-store-btn-primary" @click="selectOpen(selectedApp)">Open</button>
-                <button
-                  type="button"
-                  class="app-store-btn app-store-btn-danger"
-                  :disabled="installingId === selectedApp.id"
-                  @click="toggleInstall(selectedApp)"
-                >Uninstall</button>
-              </template>
-            </div>
-            <div class="app-store-preview-actions-right">
-              <button v-if="previewing" type="button" class="app-store-try-restart-btn" :disabled="!historyLoaded" @click="restartPreview">Restart</button>
-              <button
-                type="button"
-                class="app-store-try-btn"
-                :class="{ 'app-store-try-btn-active': previewing }"
-                @click="previewing ? quitPreview() : startPreview()"
-              >{{ previewing ? remainingLabel : 'Try me!' }}</button>
-            </div>
-          </div>
-
-          <div class="app-store-try-panel">
-            <AppStoreFrozenPreview v-if="!previewing || !historyLoaded" :app-id="selectedApp.id" :loading="previewing && !historyLoaded" />
-            <ChatView v-if="previewing && historyLoaded" hide-sessions-panel :store="appStorePreviewStore" />
-          </div>
-        </template>
+        <CustomerAppDetailPanel
+          v-if="selectedApp && subscribedOnly"
+          :key="selectedApp.id"
+          :app="selectedApp"
+          @open="handleDetailOpen"
+        />
+        <AppDetailPanel
+          v-else-if="selectedApp"
+          :key="selectedApp.id"
+          :app="selectedApp"
+          :show-free-badge="showFreeBadge"
+          :hide-install-actions="hideInstallActions"
+          :try-button-label="tryButtonLabel"
+          :timed-session="timedSession"
+          :show-uninstall-menu="showUninstallMenu"
+          @open="handleDetailOpen"
+        />
         <p v-else-if="!loading" class="app-store-status">Select an app to see its details.</p>
       </div>
     </div>
@@ -264,6 +176,11 @@ onBeforeUnmount(async () => {
   color: #4a6fa5;
 }
 
+.app-store-header-logo {
+  height: 1.6rem;
+  width: auto;
+}
+
 .app-store-body {
   flex: 1;
   min-height: 0;
@@ -275,6 +192,24 @@ onBeforeUnmount(async () => {
 .app-store-list {
   flex: none;
   width: 340px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.app-store-search {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.app-store-card-list {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   display: flex;
@@ -359,99 +294,76 @@ onBeforeUnmount(async () => {
   overflow-y: auto;
 }
 
-.app-store-preview-title {
-  margin: 0;
-  font-size: 1.2rem;
-  color: #333;
-}
-
-.app-store-preview-desc {
-  margin: 0;
-  min-height: 65px;
-  color: #555;
+.app-store-status {
+  color: #888;
   font-size: 0.9rem;
-  white-space: pre-wrap;
 }
 
-.app-store-preview-actions {
+.app-store-back-list-btn {
+  display: none;
+}
+
+.app-store-open-store-btn {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-}
-
-.app-store-preview-actions-left,
-.app-store-preview-actions-right {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.app-store-btn {
-  padding: 0.45rem 1.1rem;
+  gap: 0.4rem;
+  padding: 0.4rem 0.8rem;
   border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
 }
 
-.app-store-btn-primary {
-  border: 1px solid #4a6fa5;
+.app-store-open-store-btn:hover {
   background: #4a6fa5;
   color: white;
 }
 
-.app-store-btn-primary:hover {
-  background: #3d5c8a;
-}
+@media (max-width: 640px) {
+  .app-store-body {
+    position: relative;
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+  }
 
-.app-store-btn-danger {
-  border: 1px solid #c62828;
-  background: white;
-  color: #c62828;
-}
+  .app-store-list,
+  .app-store-preview {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    padding: 1rem;
+    box-sizing: border-box;
+    transition: transform 0.3s ease;
+  }
 
-.app-store-btn-danger:hover {
-  background: #c62828;
-  color: white;
-}
+  .app-store-list {
+    transform: translateX(0);
+  }
 
-.app-store-try-panel {
-  flex: 1;
-  min-height: 300px;
-  display: flex;
-  flex-direction: column;
-}
+  .app-store-preview {
+    transform: translateX(100%);
+  }
 
-.app-store-try-btn {
-  padding: 0.4rem 1.2rem;
-  border-radius: 6px;
-  border: 1px solid #2e7d32;
-  background: #2e7d32;
-  color: white;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-}
+  .app-store-detail-active .app-store-list {
+    transform: translateX(-100%);
+  }
 
-.app-store-try-btn-active {
-  border-color: #c62828;
-  background: #c62828;
-}
+  .app-store-detail-active .app-store-preview {
+    transform: translateX(0);
+  }
 
-.app-store-try-restart-btn {
-  padding: 0.4rem 0.9rem;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  background: white;
-  color: #555;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
+  .app-store-detail-active .app-store-back-exit-btn {
+    display: none;
+  }
 
-.app-store-status {
-  color: #888;
-  font-size: 0.9rem;
+  .app-store-detail-active .app-store-back-list-btn {
+    display: inline-flex;
+  }
 }
 </style>

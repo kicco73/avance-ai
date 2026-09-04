@@ -107,7 +107,7 @@ class ChatSession(BaseModel):
     # reinterprets a session's state keys against a revision it never ran against.
     project_revision = IntegerField(null=False)
     datetime_start = DateTimeField(null=True)
-    datetime_end = DateTimeField(null=True)
+    datetime_end = DateTimeField(null=True, index=True)
     start_state = CharField(null=True)
     end_state = CharField(null=True)
     # Explicitly set by a domain expert — the single source of truth for
@@ -125,6 +125,7 @@ class ChatSession(BaseModel):
     channel = CharField(default=NATIVE_CHAT, index=True)
     closed_at = DateTimeField(null=True)
     close_reason = CharField(null=True)
+    ai_summary = TextField(null=True)
 
     class Meta:
         table_name = 'ChatSession'
@@ -197,18 +198,6 @@ class StateRemap(BaseModel):
     class Meta:
         table_name = 'StateRemap'
         primary_key = CompositeKey('project_id', 'old_key')
-
-class SessionSummary(BaseModel):
-    id = AutoField()
-    # unique=True: at most one summary per session, ever — its own
-    # existence is what stops SessionSummaryManager.check_for_closed_
-    # sessions from re-queuing the same session a second time.
-    session = ForeignKeyField(ChatSession, unique=True, backref='summary', on_delete='CASCADE')
-    # Null until the job completes — see SessionSummaryManager's own work.
-    content = TextField(null=True)
-
-    class Meta:
-        table_name = 'SessionSummary'
 
 class Test(BaseModel):
     id = AutoField()
@@ -399,6 +388,7 @@ class UserProject(BaseModel):
     accepted_terms = ForeignKeyField(Archive, column_name='accepted_terms_id', backref='accepted_by', null=True, on_delete='SET NULL')
     invite = ForeignKeyField(Invite, column_name='invite_id', null=True, backref='redemptions', on_delete='SET NULL')
     invite_timestamp = DateTimeField(null=True)
+    ai_summary = TextField(null=True)
 
     class Meta:
         table_name = 'UserProject'

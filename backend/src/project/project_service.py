@@ -309,10 +309,11 @@ class ProjectService(object):
 
     # -- App Store --------------------------------------------------------
 
-    def list_app_store_apps(self, username: str) -> list[dict]:
-        apps = self._db.list_projects_for_app_store(username)
+    def list_app_store_apps(self, username: str, search: str | None = None) -> list[dict]:
+        apps = self._db.list_projects_for_app_store(username, search)
         for app in apps:
             app["icon_file"] = self._find_app_icon_file(app["id"])
+            app["reactions_enabled"] = self._project_has_reactions(app["id"])
         return apps
 
     def _find_app_icon_file(self, project_id: str) -> str | None:
@@ -322,13 +323,21 @@ class ProjectService(object):
                 return name
         return None
 
+    def _project_has_reactions(self, project_id: str) -> bool:
+        automaton = self.get_automaton(project_id, self.get_published_revision(project_id))
+        return any(automaton.reactions_enabled_for(state) for state in automaton.states.values())
+
     def install_app(self, username: str, project_id: str) -> None:
         if not self._db.project_exists(project_id):
             raise FileNotFoundError(f"No such project: {project_id!r}")
         self._db.install_project(username, project_id)
 
     def uninstall_app(self, username: str, project_id: str) -> None:
+        self._db.delete_sessions_by_username_and_project(username, project_id)
         self._db.uninstall_project(username, project_id)
+
+    def get_app_session_summaries(self, username: str, project_id: str) -> list[dict]:
+        return self._db.list_session_summaries_for_user_project(username, project_id)
 
     def get_app_store_file_content(self, project_id: str, file_name: str) -> tuple[bytes, str]:
         revision = self.get_published_revision(project_id)

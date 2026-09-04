@@ -24,7 +24,7 @@ from tracking.user_facts import UserFacts
 from chat.channels import WHATSAPP_CHAT
 from chat.errors import ChatServiceError
 from chat.session_manager import ChatSessionManager, SessionNotWritable
-from chat.session_summary_manager import SessionSummaryManager
+from chat.session_report_task import SessionReportHydrator, SessionReportScheduler, SessionReportTask
 from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from auth.roles import role_satisfies
 from job import JobService
@@ -60,8 +60,9 @@ class ChatService(object):
 		self._actuator_factory = actuator_factory
 		# Shares the platform JobService (see main.py's own wiring) —
 		# never its own private queue.
-		self._session_summary_manager = SessionSummaryManager(db, ai_service, job_service, session_manager)
-		session_manager.set_session_summary_manager(self._session_summary_manager)
+		session_report_hydrator = SessionReportHydrator(db, ai_service)
+		job_service.register_task_type(SessionReportTask.TYPE, session_report_hydrator.hydrate)
+		session_manager.set_session_report_scheduler(SessionReportScheduler(job_service, session_report_hydrator))
 		self.env = PersistedEnv(db, project_service)
 		self._session_facts = SessionFacts(db, project_service)
 		self._user_facts = UserFacts(db)
@@ -148,13 +149,6 @@ class ChatService(object):
 	def get_message_audio_text(self, message_id: int) -> str | None:
 		return self._db.get_message_audio_text(message_id)
 
-	def get_session_summary(self, session_id: int) -> dict:
-		"""{content: str | None} — None whether no SessionSummary row
-		exists yet or one does but its job hasn't completed. Only ever
-		answers "is a summary ready", never which of those two it is."""
-		summary = self._db.get_session_summary(session_id)
-		return {'content': summary['content'] if summary is not None else None}
-
 	def get_ai_models_info(self) -> dict:
 		return self._ai_service.get_models_info()
 
@@ -204,6 +198,7 @@ class ChatService(object):
 			# A domain expert's free-text note on the session as a whole —
 			# the "Label sessions" view's Info tab.
 			"comment": session["comment"],
+			"ai_summary": session["ai_summary"],
 		}
 
 	def _require_active_session(self, session_id: int | None, project_id: str, current_state: str) -> dict:

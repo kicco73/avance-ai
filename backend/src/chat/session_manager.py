@@ -9,7 +9,7 @@ from logging_factory import LoggerFactory
 from session import Session
 
 if TYPE_CHECKING:
-    from chat.session_summary_manager import SessionSummaryManager
+    from chat.session_report_task import SessionReportScheduler
     from project.project_service import ProjectService
 
 logger = LoggerFactory.get_logger(__name__)
@@ -30,14 +30,14 @@ class ChatSessionManager(object):
     def __init__(self, db: Db, open_window_minutes: float = DEFAULT_OPEN_WINDOW_MINUTES) -> None:
         self._db = db
         self._open_window = timedelta(minutes=open_window_minutes)
-        self._session_summary_manager: "SessionSummaryManager | None" = None
+        self._session_report_scheduler: "SessionReportScheduler | None" = None
 
     @property
     def open_window(self) -> timedelta:
         return self._open_window
 
-    def set_session_summary_manager(self, session_summary_manager: "SessionSummaryManager") -> None:
-        self._session_summary_manager = session_summary_manager
+    def set_session_report_scheduler(self, session_report_scheduler: "SessionReportScheduler") -> None:
+        self._session_report_scheduler = session_report_scheduler
 
     def is_open(self, session: dict, now: datetime | None = None) -> bool:
         """`datetime_end` is just a session's last-activity timestamp;
@@ -71,8 +71,6 @@ class ChatSessionManager(object):
     def create_session(
         self, strategy: SessionTypeStrategy, project_service: ProjectService, username: str, project_id: str,
     ) -> dict:
-        if strategy.type_name == 'live' and self._session_summary_manager is not None:
-            self._session_summary_manager.check_for_closed_sessions(username, project_id)
         state_key = strategy.starting_state(project_service, project_id, username)
         now = datetime.utcnow()
         revision = strategy.revision_for(project_service, project_id)
@@ -148,6 +146,8 @@ class ChatSessionManager(object):
         )
         result = self._db.get_chat_session(session["id"])
         assert result is not None
+        if self._session_report_scheduler is not None:
+            self._session_report_scheduler.schedule(result)
         return result
 
     def _touch(self, session_id: int, now: datetime, current_state: str | None) -> dict:

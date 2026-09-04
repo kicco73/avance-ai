@@ -23,7 +23,7 @@ const props = defineProps({
 
 // profile/logout are a plain pass-through of ProfileMenu.vue's own emits.
 const emit = defineEmits([
-  'close', 'profile', 'logout'
+  'close', 'home-screen', 'home', 'profile', 'logout'
 ])
 
 const canEditRole = computed(() => roleSatisfies(props.currentUserRole, 'admin'))
@@ -190,7 +190,7 @@ defineExpose({ refresh: load })
       <ProjectsMenu align="left" :selected-name="statsProjectId" @select="statsProjectId = $event" />
       <h2 class="manage-users-header-title">Users</h2>
       <div class="manage-users-header-actions">
-        <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
+        <ProfileMenu :profile="profile" @home="emit('home')" @profile="emit('profile')" @logout="emit('logout')" />
       </div>
     </div>
 
@@ -246,7 +246,13 @@ defineExpose({ refresh: load })
         <div v-if="activeMainTab === 'info'" class="manage-users-stats">
           <p v-if="!selectedUser" class="manage-users-stats-status">Select a user to see their info.</p>
           <template v-else>
-            <InspectorUserInfoCard :user="selectedUser" large :can-edit-role="canEditRole" @change-role="handleChangeRole" />
+            <InspectorUserInfoCard
+              :user="selectedUser"
+              large
+              :can-edit-role="canEditRole"
+              @change-role="handleChangeRole"
+              @home-screen="emit('home-screen', selectedUser.role)"
+            />
             <div v-if="lastSessionStateNode" class="inspector-signal-block manage-users-state-card">
               <div class="inspector-signal-readonly">
                 <div class="inspector-signal-header">

@@ -10,7 +10,7 @@ const props = defineProps({
   canEditRole: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['change-role'])
+const emit = defineEmits(['change-role', 'home-screen'])
 
 const ROLES = ['user', 'customer', 'supervisor', 'admin']
 
@@ -93,6 +93,8 @@ onBeforeUnmount(() => {
           <span class="user-info-field-value">{{ formatDate(user.last_login) }}</span>
         </div>
       </div>
+
+      <button v-if="large" type="button" class="user-info-home-screen-btn" @click="emit('home-screen')">Home screen</button>
     </div>
   </div>
 </template>
@@ -201,6 +203,23 @@ onBeforeUnmount(() => {
   padding-top: 1rem;
   border-top: 1px solid #eee;
   text-align: left;
+}
+
+.user-info-home-screen-btn {
+  margin-top: 1rem;
+  padding: 0.45rem 1.1rem;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.user-info-home-screen-btn:hover {
+  background: #4a6fa5;
+  color: white;
 }
 
 .user-info-field { display: flex; flex-direction: column; gap: 0.15rem; }

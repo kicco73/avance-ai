@@ -100,6 +100,15 @@ class JobService:
         or running (a running job stops at its next step)."""
         self._scheduler.cancel(job)
 
+    def reschedule(self, task: Task, when: datetime) -> None:
+        """schedule(), but in place: a task created with an explicit id
+        (Task.make_key) moves its own still-pending row to `when` instead
+        of piling up a second one — the "touch" a repeated action (e.g.
+        each new chat message) uses to keep pushing the same task's due
+        time out. Falls back to a plain schedule() the first time, or
+        whenever the row already ran/settled."""
+        self._scheduler.reschedule(task, timestamp=when)
+
     async def wait_for(self, job: DependentJob) -> None:
         await self._queue.wait_for(job)
 

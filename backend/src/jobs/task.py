@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from abc import abstractmethod
 from collections.abc import Callable
 from typing import Any, ClassVar
@@ -34,6 +35,17 @@ class Task(CancelableJob):
 
     #: Registry key selecting the hydrator for rows of this kind.
     TYPE: ClassVar[str]
+
+    @classmethod
+    def make_key(cls, id: str | int | None = None) -> str:
+        """A stable "ClassName.<id>" key when a caller names one — the
+        same id addresses the same row again later (PersistedScheduler's
+        db.get_task/reschedule_task/cancel_task), so a follow-up "touch"
+        can find and reschedule it instead of leaving a random duplicate
+        behind. With no id, today's untraceable-by-design key."""
+        if id is not None:
+            return f"{cls.__name__}.{id}"
+        return f"{cls.TYPE}:{uuid.uuid4()}"
 
     def __init__(self, key: str, username: str) -> None:
         super().__init__(key, username)

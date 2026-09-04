@@ -85,7 +85,7 @@ const props = defineProps({
 // its whole lifetime — the "Run" tab's own test store targets it once here.
 setTestProject(props.projectId)
 
-const emit = defineEmits(['saved', 'back', 'profile', 'logout'])
+const emit = defineEmits(['saved', 'back', 'home', 'profile', 'logout'])
 
 const {
   filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile, renamingFile,
@@ -816,7 +816,7 @@ onBeforeUnmount(() => {
               </div>
             </template>
           </div>
-          <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
+          <ProfileMenu :profile="profile" @home="emit('home')" @profile="emit('profile')" @logout="emit('logout')" />
         </div>
       </template>
     </AppHeader>

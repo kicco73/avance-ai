@@ -1,70 +1,69 @@
-"""Integration test for SessionSummaryManager's auto-queue hook: a
-session discovered closed the moment a new one is about to be created
-gets its summary job submitted and eventually readable via the API.
+"""Closing a live session queues SessionReportTask (session_report_task.py),
+which renders the session's turns/signals into a prompt, calls
+AiService.prompt(), and stores the result on ChatSession.ai_summary.
 """
 from __future__ import annotations
 
-import time
 from datetime import datetime, timedelta
 
 import pytest
 
+from conftest import run_on_enter_tasks
+
 pytestmark = pytest.mark.contract
 
 
-def test_closing_a_session_queues_its_summary(client, app_db, hello_project):
+def test_closing_a_live_session_produces_a_summary(client, app, app_db, hello_project):
     session = client.get("/api/chat/session").json()
     client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
 
-    # No content yet — nothing has queued a summary for it so far.
-    assert client.get(f"/api/chat/sessions/{session['id']}/summary").json() == {"content": None}
+    assert app_db.get_chat_session(session["id"])["ai_summary"] is None
 
-    # Backdate this session's own datetime_end far enough to count as
-    # closed under ChatSessionManager's default 60-minute open window.
+    resp = client.post(f"/api/chat/sessions/{session['id']}/close")
+    assert resp.status_code == 200, resp.text
+
+    run_on_enter_tasks(app)
+
+    assert app_db.get_chat_session(session["id"])["ai_summary"] == "Fake AI reply."
+
+
+def test_closing_a_live_session_also_sets_the_title_and_the_apps_ai_summary(client, app, app_db, hello_project):
+    app_db.install_project("user", hello_project)
+    session = client.get("/api/chat/session").json()
+    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
+
+    resp = client.post(f"/api/chat/sessions/{session['id']}/close")
+    assert resp.status_code == 200, resp.text
+
+    run_on_enter_tasks(app)
+
+    assert app_db.get_chat_session(session["id"])["title"] == "Fake title."
+    apps = app_db.list_projects_for_app_store("user")
+    mine = next(a for a in apps if a["id"] == hello_project)
+    assert mine["ai_summary"] == "Fake AI reply."
+
+
+def test_a_still_open_session_has_no_summary(client, app, app_db, hello_project):
+    session = client.get("/api/chat/session").json()
+    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
+
+    run_on_enter_tasks(app)
+
+    assert app_db.get_chat_session(session["id"])["ai_summary"] is None
+
+
+def test_a_session_merely_expired_by_the_open_window_is_never_queued(client, app, app_db, hello_project):
+    """Expiring past the open window is not the same as being closed —
+    only an explicit close (ChatSessionManager.close_session) schedules
+    a report, so a session nobody ever closed must never get one even
+    once it reads as closed via is_open()."""
+    session = client.get("/api/chat/session").json()
+    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
     app_db.touch_chat_session(session["id"], datetime.utcnow() - timedelta(hours=2), session["end_state"])
 
-    # No session is active anymore — this call's own hook discovers the
-    # previous one closed and queues its summary before creating a new one.
     new_session = client.get("/api/chat/session").json()
     assert new_session["id"] != session["id"]
 
-    deadline = time.monotonic() + 5.0
-    summary = {"content": None}
-    while time.monotonic() < deadline and summary["content"] is None:
-        summary = client.get(f"/api/chat/sessions/{session['id']}/summary").json()
-        if summary["content"] is None:
-            time.sleep(0.05)
+    run_on_enter_tasks(app)
 
-    assert summary["content"] is not None
-
-
-def test_an_explicitly_closed_session_within_the_window_is_still_queued(client, app_db, hello_project):
-    session = client.get("/api/chat/session").json()
-    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
-
-    # Still well within the open window — only the explicit close (never
-    # datetime_end/the window) should make this session count as closed.
-    assert app_db.close_chat_session(session["id"], datetime.utcnow(), "manual-user") is True
-
-    new_session = client.get("/api/chat/session").json()
-    assert new_session["id"] != session["id"]
-
-    deadline = time.monotonic() + 5.0
-    summary = {"content": None}
-    while time.monotonic() < deadline and summary["content"] is None:
-        summary = client.get(f"/api/chat/sessions/{session['id']}/summary").json()
-        if summary["content"] is None:
-            time.sleep(0.05)
-
-    assert summary["content"] is not None
-
-
-def test_a_still_open_session_is_never_queued(client, hello_project):
-    session = client.get("/api/chat/session").json()
-    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
-
-    # Calling get_or_create again immediately (session still well within
-    # the open window) must never queue anything for it.
-    client.get("/api/chat/session")
-
-    assert client.get(f"/api/chat/sessions/{session['id']}/summary").json() == {"content": None}
+    assert app_db.get_chat_session(session["id"])["ai_summary"] is None

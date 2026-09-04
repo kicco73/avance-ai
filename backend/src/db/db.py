@@ -16,7 +16,6 @@ from .messages import MessageMixin
 from .migration import SchemaMigrator
 from .observability import ObservabilityMixin
 from .projects import ProjectMixin
-from .session_summaries import SessionSummaryMixin
 from .sessions import SessionMixin
 from .settings import SettingsMixin
 from .users import UserMixin
@@ -28,7 +27,7 @@ from playhouse.db_url import connect, parse as parse_db_url
 
 from .models import (
     AiTokenUsage, Archive, ChatSession, EditHistory, Invite, Message,
-    Project, ProjectObserverIndex, Settings, User, SessionSummary, StateRemap, SystemWarning, Task, Test,
+    Project, ProjectObserverIndex, Settings, User, StateRemap, SystemWarning, Task, Test,
     TestAggregateResult, TestObservation, Tracking, UserProject,
     database,
 )
@@ -47,7 +46,6 @@ class Db(
     HistoryMixin,
     TestMixin,
     TestAggregateMixin,
-    SessionSummaryMixin,
     SettingsMixin,
     UserProjectMixin,
     InviteMixin,
@@ -58,7 +56,7 @@ class Db(
     _SQLITE_MAGIC = b"SQLite format 3\x00"
     _MODELS = (
         Project, ChatSession, Message, User, Tracking, Archive, EditHistory, StateRemap,
-        Test, TestObservation, TestAggregateResult, SessionSummary, SystemWarning,
+        Test, TestObservation, TestAggregateResult, SystemWarning,
         ProjectObserverIndex, Settings, UserProject, Invite, AiTokenUsage, Task,
     )
 

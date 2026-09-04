@@ -246,17 +246,23 @@ class ProjectMixin:
             )
         ]
 
-    def list_projects_for_app_store(self, username: str) -> list[dict]:
-        installed_ids = {
-            row.project_id for row in UserProject.select(UserProject.project).where(UserProject.user == username)
+    def list_projects_for_app_store(self, username: str, search: str | None = None) -> list[dict]:
+        installed = {
+            row.project_id: row.ai_summary
+            for row in UserProject.select(UserProject.project, UserProject.ai_summary).where(UserProject.user == username)
         }
+        query = Project.select(Project.id, Project.ui_label, Project.ui_description, Project.is_paused).where(
+            Project.published_revision.is_null(False)
+        )
+        if search:
+            query = query.where(Project.ui_label.contains(search) | Project.ui_description.contains(search))
         return [
             {
                 "id": p.id, "ui_label": p.ui_label, "ui_description": p.ui_description,
-                "is_paused": p.is_paused, "installed": p.id in installed_ids,
+                "is_paused": p.is_paused, "installed": p.id in installed,
+                "ai_summary": installed.get(p.id),
             }
-            for p in Project.select(Project.id, Project.ui_label, Project.ui_description, Project.is_paused)
-            .where(Project.published_revision.is_null(False))
+            for p in query
         ]
 
     def list_projects_runtime_status(self) -> list[dict]:

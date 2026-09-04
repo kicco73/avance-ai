@@ -59,8 +59,9 @@ class SettingsController(BaseController, ProjectCommitMixin):
     @get("/api/settings/services/ai-usage", role="admin")
     def get_ai_usage(self):
         """Settings > Manage services > AI — each ai-service provider's
-        own daily token spend (see db/ai_usage.py), fetched once when the
-        panel opens, same as get_services above: {today, history}."""
+        own token spend, one point per minute over the trailing 24h (see
+        db/ai_usage.py), fetched once when the panel opens, same as
+        get_services above: {today, history}."""
         labels = [f"{p['driver']}/{p['model']}" for p in self.services_config["ai"]["providers"]]
         return self.db.get_ai_token_usage_snapshot(labels)
 
@@ -124,15 +125,20 @@ class SettingsController(BaseController, ProjectCommitMixin):
         return {"projects": self.project_service.get_runtime_status()}
 
     @get("/api/settings/tasks", role="admin")
-    def get_scheduled_tasks(self):
-        """Settings > Manage services > Scheduler — every row of the Task
-        table (see db/tasks.py's list_tasks), soonest run_at first.
-        `payload` is omitted: it's the task type's own internal
-        hydration data, not meant for display."""
+    def get_scheduled_tasks(self, status: str | None = None, order: str = "asc"):
+        """Settings > Manage services > Scheduler — Task rows for one
+        status at a time (the frontend's own segmented control), by
+        run_at per `order` (see db/tasks.py's list_tasks). `payload` is
+        omitted: it's the task type's own internal hydration data, not
+        meant for display."""
+        try:
+            tasks = self.db.list_tasks(status=status, order=order)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {
             "tasks": [
                 {key: value for key, value in task.items() if key != "payload"}
-                for task in self.db.list_tasks()
+                for task in tasks
             ]
         }
 
