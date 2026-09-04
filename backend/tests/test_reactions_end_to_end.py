@@ -149,14 +149,19 @@ def no_reactions_project(client):
 def test_a_states_reactions_enabled_has_no_effect_without_a_declared_reactions_section(
     client, fake_ai_service, no_reactions_project,
 ):
-    """Even a model that emits a [reaction] tag anyway (ignoring that it
-    was never offered one, since TurnProtocol's own reaction_tags is
-    empty here) must not have it captured — "if activated, no effect"."""
-    async def generate_stream_with_reaction(system_prompt, history, on_retry=None):
+    """Even a model that would report a 'reaction' field anyway (ignoring
+    that it was never offered one, since TurnProtocol's own reaction_tags
+    is empty here, so 'reaction' never enters the schema sent to it) must
+    not have it captured — "if activated, no effect". The fake below
+    checks `schema` the same way a real schema-constrained provider
+    structurally can't emit a field outside it."""
+    async def generate_stream_with_metadata_and_reaction(system_prompt, history, on_metadata, schema, tool_set=None):
         fake_ai_service.calls.append((system_prompt, history))
-        yield "Hello there. [reaction]supportive[/reaction]"
+        if 'reaction' in schema:
+            on_metadata('reaction', 'supportive')
+        yield "Hello there."
 
-    fake_ai_service.generate_stream = generate_stream_with_reaction
+    fake_ai_service.generate_stream_with_metadata = generate_stream_with_metadata_and_reaction
 
     session = client.get("/api/chat/session").json()
     turn = parse_chat_turn_sse(client.post(
@@ -171,16 +176,16 @@ def test_a_states_reactions_enabled_has_no_effect_without_a_declared_reactions_s
 
 
 def test_bots_own_reaction_is_captured_and_persisted_on_the_users_message(client, fake_ai_service, reactions_project):
-    """The full loop the earlier unit tests only exercised piecemeal:
-    the AI actually emits a [reaction] tag (FakeAiService.is_provider_with_schema
-    is False, so text-extraction applies), TrackingProcessor's own
+    """The full loop the earlier unit tests only exercised piecemeal: the
+    AI actually reports a 'reaction' field, TrackingProcessor's own
     on_receiving_metadata_* must capture it into Metadata.reaction, and
     process() must persist it onto the *user's* message, not the bot's own."""
-    async def generate_stream_with_reaction(system_prompt, history, on_retry=None):
+    async def generate_stream_with_metadata_and_reaction(system_prompt, history, on_metadata, schema, tool_set=None):
         fake_ai_service.calls.append((system_prompt, history))
-        yield "Hello there. [reaction]supportive[/reaction]"
+        on_metadata('reaction', 'supportive')
+        yield "Hello there."
 
-    fake_ai_service.generate_stream = generate_stream_with_reaction
+    fake_ai_service.generate_stream_with_metadata = generate_stream_with_metadata_and_reaction
 
     session = client.get("/api/chat/session").json()
     turn = parse_chat_turn_sse(client.post(

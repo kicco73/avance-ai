@@ -16,7 +16,6 @@ from .sources import SourceNamespace, ToolSet
 from .tracking_engine import DbTrackingSink, TrackingEngine
 from .turn_protocol import TurnProtocol
 from .turn_protocol_using_schema import TurnProtocolUsingSchema
-from .turn_protocol_using_text_extraction import TurnProcotolUsingTextExtraction
 from .metadata_handler import MetadataHandler
 from .definitions import Signals
 from .errors import TrackingServiceError
@@ -200,9 +199,7 @@ class TrackingProcessor(object):
 		)
 
 	def build_turn_protocol(self) -> TurnProtocol:
-		supports_schema = self.ai_service.is_provider_with_schema()
 		has_to_evaluate_signals_before_ai_reply = not self.user.automaton.autotracking_on_ai_message
-		Protocol = TurnProtocolUsingSchema if supports_schema else TurnProcotolUsingTextExtraction
 		talk_enabled = self.talk_enabled and self.user.automaton.talk_enabled
 		logger.info(
 			"build_turn_protocol talk_enabled: project=%r revision=%s session=%s system_talk_enabled=%s "
@@ -217,7 +214,7 @@ class TrackingProcessor(object):
 		# instead, which is real content even on an AI-started turn, so it
 		# isn't affected.
 		evaluate_signals = not (has_to_evaluate_signals_before_ai_reply and self.user.has_ai_started_conversation)
-		return Protocol(
+		return TurnProtocolUsingSchema(
 			self.ai_service, has_to_evaluate_signals_before_ai_reply, evaluate_signals=evaluate_signals,
 			reactions_enabled=self.user.automaton.reactions_enabled_for(self.user.state),
 			talk_enabled=talk_enabled,
@@ -310,8 +307,7 @@ def estimate_state_prompt(ai_service: AiService, automaton: Automaton, state: St
 
 	env = Env(stored={key.name: key.value for key in automaton.env_keys})
 	has_to_evaluate_signals_before_ai_reply = not automaton.autotracking_on_ai_message
-	protocol_class = TurnProtocolUsingSchema if ai_service.is_provider_with_schema() else TurnProcotolUsingTextExtraction
-	protocol = protocol_class(
+	protocol = TurnProtocolUsingSchema(
 		ai_service, has_to_evaluate_signals_before_ai_reply,
 		reactions_enabled=automaton.reactions_enabled_for(state), talk_enabled=automaton.talk_enabled,
 	)

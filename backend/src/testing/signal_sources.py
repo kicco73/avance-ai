@@ -15,7 +15,6 @@ from tracking.fixed_project_context import FixedProjectContext
 from tracking.metadata_handler import MetadataHandler
 from tracking.tracking_service import TrackingService
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
-from tracking.turn_protocol_using_text_extraction import TurnProcotolUsingTextExtraction
 from testing.replay_messages import next_assistant_message_id
 
 
@@ -60,11 +59,10 @@ class TurnByTurnSignalSource:
         if signal_definition:
             base_prompt = f"{base_prompt}\n\n{signal_definition}"
 
-        protocol_cls = TurnProtocolUsingSchema if self._ai_service.is_provider_with_schema() else TurnProcotolUsingTextExtraction
         # Second positional param only affects generate_reply's own tag
         # ordering, never read by generate_reply_with_schema — the only
         # method this class calls.
-        protocol = protocol_cls(self._ai_service, True)
+        protocol = TurnProtocolUsingSchema(self._ai_service, True)
 
         chat_history = self._build_chat_history(message_id)
 
@@ -186,8 +184,7 @@ class BatchSignalSource(object):
             base_prompt = f"{base_prompt}\n\n{signal_definition}"
         base_prompt = f"{base_prompt}\n\nConversation transcript:\n{self._build_conversation_text(turn_ids)}"
 
-        protocol_cls = TurnProtocolUsingSchema if self._ai_service.is_provider_with_schema() else TurnProcotolUsingTextExtraction
-        protocol = protocol_cls(self._ai_service, True)
+        protocol = TurnProtocolUsingSchema(self._ai_service, True)
 
         # Not the real conversation as native multi-turn messages — see
         # _build_conversation_text, which already flattened it into

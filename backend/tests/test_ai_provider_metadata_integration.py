@@ -3,7 +3,6 @@ from __future__ import annotations
 import pytest
 
 from ai import AiService
-from tracking.turn_protocol_using_text_extraction import TurnProcotolUsingTextExtraction
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 from config import AppConfig, ConfigError
 
@@ -31,9 +30,6 @@ PROMPT = (
     "'last_win' with the value 'promotion'."
 )
 
-STRATEGY_FOR = {"v1": TurnProcotolUsingTextExtraction, "v2": TurnProtocolUsingSchema}
-
-
 class _StubEnv:
     """A throwaway Env-shaped object — TurnProtocol.generate_reply only
     reads serialise_as_text() off whatever it's given, sparing this test
@@ -50,32 +46,17 @@ def _history() -> list[dict]:
     return [{"role": "user", "content": PROMPT}]
 
 
-def _classify(ai_service: AiService) -> str:
-    return "v2" if ai_service.is_provider_with_schema() else "v1"
-
-
-def _strategy_for(wanted: str):
-    """Pins a fresh AiService to the first configured provider whose
-    capability matches `wanted`, skipping the test if the local config
-    has none matching."""
+def _strategy():
+    """Pins a fresh AiService to its first configured provider — True
+    picks one of the two valid tag/field orderings, irrelevant to what
+    this test actually checks."""
     ai_service = AiService.for_live(_APP_CONFIG.ai_services)
-    # AiService.for_live filters _APP_CONFIG.ai_services down to only the
-    # entries whose own modes include "live" (see AIServiceConfig.modes)
-    # — its own selectable-provider count, not the unfiltered config's,
-    # is the one this loop must stay in range of.
-    for index in range(len(ai_service.get_models_info()["models"])):
-        ai_service.select_model(index)
-        if _classify(ai_service) == wanted:
-            # True picks one of the two valid tag/field orderings,
-            # irrelevant to what this test actually checks.
-            return STRATEGY_FOR[wanted](ai_service, True)
-    pytest.skip(
-        f"No configured provider is '{wanted}' (see backend/.config.yml's ai-service.providers)."
-    )
+    ai_service.select_model(0)
+    return TurnProtocolUsingSchema(ai_service, True)
 
 
-async def _run(wanted: str):
-    strategy = _strategy_for(wanted)
+async def _run():
+    strategy = _strategy()
     chunks: list[str] = []
     live_metadata: dict[str, object] = {}
 
@@ -90,9 +71,8 @@ async def _run(wanted: str):
 
 
 def _assert_extracted_metadata(reply, live_metadata) -> None:
-    # No leftover tag markup either way: the text-extraction strategy
-    # strips its own [audio]/[signals]/[env] tags, and the schema
-    # strategy never embeds them in the visible text to begin with.
+    # The schema strategy never embeds [audio]/[signals]/[env] markup in
+    # the visible text to begin with.
     assert reply.strip()
     for marker in ("[audio]", "[/audio]", "[signals]", "[/signals]", "[env]", "[/env]"):
         assert marker not in reply
@@ -106,12 +86,11 @@ def _assert_extracted_metadata(reply, live_metadata) -> None:
 
 
 @pytest.mark.contract
-@pytest.mark.parametrize("wanted", ["v1", "v2"])
-async def test_generate_reply_streams_chunks_and_reports_metadata(wanted):
+async def test_generate_reply_streams_chunks_and_reports_metadata():
     """TurnProtocol.generate_reply always returns an AsyncIterator[str] of
     visible text chunks, with metadata delivered live through the
     on_metadata callback's raw string values, never a return tuple."""
-    reply, chunks, live_metadata = await _run(wanted)
+    reply, chunks, live_metadata = await _run()
 
     _assert_extracted_metadata(reply, live_metadata)
     assert chunks, "generate_reply produced no chunks at all"

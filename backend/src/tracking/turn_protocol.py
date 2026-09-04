@@ -60,9 +60,8 @@ class TurnProtocol(ABC):
 		# existed. TurnProtocol never inspects this itself.
 		tool_set: ToolSet | None = None,
 	) -> AsyncIterator[str]:
-		"""Returns chunks of text coming from the response streaming and
-		calls metadata callback to handle tags in a compatible way for V1 and V2.
-		"""
+		"""Returns chunks of text coming from the response streaming,
+		calling on_metadata for each non-"text" field as it completes."""
 		final_prompt = self.build_final_prompt(base_prompt, signal_definition, env, reaction_definition)
 		return self._generate_reply(final_prompt, chat_history, on_metadata, **tool_set_kwargs(tool_set))
 

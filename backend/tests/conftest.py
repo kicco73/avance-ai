@@ -147,13 +147,20 @@ class FakeAiService:
         # callers consume it with `async for`.
         yield "Fake AI reply."
 
+    async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None):
+        # What TurnProtocolUsingSchema actually calls — this fake reports
+        # no metadata of its own (no test here cares about signals/audio/
+        # env extraction; see FakeSchemaAiService in
+        # test_chat_service_evaluation_points.py for that), just the same
+        # plain reply text generate_stream above always returned.
+        self.calls.append((system_prompt, history))
+        yield "Fake AI reply."
+
     def supports_metadata(self) -> bool:
         return False
 
     def is_provider_with_schema(self) -> bool:
-        # Routes build_turn_protocol() to the path that calls
-        # generate_stream(), the one this fake actually implements.
-        return False
+        return True
 
 
 @pytest.fixture
