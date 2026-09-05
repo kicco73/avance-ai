@@ -109,7 +109,9 @@ function createEditor(doc) {
   else if (contentType.value === 'text/markdown' || contentType.value === 'text/plain') {
     extensions.splice(1, 0, markdown())
   }
-  // A source's own sources/<id>.csv (see SourceContentPanel.vue).
+  // A generic .csv attachment uploaded via FileExplorer.vue (a source's
+  // own sources/<id>.csv gets SourceContentPanel.vue's Tabulator grid
+  // instead, never this generic fallback).
   else if (contentType.value === 'text/csv') {
     extensions.splice(1, 0, csv())
   }

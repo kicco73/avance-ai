@@ -509,7 +509,9 @@ class ProjectEditor:
         delete_source below), never user-named or picked from existing files."""
         return f"{SOURCES_DIR}/{source_name}.csv"
 
-    async def add_source(self, project_id: str, commit: CommitCallback) -> SourcePayload:
+    async def add_source(
+        self, project_id: str, commit: CommitCallback, name_hint: str | None = None, content: bytes = b""
+    ) -> SourcePayload:
         """A source's own archive is created empty right alongside it —
         `url` is never left unconfigured (contrast env keys/signals, which
         start genuinely blank): AutomatonBuilder._build_source requires
@@ -518,9 +520,9 @@ class ProjectEditor:
         serialize()/put_project_file below revalidates the whole project
         against it."""
         def operation(editor: AutomatonYamlEditor) -> SourcePayload:
-            payload = editor.add_source()
+            payload = editor.add_source(name_hint)
             archive_name = self._source_archive(payload["name"])
-            self._db.save_project_file(Session().user, project_id, archive_name, b"", "text/csv")
+            self._db.save_project_file(Session().user, project_id, archive_name, content, "text/csv")
             return editor.set_source_field(payload["name"], "url", f"avance:{archive_name}")
         return await self._edit_index_yml(project_id, commit, operation)
 

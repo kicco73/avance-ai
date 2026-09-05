@@ -1,46 +1,142 @@
 <script setup>
-// A selected Source node's own content editor — same "Preview | Edit"
-// segmented-control toolbar shape as IndexYmlEditorPanel.vue's own
-// Graph/Code toggle (segments on the left, Undo/Redo always live, an
-// edit-only action group — here Upload + Save — on the right), plus an
-// Upload button (replaces the whole buffer with a chosen CSV file, then
-// immediately saves it) since a source's own sources/<id>.csv isn't
-// something a user types from scratch. Preview mirrors MdEditorPanel.vue's
-// own exactly: a Markdown table rendered client-side, live off the
-// current (possibly unsaved) buffer via csvMarkdownTable.js's real CSV
-// parser (quoted fields, embedded commas) — never a network round-trip.
-import { computed, ref } from 'vue'
-import CodeEditor from '../../../CodeEditor.vue'
-import { renderMarkdown } from '../../../../markdown.js'
-import { csvToMarkdownTable } from '../../../../csvMarkdownTable.js'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import Papa from 'papaparse'
+import { TabulatorFull as Tabulator } from 'tabulator-tables'
+import 'tabulator-tables/dist/css/tabulator.min.css'
+import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile } from '../../../../api.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },
-  // sources/<id>.csv — the caller's own already-refreshed source payload
-  // (see ProjectDesignPanel.vue's currentSourceArchiveName), never
-  // guessed at from a bare source name.
-  fileName: { type: String, required: true },
-  initialSegment: { type: String, default: 'preview' }
+  fileName: { type: String, required: true }
 })
 
-const emit = defineEmits(['saved', 'renamed'])
+const emit = defineEmits(['saved'])
 
-const segment = ref(props.initialSegment)
-const codeEditorRef = ref(null)
-const fileInputRef = ref(null)
+const loading = ref(true)
+const saving = ref(false)
 const uploading = ref(false)
+const canUndo = ref(false)
+const canRedo = ref(false)
+const tableHost = ref(null)
+const fileInputRef = ref(null)
 
-const content = computed(() => codeEditorRef.value?.content ?? '')
-const isDirty = computed(() => codeEditorRef.value?.isDirty ?? false)
-const saving = computed(() => codeEditorRef.value?.saving ?? false)
+const content = ref('')
+const originalContent = ref('')
+const isDirty = computed(() => content.value !== originalContent.value)
 
-const renderedHtml = computed(() => renderMarkdown(csvToMarkdownTable(content.value)))
+let table = null
+let requestToken = 0
 
-function save() { return codeEditorRef.value?.save() }
-function discard() { return codeEditorRef.value?.discard() }
-function undo() { return codeEditorRef.value?.undo() }
-function redo() { return codeEditorRef.value?.redo() }
-function reload() { return codeEditorRef.value?.reload() }
+function parseCsv(text) {
+  const result = Papa.parse(text ?? '', { header: true, skipEmptyLines: true })
+  const fields = result.meta.fields ?? []
+  const columns = fields.map((field) => ({ title: field, field, editor: 'input' }))
+  return { columns, data: result.data }
+}
+
+function serializeTable() {
+  if (!table) return content.value
+  const columns = table.getColumns().map((col) => col.getField())
+  return Papa.unparse({ fields: columns, data: table.getData() })
+}
+
+function buildTable(text) {
+  const { columns, data } = parseCsv(text)
+  table = new Tabulator(tableHost.value, {
+    data,
+    columns,
+    layout: 'fitDataStretch',
+    height: '100%',
+    reactiveData: false
+  })
+  table.on('cellEdited', () => {
+    content.value = serializeTable()
+  })
+}
+
+function setTableData(text) {
+  const { columns, data } = parseCsv(text)
+  table.setColumns(columns)
+  table.setData(data)
+}
+
+async function load() {
+  const token = ++requestToken
+  loading.value = true
+  try {
+    const file = await getProjectFile(props.projectId, props.fileName)
+    if (token !== requestToken) return
+    const fileContent = file?.content ?? ''
+    content.value = fileContent
+    originalContent.value = fileContent
+    canUndo.value = file?.can_undo ?? false
+    canRedo.value = file?.can_redo ?? false
+  } catch {
+    if (token === requestToken) loading.value = false
+    return
+  }
+  loading.value = false
+  if (table) {
+    setTableData(content.value)
+    return
+  }
+  await nextTick()
+  if (token !== requestToken) return
+  buildTable(content.value)
+}
+
+async function save() {
+  saving.value = true
+  try {
+    const result = await putProjectFile(props.projectId, props.fileName, content.value)
+    content.value = result.content
+    originalContent.value = result.content
+    canUndo.value = result.can_undo
+    canRedo.value = result.can_redo
+    setTableData(result.content)
+    emit('saved', result)
+    return true
+  } catch {
+    return false
+  } finally {
+    saving.value = false
+  }
+}
+
+function discard() {
+  content.value = originalContent.value
+  setTableData(originalContent.value)
+}
+
+async function applyHistoryNavigation(action) {
+  const token = ++requestToken
+  try {
+    const file = await action(props.projectId, props.fileName, content.value)
+    if (token !== requestToken) return
+    content.value = file.content
+    setTableData(file.content)
+    canUndo.value = file.can_undo
+    canRedo.value = file.can_redo
+  } catch {}
+}
+
+function undo() {
+  if (canUndo.value) applyHistoryNavigation(undoProjectFile)
+}
+
+function redo() {
+  if (canRedo.value) applyHistoryNavigation(redoProjectFile)
+}
+
+async function reload() {
+  await load()
+}
+
+async function addRow() {
+  if (!table) return
+  await table.addRow({})
+  content.value = serializeTable()
+}
 
 function triggerUpload() {
   fileInputRef.value?.click()
@@ -48,12 +144,13 @@ function triggerUpload() {
 
 async function handleUpload(event) {
   const file = event.target.files?.[0]
-  event.target.value = '' // reset so re-selecting the same file re-fires change
+  event.target.value = ''
   if (!file) return
   uploading.value = true
   try {
     const text = await file.text()
-    codeEditorRef.value?.setContent(text)
+    content.value = text
+    setTableData(text)
     await save()
   } finally {
     uploading.value = false
@@ -61,89 +158,60 @@ async function handleUpload(event) {
 }
 
 defineExpose({ content, isDirty, saving, save, discard, undo, redo, reload })
+
+onMounted(load)
+onBeforeUnmount(() => {
+  table?.destroy()
+  table = null
+})
 </script>
 
 <template>
   <div class="source-content-panel">
     <div class="source-content-toolbar">
-      <div class="source-content-toolbar-left">
-        <div class="source-content-segments">
-          <button
-            class="source-content-segment-btn"
-            :class="{ 'source-content-segment-btn-active': segment === 'preview' }"
-            @click="segment = 'preview'"
-          >Preview</button>
-          <button
-            class="source-content-segment-btn"
-            :class="{ 'source-content-segment-btn-active': segment === 'edit' }"
-            @click="segment = 'edit'"
-          >Edit</button>
-        </div>
-      </div>
       <div class="source-content-toolbar-actions">
         <button
           class="undo-redo-btn"
           title="Undo"
-          :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canUndo"
-          @click="codeEditorRef?.undo()"
+          :disabled="loading || saving || !canUndo"
+          @click="undo"
         >↺</button>
         <button
           class="undo-redo-btn"
           title="Redo"
-          :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canRedo"
-          @click="codeEditorRef?.redo()"
+          :disabled="loading || saving || !canRedo"
+          @click="redo"
         >↻</button>
+        <button class="add-row-btn" :disabled="loading || saving" title="Add a row" @click="addRow">+ Row</button>
         <button
           class="source-content-upload-btn"
-          :disabled="uploading || codeEditorRef?.saving"
+          :disabled="uploading || saving"
           title="Upload a CSV file, replacing this source's current content"
           @click="triggerUpload"
         >{{ uploading ? 'Uploading…' : 'Upload' }}</button>
         <input ref="fileInputRef" type="file" accept=".csv" class="source-content-upload-input" @change="handleUpload" />
-        <template v-if="segment === 'edit'">
-          <button
-            class="save-btn"
-            :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.isDirty"
-            @click="codeEditorRef?.save()"
-          >{{ codeEditorRef?.saving ? 'Saving…' : 'Save' }}</button>
-        </template>
+        <button class="save-btn" :disabled="loading || saving || !isDirty" @click="save">{{ saving ? 'Saving…' : 'Save' }}</button>
       </div>
     </div>
 
-    <div v-show="segment === 'preview'" class="source-content-preview" v-html="renderedHtml"></div>
-
-    <div v-show="segment === 'edit'" class="source-content-edit">
-      <CodeEditor
-        ref="codeEditorRef"
-        :project-id="projectId"
-        :file-name="fileName"
-        @saved="emit('saved', $event)"
-        @renamed="emit('renamed', $event)"
-      />
-    </div>
+    <p v-if="loading" class="source-content-status">Loading…</p>
+    <div v-show="!loading" ref="tableHost" class="source-content-table"></div>
   </div>
 </template>
 
 <style scoped>
 .source-content-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.source-content-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0.75rem; border-bottom: 1px solid #ddd; flex-shrink: 0; }
-.source-content-toolbar-left { display: flex; align-items: center; gap: 0.5rem; }
-.source-content-segments { display: flex; gap: 0.2rem; padding: 0.2rem; border-radius: 8px; background: #eef1f5; }
-.source-content-segment-btn { padding: 0.3rem 0.8rem; border: none; border-radius: 6px; background: none; cursor: pointer; font-size: 0.82rem; color: #555; }
-.source-content-segment-btn-active { background: white; color: #2c4d7a; font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
-.source-content-upload-btn { padding: 0.35rem 0.7rem; border-radius: 6px; border: 1px solid #4a6fa5; background: white; color: #4a6fa5; cursor: pointer; font-size: 0.82rem; }
-.source-content-upload-btn:hover:not(:disabled) { background: #eef2f9; }
-.source-content-upload-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.source-content-upload-input { display: none; }
+.source-content-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; padding: 0.5rem 0.75rem; border-bottom: 1px solid #ddd; flex-shrink: 0; }
 .source-content-toolbar-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+.source-content-status { margin: 0; padding: 1rem; color: #444; }
+.source-content-table { flex: 1; min-height: 0; overflow: auto; }
 .undo-redo-btn { padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid #ccc; background: white; cursor: pointer; font-size: 0.9rem; }
 .undo-redo-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.add-row-btn, .source-content-upload-btn { padding: 0.35rem 0.7rem; border-radius: 6px; border: 1px solid #4a6fa5; background: white; color: #4a6fa5; cursor: pointer; font-size: 0.82rem; }
+.add-row-btn:hover:not(:disabled), .source-content-upload-btn:hover:not(:disabled) { background: #eef2f9; }
+.add-row-btn:disabled, .source-content-upload-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.source-content-upload-input { display: none; }
 .save-btn { padding: 0.4rem 1rem; border-radius: 6px; border: 1px solid #2e7d32; background: #2e7d32; color: white; cursor: pointer; }
 .save-btn:hover:not(:disabled) { background: #256428; }
 .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.source-content-preview, .source-content-edit { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.source-content-preview { padding: 0.75rem 1rem; overflow: auto; line-height: 1.5; }
-.source-content-preview :deep(table) { border-collapse: collapse; width: max-content; max-width: 100%; }
-.source-content-preview :deep(th), .source-content-preview :deep(td) { border: 1px solid #ddd; padding: 0.35rem 0.6rem; font-size: 0.85rem; text-align: left; }
-.source-content-preview :deep(th) { background: #f5f5f7; font-weight: 600; }
 </style>

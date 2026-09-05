@@ -198,6 +198,15 @@ export function postAddSource(projectId) {
   return projectFetch(projectId, `${API_URL}/projects/${encodeURIComponent(projectId)}/sources`, { method: 'POST' })
 }
 
+export function postAddSourceFromFile(projectId, fileName, content) {
+  const query = `?file_name=${encodeURIComponent(fileName)}`
+  return projectFetch(
+    projectId,
+    `${API_URL}/projects/${encodeURIComponent(projectId)}/sources${query}`,
+    { method: 'POST', headers: { 'Content-Type': 'text/plain; charset=utf-8' }, body: content }
+  )
+}
+
 export function postAddAction(projectId, stateName) {
   return projectFetch(
     projectId,

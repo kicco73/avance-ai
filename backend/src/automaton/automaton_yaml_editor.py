@@ -295,13 +295,14 @@ class AutomatonYamlEditor:
             env.yaml_set_comment_before_after_key(name, before="\n")
         return self._env_key_payload(name)
 
-    def add_source(self) -> SourcePayload:
+    def add_source(self, name_hint: str | None = None) -> SourcePayload:
         """`url` is left unset — same "not yet configured" state as a
         fresh env key's `value` — until the user picks a driver from
         the Inspector (see set_source_field)."""
         sources = self._sources()
         add_blank_line = self._uses_blank_line_separators(sources)
-        name = self._unique_source_name("behaviour", set(sources.keys()))
+        base = self.to_snake_case(name_hint) if name_hint else ""
+        name = self._unique_source_name(base or "behaviour", set(sources.keys()))
         sources[name] = CommentedMap({"ui-label": name})
         if add_blank_line:
             sources.yaml_set_comment_before_after_key(name, before="\n")

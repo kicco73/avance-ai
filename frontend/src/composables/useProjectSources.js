@@ -1,5 +1,9 @@
 import { computed, ref } from 'vue'
-import { getProjectSources, postAddSource, putSourceField, deleteProjectSource } from '../api.js'
+import { getProjectSources, postAddSource, postAddSourceFromFile, putSourceField, deleteProjectSource } from '../api.js'
+
+function sourceNameHint(fileName) {
+  return fileName.replace(/\.[^./]+$/, '')
+}
 
 // The design tree's "Sources" branch (see FileExplorer.vue) and the
 // Inspector "Info" tab's own Source card: the declared-sources list, which
@@ -63,6 +67,21 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
     })
   }
 
+  function handleUploadSourceFile(file) {
+    return guardedAction('add a new source', async () => {
+      try {
+        const text = await file.text()
+        const source = await postAddSourceFromFile(projectId, sourceNameHint(file.name), text)
+        await loadSources()
+        sourcesRootSelected.value = false
+        currentSourceName.value = source.name
+        flashRecentlyAdded(`source:${source.name}`)
+      } catch {
+        // already surfaced via apiFetch
+      }
+    })
+  }
+
   function handleSetSourceField(field, value) {
     const name = currentSourceName.value
     if (!name) return
@@ -99,6 +118,6 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
 
   return {
     sourcesLoading, sources, currentSourceName, sourcesRootSelected, selectedSource, deletingSource,
-    loadSources, selectSource, selectSourcesRoot, handleAddSource, handleSetSourceField, handleDeleteSource,
+    loadSources, selectSource, selectSourcesRoot, handleAddSource, handleUploadSourceFile, handleSetSourceField, handleDeleteSource,
   }
 }

@@ -123,8 +123,23 @@ onBeforeUnmount(() => { if (recentlyAddedTimer) clearTimeout(recentlyAddedTimer)
 
 const {
   sourcesLoading, sources, currentSourceName, sourcesRootSelected, selectedSource, deletingSource,
-  loadSources, selectSource, selectSourcesRoot, handleAddSource, handleSetSourceField, handleDeleteSource,
+  loadSources, selectSource, selectSourcesRoot, handleAddSource, handleUploadSourceFile, handleSetSourceField, handleDeleteSource,
 } = useProjectSources(props.projectId, guardedAction, flashRecentlyAdded)
+
+async function handleUploadFileOrSource(event) {
+  const uploadedFiles = Array.from(event.target.files ?? [])
+  const csvFiles = uploadedFiles.filter((file) => /\.csv$/i.test(file.name))
+  if (!csvFiles.length) {
+    handleUploadFile(event)
+    return
+  }
+  const otherFiles = uploadedFiles.filter((file) => !/\.csv$/i.test(file.name))
+  event.target.value = ''
+  for (const file of csvFiles) {
+    await handleUploadSourceFile(file)
+  }
+  if (otherFiles.length) handleUploadFile({ target: { files: otherFiles, value: '' } })
+}
 
 // ProjectDesignPanel.vue's own exposed handle onto whichever
 // SourceContentPanel is currently mounted — same "computed proxy
@@ -906,7 +921,7 @@ onBeforeUnmount(() => {
           @select-file="selectFileNode"
           @select-source="selectSourceNode"
           @select-sources-root="selectSourcesRootNode"
-          @upload-file="handleUploadFile"
+          @upload-file="handleUploadFileOrSource"
           @jump-to-definition="(target) => jumpToDefinition(target, { silent: true })"
           @select="selectedGraphElement = $event"
           @saved="handleFileSaved"

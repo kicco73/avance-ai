@@ -90,6 +90,19 @@ function handleDelete() {
     </div>
     <div class="inspector-detail-body">
       <div class="inspector-detail-form">
+        <label class="inspector-detail-form-label" title="Referenced as source.<id> in a trigger/env expression">
+          <span class="inspector-py-field-icon" title="Identifier">ID</span>
+          Id
+        </label>
+        <input
+          v-model="editId"
+          class="inspector-project-id-input"
+          placeholder="e.g. flight_records"
+          @click.stop
+          @blur="commitId"
+          @keydown.enter.prevent="handleEnterNext"
+        />
+
         <label class="inspector-detail-form-label">Description</label>
         <textarea
           v-model="editUiDescription"
@@ -115,19 +128,6 @@ function handleDelete() {
           @click.stop
           @blur="commitAiDefinition"
         ></textarea>
-
-        <label class="inspector-detail-form-label" title="Referenced as source.<id> in a trigger/env expression">
-          <span class="inspector-py-field-icon" title="Identifier">ID</span>
-          Id
-        </label>
-        <input
-          v-model="editId"
-          class="inspector-project-id-input"
-          placeholder="e.g. flight_records"
-          @click.stop
-          @blur="commitId"
-          @keydown.enter.prevent="handleEnterNext"
-        />
 
         <label class="inspector-detail-form-label">Driver</label>
         <select class="inspector-source-select" :value="'avance'">
