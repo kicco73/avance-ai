@@ -195,6 +195,25 @@ class ChatService(object):
 			"ai_summary": session["ai_summary"],
 		}
 
+	def _session_revision_unsupported(self, session: dict) -> bool:
+		"""True when session["project_revision"] — the exact revision this
+		session is pinned to, never the project's current one — no longer
+		builds under today's AutomatonBuilder rules. Only a real concern
+		for a fixed-revision session (live/imported/preview); a 'test'
+		session always re-resolves against the live draft, so it has
+		nothing "pinned" to check. Only computed for the Sessions panel
+		listing (see _list_sessions_by_type) — every other session-payload
+		site (bootstrap, a turn's own response, ...) already fails its own
+		way on a genuinely broken automaton load, with its own dedicated
+		409 (see _get_automaton_and_state_or_raise_unsupported)."""
+		if session["type"] == "test":
+			return False
+		try:
+			self._project_service.get_automaton(session["project_id"], session["project_revision"])
+		except (AutomatonBuildError, FileNotFoundError, ValueError):
+			return True
+		return False
+
 	def _ensure_project_available(self, project_id: str) -> None:
 		"""A paused project (broken published build, manual pause, or an
 		unavailable automaton.* dependency — see ProjectManager.
@@ -384,7 +403,10 @@ class ChatService(object):
 		sessions = [s for s in sessions if self._owns_session(s['username'])]
 		active = self._session_manager.get_active_session(self._username, project_id, type=active_type)
 		return [
-			self._session_payload(s, active=get_session_type_strategy(s["type"]).is_valid_write_target(s, active))
+			{
+				**self._session_payload(s, active=get_session_type_strategy(s["type"]).is_valid_write_target(s, active)),
+				"unsupported_revision": self._session_revision_unsupported(s),
+			}
 			for s in sessions
 		]
 

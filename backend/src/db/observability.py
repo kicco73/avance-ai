@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .models import ProjectObserverIndex, SystemWarning
+from .utils import _utc_iso
 
 
 class ObservabilityMixin:
@@ -20,6 +21,25 @@ class ObservabilityMixin:
         )
         return [
             {"id": row.id, "kind": row.kind, "message": row.message, "timestamp": row.timestamp}
+            for row in rows
+        ]
+
+    def list_system_warnings_for_user(self, username: str, kind: str | None = None, limit: int = 50) -> list[dict]:
+        """`username`'s own SystemWarning rows across every project, most
+        recent first — Manage projects' own "broken project" warnings
+        list (see project/health_notifications.py, the only writer of
+        kind="project_broken"). A durable audit trail: a row here outlives
+        the project actually being fixed, unlike get_runtime_status's own
+        live `broken` field."""
+        query = SystemWarning.select().where(SystemWarning.user_id == username)
+        if kind is not None:
+            query = query.where(SystemWarning.kind == kind)
+        rows = query.order_by(SystemWarning.timestamp.desc()).limit(limit)
+        return [
+            {
+                "id": row.id, "project_id": row.project_id, "kind": row.kind, "message": row.message,
+                "timestamp": _utc_iso(row.timestamp),
+            }
             for row in rows
         ]
 

@@ -1,8 +1,9 @@
 """The project-level `sources:` section (AutomatonBuilder._build_source)
 — parsing each entry's ui-label/ui-description/url, validating the url's
-scheme and (for the 'avance' driver) that its path resolves to an
-already-uploaded archive, and validating `source.<name>.<method>`
-references in trigger/env: expressions against what's actually declared.
+scheme and (for the 'avance' driver, provisioning an empty archive when
+its path hasn't been seen before rather than rejecting it) and validating
+`source.<name>.<method>` references in trigger/env: expressions against
+what's actually declared.
 """
 from __future__ import annotations
 
@@ -90,9 +91,15 @@ def test_url_with_an_unknown_scheme_is_rejected():
         _build("sources:\n  pino:\n    url: s3:flights.csv\n")
 
 
-def test_avance_url_referencing_a_missing_archive_is_rejected():
-    with pytest.raises(ValueError, match="not found"):
-        _build("sources:\n  pino:\n    url: avance:flights.csv\n")
+def test_avance_url_referencing_a_never_seen_archive_is_provisioned_empty():
+    """'avance' is the project's own embedded default driver — a source
+    naming an archive it hasn't seen yet still builds, backed by an
+    empty archive, instead of failing the whole project."""
+    automaton = _build(
+        "sources:\n  pino:\n    url: avance:flights.csv\n",
+        trigger="source.pino.select('x') == 'x'",
+    )
+    assert automaton.sources[0].url == "avance:flights.csv"
 
 
 def test_a_trigger_may_call_a_declared_source_s_select():

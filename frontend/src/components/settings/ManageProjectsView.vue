@@ -3,7 +3,7 @@
 // status (see backend ProjectService._project_status) and revision info.
 // The status dot toggles running <-> manually_paused only; 'paused' needs an external fix.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getAppStoreApps, getProjectFiles, getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, putProjectPause, putProjectResume } from '../../api.js'
+import { getAppStoreApps, getProjectBrokenWarnings, getProjectFiles, getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, putProjectPause, putProjectResume } from '../../api.js'
 import { confirmDialog, customDialog } from '../../dialogStore.js'
 import { setCanvasColor, restoreCanvasColor } from '../../canvasColor.js'
 import SettingsMenu from './SettingsMenu.vue'
@@ -80,6 +80,11 @@ function findIconFile(files) {
 
 const openMenuFor = ref(null)
 const addMenuOpen = ref(false)
+// "Broken project" warnings counter/list — a durable audit trail (see
+// getProjectBrokenWarnings) distinct from each row's own live `broken`
+// field, which disappears the moment that project is fixed.
+const warningsMenuOpen = ref(false)
+const warnings = ref([])
 
 const appStoreAppById = ref({})
 const selectedProjectId = ref(null)
@@ -131,6 +136,24 @@ function toggleAddMenu() {
   addMenuOpen.value = !addMenuOpen.value
 }
 
+async function loadWarnings() {
+  try {
+    const { warnings: rows } = await getProjectBrokenWarnings()
+    warnings.value = rows
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+function toggleWarningsMenu() {
+  warningsMenuOpen.value = !warningsMenuOpen.value
+  if (warningsMenuOpen.value) loadWarnings()
+}
+
+function formatWarningTimestamp(timestamp) {
+  return new Date(timestamp).toLocaleString()
+}
+
 function selectNewProject() {
   addMenuOpen.value = false
   emit('new-project')
@@ -147,6 +170,9 @@ function handleDocumentClick(event) {
   }
   if (addMenuOpen.value && !event.target.closest('.manage-projects-add-menu')) {
     addMenuOpen.value = false
+  }
+  if (warningsMenuOpen.value && !event.target.closest('.manage-projects-warnings-menu')) {
+    warningsMenuOpen.value = false
   }
 }
 
@@ -307,6 +333,7 @@ let previousCanvasColor = ''
 
 onMounted(() => {
   load()
+  loadWarnings()
   previousCanvasColor = setCanvasColor('#ffffff')
   headerResizeObserver = new ResizeObserver(handleHeaderResize)
   headerResizeObserver.observe(headerEl.value.el)
@@ -364,6 +391,31 @@ defineExpose({ refresh: load })
                       </svg>
                       <span>Upload project...</span>
                     </button>
+                  </li>
+                </ul>
+              </div>
+            </Transition>
+          </div>
+          <div v-if="warnings.length" class="manage-projects-warnings-menu">
+            <button
+              type="button"
+              class="manage-projects-action-btn manage-projects-warnings-btn"
+              title="Broken project warnings"
+              @click="toggleWarningsMenu"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                <path d="M12 2 1 21h22L12 2zm0 6.5 6.53 11.5H5.47L12 8.5zM11 11v4h2v-4h-2zm0 5.5v2h2v-2h-2z" />
+              </svg>
+              <span class="manage-projects-warnings-count">{{ warnings.length }}</span>
+            </button>
+            <Transition name="manage-projects-add-panel">
+              <div v-if="warningsMenuOpen" class="manage-projects-add-panel manage-projects-warnings-panel">
+                <p class="manage-projects-warnings-title">Broken project warnings</p>
+                <ul class="manage-projects-warnings-list">
+                  <li v-for="warning in warnings" :key="warning.id" class="manage-projects-warnings-item">
+                    <span class="manage-projects-warnings-item-project">{{ projectTitle(warning.project_id) }}</span>
+                    <span class="manage-projects-warnings-item-time">{{ formatWarningTimestamp(warning.timestamp) }}</span>
+                    <span class="manage-projects-warnings-item-message">{{ warning.message }}</span>
                   </li>
                 </ul>
               </div>
@@ -704,6 +756,91 @@ defineExpose({ refresh: load })
 .manage-projects-add-item svg {
   flex-shrink: 0;
   color: #4a6fa5;
+}
+
+.manage-projects-warnings-menu {
+  position: relative;
+}
+
+.manage-projects-warnings-btn {
+  position: relative;
+  border-color: #c0392b;
+  color: #c0392b;
+}
+
+.manage-projects-warnings-btn:hover {
+  background: #c0392b;
+  color: white;
+}
+
+.manage-projects-warnings-count {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.35rem;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #c0392b;
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.manage-projects-warnings-panel {
+  min-width: 20rem;
+  max-width: 26rem;
+}
+
+.manage-projects-warnings-title {
+  margin: 0;
+  padding: 0.6rem 0.9rem 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #333;
+  border-bottom: 1px solid #eee;
+}
+
+.manage-projects-warnings-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.2rem 0;
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
+.manage-projects-warnings-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.5rem 0.9rem;
+  border-bottom: 1px solid #f3f3f3;
+}
+
+.manage-projects-warnings-item:last-child {
+  border-bottom: none;
+}
+
+.manage-projects-warnings-item-project {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #c0392b;
+}
+
+.manage-projects-warnings-item-time {
+  font-size: 0.65rem;
+  color: #999;
+}
+
+.manage-projects-warnings-item-message {
+  font-size: 0.75rem;
+  color: #555;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .manage-projects-body {

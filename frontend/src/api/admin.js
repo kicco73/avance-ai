@@ -7,9 +7,17 @@ export function getProjects() {
 }
 
 // Settings > Runtime status view's own table — every project's own
-// {id, status, paused_reason, revision, published_revision}.
+// {id, status, paused_reason, revision, published_revision, broken}.
 export function getProjectsRuntimeStatus() {
   return apiFetch(`${API_URL}/settings/projects/runtime-status`)
+}
+
+// Manage projects' own "broken project" warnings counter/list — a
+// durable record of every project_broken SystemWarning this admin has
+// received, outliving the project actually being fixed (unlike
+// getProjectsRuntimeStatus's own live `broken` field).
+export function getProjectBrokenWarnings() {
+  return apiFetch(`${API_URL}/settings/warnings?kind=project_broken`)
 }
 
 export function getUsers() {

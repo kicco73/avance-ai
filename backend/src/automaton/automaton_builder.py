@@ -108,28 +108,31 @@ class AutomatonBuilder(object):
         return archives
 
     @staticmethod
-    def _extract_required_archives(required_attachments: list[str], all_archives: dict[str, MemoryArchive], for_field: str) -> dict[str, MemoryArchive]:
-        by_basename: dict[str, list[str]] = {}
-        for archive_name in all_archives:
-            by_basename.setdefault(Path(archive_name).name, []).append(archive_name)
+    def _find_archive(required_attachment: str, all_archives: dict[str, MemoryArchive], for_field: str) -> str | None:
+        """Resolves `required_attachment` to its key in `all_archives` —
+        an exact path match first, then a unique basename match. None
+        when genuinely absent; still raises when the basename is
+        ambiguous, since that's a real authoring error, not an absence."""
+        if required_attachment in all_archives:
+            return required_attachment
+        matches = [archive_name for archive_name in all_archives if Path(archive_name).name == required_attachment]
+        if len(matches) > 1:
+            raise ValueError(
+                f"{for_field} attachment named '{required_attachment}' is ambiguous — "
+                f"matches {', '.join(sorted(matches))}"
+            )
+        return matches[0] if matches else None
 
+    @staticmethod
+    def _extract_required_archives(required_attachments: list[str], all_archives: dict[str, MemoryArchive], for_field: str) -> dict[str, MemoryArchive]:
         extracted_archives = {}
         for required_attachment in required_attachments:
-            if required_attachment in all_archives:
-                extracted_archives[required_attachment] = all_archives[required_attachment]
-                continue
-            matches = by_basename.get(required_attachment, [])
-            if len(matches) == 1:
-                extracted_archives[required_attachment] = all_archives[matches[0]]
-                continue
-            if len(matches) > 1:
+            resolved = AutomatonBuilder._find_archive(required_attachment, all_archives, for_field)
+            if resolved is None:
                 raise ValueError(
-                    f"{for_field} attachment named '{required_attachment}' is ambiguous — "
-                    f"matches {', '.join(sorted(matches))}"
+                    f"{for_field} attachment named '{required_attachment}' not found"
                 )
-            raise ValueError(
-                f"{for_field} attachment named '{required_attachment}' not found"
-            )
+            extracted_archives[required_attachment] = all_archives[resolved]
         return extracted_archives
 
     def _build_signal(self, name, raw_signal: dict, all_archives: dict[str, MemoryArchive]) -> Signal:
@@ -174,7 +177,13 @@ class AutomatonBuilder(object):
         _validate_namespaced_expression). Once set, `url`'s scheme picks
         the driver (SOURCE_DRIVERS); for the 'avance' driver, the path
         must resolve to an already-uploaded archive — the same existence
-        check `attachments:` already gets (_extract_required_archives)."""
+        check `attachments:` already gets (_extract_required_archives),
+        except a path the 'avance' driver has never seen before is
+        provisioned here as an empty archive rather than rejected: it's
+        the project's own embedded default driver, so a source name that
+        outruns its backing file (a hand-edited index.yml, a family
+        member copied before its archive) still builds, empty, instead
+        of failing the whole project."""
         raw_source = raw_source or {}
         url = raw_source.get("url") or ""
         if url:
@@ -186,8 +195,11 @@ class AutomatonBuilder(object):
                 raise ValueError(
                     f"Source '{name}': url scheme '{scheme}' must be one of: {', '.join(sorted(SOURCE_DRIVERS))}."
                 )
-            if scheme == "avance":
-                self._extract_required_archives([path], all_archives, f"source '{name}'")
+            if scheme == "avance" and self._find_archive(path, all_archives, f"source '{name}'") is None:
+                all_archives[path] = MemoryArchive(
+                    filename=path,
+                    source={"type": "text", "media_type": "text/plain", "data": ""},
+                )
         raw_ai_definition = raw_source.get("ai-definition")
         return Source(
             name=name,

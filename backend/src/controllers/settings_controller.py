@@ -124,6 +124,14 @@ class SettingsController(BaseController, ProjectCommitMixin):
         table."""
         return {"projects": self.project_service.get_runtime_status()}
 
+    @get("/api/settings/warnings", role="admin")
+    def get_warnings(self, kind: str | None = None):
+        """Manage projects' own "broken project" warnings counter/list —
+        a durable audit trail of every SystemWarning this admin has
+        received (see project/health_notifications.py for kind=
+        "project_broken"), even past the project actually being fixed."""
+        return {"warnings": self.db.list_system_warnings_for_user(Session().user, kind=kind)}
+
     @get("/api/settings/tasks", role="admin")
     def get_scheduled_tasks(self, status: str | None = None, order: str = "asc"):
         """Settings > Manage services > Scheduler — Task rows for one
