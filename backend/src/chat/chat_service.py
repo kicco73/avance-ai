@@ -171,6 +171,7 @@ class ChatService(object):
 			"id": session["id"],
 			"username": session["username"],
 			"project_id": session["project_id"],
+			"project_revision": session["project_revision"],
 			"type": session["type"],
 			"title": session["title"],
 			"datetime_start": _utc_iso(session["datetime_start"]),

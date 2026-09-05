@@ -377,16 +377,22 @@ const {
                   'sessions-tree-session-item-active': selectedNodeId === `session:${session.id}`,
                   'sessions-tree-session-item-selected': canDragAndDrop && selectedSessionIds.has(session.id)
                 }"
-                :draggable="canDragAndDrop"
+                :disabled="session.unsupported_revision"
+                :title="session.unsupported_revision ? `This session is pinned to revision ${session.project_revision}, which this version of Avance can no longer run.` : undefined"
+                :draggable="canDragAndDrop && !session.unsupported_revision"
                 @click="onSessionRowClick(session, user, $event)"
                 @dragstart="onSessionDragStart(session, user, $event)"
                 @dragend="onSessionDragEnd"
               >
                 <span class="sessions-tree-session-content">
                   <span class="session-badge-row">
-                    <span class="session-badge" :class="{ 'session-badge-inactive': !session.active }">
+                    <span
+                      class="session-badge"
+                      :class="{ 'session-badge-inactive': !session.active, 'session-badge-unsupported': session.unsupported_revision }"
+                    >
                       {{ session.title || session.end_state }}
                     </span>
+                    <span v-if="session.unsupported_revision" class="session-unsupported-label">unsupported revision</span>
                     <span v-if="channelLabel(session)" class="session-channel-label">{{ channelLabel(session) }}</span>
                     <span
                       v-if="session.has_annotations"
@@ -697,6 +703,14 @@ const {
   background: #eef2f8;
 }
 
+.sessions-tree-session-item:disabled {
+  cursor: not-allowed;
+}
+
+.sessions-tree-session-item:disabled:hover {
+  background: none;
+}
+
 .sessions-tree-drag-handle {
   flex-shrink: 0;
   display: flex;
@@ -821,6 +835,21 @@ const {
 .session-badge-inactive {
   background: #999;
   opacity: 0.5;
+}
+
+.session-badge-unsupported {
+  background: #999;
+  opacity: 0.6;
+}
+
+.session-unsupported-label {
+  flex-shrink: 0;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: #fdecea;
+  color: #c0392b;
+  font-size: 0.65rem;
+  font-weight: 600;
 }
 
 .session-channel-label {

@@ -86,6 +86,40 @@ def test_file_endpoints_still_work_on_a_broken_project(client, app, app_db):
     assert recovered.status_code == 200, recovered.text
 
 
+def test_a_session_pinned_to_an_old_now_broken_revision_is_flagged_unsupported(client, app, app_db):
+    """The project itself stays healthy (a newer revision is published
+    and builds fine) — only the one session still pinned to the older,
+    since-superseded revision that broke is affected."""
+    _upload(client, "flaky", VALID_YML)
+    session = client.get("/api/chat/session").json()
+    assert session["project_revision"] == 0
+
+    # A second, still-valid revision gets published — the session above
+    # keeps running against revision 0, exactly as before.
+    updated_yml = f"project:\n  id: flaky\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi again\n"
+    saved = client.put("/api/projects/flaky/files/index.yml", content=updated_yml.encode())
+    assert saved.status_code == 200, saved.text
+    published = client.post("/api/projects/flaky/publish", json={"remap_to": None})
+    assert published.status_code == 200, published.text
+    assert published.json()["published_revision"] == 1
+
+    # Now revision 0 alone breaks — the currently published one (1) is untouched.
+    from db.models import Archive
+    Archive.update(content=BROKEN_YML.encode("utf-8")).where(
+        (Archive.project == "flaky") & (Archive.archive_name == "index.yml") & (Archive.revision == 0)
+    ).execute()
+    app.state.chat_service._project_service._manager._automaton_loader.invalidate_cache("flaky")
+
+    sessions = client.get("/api/projects/flaky/sessions").json()
+    row = next(s for s in sessions if s["id"] == session["id"])
+    assert row["unsupported_revision"] is True
+
+    runtime_status = client.get("/api/settings/projects/runtime-status").json()["projects"]
+    flaky_row = next(p for p in runtime_status if p["id"] == "flaky")
+    assert flaky_row["status"] == "running"
+    assert flaky_row["broken"] == {"published": None, "draft": None}
+
+
 def test_resume_is_rejected_for_a_project_whose_published_revision_is_broken(client, app, app_db):
     _upload(client, "solo", VALID_YML)
     paused = client.put("/api/projects/solo/pause")
