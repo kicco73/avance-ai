@@ -45,7 +45,55 @@ REQUEST_TIMEOUT_MS: int = 30_000
 # tool" fallback this name identifies: a synthetic tool whose own
 # parameters are the schema's fields, forced whenever the model isn't
 # asking for a real one, standing in for a genuine structured response.
+# Key under which ToolCallsRequested.assistant_content carries this
+# provider's own model-turn Parts (functionCall + thought_signature) for
+# verbatim replay — opaque to AiService and to every other provider.
+_REPLAY_PARTS_KEY = "gemini_parts"
 _RESPOND_TOOL_NAME = "respond"
+
+
+def _copy_model_part(part: Any) -> types.Part:
+	"""A real types.Part rebuilt from one streamed part of the model's
+	turn — text, functionCall and, above all, its `thought_signature`
+	(also kept on a part that carries nothing else: in streaming Gemini
+	can deliver the signature on its own chunk, see _consolidate_model_parts)."""
+	function_call = getattr(part, "function_call", None)
+	return types.Part(
+		text=getattr(part, "text", None) or None,
+		function_call=types.FunctionCall(
+			id=getattr(function_call, "id", None),
+			name=function_call.name,
+			args=dict(function_call.args or {}),
+		) if function_call is not None else None,
+		thought=getattr(part, "thought", None) or None,
+		thought_signature=getattr(part, "thought_signature", None),
+	)
+
+
+def _consolidate_model_parts(parts: list[types.Part]) -> list[types.Part]:
+	"""The model turn to replay, in the order it streamed: consecutive
+	text-only parts merged, and a signature that streamed on a part of
+	its own (no text, no call) moved onto the first functionCall part
+	still lacking one — Gemini requires the signature *on* the functionCall
+	part it signed, and rejects a bare functionCall part without it."""
+	merged: list[types.Part] = []
+	orphan_signatures: list[bytes] = []
+	for part in parts:
+		if part.function_call is None and not part.text:
+			if part.thought_signature:
+				orphan_signatures.append(part.thought_signature)
+			continue
+		if part.function_call is None and merged and merged[-1].function_call is None \
+				and not part.thought_signature and not merged[-1].thought_signature:
+			merged[-1].text = (merged[-1].text or "") + part.text
+			continue
+		merged.append(part)
+	for part in merged:
+		if not orphan_signatures:
+			break
+		if part.function_call is not None and not part.thought_signature:
+			part.thought_signature = orphan_signatures.pop(0)
+	return merged
 
 
 @contextmanager
@@ -174,12 +222,29 @@ class GeminiProvider(LLMProvider):
 			role: str = message["role"]
 
 			if role == "assistant" and message.get("tool_calls"):
-				parts: list[types.Part] = []
-				text = message.get("content")
-				if text:
-					parts.append(types.Part.from_text(text=str(text)))
 				for call in message["tool_calls"]:
 					call_name_by_id[call.id] = call.name
+				content = message.get("content")
+				replay = content.get(_REPLAY_PARTS_KEY) if isinstance(content, dict) else None
+				if replay:
+					# This very provider asked for these calls: replay its
+					# own parts verbatim. Gemini stamps every functionCall
+					# part with an opaque `thought_signature` and refuses
+					# the next request (400 INVALID_ARGUMENT, "Function
+					# call is missing a thought_signature") unless that
+					# exact part — signature included — comes back in the
+					# model turn preceding the functionResponse; a part
+					# rebuilt from the neutral ToolCall has no signature.
+					# See https://ai.google.dev/gemini-api/docs/thought-signatures
+					contents.append(types.Content(role="model", parts=list(replay)))
+					continue
+				# Another provider asked for these calls (a cascade
+				# failover mid-loop): nothing of Gemini's to replay,
+				# rebuild the model turn from the neutral shape.
+				parts: list[types.Part] = []
+				if content and not isinstance(content, dict):
+					parts.append(types.Part.from_text(text=str(content)))
+				for call in message["tool_calls"]:
 					parts.append(types.Part.from_function_call(name=call.name, args=call.arguments))
 				contents.append(types.Content(role="model", parts=parts))
 				continue
@@ -285,6 +350,10 @@ class GeminiProvider(LLMProvider):
 		# streamed argument-by-argument the way OpenAI's deltas are — so
 		# there's nothing to accumulate across chunks, just the latest one seen.
 		function_call: types.FunctionCall | None = None
+		# Every function-call part the model produced this round, kept as
+		# real Parts *with* their thought_signature, so the next request can
+		# replay the model turn byte-for-byte (see __build_contents).
+		replay_parts: list[types.Part] = []
 		with _handle_gemini_errors():
 			response_stream = await self.__client().aio.models.generate_content_stream(
 				model=self.__model_name,
@@ -308,6 +377,7 @@ class GeminiProvider(LLMProvider):
 					for part in (content.parts if content else None) or []:
 						if part.function_call is not None:
 							function_call = part.function_call
+						replay_parts.append(_copy_model_part(part))
 					continue
 				if not chunk.text:
 					continue
@@ -334,9 +404,11 @@ class GeminiProvider(LLMProvider):
 						id=function_call.id or str(uuid.uuid4()), name=function_call.name or "",
 						arguments=dict(function_call.args or {}),
 					)],
-					# Gemini's own function-call parts carry no separate
-					# "text said alongside this call" — nothing to replay.
-					assistant_content=None,
+					# Not text: Gemini's own parts for this model turn,
+					# thought_signature included, for __build_contents to
+					# replay verbatim on the next round. Any other provider
+					# ignores this and rebuilds from `calls`.
+					assistant_content={_REPLAY_PARTS_KEY: _consolidate_model_parts(replay_parts)},
 				)
 
 		if finish_reason == types.FinishReason.MAX_TOKENS:

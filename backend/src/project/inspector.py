@@ -11,7 +11,7 @@ from tracking.sources.url import parse_source_url
 from tracking.tracking_engine import TrackingEngine
 
 from .archive.automaton_loader import AutomatonLoader
-from .archive.layout import LEGAL_TERMS_FILE_NAME
+from .archive.layout import CACHE_DIR, LEGAL_TERMS_FILE_NAME
 
 if TYPE_CHECKING:
     from ai import AiService
@@ -65,10 +65,9 @@ class ProjectInspector:
         if current is None:
             return {"pending": False, "content": None}
         accepted_id = self._db.get_accepted_terms_archive_id(username, project_id)
-        # Every publish forks every Archive row (a new id for the same
-        # bytes — see Db.publish_project), so comparing ids alone asked
-        # every user to accept the very same terms again after each
-        # publish. Pending means the *text* changed since acceptance.
+        # Every publish forks every Archive row (new id, same bytes), so
+        # comparing ids alone would ask users to re-accept unchanged terms —
+        # pending means the *text* changed since acceptance.
         pending = accepted_id != current.id and (
             accepted_id is None or self._db.get_archive_content_by_id(accepted_id) != current.content
         )
@@ -241,23 +240,9 @@ class ProjectInspector:
         }
 
     def get_identifier_registry(self, project_id: str) -> dict[str, dict[str, str]]:
-        """Every identifier `project_id`'s trigger/`env:` expressions can
-        reference, plus an "automaton.<id>"/"automaton.<id>.env" entry per
-        *other* project declaring this exact same family — a project
-        outside it (or `project_id` itself having no family at all) is
-        never offered here, same boundary AutomatonLoader.
-        known_projects_env_keys enforces at build time and
-        AutomatonNamespace enforces at runtime — and a "source.<name>"
-        entry per this project's own declared `sources:` (empty, like an
-        unconfigured source's own driver, for one with no url yet — see
-        AutomatonBuilder._build_source), same dynamic-namespace shape
-        `automaton.<id>` gets, enforced the same way at build time (see
-        AutomatonBuilder._validate_namespaced_expression) and at runtime
-        (SourceNamespace). Only ever called from the design view
-        (TriggerEditor's autocomplete), so — like get_project_signals/
-        get_project_env_keys — this reads the in-progress draft, not the
-        published revision: a signal/env key/source just declared must be
-        offerable before the project is published."""
+        """Every identifier a trigger/`env:` expression can reference:
+        signals, env keys, `source.<name>`, and `automaton.<id>`/`.env`
+        for sibling same-family projects. Reads the unpublished draft."""
         automaton = self._automaton_loader.load(project_id)
         registry = IdentifierRegistry.build(automaton.signals, automaton.env_keys)
         registry["automaton"] = {}
@@ -293,12 +278,9 @@ class ProjectInspector:
         return [state.key for state in automaton.states.values() if state.key != ""]
 
     def get_state_input_tokens(self, project_id: str, state_key: str, session_id: int | None = None) -> int | None:
-        """Estimated input-token cost of `state_key`'s own turn prompt
-        (see tracking_processor.estimate_state_prompt), for the Inspect
-        panel's detail card — deliberately its own call, fetched on demand
-        for whichever single state is open, rather than folded into
-        get_project_graph: that would cost one estimate call per state on
-        every graph load. None when no AiService was wired in."""
+        """Estimated input-token cost of `state_key`'s own turn prompt,
+        fetched on demand per state rather than folded into
+        get_project_graph (one estimate call per state on every load)."""
         if self._ai_service is None:
             return None
         revision = self._resolve_inspector_revision(project_id, session_id)
@@ -368,15 +350,28 @@ class ProjectInspector:
         return {"projects": projects, "active": active}
 
     def get_project_revision_info(self, project_id: str) -> dict:
-        """{revision, published_revision, is_paused, paused_reason} for the
-        "Edit project" toolbar's revision display, refreshed after every
-        save and publish."""
+        """{revision, published_revision, is_paused, paused_reason,
+        modified_files} for the "Edit project" toolbar's revision display,
+        refreshed after every save and publish."""
         if project_id not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_id}' does not exist.")
         is_paused, paused_reason = self._db.get_project_availability(project_id) or (False, None)
+        revision = self._db.get_project_revision(project_id)
+        published_revision = self._db.get_project_published_revision(project_id)
         return {
-            "revision": self._db.get_project_revision(project_id),
-            "published_revision": self._db.get_project_published_revision(project_id),
+            "revision": revision,
+            "published_revision": published_revision,
             "is_paused": is_paused,
             "paused_reason": paused_reason,
+            "modified_files": self._modified_archive_names(project_id, revision, published_revision),
         }
+
+    def _modified_archive_names(self, project_id: str, revision: int, published_revision: int | None) -> list[str]:
+        if published_revision is None or revision == published_revision:
+            return []
+        current = self._db.get_archives(project_id, revision=revision)
+        published = self._db.get_archives(project_id, revision=published_revision)
+        return [
+            name for name, content in current.items()
+            if not name.startswith(f"{CACHE_DIR}/") and published.get(name) != content
+        ]

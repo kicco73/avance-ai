@@ -38,8 +38,10 @@ class _FakeFunctionCall:
 
 
 class _FakePart:
-    def __init__(self, function_call: _FakeFunctionCall | None = None) -> None:
+    def __init__(self, function_call: _FakeFunctionCall | None = None, thought_signature: bytes | None = None, text: str = "") -> None:
         self.function_call = function_call
+        self.thought_signature = thought_signature
+        self.text = text
 
 
 class _FakeContent:
@@ -124,8 +126,10 @@ def _text_response(json_text: str) -> list[_FakeChunk]:
     return [_FakeChunk(candidates=[_FakeCandidate(finish_reason=types.FinishReason.STOP)], usage_metadata=_FakeUsage(), text=json_text)]
 
 
-def _function_call_response(name: str, args: dict, call_id: str | None = None) -> list[_FakeChunk]:
-    part = _FakePart(function_call=_FakeFunctionCall(name=name, args=args, id=call_id))
+def _function_call_response(
+    name: str, args: dict, call_id: str | None = None, thought_signature: bytes | None = None,
+) -> list[_FakeChunk]:
+    part = _FakePart(function_call=_FakeFunctionCall(name=name, args=args, id=call_id), thought_signature=thought_signature)
     return [_FakeChunk(
         candidates=[_FakeCandidate(content=_FakeContent(parts=[part]), finish_reason=types.FinishReason.STOP)],
         usage_metadata=_FakeUsage(),
@@ -355,3 +359,89 @@ def test_respond_tool_declaration_parameters_match_the_schema_fields():
     # attribute access, not dict subscripting.
     assert set(declaration.parameters.properties.keys()) == {"text", "env"}
     assert declaration.parameters.required == ["text", "env"]
+
+
+# Gemini stamps every functionCall part with an opaque thought_signature
+# and rejects the next request (400 INVALID_ARGUMENT "Function call is
+# missing a thought_signature in functionCall parts") unless that exact
+# part comes back in the model turn preceding the functionResponse. A
+# part rebuilt from the neutral ToolCall has no signature — so the
+# provider must hand its own parts back through assistant_content and
+# replay them verbatim. https://ai.google.dev/gemini-api/docs/thought-signatures
+async def test_a_tool_call_keeps_its_thought_signature_through_the_replayed_history():
+    provider, _ = _provider([_function_call_response(
+        "source_flights_select", {"value": "VY3003"}, call_id="c1", thought_signature=b"opaque-sig",
+    )])
+
+    with pytest.raises(ToolCallsRequested) as raised:
+        await _drain(provider.generate_stream_with_schema("sys", [{"role": "user", "content": "hi"}], {"text": "t"}, tools=[_SELECT_SPEC]))
+
+    requested = raised.value
+    history = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "tool_calls": requested.calls, "content": requested.assistant_content},
+        {"role": "tool", "tool_call_id": requested.calls[0].id, "content": "row"},
+    ]
+    contents = provider._GeminiProvider__build_contents(history)  # type: ignore[attr-defined]
+
+    model_turn = contents[1]
+    assert model_turn.role == "model"
+    assert model_turn.parts[0].function_call.name == "source_flights_select"
+    assert model_turn.parts[0].function_call.args == {"value": "VY3003"}
+    assert model_turn.parts[0].thought_signature == b"opaque-sig"
+    assert contents[2].parts[0].function_response.name == "source_flights_select"
+
+
+def test_a_tool_call_asked_by_another_provider_is_rebuilt_without_a_signature():
+    """Cascade failover mid-loop: the assistant turn carries no Gemini
+    replay payload (text or None) — rebuilt from the neutral ToolCall,
+    exactly as before."""
+    provider, _ = _provider([])
+    history = [
+        {"role": "assistant", "tool_calls": [ToolCall(id="x", name="source_flights_select", arguments={"value": "a"})], "content": None},
+        {"role": "tool", "tool_call_id": "x", "content": "row"},
+    ]
+    contents = provider._GeminiProvider__build_contents(history)  # type: ignore[attr-defined]
+    assert contents[0].parts[0].function_call.name == "source_flights_select"
+    assert contents[0].parts[0].thought_signature is None
+
+
+async def test_a_signature_streamed_on_its_own_chunk_lands_on_the_function_call_part():
+    """Streaming can deliver the thought_signature on a chunk whose part
+    carries nothing else, before or after the functionCall part — it
+    must end up on the functionCall part, the only place Gemini accepts it."""
+    chunks = [
+        _FakeChunk(candidates=[_FakeCandidate(content=_FakeContent(parts=[_FakePart(thought_signature=b"sig-alone")]))]),
+        _FakeChunk(candidates=[_FakeCandidate(
+            content=_FakeContent(parts=[_FakePart(function_call=_FakeFunctionCall(name="source_flights_select", args={"value": "VY1"}, id="c1"))]),
+            finish_reason=types.FinishReason.STOP,
+        )], usage_metadata=_FakeUsage()),
+    ]
+    provider, _ = _provider([chunks])
+
+    with pytest.raises(ToolCallsRequested) as raised:
+        await _drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}, tools=[_SELECT_SPEC]))
+
+    parts = raised.value.assistant_content["gemini_parts"]
+    assert len(parts) == 1
+    assert parts[0].function_call.name == "source_flights_select"
+    assert parts[0].thought_signature == b"sig-alone"
+
+
+async def test_text_streamed_alongside_the_call_is_replayed_in_order():
+    chunks = [
+        _FakeChunk(candidates=[_FakeCandidate(content=_FakeContent(parts=[_FakePart(text="Let me ")]))]),
+        _FakeChunk(candidates=[_FakeCandidate(content=_FakeContent(parts=[_FakePart(text="check.")]))]),
+        _FakeChunk(candidates=[_FakeCandidate(
+            content=_FakeContent(parts=[_FakePart(function_call=_FakeFunctionCall(name="source_flights_select", args={"value": "VY1"}), thought_signature=b"s")]),
+            finish_reason=types.FinishReason.STOP,
+        )], usage_metadata=_FakeUsage()),
+    ]
+    provider, _ = _provider([chunks])
+
+    with pytest.raises(ToolCallsRequested) as raised:
+        await _drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}, tools=[_SELECT_SPEC]))
+
+    parts = raised.value.assistant_content["gemini_parts"]
+    assert [p.text for p in parts] == ["Let me check.", None]
+    assert parts[1].function_call.name == "source_flights_select" and parts[1].thought_signature == b"s"

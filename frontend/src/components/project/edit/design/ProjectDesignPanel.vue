@@ -1,9 +1,7 @@
 <script setup>
-// Design mode's file explorer plus whichever editor fits the current file:
-// index.yml/index.css get dedicated panels, images get a preview, a
-// .txt/.md attachment gets MdEditorPanel's Preview/Edit toggle, anything
-// else falls back to a bare CodeEditor. Purely presentational — state is
-// owned by EditProjectView.vue and reached only through props/emits.
+// Design mode's file explorer plus whichever editor fits the current
+// file. Purely presentational — state is owned by EditProjectView.vue
+// and reached only through props/emits.
 import { computed, ref } from 'vue'
 import FileExplorer from './FileExplorer.vue'
 import CodeEditor from '../../../CodeEditor.vue'
@@ -38,21 +36,17 @@ const props = defineProps({
   highlightedStateKey: { type: String, default: null },
   firedActionEdge: { type: Object, default: null },
   selectedElement: { type: Object, default: null },
-  // Declared sources (see FileExplorer.vue's own "Sources" branch) —
-  // `sources`: getProjectSources' own [{ source }, ...] shape.
-  // `currentSourceName`, when set, takes the editor pane over with its
-  // own SourceContentPanel (below) — mutually exclusive with a real file
-  // being open (EditProjectView.vue's own selectFileNode/selectSourceNode
-  // keep the two from ever both being set).
+  // Declared sources (see FileExplorer.vue's "Sources" branch).
+  // `currentSourceName` takes the editor pane over with SourceContentPanel,
+  // mutually exclusive with a real file being open.
   sources: { type: Array, default: () => [] },
   sourcesLoading: { type: Boolean, default: true },
   currentSourceName: { type: String, default: null },
-  // True while the "Sources" branch header itself is selected — no
-  // individual source chosen yet (see FileExplorer.vue's own header
-  // click) — takes the editor pane over with an empty state, same as
-  // currentSourceName does for a real source, and just as mutually
-  // exclusive with a real file being open.
-  sourcesRootSelected: { type: Boolean, default: false }
+  // True while the "Sources" branch header itself is selected — takes
+  // the editor pane over with an empty state, same as currentSourceName
+  // does for a real source.
+  sourcesRootSelected: { type: Boolean, default: false },
+  modifiedFiles: { type: Array, default: () => [] }
 })
 
 // sources/<id>.csv — same convention ProjectEditor._source_archive
@@ -71,10 +65,9 @@ const emit = defineEmits([
   'jump-to-definition', 'select', 'saved', 'renamed'
 ])
 
-// The Behavior branch's own attachments (see FileExplorer.vue's identical
-// grouping) — index.yml's code segment offers these for `attachments:`
-// autocomplete. legal/terms.md is excluded too: it's a standalone legal
-// doc, not something a state ever attaches to chat.
+// The Behavior branch's own attachments — index.yml's code segment offers
+// these for `attachments:` autocomplete. legal/terms.md is excluded too:
+// not something a state ever attaches to chat.
 const attachmentFiles = computed(() =>
   props.files.filter(
     (name) => name !== 'index.yml' && name !== 'index.css' && name !== 'legal/terms.md' && !IMAGE_PATTERN.test(name)
@@ -105,6 +98,7 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
       :sources-loading="sourcesLoading"
       :current-source-name="currentSourceName"
       :sources-root-selected="sourcesRootSelected"
+      :modified-files="modifiedFiles"
       @new-attachment="emit('new-attachment')"
       @new-aspect="emit('new-aspect')"
       @new-legal="emit('new-legal')"
@@ -134,12 +128,9 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
           :file-name="currentSourceArchiveName"
           @saved="emit('saved', $event)"
         />
-        <!-- Stays mounted (v-show, not v-if) even while a different file is
-             open, or a source (or the Sources root itself) is selected
-             instead (see noSourceSelection above): its InspectorGraph is
-             the only place the Inspector's "State"/"Actions" selection is
-             resolved from, so unmounting it would drop a still-valid
-             selection whenever an attachment (or now a source) is viewed. -->
+        <!-- Stays mounted (v-show): its InspectorGraph resolves the
+             Inspector's State/Actions selection, which unmounting would
+             drop whenever another file/source is viewed. -->
         <IndexYmlEditorPanel
           v-show="noSourceSelection && currentFileName === 'index.yml'"
           ref="indexYmlEditorRef"

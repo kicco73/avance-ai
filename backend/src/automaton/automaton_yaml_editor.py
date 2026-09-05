@@ -1,7 +1,6 @@
-"""Structural (never textual) editing of a project's index.yml, working
-against a ruamel.yaml round-trip tree so comments/formatting survive
-edits untouched. Never validates the result — AutomatonBuilder does
-that once serialize() feeds the text back through it."""
+"""Structural (never textual) editing of a project's index.yml, against
+a ruamel.yaml round-trip tree so comments/formatting survive edits.
+Never validates the result — AutomatonBuilder does that on serialize()."""
 from __future__ import annotations
 
 import ast
@@ -31,13 +30,15 @@ class AutomatonYamlEditor:
         # sits 2 spaces past its parent key) — ruamel's default indent
         # would otherwise reformat every action list on a no-op edit.
         self._yaml.indent(mapping=2, sequence=4, offset=2)
+        self._yaml.default_flow_style = False
         # Without this, round-trip mode re-quotes scalars in its own
         # preferred style, so an untouched value could gain/lose quotes.
         self._yaml.preserve_quotes = True
         # Ruamel's default 80-column width would silently line-wrap any
         # long scalar it re-dumps, even one an edit never touched.
-        self._yaml.width = 1_000_000
+        self._yaml.width = 4096
         self._raw = self._yaml.load(raw_text)
+        self._source_lines = raw_text.splitlines()
 
     def serialize(self) -> str:
         stream = io.StringIO()
@@ -49,10 +50,6 @@ class AutomatonYamlEditor:
         lowered = text.lower()
         collapsed = re.sub(r'[^a-z0-9]+', '_', lowered)
         return collapsed.strip('_')
-
-    # ------------------------------------------------------------------
-    # Internal: raw-tree accessors, name/label generation, payload builders.
-    # ------------------------------------------------------------------
 
     def _states(self) -> CommentedMap:
         return self._raw.setdefault("states", CommentedMap())
@@ -145,10 +142,9 @@ class AutomatonYamlEditor:
 
     @staticmethod
     def _unique_source_name(base: str, existing_names: set) -> str:
-        """"behaviour", then "behaviour1", "behaviour2", ... — unlike
-        _unique_signal_name (no separator, 1-based), since a source's own
-        id is user-facing on its own (there's no separate ui-label it's
-        derived from — see add_source)."""
+        """behaviour, behaviour1, behaviour2 — unlike _unique_signal_name
+        (no separator, 1-based) since a source's id is user-facing with
+        no separate ui-label it's derived from (see add_source)."""
         if base not in existing_names:
             return base
         suffix = 1
@@ -240,28 +236,43 @@ class AutomatonYamlEditor:
             "url": raw_source.get("url") or "",
         }
 
-    # ------------------------------------------------------------------
-    # Add
-    # ------------------------------------------------------------------
+    def _uses_blank_line_separators(self, mapping: CommentedMap) -> bool:
+        if mapping.lc.data is None:
+            return False
+        keys = list(mapping.keys())
+        for key in keys[1:]:
+            line_info = mapping.lc.data.get(key)
+            if line_info is None:
+                continue
+            line = line_info[0]
+            if line > 0 and not self._source_lines[line - 1].strip():
+                return True
+        return False
 
     def add_state(self) -> StatePayload:
         states = self._states()
+        add_blank_line = self._uses_blank_line_separators(states)
         name = self._next_numbered_name("state", set(states.keys()))
         ui_label = self._unique_ui_label("New State", self._existing_state_ui_labels())
         states[name] = CommentedMap({
             "ui-label": ui_label,
             "contextual-prompt": "",
         })
+        if add_blank_line:
+            states.yaml_set_comment_before_after_key(name, before="\n")
         return self._state_payload(name)
 
     def add_signal(self) -> SignalPayload:
         signals = self._signals()
+        add_blank_line = self._uses_blank_line_separators(signals)
         ui_label = self._unique_ui_label("New Signal", self._existing_signal_ui_labels())
         name = self._unique_signal_name(self.to_snake_case(ui_label), set(signals.keys()))
         signals[name] = CommentedMap({
             "ui-label": ui_label,
             "definition": "",
         })
+        if add_blank_line:
+            signals.yaml_set_comment_before_after_key(name, before="\n")
         return self._signal_payload(name)
 
     def add_env_key(self) -> EnvKeyPayload:
@@ -269,19 +280,23 @@ class AutomatonYamlEditor:
         itself is the only name — so it's suffixed via _unique_signal_name
         (valid identifier chars), never _next_numbered_name's "-N" suffix."""
         env = self._env()
+        add_blank_line = self._uses_blank_line_separators(env)
         name = self._unique_signal_name("new_env_key", set(env.keys()))
         env[name] = CommentedMap({"value": ""})
+        if add_blank_line:
+            env.yaml_set_comment_before_after_key(name, before="\n")
         return self._env_key_payload(name)
 
     def add_source(self) -> SourcePayload:
-        """`url` is deliberately left unset — same "created, not yet
-        configured" state add_env_key leaves a fresh key's `value` in —
-        until the user picks a driver/archive from the Inspector (see
-        set_source_field); AutomatonBuilder accepts a source with no url
-        (it just can't be usefully referenced yet, see _build_source)."""
+        """`url` is left unset — same "not yet configured" state as a
+        fresh env key's `value` — until the user picks a driver from
+        the Inspector (see set_source_field)."""
         sources = self._sources()
+        add_blank_line = self._uses_blank_line_separators(sources)
         name = self._unique_source_name("behaviour", set(sources.keys()))
         sources[name] = CommentedMap({"ui-label": name})
+        if add_blank_line:
+            sources.yaml_set_comment_before_after_key(name, before="\n")
         return self._source_payload(name)
 
     def add_action(self, state_name: str) -> ActionPayload:
@@ -295,23 +310,15 @@ class AutomatonYamlEditor:
         }))
         return self._action_payload(state_name, name)
 
-    # ------------------------------------------------------------------
-    # Edit
-    # ------------------------------------------------------------------
-
     def set_state_field(self, state_name: str, field: str, value) -> StatePayload:
         self._state(state_name)[field] = value
         return self._state_payload(state_name)
 
     def set_action_field(self, state_name: str, action_name: str, field: str, value) -> ActionPayload:
         raw_action = self._find_action(state_name, action_name)
-        # An empty trigger means manual-only, so the key is removed
-        # rather than left holding "" — has_trigger would otherwise
-        # report True for an action the user just cleared. An emptied
-        # 'env' mapping is removed the same way, rather than lingering as
-        # `env: {}` (behaviorally identical either way — AutomatonBuilder
-        # treats a falsy env the same as a missing one — but this keeps
-        # the YAML clean).
+        # Empty `trigger`/`env` removes the key rather than storing falsy —
+        # has_trigger would otherwise report True, and AutomatonBuilder
+        # treats a missing env the same as an empty one either way.
         if field in ("trigger", "env") and not value:
             raw_action.pop(field, None)
         else:
@@ -319,18 +326,9 @@ class AutomatonYamlEditor:
         return self._action_payload(state_name, action_name)
 
     def _init_action_payload(self) -> ActionPayload:
-        """The init-action is an action like any other — same payload,
-        built the same way as _action_payload_from_raw — with two
-        structural exceptions to account for: its raw YAML dict has no
-        'name' key of its own (injected here as the constant
-        "init-action"), and it has no containing state to self-loop
-        back to were 'target' ever missing (there's no real "initial
-        state" it belongs to — "" stands in, the same reserved
-        pseudo-state key used elsewhere). 'trigger' is forced off
-        regardless of any stray key sitting in the YAML: unlike every
-        other field here, AutomatonBuilder's own _build_init_action
-        never reads it, so honoring it would describe an action that
-        doesn't actually exist once built."""
+        """Injects the 'name'/'target' keys ("init-action"/"" pseudo-state)
+        the raw YAML lacks, and forces has_trigger off — AutomatonBuilder's
+        _build_init_action never reads a stray trigger key."""
         init_action = self._raw.get("init-action") or {}
         payload = self._action_payload_from_raw({**init_action, "name": "init-action"}, "")
         payload["has_trigger"] = False
@@ -371,16 +369,9 @@ class AutomatonYamlEditor:
         return self._source_payload(name)
 
     def set_project_field(self, field: str, value) -> ProjectPayload:
-        """The optional top-level `project:` mapping — id/family/ui-label/
-        ui-description/talk-enabled/signal-tracking-on-ai-message — plus
-        'general-prompt', which despite belonging to this same edit form
-        is actually its own top-level YAML key, not nested under
-        `project:` at all (see AutomatonBuilder.build's own
-        general_prompt=raw.get("general-prompt", "")). A falsy `id`/
-        `family` removes the key rather than writing an empty string —
-        AutomatonBuilder would reject an empty id as invalid, and an
-        empty family is meant to read as "none" (isolated), same as
-        never having declared it at all."""
+        """The optional `project:` mapping, plus 'general-prompt' which is
+        its own top-level key despite belonging to this form. A falsy
+        `id`/`family` removes the key rather than storing an empty string."""
         if field == "general-prompt":
             if value:
                 self._raw["general-prompt"] = value
@@ -403,13 +394,9 @@ class AutomatonYamlEditor:
         return self._project_payload()
 
     def set_init_action_field(self, field: str, value) -> StatePayload | ActionPayload:
-        """Every editable field of the init-action itself. 'target' is
-        handled by set_init_action_target below; the init-action lives
-        outside `states:` entirely, so the regular action lookup can't
-        reach it. 'env' gets the same "empty removes the key" treatment
-        as a regular action's own env field (see set_action_field) —
-        AutomatonBuilder treats a falsy env the same as a missing one,
-        so this just keeps the YAML clean."""
+        """'target' is handled by set_init_action_target below since the
+        init-action lives outside `states:`. 'env' gets the same
+        falsy-removes-the-key treatment as a regular action's env field."""
         if field == "target":
             return self.set_init_action_target(value)
         init_action = self._raw.setdefault("init-action", CommentedMap())
@@ -468,12 +455,9 @@ class AutomatonYamlEditor:
         return self._env_key_payload(unique_new_name)
 
     def rename_source(self, old_name: str, new_name: str) -> SourcePayload:
-        """Same shape as rename_signal/rename_env_key, but the cascade is
-        its own — `source.<name>` sits one level deeper than `env.<name>`
-        (a trigger calls `source.<name>.<method>(...)`, never bare
-        `source.<name>`), so it needs its own tree walk/rewrite (see
-        _rename_source_ref_in_triggers) rather than
-        _rename_namespaced_ref_in_triggers."""
+        """Same shape as rename_signal/rename_env_key, but `source.<name>`
+        sits one level deeper (`source.<name>.<method>(...)`), so it needs
+        its own tree walk (_rename_source_ref_in_triggers)."""
         sources = self._sources()
         if old_name not in sources:
             raise ValueError(f"Source '{old_name}' not found.")
@@ -484,10 +468,6 @@ class AutomatonYamlEditor:
         self._rename_source_ref_in_triggers(old_name, unique_new_name)
 
         return self._source_payload(unique_new_name)
-
-    # ------------------------------------------------------------------
-    # Delete
-    # ------------------------------------------------------------------
 
     def delete_state(self, state_name: str) -> None:
         init_action = self._raw.get("init-action") or {}
@@ -541,10 +521,6 @@ class AutomatonYamlEditor:
             name, lambda tree: self._strip_source_ref_from_trigger(tree, name)
         )
 
-    # ------------------------------------------------------------------
-    # Reorder
-    # ------------------------------------------------------------------
-
     def reorder_actions(self, state_name: str, action_name: str, position: int) -> list:
         actions = self._actions(state_name)
         current_index = next((i for i, a in enumerate(actions) if a.get("name") == action_name), None)
@@ -562,10 +538,6 @@ class AutomatonYamlEditor:
         actions.insert(position, node)
 
         return [self._action_payload_from_raw(a, state_name) for a in actions]
-
-    # ------------------------------------------------------------------
-    # Shared trigger-tree traversal for rename/delete of signals and env keys.
-    # ------------------------------------------------------------------
 
     def _transform_triggers_referencing(self, namespace: str, name: str, transform) -> None:
         """Walks every action of every state, rewriting any `trigger`
@@ -586,11 +558,9 @@ class AutomatonYamlEditor:
                     raw_action["trigger"] = ast.unparse(new_node)
 
     def _transform_triggers_referencing_source(self, name: str, transform) -> None:
-        """Same shape as _transform_triggers_referencing above, but
-        matching `source.<name>.<method>` (TriggerExpressionAnalyzer.
-        source_refs) rather than a plain `namespace.<name>` attribute —
-        `source.<name>` is never referenced bare (see SourceNamespace),
-        only ever as the base of a further `.method(...)` call."""
+        """Same shape as _transform_triggers_referencing, but matches
+        `source.<name>.<method>` (TriggerExpressionAnalyzer.source_refs) —
+        `source.<name>` is never referenced bare, only as a call base."""
         for containing_key, raw_state in self._states().items():
             for raw_action in raw_state.get("actions") or []:
                 trigger = raw_action.get("trigger")
@@ -675,23 +645,10 @@ class AutomatonYamlEditor:
         )
         return None if references_name else node
 
-    # ------------------------------------------------------------------
-    # Legacy migration support: source.<name>.read() -> attachment.read(path).
-    # ------------------------------------------------------------------
-
     def rewrite_legacy_source_read_calls(self) -> set[str]:
-        """Rewrites every on-enter's own zero-arg `source.<name>.read()`
-        call — the now-removed "read the whole file" method — into
-        `attachment.read('<path>')`, `<path>` resolved from this same
-        project's own declared `sources:` section (an `avance:` url only
-        — any other scheme has no archive path to resolve to). on-enter
-        is the only place this has an equivalent (attachment.read is
-        on-enter only, see IdentifierRegistry.TRIGGER_SCOPE_EXCLUDES) — a
-        `trigger:`/`env:` expression's own `.read()` call is never
-        touched, there's nothing to rewrite it into. Returns every source
-        name an on-enter `.read()` call referenced but couldn't resolve
-        (no declared `avance:` url for that name) — left exactly as it
-        was, for the caller to decide what to do about it."""
+        """Rewrites on-enter's `source.<name>.read()` calls into
+        `attachment.read('<path>')` using each name's declared `avance:`
+        url. Returns names it couldn't resolve, left untouched."""
         source_paths = self._declared_avance_source_paths()
         unresolved: set[str] = set()
         for raw_state in self._states().values():
@@ -721,13 +678,9 @@ class AutomatonYamlEditor:
 
     @staticmethod
     def _rewrite_on_enter_source_reads(on_enter: str, source_paths: Mapping[str, str]) -> tuple[str | None, set[str]]:
-        """(new on-enter text, unresolved names) for one action's own
-        on-enter script — None for the first element if no statement in
-        it actually needed rewriting, so the caller leaves the original
-        text (comments, exact formatting) untouched. A statement that IS
-        rewritten loses its own comments/formatting (ast.unparse
-        regenerates it from the parsed tree); every untouched sibling
-        statement keeps its exact original source."""
+        """(new on-enter text, unresolved names) — None for the first
+        element when nothing needed rewriting, so the caller keeps the
+        original text; a rewritten statement loses its own formatting."""
         statements = TriggerExpressionAnalyzer.on_enter_statements(on_enter)
         unresolved: set[str] = set()
         changed = False

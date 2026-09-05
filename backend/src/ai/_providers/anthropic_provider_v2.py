@@ -202,7 +202,10 @@ class AnthropicProvider(LLMProvider):
 			if role == "assistant" and message.get("tool_calls"):
 				blocks: list[Any] = []
 				assistant_text = message.get("content")
-				if assistant_text:
+				# A dict here is another provider's own replay payload
+				# (Gemini's parts, see gemini_provider_v2._REPLAY_PARTS_KEY)
+				# left behind by a cascade failover mid-loop — not text.
+				if assistant_text and not isinstance(assistant_text, dict):
 					blocks.append({"type": "text", "text": str(assistant_text)})
 				for call in message["tool_calls"]:
 					blocks.append({

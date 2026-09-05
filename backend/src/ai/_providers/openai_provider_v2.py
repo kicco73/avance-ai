@@ -121,9 +121,12 @@ class OpenAICompatibleProvider(LLMProvider):
                 continue
 
             if role == "assistant" and message.get("tool_calls"):
+                assistant_text = message.get("content")
                 messages.append({
                     "role": "assistant",
-                    "content": message.get("content"),
+                    # A dict is another provider's own replay payload (see
+                    # gemini_provider_v2._REPLAY_PARTS_KEY), not text.
+                    "content": None if isinstance(assistant_text, dict) else assistant_text,
                     "tool_calls": [
                         {
                             "id": call.id, "type": "function",

@@ -1,8 +1,7 @@
 <script setup>
 // Composes three mutually exclusive mode panels (ProjectDesignPanel/
-// RunChat/ProjectTestPanel — see `mode` below) as siblings under
-// .edit-project-panels; this view owns only what's cross-cutting: the
-// mode switch, header/publish controls, dialogs, and the shared Inspector.
+// RunChat/ProjectTestPanel) as siblings; this view owns only what's
+// cross-cutting: mode switch, header/publish controls, the Inspector.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ProjectDesignPanel from './design/ProjectDesignPanel.vue'
 import RunChat from './run/RunChat.vue'
@@ -46,17 +45,15 @@ import { refreshIdentifierRegistry } from '../../../identifierRegistry.js'
 import { refreshProjectFiles } from '../../../projectFiles.js'
 import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../../../testTimeline.js'
 // `sessions` here is the *project's* whole session catalog (loaded by
-// ProjectTestPanel.vue, the "Test" tab, via the live store) —
-// unrelated to runSessions below, "Run" mode's own draft session pool,
-// which just happens to share the same name in testStore.
+// ProjectTestPanel.vue via the live store) — unrelated to runSessions
+// below, "Run" mode's own draft session pool with the same name.
 import { sessions, totalTokenBudgetPerSession } from '../../../chatStore.js'
 import { activeChatMode } from '../../../chatSkin.js'
 import { setTestProject, testStore, testChatModelStore, loadTestChatModels } from '../../../testChatStore.js'
 
 // Aliased: this file already uses "state" for automaton state nodes.
 // `runState` is the "Run" tab's own current conversation state,
-// highlighted as "current" in the Inspector (see highlightedStateKey
-// below) only while that tab is actually open.
+// highlighted as "current" in the Inspector while that tab is open.
 const {
   state: runState,
   messages,
@@ -130,19 +127,13 @@ const {
 } = useProjectSources(props.projectId, guardedAction, flashRecentlyAdded)
 
 // ProjectDesignPanel.vue's own exposed handle onto whichever
-// SourceContentPanel is currently mounted (only ever one, or none) —
-// same "computed proxy through designPanelRef" shape as codeEditorRef/
-// indexYmlEditorRef etc. above.
+// SourceContentPanel is currently mounted — same "computed proxy
+// through designPanelRef" shape as codeEditorRef above.
 const sourceContentPanelRef = computed(() => designPanelRef.value?.sourceContentPanelRef ?? null)
 
-// A Source node and a file/graph selection are mutually exclusive in the
-// design tree (see FileExplorer.vue's own "Sources" branch and
-// InspectorStateTab.vue's isSourceContext, which takes the whole Info tab
-// over) — selecting either clears the other. Own small unsaved-changes
-// guard, parallel to useProjectFiles.js's own guardedAction/
-// runGuardedAction: a source's own content buffer (SourceContentPanel,
-// via CodeEditor) is a completely separate editing surface from
-// currentFileName's, so the generic file guard has no way to know about it.
+// A Source node and a file/graph selection are mutually exclusive —
+// selecting either clears the other. Own unsaved-changes guard: a
+// source's content buffer is separate from the generic file guard.
 async function guardedSourceAction(label, run) {
   if (!sourceContentPanelRef.value?.isDirty) return run()
   const choice = await chooseDialog({
@@ -201,11 +192,9 @@ const selectedStateKey = computed(() => {
 // Inspector's SessionDetailCard, which RunChat.vue doesn't itself show.
 const runCurrentSession = computed(() => runSessions.value.find((s) => s.id === currentSessionId.value) ?? null)
 
-// Test mode's own selection (ProjectTestPanel.vue's own selectedNodeId —
-// this view only ever gets told what it is via @select, never owns the
-// canonical value) — 'root' | 'sessions-branch' | 'states-branch' |
-// `session:<id>` | `state:<key>` | null. Drives the Inspector's Info tab
-// below, read-only, in place of the Graph selection edit mode uses.
+// Test mode's own selection ('root' | 'sessions-branch' |
+// 'states-branch' | `session:<id>` | `state:<key>` | null) — drives
+// the Inspector's read-only Info tab in place of the Graph selection.
 const autoSelectedNodeId = ref(null)
 function handleAutoSelect(nodeId) { autoSelectedNodeId.value = nodeId }
 
@@ -224,11 +213,9 @@ const autoSelectedStateKey = computed(() => {
   return id && id.startsWith('state:') ? id.slice('state:'.length) : null
 })
 
-// The Test tree's "Users" branch — a user node directly, or any session
-// leaf (its own `username`, now that sessions carry one — see db/sessions'
-// own username plumbing). Resolved against usersList (loaded lazily, see
-// ensureUsersList) for the same read-only profile card ManageUsersView.vue
-// shows (see InspectorUserInfoCard.vue).
+// The Test tree's "Users" branch — a user node, or any session leaf's
+// own username. Resolved against usersList (loaded lazily) for the
+// same read-only profile card ManageUsersView.vue shows.
 const usersList = ref([])
 let usersListLoaded = false
 async function ensureUsersList() {
@@ -277,11 +264,9 @@ const autoSelectedSignal = computed(() => {
   return name == null ? null : (signalsList.value.find((s) => s.signal.name === name)?.signal ?? null)
 })
 
-// A selected session's own start/end state — same resolution as
-// LabelProjectView.vue's own Info tab (see its sessionStartStateKey/
-// sessionEndStateKey docstring): an imported session never actually ran
-// against the automaton, so its first/last expert-annotated expected_state
-// stands in for start_state/end_state.
+// A selected session's own start/end state — an imported session never
+// actually ran against the automaton, so its first/last annotated
+// expected_state stands in for start_state/end_state.
 const autoSessionSignals = ref([])
 watch(autoSelectedSessionId, async (id) => {
   autoSessionSignals.value = id == null ? [] : await getSessionSignals(id).catch(() => [])
@@ -312,16 +297,9 @@ const autoSessionEndElement = computed(() => (
   autoSessionEndStateKey.value == null ? null : (indexYmlEditorRef.value?.stateElementFor(autoSessionEndStateKey.value) ?? null)
 ))
 
-// The tab set this view's Inspector shows (see Inspector.vue's slot-based
-// contract; LabelProjectView.vue passes a different set). 'run' mode
-// shows the live conversation's Metrics/Env; edit mode shows index.yml's own
-// Info/Signals/Env-keys instead — Info doubles as the Actions tab used to,
-// showing whichever of a state/action the Graph selection actually is.
-// Test mode only ever shows Info — plain read-only viewing, no Signals/
-// Env-keys editing surface makes sense while browsing test results. A
-// selected Source (currentSourceName), or the Sources branch header
-// itself (sourcesRootSelected), gets the same Info-only treatment as any
-// non-Behavior file: nothing about Signals/Env applies to either.
+// The tab set this view's Inspector shows depends on mode: 'run' shows
+// Metrics/Env, edit mode shows Signals/Env-keys, and 'test' or a
+// selected Source/non-Behavior file shows read-only Info only.
 const inspectorTabs = computed(() => {
   if (mode.value === 'run') {
     return [
@@ -360,10 +338,9 @@ const sessionStartState = ref(null)
 // timeline" (see selectMessage/selectTransition, both a toggle).
 const selected = ref(null)
 
-// testStore's own `messages` (the "Run" tab's draft conversation)
-// reshaped into the common input shape buildTimeline expects. The
-// in-flight assistant placeholder has no messageId yet — kept in with
-// `id: null`, unmatched until it resolves.
+// testStore's own `messages` reshaped into the common input shape
+// buildTimeline expects. The in-flight assistant placeholder has no
+// messageId yet — kept in with `id: null`, unmatched until resolved.
 const rawLiveMessages = computed(() =>
   messages.value.map((m) => ({
     ...m,
@@ -477,10 +454,9 @@ function selectTransition(transition) {
       : { kind: 'transition', transition }
 }
 
-// Falls back to the Run tab's own current state/signals (rather than
-// null) whenever nothing is selected. "Current state" only means
-// anything in 'run' mode — 'edit' has no conversation driving the graph,
-// so nothing is ever "current" while editing.
+// Falls back to the Run tab's own current state/signals when nothing
+// is selected. "Current state" only means anything in 'run' mode —
+// 'edit' has no conversation driving the graph.
 const highlightedStateKey = computed(() => {
   if (mode.value !== 'run') return null
   return selected.value ? highlightedStateKeyFor(selected.value, timeline.value, sessionStartState.value) : (runState.value?.key ?? null)
@@ -547,16 +523,14 @@ const editorOpen = computed(() => mode.value === 'edit')
 const runOpen = computed(() => mode.value === 'run')
 const testOpen = computed(() => mode.value === 'test')
 
-// Whichever state key the "State" Inspector tab is actually showing right
-// now — selectedGraphElement's own containing state in edit mode,
-// autoSelectedElement's own key while browsing a run (see InspectorStateTab's
-// :selected-element binding below).
+// Whichever state key the "State" Inspector tab is showing —
+// selectedGraphElement's own containing state in edit mode,
+// autoSelectedElement's own key while browsing a run.
 const stateTabTokensKey = computed(() => (mode.value === 'test' ? autoSelectedStateKey.value : selectedStateKey.value))
 
-// Estimated input-token cost of that state's own turn prompt (see backend
-// ProjectInspector.get_state_input_tokens) — null while unknown/loading,
-// or when nothing is selected. Fetched on demand per state rather than
-// bundled into the Graph fetch, since it can cost a real provider call.
+// Estimated input-token cost of that state's own turn prompt — null
+// while unknown/loading. Fetched on demand per state rather than
+// bundled into the Graph fetch (a real provider call).
 const stateTabTokens = ref(null)
 let stateTabTokensRequestId = 0
 
@@ -578,11 +552,9 @@ async function refreshStateTabTokens() {
 
 watch(stateTabTokensKey, refreshStateTabTokens, { immediate: true })
 
-// Entering 'run' mode bootstraps a chat session against the draft, even
-// if a real native session is already active — testStore is its own
-// independent chat (see testChatStore.js), so its currentSessionId
-// naturally survives a Design/Test <-> Run switch on its own; no
-// remember-and-restore hack needed.
+// Entering 'run' mode bootstraps a chat session against the draft,
+// even if a native session is active — testStore is its own
+// independent chat, so currentSessionId survives the mode switch.
 async function ensureDraftChatSession() {
   await loadMessages()
   await loadSessions()
@@ -632,10 +604,9 @@ const {
   props.projectId, guardedAction, indexYmlEditorRef, jumpToDefinition, selectedGraphElement, selectedStateKey, flashRecentlyAdded
 )
 
-// The Inspector's "Info" tab shares the same selection the Graph drives,
-// but a row click here only emits 'select' — this is the tab-side
-// equivalent of a Graph click's select + jump-to-definition. Silent:
-// shouldn't yank the user into the Code segment.
+// The Inspector's "Info" tab shares the Graph's selection, but a row
+// click here only emits 'select' — the tab-side equivalent of a Graph
+// click's select + jump-to-definition. Silent, no Code-segment yank.
 function handleTabSelect(element) {
   selectedGraphElement.value = element
   if (!element) return
@@ -646,10 +617,9 @@ function handleTabSelect(element) {
   )
 }
 
-// The Info tab's detail card is generic (state or action, whichever is
-// selected) — these two dispatch a field-edit/delete to whichever of
-// handleSetStateField/handleSetActionField or handleDeleteState/
-// handleDeleteAction actually applies, off selectedGraphElement's own kind.
+// The Info tab's detail card is generic (state or action) — these two
+// dispatch a field-edit/delete to whichever handler applies, off
+// selectedGraphElement's own kind.
 function handleSetSelectedElementField(field, value) {
   const element = selectedGraphElement.value
   if (!element) return undefined
@@ -678,12 +648,9 @@ function handleOpenActionsOrder(element) {
   })
 }
 
-// The state edit form's attachment buttons (see InspectorDetailCard.vue's
-// selectAttachment) jump to where the file is declared in index.yml
-// rather than opening it, unlike every other attachment button elsewhere.
-// selectAttachment only ever emits this for a state selection (an action's
-// own attachments go through select-attachment instead), so selectedGraphElement
-// is guaranteed to be the state kind whenever this actually fires.
+// The state edit form's attachment buttons jump to where the file is
+// declared in index.yml rather than opening it. Only fires for a state
+// selection, so selectedGraphElement is guaranteed to be that kind.
 function handleJumpToAttachment(fileName) {
   const stateKey = selectedGraphElement.value?.data.id
   if (stateKey == null) return
@@ -695,13 +662,9 @@ function handleJumpToAttachment(fileName) {
 // history itself is cleared on entry, not here — see onMounted.
 const { confirmLeaveIfNeeded } = useLeaveConfirmation(activeEditorIsDirty, 'Discard unsaved changes to this file?')
 
-// Unsaved-file changes are checked first — the more urgent, data-loss
-// concern. Only past that, and only when there's actually a pending
-// revision to decide about, does a three-way choice show: publish before
-// leaving, leave it pending, or cancel the close outright. Shared by
-// every Settings-menu item that actually navigates away from here (see
-// handleSettings* below) — About/Download backup/Restore backup don't
-// navigate away, so they skip this guard entirely.
+// Unsaved-file changes are checked first; only past that, with a
+// pending revision, does publish/leave-pending/cancel show — skipped
+// by Settings items that don't navigate away.
 async function leaveEditProject(onLeave) {
   if (!(await confirmLeaveIfNeeded())) return
   if (publishUpToDate.value) {
@@ -911,6 +874,7 @@ onBeforeUnmount(() => {
           :sources-loading="sourcesLoading"
           :current-source-name="currentSourceName"
           :sources-root-selected="sourcesRootSelected"
+          :modified-files="projectRevision?.modified_files ?? []"
           @start-explorer-drag="startExplorerDrag"
           @new-attachment="handleNewAttachment"
           @new-aspect="handleNewAspect"
@@ -1090,12 +1054,9 @@ onBeforeUnmount(() => {
   top: 0;
   left: 0;
   right: 0;
-  /* Extends past the viewport's own bottom edge on standalone iOS,
-     where WebKit bug #301108 leaves a gap there otherwise — see
-     index.html's own viewport meta comment and
-     useVisualViewport.js's installViewportOvershoot(). 0px, a no-op,
-     everywhere else (a plain browser tab, non-iOS, or once Apple fixes
-     the bug). */
+  /* Extends past standalone iOS's own bottom edge, where WebKit bug
+     #301108 leaves a gap otherwise (see useVisualViewport.js) —
+     0px/no-op elsewhere. */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
   box-sizing: border-box;
   padding-left: var(--safe-area-left);
@@ -1157,10 +1118,9 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-/* The arrow half only ever renders alongside the main button (see
-   canRevert) — rounding the main button's right edge only when it does
-   keeps a plain, arrow-less "Rev. X" (nothing to revert to yet) looking
-   like an ordinary single button rather than a split one missing a half. */
+/* The arrow half only renders alongside the main button (see canRevert)
+   — rounding the right edge only then keeps a plain "Rev. X" looking
+   like an ordinary button. */
 .publish-btn:has(+ .publish-menu-toggle) {
   border-right: none;
   border-top-right-radius: 0;
@@ -1250,17 +1210,9 @@ onBeforeUnmount(() => {
   padding: 1rem;
 }
 
-/* Holds whichever one of ProjectDesignPanel/RunChat/
-   ProjectTestPanel is actually showing (`mode` makes them mutually
-   exclusive — see this file's own docstring) — each one is simply
-   flex: 1 on its own now, no more "-full" override class needed to make
-   it fill the column: with Design's own v-show hidden state
-   contributing a display:none box (and Run/Test simply unmounted, see
-   their own v-if), there's never a second sibling left to share space
-   with in the first place. position: relative backs the leaving
-   RunChat's absolute positioning below — its leave transition would
-   otherwise still count as a flex:1 sibling for the ~0.18s it lingers
-   in the DOM, squeezing whichever panel is entering. */
+/* Holds whichever of ProjectDesignPanel/RunChat/ProjectTestPanel is
+   showing (`mode` makes them mutually exclusive) — position: relative
+   backs the leaving RunChat's absolute positioning below. */
 .edit-project-panels {
   position: relative;
   flex: 1;
@@ -1277,12 +1229,9 @@ onBeforeUnmount(() => {
   inset: 0;
 }
 
-/* Leaving RunChat lingers ~0.18s as a positioned element (see above),
-   which by itself would paint over a static-flow sibling that mounts in
-   the same instant (e.g. ProjectTestPanel on switching to Test) —
-   negative z-index drops it behind static siblings instead, so the
-   panel actually being switched to is never hidden under a fading-out
-   ghost of the old one. */
+/* Leaving RunChat lingers ~0.18s as a positioned element, which would
+   paint over a static sibling mounting the same instant — negative
+   z-index drops it behind instead. */
 .panel-slide-bottom-leave-active {
   z-index: -1;
 }
@@ -1327,12 +1276,9 @@ onBeforeUnmount(() => {
   top: 0;
   left: 0;
   right: 0;
-  /* Extends past the viewport's own bottom edge on standalone iOS,
-     where WebKit bug #301108 leaves a gap there otherwise — see
-     index.html's own viewport meta comment and
-     useVisualViewport.js's installViewportOvershoot(). 0px, a no-op,
-     everywhere else (a plain browser tab, non-iOS, or once Apple fixes
-     the bug). */
+  /* Extends past standalone iOS's own bottom edge, where WebKit bug
+     #301108 leaves a gap otherwise (see useVisualViewport.js) —
+     0px/no-op elsewhere. */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
   box-sizing: border-box;
   padding-top: var(--safe-area-top);
@@ -1362,11 +1308,9 @@ onBeforeUnmount(() => {
   }
 }
 
-/* Collapsed (see Inspector.vue's own always-visible header toggle) —
-   always just a slim docked strip, on any screen size, overriding the
-   narrow-screen full-overlay behavior above (nothing to overlay: a
-   collapsed panel has no tabs/body showing, see Inspector.vue's own
-   v-show). */
+/* Collapsed: always a slim docked strip on any screen size,
+   overriding narrow-screen full-overlay (nothing to overlay — see
+   Inspector.vue's own v-show). */
 .inspector-panel-collapsed {
   position: static !important;
   inset: auto !important;
@@ -1384,12 +1328,9 @@ onBeforeUnmount(() => {
   top: 0;
   left: 0;
   right: 0;
-  /* Extends past the viewport's own bottom edge on standalone iOS,
-     where WebKit bug #301108 leaves a gap there otherwise — see
-     index.html's own viewport meta comment and
-     useVisualViewport.js's installViewportOvershoot(). 0px, a no-op,
-     everywhere else (a plain browser tab, non-iOS, or once Apple fixes
-     the bug). */
+  /* Extends past standalone iOS's own bottom edge, where WebKit bug
+     #301108 leaves a gap otherwise (see useVisualViewport.js) —
+     0px/no-op elsewhere. */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
   background: rgba(0, 0, 0, 0.35);
   z-index: 200;

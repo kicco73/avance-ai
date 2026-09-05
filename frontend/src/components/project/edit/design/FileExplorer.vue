@@ -13,7 +13,8 @@ const props = defineProps({
   sources: { type: Array, default: () => [] },
   sourcesLoading: { type: Boolean, default: true },
   currentSourceName: { type: String, default: null },
-  sourcesRootSelected: { type: Boolean, default: false }
+  sourcesRootSelected: { type: Boolean, default: false },
+  modifiedFiles: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits([
@@ -87,6 +88,14 @@ const hasLegalTerms = computed(() => props.files.includes(LEGAL_TERMS_FILE_NAME)
 const declaredSources = computed(() => props.sources.map((entry) => entry.source))
 const showSourcesBranch = computed(() => declaredSources.value.length > 0)
 
+const modifiedSet = computed(() => new Set(props.modifiedFiles))
+function isModified(archiveName) {
+  return modifiedSet.value.has(archiveName)
+}
+function sourceArchiveName(name) {
+  return `sources/${name}.csv`
+}
+
 // Every branch starts closed on entry — the watch below reopens
 // whichever one holds a file a jump-to-definition/attachment click opens.
 const expanded = ref({ behavior: false, theme: false, sources: false })
@@ -94,12 +103,9 @@ function toggleBranch(key) {
   expanded.value[key] = !expanded.value[key]
 }
 
-// Clicking the "Sources" label itself now selects that branch's own root
-// context (see EditProjectView.vue's selectSourcesRootNode/ProjectDesignPanel.vue's
-// empty state) — same interaction as Behavior/Aspect's own header button
-// below, which selects index.yml/index.css while the caret alone toggles
-// the branch. Also expands the branch, so the list it's showing an empty
-// state for is right there to pick from.
+// Clicking "Sources" selects that branch's own root context (see
+// EditProjectView.vue's selectSourcesRootNode) — same as Behavior/Aspect's
+// header button — and expands the branch to show it.
 function selectSourcesRoot() {
   expanded.value.sources = true
   emit('select-sources-root')
@@ -163,6 +169,7 @@ watch(
           >
             Behavior
           </button>
+          <span v-if="isModified('index.yml')" class="file-explorer-modified-dot" title="Modified in this revision"></span>
         </div>
         <div class="file-explorer-children-wrap" :class="{ 'file-explorer-children-wrap-open': expanded.behavior }">
           <ul class="file-explorer-children">
@@ -179,6 +186,7 @@ watch(
               >
                 {{ basename(name) }}
               </button>
+              <span v-if="isModified(name)" class="file-explorer-modified-dot" title="Modified in this revision"></span>
             </li>
           </ul>
         </div>
@@ -195,6 +203,7 @@ watch(
           >
             Aspect
           </button>
+          <span v-if="isModified('index.css')" class="file-explorer-modified-dot" title="Modified in this revision"></span>
         </div>
         <div class="file-explorer-children-wrap" :class="{ 'file-explorer-children-wrap-open': expanded.theme }">
           <ul class="file-explorer-children">
@@ -208,6 +217,7 @@ watch(
               >
                 {{ basename(name) }}
               </button>
+              <span v-if="isModified(name)" class="file-explorer-modified-dot" title="Modified in this revision"></span>
             </li>
           </ul>
         </div>
@@ -236,6 +246,7 @@ watch(
               >
                 {{ source.ui_label || source.name }}
               </button>
+              <span v-if="isModified(sourceArchiveName(source.name))" class="file-explorer-modified-dot" title="Modified in this revision"></span>
             </li>
           </ul>
         </div>
@@ -252,6 +263,7 @@ watch(
           >
             Legal
           </button>
+          <span v-if="isModified(LEGAL_TERMS_FILE_NAME)" class="file-explorer-modified-dot" title="Modified in this revision"></span>
         </div>
       </li>
     </ul>
@@ -300,6 +312,7 @@ watch(
 /* Same "read by the AI" sparkle as MdEditorPanel.vue/InspectorDetailCard.vue
    — a Behavior attachment is exactly that: content the AI reads. */
 .file-explorer-ai-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; margin-left: 0.3rem; }
+.file-explorer-modified-dot { flex-shrink: 0; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #f5a623; margin: 0 0.5rem 0 0.1rem; }
 .file-explorer-item { flex: 1; min-width: 0; display: block; text-align: left; padding: 0.4rem 0.5rem; border: none; border-radius: 6px; background: none; cursor: pointer; font-size: 0.85rem; color: #333; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .file-explorer-item-child { font-size: 0.82rem; color: #555; }
 .file-explorer-item:hover { background: #f0f4fa; }
