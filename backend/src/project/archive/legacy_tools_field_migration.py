@@ -80,4 +80,5 @@ def _migrate_one(db: Db, automaton_loader: AutomatonLoader, project_id: str, rev
     )  # raises if the rewrite doesn't actually build — never persisted then (e.g. a listed source with no ai-definition yet)
 
     db.write_archive_at_revision(project_id, "index.yml", revision, rewritten.encode("utf-8"), "text/plain")
+    automaton_loader.invalidate(project_id, revision)
     return True

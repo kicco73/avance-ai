@@ -7,7 +7,8 @@ import { setSkinCss, invalidateSkin } from '../../chatSkin.js'
 import { setPreviewApp, appStorePreviewStore, historyLoaded, restartPreviewSession, stopPreviewSession } from '../../appStorePreviewStore.js'
 
 const props = defineProps({
-  app: { type: Object, required: true }
+  app: { type: Object, required: true },
+  publishedRevision: { type: Number, default: null }
 })
 
 const emit = defineEmits(['edit', 'label', 'download', 'share', 'delete'])
@@ -38,14 +39,25 @@ function handleDeleteMenuDocumentClick(event) {
 
 document.addEventListener('click', handleDeleteMenuDocumentClick, true)
 
+// Guards against this component's own fetch resolving after it's already
+// gone — switching the selected project destroys this instance (see its
+// `:key` in ManageProjectsView.vue) rather than reusing it, but an
+// in-flight request from the old instance isn't cancelled by that, and
+// with no ordering guarantee on the network it can resolve after the new
+// instance's own fetch already applied the new project's skin — silently
+// overwriting it with the old one's.
+let skinRequestAlive = true
+
 async function loadSkinForApp(app) {
   if (!app) return
+  let css = ''
   try {
     const response = await fetch(appStoreFileContentUrl(app.id, 'index.css'), { credentials: 'include', cache: 'no-store' })
-    setSkinCss(response.ok ? await response.text() : '', app.id)
+    css = response.ok ? await response.text() : ''
   } catch {
-    setSkinCss('', app.id)
+    css = ''
   }
+  if (skinRequestAlive) setSkinCss(css, app.id)
 }
 
 watch(() => props.app?.id, () => loadSkinForApp(props.app), { immediate: true })
@@ -67,6 +79,7 @@ async function restartPreview() {
 }
 
 onBeforeUnmount(async () => {
+  skinRequestAlive = false
   document.removeEventListener('click', handleDeleteMenuDocumentClick, true)
   await quitPreview()
   invalidateSkin()
@@ -75,7 +88,10 @@ onBeforeUnmount(async () => {
 
 <template>
   <div class="project-detail-header-row">
-    <h2 class="project-detail-title">{{ appTitle(app) }}</h2>
+    <div class="project-detail-title-row">
+      <h2 class="project-detail-title">{{ appTitle(app) }}</h2>
+      <span v-if="publishedRevision != null" class="project-detail-rev">rev. {{ publishedRevision }}</span>
+    </div>
     <div class="project-detail-menu" ref="deleteMenuRootEl">
       <button type="button" class="project-detail-menu-btn" title="More actions" @click="toggleDeleteMenu">⋮</button>
       <Transition name="project-detail-menu-panel">
@@ -122,10 +138,27 @@ onBeforeUnmount(async () => {
   gap: 0.5rem;
 }
 
+.project-detail-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
 .project-detail-title {
   margin: 0;
   font-size: 1.2rem;
   color: #333;
+}
+
+.project-detail-rev {
+  flex-shrink: 0;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: #eee;
+  color: #888;
+  font-size: 0.65rem;
+  font-weight: 500;
 }
 
 .project-detail-menu {

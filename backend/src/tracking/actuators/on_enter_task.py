@@ -240,7 +240,7 @@ class ScopeHydrator(object):
         # -> tracking.evaluation_scope would otherwise close a circular import.
         from metrics.metric_service import MetricService
         from tracking.automaton_namespace import AutomatonNamespace
-        from tracking.env import PersistedEnv
+        from tracking.env import Env
         from tracking.evaluation_scope import EvaluationScopeBuilder
         from tracking.fixed_project_context import FixedProjectContext
         from tracking.session_facts import SessionFacts
@@ -256,7 +256,13 @@ class ScopeHydrator(object):
             actuator_set = self._actuator_factory.live(project_id=project_id)
         firing_session_id = payload.get("session_id")
         firing_session = self._db.get_chat_session(firing_session_id) if firing_session_id is not None else None
-        env = env_for_session(self._db, firing_session) if firing_session is not None else PersistedEnv(self._db, context)
+        # No real session to persist through (e.g. reset_test_sessions' own
+        # project-wide reset, scheduled with session_id=None) — the same
+        # ephemeral, in-memory fallback ChatService._schedule_on_enter
+        # already uses for this exact case, never a live PersistedEnv:
+        # that would read/write the *live* persisted env instead, and
+        # crash on its first write (Tracking.session is a real FK).
+        env = env_for_session(self._db, firing_session) if firing_session is not None else Env()
         builder = EvaluationScopeBuilder(
             env, MetricService(self._db, context),
             SessionFacts(self._db, context), UserFacts(self._db), self._db,

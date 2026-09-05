@@ -138,7 +138,7 @@ def _fire_go(db: Db, factory, project_service: ProjectService, signal_values: di
     does — env: synchronously, on-enter as a task."""
     automaton = project_service.get_automaton(PROJECT, db.get_project_published_revision(PROJECT))
     context = FixedProjectContext(automaton=automaton, project_id=PROJECT)
-    env = PersistedEnv(db, context)
+    env = PersistedEnv(db, context, session_id=session_id)
     builder = EvaluationScopeBuilder(
         env, MetricService(db, context), SessionFacts(db, context),
         UserFacts(db), db, None, factory.live(project_id=PROJECT), ai_service=ai_service,
@@ -211,7 +211,7 @@ def test_a_fake_actuator_sets_on_enter_still_runs_as_a_task_and_reports(file_db)
     _publish(file_db, project_service, _yml("actuator.send_mail(user.email, 'hi')\n          actuator.celebrate()"))
     automaton = project_service.get_automaton(PROJECT, file_db.get_project_published_revision(PROJECT))
     context = FixedProjectContext(automaton=automaton, project_id=PROJECT)
-    env = PersistedEnv(file_db, context)
+    env = PersistedEnv(file_db, context, session_id=None)
     builder = EvaluationScopeBuilder(
         env, MetricService(file_db, context), SessionFacts(file_db, context), UserFacts(file_db), file_db, None,
         factory.fake(project_id=PROJECT),

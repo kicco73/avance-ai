@@ -88,6 +88,7 @@ const warnings = ref([])
 const appStoreAppById = ref({})
 const selectedProjectId = ref(null)
 const selectedAppStoreApp = computed(() => appStoreAppById.value[selectedProjectId.value] ?? null)
+const selectedRow = computed(() => rows.value.find((row) => row.id === selectedProjectId.value) ?? null)
 
 function selectProject(id) {
   selectedProjectId.value = id
@@ -478,7 +479,6 @@ defineExpose({ refresh: load })
                 <div class="project-card-body">
                   <span class="project-card-title-row">
                     <span class="project-card-title">{{ projectTitle(row.id) }}</span>
-                    <span v-if="row.published_revision != null" class="project-card-rev">rev. {{ row.published_revision }}</span>
                     <span v-if="row.broken?.published" class="project-card-broken" :title="row.broken.published">broken</span>
                     <span v-if="row.broken?.draft" class="project-card-draft-broken" :title="row.broken.draft">draft broken</span>
                   </span>
@@ -523,6 +523,7 @@ defineExpose({ refresh: load })
           v-if="selectedAppStoreApp"
           :key="selectedAppStoreApp.id"
           :app="selectedAppStoreApp"
+          :published-revision="selectedRow?.published_revision ?? null"
           @edit="selectEdit"
           @label="selectLabelSessions"
           @download="selectDownload"
@@ -944,16 +945,6 @@ defineExpose({ refresh: load })
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.project-card-rev {
-  flex-shrink: 0;
-  padding: 0.05rem 0.4rem;
-  border-radius: 999px;
-  background: #eee;
-  color: #888;
-  font-size: 0.65rem;
-  font-weight: 500;
 }
 
 .project-card-broken,

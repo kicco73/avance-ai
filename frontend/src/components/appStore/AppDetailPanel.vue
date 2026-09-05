@@ -46,14 +46,25 @@ function handleUninstallMenuDocumentClick(event) {
 
 document.addEventListener('click', handleUninstallMenuDocumentClick, true)
 
+// Guards against this component's own fetch resolving after it's already
+// gone — switching the selected app destroys this instance (see its
+// `:key` in AppStoreView.vue) rather than reusing it, but an in-flight
+// request from the old instance isn't cancelled by that, and with no
+// ordering guarantee on the network it can resolve after the new
+// instance's own fetch already applied the new app's skin — silently
+// overwriting it with the old one's.
+let skinRequestAlive = true
+
 async function loadSkinForApp(app) {
   if (!app) return
+  let css = ''
   try {
     const response = await fetch(appStoreFileContentUrl(app.id, 'index.css'), { credentials: 'include', cache: 'no-store' })
-    setSkinCss(response.ok ? await response.text() : '', app.id)
+    css = response.ok ? await response.text() : ''
   } catch {
-    setSkinCss('', app.id)
+    css = ''
   }
+  if (skinRequestAlive) setSkinCss(css, app.id)
 }
 
 watch(() => props.app?.id, () => loadSkinForApp(props.app), { immediate: true })
@@ -159,6 +170,7 @@ async function restartPreview() {
 }
 
 onBeforeUnmount(async () => {
+  skinRequestAlive = false
   document.removeEventListener('click', handleUninstallMenuDocumentClick, true)
   await quitPreview()
   invalidateSkin()

@@ -50,3 +50,17 @@ class ProjectPublishedHealthChanged:
     project_id: str
     revision: int
     error: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectRevisionBuildFailed:
+    """A stored revision just failed to build (see AutomatonLoader.
+    load_at_revision) — published only when `revision` is the project's
+    own current published or draft revision, never an older one pinned
+    by some session alone (see AutomatonLoader._handle_broken_revision).
+    AutomatonLoader has no reference to ProjectManager (and must never
+    gain one — project/ already depends downward on it) so this is how a
+    lazy build failure, discovered outside any publish/save flow,
+    reaches ProjectManager.recompute_availability."""
+    project_id: str
+    revision: int

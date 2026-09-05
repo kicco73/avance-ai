@@ -7,6 +7,7 @@ from automaton.automaton import Automaton
 from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
 from db import Db
+from events import ProjectRevisionBuildFailed, publish
 from logging_factory import LoggerFactory
 
 from .layout import ArchiveLayout
@@ -40,12 +41,17 @@ class AutomatonLoader:
         # "whatever's current" — the only thing known_projects_env_keys
         # scans other projects for. (declared_id, family, env_key_names).
         self._declared_meta_cache: dict[tuple[str, int], tuple[str | None, str | None, frozenset[str]]] = {}
-        # (project_id, revision) already logged + swept for force-close —
-        # load_at_revision is hit from several per-request read paths
-        # (see ProjectInspector), so without this a broken revision under
-        # active use would re-run the close sweep (a DB query) on every
-        # single failed load rather than once per process lifetime.
-        self._broken_revisions: set[tuple[str, int]] = set()
+        # (project_id, revision) -> the AutomatonBuildError it last raised.
+        # A revision that doesn't build is just as cacheable as one that
+        # does: load_at_revision consults this first and re-raises without
+        # rebuilding, and without re-running _handle_broken_revision's own
+        # log/close-sessions/event side effects — those fire exactly once
+        # per (project_id, revision), the first time it's discovered
+        # broken, until something actually invalidates this entry (see
+        # invalidate/invalidate_cache below). Doubles as what
+        # _broken_revisions used to be for (never re-run the close sweep
+        # for the same one twice) — a key present here already means that ran.
+        self._build_failures: dict[tuple[str, int], AutomatonBuildError] = {}
 
     @staticmethod
     def is_safe_project_name(project_id: str) -> bool:
@@ -108,25 +114,48 @@ class AutomatonLoader:
         return self._declared_meta(project_id)[1]
 
     def invalidate_cache(self, project_id: str) -> None:
-        """Drops every cached revision of `project_id`, for callers that
-        can't tell which revisions are now stale. Ordinary edits go through
-        ProjectManager.finalize_update instead, which re-caches just one revision."""
+        """Drops every cached revision of `project_id` — both what it
+        last built successfully and what it last failed to build — for
+        callers that can't tell which revisions are now stale (a rename,
+        a publish that re-stamps the draft's own project.revision, a
+        revert). Ordinary edits go through ProjectManager.finalize_update
+        instead, which re-caches just one revision (see set_cached)."""
         for key in [k for k in self._automaton_cache if k[0] == project_id]:
             del self._automaton_cache[key]
         for key in [k for k in self._declared_meta_cache if k[0] == project_id]:
             del self._declared_meta_cache[key]
+        for key in [k for k in self._build_failures if k[0] == project_id]:
+            del self._build_failures[key]
+
+    def invalidate(self, project_id: str, revision: int) -> None:
+        """Same as invalidate_cache, narrowed to one exact revision —
+        every write to that revision's own stored files (a design-view
+        save, a legacy migration rewriting index.yml in place, an
+        upload/import, a publish/revert) must call this, or a stale
+        success *or* a stale failure could otherwise outlive the content
+        it was cached for."""
+        cache_key = (project_id, revision)
+        self._automaton_cache.pop(cache_key, None)
+        self._declared_meta_cache.pop(cache_key, None)
+        self._build_failures.pop(cache_key, None)
 
     def set_cached(self, project_id: str, revision: int, automaton: Automaton) -> None:
         self._automaton_cache[(project_id, revision)] = automaton
         self._declared_meta_cache[(project_id, revision)] = (
             automaton.project_id, automaton.family, frozenset(env_key.name for env_key in automaton.env_keys)
         )
+        # A fresh success supersedes any stale failure cached for this
+        # exact key (e.g. a save that fixes what a previous one broke).
+        self._build_failures.pop((project_id, revision), None)
 
     def load_at_revision(self, project_id: str, revision: int) -> Automaton:
         cache_key = (project_id, revision)
         cached = self._automaton_cache.get(cache_key)
         if cached is not None:
             return cached
+        cached_failure = self._build_failures.get(cache_key)
+        if cached_failure is not None:
+            raise cached_failure
 
         if not AutomatonLoader.is_safe_project_name(project_id):
             raise ValueError(f"Invalid project id: '{project_id}'.")
@@ -158,6 +187,7 @@ class AutomatonLoader:
             exc.project_id = exc.project_id or project_id
             exc.revision = revision
             exc.detail = f"Project '{project_id}', stored revision {revision}: index.yml no longer builds — {exc}"
+            self._build_failures[cache_key] = exc
             self._handle_broken_revision(project_id, revision, exc)
             raise
         automaton.set_storage_location(revision)
@@ -165,23 +195,31 @@ class AutomatonLoader:
         return automaton
 
     def _handle_broken_revision(self, project_id: str, revision: int, exc: AutomatonBuildError) -> None:
-        """Logs once and force-closes any session still open on this
-        exact (project_id, revision) — never re-run for the same one
-        twice in this process's lifetime (see _broken_revisions), since
-        this fires from hot per-request read paths (ProjectInspector)
-        that could otherwise re-query/re-close on every single failed load."""
-        key = (project_id, revision)
-        if key in self._broken_revisions:
-            return
-        self._broken_revisions.add(key)
+        """Logs once, force-closes any session still open on this exact
+        (project_id, revision), and — when `revision` is the project's
+        own current published or draft revision, never an older one
+        pinned by some session alone — publishes ProjectRevisionBuildFailed
+        so ProjectManager can recompute its availability. Only ever
+        reached once per (project_id, revision) between invalidations:
+        load_at_revision checks/populates _build_failures before calling
+        this, so a cache hit never re-runs any of it (this used to be
+        its own separate _broken_revisions dedup set; the failure cache
+        now serves that purpose too)."""
         logger.warning(
             "Project '%s', stored revision %s no longer builds — %s", project_id, revision, exc,
         )
-        if self._session_manager is None:
+        if self._session_manager is not None:
+            for session in self._db.list_live_sessions_for_revision(project_id, revision):
+                if self._session_manager.is_open(session):
+                    self._session_manager.close_session(session, 'revision-invalid')
+        if not self._db.project_exists(project_id):
             return
-        for session in self._db.list_live_sessions_for_revision(project_id, revision):
-            if self._session_manager.is_open(session):
-                self._session_manager.close_session(session, 'revision-invalid')
+        is_current_or_published = (
+            revision == self._db.get_project_revision(project_id)
+            or revision == self._db.get_project_published_revision(project_id)
+        )
+        if is_current_or_published:
+            publish(ProjectRevisionBuildFailed(project_id=project_id, revision=revision))
 
     def load(self, project_id: str) -> Automaton:
         """Whatever's current for `project_id` right now — the most

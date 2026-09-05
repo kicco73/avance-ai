@@ -15,7 +15,7 @@ from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
 from chat.session_manager import ChatSessionManager
 from db import Db
-from events import AvailabilityChanged, ProjectPublishedHealthChanged, publish, subscribe
+from events import AvailabilityChanged, ProjectPublishedHealthChanged, ProjectRevisionBuildFailed, publish, subscribe
 from logging_factory import LoggerFactory
 from service_error import ServiceError
 from session import Session
@@ -218,8 +218,14 @@ class ProjectManager:
     def register_availability_cascade(self) -> None:
         """Subscribed once, for the process's lifetime. Recursive by
         construction: recompute_availability's write-only-on-change guard
-        is what makes the cascade stop propagating on its own."""
+        is what makes the cascade stop propagating on its own. Also where
+        a *lazy* build failure (see AutomatonLoader._handle_broken_revision,
+        published only when the broken revision is a project's own
+        current published/draft one) triggers the exact same recompute —
+        AutomatonLoader has no reference to ProjectManager itself, so the
+        event is the only way this reaches it."""
         subscribe(AvailabilityChanged, self._on_availability_changed)
+        subscribe(ProjectRevisionBuildFailed, self._on_revision_build_failed)
 
     def _on_availability_changed(self, event: AvailabilityChanged) -> None:
         try:
@@ -229,6 +235,15 @@ class ProjectManager:
             logger.exception(
                 "Availability cascade failed while reacting to '%s' (available=%s).",
                 event.project_id, event.available,
+            )
+
+    def _on_revision_build_failed(self, event: ProjectRevisionBuildFailed) -> None:
+        try:
+            self.recompute_availability(event.project_id)
+        except Exception:
+            logger.exception(
+                "recompute_availability failed while reacting to a lazy build failure for '%s' (revision %s).",
+                event.project_id, event.revision,
             )
 
     @staticmethod
