@@ -18,25 +18,31 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 	async def _get_ai_reply(self) -> OutVariables:
 
 		self.out = OutVariables("", [], None, self.user.state, None)
-		# By design, signals only ever arrive if the schema/tag set for this
-		# turn actually asks for them — a message that doesn't request
-		# 'signals' will never produce that metadata, so there's nothing to
-		# gate text on: stream normally from the first chunk.
-		self.out.signals_resolved = not self._evaluate_signals_for(self.user.state)
-
-		# Optimistic guess: generate the real reply first, using the
-		# *current* state's own context — the common case (no transition)
-		# needed exactly this one call anyway.
+		if not self._evaluate_signals_for(self.user.state):
+			# Nothing signal-backed to ask the model for this turn — the
+			# state's own triggers are still evaluated, right now, against
+			# the empty signals set (a metric.*/env.*/source.* trigger fires
+			# exactly as it always did; a signal-backed one short-circuits
+			# to false): the gate switches off the request, never the
+			# evaluation. The outcome is known before the first chunk, so
+			# there's nothing to buffer text for either way.
+			self._resolve_signals({})
 
 		buffered_text_before_signals_resolved = ""
-		async for chunk in self.generate_reply(self.user.state, self.on_receiving_metadata):
-			if not self.out.signals_resolved:
-				buffered_text_before_signals_resolved += chunk
-			elif self.user.state == self.out.state:
-				if not self.out.reply:
-					chunk = buffered_text_before_signals_resolved + chunk
-				self.out.reply += chunk
-				self.metadata.on_metadata('chunk', chunk)
+		if self.user.state == self.out.state:
+			# Optimistic guess: generate the real reply first, using the
+			# *current* state's own context — the common case (no
+			# transition) needed exactly this one call anyway. Skipped
+			# outright when the upfront evaluation above already moved the
+			# automaton: that reply would only ever be discarded below.
+			async for chunk in self.generate_reply(self.user.state, self.on_receiving_metadata):
+				if not self.out.signals_resolved:
+					buffered_text_before_signals_resolved += chunk
+				elif self.user.state == self.out.state:
+					if not self.out.reply:
+						chunk = buffered_text_before_signals_resolved + chunk
+					self.out.reply += chunk
+					self.metadata.on_metadata('chunk', chunk)
 
 		if not self.out.signals_resolved and buffered_text_before_signals_resolved:
 			# Safety net: the model never produced a 'signals' tag/field at
@@ -85,7 +91,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 				self.out.reply += chunk
 				self.metadata.on_metadata('chunk', chunk)
 
-		if self.metadata.signals:
+		if self._records_evaluation():
 			# The trigger is decided from the user's message, so this row
 			# links to it directly — except an opening turn, whose
 			# message_id only points at a placeholder that gets deleted, which would silently orphan an early link.

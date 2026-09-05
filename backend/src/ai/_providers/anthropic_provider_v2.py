@@ -24,6 +24,7 @@ from ai.llm_provider import (
 	AIServiceRequestError,
 	LLMProvider,
 	MetadataCallback,
+	SystemPrompt,
 	ToolCall,
 	ToolCallsRequested,
 	ToolSpec,
@@ -256,15 +257,30 @@ class AnthropicProvider(LLMProvider):
 
 	def _build_system(
 		self,
-		system_prompt: str,
+		system_prompt: "str | SystemPrompt",
 	) -> list[TextBlockParam]:
-		return [
+		"""One cache breakpoint, on the stable prefix alone — the `tools`
+		block precedes `system` in Anthropic's own cache order and is
+		already stable for a given state (specs sorted by name), so this
+		one breakpoint covers it too; never a second one on `volatile` or
+		on the message history (a future prompt, once measured). A
+		volatile tail is appended as its own, uncached text block —
+		omitted entirely when empty, so a plain str (volatile="") still
+		produces exactly the single-block request this provider always
+		sent. Below the model's own minimum cacheable prompt length
+		(1024 tokens for Sonnet/Opus, 2048 for Haiku) the API silently
+		ignores the marker — no special-casing needed here either way."""
+		prompt = SystemPrompt.coerce(system_prompt)
+		blocks: list[TextBlockParam] = [
 			{
 				"type": "text",
-				"text": system_prompt,
+				"text": prompt.stable,
 				"cache_control": CACHE_CONTROL,
 			}
 		]
+		if prompt.volatile:
+			blocks.append({"type": "text", "text": prompt.volatile})
+		return blocks
 
 	def _build_output_config(
 		self,
@@ -285,7 +301,7 @@ class AnthropicProvider(LLMProvider):
 
 	async def generate_stream_with_schema(
 		self,
-		system_prompt: str,
+		system_prompt: "str | SystemPrompt",
 		history: list[dict[str, Any]],
 		schema: dict[str, str] | None = None,
 		on_metadata: MetadataCallback | None = None,
@@ -339,15 +355,27 @@ class AnthropicProvider(LLMProvider):
 						yield text
 				final_message = await stream.get_final_message()
 				usage = final_message.usage
-				self._add_tokens(usage.input_tokens + usage.output_tokens)
+				# usage.input_tokens excludes every cache-read/cache-write
+				# token by design (Anthropic's own accounting) — normalized
+				# here into a true input total, on_metadata's own
+				# "input_tokens" always meaning cache-inclusive input from
+				# this point on, across every provider (see SystemPrompt).
+				cache_read_tokens = getattr(usage, "cache_read_input_tokens", None) or 0
+				cache_creation_tokens = getattr(usage, "cache_creation_input_tokens", None) or 0
+				total_input_tokens = usage.input_tokens + cache_read_tokens + cache_creation_tokens
+				self._add_tokens(total_input_tokens + usage.output_tokens)
 				if on_metadata is not None:
-					on_metadata("input_tokens", usage.input_tokens)
+					on_metadata("cache_read_tokens", cache_read_tokens)
+					on_metadata("cache_creation_tokens", cache_creation_tokens)
+					on_metadata("input_tokens", total_input_tokens)
 					on_metadata("output_tokens", usage.output_tokens)
 				stop_reason = final_message.stop_reason
 				final_content = final_message.content
 				logger.info(
 					f"Anthropic call finished: model={self._model_name} stop_reason={stop_reason} "
-					f"output_tokens={usage.output_tokens} max_output_tokens={self._max_output_tokens}"
+					f"input_tokens={total_input_tokens} output_tokens={usage.output_tokens} "
+					f"cache_read={cache_read_tokens} cache_creation={cache_creation_tokens} "
+					f"max_output_tokens={self._max_output_tokens}"
 				)
 
 		except (

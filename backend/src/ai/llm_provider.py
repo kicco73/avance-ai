@@ -16,6 +16,37 @@ logger = LoggerFactory.get_logger(__name__)
 # Each metadata key ("audio", "signals", "env", ...) fires at most once
 # per turn; callers needing to await something schedule their own task.
 MetadataCallback = Callable[[str, Any], None]
+
+
+@dataclass(frozen=True)
+class SystemPrompt:
+	"""A system prompt split into a stable prefix (identical across
+	consecutive turns in the same automaton state — every channel's own
+	preamble/content, the schema field order) and a volatile tail (the
+	model's own memory, the env block — anything that changes turn to
+	turn even while the state doesn't). Anthropic caches only the stable
+	half (see AnthropicProvider._build_system); Gemini/OpenAI simply
+	concatenate the two, relying on their own implicit prefix caching to
+	still hit on `stable`. A plain `str` (every caller that never splits
+	anything) is equivalent to SystemPrompt(stable=that string) — see
+	coerce()."""
+	stable: str
+	volatile: str = ""
+
+	@staticmethod
+	def coerce(system_prompt: "str | SystemPrompt") -> "SystemPrompt":
+		if isinstance(system_prompt, SystemPrompt):
+			return system_prompt
+		return SystemPrompt(stable=system_prompt)
+
+	def full_text(self) -> str:
+		"""The complete prompt text a provider with no notion of its own
+		of a stable/volatile split would send — used for token-estimate
+		callers (see AiService._enforce_input_budget) and by a provider
+		that just concatenates the two (Gemini/OpenAI)."""
+		return f"{self.stable}{self.volatile}"
+
+
 @dataclass(frozen=True)
 class AIServiceConfig:
 	driver: str
@@ -176,10 +207,15 @@ class LLMProvider(TokenCounter, ABC):
 
 	@abstractmethod
 	async def generate_stream_with_schema(
-		self, system_prompt: str, history: list[dict], schema: dict[str, str], on_metadata: MetadataCallback | None = None,
+		self, system_prompt: "str | SystemPrompt", history: list[dict], schema: dict[str, str], on_metadata: MetadataCallback | None = None,
 		tools: list[ToolSpec] | None = None, tool_round: int = 1, required_tools: list[ToolSpec] | None = None,
 	) -> AsyncIterator[str]:
-		"""`history` is provider-neutral, including for tool turns: beyond
+		"""`system_prompt`: a plain str, or a SystemPrompt(stable, volatile)
+		— see its own docstring. Anthropic caches `stable` alone (a plain
+		str behaves as SystemPrompt(stable=str, volatile="")); Gemini/
+		OpenAI just concatenate the two via SystemPrompt.full_text().
+
+		`history` is provider-neutral, including for tool turns: beyond
 		the plain {role, content} shape, two more message shapes appear —
 		{"role": "assistant", "tool_calls": list[ToolCall], "content": Any}
 		(the assistant's own turn asking for tools, exactly as replayed

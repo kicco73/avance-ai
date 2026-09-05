@@ -15,7 +15,6 @@ from automaton.automaton import (
     AI_ACCESS_NONE, ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload,
 )
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
-from tracking.sources.url import parse_source_url
 
 
 class InitActionTargetError(Exception):
@@ -661,99 +660,3 @@ class AutomatonYamlEditor:
         )
         return None if references_name else node
 
-    def rewrite_legacy_source_read_calls(self) -> set[str]:
-        """Rewrites on-enter's `source.<name>.read()` calls into
-        `attachment.read('<path>')` using each name's declared `avance:`
-        url. Returns names it couldn't resolve, left untouched."""
-        source_paths = self._declared_avance_source_paths()
-        unresolved: set[str] = set()
-        for raw_state in self._states().values():
-            for raw_action in raw_state.get("actions") or []:
-                on_enter = raw_action.get("on-enter")
-                if not on_enter or "source." not in on_enter or ".read(" not in on_enter:
-                    continue
-                rewritten, missing = self._rewrite_on_enter_source_reads(on_enter, source_paths)
-                unresolved |= missing
-                if rewritten is not None:
-                    raw_action["on-enter"] = rewritten
-        return unresolved
-
-    def rewrite_legacy_tools_field(self) -> bool:
-        """Renames every state's own legacy source-field key to its
-        current name (see AutomatonBuilder.LEGACY_STATE_SOURCE_FIELDS:
-        `tools:` and `ai-may-query-sources:` -> `ai-may-read-sources:`,
-        `ai-must-query-sources:` -> `ai-must-read-sources:`) — see
-        project.archive.legacy_tools_field_migration. A structural key
-        rename (via _rename_key_preserving_comments), never a value
-        change: each new field means exactly what its old name did, so
-        nothing about the list itself needs to change, only its key.
-        Two legacy keys landing on the same new one (a state with both
-        `tools:` and `ai-may-query-sources:`) are merged, in order,
-        without duplicates. Returns whether anything was actually renamed."""
-        from automaton.automaton_builder import LEGACY_STATE_SOURCE_FIELDS
-        changed = False
-        for raw_state in self._states().values():
-            for legacy_field, replacement in LEGACY_STATE_SOURCE_FIELDS.items():
-                if legacy_field not in raw_state:
-                    continue
-                if replacement in raw_state:
-                    merged = list(raw_state[replacement] or [])
-                    merged += [name for name in (raw_state[legacy_field] or []) if name not in merged]
-                    raw_state[replacement] = merged
-                    del raw_state[legacy_field]
-                else:
-                    self._rename_key_preserving_comments(raw_state, legacy_field, replacement)
-                changed = True
-        return changed
-
-    def _declared_avance_source_paths(self) -> dict[str, str]:
-        paths: dict[str, str] = {}
-        for name, raw_source in self._sources().items():
-            url = (raw_source or {}).get("url")
-            if not url:
-                continue
-            try:
-                scheme, path = parse_source_url(url)
-            except ValueError:
-                continue
-            if scheme == "avance":
-                paths[name] = path
-        return paths
-
-    @staticmethod
-    def _rewrite_on_enter_source_reads(on_enter: str, source_paths: Mapping[str, str]) -> tuple[str | None, set[str]]:
-        """(new on-enter text, unresolved names) — None for the first
-        element when nothing needed rewriting, so the caller keeps the
-        original text; a rewritten statement loses its own formatting."""
-        statements = TriggerExpressionAnalyzer.on_enter_statements(on_enter)
-        unresolved: set[str] = set()
-        changed = False
-        lines: list[str] = []
-        for _, statement in statements:
-            tree = ast.parse(statement, mode="eval")
-            statement_changed = False
-            for node in ast.walk(tree):
-                if not (isinstance(node, ast.Call) and not node.args and not node.keywords):
-                    continue
-                func = node.func
-                if not (
-                    isinstance(func, ast.Attribute) and func.attr == "read"
-                    and isinstance(func.value, ast.Attribute)
-                    and isinstance(func.value.value, ast.Name) and func.value.value.id == "source"
-                ):
-                    continue
-                source_name = func.value.attr
-                path = source_paths.get(source_name)
-                if path is None:
-                    unresolved.add(source_name)
-                    continue
-                node.func = ast.Attribute(value=ast.Name(id="attachment", ctx=ast.Load()), attr="read", ctx=ast.Load())
-                node.args = [ast.Constant(value=path)]
-                statement_changed = True
-            if statement_changed:
-                ast.fix_missing_locations(tree)
-                lines.append(ast.unparse(tree))
-                changed = True
-            else:
-                lines.append(statement)
-        return ("\n".join(lines) if changed else None), unresolved

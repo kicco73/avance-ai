@@ -91,11 +91,11 @@ class OutVariables:
 	# whichever message actually caused it — process() must not then
 	# overwrite that link with the assistant's own message id.
 	tracking_linked_to_message: bool = False
-	# True once this turn's signals are settled and won't change the state
-	# again — either they were actually evaluated (whether or not that
-	# triggered a transition), or a caller determined upfront that no
-	# transition was ever possible. Gates whether buffered reply text is
-	# safe to stream.
+	# True once this turn's trigger evaluation has run and the state won't
+	# change again — on the model's own reported signals, or on the empty
+	# signals set when nothing signal-backed was requested (see
+	# TrackingProcessor._resolve_signals). Gates whether buffered reply
+	# text is safe to stream.
 	signals_resolved: bool = False
 
 class TrackingProcessor(object):
@@ -207,13 +207,8 @@ class TrackingProcessor(object):
 		call actually requests."""
 		rv = value
 		if key == 'signals':
-			rv = self.metadata.signals = value
-			self.out.action = self._tracking_engine.evaluate_triggered_action(
-				self.user.automaton, self.user.state, self.metadata.signals, session_id=self.user.session_id,
-			)
-			if self.out.action:
-				self.out.state = self.user.automaton.get_state(self.out.action.target)
-			self.out.signals_resolved = True
+			rv = value
+			self._resolve_signals(value)
 		elif key == 'memory':
 			rv = self.metadata.memory = value
 		elif key == 'audio':
@@ -229,6 +224,30 @@ class TrackingProcessor(object):
 		elif key == 'tool_result':
 			self.metadata.tool_calls.append(value)
 		self.metadata.on_metadata(key, rv)
+
+	def _resolve_signals(self, signal_values: dict[str, float]) -> None:
+		"""The one trigger-evaluation pass of a turn: `signal_values` are
+		the model's own reported signals when they were requested, or the
+		empty set when they weren't (see _evaluate_signals_for) — a state
+		whose triggers reference only metric.*/env.*/source.* is evaluated
+		every chat turn all the same, exactly as one with signal-backed
+		triggers; a signal-backed trigger evaluated against the empty set
+		simply short-circuits to false (see Automaton._eval_trigger)."""
+		self.metadata.signals = signal_values
+		self.out.action = self._tracking_engine.evaluate_triggered_action(
+			self.user.automaton, self.user.state, self.metadata.signals, session_id=self.user.session_id,
+		)
+		if self.out.action:
+			self.out.state = self.user.automaton.get_state(self.out.action.target)
+		self.out.signals_resolved = True
+
+	def _records_evaluation(self) -> bool:
+		"""Whether this turn's trigger evaluation leaves a Tracking row: a
+		fired transition always does; an evaluation with no transition
+		only when the model actually reported signals worth a snapshot
+		(see TrackingEngine.apply_transition) — one against the empty set
+		has nothing new to record."""
+		return bool(self.metadata.signals) or self.out.action is not None
 
 	def generate_reply(self, state: State, on_metadata: MetadataCallback,
 	) -> AsyncIterator[str]:
@@ -374,15 +393,17 @@ class TrackingProcessor(object):
 		return channels
 
 	def _evaluate_signals_for(self, state: State) -> bool:
-		"""Whether a reply generated in `state` should even ask for
-		'signals' at all — see build_turn_channels' own docstring on the
+		"""Whether a reply generated in `state` should even ask the model
+		for 'signals' — see build_turn_channels' own docstring on the
 		"before"/"after" strategies; pointless when nothing in `state`
 		could trigger from them (no definition in the prompt, no
-		'signals' field in the schema, no evaluation once the reply comes
-		back). Exposed on its own (not just inlined in build_turn_channels)
-		so a caller can know this upfront without building the full
-		channel list — see TrackingProcessorAfterUserMessage's early
-		signals_resolved gate."""
+		'signals' field in the schema). This gates the *request* only,
+		never the trigger evaluation itself: a turn that asks for nothing
+		still runs _resolve_signals against the empty set, so a trigger
+		referencing only metric.*/env.*/source.* keeps firing. Exposed on
+		its own (not just inlined in build_turn_channels) so a caller can
+		know this upfront without building the full channel list — see
+		TrackingProcessorAfterUserMessage's own upfront resolution."""
 		has_to_evaluate_signals_before_ai_reply = not self.user.automaton.autotracking_on_ai_message
 		return (
 			not (has_to_evaluate_signals_before_ai_reply and self.user.has_ai_started_conversation)

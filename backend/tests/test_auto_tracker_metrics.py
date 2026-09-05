@@ -83,7 +83,11 @@ class FakeSchemaAiService:
         return True
 
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema):
-        on_metadata("signals", self._signals_json)
+        # Only when actually asked for — a schema-constrained provider can't
+        # emit a field outside the schema it was given, and a turn whose
+        # triggers reference no signal never requests one.
+        if "signals" in schema:
+            on_metadata("signals", self._signals_json)
         yield "Hi!"
 
 
@@ -170,3 +174,48 @@ async def test_a_trigger_can_combine_a_signal_and_a_metric(db):
 
     assert result["state_changed"] is True
     assert result["new_state"] == "b"
+
+
+async def test_a_trigger_referencing_only_env_can_fire(db):
+    """Mirror of the metric-only case for the other signal-less namespace:
+    no signal is requested from the model (nothing in the trigger needs
+    one), the trigger is still evaluated every turn against the empty
+    signals set — the gate only ever switches off the request."""
+    automaton = _automaton_with_trigger("env.ready == 'yes'")
+    session_id = _session_id(db)
+    db.set_action_env(session_id, {"ready": "yes"})
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
+
+    result = await service._process(session_id, "hello", ai_service)
+
+    assert result["state_changed"] is True
+    assert result["new_state"] == "b"
+
+
+async def test_a_trigger_referencing_only_env_is_evaluated_before_the_reply_too(db):
+    """Same, under the "before" strategy (signal-tracking-on-ai-message:
+    false): evaluated upfront, the optimistic reply in the old state is
+    skipped and the one reply generated is already the new state's."""
+    automaton = _automaton_with_trigger("env.ready == 'yes'")
+    automaton.autotracking_on_ai_message = False
+    session_id = _session_id(db)
+    db.set_action_env(session_id, {"ready": "yes"})
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
+
+    result = await service._process(session_id, "hello", ai_service)
+
+    assert result["state_changed"] is True
+    assert result["new_state"] == "b"
+    assert db.get_signals(session_id)[-1]["new_state"] == "b"
+
+
+async def test_a_signal_less_evaluation_that_fires_nothing_leaves_no_snapshot_row(db):
+    automaton = _automaton_with_trigger("env.ready == 'yes'")
+    session_id = _session_id(db)
+    db.set_action_env(session_id, {"ready": "no"})
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
+
+    result = await service._process(session_id, "hello", ai_service)
+
+    assert result["state_changed"] is False
+    assert db.get_signals(session_id) == []

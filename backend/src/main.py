@@ -24,8 +24,6 @@ from jobs.throttled_job_queue import ThrottledJobQueue
 from logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from notification.notification_service import NotificationService
-from project.archive.legacy_source_read_migration import migrate_legacy_source_read
-from project.archive.legacy_tools_field_migration import migrate_legacy_tools_field
 from project.health_notifications import ProjectHealthNotifications
 from project.project_service import ProjectService
 from ai import AiService
@@ -84,14 +82,6 @@ def create_app() -> FastAPI:
         # `db` every other service here depends on.
         db = Db(config.database_url, migration_strategy=config.database_migration_strategy)
 
-        # One-off: rewrites every stored index.yml revision still calling
-        # the now-removed source.<name>.read() into attachment.read(name)
-        # wherever it safely can (see the module's own docstring) —
-        # before anything else touches a project's stored revisions.
-        migrate_legacy_source_read(db)
-        # One-off: renames every stored index.yml revision's own state-level
-        # legacy source-field names to the current ones (see the module's own docstring).
-        migrate_legacy_tools_field(db)
         migrate_env_rows(db)
 
         ai_live_service = AiService.for_live(

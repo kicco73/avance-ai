@@ -158,9 +158,8 @@ def test_a_broken_revision_never_touches_a_different_revisions_session(db):
 
 
 def test_with_no_session_manager_it_still_raises_but_closes_nothing(db):
-    """AutomatonLoader(db) with no session_manager (e.g. the boot-time
-    legacy_source_read_migration's own construction) has no session of
-    its own to worry about — the load must still fail, just without the
+    """AutomatonLoader(db) with no session_manager has no session of its
+    own to worry about — the load must still fail, just without the
     close side effect."""
     broken = _store(db, BROKEN_ON_ENTER_YML)
     session_id = _open_session_on(db, broken)

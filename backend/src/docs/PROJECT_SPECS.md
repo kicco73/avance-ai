@@ -680,6 +680,13 @@ of how you're likely to hit them:
 - An `avance:env` source (§5.2) is only declared when at least one env key has `ai-access` other than `none`.
 - Every name in a state's own `ai-may-read-sources`/`ai-must-read-sources`/`ai-may-write-sources` (§4.2) names a source actually declared in `sources:`, that source declares its own `ai-definition`, its driver implements the method the field exposes (`select`/`update`), and no name appears in both read fields for the same state. The old names `tools`, `ai-may-query-sources`, `ai-must-query-sources` are rejected with a message naming their replacement.
 
+A stored revision that fails this checklist because the format moved on
+underneath it (a removed field, a removed method) is never rewritten
+automatically — there is no migration for a breaking format change. The
+project is paused, flagged broken, and stays that way until a human
+corrects the `index.yml` by hand in the design view, whose banner shows
+the builder's own rejection message.
+
 ## 9. Worked examples
 
 **Minimal** (the "Hello world" sample project):

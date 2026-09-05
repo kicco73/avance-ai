@@ -10,7 +10,7 @@ else needs to change shape."""
 from .audio import AudioChannel, EMBED_AUDIO_TAG_PROMPT
 from .base import MetadataChannel
 from .batch import BATCH_END_MARKER, BatchChannel, MetadataTurnMismatch
-from .memory import EMBED_MEMORY_TAG_PROMPT, MemoryChannel
+from .memory import EMBED_MEMORY_TAG_HEADER, EMBED_MEMORY_TAG_INSTRUCTIONS, EMBED_MEMORY_TAG_PROMPT, MemoryChannel
 from .memory_batch import EMBED_MEMORY_BATCH_TAG_PROMPT, MemoryBatchChannel
 from .reaction import EMBED_REACTION_TAG_PROMPT, ReactionChannel
 from .signals import EMBED_SIGNAL_TAG_PROMPT, SignalsChannel
@@ -21,6 +21,7 @@ from .translate import EMBED_TRANSLATE_TAG_PROMPT, TranslateChannel
 __all__ = [
 	"AudioChannel", "BatchChannel", "MemoryBatchChannel", "MemoryChannel", "MetadataChannel", "MetadataTurnMismatch",
 	"ReactionChannel", "SignalsBatchChannel", "SignalsChannel", "TextChannel", "TranslateChannel",
-	"BATCH_END_MARKER", "EMBED_AUDIO_TAG_PROMPT", "EMBED_MEMORY_BATCH_TAG_PROMPT", "EMBED_MEMORY_TAG_PROMPT",
-	"EMBED_REACTION_TAG_PROMPT", "EMBED_SIGNAL_BATCH_TAG_PROMPT", "EMBED_SIGNAL_TAG_PROMPT", "EMBED_TRANSLATE_TAG_PROMPT",
+	"BATCH_END_MARKER", "EMBED_AUDIO_TAG_PROMPT", "EMBED_MEMORY_BATCH_TAG_PROMPT", "EMBED_MEMORY_TAG_HEADER",
+	"EMBED_MEMORY_TAG_INSTRUCTIONS", "EMBED_MEMORY_TAG_PROMPT", "EMBED_REACTION_TAG_PROMPT",
+	"EMBED_SIGNAL_BATCH_TAG_PROMPT", "EMBED_SIGNAL_TAG_PROMPT", "EMBED_TRANSLATE_TAG_PROMPT",
 ]

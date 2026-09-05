@@ -17,6 +17,7 @@ from ai.llm_provider import (
     AIServiceRequestError,
     LLMProvider,
     MetadataCallback,
+    SystemPrompt,
     ToolCall,
     ToolCallsRequested,
     ToolSpec,
@@ -166,7 +167,7 @@ class OpenAICompatibleProvider(LLMProvider):
 
     async def generate_stream_with_schema(
         self,
-        system_prompt: str,
+        system_prompt: "str | SystemPrompt",
         history: List[Dict[str, Any]],
         schema: Optional[Dict[str, str]] = None,
         on_metadata: Optional[MetadataCallback] = None,
@@ -174,7 +175,12 @@ class OpenAICompatibleProvider(LLMProvider):
         tool_round: int = 1,
         required_tools: Optional[List[ToolSpec]] = None,
     ) -> AsyncIterator[str]:
-        messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+        # No native cache-breakpoint concept here (unlike Anthropic) — the
+        # stable/volatile split still matters for this provider's own
+        # implicit prefix caching, which only ever hits a byte-identical
+        # prefix: `stable` first, unconditionally, so the single system
+        # message stays that identical prefix turn after turn.
+        messages: List[Dict[str, Any]] = [{"role": "system", "content": SystemPrompt.coerce(system_prompt).full_text()}]
         messages.extend(self._build_messages(history))
 
         extra_kwargs: Dict[str, Any] = {}
@@ -202,6 +208,7 @@ class OpenAICompatibleProvider(LLMProvider):
         total_tokens = 0
         input_tokens = 0
         output_tokens = 0
+        cache_read_tokens = 0
         finish_reason: Optional[str] = None
         # Accumulated across chunks, keyed by the delta's own `index` (a
         # single response can request several tool calls in parallel,
@@ -226,6 +233,8 @@ class OpenAICompatibleProvider(LLMProvider):
                     total_tokens = chunk.usage.total_tokens
                     input_tokens = chunk.usage.prompt_tokens
                     output_tokens = chunk.usage.completion_tokens
+                    cache_details = getattr(chunk.usage, "prompt_tokens_details", None)
+                    cache_read_tokens = getattr(cache_details, "cached_tokens", None) or 0
                 if chunk.choices:
                     if chunk.choices[0].finish_reason is not None:
                         finish_reason = chunk.choices[0].finish_reason
@@ -245,10 +254,16 @@ class OpenAICompatibleProvider(LLMProvider):
                                 entry["arguments"] += tool_call_delta.function.arguments
             self._add_tokens(total_tokens)
             if on_metadata is not None:
+                # cache_read_tokens is already folded into prompt_tokens
+                # (input_tokens above) — OpenAI has no separate cache-write
+                # accounting, so cache_creation_tokens is always 0 here.
+                on_metadata("cache_read_tokens", cache_read_tokens)
+                on_metadata("cache_creation_tokens", 0)
                 on_metadata("input_tokens", input_tokens)
                 on_metadata("output_tokens", output_tokens)
             logger.info(
                 f"OpenAI-compatible call finished: model={self._model_name} finish_reason={finish_reason} "
+                f"input_tokens={input_tokens} output_tokens={output_tokens} cache_read={cache_read_tokens} "
                 f"total_tokens={total_tokens} max_output_tokens={self._max_output_tokens}"
             )
 

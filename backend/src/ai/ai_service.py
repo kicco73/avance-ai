@@ -16,6 +16,7 @@ from ai.llm_provider import (
 	AIServiceRequestError,
 	LLMProvider,
 	MetadataCallback,
+	SystemPrompt,
 	ToolCallsRequested,
 	content_to_text,
 )
@@ -301,7 +302,7 @@ class AiService(object):
 
 	async def generate(
 		self,
-		system_prompt: str,
+		system_prompt: "str | SystemPrompt",
 		history: list[dict],
 		tool_set: "ToolSet | None" = None,
 	) -> str:
@@ -335,7 +336,7 @@ class AiService(object):
 
 	def generate_stream(
 		self,
-		system_prompt: str,
+		system_prompt: "str | SystemPrompt",
 		history: list[dict],
 		tool_set: "ToolSet | None" = None,
 	) -> AsyncIterator[str]:
@@ -349,9 +350,10 @@ class AiService(object):
 		return isinstance(self._current_leaf_provider, LLMProvider)
 
 	def _tap_token_usage(self, on_metadata: MetadataCallback, provider_label: str) -> MetadataCallback:
-		"""Wraps `on_metadata` to also persist input_tokens/output_tokens
-		(see each LLMProvider's own on_metadata calls) as one AiTokenUsage
-		row once both have arrived — a no-op passthrough when this
+		"""Wraps `on_metadata` to also persist input_tokens/output_tokens/
+		cache_read_tokens/cache_creation_tokens (see each LLMProvider's own
+		on_metadata calls) as one AiTokenUsage row once both input_tokens
+		and output_tokens have arrived — a no-op passthrough when this
 		AiService wasn't built with a `db` (most tests). `provider_label`
 		is the entry-time active provider, not re-read live off the
 		cascade's own pointer: a *different* concurrent call through the
@@ -363,29 +365,37 @@ class AiService(object):
 		reset, round 2's own input_tokens would pair with round 1's still-
 		cached output_tokens for one spurious extra row before round 2's
 		own output_tokens overwrites it — one real row per round, not one
-		real plus one wrong."""
+		real plus one wrong. Every provider emits the two cache events
+		before input_tokens/output_tokens (see each one's own
+		generate_stream_with_schema), so both are already in `captured`
+		by the time the pair completes and the row is written; a provider
+		that emits neither defaults both to 0 here rather than never
+		writing the row at all."""
 		if self._db is None:
 			return on_metadata
 		db = self._db
 		captured: dict[str, int] = {}
 
 		def tap(name: str, value: Any) -> None:
-			if name in ("input_tokens", "output_tokens"):
+			if name in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens"):
 				captured[name] = value
 				if "input_tokens" in captured and "output_tokens" in captured:
-					db.record_ai_token_usage(provider_label, captured["input_tokens"], captured["output_tokens"])
+					db.record_ai_token_usage(
+						provider_label, captured["input_tokens"], captured["output_tokens"],
+						captured.get("cache_read_tokens", 0), captured.get("cache_creation_tokens", 0),
+					)
 					captured.clear()
 			on_metadata(name, value)
 
 		return tap
 
 	def _enforce_input_budget(
-		self, system_prompt: str, turn_history: list[dict[str, Any]], tool_set: "ToolSet",
+		self, system_prompt: "str | SystemPrompt", turn_history: list[dict[str, Any]], tool_set: "ToolSet",
 		tool_call_records: list[dict[str, Any]], round_number: int,
 	) -> None:
 		if self._input_token_budget_per_turn is None:
 			return
-		total = estimate_tokens(system_prompt) + estimate_history_tokens(turn_history)
+		total = estimate_tokens(SystemPrompt.coerce(system_prompt).full_text()) + estimate_history_tokens(turn_history)
 		if total <= self._input_token_budget_per_turn:
 			return
 		message = (
@@ -411,7 +421,7 @@ class AiService(object):
 
 	async def generate_stream_with_metadata(
 		self,
-		system_prompt: str,
+		system_prompt: "str | SystemPrompt",
 		history: list[dict[str, Any]],
 		on_metadata: MetadataCallback,
 		schema: dict[str, str],

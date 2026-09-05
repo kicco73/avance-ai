@@ -27,8 +27,8 @@ class AutomatonLoader:
         self._db = db
         # Only for force-closing a session still open on a stored revision
         # that no longer builds (see load_at_revision) — None is fine for
-        # any caller with no session to worry about (e.g. the boot-time
-        # legacy_source_read_migration), it just means that cleanup never runs.
+        # any caller with no session to worry about, it just means that
+        # cleanup never runs.
         self._session_manager = session_manager
         # (project_id, revision) -> Automaton. Revision-keyed so a caller
         # pinned to one specific revision and a caller wanting "whatever's

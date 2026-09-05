@@ -3,7 +3,10 @@ also account for whether anything is actually triggerable from the state
 the reply is being generated for (see automaton.triggerable_signal_names)
 — asking the model to calculate signal values nothing in that state could
 ever act on is pure waste: no definition in the prompt, no 'signals'
-field in the schema, no evaluation once the reply comes back.
+field in the schema. The gate only ever switches off that *request*: the
+trigger evaluation itself still runs every turn, against the empty
+signals set (see test_auto_tracker_metrics.py for a metric-/env-only
+trigger firing with no signal requested at all).
 """
 from __future__ import annotations
 

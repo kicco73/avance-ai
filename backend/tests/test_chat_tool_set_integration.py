@@ -218,6 +218,7 @@ def test_build_tool_set_is_none_for_a_state_with_neither_field(file_db):
     # None for it, so a fake that only answers once tool_set is real
     # (like the one the end-to-end test above uses) never gets called at
     # all for a state without one.
+    from tracking.env import Env
     from tracking.tracking_processor import TrackingProcessor, UserVariables
 
     automaton = _automaton_with_a_tool()
@@ -225,6 +226,7 @@ def test_build_tool_set_is_none_for_a_state_with_neither_field(file_db):
     processor = TrackingProcessor.__new__(TrackingProcessor)
     processor.db = file_db
     processor.user = user
+    processor.env = Env()
 
     assert processor.build_tool_set(automaton.states[""]) is None
     assert processor.build_tool_set(automaton.states["a"]) is not None

@@ -7,8 +7,7 @@ for the write one. Validated at build time against `sources:`, the same
 way action.target is validated against declared states — plus each named
 source's own required `ai-definition`, and (for a write) its driver's own
 update support. The legacy names (`tools`, `ai-may-query-sources`,
-`ai-must-query-sources` — see project.archive.legacy_tools_field_migration
-for the boot-time migration off them) are rejected outright here.
+`ai-must-query-sources`) are rejected outright here.
 """
 from __future__ import annotations
 

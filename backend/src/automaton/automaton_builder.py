@@ -49,9 +49,8 @@ STATE_SOURCE_FIELDS = (
     ("ai-may-read-sources", READ_METHOD), ("ai-must-read-sources", READ_METHOD), ("ai-may-write-sources", WRITE_METHOD),
 )
 # Field names a state used to carry and the one that replaced each — a
-# stored revision still declaring one gets rewritten at boot (see
-# project.archive.legacy_tools_field_migration); a fresh build is
-# rejected with a message naming the new field instead.
+# stored or fresh revision declaring one is rejected with a message
+# naming the new field instead (no automatic rewrite: see PROJECT_SPECS.md).
 LEGACY_STATE_SOURCE_FIELDS = {
     "tools": "ai-may-read-sources",
     "ai-may-query-sources": "ai-may-read-sources",

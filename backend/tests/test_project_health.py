@@ -310,3 +310,62 @@ def test_a_lazy_load_failure_on_the_published_revision_pauses_the_project(db, pr
     is_paused, reason = db.get_project_availability("flaky")
     assert is_paused is True
     assert "index.yml no longer builds" in reason
+
+
+# --- No migration on boot: a format break just pauses the project ---------
+
+
+TOOLS_FIELD_YML = """
+init-action:
+  target: a
+states:
+  a:
+    ui-label: A
+    contextual-prompt: hi
+    tools: [pino]
+"""
+
+
+def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_field(db, project_service):
+    """Stands in for main.py's own boot sequence (Db(...) then
+    recompute_all_availability(), with nothing in between touching stored
+    revisions anymore — see PROJECT_SPECS.md §8's own note): an already-
+    published revision still declaring the long-removed `tools:` field is
+    never rewritten, only paused, with the builder's own message surfaced
+    as a project_broken SystemWarning."""
+    _publish(db, project_service, "old_format", VALID_YML)
+    revision = db.get_project_published_revision("old_format")
+    from db.models import Archive
+    Archive.update(content=TOOLS_FIELD_YML.encode("utf-8")).where(
+        (Archive.project == "old_format") & (Archive.archive_name == "index.yml") & (Archive.revision == revision)
+    ).execute()
+    project_service._manager._automaton_loader.invalidate_cache("old_format")
+    before = db.get_archive("old_format", "index.yml", revision=revision)
+
+    _make_admin(db, "admin1")
+    ws_adapter = FakeWsAdapter()
+    notifications = ProjectHealthNotifications(db, _SyncJobService(), ws_adapter)
+    notifications.register()
+
+    project_service.recompute_all_availability()
+
+    after = db.get_archive("old_format", "index.yml", revision=revision)
+    assert after == before  # never rewritten
+
+    is_paused, reason = db.get_project_availability("old_format")
+    assert is_paused is True
+    assert "'tools' is no longer a valid field" in reason and "ai-may-read-sources" in reason
+
+    warnings = db.get_system_warnings("admin1", "old_format")
+    assert len(warnings) == 1
+    assert warnings[0]["kind"] == "project_broken"
+    assert "'tools' is no longer a valid field" in warnings[0]["message"]
+
+
+class _SyncJobService:
+    """submit() runs the job's single step inline — the boot sweep above
+    has no running JobService/event loop to hand it to."""
+
+    def submit(self, job) -> None:
+        job.prepare()
+        asyncio.run(job.run_next_step())

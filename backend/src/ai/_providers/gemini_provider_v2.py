@@ -23,6 +23,7 @@ from ai.llm_provider import (
 	AIServiceRequestError,
 	LLMProvider,
 	MetadataCallback,
+	SystemPrompt,
 	ToolCall,
 	ToolCallsRequested,
 	ToolSpec,
@@ -325,7 +326,7 @@ class GeminiProvider(LLMProvider):
 
 	async def generate_stream_with_schema(
 		self,
-		system_prompt: str,
+		system_prompt: "str | SystemPrompt",
 		history: list[dict[str, Any]],
 		schema: dict[str, str] | None = None,
 		on_metadata: MetadataCallback | None = None,
@@ -335,6 +336,12 @@ class GeminiProvider(LLMProvider):
 	) -> AsyncIterator[str]:
 		contents = self.__build_contents(history)
 		schema = schema or {}
+		# No native cache-breakpoint concept here (unlike Anthropic) — the
+		# stable/volatile split still matters for Gemini's own implicit
+		# prefix caching, which only ever hits a byte-identical prefix:
+		# `stable` first, unconditionally, so it stays that identical
+		# prefix turn after turn regardless of what follows it.
+		system_instruction = SystemPrompt.coerce(system_prompt).full_text()
 
 		if tools:
 			# response_schema (controlled JSON generation) and tools
@@ -353,14 +360,14 @@ class GeminiProvider(LLMProvider):
 				**({"allowed_function_names": [spec.name for spec in required_tools]} if required_tools else {}),
 			)
 			config: types.GenerateContentConfig = types.GenerateContentConfig(
-				system_instruction=system_prompt,
+				system_instruction=system_instruction,
 				max_output_tokens=self.__max_output_tokens,
 				tools=[types.Tool(function_declarations=self.__tool_declarations(tools, schema))],
 				tool_config=types.ToolConfig(function_calling_config=function_calling_config),
 			)
 		else:
 			config = types.GenerateContentConfig(
-				system_instruction=system_prompt,
+				system_instruction=system_instruction,
 				max_output_tokens=self.__max_output_tokens,
 				response_mime_type="application/json",
 				response_schema=self.build_schema(schema),
@@ -369,6 +376,7 @@ class GeminiProvider(LLMProvider):
 		total_tokens = 0
 		input_tokens = 0
 		output_tokens = 0
+		cache_read_tokens = 0
 		finish_reason: types.FinishReason | None = None
 		# Gemini delivers a function call as one complete part, never
 		# streamed argument-by-argument the way OpenAI's deltas are — so
@@ -394,6 +402,7 @@ class GeminiProvider(LLMProvider):
 						input_tokens = usage.prompt_token_count
 					if usage.candidates_token_count is not None:
 						output_tokens = usage.candidates_token_count
+					cache_read_tokens = getattr(usage, "cached_content_token_count", None) or 0
 				if chunk.candidates and chunk.candidates[0].finish_reason is not None:
 					finish_reason = chunk.candidates[0].finish_reason
 				if tools:
@@ -408,10 +417,16 @@ class GeminiProvider(LLMProvider):
 				yield chunk.text
 		self._add_tokens(total_tokens)
 		if on_metadata is not None:
+			# cache_read_tokens is already folded into prompt_token_count
+			# (input_tokens above) — Gemini has no separate cache-write
+			# accounting, so cache_creation_tokens is always 0 here.
+			on_metadata("cache_read_tokens", cache_read_tokens)
+			on_metadata("cache_creation_tokens", 0)
 			on_metadata("input_tokens", input_tokens)
 			on_metadata("output_tokens", output_tokens)
 		logger.info(
 			f"Gemini call finished: model={self.__model_name} finish_reason={finish_reason} "
+			f"input_tokens={input_tokens} output_tokens={output_tokens} cache_read={cache_read_tokens} "
 			f"total_tokens={total_tokens} max_output_tokens={self.__max_output_tokens}"
 		)
 
