@@ -7,6 +7,8 @@ import { Compartment } from '@codemirror/state'
 import { EditorView, basicSetup } from 'codemirror'
 import { keymap } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { tags } from '@lezer/highlight'
 import { yaml, yamlLanguage } from '@codemirror/lang-yaml'
 import { css, cssLanguage } from '@codemirror/lang-css'
 import { markdown } from '@codemirror/lang-markdown'
@@ -16,6 +18,15 @@ import { cssUrlCompletionSource } from './cssUrlCompletion.js'
 import { yamlAttachmentCompletionSource } from './yamlAttachmentCompletion.js'
 import { yamlStructureCompletionSource } from './yamlStructureCompletion.js'
 import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile } from '../api.js'
+
+// @lezer/yaml tags every plain scalar (unquoted values, `|`/`>` block
+// bodies) as tags.content, which defaultHighlightStyle leaves uncolored —
+// so most of index.yml's actual text renders black-on-white. Added
+// alongside the default style (see createEditor's yaml branch), not in
+// place of it.
+const yamlValueHighlightStyle = HighlightStyle.define([
+  { tag: [tags.content, tags.attributeValue], color: '#8b5c00' }
+])
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -92,6 +103,7 @@ function createEditor(doc) {
     extensions.splice(
       1, 0,
       yaml(),
+      syntaxHighlighting(yamlValueHighlightStyle),
       yamlLanguage.data.of({ autocomplete: yamlAttachmentCompletionSource(() => props.yamlAttachmentFiles) }),
       yamlLanguage.data.of({ autocomplete: yamlStructureCompletionSource() })
     )

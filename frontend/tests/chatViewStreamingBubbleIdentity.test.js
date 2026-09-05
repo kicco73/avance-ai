@@ -43,12 +43,14 @@ vi.mock('../src/api.js', () => ({
 
 describe("a live turn's assistant bubble survives the messageId backfill without remounting", () => {
   let chatClient
+  let chatStore
   let api
   let container
 
   beforeEach(async () => {
     vi.resetModules()
     chatClient = await import('../src/chatClient.js')
+    chatStore = await import('../src/chatStore.js')
     api = await import('../src/api.js')
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -64,7 +66,8 @@ describe("a live turn's assistant bubble survives the messageId backfill without
     const ChatWindow = (await import('../src/components/chat/ChatView.vue')).default
     const app = createApp(ChatWindow, { hideSessionsPanel: false })
     app.mount(container)
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await chatStore.loadMessages()
+    await vi.waitFor(() => expect(container.querySelector('.projects-btn')).not.toBeNull())
 
     let resolveTurn
     chatClient.sendMessage.mockImplementation((_text, _sessionId, { onChunk }) => {
@@ -72,21 +75,17 @@ describe("a live turn's assistant bubble survives the messageId backfill without
       return new Promise((resolve) => { resolveTurn = resolve })
     })
 
-    const input = container.querySelector('textarea, input[type="text"]')
-    input.value = 'hi'
-    input.dispatchEvent(new Event('input'))
-    const form = container.closest ? container.querySelector('form') : null
-    if (form) form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event('submit'))
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    const sendPromise = chatStore.handleSend('hi')
+    await vi.waitFor(() => expect(container.querySelector('.bubble-assistant')).not.toBeNull())
 
     const bubbleBefore = container.querySelector('.bubble-assistant')
-    expect(bubbleBefore).not.toBeNull()
     expect(bubbleBefore.textContent).toContain('Hello')
 
     resolveTurn({
       reply: [], user_message_id: 10, assistant_message_id: 99,
       state: { key: 'x', ui_label: 'X', actions: [] }, 'on-enter': null, session_id: 1,
     })
+    await sendPromise
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     const bubbleAfter = container.querySelector('.bubble-assistant')
