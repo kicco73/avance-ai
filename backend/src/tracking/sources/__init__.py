@@ -212,11 +212,15 @@ class ToolSet:
         """Never raises — an unknown tool name, a bad argument, or the
         driver's own exception all come back as "error: <message>" so the
         model sees what went wrong and decides how to continue, the same
-        as any other tool result. The driver call itself is synchronous
-        (disk/DB I/O) — always off the event loop via asyncio.to_thread,
-        never blocking it. `values` is every method's own variadic
-        parameter (see SourceDriver), unpacked positionally; every other
-        argument is passed through by keyword."""
+        as any other tool result. This is the exact text persisted to
+        Tracking.tool_calls and shown, raw, in the chat UI's own
+        expandable tool-call trace (see MessageBubble.vue) — never
+        decorated with anything meant for the model alone (see AiService's
+        own tool-call loop for that). The driver call itself is
+        synchronous (disk/DB I/O) — always off the event loop via
+        asyncio.to_thread, never blocking it. `values` is every method's
+        own variadic parameter (see SourceDriver), unpacked positionally;
+        every other argument is passed through by keyword."""
         resolved = self._resolved.get(name)
         if resolved is None:
             return f"error: unknown tool '{name}'."

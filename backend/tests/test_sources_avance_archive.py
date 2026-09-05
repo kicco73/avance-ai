@@ -140,12 +140,13 @@ def test_select_with_one_value_still_returns_every_match_uncascaded(db):
     assert result == "code,date\nVY3003,2026-06-01\nVY3003,2026-06-02\n"
 
 
-def test_select_with_no_values_raises(db):
+def test_select_with_no_values_returns_every_row(db):
     revision = _seed(db, {"cities.csv": CSV.encode()}, {"cities.csv": "text/csv"})
     automaton = _automaton(PROJECT_ID, revision)
 
-    with pytest.raises(ValueError):
-        _driver(automaton, db, "cities.csv").select()
+    result = _driver(automaton, db, "cities.csv").select()
+
+    assert result == CSV
 
 
 def test_create_delete_and_read_do_not_exist_and_update_is_unsupported_on_the_archive_driver(db):

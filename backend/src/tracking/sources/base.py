@@ -80,8 +80,10 @@ class SourceDriver:
         """Header row plus every row containing *every* value (case-
         insensitive substring, AND'd), then projected onto `keys` — the
         header always included, columns in the order asked for; None
-        means every column. An unknown column comes back as an error
-        *text* (the model reads it and retries), never an exception."""
+        means every column. No values at all means every row, exactly as
+        tracking.sources._VALUES_PARAMETER's own schema promises the
+        model. An unknown column comes back as an error *text* (the model
+        reads it and retries), never an exception."""
         raise self._unsupported("select")
 
     def update(self, *values: str, fields: dict[str, str]) -> str:

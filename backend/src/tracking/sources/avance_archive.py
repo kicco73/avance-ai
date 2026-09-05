@@ -3,9 +3,10 @@ own stored archive files, addressed by a `sources:` entry's own
 `url: avance:<archive path>` (e.g. `avance:sources/flights.csv`).
 `select(*values, keys=...)`: the header row plus every row containing
 *every* value (case-insensitive, AND'd — one value narrows down to a
-single row, several narrow further), optionally projected onto the
-columns named in `keys`, bounded (see SourceDriver._bounded) regardless
-of how big a match set it finds. A whole-file read is
+single row, several narrow further; no values at all means every row),
+optionally projected onto the columns named in `keys`, bounded (see
+SourceDriver._bounded) regardless of how big a match set it finds. A
+whole-file read is
 `attachment.read(name)`'s job (on-enter only, see
 tracking.actuators.attachment_namespace) — SourceDriver itself has no
 such method at all: every method here must return a bounded result, and
@@ -35,8 +36,9 @@ class AvanceArchiveSource(SourceDriver):
             "Grep over this source's own archive file: the header row plus every row containing "
             "*every* given value (case-insensitive) — e.g. source.<name>.select('Paris'). Each "
             "additional value narrows the result further: search by flight code and date to get a "
-            "single row instead of every date that flight ever flew. `keys` (optional) names the "
-            "columns to return, in that order — e.g. source.<name>.select('VY3003', keys=['data_partenza'])."
+            "single row instead of every date that flight ever flew. Omit `values` entirely to get "
+            "every row. `keys` (optional) names the columns to return, in that order — e.g. "
+            "source.<name>.select('VY3003', keys=['data_partenza'])."
         ),
     }
 
@@ -132,8 +134,6 @@ class AvanceArchiveSource(SourceDriver):
         return out.getvalue()
 
     def select(self, *values: str, keys: list[str] | None = None) -> str:
-        if not values:
-            raise ValueError(f"source.{self._name}.select(...): at least one value is required.")
         lines = self._read_text().splitlines(keepends=True)
         if not lines:
             return ""

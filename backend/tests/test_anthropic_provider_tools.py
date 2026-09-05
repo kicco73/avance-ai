@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from ai.ai_service import AiService, MAX_TOOL_ROUNDS
+from ai.ai_service import AiService, MAX_TOOL_ROUNDS, _TOOL_ERROR_DIRECTIVE
 from ai._providers.anthropic_provider_v2 import AnthropicProvider
-from ai.llm_provider import AIServiceConfig, AIServiceRequestError, SystemPrompt, ToolCall, ToolCallsRequested, ToolSpec
+from ai.llm_provider import AIServiceConfig, SystemPrompt, ToolCall, ToolCallsRequested, ToolSpec
 from db.models import AiTokenUsage
 
 _SELECT_SPEC = ToolSpec(
@@ -325,20 +325,26 @@ async def test_the_token_usage_tap_never_pairs_a_round_s_input_with_a_stale_outp
     assert pairs == [(10, 20), (30, 40), (50, 60)]
 
 
-# (d) exceeding MAX_TOOL_ROUNDS.
-async def test_exceeding_max_tool_rounds_raises_a_clear_error():
+# (d) exceeding MAX_TOOL_ROUNDS: tools are dropped for one final round so
+# the model must answer instead of the turn raising.
+async def test_exceeding_max_tool_rounds_forces_a_final_answer_with_tools_disabled():
     always_tool_use = _FakeFinalMessage("tool_use", content=[_FakeToolUseBlock("call", "source_flights_select", {"value": "x"})])
-    provider, fake_client = _provider([([], always_tool_use) for _ in range(MAX_TOOL_ROUNDS)])
+    final_response = _FakeFinalMessage("end_turn")
+    provider, fake_client = _provider([
+        *(([], always_tool_use) for _ in range(MAX_TOOL_ROUNDS)),
+        (['{"text": "Best I can tell you without more lookups."}'], final_response),
+    ])
     ai_service = AiService(provider)
     tool_set = _FakeToolSet([_SELECT_SPEC], results=["row"] * MAX_TOOL_ROUNDS)
 
-    with pytest.raises(AIServiceRequestError, match=str(MAX_TOOL_ROUNDS)):
-        async for _ in ai_service.generate_stream_with_metadata(
+    chunks = [
+        chunk async for chunk in ai_service.generate_stream_with_metadata(
             "sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}, tool_set=tool_set,
-        ):
-            pass
+        )
+    ]
 
-    assert len(fake_client.messages.calls) == MAX_TOOL_ROUNDS
+    assert "".join(chunks) == "Best I can tell you without more lookups."
+    assert len(fake_client.messages.calls) == MAX_TOOL_ROUNDS + 1
     assert len(tool_set.calls) == MAX_TOOL_ROUNDS
 
 
@@ -361,7 +367,7 @@ async def test_a_failed_tool_lookup_feeds_an_error_string_back_and_the_turn_stil
 
     assert "".join(chunks) == "Sorry, lookup failed."
     second_call_history = fake_client.messages.calls[1]["messages"]
-    assert second_call_history[-1]["content"][0]["content"] == "error: unknown tool 'source_flights_select'."
+    assert second_call_history[-1]["content"][0]["content"] == "error: unknown tool 'source_flights_select'." + _TOOL_ERROR_DIRECTIVE
 
 
 # (f) round-trip: the neutral tool history shapes translate to/from

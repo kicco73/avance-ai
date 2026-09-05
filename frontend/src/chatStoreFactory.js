@@ -399,10 +399,18 @@ export function createChatStore({
     }
     messages.value.push(assistantMsg)
 
+    // Set the moment onStatus first fires with a non-empty status_text
+    // (a live tool_call event) — the signal that this turn's own
+    // tool_calls are worth fetching once it's done, since a live SSE
+    // turn never carries the persisted trace itself (see the
+    // result.assistant_message_id branch below).
+    let hadToolCall = false
+
     try {
       const result = await sendChatMessage(message.content, turnSessionId, {
         onStatus: (text) => {
           if (currentSessionId.value !== turnSessionId) return
+          if (text) hadToolCall = true
           chatStatus.value = text
           const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
           if (idx !== -1) {
@@ -469,6 +477,28 @@ export function createChatStore({
             ...messages.value[idx],
             messageId: result.assistant_message_id,
             timestamp: new Date().toISOString()
+          }
+          // The live SSE turn only ever streamed status_text/chunks, never
+          // the permanent tool-call trace itself (see toStoreMessage) —
+          // fetched here, once, straight from what a reload would show,
+          // so the two paths agree instead of the trace only ever
+          // appearing after a reload.
+          if (hadToolCall) {
+            getMessages(turnSessionId).then((history) => {
+              if (currentSessionId.value !== turnSessionId) return
+              const persisted = history.find((m) => m.id === result.assistant_message_id)
+              if (!persisted?.tool_calls) return
+              const toolCallsIdx = messages.value.findIndex((m) => m.id === assistantMsgId)
+              if (toolCallsIdx !== -1) {
+                messages.value[toolCallsIdx] = {
+                  ...messages.value[toolCallsIdx],
+                  toolCalls: persisted.tool_calls
+                }
+              }
+            }).catch(() => {
+              // Best-effort — the live trace is cosmetic; a manual reload
+              // still shows it via the normal toStoreMessage path.
+            })
           }
         } else {
           // No AI reply was generated this turn (e.g. a pre-turn transition

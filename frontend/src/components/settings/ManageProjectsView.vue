@@ -378,7 +378,7 @@ defineExpose({ refresh: load })
                       <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                         <path d="M12 21a1 1 0 0 1-1-1v-9.59l-2.3 2.3a1 1 0 1 1-1.4-1.42l4-4a1 1 0 0 1 1.4 0l4 4a1 1 0 1 1-1.4 1.42l-2.3-2.3V20a1 1 0 0 1-1 1zM5 5a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
                       </svg>
-                      <span>Upload project...</span>
+                      <span>Import project...</span>
                     </button>
                   </li>
                 </ul>
@@ -453,6 +453,7 @@ defineExpose({ refresh: load })
             class="manage-projects-row"
             :class="{ 'manage-projects-row-selected': selectedProjectId === row.id }"
             @click="selectProject(row.id)"
+            @dblclick="selectEdit(row.id)"
           >
             <td class="manage-projects-col-status-actions">
               <div class="manage-projects-status-actions-row">

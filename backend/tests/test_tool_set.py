@@ -306,16 +306,18 @@ async def test_call_with_an_unknown_tool_name_returns_an_error_string_not_an_exc
 
     result = await tool_set.call("source_nope_select", {"values": ["x"]})
 
-    assert result == "error: unknown tool 'source_nope_select'."
+    assert result.startswith("error: unknown tool 'source_nope_select'.")
 
 
 async def test_call_a_driver_exception_comes_back_as_an_error_string_too(file_db):
-    automaton = _two_sources(file_db)
-    tool_set = SourceNamespace(file_db, automaton).tool_set(["flights"])
+    revision = _seed(file_db, {"flights.csv": b"city,country\nParis,France\n"}, {"flights.csv": "text/csv"})
+    sources = [Source(name="ghost", url="avance:missing.csv", ui_label="Ghost")]
+    automaton = _automaton(PROJECT_ID, revision, sources)
+    tool_set = SourceNamespace(file_db, automaton).tool_set(["ghost"])
 
-    # No values at all — select() requires at least one, raises inside the
-    # driver call, which call() must turn into a string, never propagate.
-    result = await tool_set.call("source_flights_select", {"values": []})
+    # ghost's own archive file was never seeded — select() raises inside
+    # the driver call, which call() must turn into a string, never propagate.
+    result = await tool_set.call("source_ghost_select", {"values": ["x"]})
 
     assert result.startswith("error:")
 

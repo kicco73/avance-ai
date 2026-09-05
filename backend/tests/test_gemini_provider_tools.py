@@ -12,9 +12,9 @@ from __future__ import annotations
 import pytest
 from google.genai import types
 
-from ai.ai_service import AiService, MAX_TOOL_ROUNDS
+from ai.ai_service import AiService, MAX_TOOL_ROUNDS, _TOOL_ERROR_DIRECTIVE
 from ai._providers.gemini_provider_v2 import GeminiProvider
-from ai.llm_provider import AIServiceConfig, AIServiceRequestError, SystemPrompt, ToolCall, ToolCallsRequested, ToolSpec
+from ai.llm_provider import AIServiceConfig, SystemPrompt, ToolCall, ToolCallsRequested, ToolSpec
 
 _SELECT_SPEC = ToolSpec(
     name="source_flights_select",
@@ -241,7 +241,7 @@ async def test_ai_service_resolves_two_tool_call_rounds_before_the_final_respons
     provider, fake_client = _provider([
         _function_call_response("source_flights_select", {"value": "paris"}, call_id="call_1"),
         _function_call_response("source_flights_select", {"value": "berlin"}, call_id="call_2"),
-        _function_call_response("respond", {"text": "Found both."}),
+        _text_response('{"text": "Found both."}'),
     ])
     ai_service = AiService(provider)
     tool_set = _FakeToolSet([_SELECT_SPEC], results=["paris row", "berlin row"])
@@ -260,22 +260,27 @@ async def test_ai_service_resolves_two_tool_call_rounds_before_the_final_respons
     assert len(fake_client.aio.models.calls) == 3
 
 
-# (d) exceeding MAX_TOOL_ROUNDS — the model never calls "respond".
-async def test_exceeding_max_tool_rounds_raises_a_clear_error():
+# (d) exceeding MAX_TOOL_ROUNDS: tools are dropped for one final round so
+# the model must answer instead of the turn raising.
+async def test_exceeding_max_tool_rounds_forces_a_final_answer_with_tools_disabled():
     provider, fake_client = _provider([
-        _function_call_response("source_flights_select", {"value": "x"}, call_id=f"call_{i}")
-        for i in range(MAX_TOOL_ROUNDS)
+        *(
+            _function_call_response("source_flights_select", {"value": "x"}, call_id=f"call_{i}")
+            for i in range(MAX_TOOL_ROUNDS)
+        ),
+        _text_response('{"text": "Best I can tell you without more lookups."}'),
     ])
     ai_service = AiService(provider)
     tool_set = _FakeToolSet([_SELECT_SPEC], results=["row"] * MAX_TOOL_ROUNDS)
 
-    with pytest.raises(AIServiceRequestError, match=str(MAX_TOOL_ROUNDS)):
-        async for _ in ai_service.generate_stream_with_metadata(
+    chunks = [
+        chunk async for chunk in ai_service.generate_stream_with_metadata(
             "sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}, tool_set=tool_set,
-        ):
-            pass
+        )
+    ]
 
-    assert len(fake_client.aio.models.calls) == MAX_TOOL_ROUNDS
+    assert "".join(chunks) == "Best I can tell you without more lookups."
+    assert len(fake_client.aio.models.calls) == MAX_TOOL_ROUNDS + 1
     assert len(tool_set.calls) == MAX_TOOL_ROUNDS
 
 
@@ -300,7 +305,7 @@ async def test_a_failed_tool_lookup_feeds_an_error_string_back_and_the_turn_stil
     assert "".join(chunks) == "Sorry, lookup failed."
     second_round_contents = fake_client.aio.models.calls[1]["contents"]
     assert second_round_contents[-1].parts[0].function_response.response == {
-        "result": "error: unknown tool 'source_flights_select'.",
+        "result": "error: unknown tool 'source_flights_select'." + _TOOL_ERROR_DIRECTIVE,
     }
 
 

@@ -13,7 +13,6 @@ from chat.errors import ChatServiceError
 from ai.llm_provider import (
 	AIServiceConfig,
 	AIServiceProviderOutputTruncatedError,
-	AIServiceRequestError,
 	LLMProvider,
 	MetadataCallback,
 	SystemPrompt,
@@ -43,7 +42,15 @@ logger = LoggerFactory.get_logger(__name__)
 # legitimate lookup chain; beyond this the model is almost certainly
 # looping, so AiService gives up with a clear error rather than running
 # away with API calls.
-MAX_TOOL_ROUNDS = 5
+MAX_TOOL_ROUNDS = 2
+
+# Appended only to turn_history's own copy of an "error:" tool result
+# (model-facing) — never to the copy tapped_on_metadata persists/the chat
+# UI shows raw (see ToolSet.call's own docstring).
+_TOOL_ERROR_DIRECTIVE = (
+	" This call failed — no data was returned. Tell the user the lookup could not be completed; "
+	"never invent data to fill the gap."
+)
 
 
 def estimate_history_tokens(turn_history: list[dict[str, Any]]) -> int:
@@ -522,7 +529,8 @@ class AiService(object):
 						"name": call.name, "arguments": call.arguments, "result": result,
 						"summary_text": tool_set.summary_text(call.name, call.arguments, result),
 					})
-					turn_history.append({"role": "tool", "tool_call_id": call.id, "content": result})
+					model_facing_result = result + _TOOL_ERROR_DIRECTIVE if result.startswith("error:") else result
+					turn_history.append({"role": "tool", "tool_call_id": call.id, "content": model_facing_result})
 					tool_call_records.append({"name": call.name, "arguments": call.arguments, "result": result})
 				continue
 
@@ -539,9 +547,15 @@ class AiService(object):
 				yield chunk
 			return
 
-		raise AIServiceRequestError(
-			f"Exceeded {MAX_TOOL_ROUNDS} tool-call rounds without a final response from the model."
+		logger.info(
+			f"generate_stream_with_metadata: provider={provider_label} fields={list(schema.keys())} "
+			f"exceeded {MAX_TOOL_ROUNDS} tool-call rounds, forcing a final answer with tools disabled"
 		)
+		response_stream = self._active_provider.generate_stream_with_schema(
+			system_prompt, turn_history, schema=schema, on_metadata=tapped_on_metadata,
+		) # type: ignore
+		async for chunk in self._stream_final_answer(response_stream, schema, tapped_on_metadata, provider_label):
+			yield chunk
 
 	@staticmethod
 	async def _as_async_iter(items: list[str]) -> AsyncIterator[str]:
