@@ -211,13 +211,13 @@ def test_generate_reply_renders_an_env_block_with_stored_values_only(db):
     evaluation-scope namespaces, never rendered into the prompt."""
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
-    db.create_chat_session(
+    session_id = db.create_chat_session(
         username=USERNAME, project_id=PROJECT_ID,
         revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a",
     )
-    db.set_env(PROJECT_ID, {"favorite_color": "blue"}, USERNAME)
+    db.set_env(session_id, {"favorite_color": "blue"})
     env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID))
     protocol = _RecordingProtocol()
 

@@ -29,6 +29,7 @@ states:
     ui-description: "Request the PNR or flight details."
     contextual-prompt: |-
       Look in the customer record if the user mail was found associated to a flight, present the booking details to the user and ask them to confirm if this is their correct booking. If it is, ask the user to provide the PNR code (6-character record locator) for security reasons.
+    ai-must-query-sources: [flight_records]
     actions:
       - name: go_to_verify_entitlement
         ui-label: "Booking found"
@@ -69,6 +70,7 @@ states:
     ui-description: "Check the cause and fare conditions."
     contextual-prompt: |
       Determine whether the cancellation was caused by the carrier or whether it is a voluntary withdrawal, checking for any vouchers or chargebacks, and utilizing the flight record delay information available in the environment.
+    ai-may-query-sources: [flight_records]
     actions:
       - name: go_to_compute_amount
         ui-label: "Eligible"
@@ -214,11 +216,31 @@ sources:
   tickets:
     ui-label: "Tickets"
     ui-description: "Customer ticket records, looked up by email."
-    url: avance:behaviour/tickets.csv.txt
+    ai-definition: |
+      One row per purchased ticket, columns: codice_volo (flight code),
+      datetime_volo (the flight's own departure date and time),
+      email_acquirente (buyer's email), costo_euro (price paid),
+      datetime_acquisto (when it was bought). Search by the customer's own
+      email (source.tickets.select(user.email)) to find every ticket
+      they've bought — a customer with more than one booking gets more
+      than one row back, so cross-check the flight code and travel date
+      the user gives you against the right one.
+    url: avance:behaviour/tickets.csv
   flight_records:
     ui-label: "Flight Records"
     ui-description: "Flight delay/cancellation records."
-    url: avance:behaviour/flight_records.csv.txt
+    ai-definition: |
+      One row per actual departure of a given flight code, columns:
+      codice_volo (flight code), data_partenza (scheduled departure date),
+      datetime_partenza_reale/datetime_arrivo_reale (actual departure/
+      arrival). Whether it counts as delayed is for you to judge by
+      comparing the scheduled date against the actual times — there's no
+      separate delay/cancellation flag. Searching by flight code alone
+      (source.flight_records.select('VY3003')) returns every date that
+      flight has ever flown — always add the ticket's own travel date as a
+      second value (source.flight_records.select('VY3003', '2026-08-16'))
+      to get the single row that actually matches this customer's booking.
+    url: avance:behaviour/flight_records.csv
 general-prompt: |
   You are Vueling's official virtual assistant for handling airline ticket refunds. 
 

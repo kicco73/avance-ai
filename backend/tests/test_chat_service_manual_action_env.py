@@ -97,8 +97,8 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
     )
 
 
-def _env_for(db) -> PersistedEnv:
-    return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID))
+def _env_for(db, session_id: int | None = None) -> PersistedEnv:
+    return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
 
 
 async def test_a_manually_fired_actions_env_is_persisted(db):
@@ -126,7 +126,7 @@ async def test_an_action_with_no_env_field_never_touches_env(db):
 async def test_manual_actions_env_can_self_reference_a_previously_stored_value(db):
     chat_service = _chat_service(db, _automaton({"number_of_steps": "env.number_of_steps + 1"}, target="a"))
     session = await chat_service.get_current_session_if_any_or_create_new(None)
-    env = _env_for(db)
+    env = _env_for(db, session["id"])
     env.update_action_set({"number_of_steps": 3})
 
     await chat_service.apply_manual_action("advance", session["id"])

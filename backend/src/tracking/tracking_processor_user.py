@@ -32,7 +32,11 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 		elif key == 'reaction':
 			rv = self.metadata.reaction = value.strip() or None
 		elif key == 'input_tokens':
-			rv = self.metadata.input_tokens = value
+			# Summed, not overwritten: a tool-calling turn fires this once
+			# per round (see AiService.generate_stream_with_metadata's own
+			# loop), and every round's own input cost was real — the last
+			# round's alone would undercount what the turn actually spent.
+			rv = self.metadata.input_tokens = (self.metadata.input_tokens or 0) + value
 		elif key == 'output_tokens':
 			rv = self.metadata.output_tokens = value
 		elif key == 'tool_result':
@@ -54,7 +58,8 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 		elif key == 'reaction':
 			rv = self.metadata.reaction = value.strip() or None
 		elif key == 'input_tokens':
-			rv = self.metadata.input_tokens = value
+			# Summed across rounds — see the other handler's own comment.
+			rv = self.metadata.input_tokens = (self.metadata.input_tokens or 0) + value
 		elif key == 'output_tokens':
 			rv = self.metadata.output_tokens = value
 		elif key == 'tool_result':

@@ -133,8 +133,8 @@ def test_env_key_resolves_to_none_and_warns_when_not_declared(db):
 
 def test_env_key_resolves_to_its_action_set_value_when_declared(db):
     _publish(db, "observed", WITH_ENV_YML)
-    db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
-    db.set_action_env("observed", {"visits": 3}, USERNAME)
+    session_id = db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
+    db.set_action_env(session_id, {"visits": 3})
     namespace = _namespace(db)
 
     assert namespace.observed.env.visits == 3

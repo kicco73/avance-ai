@@ -40,3 +40,13 @@ class EphemeralEnvRegistry(object):
         Env doesn't linger here forever. A no-op for a live/imported
         session id (never registered here in the first place)."""
         self._envs.pop(session_id, None)
+
+    @classmethod
+    def _reset_for_tests(cls) -> None:
+        """This registry is a process-global singleton, same as
+        events.dispatcher's own _subscribers — a test suite's own
+        per-test :memory: database restarts session ids from 1 every
+        time (see conftest.db), so without this a session id from one
+        test would collide with an unrelated one's leftover Env from an
+        earlier test. See conftest.py's own autouse fixture."""
+        cls._instance = None

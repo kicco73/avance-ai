@@ -245,6 +245,7 @@ class ScopeHydrator(object):
         from tracking.fixed_project_context import FixedProjectContext
         from tracking.session_facts import SessionFacts
         from tracking.user_facts import UserFacts
+        from chat.env_for_session import env_for_session
 
         project_id: str = payload["project_id"]
         automaton = self._project_service.get_automaton(project_id, payload["project_revision"])
@@ -253,8 +254,17 @@ class ScopeHydrator(object):
             actuator_set = self._actuator_factory.fake(project_id=project_id)
         else:
             actuator_set = self._actuator_factory.live(project_id=project_id)
+        # A deferred call carries no session_id at all (see the module
+        # docstring), and a since-deleted session resolves to None either
+        # way — PersistedEnv, unpinned to any session, same as before
+        # test/preview sessions existed. A still-real session dispatches
+        # through env_for_session like everything else, so a test/preview
+        # session's own on-enter never reaches the database here either.
+        firing_session_id = payload.get("session_id")
+        firing_session = self._db.get_chat_session(firing_session_id) if firing_session_id is not None else None
+        env = env_for_session(self._db, firing_session) if firing_session is not None else PersistedEnv(self._db, context)
         builder = EvaluationScopeBuilder(
-            PersistedEnv(self._db, context), MetricService(self._db, context),
+            env, MetricService(self._db, context),
             SessionFacts(self._db, context), UserFacts(self._db), self._db,
             AutomatonNamespace(self._db, self._project_service), actuator_set,
             ai_service=self._ai_service,

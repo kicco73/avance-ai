@@ -4,6 +4,7 @@ import json
 from typing import TYPE_CHECKING
 
 from automaton.automaton import Automaton
+from chat.env_for_session import env_for_session
 from jobs import CancelableJob
 from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalculator
 from session import Session
@@ -11,7 +12,7 @@ from testing.data import TestDataBuilder
 from testing.metrics_provider import TestMetricsProvider
 from testing.processor import TestProcessor
 from testing.signal_sources import BatchSignalSource, estimate_max_turns_per_call
-from tracking.env import Env, PersistedEnv
+from tracking.env import Env
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
@@ -153,13 +154,14 @@ class TestReplayJob(CancelableJob):
     def _build_seed_env(self, session: dict) -> Env:
         if session['datetime_start'] is None:
             return Env()
-        # PersistedEnv now reads Session().user itself — pinned to this
-        # historical session's own username for the two calls that need
-        # it, then restored (see FixedProjectContext's own docstring).
-        with Session().impersonate(session['username']):
-            persisted_env = PersistedEnv(self._service._db, FixedProjectContext(project_id=session['project_id']))
-            until = session['datetime_start']
-            return Env(stored=persisted_env.stored(until=until), action_set=persisted_env.action_set(until=until))
+        # env_for_session dispatches by session type, built straight from
+        # `session` itself — no need to impersonate Session().user for it.
+        # Snapshotted into a fresh, detached Env either way: the rest of
+        # this replay run must never write back through the session's own
+        # (possibly still-live) env.
+        source_env = env_for_session(self._service._db, session)
+        until = session['datetime_start']
+        return Env(stored=source_env.stored(until=until), action_set=source_env.action_set(until=until))
 
     def _chunk_into_batches(self, message_ids: list[int]) -> list[list[int]]:
         if not issubclass(self._signal_source_cls, BatchSignalSource):

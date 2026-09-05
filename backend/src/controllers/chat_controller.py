@@ -111,6 +111,7 @@ class ChatController(BaseController):
         """`project_id`'s own identifier registry — every identifier a
         trigger/`env:` expression can reference, one {identifier:
         description} dict per namespace."""
+        self.project_service.ensure_project_not_broken(project_id)
         try:
             return self.project_service.get_identifier_registry(project_id)
         except FileNotFoundError as exc:

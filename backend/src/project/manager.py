@@ -4,6 +4,7 @@ import io
 import json
 import tempfile
 import zipfile
+from http import HTTPStatus
 from pathlib import Path
 from typing import Mapping
 
@@ -14,12 +15,14 @@ from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
 from chat.session_manager import ChatSessionManager
 from db import Db
-from events import AvailabilityChanged, publish, subscribe
+from events import AvailabilityChanged, ProjectPublishedHealthChanged, publish, subscribe
 from logging_factory import LoggerFactory
+from service_error import ServiceError
 from session import Session
 from tracking.session_export import SessionExportManager
 from tracking.session_import import SessionImportManager
 
+from .health import ProjectHealth, ProjectHealthChecker
 from .inspector import ProjectInspector
 from .archive.automaton_loader import AutomatonLoader
 from .archive.layout import (
@@ -52,6 +55,7 @@ class ProjectManager:
         self._session_export_manager = session_export_manager
         self._session_import_manager = session_import_manager
         self._session_manager = session_manager
+        self._health_checker = ProjectHealthChecker(db, automaton_loader)
 
     @staticmethod
     def _automaton_project_refs(automaton: Automaton) -> set[str]:
@@ -82,27 +86,30 @@ class ProjectManager:
         return is_paused, dep_id
 
     def recompute_availability(self, project_id: str) -> None:
-        """Available exactly when the build succeeds and every automaton.*
-        dependency is itself available. Writes only on change — this is
-        what makes it safe to call from a cascade with no cycle detection."""
+        """Available exactly when the published revision builds, no
+        manual pause is set, and every automaton.* dependency is itself
+        available. Writes only on change — this is what makes it safe to
+        call from a cascade with no cycle detection. A broken *draft* with
+        a healthy published revision never pauses anything — see
+        ensure_project_not_broken for that case's own, separate gate."""
+        previous_health = self._health_checker.last_checked(project_id)
+        health = self._health_checker.check(project_id)
+        self._notify_published_health_change(project_id, previous_health, health)
+
         if self._db.get_manually_paused(project_id):
             available, reason = False, "Manually paused."
+        elif health.published is not None and health.published.error is not None:
+            available, reason = False, health.published.error
         else:
-            try:
-                self._automaton_loader.load(project_id)
-                available, reason = True, None
-            except Exception as exc:  # noqa: BLE001 — any failure to build at all means "not available"
-                available, reason = False, f"Build failed: {exc}"
-
-            if available:
-                blocking = None
-                for dep_id in self._db.get_observed_projects(project_id):
-                    is_unavailable, label = self._dependency_unavailable(dep_id)
-                    if is_unavailable:
-                        blocking = label
-                        break
-                if blocking is not None:
-                    available, reason = False, f"Depends on unavailable project '{blocking}'."
+            available, reason = True, None
+            blocking = None
+            for dep_id in self._db.get_observed_projects(project_id):
+                is_unavailable, label = self._dependency_unavailable(dep_id)
+                if is_unavailable:
+                    blocking = label
+                    break
+            if blocking is not None:
+                available, reason = False, f"Depends on unavailable project '{blocking}'."
 
         current = self._db.get_project_availability(project_id)
         if current is None:
@@ -112,6 +119,45 @@ class ProjectManager:
             return  # unchanged — see this method's own docstring on why this is the whole guard
         self._db.set_project_availability(project_id, is_paused=not available, paused_reason=reason)
         publish(AvailabilityChanged(project_id=project_id, available=available))
+
+    def _notify_published_health_change(
+        self, project_id: str, previous: ProjectHealth | None, current: ProjectHealth,
+    ) -> None:
+        """Fires ProjectPublishedHealthChanged exactly on a real
+        broken<->healthy transition of the *published* revision — never
+        repeated while it stays the same, and never for the draft alone
+        (see ProjectHealthNotifications, the event's only subscriber)."""
+        was_broken = previous is not None and previous.published is not None and previous.published.error is not None
+        is_broken = current.published is not None and current.published.error is not None
+        if is_broken == was_broken:
+            return
+        if current.published is not None:
+            revision, error = current.published.revision, current.published.error
+        else:
+            revision, error = self._db.get_project_revision(project_id), None
+        publish(ProjectPublishedHealthChanged(project_id=project_id, revision=revision, error=error))
+
+    def recompute_all_availability(self) -> None:
+        """Boot-time sweep: every project's own health (published/draft)
+        is recomputed from scratch — the in-memory ProjectHealthChecker
+        starts out empty on every process start, by design (see its own
+        docstring) — and its availability recast accordingly, cascading
+        through automaton.* dependencies exactly like any other recompute."""
+        for project_id in self._db.list_projects():
+            self.recompute_availability(project_id)
+
+    def ensure_project_not_broken(self, project_id: str) -> None:
+        """Raises a 409 ServiceError (code="project_broken") when
+        `project_id`'s own *current draft* doesn't build — the one gate
+        every automaton-derived design-view endpoint shares (see
+        EditProjectController), so a broken project degrades to "files
+        only" instead of a stray 400/500 from deep inside the Inspector/
+        Editor. Never about is_paused: a broken draft with a healthy
+        published revision must never block editing (see
+        recompute_availability's own docstring)."""
+        health = self._health_checker.current(project_id)
+        if health.draft.error is not None:
+            raise ServiceError(health.draft.error, status_code=HTTPStatus.CONFLICT, code="project_broken")
 
     def _observers_of(self, project_id: str) -> list[str]:
         """Every project observing `project_id` via automaton.* — the
@@ -183,17 +229,25 @@ class ProjectManager:
         return "running"
 
     def get_runtime_status(self) -> list[dict]:
-        """One row per project for the Settings > Runtime status view."""
-        return [
-            {
+        """One row per project for the Settings > Runtime status view.
+        `broken` is read-only display info (see ProjectHealthChecker.current)
+        — it never feeds is_paused/paused_reason here, and never updates
+        the transition memory recompute_availability itself relies on."""
+        rows = []
+        for row in self._db.list_projects_runtime_status():
+            health = self._health_checker.current(row["id"])
+            rows.append({
                 "id": row["id"],
                 "status": self._project_status(row["is_paused"], row["manually_paused"]),
                 "paused_reason": row["paused_reason"],
                 "revision": row["revision"],
                 "published_revision": row["published_revision"],
-            }
-            for row in self._db.list_projects_runtime_status()
-        ]
+                "broken": {
+                    "published": health.published.error if health.published is not None else None,
+                    "draft": health.draft.error,
+                },
+            })
+        return rows
 
     def accept_legal_terms(self, username: str, project_id: str) -> None:
         """Records that `username` has accepted `project_id`'s current
@@ -236,6 +290,9 @@ class ProjectManager:
         status = self._project_status(is_paused, manually_paused)
         if status != "manually_paused":
             raise ValueError(f"Project '{project_id}' isn't manually paused (status: '{status}') — can't be resumed.")
+        health = self._health_checker.current(project_id)
+        if health.published is not None and health.published.error is not None:
+            raise ValueError(f"Project '{project_id}' can't be resumed — its published revision no longer builds: {health.published.error}")
         self._db.set_manually_paused(project_id, False)
         self.recompute_availability(project_id)
         return self.get_project_runtime_status(project_id)

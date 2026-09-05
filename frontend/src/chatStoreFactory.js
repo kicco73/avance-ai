@@ -147,7 +147,11 @@ export function createChatStore({
   function toStoreMessage(m) {
     return {
       role: m.role, content: m.content, audioText: m.audio_text, reaction: m.reaction,
-      timestamp: m.timestamp, failed: false, messageId: m.id
+      timestamp: m.timestamp, failed: false, messageId: m.id,
+      // The permanent "Searched <source> for ... · N rows" line(s) this
+      // message's own tool call(s) left behind (see ChatService.get_messages'
+      // own tool_calls_by_message) — undefined for a message with none.
+      toolCalls: m.tool_calls ?? null
     }
   }
 

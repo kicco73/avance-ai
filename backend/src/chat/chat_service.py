@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 
 from automaton.automaton import Action, Automaton, SignalPayload, State, manual_actions_for
+from automaton.build_error import AutomatonBuildError
 from db import Db, _utc_iso
 from ai import AiService
 from keyed_lock_registry import KeyedLockRegistry
@@ -206,6 +207,38 @@ class ChatService(object):
 			"comment": session["comment"],
 			"ai_summary": session["ai_summary"],
 		}
+
+	def _ensure_project_available(self, project_id: str) -> None:
+		"""A paused project (broken published build, manual pause, or an
+		unavailable automaton.* dependency — see ProjectManager.
+		recompute_availability) rejects a turn/manual action exactly like
+		the bootstrap endpoints already do, so an already-open session
+		can't keep transacting against it either."""
+		is_paused, paused_reason = self._project_service.get_project_availability(project_id)
+		if is_paused:
+			raise ChatServiceError(
+				paused_reason or "This project is currently paused.",
+				status_code=HTTPStatus.CONFLICT, code="project_unavailable",
+			)
+
+	def _get_automaton_and_state_or_raise_unsupported(self, session_id: int, session: dict) -> tuple[Automaton, State]:
+		"""get_automaton_and_state_for_session, converting a build failure
+		into a 409 the frontend can show as a disabled/explained session —
+		but only for a session actually pinned to a fixed revision. A
+		'test' session always re-resolves against the live draft (see
+		ProjectInspector.get_automaton_for_session), so a build failure
+		there means the draft itself is broken, not an old pinned revision
+		— that's ensure_project_not_broken's own concern, not this one."""
+		try:
+			return self._project_service.get_automaton_and_state_for_session(session_id)
+		except (AutomatonBuildError, FileNotFoundError, ValueError) as exc:
+			if session["type"] == "test":
+				raise
+			raise ChatServiceError(
+				f"This session is pinned to revision {session['project_revision']}, which this version of "
+				"Avance can no longer run.",
+				status_code=HTTPStatus.CONFLICT, code="session_revision_unsupported",
+			) from exc
 
 	def _require_active_session(self, session_id: int | None, project_id: str, current_state: str) -> dict:
 		"""A chat turn's session must already be the active one for this
@@ -472,7 +505,9 @@ class ChatService(object):
 
 	def get_state_for_session(self, session_id: int) -> dict:
 		self._require_own_session(session_id)
-		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
+		session = self._db.get_chat_session(session_id)
+		assert session is not None  # already checked by _require_own_session above
+		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 		return self._with_manual_actions(session_id, automaton.get_state_payload(state))
 
 	async def get_messages(self, session_id: int, last_n: int | None = None) -> list[dict]:
@@ -486,6 +521,16 @@ class ChatService(object):
 		messages = self._db.get_messages(session_id, last_n=last_n)
 		if init_message is not None:
 			messages.insert(0, init_message)
+		# The permanent "Searched <source> for ... · N rows" line(s) under
+		# an assistant message that made a tool call (see AiService's own
+		# tool-call loop, which folds a summary_text into each entry) —
+		# only added when a message actually has any, so a session with no
+		# tool calls at all gets byte-identical payloads to before this existed.
+		tool_calls_by_message = self._db.get_tool_calls_by_message(session_id)
+		for message in messages:
+			tool_calls = tool_calls_by_message.get(message["id"])
+			if tool_calls:
+				message["tool_calls"] = tool_calls
 		return messages
 
 	def get_session_signals(self, session_id: int) -> list[dict]:
@@ -798,8 +843,7 @@ class ChatService(object):
 		if session_type != "live":
 			return
 		env = self._env_for_session(session_id)
-		declared = {env_key.name for env_key in automaton.env_keys}
-		orphans = set(env.action_set()) - declared
+		orphans = set(env.action_set()) - automaton.declared_env_key_names()
 		if not orphans:
 			return
 		env.drop_action_set_keys(orphans)
@@ -821,7 +865,7 @@ class ChatService(object):
 			return None, None
 
 		project_id = session["project_id"]
-		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
+		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 
 		# Every declared env key's default (folded into init_action's own
 		# `env:` by AutomatonBuilder) — checked on every open, not just
@@ -903,6 +947,7 @@ class ChatService(object):
 
 	async def apply_manual_action(self, action_name: str, session_id: int) -> dict:
 		project_id = self._project_id_for_session(session_id)
+		self._ensure_project_available(project_id)
 		if self._session_locks.get(str(session_id)).locked():
 			raise ChatServiceError(
 				"A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT, code="turn_in_progress",
@@ -952,8 +997,9 @@ class ChatService(object):
 		if session is None:
 			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
 		project_id = session["project_id"]
+		self._ensure_project_available(project_id)
 		ai_service = self._ai_test_service if session["type"] == "test" else self._ai_service
-		_, state = self._project_service.get_automaton_and_state_for_session(session_id)
+		_, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 		self._require_active_session(session_id, project_id, state.key)
 		reply = await self._tracking_service._process(session_id, text, ai_service, on_metadata)
 		# touch_session wants the plain state key — reply['state'] is the

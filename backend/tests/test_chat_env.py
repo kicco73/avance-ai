@@ -5,6 +5,8 @@ persisted and merged for prompt rendering.
 """
 from __future__ import annotations
 
+from datetime import datetime
+
 import pytest
 
 from tracking.fixed_project_context import FixedProjectContext
@@ -14,14 +16,11 @@ USERNAME = "user"
 PROJECT_ID = "proj"
 
 
-def _env(db) -> PersistedEnv:
-    return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID))
+def _env(db, session_id: int | None = None) -> PersistedEnv:
+    return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
 
 
 def _session(db, username=USERNAME, project_id=PROJECT_ID, start=None):
-    # set_env resolves onto the latest chat session — a no-op without
-    # one, so any test that stores a value needs a session first.
-    from datetime import datetime
     start = start or datetime(2026, 1, 1)
     db.ensure_project(project_id)
     db.publish_project(project_id)
@@ -35,8 +34,8 @@ def _session(db, username=USERNAME, project_id=PROJECT_ID, start=None):
 
 @pytest.mark.regression
 def test_get_reads_a_stored_value(db):
-    _session(db)
-    db.set_env(PROJECT_ID, {"favorite_color": "blue"}, USERNAME)
+    session_id = _session(db)
+    db.set_env(session_id, {"favorite_color": "blue"})
 
     assert _env(db).get("favorite_color") == "blue"
 
@@ -51,8 +50,7 @@ def test_get_falls_back_to_default_for_an_unknown_key(db):
 
 @pytest.mark.regression
 def test_update_merges_onto_existing_stored_values(db):
-    _session(db)
-    env = _env(db)
+    env = _env(db, _session(db))
     env.update({"a": "1"})
 
     env.update({"b": "2"})
@@ -62,8 +60,7 @@ def test_update_merges_onto_existing_stored_values(db):
 
 @pytest.mark.regression
 def test_update_overwrites_a_matching_key(db):
-    _session(db)
-    env = _env(db)
+    env = _env(db, _session(db))
     env.update({"a": "1"})
 
     env.update({"a": "2"})
@@ -73,8 +70,7 @@ def test_update_overwrites_a_matching_key(db):
 
 @pytest.mark.regression
 def test_update_with_empty_values_is_a_noop(db):
-    _session(db)
-    env = _env(db)
+    env = _env(db, _session(db))
     env.update({"a": "1"})
 
     env.update({})
@@ -87,8 +83,7 @@ def test_update_with_empty_values_is_a_noop(db):
 def test_update_drops_a_key_that_is_currently_action_set(db):
     """A model echoing back a key an action's own `env:` field already
     set must not duplicate into stored() on top of action_set()."""
-    _session(db)
-    env = _env(db)
+    env = _env(db, _session(db))
     env.update_action_set({"WRONG_ANSWERS_ON_CURRENT_STEP": 2})
 
     env.update({"WRONG_ANSWERS_ON_CURRENT_STEP": "2", "favorite_color": "blue"})
@@ -99,8 +94,7 @@ def test_update_drops_a_key_that_is_currently_action_set(db):
 
 @pytest.mark.regression
 def test_update_is_a_noop_when_every_key_is_filtered_out(db):
-    _session(db)
-    env = _env(db)
+    env = _env(db, _session(db))
     env.update_action_set({"a": 1})
 
     env.update({"a": "1"})
@@ -110,8 +104,7 @@ def test_update_is_a_noop_when_every_key_is_filtered_out(db):
 
 @pytest.mark.regression
 def test_action_set_reads_a_value_set_via_update_action_set(db):
-    _session(db)
-    env = _env(db)
+    env = _env(db, _session(db))
     env.update_action_set({"number_of_steps": 3})
 
     assert env.action_set() == {"number_of_steps": 3}
@@ -120,8 +113,7 @@ def test_action_set_reads_a_value_set_via_update_action_set(db):
 
 @pytest.mark.contract
 def test_action_set_and_stored_are_independent_stores(db):
-    _session(db)
-    env = _env(db)
+    env = _env(db, _session(db))
     env.update({"favorite_color": "blue"})
     env.update_action_set({"number_of_steps": 3})
 
@@ -131,8 +123,7 @@ def test_action_set_and_stored_are_independent_stores(db):
 
 @pytest.mark.regression
 def test_update_action_set_merges_onto_existing_action_set_values(db):
-    _session(db)
-    env = _env(db)
+    env = _env(db, _session(db))
     env.update_action_set({"a": 1})
 
     env.update_action_set({"b": 2})
@@ -142,8 +133,7 @@ def test_update_action_set_merges_onto_existing_action_set_values(db):
 
 @pytest.mark.regression
 def test_update_action_set_with_empty_values_is_a_noop(db):
-    _session(db)
-    env = _env(db)
+    env = _env(db, _session(db))
     env.update_action_set({"a": 1})
 
     env.update_action_set({})
@@ -154,8 +144,7 @@ def test_update_action_set_with_empty_values_is_a_noop(db):
 
 @pytest.mark.contract
 def test_get_reads_an_action_set_value_too(db):
-    _session(db)
-    env = _env(db)
+    env = _env(db, _session(db))
     env.update_action_set({"number_of_steps": 3})
 
     assert env.get("number_of_steps") == 3
@@ -163,8 +152,7 @@ def test_get_reads_an_action_set_value_too(db):
 
 @pytest.mark.contract
 def test_serialise_as_text_merges_stored_and_action_set(db):
-    _session(db)
-    env = _env(db)
+    env = _env(db, _session(db))
     env.update({"favorite_color": "blue"})
     env.update_action_set({"number_of_steps": 3})
 

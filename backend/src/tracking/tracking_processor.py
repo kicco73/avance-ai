@@ -3,11 +3,13 @@ from dataclasses import dataclass, field, replace
 from http import HTTPStatus
 from typing import AsyncIterator
 
+from chat.errors import ChatServiceError
 from db.db import Db
 from ai import AiService
 from ai import MetadataCallback, content_to_text
 from automaton.automaton import Action, Automaton, State, StatePayload
 from logging_factory import LoggerFactory
+from session import Session
 
 from .env import Env
 from .evaluation_scope import EvaluationScopeBuilder
@@ -16,6 +18,7 @@ from .sources import SourceNamespace, ToolSet
 from .tracking_engine import DbTrackingSink, TrackingEngine
 from .turn_protocol import TurnProtocol
 from .turn_protocol_using_schema import TurnProtocolUsingSchema
+from .turn_size_estimate import TurnSizeEstimate, estimate_turn_request
 from .metadata_handler import MetadataHandler
 from .definitions import Signals
 from .errors import TrackingServiceError
@@ -175,13 +178,49 @@ class TrackingProcessor(object):
 	def generate_reply(self, state: State, on_metadata: MetadataCallback,
 	) -> AsyncIterator[str]:
 		base_prompt, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
-		chat_history = self._build_chat_history(turn_attachments)
+		remaining_history_budget = self._enforce_input_budget(base_prompt, signal_definition, reaction_definition, turn_attachments)
+		chat_history = self._build_chat_history(turn_attachments, remaining_history_budget)
 
 		protocol = self.build_turn_protocol()
 		return protocol.generate_reply(
 			base_prompt, signal_definition, self.env, chat_history, on_metadata,
 			reaction_definition=reaction_definition, tool_set=self.build_tool_set(state),
 			force_required_tools=self.force_required_tools_for(state),
+		)
+
+	def _enforce_input_budget(
+		self, base_prompt: str, signal_definition: str | None, reaction_definition: str | None,
+		turn_attachments: list,
+	) -> int | None:
+		"""Estimates this turn's own system prompt (see turn_size_estimate)
+		and rejects the turn outright — before ever calling the provider —
+		if it alone is already over input_token_budget_per_turn. Otherwise
+		returns whatever's left of the budget for the history to fill (see
+		_build_chat_history) — None (no cap at all) straight through when
+		input_token_budget_per_turn itself is None."""
+		budget = self.input_token_budget_per_turn
+		if budget is None:
+			return None
+		estimate = estimate_turn_request(base_prompt, signal_definition, reaction_definition, self.env, turn_attachments)
+		if estimate.total_tokens > budget:
+			self._reject_over_budget(estimate, budget)
+		return budget - estimate.total_tokens
+
+	def _reject_over_budget(self, estimate: TurnSizeEstimate, budget: int) -> None:
+		heaviest = ", ".join(
+			f"{entry.label} ({entry.kind}, ~{entry.tokens} tok)" for entry in estimate.heaviest(3)
+		)
+		message = (
+			f"Session {self.user.session_id} (project '{self.user.project_id}'): this turn's own system "
+			f"prompt alone is ~{estimate.total_tokens} tokens, over the {budget}-token "
+			f"input-token-budget-per-turn cap. Heaviest: {heaviest}."
+		)
+		logger.warning(message)
+		self.db.save_system_warning(Session().user, self.user.project_id, "input_budget_exceeded", message)
+		raise ChatServiceError(
+			f"This turn's own system prompt alone is ~{estimate.total_tokens} tokens, over the "
+			f"{budget}-token cap.",
+			status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE, code="input_budget_exceeded",
 		)
 
 	def build_tool_set(self, state: State) -> ToolSet | None:
@@ -216,15 +255,20 @@ class TrackingProcessor(object):
 	def _build_base_prompt_and_history(self, state: State) -> tuple[str, list[dict]]:
 		"""Same base_prompt/chat_history generate_reply itself builds for
 		`state` — exposed single-underscore (rather than name-mangled) so
-		a caller can get those two pieces without the full TurnProtocol.generate_reply machinery."""
+		a caller can get those two pieces without the full TurnProtocol.generate_reply machinery.
+		signal_definition/reaction_definition are never embedded in this
+		particular prompt (see this method's own callers), so the budget
+		estimate below leaves them out too — including them would overstate
+		what's actually sent and reject a turn that would have fit."""
 		base_prompt, _signal_definition, _reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
-		return base_prompt, self._build_chat_history(turn_attachments)
+		remaining_history_budget = self._enforce_input_budget(base_prompt, None, None, turn_attachments)
+		return base_prompt, self._build_chat_history(turn_attachments, remaining_history_budget)
 
-	def _build_chat_history(self, turn_attachments: list) -> list[dict]:
+	def _build_chat_history(self, turn_attachments: list, token_budget: int | None) -> list[dict]:
 		priming_messages = build_priming_messages(turn_attachments)
 		since = self.db.history_cutoff_for_session(self.user.session_id, self.user.state.history_cutoff)
 		return priming_messages + self._strip_timestamps(
-			self.db.get_turn_history(self.user.session_id, since, self.input_token_budget_per_turn)
+			self.db.get_turn_history(self.user.session_id, since, token_budget)
 		)
 
 	def build_turn_protocol(self) -> TurnProtocol:

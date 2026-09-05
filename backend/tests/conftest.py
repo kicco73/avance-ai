@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from auth.auth_service import AuthService
 from chat.channels import NATIVE_CHAT
 from chat.chat_service import ChatService
+from chat.ephemeral_env_registry import EphemeralEnvRegistry
 from chat.session_manager import ChatSessionManager
 from config import NotificationServiceConfig
 from controller import AvanceController
@@ -76,6 +77,18 @@ def _reset_dispatcher():
     _reset_dispatcher_for_tests()
     yield
     _reset_dispatcher_for_tests()
+
+
+@pytest.fixture(autouse=True)
+def _reset_ephemeral_env_registry():
+    """EphemeralEnvRegistry is a process-global singleton too — a fresh
+    :memory: database (see the `db` fixture below) restarts session ids
+    from 1 every time, so without this a test/preview session id from one
+    test could collide with an unrelated one's leftover Env from an
+    earlier test."""
+    EphemeralEnvRegistry._reset_for_tests()
+    yield
+    EphemeralEnvRegistry._reset_for_tests()
 
 
 @pytest.fixture(autouse=True)

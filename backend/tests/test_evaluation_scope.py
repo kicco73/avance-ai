@@ -203,7 +203,7 @@ def test_env_action_set_value_is_usable_in_a_trigger_end_to_end(db):
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a",
     )
-    db.set_action_env(PROJECT_ID, {"number_of_steps": 3}, USERNAME)
+    db.set_action_env(session_id, {"number_of_steps": 3})
     automaton = _automaton_with_trigger("env.number_of_steps >= 3")
 
     scope = _builder(db).build(automaton, "a", {})
@@ -217,13 +217,13 @@ def test_env_namespace_excludes_free_form_stored_values(db):
     free-form stored() value must never leak into it."""
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
-    db.create_chat_session(
+    session_id = db.create_chat_session(
         username=USERNAME, project_id=PROJECT_ID,
         revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a",
     )
-    db.set_env(PROJECT_ID, {"favorite_color": "blue"}, USERNAME)
+    db.set_env(session_id, {"favorite_color": "blue"})
     automaton = _automaton_with_trigger("signal.mood >= 1")
 
     scope = _builder(db).build(automaton, "a", {})

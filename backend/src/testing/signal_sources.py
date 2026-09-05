@@ -5,12 +5,12 @@ BatchLiteSignalSource is the same batching with an even lighter,
 one-sided transcript (see its own docstring)."""
 from __future__ import annotations
 
+from chat.env_for_session import env_for_session
 from db import Db
 from ai import AiService
 from automaton.automaton import Automaton
-from session import Session
 from tracking.definitions import Signals
-from tracking.env import Env, PersistedEnv
+from tracking.env import Env
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.metadata_handler import MetadataHandler
 from tracking.tracking_service import TrackingService
@@ -227,14 +227,12 @@ class BatchSignalSource(object):
         session = self._db.get_chat_session(self._session_id)
         if session is None or session['datetime_start'] is None:
             return {}
-        # PersistedEnv now reads Session().user itself rather than taking
-        # it as a constructor argument — pinned to this historical
-        # session's own username for the one call that needs it, then
-        # restored, so a concurrent request's own Session().user (a
-        # separate context already, but belt-and-suspenders) is never at risk.
-        with Session().impersonate(session['username']):
-            persisted_env = PersistedEnv(self._db, FixedProjectContext(self._automaton, session['project_id']))
-            return persisted_env.stored(until=session['datetime_start'])
+        # env_for_session dispatches by session type — ephemeral (in-
+        # memory, always current) for a test/preview session, PersistedEnv
+        # (pinned to this session's own project/user/id) for a live/
+        # imported one; either way it's built straight from `session`
+        # itself, with no need to impersonate Session().user for it.
+        return env_for_session(self._db, session).stored(until=session['datetime_start'])
 
     def _user_message_ids(self) -> list[int]:
         return [m['id'] for m in self._db.get_messages(self._session_id) if m['role'] == 'user']

@@ -85,8 +85,8 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
     )
 
 
-def _env_for(db) -> PersistedEnv:
-    return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID))
+def _env_for(db, session_id: int | None = None) -> PersistedEnv:
+    return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
 
 
 async def test_a_later_keys_default_sees_an_earlier_keys_freshly_applied_value(db):
@@ -116,7 +116,7 @@ async def test_a_chain_of_three_resolves_in_declaration_order(db):
 async def test_a_key_that_already_has_a_value_is_never_recomputed(db):
     chat_service = _chat_service(db, _automaton({"a": "2"}))
     session = await chat_service.get_current_session_if_any_or_create_new(None)
-    _env_for(db).update_action_set({"a": 99})
+    _env_for(db, session["id"]).update_action_set({"a": 99})
 
     await chat_service.open_if_needed(session["id"])
 

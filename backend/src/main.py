@@ -26,12 +26,14 @@ from metrics.metric_service import MetricService
 from notification.notification_service import NotificationService
 from project.archive.legacy_source_read_migration import migrate_legacy_source_read
 from project.archive.legacy_tools_field_migration import migrate_legacy_tools_field
+from project.health_notifications import ProjectHealthNotifications
 from project.project_service import ProjectService
 from ai import AiService
 from testing.test_service import TestService
 from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from testing.last_status_broadcaster import LastStatusBroadcaster
 from tracking.actuators import ActuatorSetFactory
+from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
@@ -90,9 +92,18 @@ def create_app() -> FastAPI:
         # One-off: renames every stored index.yml revision's own state-level
         # `tools:` field to `ai-may-query-sources:` (see the module's own docstring).
         migrate_legacy_tools_field(db)
+        # One-off: deletes every Tracking env/action_env row that belongs to
+        # a test/preview session, and drops any live session's own
+        # action_env key a project's current published revision no longer
+        # declares (see the module's own docstring).
+        migrate_env_rows(db)
 
-        ai_live_service = AiService.for_live(config.ai_services, db=db)
-        ai_test_service = AiService.for_test(config.ai_services, db=db)
+        ai_live_service = AiService.for_live(
+            config.ai_services, db=db, input_token_budget_per_turn=config.input_token_budget_per_turn,
+        )
+        ai_test_service = AiService.for_test(
+            config.ai_services, db=db, input_token_budget_per_turn=config.input_token_budget_per_turn,
+        )
         talk_service = TalkService.from_config(config.talk_services) if config.talk_services is not None else None
         listen_service = ListenService.from_config(config.listen_services) if config.listen_services is not None else None
         
@@ -186,6 +197,19 @@ def create_app() -> FastAPI:
         # register_availability_cascade) — same "subscribe once, react
         # forever" shape as WakeupService below.
         project_service.register_availability_cascade()
+
+        # Admin-facing side effect of a published revision going broken/
+        # healthy again (see project/health_notifications.py) — registered
+        # before the boot-time sweep below, so a project already broken
+        # when this process starts is logged/warned/pushed exactly once.
+        ProjectHealthNotifications(db, job_service, ws_adapter).register()
+
+        # Every project's own build health (published/draft) is unknown
+        # to this fresh process until checked — a framework change since
+        # the last boot may have broken one silently; this is what turns
+        # that into a paused project plus a single admin notification
+        # instead of a 500 on whichever endpoint happens to touch it first.
+        project_service.recompute_all_availability()
 
         # Cross-project wake-up (see tracking/wakeup_service.py) —
         # subscribes once for the process lifetime.

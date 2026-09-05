@@ -376,6 +376,8 @@ class WhatsAppService(object):
                 return REPLY_SESSION_TAKEN_OVER, None, None
             if exc.code == "turn_in_progress":
                 return REPLY_BUSY, None, None
+            if exc.code == "project_unavailable":
+                return REPLY_PAUSED, None, None
             if exc.code in ("session_closed", "session_not_found"):
                 return None, None, exc.code
             logger.exception(f"WhatsApp: turn failed on session {session_id}: {exc.message}")

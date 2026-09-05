@@ -77,7 +77,7 @@ function destroyGraph() {
 // Automaton.get_state_payload — never state-specific) — reactionsEnabled
 // alone has no runtime effect without it (see Automaton.reactions_enabled_for),
 // so InspectorDetailCard.vue's own toggle locks itself off this instead.
-function nodeToCyData(n) { return { id: n.state.key, uiLabel: n.state.ui_label, uiDescription: n.state.ui_description, final: n.state.final, isStart: n.is_start, chat: n.state.chat, historyCutoff: n.history_cutoff, reactionsEnabled: n.reactions_enabled, hasReactions: (n.state.reactions?.length ?? 0) > 0, transitionLogLevel: n.transition_log_level, attachments: n.attachments, contextualPrompt: n.contextual_prompt, tools: n.state.tools ?? [] } }
+function nodeToCyData(n) { return { id: n.state.key, uiLabel: n.state.ui_label, uiDescription: n.state.ui_description, final: n.state.final, isStart: n.is_start, chat: n.state.chat, historyCutoff: n.history_cutoff, reactionsEnabled: n.reactions_enabled, hasReactions: (n.state.reactions?.length ?? 0) > 0, transitionLogLevel: n.transition_log_level, attachments: n.attachments, contextualPrompt: n.contextual_prompt, aiMayQuerySources: n.state.ai_may_query_sources ?? [], aiMustQuerySources: n.state.ai_must_query_sources ?? [] } }
 // The edge with source === "" is the init_action. Its cytoscape `source`
 // becomes PSEUDO_START_ID, but `matchStateKey` keeps the real "" so
 // highlight matching elsewhere needs no special-casing for this edge.

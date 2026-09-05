@@ -4,9 +4,11 @@ import hashlib
 import threading
 import time
 from collections import OrderedDict
+from http import HTTPStatus
 from typing import Any, AsyncIterator, Sequence, TYPE_CHECKING, overload
 
 import partial_json_parser
+from chat.errors import ChatServiceError
 from ai.llm_provider import (
 	AIServiceConfig,
 	AIServiceProviderOutputTruncatedError,
@@ -14,10 +16,12 @@ from ai.llm_provider import (
 	LLMProvider,
 	MetadataCallback,
 	ToolCallsRequested,
+	content_to_text,
 )
 from ai._providers.cascading_llm_provider import AutoLiveLLMProvider, AutoTestLLMProvider
 from ai._providers import gemini_provider_v2, openai_provider_v2, anthropic_provider_v2
 from db import Db
+from token_estimate import estimate_tokens
 from logging_factory import LoggerFactory
 
 if TYPE_CHECKING:
@@ -71,6 +75,7 @@ class AiService(object):
 		configs: list[AIServiceConfig] | None = None,
 		auto_config_indices: list[int] | None = None,
 		db: Db | None = None,
+		input_token_budget_per_turn: int | None = None,
 	) -> None:
 		self._auto_provider = auto_provider
 		# Index-aligned with `configs`; both empty for a hand-built
@@ -103,9 +108,20 @@ class AiService(object):
 		# by hand just to exercise the in-memory TokenCounter/cascade
 		# logic, which stays entirely unaffected by this.
 		self._db = db
+		# Same cap chat-service.input-token-budget-per-turn drives on the
+		# TrackingProcessor side (see tracking.tracking_processor's own
+		# pre-flight check) — checked again here, once per round of the
+		# tool-calling loop below, since a round's own accumulated tool
+		# results can grow the request well past what that one-time,
+		# pre-loop check ever saw. None (most tests, and any caller that
+		# never wires it) means no cap at all.
+		self._input_token_budget_per_turn = input_token_budget_per_turn
 
 	@classmethod
-	def for_live(cls, ai_service_config: list[AIServiceConfig], db: Db | None = None) -> "AiService":
+	def for_live(
+		cls, ai_service_config: list[AIServiceConfig], db: Db | None = None,
+		input_token_budget_per_turn: int | None = None,
+	) -> "AiService":
 		"""Builds the live-chat cascade from only the entries whose own
 		`modes` includes "live" (defaults to both live and test — see
 		AIServiceConfig.modes) — entirely independent of for_test below:
@@ -128,10 +144,14 @@ class AiService(object):
 		return cls(
 			AutoLiveLLMProvider(auto_labeled), selectable_providers=selectable, configs=live_config,
 			auto_config_indices=auto_config_indices, db=db,
+			input_token_budget_per_turn=input_token_budget_per_turn,
 		)
 
 	@classmethod
-	def for_test(cls, ai_service_config: list[AIServiceConfig], db: Db | None = None) -> "AiService":
+	def for_test(
+		cls, ai_service_config: list[AIServiceConfig], db: Db | None = None,
+		input_token_budget_per_turn: int | None = None,
+	) -> "AiService":
 		"""The test-panel/batch-run cascade — see for_live's own docstring
 		for why this stays fully independent of it, and for what "no-auto"
 		does here too."""
@@ -143,6 +163,7 @@ class AiService(object):
 		return cls(
 			AutoTestLLMProvider(auto_labeled), selectable_providers=selectable, configs=test_config,
 			auto_config_indices=auto_config_indices, db=db,
+			input_token_budget_per_turn=input_token_budget_per_turn,
 		)
 
 	@staticmethod
@@ -333,6 +354,25 @@ class AiService(object):
 
 		return tap
 
+	def _enforce_input_budget(self, system_prompt: str, turn_history: list[dict[str, Any]]) -> None:
+		"""Same cap as tracking.tracking_processor's own pre-flight check,
+		re-checked at the top of every tool-calling round: a round's own
+		accumulated tool results (turn_history keeps growing, see
+		generate_stream_with_metadata's own loop) can blow the request
+		well past what that one-time check, run before any tool ever
+		fired, could ever have seen."""
+		if self._input_token_budget_per_turn is None:
+			return
+		history_text = "\n".join(content_to_text(message["content"]) for message in turn_history)
+		total = estimate_tokens(system_prompt) + estimate_tokens(history_text)
+		if total <= self._input_token_budget_per_turn:
+			return
+		raise ChatServiceError(
+			f"This request's own estimated size (~{total} tokens, including accumulated tool results) is "
+			f"over the {self._input_token_budget_per_turn}-token input-token-budget-per-turn cap.",
+			status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE, code="input_budget_exceeded",
+		)
+
 	async def generate_stream_with_metadata(
 		self,
 		system_prompt: str,
@@ -387,6 +427,7 @@ class AiService(object):
 			tapped_on_metadata(name, value)
 
 		for round_number in range(1, MAX_TOOL_ROUNDS + 1):
+			self._enforce_input_budget(system_prompt, turn_history)
 			# Only the first round of the first turn since ai-must-query-
 			# sources' own state was entered is ever restricted — every
 			# later round in this same turn, and every turn after the

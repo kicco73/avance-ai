@@ -161,15 +161,29 @@ function commitBoolField(field, value) {
   emit('set-field', field, value)
 }
 
-// tools: — every declared source name is a toggle, same idiom as the
+// ai-may-query-sources / ai-must-query-sources — every declared source
+// name is a 3-state toggle (off -> may -> must -> off), same idiom as the
 // boolean badges above; identifierRegistry.value.source is already the
 // live-refreshed source of truth ModelMenu/TriggerEditor's own
 // autocomplete uses, so no separate fetch is needed here.
 const availableSourceNames = computed(() => Object.keys(identifierRegistry.value.source ?? {}))
-function toggleTool(name) {
-  const current = props.selectedElement?.data.tools ?? []
-  const next = current.includes(name) ? current.filter((t) => t !== name) : [...current, name]
-  emit('set-field', 'tools', next)
+function toolState(name) {
+  if ((props.selectedElement?.data.aiMustQuerySources ?? []).includes(name)) return 'must'
+  if ((props.selectedElement?.data.aiMayQuerySources ?? []).includes(name)) return 'may'
+  return 'off'
+}
+function cycleTool(name) {
+  const may = props.selectedElement?.data.aiMayQuerySources ?? []
+  const must = props.selectedElement?.data.aiMustQuerySources ?? []
+  const current = toolState(name)
+  if (current === 'off') {
+    emit('set-field', 'ai-may-query-sources', [...may, name])
+  } else if (current === 'may') {
+    emit('set-field', 'ai-may-query-sources', may.filter((t) => t !== name))
+    emit('set-field', 'ai-must-query-sources', [...must, name])
+  } else {
+    emit('set-field', 'ai-must-query-sources', must.filter((t) => t !== name))
+  }
 }
 
 const isDeleteDisabled = computed(() => {
@@ -220,7 +234,8 @@ const hasSelectedElementBadges = computed(() => {
     // this card falls back to the same read-only badge set as non-editable.
     if (showEditForm.value) return true
     const d = props.selectedElement.data
-    return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff || (d.reactionsEnabled && d.hasReactions)
+    return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff ||
+      (d.reactionsEnabled && d.hasReactions) || (d.aiMayQuerySources?.length > 0) || (d.aiMustQuerySources?.length > 0)
   }
   // "On enter" is an always-shown clickable badge once the form is open
   // — same reasoning, and same layout position (first in this row), as
@@ -312,9 +327,19 @@ function selectAttachment(fileName) {
             <span
               v-for="name in availableSourceNames" :key="'tool-' + name"
               class="inspector-detail-badge inspector-detail-badge-toggle"
-              :class="(selectedElement.data.tools || []).includes(name) ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
-              :title="`Let the model call source.${name} as a tool while replying in this state`"
-              @click.stop="toggleTool(name)"
+              :class="{
+                'inspector-detail-badge-toggle-off': toolState(name) === 'off',
+                'inspector-detail-badge-toggle-on': toolState(name) === 'may',
+                'inspector-detail-badge-toggle-required': toolState(name) === 'must'
+              }"
+              :title="
+                toolState(name) === 'must'
+                  ? `Forced: the model must call source.${name} once per entry into this state — click to turn off`
+                  : toolState(name) === 'may'
+                    ? `The model may call source.${name} as a tool — click to force it (ai-must-query-sources)`
+                    : `Click to let the model call source.${name} as a tool while replying in this state`
+              "
+              @click.stop="cycleTool(name)"
             >{{ name }}</span>
           </template>
           <template v-else>
@@ -322,9 +347,14 @@ function selectAttachment(fileName) {
             <span v-if="selectedElement.data.historyCutoff" class="inspector-detail-badge inspector-detail-badge-neutral">History cutoff</span>
             <span v-if="selectedElement.data.reactionsEnabled && selectedElement.data.hasReactions" class="inspector-detail-badge inspector-detail-badge-neutral">Reactions</span>
             <span
-              v-for="name in (selectedElement.data.tools || [])" :key="'tool-ro-' + name"
+              v-for="name in (selectedElement.data.aiMayQuerySources || [])" :key="'tool-ro-may-' + name"
               class="inspector-detail-badge inspector-detail-badge-neutral"
-              :title="`Callable by the model as source.${name}`"
+              :title="`Callable by the model as source.${name} (its own choice)`"
+            >{{ name }}</span>
+            <span
+              v-for="name in (selectedElement.data.aiMustQuerySources || [])" :key="'tool-ro-must-' + name"
+              class="inspector-detail-badge inspector-detail-badge-toggle-required"
+              :title="`Forced: the model must call source.${name} once per entry into this state`"
             >{{ name }}</span>
           </template>
         </template>
@@ -503,6 +533,9 @@ function selectAttachment(fileName) {
 .inspector-detail-badge-toggle { cursor: pointer; }
 .inspector-detail-badge-toggle-off { background: #ccc; color: #555; }
 .inspector-detail-badge-toggle-on { background: #4a6fa5; }
+/* ai-must-query-sources — a forced tool, visually distinct from the
+   plain "on" (ai-may-query-sources) toggle color above. */
+.inspector-detail-badge-toggle-required { background: #c2410c; }
 .inspector-detail-badge-toggle-locked { cursor: not-allowed; opacity: 0.5; }
 /* Same look and feel as the toggle family above (border-radius/padding/
    cursor/grey-when-off all come from -badge/-toggle/-toggle-off) — only

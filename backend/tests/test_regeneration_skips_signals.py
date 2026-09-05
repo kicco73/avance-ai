@@ -87,7 +87,7 @@ async def test_regeneration_call_does_not_request_signals(db):
     ai_service = RecordingSchemaAiService()
     project_service = FixedProjectContext(project_id=PROJECT_ID)
     metrics = MetricService(db, project_service)
-    env = PersistedEnv(db, project_service)
+    env = PersistedEnv(db, project_service, session_id)
     scope_builder = EvaluationScopeBuilder(
         env, metrics, SessionFacts(db, project_service), UserFacts(db), db
     )
@@ -115,7 +115,7 @@ async def test_a_turn_that_fires_a_trigger_records_origin_trigger(db):
     ai_service = RecordingSchemaAiService()
     project_service = FixedProjectContext(project_id=PROJECT_ID)
     metrics = MetricService(db, project_service)
-    env = PersistedEnv(db, project_service)
+    env = PersistedEnv(db, project_service, session_id)
     scope_builder = EvaluationScopeBuilder(
         env, metrics, SessionFacts(db, project_service), UserFacts(db), db
     )
@@ -143,7 +143,7 @@ async def test_regeneration_prompt_includes_existing_and_the_firing_actions_own_
     ai_service = RecordingSchemaAiService()
     project_service = FixedProjectContext(project_id=PROJECT_ID)
     metrics = MetricService(db, project_service)
-    env = PersistedEnv(db, project_service)
+    env = PersistedEnv(db, project_service, session_id)
     env.update({"greeting": "hi"})
     scope_builder = EvaluationScopeBuilder(
         env, metrics, SessionFacts(db, project_service), UserFacts(db), db

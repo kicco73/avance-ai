@@ -187,6 +187,17 @@ const {
           <span class="typing-dot"></span>
         </span>
         <span v-else v-html="renderMarkdown(getMessageText(message))" />
+        <!-- Permanent, compact trace of this message's own tool call(s)
+             (see ChatService.get_messages' own tool_calls_by_message) —
+             the transient "Searching …" line (tool-status-text above)
+             clears once the call resolves; this replaces it for good,
+             expandable to the raw arguments/result on click. -->
+        <div v-if="message.role === 'assistant' && message.toolCalls?.length" class="tool-call-trace">
+          <details v-for="(call, idx) in message.toolCalls" :key="idx" class="tool-call-entry">
+            <summary>{{ call.summary_text || call.name }}</summary>
+            <pre class="tool-call-raw">{{ JSON.stringify({ arguments: call.arguments, result: call.result }, null, 2) }}</pre>
+          </details>
+        </div>
         <span
           v-if="signalsAnnotated"
           ref="annotationIconRef"
@@ -379,6 +390,35 @@ const {
 
 .bubble-failed {
   background: #c62828;
+}
+
+.tool-call-trace {
+  margin-top: 0.4rem;
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+
+.tool-call-entry summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.tool-call-entry summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-call-entry summary::before {
+  content: '🔍 ';
+}
+
+.tool-call-raw {
+  margin: 0.3rem 0 0;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.08);
+  font-size: 0.68rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .tool-status-text {

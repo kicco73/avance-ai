@@ -109,7 +109,7 @@ class WakeupService:
         # evaluate against whatever project happens to be active right now.
         with Session().impersonate(username):
             project_context = FixedProjectContext(project_id=observer_project_id)
-            env = PersistedEnv(self._db, project_context)
+            env = PersistedEnv(self._db, project_context, session["id"])
             metrics = MetricService(self._db, project_context)
             session_facts = SessionFacts(self._db, project_context)
             user_facts = UserFacts(self._db)

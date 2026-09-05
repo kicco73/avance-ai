@@ -142,6 +142,12 @@ class ProjectService(object):
     def recompute_availability(self, project_id: str) -> None:
         self._manager.recompute_availability(project_id)
 
+    def recompute_all_availability(self) -> None:
+        self._manager.recompute_all_availability()
+
+    def ensure_project_not_broken(self, project_id: str) -> None:
+        self._manager.ensure_project_not_broken(project_id)
+
     def register_availability_cascade(self) -> None:
         self._manager.register_availability_cascade()
 

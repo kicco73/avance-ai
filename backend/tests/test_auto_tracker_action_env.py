@@ -109,8 +109,8 @@ def _session_id(db) -> int:
     )
 
 
-def _env(db) -> PersistedEnv:
-    return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID))
+def _env(db, session_id: int | None = None) -> PersistedEnv:
+    return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
 
 
 async def test_a_fired_actions_env_is_persisted(db):
@@ -143,7 +143,7 @@ async def test_env_is_not_touched_when_the_trigger_does_not_fire(db):
 async def test_an_env_expression_can_self_reference_the_previous_stored_value(db):
     automaton = _automaton_with_env("signal.mySignal >= 1", {"number_of_steps": "env.number_of_steps + 1"}, target="a")
     session_id = _session_id(db)
-    env = _env(db)
+    env = _env(db, session_id)
     # Seeded directly in the action-set store as a real int, since that's
     # what simpleeval produces (unlike a model-reported string value).
     env.update_action_set({"number_of_steps": 3})

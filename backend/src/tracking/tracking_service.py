@@ -10,12 +10,13 @@ from project.project_service import ProjectService
 from db import Db
 from metrics.metric_service import MetricService
 
+from chat.env_for_session import env_for_session
+
 from .actuators import ActuatorSetFactory
 from .automaton_namespace import AutomatonNamespace
 from .errors import TrackingServiceError
 from .fixed_project_context import FixedProjectContext
 from .turn_callbacks import OnMetadata
-from .env import PersistedEnv
 from .evaluation_scope import EvaluationScopeBuilder
 from .session_facts import SessionFacts
 from .user_facts import UserFacts
@@ -278,7 +279,7 @@ class TrackingService(object):
 			TrackingProcessor = TrackingProcessorAfterAiMessage
 
 		fixed_context = FixedProjectContext(automaton=automaton, project_id=project_id)
-		env = PersistedEnv(self._db, fixed_context)
+		env = env_for_session(self._db, session)
 		session_facts = SessionFacts(self._db, fixed_context)
 		user_facts = UserFacts(self._db)
 		automaton_namespace = AutomatonNamespace(self._db, self._project_service)

@@ -14,7 +14,7 @@ import { handleEnterNext } from './enterToNextField.js'
 import CardMenu from './CardMenu.vue'
 
 const props = defineProps({
-  // { name, ui_label, ui_description, url } | null, from getProjectSources
+  // { name, ui_label, ui_description, ai_definition, url } | null, from getProjectSources
   source: { type: Object, default: null },
   deleting: { type: Boolean, default: false }
 })
@@ -27,11 +27,13 @@ const DRIVER_OPTIONS = [{ value: 'avance', label: 'Avance Embedded' }]
 
 const editUiLabel = ref('')
 const editUiDescription = ref('')
+const editAiDefinition = ref('')
 const editId = ref('')
 
 function resetEditBuffers() {
   editUiLabel.value = props.source?.ui_label ?? ''
   editUiDescription.value = props.source?.ui_description ?? ''
+  editAiDefinition.value = props.source?.ai_definition ?? ''
   editId.value = props.source?.name ?? ''
 }
 
@@ -48,6 +50,10 @@ function commitUiLabel() {
 
 function commitUiDescription() {
   commitTextField('ui-description', editUiDescription.value, props.source?.ui_description ?? '')
+}
+
+function commitAiDefinition() {
+  commitTextField('ai-definition', editAiDefinition.value, props.source?.ai_definition ?? '')
 }
 
 function commitId() {
@@ -94,6 +100,22 @@ function handleDelete() {
           @blur="commitUiDescription"
         ></textarea>
 
+        <label class="inspector-detail-form-label">
+          <span class="inspector-ai-field-icon" title="Read by the AI">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
+          </span>
+          AI definition
+        </label>
+        <textarea
+          v-model="editAiDefinition"
+          v-autosize
+          class="inspector-detail-textarea"
+          rows="3"
+          placeholder="What this file contains and how the model should search it — e.g. which values to combine to get a single row. Required once this source is listed in a state's own ai-may-query-sources/ai-must-query-sources."
+          @click.stop
+          @blur="commitAiDefinition"
+        ></textarea>
+
         <label class="inspector-detail-form-label" title="Referenced as source.<id> in a trigger/env expression">
           <span class="inspector-py-field-icon" title="Identifier">ID</span>
           Id
@@ -132,6 +154,9 @@ function handleDelete() {
 .inspector-detail-title-input:hover, .inspector-detail-title-input:focus { border-color: #ccc; background: white; }
 .inspector-detail-form-label { display: flex; align-items: center; gap: 0.35rem; margin: 20px 0 0.2rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
 .inspector-py-field-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 1.1rem; height: 0.85rem; border-radius: 3px; background: #4b8bbe; color: white; font-size: 0.55rem; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -0.02em; }
+/* Marks a field the AI itself reads, as opposed to a purely human-facing
+   one like Description — same convention as InspectorDetailCard.vue's own. */
+.inspector-ai-field-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; }
 .inspector-project-id-input { display: block; width: 100%; box-sizing: border-box; font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8rem; padding: 0.3rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
 .inspector-source-select { display: block; width: 100%; box-sizing: border-box; font: inherit; font-size: 0.8rem; padding: 0.3rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; background: white; }
 .inspector-detail-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.8rem; line-height: 1.54; padding: 0.4rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
