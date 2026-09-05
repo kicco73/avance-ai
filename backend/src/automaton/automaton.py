@@ -82,20 +82,28 @@ class State:
     # from the project's whole `reactions` dict — never a per-state subset
     # (see TurnProtocol's own conditional inclusion of the 'reaction' tag).
     reactions_enabled: bool = False
-    # Names of this project's own `sources:` the model may call as native
-    # tools while replying in this state (see tracking.sources.ToolSet) —
-    # every name already validated at build time against `sources:`
-    # (AutomatonBuilder's own sanity check), and each one's own source
-    # required to carry an `ai-definition` (see Source.ai_definition).
-    # The model decides for itself whether/when to call one of these.
-    ai_may_query_sources: tuple[str, ...] = ()
-    # Same validation as ai_may_query_sources, but forced once per entry
+    # Names of this project's own `sources:` whose `select` the model may
+    # call as a native tool while replying in this state (see
+    # tracking.sources.ToolSet) — every name already validated at build
+    # time against `sources:` (AutomatonBuilder's own sanity check), and
+    # each one's own source required to carry an `ai-definition` (see
+    # Source.ai_definition). The model decides for itself whether/when to
+    # call one of these.
+    ai_may_read_sources: tuple[str, ...] = ()
+    # Same validation as ai_may_read_sources, but forced once per entry
     # into this state (see TrackingProcessor.force_required_tools_for):
     # the first tool-call round after a transition lands here restricts
-    # the model to calling one of *these* — never both fields at once for
-    # the same source name (AutomatonBuilder rejects that overlap).
-    ai_must_query_sources: tuple[str, ...] = ()
-    # Empty for both fields means no tool catalog at all this turn —
+    # the model to calling one of *these* `select`s — never both read
+    # fields at once for the same source name (AutomatonBuilder rejects
+    # that overlap).
+    ai_must_read_sources: tuple[str, ...] = ()
+    # Names of this project's own `sources:` whose `update` the model may
+    # call here — only a source whose driver actually supports update
+    # (today, just `avance:env`, see tracking.sources.avance_env) may be
+    # listed, checked at build time. A write is never forced: there is no
+    # must-write counterpart.
+    ai_may_write_sources: tuple[str, ...] = ()
+    # Empty for all three fields means no tool catalog at all this turn —
     # TrackingProcessor passes tool_set=None then, the same request shape
     # a turn always sent before tool-calling existed.
     # Same convention as Action.line above — None for the synthetic ""
@@ -105,6 +113,16 @@ class State:
     @property
     def has_triggerable_actions(self) -> bool:
         return any(a.trigger is not None for a in self.actions)
+
+    @property
+    def ai_source_names(self) -> tuple[str, ...]:
+        """Every source name this state exposes to the model, for either
+        reading or writing — empty means no tool catalog at all."""
+        return self.ai_may_read_sources + self.ai_must_read_sources + self.ai_may_write_sources
+
+    @property
+    def ai_read_source_names(self) -> tuple[str, ...]:
+        return self.ai_may_read_sources + self.ai_must_read_sources
 
 
 @dataclass
@@ -129,13 +147,44 @@ class Reaction:
     ui_description: str | None = None
 
 
+AI_ACCESS_NONE = "none"
+AI_ACCESS_READONLY = "readonly"
+AI_ACCESS_READWRITE = "readwrite"
+AI_ACCESS_VALUES = (AI_ACCESS_NONE, AI_ACCESS_READONLY, AI_ACCESS_READWRITE)
+
+
 @dataclass
 class EnvKey:
     """One project-level `env:` declaration. `value` is the default,
-    evaluated once whenever nothing has set the key yet."""
+    evaluated once whenever nothing has set the key yet. `ai_access` is
+    what the *model* may do with this key, in absolute terms — none (the
+    default: scripts only, the model never sees it), readonly, or
+    readwrite — and only ever matters through an `avance:env` source
+    (see tracking.sources.avance_env): a state that lists that source in
+    its own ai-*-read-sources shows the model every key with ai_access
+    other than none, and one that lists it in ai-may-write-sources lets
+    the model update the readwrite ones. Scripts (an action's own `env:`)
+    write any key regardless. `ai_definition` is the text the model reads
+    to know what the key means — required whenever ai_access isn't none,
+    the same requirement a source exposed to the model gets."""
     name: str
     value: str = ""
     ui_description: str | None = None
+    ai_access: str = AI_ACCESS_NONE
+    ai_definition: str | None = None
+
+    @property
+    def exported(self) -> bool:
+        return self.ai_access != AI_ACCESS_NONE
+
+    @property
+    def writable(self) -> bool:
+        return self.ai_access == AI_ACCESS_READWRITE
+
+
+# The one `url` an `avance:env` source declares — the project's own env
+# keys exposed as a single-row table (see tracking.sources.avance_env).
+ENV_SOURCE_URL = "avance:env"
 
 
 @dataclass
@@ -153,10 +202,14 @@ class Source:
     # above, which is for the human) — becomes part of the tool's own
     # description whenever this source is exposed as a native tool (see
     # tracking.sources.ToolSet). Required (build error otherwise) for any
-    # source named in a state's own ai-may-query-sources/
-    # ai-must-query-sources — same requirement a signal's own `definition`
-    # gets — optional for every other source.
+    # source named in a state's own ai-may-read-sources/
+    # ai-must-read-sources/ai-may-write-sources — same requirement a
+    # signal's own `definition` gets — optional for every other source.
     ai_definition: str | None = None
+
+    @property
+    def is_env_source(self) -> bool:
+        return self.url.strip() == ENV_SOURCE_URL
 
 
 # Functional syntax (not the class form the other Payload types use):
@@ -188,9 +241,11 @@ class StatePayload(TypedDict):
     reactions: list[ReactionOptionPayload]
     actions: list[ActionPayload]
     # Names of this project's own `sources:` this state exposes to the
-    # model as native tools — see State.ai_may_query_sources/ai_must_query_sources.
-    ai_may_query_sources: list[str]
-    ai_must_query_sources: list[str]
+    # model as native tools — see State.ai_may_read_sources/
+    # ai_must_read_sources/ai_may_write_sources.
+    ai_may_read_sources: list[str]
+    ai_must_read_sources: list[str]
+    ai_may_write_sources: list[str]
 
 def manual_actions_for(actions: list[ActionPayload], auto_tracking_enabled: bool) -> list[ActionPayload]:
     return [a for a in actions if not a["has_trigger"] or not auto_tracking_enabled]
@@ -228,7 +283,7 @@ class DeferredExpression(object):
         return f"DeferredExpression({self.source!r})"
 
 
-class _OnEnterEval(simpleeval.SimpleEval):
+class _OnEnterEval(simpleeval.EvalWithCompoundTypes):
     """Evaluates one on-enter line. Only ever against an EvaluationScope
     — a plain dict has no automaton/state to hibernate a deferred call
     with, so it is refused up front rather than failing at defer time."""
@@ -258,6 +313,8 @@ class EnvKeyPayload(TypedDict):
     name: str
     ui_description: str | None
     value: str
+    ai_access: str
+    ai_definition: str | None
 
 class SourcePayload(TypedDict):
     name: str
@@ -317,6 +374,12 @@ class Automaton(object):
         project_ui_label: str | None = None,
         project_ui_description: str | None = None,
         talk_enabled: bool = True,
+        # Non-fatal findings AutomatonBuilder.build collected while
+        # validating this project — a configuration that builds and runs
+        # but almost certainly isn't what the author meant (see
+        # AutomatonBuilder._actions_sanity_check). Never populated for an
+        # Automaton built in-memory by hand.
+        build_warnings: list[str] | None = None,
     ):
         # A real Action (not just a target state string) so it can also
         # carry its own on_enter/env — see ChatService._ensure_project_bootstrap.
@@ -338,6 +401,7 @@ class Automaton(object):
         # mutually exclusive — this flag selects between them.
         self.autotracking_on_ai_message = autotracking_on_ai_message
         self.talk_enabled = talk_enabled
+        self.build_warnings = list(build_warnings or [])
         # Which DB storage revision this Automaton actually came from —
         # unset here (never a build()-time concern: most callers,
         # including nearly every test, build one purely in-memory with
@@ -398,6 +462,8 @@ class Automaton(object):
             "name": env_key.name,
             "ui_description": env_key.ui_description,
             "value": env_key.value,
+            "ai_access": env_key.ai_access,
+            "ai_definition": env_key.ai_definition,
         }
 
     @staticmethod
@@ -436,8 +502,9 @@ class Automaton(object):
             "chat": state.chat,
             "reactions": [self.get_reaction_option_payload(r) for r in self.reactions],
             "actions": [Automaton.get_action_payload(a) for a in state.actions],
-            "ai_may_query_sources": list(state.ai_may_query_sources),
-            "ai_must_query_sources": list(state.ai_must_query_sources),
+            "ai_may_read_sources": list(state.ai_may_read_sources),
+            "ai_must_read_sources": list(state.ai_must_read_sources),
+            "ai_may_write_sources": list(state.ai_may_write_sources),
         }
 
     def reactions_enabled_for(self, state: State) -> bool:
@@ -457,6 +524,20 @@ class Automaton(object):
         raise ValueError(
             f"Action '{action_name}' not available in state '{state.key}'"
         )
+
+    def exported_env_keys(self) -> list[EnvKey]:
+        """Every declared env key the model may see at all (ai_access
+        other than none), in declaration order — the columns of an
+        `avance:env` source (see tracking.sources.avance_env) and the
+        content of the prompt's own env block (see tracking.env_prompt_block)."""
+        return [env_key for env_key in self.env_keys if env_key.exported]
+
+    def reads_env_source(self, state: State) -> bool:
+        """Whether `state` lists an `avance:env` source in either of its
+        read fields — the one condition under which the model gets an env
+        block in its system prompt at all (see tracking.env_prompt_block)."""
+        env_source_names = {source.name for source in self.sources if source.is_env_source}
+        return any(name in env_source_names for name in state.ai_read_source_names)
 
     def declared_env_key_names(self) -> set[str]:
         names = {env_key.name for env_key in self.env_keys}
@@ -518,7 +599,7 @@ class Automaton(object):
         result: dict[str, Any] = {}
         for key, expression in action.env.items():
             try:
-                result[key] = simpleeval.simple_eval(expression, names=scope)
+                result[key] = simpleeval.EvalWithCompoundTypes(names=scope).eval(expression)
             except Exception as exc:
                 logger.warning(
                     "env expression evaluation failed for action '%s', key '%s' ('%s'): %s",
@@ -602,7 +683,7 @@ class Automaton(object):
             signal_values = scope.get("signal", {})
             if any(signal_values.get(name) is None for name in TriggerExpressionAnalyzer.signal_names(expression)):
                 return False
-            return bool(simpleeval.simple_eval(expression, names=scope))
+            return bool(simpleeval.EvalWithCompoundTypes(names=scope).eval(expression))
         except Exception as exc:
             logger.warning("Trigger evaluation failed for expression '%s': %s", expression, exc)
             return False

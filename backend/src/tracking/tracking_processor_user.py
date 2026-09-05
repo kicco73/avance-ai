@@ -1,10 +1,10 @@
 from dataclasses import dataclass
-from typing import Any
 
 from automaton.automaton import State
 from logging_factory import LoggerFactory
 from session import Session
 from tracking.tracking_processor import OutVariables, TrackingProcessor
+from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 
 
 logger = LoggerFactory.get_logger(__name__)
@@ -15,52 +15,6 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 	class Parameters:
 		signal_row_id: State
 
-	def on_receiving_metadata_that_may_trigger_status_change(self, key: str, value: Any):
-		rv = value
-		if key == 'signals':
-			rv = self.metadata.signals = self.metadata_processor.parse_raw_signals(value)
-			self.out.action = self._tracking_engine.evaluate_triggered_action(
-				self.user.automaton, self.user.state, self.metadata.signals, session_id=self.user.session_id
-			)
-			if self.out.action:
-				self.out.state = self.user.automaton.get_state(self.out.action.target)
-			self.out.signals_resolved = True
-		elif key == 'env':
-			rv = self.metadata.env = self.metadata_processor.parse_raw_env(value)
-		elif key == 'audio':
-			rv = self.metadata.audio = value
-		elif key == 'reaction':
-			rv = self.metadata.reaction = value.strip() or None
-		elif key == 'input_tokens':
-			rv = self.metadata.input_tokens = (self.metadata.input_tokens or 0) + value
-		elif key == 'output_tokens':
-			rv = self.metadata.output_tokens = value
-		elif key == 'tool_result':
-			self.metadata.tool_calls.append(value)
-		self.metadata.on_metadata(key, rv)
-
-	def on_receiving_metadata_when_repeating_the_call(self, key: str, value: Any):
-		# 'signals' is never among tag_specs for this call — already known
-		# from the first call, re-requesting them would be wasted and must
-		# not trigger a second trigger evaluation. 'reaction' isn't among
-		# them either currently (see _get_ai_reply's own tag_specs) — kept
-		# here anyway so this handler stays a strict superset of what it's
-		# actually called with, same as 'env'/'audio' above.
-		rv = value
-		if key == 'env':
-			rv = self.metadata.env = self.metadata_processor.parse_raw_env(value)
-		elif key == 'audio':
-			rv = self.metadata.audio = value
-		elif key == 'reaction':
-			rv = self.metadata.reaction = value.strip() or None
-		elif key == 'input_tokens':
-			rv = self.metadata.input_tokens = (self.metadata.input_tokens or 0) + value
-		elif key == 'output_tokens':
-			rv = self.metadata.output_tokens = value
-		elif key == 'tool_result':
-			self.metadata.tool_calls.append(value)
-		self.metadata.on_metadata(key, rv)
-
 	async def _get_ai_reply(self) -> OutVariables:
 
 		self.out = OutVariables("", [], None, self.user.state, None)
@@ -68,14 +22,14 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 		# turn actually asks for them — a message that doesn't request
 		# 'signals' will never produce that metadata, so there's nothing to
 		# gate text on: stream normally from the first chunk.
-		self.out.signals_resolved = 'signals' not in self.build_turn_protocol().include_tags
+		self.out.signals_resolved = not self._evaluate_signals_for(self.user.state)
 
 		# Optimistic guess: generate the real reply first, using the
 		# *current* state's own context — the common case (no transition)
 		# needed exactly this one call anyway.
 
 		buffered_text_before_signals_resolved = ""
-		async for chunk in self.generate_reply(self.user.state, self.on_receiving_metadata_that_may_trigger_status_change):
+		async for chunk in self.generate_reply(self.user.state, self.on_receiving_metadata):
 			if not self.out.signals_resolved:
 				buffered_text_before_signals_resolved += chunk
 			elif self.user.state == self.out.state:
@@ -104,6 +58,14 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			# env: writes feed it), and not again via apply_transition
 			# further down — see record_transition. The action's on-enter
 			# is scheduled as a task from here, once.
+			#
+			# Note: with signal-tracking-on-ai-message false (the case that
+			# actually reaches this branch), any avance:env `update` tool
+			# call the optimistic reply above already made is a real,
+			# persisted write the instant it happened — it's never rolled
+			# back just because that reply itself gets discarded here for a
+			# transition. The regeneration below, running in the new state,
+			# sees it as the current value like any other action_set write.
 			self._tracking_engine.apply_action_env(
 				self.user.automaton, self.out.action, self.metadata.signals, self.user.state.key,
 				username=Session().user, project_id=self.user.project_id, session_id=self.user.session_id,
@@ -111,15 +73,14 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 
 			# Signals are already known from the first call — asking again
 			# would be wasted and must not trigger a second trigger
-			# evaluation, so this regeneration only ever requests audio/text/env.
-			base_prompt, chat_history = self._build_base_prompt_and_history(self.out.state)
-			async for chunk in self.build_turn_protocol(self.out.state).generate_reply_with_schema(
-				base_prompt, self.env,
-				tag_specs=[('audio', 'audio'), ('text', 'text'), ('env', 'env')],
-				chat_history=chat_history,
-				on_metadata=self.on_receiving_metadata_when_repeating_the_call,
+			# evaluation, so this regeneration only ever requests audio/text/memory.
+			base_prompt, chat_history, env_block = self._build_base_prompt_and_history(self.out.state)
+			channels = self.build_regeneration_channels(self.out.state, base_prompt)
+			async for chunk in TurnProtocolUsingSchema(self.ai_service).generate_reply(
+				channels, chat_history, on_metadata=self.on_receiving_metadata,
 				tool_set=self.build_tool_set(self.out.state),
 				force_required_tools=self.force_required_tools_for(self.out.state),
+				env_block=env_block.text() if env_block else None,
 			):
 				self.out.reply += chunk
 				self.metadata.on_metadata('chunk', chunk)

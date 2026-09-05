@@ -16,27 +16,38 @@ const props = defineProps({
 })
 
 const envLoading = ref(false)
-const stored = ref({})
+const memory = ref({})
 const actionSet = ref({})
+const aiAccess = ref({})
 const isLive = computed(() => props.editable)
 
-// Stored ("AI") entries are free-form and editable; action-set entries
-// (from an action's own env:) are read-only — reported separately by the
-// backend rather than merged.
-const storedEntries = computed(() => Object.entries(stored.value))
-const actionSetEntries = computed(() => Object.entries(actionSet.value))
+// Memory entries are the model's own free-form notes — editable; env
+// (action-set) entries are the automaton's declared keys, written by an
+// action's own env: or by the model's `update` tool — read-only here,
+// each badged with its own ai-access (what the model may do with it).
+const memoryEntries = computed(() => Object.entries(memory.value))
+const envEntries = computed(() => Object.entries(actionSet.value))
+
+function applyResult(result) {
+  memory.value = result.memory
+  actionSet.value = result.action_set
+  aiAccess.value = result.ai_access ?? {}
+}
+
+function accessLabel(key) {
+  return aiAccess.value[key] ?? 'none'
+}
 
 async function loadEnv() {
   if (props.sessionId == null) {
-    stored.value = {}
+    memory.value = {}
     actionSet.value = {}
+    aiAccess.value = {}
     return
   }
   envLoading.value = true
   try {
-    const result = await getEnv(props.sessionId, props.untilMessageId ?? undefined)
-    stored.value = result.stored
-    actionSet.value = result.action_set
+    applyResult(await getEnv(props.sessionId, props.untilMessageId ?? undefined))
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -57,7 +68,7 @@ function setEditInputRef(el) {
 async function startEditing(key) {
   if (!isLive.value) return
   editingKey.value = key
-  editingValue.value = stored.value[key]
+  editingValue.value = memory.value[key]
   await nextTick()
   editInputEl?.focus()
   editInputEl?.select()
@@ -72,11 +83,9 @@ async function commitEditing() {
   if (key === null) return
   editingKey.value = null
   const value = editingValue.value
-  if (value === stored.value[key]) return // unchanged — skip the round trip
+  if (value === memory.value[key]) return // unchanged — skip the round trip
   try {
-    const result = await putEnvValue(props.sessionId, key, value)
-    stored.value = result.stored
-    actionSet.value = result.action_set
+    applyResult(await putEnvValue(props.sessionId, key, value))
   } catch {
     // already surfaced via apiFetch
   }
@@ -84,9 +93,7 @@ async function commitEditing() {
 
 async function removeKey(key) {
   try {
-    const result = await deleteEnvValue(props.sessionId, key)
-    stored.value = result.stored
-    actionSet.value = result.action_set
+    applyResult(await deleteEnvValue(props.sessionId, key))
   } catch {
     // already surfaced via apiFetch
   }
@@ -94,16 +101,14 @@ async function removeKey(key) {
 
 async function clearAll() {
   const ok = await confirmDialog({
-    title: 'Clear environment values',
-    body: 'Clear all stored environment values? This cannot be undone.',
+    title: 'Clear memory',
+    body: 'Clear every memory note and every env value? This cannot be undone.',
     okLabel: 'Clear',
     danger: true
   })
   if (!ok) return
   try {
-    const result = await clearEnv(props.sessionId)
-    stored.value = result.stored
-    actionSet.value = result.action_set
+    applyResult(await clearEnv(props.sessionId))
   } catch {
     // already surfaced via apiFetch
   }
@@ -125,27 +130,39 @@ defineExpose({ loadEnv, refresh })
       <div class="inspector-signal-block">
         <div class="inspector-signal-header">
           <span class="inspector-detail-badge inspector-detail-badge-env-action">ENV</span>
-          <span class="inspector-signal-name">User memory</span>
+          <span class="inspector-signal-name">Env</span>
         </div>
-        <p v-if="!actionSetEntries.length" class="inspector-env-empty">No values defined yet.</p>
-        <p v-for="[key, value] in actionSetEntries" :key="key" class="inspector-detail-field">
-          <strong>{{ key }}:</strong> {{ value === null ? '—' : value }}
-        </p>
+        <p v-if="!envEntries.length" class="inspector-env-empty">No values defined yet.</p>
+        <div v-for="[key, value] in envEntries" :key="key" class="inspector-env-row">
+          <strong class="inspector-env-key">{{ key }}:</strong>
+          <span class="inspector-env-value">{{ value === null ? '—' : value }}</span>
+          <span
+            class="inspector-env-access"
+            :class="'inspector-env-access-' + accessLabel(key)"
+            :title="
+              accessLabel(key) === 'readwrite'
+                ? 'The model can read and update this key (ai-access: readwrite)'
+                : accessLabel(key) === 'readonly'
+                  ? 'The model can read this key (ai-access: readonly)'
+                  : 'Scripts only — the model never sees this key (ai-access: none)'
+            "
+          >{{ accessLabel(key) }}</span>
+        </div>
       </div>
 
       <div class="inspector-signal-block">
         <div class="inspector-signal-header">
           <span class="inspector-detail-badge inspector-detail-badge-env">AI</span>
-          <span class="inspector-signal-name">Auto memory</span>
+          <span class="inspector-signal-name">Memory</span>
           <button
-            v-if="isLive && storedEntries.length"
+            v-if="isLive && memoryEntries.length"
             class="inspector-env-clear-btn"
-            title="Clear all stored values"
+            title="Clear all memory notes"
             @click="clearAll"
           >Clear all</button>
         </div>
-        <p v-if="!storedEntries.length" class="inspector-env-empty">No stored values yet.</p>
-        <div v-for="[key, value] in storedEntries" :key="key" class="inspector-env-row">
+        <p v-if="!memoryEntries.length" class="inspector-env-empty">No memory notes yet.</p>
+        <div v-for="[key, value] in memoryEntries" :key="key" class="inspector-env-row">
           <span class="inspector-env-ai-icon" title="Read by the AI">
             <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
           </span>
@@ -200,4 +217,7 @@ defineExpose({ loadEnv, refresh })
 .inspector-env-delete-btn:hover { background: #fdecea; color: #c62828; }
 .inspector-env-clear-btn { margin-left: auto; flex-shrink: 0; border: 1px solid #c62828; border-radius: 6px; background: white; color: #c62828; cursor: pointer; font-size: 0.7rem; padding: 0.15rem 0.5rem; }
 .inspector-env-clear-btn:hover { background: #c62828; color: white; }
+.inspector-env-access { flex-shrink: 0; font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.1rem 0.4rem; border-radius: 999px; color: white; background: #9e9e9e; }
+.inspector-env-access-readonly { background: #4a6fa5; }
+.inspector-env-access-readwrite { background: #6d28d9; }
 </style>

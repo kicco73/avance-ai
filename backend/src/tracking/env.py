@@ -1,8 +1,13 @@
-"""Per-(user, project) "environment" memory. Two stores kept separate —
-`stored()` (free-form, model-reported via [env]...[/env]) and
-`action_set()` (deterministic, from an action's YAML `env:` field) — so
-the Inspector Env tab can badge them apart and know which are editable.
-`Env` is a plain in-memory store; `PersistedEnv` reads/writes through `db`."""
+"""Per-(user, project) "environment" store. Two stores kept separate under
+one object, with two different owners: `memory()` — the model's own
+free-form notes, written only by the model (the `memory` field of its
+structured reply) and read only by the model (the prompt's own "Current
+memory" block); no script or trigger ever sees it — and `action_set()` —
+the automaton's declared env keys, deterministic, written by an action's
+own YAML `env:` field (or, for a readwrite key, by the model through an
+`avance:env` source's `update`, see tracking.sources.avance_env) and read
+by triggers, scripts and the prompt's own env block alike. `Env` is a
+plain in-memory store; `PersistedEnv` reads/writes through `db`."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -22,61 +27,71 @@ if TYPE_CHECKING:
 class Env(object):
     def __init__(
         self,
-        stored: dict[str, Any] | None = None,
+        memory: dict[str, Any] | None = None,
         action_set: dict[str, Any] | None = None,
     ) -> None:
-        self._stored: dict[str, Any] = dict(stored or {})
+        self._memory: dict[str, Any] = dict(memory or {})
         self._action_set: dict[str, Any] = dict(action_set or {})
 
-    def _write_stored(self, values: dict[str, Any], message_id: int | None = None) -> None:
-        self._stored = values
+    def _write_memory(self, values: dict[str, Any], message_id: int | None = None) -> None:
+        self._memory = values
 
-    def _write_action_set(self, values: dict[str, Any]) -> None:
+    def _write_action_set(self, values: dict[str, Any], origin: str | None = None) -> int | None:
         self._action_set = values
+        return None
 
     def action_set(self, until: datetime | None = None) -> dict[str, Any]:
-        """Just the persisted values an action's own YAML `env:` field set —
-        kept separate from stored()'s model-reported values so the `env`
-        evaluation-scope namespace can deliberately exclude free-form ones."""
+        """Just the persisted values an action's own YAML `env:` field (or
+        the model's own `update` on an avance:env source) set — kept
+        separate from memory()'s model-reported notes so the `env`
+        evaluation-scope namespace can deliberately exclude those."""
         return dict(self._action_set)
 
-    def update_action_set(self, values: dict[str, Any]) -> None:
-        """action_set()'s own update — fired by an action, never the model
-        itself (that's update(), for `[env]`-reported values). Merges
-        onto whatever's already action-set."""
+    def update_action_set(self, values: dict[str, Any], origin: str | None = None) -> int | None:
+        """action_set()'s own update — fired by an action's `env:`, or by
+        the model's `update` on an avance:env source (origin "tool", so
+        TrackingProcessor can later bind that write to the turn's own
+        assistant message — see Db.link_tool_env_writes_to_message);
+        never the reply's own memory field (that's update()). Merges onto
+        whatever's already action-set. Returns the Tracking row id the
+        write landed in, None for an in-memory store."""
         if not values:
-            return
+            return None
         merged = {**self.action_set(), **values}
-        self._write_action_set(merged)
+        return self._write_action_set(merged, origin)
 
-    def stored(self, until: datetime | None = None) -> dict[str, Any]:
-        """The persisted, free-form key:values — reported separately from
-        action_set() so the Inspector Env tab knows which are actually
+    def memory(self, until: datetime | None = None) -> dict[str, Any]:
+        """The model's own persisted, free-form notes — reported separately
+        from action_set() so the Inspector knows which are actually
         editable/deletable (only these are)."""
-        return dict(self._stored)
+        return dict(self._memory)
 
     def update(self, values: dict[str, Any], message_id: int | None = None) -> None:
+        """Merges the reply's own `memory` delta onto memory(). A key the
+        automaton declares and has set (action_set()) is dropped, never
+        duplicated into memory — the model is told to change those only
+        through the `update` tool, and this is the backstop."""
         if not values:
             return
         action_set = self.action_set()
         filtered = {key: value for key, value in values.items() if key not in action_set}
         if not filtered:
             return
-        merged = {**self.stored(), **filtered}
-        self._write_stored(merged, message_id)
+        merged = {**self.memory(), **filtered}
+        self._write_memory(merged, message_id)
 
     def set_value(self, key: str, value: str) -> None:
-        """Alias for update({key: value}), used by the Inspector Env
-        tab's edit-in-place."""
+        """Alias for update({key: value}), used by the Inspector's own
+        Memory section edit-in-place."""
         self.update({key: value})
 
     def delete_key(self, key: str) -> None:
-        """Used by the Inspector Env tab's "delete this pair" action."""
-        current = self.stored()
+        """Used by the Inspector's own "delete this pair" action."""
+        current = self.memory()
         if key not in current:
             return
         del current[key]
-        self._write_stored(current)
+        self._write_memory(current)
 
     def drop_action_set_keys(self, keys: set[str]) -> None:
         current = self.action_set()
@@ -86,22 +101,20 @@ class Env(object):
         self._write_action_set(remaining)
 
     def clear(self) -> None:
-        self._write_stored({})
+        self._write_memory({})
         self._write_action_set({})
 
     def get(self, key: str, default: Any = None) -> Any:
         # action_set() takes priority on a name collision — an action's
         # own `env:` field is the more deliberate/authoritative source
-        # than whatever the model itself reported under the same name.
-        return {**self.stored(), **self.action_set()}.get(key, default)
+        # than whatever the model itself noted under the same name.
+        return {**self.memory(), **self.action_set()}.get(key, default)
 
-    def serialise_as_text(self) -> str:
-        """Every stored value plus every action-set one, merged into the
-        text rendered back into the turn's [env]...[/env] block.
-        System/session facts are never included here — those are
-        evaluation-scope-only."""
-        merged = {**self.stored(), **self.action_set()}
-        return "\n".join(f"{key}: {value}" for key, value in merged.items())
+    def memory_as_text(self) -> str:
+        """memory() rendered as the "key: value" lines of the prompt's own
+        "Current memory" block — memory only, never the automaton's env
+        (that's tracking.env_prompt_block's job, with its own perimeter)."""
+        return "\n".join(f"{key}: {value}" for key, value in self.memory().items())
 
 
 class PersistedEnv(Env):
@@ -124,7 +137,7 @@ class PersistedEnv(Env):
         env read here answers for one project and a write lands in
         another's Tracking rows.
 
-        `session_id` has no default on purpose — _write_stored/
+        `session_id` has no default on purpose — _write_memory/
         _write_action_set below persist through it (Tracking.session is a
         real FK), so a caller with no real session must use a plain Env()
         instead (see ChatService._schedule_on_enter/tracking.actuators.
@@ -143,18 +156,18 @@ class PersistedEnv(Env):
     def _user(self) -> str:
         return self._username if self._username is not None else Session().user
 
-    def stored(self, until: datetime | None = None) -> dict[str, Any]:
+    def memory(self, until: datetime | None = None) -> dict[str, Any]:
         """`until` (naive-but-UTC): as they stood at or before that
         point, for the "Label sessions" view's point-in-time Inspector
         (see ChatService.get_env); omitted (None) means live/current."""
         return self._db.get_env(self._project_id(), self._user(), until=until)
 
     def action_set(self, until: datetime | None = None) -> dict[str, Any]:
-        """Same `until` convention as stored()."""
+        """Same `until` convention as memory()."""
         return self._db.get_action_env(self._project_id(), self._user(), until=until)
 
-    def _write_stored(self, values: dict[str, Any], message_id: int | None = None) -> None:
+    def _write_memory(self, values: dict[str, Any], message_id: int | None = None) -> None:
         self._db.set_env(self._session_id, values, message_id=message_id)
 
-    def _write_action_set(self, values: dict[str, Any]) -> None:
-        self._db.set_action_env(self._session_id, values)
+    def _write_action_set(self, values: dict[str, Any], origin: str | None = None) -> int | None:
+        return self._db.set_action_env(self._session_id, values, origin=origin)

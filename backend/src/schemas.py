@@ -142,8 +142,8 @@ class SetWhatsAppPhoneNumberRequest(BaseModel):
 
 
 class SetEnvValueRequest(BaseModel):
-    # See ChatService.set_env_value/chat.env.Env.set_value — the
-    # Inspector Env tab's own "click a value to edit it".
+    # See ChatService.set_env_value/tracking.env.Env.set_value — the
+    # Inspector's Memory section's own "click a value to edit it".
     value: str
 
 
@@ -152,8 +152,8 @@ class SetProjectFieldRequest(BaseModel):
     # Editable fields are free text (ui-label, contextual-prompt, etc.), a
     # plain boolean (a state's history-cutoff/chat), a mapping of
     # env-key -> expression source (an action's own 'env' field only), or
-    # a list of source names (a state's own 'ai-may-query-sources'/
-    # 'ai-must-query-sources' fields only).
+    # a list of source names (a state's own 'ai-may-read-sources'/
+    # 'ai-must-read-sources'/'ai-may-write-sources' fields only).
     value: str | bool | dict[str, str] | list[str]
 
     @field_validator("value")
@@ -164,7 +164,7 @@ class SetProjectFieldRequest(BaseModel):
         """Trims string values so incidental UI whitespace (e.g. "Action ")
         never creates a duplicate distinct from "Action". A bare boolean
         (history-cutoff/chat) passes through untouched; a mapping (env) or
-        a list (ai-may-query-sources/ai-must-query-sources) is stripped
+        a list (ai-may-read-sources/ai-must-read-sources/ai-may-write-sources) is stripped
         entry by entry the same way."""
         if isinstance(value, str):
             return value.strip()

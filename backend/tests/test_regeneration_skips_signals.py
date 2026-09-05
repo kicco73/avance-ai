@@ -9,7 +9,7 @@ from datetime import datetime
 
 import pytest
 
-from automaton.automaton import Action, Automaton, Signal, State
+from automaton.automaton import Action, Automaton, EnvKey, Signal, Source, State
 from metrics.metric_service import MetricService
 from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
@@ -26,13 +26,20 @@ PROJECT_ID = "proj"
 
 
 def _automaton(action_env: dict[str, str] | None = None) -> Automaton:
+    """With `action_env`, the destination state B also reads an avance:env
+    source and `mood_score` is exported read-only — the one configuration
+    under which an action-set env key ever reaches the model's prompt at
+    all (see tracking.env_prompt_block)."""
     mood = Signal(name="mood", ui_label="Mood", definition="0-100 mood score.")
     action = Action(
         name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="signal.mood >= 50",
         env=action_env,
     )
     state_a = State(key="a", ui_label="A", final=False, contextual_prompt="You are in A.", actions=[action])
-    state_b = State(key="b", ui_label="B", final=True, contextual_prompt="You are in B.")
+    state_b = State(
+        key="b", ui_label="B", final=True, contextual_prompt="You are in B.",
+        ai_may_read_sources=("env",) if action_env else (),
+    )
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
         init_action=init_action,
@@ -42,6 +49,8 @@ def _automaton(action_env: dict[str, str] | None = None) -> Automaton:
         attachments={},
         general_attachments={},
         autotracking_on_ai_message=False,
+        env_keys=[EnvKey(name=key, ai_access="readonly", ai_definition=f"The {key}.") for key in (action_env or {})],
+        sources=[Source(name="env", url="avance:env", ui_label="Env", ai_definition="The variables.")] if action_env else [],
     )
 
 
@@ -130,7 +139,7 @@ async def test_a_turn_that_fires_a_trigger_records_origin_trigger(db):
     assert signals[-1]["origin"] == "trigger"
 
 
-async def test_regeneration_prompt_includes_existing_and_the_firing_actions_own_env(db):
+async def test_regeneration_prompt_includes_existing_memory_and_the_firing_actions_own_env(db):
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
     session_id = db.create_chat_session(

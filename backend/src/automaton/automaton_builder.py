@@ -1,4 +1,7 @@
-from automaton.automaton import Action, EnvKey, MemoryArchive, Automaton, Reaction, Signal, Source, SourceDict, State
+from automaton.automaton import (
+    AI_ACCESS_NONE, AI_ACCESS_VALUES, Action, EnvKey, MemoryArchive, Automaton, Reaction, Signal, Source, SourceDict,
+    State,
+)
 from automaton.build_error import AutomatonBuildError
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
@@ -6,7 +9,8 @@ from typing import Any
 from logging_factory import LoggerFactory
 from metrics.metrics_framework import metric_names
 from tracking.actuators import ActuatorSet, MAX_ATTACHMENT_READ_BYTES
-from tracking.sources import SOURCE_DRIVERS
+from tracking.sources import SOURCE_DRIVERS, READ_METHOD, WRITE_METHOD, driver_class_for
+from tracking.sources.avance_env import PATH as AVANCE_ENV_PATH
 from tracking.sources.url import parse_source_url
 
 from ruamel.yaml import YAML
@@ -39,6 +43,21 @@ EXTENSION_TO_MEDIA_TYPE = {
 
 VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
+# A state's three source fields (see automaton.State) and the
+# SourceDriver method each one exposes to the model.
+STATE_SOURCE_FIELDS = (
+    ("ai-may-read-sources", READ_METHOD), ("ai-must-read-sources", READ_METHOD), ("ai-may-write-sources", WRITE_METHOD),
+)
+# Field names a state used to carry and the one that replaced each — a
+# stored revision still declaring one gets rewritten at boot (see
+# project.archive.legacy_tools_field_migration); a fresh build is
+# rejected with a message naming the new field instead.
+LEGACY_STATE_SOURCE_FIELDS = {
+    "tools": "ai-may-read-sources",
+    "ai-may-query-sources": "ai-may-read-sources",
+    "ai-must-query-sources": "ai-must-read-sources",
+}
+
 class AutomatonBuilder(object):
     """Builds an Automaton from a project's index.yml: parses the YAML,
     resolves attachments, validates the result, and constructs the
@@ -55,6 +74,13 @@ class AutomatonBuilder(object):
     def __init__(self) -> None:
         self._current_line: int | None = None
         self._current_section: str | None = None
+        # Non-fatal findings (see _warn) — handed to the Automaton as
+        # build_warnings once the build succeeds.
+        self._warnings: list[str] = []
+
+    def _warn(self, message: str) -> None:
+        logger.warning("Build warning: %s", message)
+        self._warnings.append(message)
 
     def _at(self, line: int | None, section: str) -> None:
         self._current_line = line
@@ -158,14 +184,34 @@ class AutomatonBuilder(object):
     @staticmethod
     def _build_env_key(name: str, raw_env_key: dict) -> EnvKey:
         """One `env:` declaration. `value` is normalized to expression
-        *source*, exactly like an action's own `env:` field."""
-        raw_value = (raw_env_key or {}).get("value", "")
+        *source*, exactly like an action's own `env:` field. `ai-access`
+        (default none) says what the model may do with this key through
+        an avance:env source; `ai-definition` — the text the model reads
+        about it — is required as soon as ai-access isn't none, the same
+        requirement a source exposed to the model gets (see
+        _actions_sanity_check), optional otherwise."""
+        raw_env_key = raw_env_key or {}
+        raw_value = raw_env_key.get("value", "")
         value = raw_value if isinstance(raw_value, str) else str(raw_value)
-        raw_description = (raw_env_key or {}).get("ui-description")
+        raw_description = raw_env_key.get("ui-description")
+        ai_access = raw_env_key.get("ai-access", AI_ACCESS_NONE)
+        if ai_access not in AI_ACCESS_VALUES:
+            raise ValueError(
+                f"env key '{name}': 'ai-access' must be one of {', '.join(AI_ACCESS_VALUES)}, got {ai_access!r}."
+            )
+        raw_ai_definition = raw_env_key.get("ai-definition")
+        ai_definition = raw_ai_definition.strip() if isinstance(raw_ai_definition, str) and raw_ai_definition.strip() else None
+        if ai_access != AI_ACCESS_NONE and ai_definition is None:
+            raise ValueError(
+                f"env key '{name}': 'ai-access: {ai_access}' requires an 'ai-definition' — the text the model "
+                "reads to know what this variable means, the same requirement a source exposed to the model gets."
+            )
         return EnvKey(
             name=name,
             value=value.strip(),
             ui_description=raw_description.strip() if raw_description else None,
+            ai_access=ai_access,
+            ai_definition=ai_definition,
         )
 
     def _build_source(self, name: str, raw_source: dict, all_archives: dict[str, MemoryArchive]) -> Source:
@@ -183,7 +229,9 @@ class AutomatonBuilder(object):
         the project's own embedded default driver, so a source name that
         outruns its backing file (a hand-edited index.yml, a family
         member copied before its archive) still builds, empty, instead
-        of failing the whole project."""
+        of failing the whole project. `avance:env` is the one 'avance'
+        path with no archive behind it at all (see
+        tracking.sources.avance_env) — never provisioned."""
         raw_source = raw_source or {}
         url = raw_source.get("url") or ""
         if url:
@@ -195,7 +243,7 @@ class AutomatonBuilder(object):
                 raise ValueError(
                     f"Source '{name}': url scheme '{scheme}' must be one of: {', '.join(sorted(SOURCE_DRIVERS))}."
                 )
-            if scheme == "avance" and self._find_archive(path, all_archives, f"source '{name}'") is None:
+            if scheme == "avance" and path != AVANCE_ENV_PATH and self._find_archive(path, all_archives, f"source '{name}'") is None:
                 all_archives[path] = MemoryArchive(
                     filename=path,
                     source={"type": "text", "media_type": "text/plain", "data": ""},
@@ -208,6 +256,22 @@ class AutomatonBuilder(object):
             ui_description=raw_source.get("ui-description"),
             ai_definition=raw_ai_definition.strip() if raw_ai_definition else None,
         )
+
+    def _validate_env_sources(self, sources: dict[str, Source], env_keys: dict[str, EnvKey], raw_sources) -> None:
+        """An `avance:env` source exposes the env keys with ai-access
+        other than none — declaring one when no key exports anything is
+        an empty table, always a mistake. The converse (exported keys but
+        no avance:env source) is fine: ai-access is harmless until a
+        source actually exposes the key, and the key still serves scripts."""
+        if any(env_key.exported for env_key in env_keys.values()):
+            return
+        for name, source in sources.items():
+            if source.is_env_source:
+                self._at(self._line_of(raw_sources, name), f"sources.{name}")
+                raise ValueError(
+                    f"Source '{name}': url 'avance:env' exposes the project's env keys to the model, but no env "
+                    "key declares 'ai-access: readonly' or 'ai-access: readwrite' — nothing to expose."
+                )
 
     def _validate_env_key_default_order(self, env_keys: dict[str, EnvKey], raw_env_keys) -> None:
         """A later env key's own default may reference an earlier one
@@ -308,24 +372,25 @@ class AutomatonBuilder(object):
                 f"'{transition_log_level}' must be one of {sorted(VALID_LOG_LEVELS)}"
             )
 
-        if "tools" in raw_state:
-            raise ValueError(
-                f"State '{key}': 'tools' is no longer a valid field — use 'ai-may-query-sources' "
-                "(the model decides whether to call it) or 'ai-must-query-sources' (forced once per "
-                "entry into this state) instead."
-            )
-        raw_may_query_sources = raw_state.get("ai-may-query-sources", [])
-        raw_must_query_sources = raw_state.get("ai-must-query-sources", [])
-        for field_name, raw_list in (
-            ("ai-may-query-sources", raw_may_query_sources), ("ai-must-query-sources", raw_must_query_sources),
-        ):
+        for legacy_field, replacement in LEGACY_STATE_SOURCE_FIELDS.items():
+            if legacy_field in raw_state:
+                raise ValueError(
+                    f"State '{key}': '{legacy_field}' is no longer a valid field — use '{replacement}' instead "
+                    "('ai-may-read-sources': the model decides whether to call a source's select; "
+                    "'ai-must-read-sources': forced once per entry into this state; "
+                    "'ai-may-write-sources': the model may call a source's update)."
+                )
+        raw_source_lists: dict[str, list[str]] = {}
+        for field_name, _method in STATE_SOURCE_FIELDS:
+            raw_list = raw_state.get(field_name, [])
             if not isinstance(raw_list, list) or not all(isinstance(t, str) for t in raw_list):
                 raise ValueError(f"State '{key}': '{field_name}' must be a list of source names if present.")
-        overlap = set(raw_may_query_sources) & set(raw_must_query_sources)
+            raw_source_lists[field_name] = list(raw_list)
+        overlap = set(raw_source_lists["ai-may-read-sources"]) & set(raw_source_lists["ai-must-read-sources"])
         if overlap:
             raise ValueError(
-                f"State '{key}': {', '.join(sorted(overlap))} declared in both 'ai-may-query-sources' "
-                "and 'ai-must-query-sources' — a source can only be in one."
+                f"State '{key}': {', '.join(sorted(overlap))} declared in both 'ai-may-read-sources' "
+                "and 'ai-must-read-sources' — a source can only be in one."
             )
 
         return State(
@@ -342,11 +407,12 @@ class AutomatonBuilder(object):
             chat=raw_state.get("chat", True),
             reactions_enabled=raw_state.get("reactions-enabled", False),
             # Existence of each name (against this project's own
-            # `sources:`) and its own required `ai-definition` are checked
-            # later, once `sources` itself is fully built — see
-            # _actions_sanity_check.
-            ai_may_query_sources=tuple(raw_may_query_sources),
-            ai_must_query_sources=tuple(raw_must_query_sources),
+            # `sources:`), its own required `ai-definition`, and — for a
+            # write — its driver's own update support are checked later,
+            # once `sources` itself is fully built — see _actions_sanity_check.
+            ai_may_read_sources=tuple(raw_source_lists["ai-may-read-sources"]),
+            ai_must_read_sources=tuple(raw_source_lists["ai-must-read-sources"]),
+            ai_may_write_sources=tuple(raw_source_lists["ai-may-write-sources"]),
             line=line,
         )
 
@@ -382,17 +448,20 @@ class AutomatonBuilder(object):
             if source is None:
                 unknown.add(f"source.{source_name}")
                 continue
-            # A source with no url yet (see _build_source) supports
-            # nothing — every method reference on it is reported unknown,
-            # same as one naming an unsupported method on a configured source.
-            try:
-                scheme, _ = parse_source_url(source.url)
-                supported = SOURCE_DRIVERS[scheme].SUPPORTED_METHODS
-            except (ValueError, KeyError):
-                supported = frozenset()
-            unknown |= {f"source.{source_name}.{m}" for m in methods - supported}
+            unknown |= {f"source.{source_name}.{m}" for m in methods - AutomatonBuilder._supported_methods(source)}
         if unknown:
             raise ValueError(f"{context} references undefined name(s): {', '.join(sorted(unknown))}")
+
+    @staticmethod
+    def _supported_methods(source: Source) -> frozenset[str]:
+        """What `source`'s own driver implements — empty for a source
+        with no url yet (see _build_source), which supports nothing: every
+        method reference on it is reported unknown, same as one naming an
+        unsupported method on a configured source."""
+        try:
+            return driver_class_for(source.url).SUPPORTED_METHODS
+        except (ValueError, KeyError):
+            return frozenset()
 
     @staticmethod
     def _validate_actuator_arity(expression: str, context: str) -> None:
@@ -528,21 +597,7 @@ class AutomatonBuilder(object):
         registry_without_actuator = IdentifierRegistry.for_triggers(registry)
         registry_without_session = IdentifierRegistry.for_actuators(registry)
         self._at(state.line, f"states.{key}")
-        for field_name, tool_names in (
-            ("ai-may-query-sources", state.ai_may_query_sources), ("ai-must-query-sources", state.ai_must_query_sources),
-        ):
-            for tool_name in tool_names:
-                source = sources.get(tool_name)
-                if source is None:
-                    raise ValueError(
-                        f"State '{state.key}': {field_name} '{tool_name}' — 'sources.{tool_name}' is not "
-                        "declared in the project's own 'sources:' section."
-                    )
-                if not source.ai_definition:
-                    raise ValueError(
-                        f"State '{state.key}': {field_name} '{tool_name}' — source '{tool_name}' has no "
-                        "own 'ai-definition', required for a source exposed to the model as a tool."
-                    )
+        self._validate_state_sources(state, sources)
         for action in state.actions:
             self._at(action.line, f"states.{key}.actions.{action.name}")
             if action.target not in declared_states:
@@ -587,6 +642,47 @@ class AutomatonBuilder(object):
                 self._validate_on_enter(
                     action.on_enter, f"State {key}, action '{action.name}'", registry_without_session, sources,
                     all_archives,
+                )
+
+    def _validate_state_sources(self, state: State, sources: dict[str, Source]) -> None:
+        """Every name in a state's three source fields must be a declared
+        source with its own `ai-definition`; a write additionally needs a
+        driver that implements update — reported with the very same
+        "undefined name(s)" wording a script calling an unsupported method
+        gets (see _validate_namespaced_expression). An avance:env source
+        the model may write but never read in the same state builds
+        (writing blind is legal) but is almost certainly an oversight —
+        a warning, not an error."""
+        by_field = {
+            "ai-may-read-sources": state.ai_may_read_sources,
+            "ai-must-read-sources": state.ai_must_read_sources,
+            "ai-may-write-sources": state.ai_may_write_sources,
+        }
+        for field_name, method in STATE_SOURCE_FIELDS:
+            for source_name in by_field[field_name]:
+                source = sources.get(source_name)
+                if source is None:
+                    raise ValueError(
+                        f"State '{state.key}': {field_name} '{source_name}' — 'sources.{source_name}' is not "
+                        "declared in the project's own 'sources:' section."
+                    )
+                if not source.ai_definition:
+                    raise ValueError(
+                        f"State '{state.key}': {field_name} '{source_name}' — source '{source_name}' has no "
+                        "own 'ai-definition', required for a source exposed to the model as a tool."
+                    )
+                if method not in self._supported_methods(source):
+                    raise ValueError(
+                        f"State '{state.key}': {field_name} '{source_name}' references undefined name(s): "
+                        f"source.{source_name}.{method}"
+                    )
+        for source_name in state.ai_may_write_sources:
+            source = sources[source_name]
+            if source.is_env_source and source_name not in state.ai_read_source_names:
+                self._warn(
+                    f"State '{state.key}': ai-may-write-sources '{source_name}' — the model may write the env "
+                    f"here but never sees the current values: add '{source_name}' to 'ai-may-read-sources' or "
+                    "'ai-must-read-sources' too."
                 )
 
     @staticmethod
@@ -856,6 +952,7 @@ class AutomatonBuilder(object):
         for name, raw_source in raw_sources.items():
             self._at(self._line_of(raw_sources, name), f"sources.{name}")
             sources[name] = self._build_source(name, raw_source, all_archives)
+        self._validate_env_sources(sources, env_keys, raw_sources)
         # Unlike every other forward reference in this file (see the
         # comment on Pass 1 below), env keys' own defaults are a real
         # exception: they're applied top-to-bottom, once, the first time
@@ -940,4 +1037,5 @@ class AutomatonBuilder(object):
             project_ui_label=project_ui_label,
             project_ui_description=project_ui_description,
             talk_enabled=talk_enabled,
+            build_warnings=self._warnings,
         )

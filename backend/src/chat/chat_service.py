@@ -658,12 +658,18 @@ class ChatService(object):
 		return {'signals': data['signals'], 'transitions': transitions}
 
 	def get_env(self, session_id: int, message_id: int | None = None) -> dict:
+		"""`memory`: the model's own notes (editable in the Inspector);
+		`action_set`: the automaton's declared env keys as currently set;
+		`ai_access`: every declared key's own ai-access, so the Inspector
+		can badge which of those the model sees/writes (see automaton.EnvKey)."""
 		self._require_own_session(session_id)
 		until = self._until_from_message(message_id)
 		env = self._env_for_session(session_id)
+		automaton = self._project_service.get_automaton_for_session(session_id)
 		return {
-			"stored": env.stored(until),
+			"memory": env.memory(until),
 			"action_set": env.action_set(until),
+			"ai_access": {env_key.name: env_key.ai_access for env_key in automaton.env_keys},
 		}
 
 	def set_env_value(self, session_id: int, key: str, value: str) -> dict:
@@ -812,7 +818,7 @@ class ChatService(object):
 		# tracking_engine below writes through, so "already has a value"
 		# is answered by the project the defaults belong to.
 		env = self._env_for_session(session_id)
-		current = {**env.stored(), **env.action_set()}
+		current = {**env.memory(), **env.action_set()}
 		missing = {key: expression for key, expression in action.env.items() if key not in current}
 		if not missing:
 			return
@@ -915,21 +921,25 @@ class ChatService(object):
 
 	async def _messages_for_transition(
 		self, session_id: int, new_state: State, *, is_self_loop: bool
-	) -> list[dict]:
+	) -> tuple[list[dict], dict | None]:
 		"""The new state's own opening message, if this transition
 		generated one, as a flat message row (list-wrapped for
-		apply_manual_action's own "reply" field). A turn whose reply
-		landed in a non-chat state has no assistant_message_id, so
-		nothing is returned rather than looked up as None."""
+		apply_manual_action's own "reply" field) — plus that same turn's
+		own freshly-built state payload (already _with_manual_actions-
+		wrapped, see _process_turn_body's own tail), None when no turn
+		actually ran. A turn whose reply landed in a non-chat state has no
+		assistant_message_id, so nothing is returned rather than looked up
+		as None; its state payload is still handed back, since a turn ran
+		either way."""
 		should_open = not is_self_loop and self._should_generate_opening_message(session_id, new_state)
 		if not should_open:
-			return []
+			return [], None
 		turn_result = await self._process_turn_body(session_id)
 		message_id = turn_result["assistant_message_id"]
 		if message_id is None:
-			return []
+			return [], turn_result["state"]
 		message = self._db.get_message(message_id)
-		return [message] if message is not None else []
+		return ([message] if message is not None else []), turn_result["state"]
 
 	async def apply_manual_action(self, action_name: str, session_id: int) -> dict:
 		project_id = self._project_id_for_session(session_id)
@@ -952,12 +962,17 @@ class ChatService(object):
 				automaton, action, {}, source_state_key, username=Session().user, project_id=project_id,
 				session_id=session["id"],
 			)
-			reply = await self._messages_for_transition(
+			reply, fresh_state_payload = await self._messages_for_transition(
 				session["id"], state, is_self_loop=(action.target == source_state_key)
 			)
 			self._session_manager.touch_session(session["id"], state.key)
 			return {
-				"state": self._with_manual_actions(session["id"], state_payload),
+				# Prefer the turn's own freshly-built payload when one ran
+				# (see _messages_for_transition) — it may carry translated
+				# button labels (or a further transition) the plain
+				# state_payload fetched above, from before any turn ran,
+				# never reflects.
+				"state": fresh_state_payload if fresh_state_payload is not None else self._with_manual_actions(session["id"], state_payload),
 				"reply": reply,
 				"ai_model": self.get_ai_models_info(),
 				"session_id": session["id"],

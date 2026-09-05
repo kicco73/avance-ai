@@ -1,8 +1,10 @@
 """project.archive.legacy_tools_field_migration — the boot-time, one-off
-rewrite of every stored index.yml revision whose state(s) still declare
-the now-removed `tools:` field into `ai-may-query-sources:` (see
-automaton.State.ai_may_query_sources), same overall shape as
-legacy_source_read_migration.py's own migration off source.<name>.read().
+rewrite of every stored index.yml revision whose state(s) still declare a
+legacy source-field name (`tools:`/`ai-may-query-sources:` ->
+`ai-may-read-sources:`, `ai-must-query-sources:` -> `ai-must-read-sources:`,
+see automaton.State.ai_may_read_sources/ai_must_read_sources), same
+overall shape as legacy_source_read_migration.py's own migration off
+source.<name>.read().
 """
 from __future__ import annotations
 
@@ -75,7 +77,7 @@ def test_rewrites_a_stored_revision_off_the_tools_field(db):
     migrate_legacy_tools_field(db)
 
     rewritten = db.get_archive(PROJECT_ID, "index.yml", revision=0).decode("utf-8")
-    assert "ai-may-query-sources:" in rewritten
+    assert "ai-may-read-sources: [flights]" in rewritten
     assert "tools:" not in rewritten
 
 
@@ -96,7 +98,7 @@ def test_migrates_every_stored_revision_independently(db):
 
     for revision in (0, 1):
         rewritten = db.get_archive(PROJECT_ID, "index.yml", revision=revision).decode("utf-8")
-        assert "ai-may-query-sources:" in rewritten
+        assert "ai-may-read-sources:" in rewritten
 
 
 def test_a_source_with_no_ai_definition_yet_is_left_untouched(db):
@@ -117,7 +119,7 @@ def test_one_broken_revision_never_blocks_another_projects_migration(db):
     migrate_legacy_tools_field(db)  # must not raise
 
     rewritten = db.get_archive("good", "index.yml", revision=0).decode("utf-8")
-    assert "ai-may-query-sources:" in rewritten
+    assert "ai-may-read-sources:" in rewritten
 
 
 def test_no_candidates_means_no_backup_is_taken(db, monkeypatch):
@@ -139,3 +141,34 @@ def test_a_backup_is_taken_before_migrating_when_there_is_something_to_migrate(d
     migrate_legacy_tools_field(db)
 
     assert len(calls) == 1
+
+
+def test_rewrites_the_1_30_query_sources_names_too(db):
+    content = INDEX_YML.format(project_id=PROJECT_ID).replace(
+        "    tools: [flights]\n", "    ai-may-query-sources: [flights]\n",
+    ).replace(
+        "  b:\n    ui-label: State B\n    contextual-prompt: there\n",
+        "  b:\n    ui-label: State B\n    contextual-prompt: there\n    ai-must-query-sources: [flights]\n",
+    )
+    _seed(db, PROJECT_ID, 0, content)
+
+    migrate_legacy_tools_field(db)
+
+    rewritten = db.get_archive(PROJECT_ID, "index.yml", revision=0).decode("utf-8")
+    assert "    ai-may-read-sources: [flights]\n" in rewritten
+    assert "    ai-must-read-sources: [flights]\n" in rewritten
+    assert "query-sources" not in rewritten
+
+
+def test_a_state_carrying_both_tools_and_ai_may_query_sources_is_merged_into_one_list(db):
+    content = INDEX_YML.format(project_id=PROJECT_ID).replace(
+        "    tools: [flights]\n", "    tools: [flights]\n    ai-may-query-sources: [flights]\n",
+    )
+    _seed(db, PROJECT_ID, 0, content)
+
+    migrate_legacy_tools_field(db)
+
+    rewritten = db.get_archive(PROJECT_ID, "index.yml", revision=0).decode("utf-8")
+    assert rewritten.count("ai-may-read-sources") == 1
+    assert "tools:" not in rewritten and "query-sources" not in rewritten
+    assert "- flights" in rewritten or "[flights]" in rewritten

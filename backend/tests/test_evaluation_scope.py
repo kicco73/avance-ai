@@ -212,9 +212,11 @@ def test_env_action_set_value_is_usable_in_a_trigger_end_to_end(db):
     assert automaton.evaluate_triggers("a", scope) == "advance"
 
 
-def test_env_namespace_excludes_free_form_stored_values(db):
-    """Only action_set() feeds the `env` namespace — a model-reported
-    free-form stored() value must never leak into it."""
+def test_env_namespace_excludes_the_model_s_own_memory(db):
+    """Only action_set() feeds the `env` namespace — the model's own
+    free-form memory() notes must never leak into it, nor anywhere else
+    a script or trigger can reach: `env` is the one Env-backed name in
+    the scope."""
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
     session_id = db.create_chat_session(
@@ -229,6 +231,10 @@ def test_env_namespace_excludes_free_form_stored_values(db):
     scope = _builder(db).build(automaton, "a", {})
 
     assert "favorite_color" not in scope["env"]
+    assert "memory" not in scope
+    assert not any(
+        isinstance(value, dict) and "favorite_color" in value for key, value in scope.items() if key != "env"
+    )
 
 
 def test_the_actuator_view_of_a_scope_has_no_session(db):

@@ -1,6 +1,6 @@
 {
   "permissions": {
-    "defaultMode": "acceptEdits",
+    "defaultMode": "bypassPermissions",
     "allow": ["Read", "Edit", "Write", "Glob", "Grep", "Bash"],
     "deny": [
       "Read(**/.env)", "Write(**/.env)", "Edit(**/.env)",

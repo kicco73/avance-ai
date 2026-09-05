@@ -25,7 +25,7 @@ from .project_commit_mixin import ProjectCommitMixin
 # generated once at creation and immutable from then on.
 STATE_EDITABLE_FIELDS = {
     "ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat", "reactions-enabled",
-    "ai-may-query-sources", "ai-must-query-sources",
+    "ai-may-read-sources", "ai-must-read-sources", "ai-may-write-sources",
 }
 ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "target", "trigger", "on-enter", "env"}
 # The init-action is an action like any other (see AutomatonYamlEditor.
@@ -39,7 +39,9 @@ INIT_ACTION_EDITABLE_FIELDS = ACTION_EDITABLE_FIELDS - {"trigger"}
 SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
 # Unlike a state/action/signal, an env key has no separate ui-label to
 # derive its name from — 'name' is itself directly editable here.
-ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value"}
+# 'ai-access'/'ai-definition': what the model may do with the key and the
+# text it reads about it (see automaton.EnvKey).
+ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value", "ai-access", "ai-definition"}
 # Same reasoning as ENV_KEY_EDITABLE_FIELDS — a source's own id is
 # directly editable, not derived from its ui-label. 'url' is deliberately
 # absent: it's system-managed (ProjectEditor.add_source/set_source_field

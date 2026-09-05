@@ -6,10 +6,11 @@ Reads straight from Db at the automaton's own (project_name, revision)
 in-memory copy, so every test here seeds real Archive rows instead of
 building a MemoryArchive.
 
-select() is the only method left on this driver (see SourceDriver's own
-docstring on why a whole-file read isn't a source.* capability at all
-anymore) — every test below that used to call read() to exercise the
-shared _read_text/_read_canonical machinery (the content-type guard, the
+select() is the only method this driver implements (see SourceDriver's
+own docstring on why a whole-file read isn't a source.* capability at all
+— and `update`, part of the uniform interface, stays unsupported here) —
+every test below that used to call read() to exercise the shared
+_read_text/_read_canonical machinery (the content-type guard, the
 per-session cache) now goes through select() instead: for a single-line
 file, `select()` still returns that one line verbatim (its own "header"
 is always included, unconditionally), so the same assertions hold.
@@ -19,9 +20,10 @@ from __future__ import annotations
 import pytest
 
 from automaton.automaton import Action, Automaton, Source, State
+from tracking.env import Env
 from tracking.sources import SourceNamespace
 from tracking.sources.avance_archive import AvanceArchiveSource
-from tracking.sources.base import MAX_SOURCE_RESULT_CHARS
+from tracking.sources.base import MAX_SOURCE_RESULT_CHARS, SourceContext
 from tracking.sources.url import parse_source_url
 
 pytestmark = pytest.mark.contract
@@ -52,7 +54,8 @@ def _automaton(project_id: str, revision: int, sources: list[Source] | None = No
 def _driver(
     automaton: Automaton, db, archive_path: str, name: str = "pino", session_id: int | None = None,
 ) -> AvanceArchiveSource:
-    return AvanceArchiveSource(db, automaton, name, archive_path, session_id=session_id)
+    context = SourceContext(db=db, automaton=automaton, session_id=session_id, env=Env())
+    return AvanceArchiveSource(context, name, archive_path)
 
 
 def test_parse_source_url_splits_scheme_and_path():
@@ -145,18 +148,67 @@ def test_select_with_no_values_raises(db):
         _driver(automaton, db, "cities.csv").select()
 
 
-def test_create_update_delete_no_longer_exist_on_a_source_driver(db):
-    # Not "unsupported" (the base class's own default for an operation a
-    # driver opts out of) — gone entirely, from SourceDriver itself, not
-    # just this one driver. select is the only method left at all.
+def test_create_delete_and_read_do_not_exist_and_update_is_unsupported_on_the_archive_driver(db):
+    # create/delete/read are gone entirely, from SourceDriver itself.
+    # update is part of the uniform interface (an avance:env source
+    # implements it) but this driver opts out — the base class's own
+    # "not supported" default, never a silent no-op.
     revision = _seed(db, {"notes.txt": b"hello"}, {"notes.txt": "text/plain"})
     automaton = _automaton(PROJECT_ID, revision)
     driver = _driver(automaton, db, "notes.txt")
 
     assert not hasattr(driver, "create")
-    assert not hasattr(driver, "update")
     assert not hasattr(driver, "delete")
     assert not hasattr(driver, "read")
+    assert "update" not in AvanceArchiveSource.SUPPORTED_METHODS
+    with pytest.raises(ValueError, match="source.pino.update.*not supported"):
+        driver.update(fields={"a": "b"})
+
+
+class TestSelectKeysProjection:
+    CONTENT = "codice_volo,data_partenza,datetime_partenza_reale\nVY3003,2026-08-16,2026-08-16 07:12\nVY3003,2026-08-17,2026-08-17 07:05\n"
+
+    def test_keys_project_the_header_and_every_matching_row_onto_the_named_columns(self, db):
+        revision = _seed(db, {"flights.csv": self.CONTENT.encode()}, {"flights.csv": "text/csv"})
+        automaton = _automaton(PROJECT_ID, revision)
+
+        result = _driver(automaton, db, "flights.csv").select("VY3003", "2026-08-16", keys=["data_partenza"])
+
+        assert result == "data_partenza\n2026-08-16\n"
+
+    def test_columns_come_back_in_the_order_asked_for(self, db):
+        revision = _seed(db, {"flights.csv": self.CONTENT.encode()}, {"flights.csv": "text/csv"})
+        automaton = _automaton(PROJECT_ID, revision)
+
+        result = _driver(automaton, db, "flights.csv").select("VY3003", keys=["data_partenza", "codice_volo"])
+
+        assert result == "data_partenza,codice_volo\n2026-08-16,VY3003\n2026-08-17,VY3003\n"
+
+    def test_an_unknown_column_is_reported_as_text_never_raised(self, db):
+        revision = _seed(db, {"flights.csv": self.CONTENT.encode()}, {"flights.csv": "text/csv"})
+        automaton = _automaton(PROJECT_ID, revision)
+
+        result = _driver(automaton, db, "flights.csv").select("VY3003", keys=["nope"])
+
+        assert result.startswith("error: unknown column(s) 'nope'")
+        assert "codice_volo, data_partenza, datetime_partenza_reale" in result
+
+    def test_the_file_s_own_delimiter_is_detected_and_kept(self, db):
+        content = "code;city\nVY1;Paris\nVY2;Rome\n"
+        revision = _seed(db, {"flights.csv": content.encode()}, {"flights.csv": "text/csv"})
+        automaton = _automaton(PROJECT_ID, revision)
+
+        result = _driver(automaton, db, "flights.csv").select("VY", keys=["city"])
+
+        assert result == "city\nParis\nRome\n"
+
+    def test_no_keys_leaves_the_rows_verbatim(self, db):
+        revision = _seed(db, {"flights.csv": self.CONTENT.encode()}, {"flights.csv": "text/csv"})
+        automaton = _automaton(PROJECT_ID, revision)
+
+        result = _driver(automaton, db, "flights.csv").select("2026-08-17")
+
+        assert result == "codice_volo,data_partenza,datetime_partenza_reale\nVY3003,2026-08-17,2026-08-17 07:05\n"
 
 
 def test_source_namespace_resolves_a_declared_name_to_its_driver(db):

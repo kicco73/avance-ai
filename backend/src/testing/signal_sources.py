@@ -1,4 +1,4 @@
-"""Interchangeable sources of (signal_values, stored_env) per turn:
+"""Interchangeable sources of (signal_values, memory) per turn:
 TurnByTurnSignalSource asks the AI once per message (high fidelity);
 BatchSignalSource batches per session for fewer calls, less context;
 BatchLiteSignalSource is the same batching with an even lighter,
@@ -12,7 +12,7 @@ from automaton.automaton import Automaton
 from tracking.definitions import Signals
 from tracking.env import Env
 from tracking.fixed_project_context import FixedProjectContext
-from tracking.metadata_handler import MetadataHandler
+from tracking.metadata_channels import MemoryBatchChannel, MemoryChannel, SignalsBatchChannel, SignalsChannel, TextChannel
 from tracking.tracking_service import TrackingService
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 from testing.replay_messages import next_assistant_message_id
@@ -59,30 +59,30 @@ class TurnByTurnSignalSource:
         if signal_definition:
             base_prompt = f"{base_prompt}\n\n{signal_definition}"
 
-        # Second positional param only affects generate_reply's own tag
-        # ordering, never read by generate_reply_with_schema — the only
-        # method this class calls.
-        protocol = TurnProtocolUsingSchema(self._ai_service, True)
+        protocol = TurnProtocolUsingSchema(self._ai_service)
 
         chat_history = self._build_chat_history(message_id)
 
-        tag_specs = [('signals', 'signals'), ('env', 'env')]
-        tag_kind_by_name = dict(tag_specs)
+        # signal_definition is already folded into base_prompt above, so
+        # SignalsChannel carries no content of its own here — TextChannel
+        # goes last, reproducing the old generate_reply_with_schema
+        # convention of appending base_prompt after every tag's own
+        # preamble/content.
+        channels = [SignalsChannel(None), MemoryChannel(Env()), TextChannel(base_prompt)]
         signal_values: dict = {}
-        stored_env: dict = {}
+        stored_memory: dict = {}
 
-        def on_metadata(tag: str, value: str) -> None:
-            kind = tag_kind_by_name.get(tag)
-            if kind == 'signals':
-                signal_values.update(MetadataHandler.parse_raw_signals(value))
-            elif kind == 'env':
-                stored_env.update(MetadataHandler.parse_raw_env(value))
+        def on_metadata(tag: str, value) -> None:
+            if tag == 'signals':
+                signal_values.update(value)
+            elif tag == 'memory':
+                stored_memory.update(value)
 
-        async for _ in protocol.generate_reply_with_schema(base_prompt, Env(), tag_specs, chat_history, on_metadata):
+        async for _ in protocol.generate_reply(channels, chat_history, on_metadata):
             pass
         self.calls_made += 1
 
-        return signal_values, stored_env
+        return signal_values, stored_memory
 
     def _build_chat_history(self, message_id: int) -> list[dict]:
         messages = self._db.get_messages(self._session_id)
@@ -116,14 +116,14 @@ def estimate_max_turns_per_call(signal_count: int, max_output_tokens: int) -> in
 BATCH_TAG_INSTRUCTIONS = (
     "Below is a conversation transcript to analyze, not a conversation to "
     "reply to — do not write a reply to it, only fill in the 'signals' and "
-    "'env' fields, following their own format definitions (a numbered row/entry "
+    "'memory' fields, following their own format definitions (a numbered row/entry "
     "per turn, one field format each). Each user turn you are being asked to "
     "cover is marked with its own '[Turn N]' label in the transcript, numbered "
     "1, 2, 3, ... with no gaps — use that exact number when numbering the "
-    "corresponding row/entry in 'signals' and 'env'; read it off the label, "
-    "don't count turns or infer it yourself. The starting env given below is "
+    "corresponding row/entry in 'signals' and 'memory'; read it off the label, "
+    "don't count turns or infer it yourself. The starting memory given below is "
     "read-only context from before this stretch of the conversation — the "
-    "'env' field's own numbered entries are what you must produce as output "
+    "'memory' field's own numbered entries are what you must produce as output "
     "for each turn, not a repeat of the starting one."
 )
 
@@ -148,7 +148,7 @@ class BatchSignalSource(object):
         self._automaton = automaton
         self._session_id = session_id
         self.calls_made = 0
-        # message_id -> (signal_values, stored_env) for every turn a
+        # message_id -> (signal_values, memory) for every turn a
         # prepare_batch() call has covered so far.
         self._covered: dict[int, tuple[dict, dict]] = {}
 
@@ -170,21 +170,14 @@ class BatchSignalSource(object):
         signal_names = {s.name for s in self._automaton.signals}
         signal_definition = Signals(FixedProjectContext(self._automaton), self._db).get_definition(signal_names)
 
-        # Same two tag NAMES as TurnByTurnSignalSource's single turn, but a
-        # different template_key ('signals_batch'/'env_batch') — a separate
-        # prompt and a separate MetadataHandler parser (parse_batch_*),
-        # since the single-turn versions have no turn-numbering concept at
-        # all and the shared attempt at one format for both proved unstable.
-        tag_specs: list[tuple[str, str]] = [('signals', 'signals_batch'), ('env', 'env_batch')]
-
-        seed_env = self._seed_env(turn_ids[0])
+        seed_memory = self._seed_env(turn_ids[0])
         base_prompt = f"{self._automaton.general_prompt}\n\n{self._tag_instructions()}"
-        base_prompt = f"{base_prompt}\n\nStarting env (read-only context):\n{Env(stored=seed_env).serialise_as_text()}"
+        base_prompt = f"{base_prompt}\n\nStarting memory (read-only context):\n{Env(memory=seed_memory).memory_as_text()}"
         if signal_definition:
             base_prompt = f"{base_prompt}\n\n{signal_definition}"
         base_prompt = f"{base_prompt}\n\nConversation transcript:\n{self._build_conversation_text(turn_ids)}"
 
-        protocol = TurnProtocolUsingSchema(self._ai_service, True)
+        protocol = TurnProtocolUsingSchema(self._ai_service)
 
         # Not the real conversation as native multi-turn messages — see
         # _build_conversation_text, which already flattened it into
@@ -193,29 +186,38 @@ class BatchSignalSource(object):
         # is that trigger, not part of the data being analyzed.
         chat_history = [{"role": "user", "content": "Produce the structured output described above now."}]
 
-        # Index i = turn i+1 (see MetadataHandler.parse_batch_signals/parse_batch_env)
-        # — empty until on_metadata actually fires for that tag, which never
-        # happens if the response was truncated before reaching it (see
-        # AIServiceProviderOutputTruncatedError) — every turn then falls back
-        # to {} below, same as a turn a mismatch check would have rejected.
+        # signal_definition/seed_memory are already folded into base_prompt
+        # above, so both channels carry no content of their own here —
+        # TextChannel goes last, same convention as TurnByTurnSignalSource's.
+        # Index i = turn i+1 (see SignalsBatchChannel/MemoryBatchChannel's
+        # own decode) — empty until on_metadata actually fires for that
+        # tag, which never happens if the response was truncated before
+        # reaching it (see AIServiceProviderOutputTruncatedError) — every
+        # turn then falls back to {} below, same as a turn a mismatch
+        # check would have rejected.
+        channels = [
+            SignalsBatchChannel(None, expected_turns=len(turn_ids)),
+            MemoryBatchChannel(expected_turns=len(turn_ids)),
+            TextChannel(base_prompt),
+        ]
         signals_by_turn: list[dict] = []
-        env_by_turn: list[dict] = []
+        memory_by_turn: list[dict] = []
 
-        def on_metadata(tag: str, value: str) -> None:
-            nonlocal signals_by_turn, env_by_turn
+        def on_metadata(tag: str, value) -> None:
+            nonlocal signals_by_turn, memory_by_turn
             if tag == 'signals':
-                signals_by_turn = MetadataHandler.parse_batch_signals(value, len(turn_ids))
-            elif tag == 'env':
-                env_by_turn = MetadataHandler.parse_batch_env(value, len(turn_ids))
+                signals_by_turn = value
+            elif tag == 'memory':
+                memory_by_turn = value
 
-        async for _ in protocol.generate_reply_with_schema(base_prompt, Env(), tag_specs, chat_history, on_metadata):
+        async for _ in protocol.generate_reply(channels, chat_history, on_metadata):
             pass
         self.calls_made += 1
 
         for i, turn_id in enumerate(turn_ids):
             signals = signals_by_turn[i] if i < len(signals_by_turn) else {}
-            env = env_by_turn[i] if i < len(env_by_turn) else {}
-            self._covered[turn_id] = (signals, env)
+            memory = memory_by_turn[i] if i < len(memory_by_turn) else {}
+            self._covered[turn_id] = (signals, memory)
 
     def _seed_env(self, message_id: int) -> dict:
         all_user_message_ids = self._user_message_ids()
@@ -227,7 +229,7 @@ class BatchSignalSource(object):
         session = self._db.get_chat_session(self._session_id)
         if session is None or session['datetime_start'] is None:
             return {}
-        return env_for_session(self._db, session).stored(until=session['datetime_start'])
+        return env_for_session(self._db, session).memory(until=session['datetime_start'])
 
     def _user_message_ids(self) -> list[int]:
         return [m['id'] for m in self._db.get_messages(self._session_id) if m['role'] == 'user']
@@ -262,7 +264,7 @@ class BatchSignalSource(object):
         produce no reply at all), so the whole transcript is embedded
         directly in the prompt as a document to read, with the actual API
         call carrying only a one-line trigger message (see _call_from).
-        Each turn actually being numbered in this call's 'signals'/'env'
+        Each turn actually being numbered in this call's 'signals'/'memory'
         output gets an explicit "[Turn N]" label right before whichever
         message _anchor_message_id resolves it to. Without this, the model
         has to infer its own local 1-based numbering from a (possibly much
@@ -304,7 +306,7 @@ class BatchSignalSource(object):
 BATCH_LITE_TAG_INSTRUCTIONS_TEMPLATE = (
     "Below is a conversation transcript to analyze, not a conversation to "
     "reply to — do not write a reply to it, only fill in the 'signals' and "
-    "'env' fields, following their own format definitions (a numbered row/entry "
+    "'memory' fields, following their own format definitions (a numbered row/entry "
     "per turn, one field format each). To save space, only the {shown_role}'s "
     "own messages are included below — the {other_role}'s messages have been "
     "left out entirely, not merely hidden per turn — so judge each turn from "
@@ -312,9 +314,9 @@ BATCH_LITE_TAG_INSTRUCTIONS_TEMPLATE = (
     "alone. Each turn you are being asked to cover is marked with its own "
     "'[Turn N]' label in the transcript, numbered 1, 2, 3, ... with no gaps — "
     "use that exact number when numbering the corresponding row/entry in "
-    "'signals' and 'env'; read it off the label, don't count turns or infer it "
-    "yourself. The starting env given below is read-only context from before "
-    "this stretch of the conversation — the 'env' field's own numbered entries "
+    "'signals' and 'memory'; read it off the label, don't count turns or infer it "
+    "yourself. The starting memory given below is read-only context from before "
+    "this stretch of the conversation — the 'memory' field's own numbered entries "
     "are what you must produce as output for each turn, not a repeat of the "
     "starting one."
 )

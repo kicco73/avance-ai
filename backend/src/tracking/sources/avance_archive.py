@@ -1,27 +1,31 @@
 """The `avance` source driver — read-only access to one of a project's
 own stored archive files, addressed by a `sources:` entry's own
 `url: avance:<archive path>` (e.g. `avance:sources/flights.csv`).
-`select(*values)` replaces search(): the header row plus every row
-containing *every* value (case-insensitive, AND'd — one value narrows
-down to a single row, several narrow further), bounded (see
-SourceDriver._bounded) regardless of how big a match set it finds. A
-whole-file read is `attachment.read(name)`'s job now (on-enter only, see
-tracking.actuators.attachment_namespace) — SourceDriver itself no longer
-has one at all: every method here must return a bounded result, and a
-whole file is exactly what bounding a result doesn't make sense for.
+`select(*values, keys=...)`: the header row plus every row containing
+*every* value (case-insensitive, AND'd — one value narrows down to a
+single row, several narrow further), optionally projected onto the
+columns named in `keys`, bounded (see SourceDriver._bounded) regardless
+of how big a match set it finds. A whole-file read is
+`attachment.read(name)`'s job (on-enter only, see
+tracking.actuators.attachment_namespace) — SourceDriver itself has no
+such method at all: every method here must return a bounded result, and
+a whole file is exactly what bounding a result doesn't make sense for.
 
 Every read goes through a per-chat-session cache copy under
 `{CACHE_DIR}/sessions/<session id>/<archive path>` rather than the
 canonical archive directly — see _read_text's own docstring for why."""
 from __future__ import annotations
 
-from automaton.automaton import Automaton
-from db import Db
+import csv
+import io
+
 from project.archive.layout import CACHE_DIR
 
-from .base import SourceDriver
+from .base import SourceContext, SourceDriver
 
 SCHEME = "avance"
+
+_DELIMITERS = ",;\t|"
 
 
 class AvanceArchiveSource(SourceDriver):
@@ -31,20 +35,22 @@ class AvanceArchiveSource(SourceDriver):
             "Grep over this source's own archive file: the header row plus every row containing "
             "*every* given value (case-insensitive) — e.g. source.<name>.select('Paris'). Each "
             "additional value narrows the result further: search by flight code and date to get a "
-            "single row instead of every date that flight ever flew."
+            "single row instead of every date that flight ever flew. `keys` (optional) names the "
+            "columns to return, in that order — e.g. source.<name>.select('VY3003', keys=['data_partenza'])."
         ),
     }
 
-    def __init__(self, db: Db, automaton: Automaton, name: str, archive_path: str, session_id: int | None = None) -> None:
-        super().__init__(name)
-        self._db = db
-        self._automaton = automaton
+    def __init__(self, context: SourceContext, name: str, archive_path: str) -> None:
+        super().__init__(context, name, archive_path)
+        assert context.db is not None
+        self._db = context.db
+        self._automaton = context.automaton
         self._archive_path = archive_path
         # None outside a real chat session (a wake-up re-evaluation, a
         # test replay, an on-enter deferred call with no session recorded)
-        # — read() falls back to the canonical archive directly then,
+        # — _read_text falls back to the canonical archive directly then,
         # since there's no session of its own for a cache copy to belong to.
-        self._session_id = session_id
+        self._session_id = context.session_id
 
     def _cache_archive_path(self) -> str:
         return f"{CACHE_DIR}/sessions/{self._session_id}/{self._archive_path}"
@@ -95,7 +101,37 @@ class AvanceArchiveSource(SourceDriver):
         )
         return content
 
-    def select(self, *values: str) -> str:
+    @staticmethod
+    def _delimiter(header: str) -> str:
+        """The column separator this file actually uses, sniffed off its
+        header row alone — comma unless another candidate clearly wins."""
+        try:
+            return csv.Sniffer().sniff(header, delimiters=_DELIMITERS).delimiter
+        except csv.Error:
+            return ","
+
+    def _project(self, lines: list[str], keys: list[str]) -> str:
+        """`lines` (header first) reduced to just the `keys` columns, in
+        that order, re-emitted with the file's own delimiter. An unknown
+        column name is reported as text — the model asked for it and can
+        correct itself — never raised."""
+        delimiter = self._delimiter(lines[0])
+        rows = list(csv.reader(lines, delimiter=delimiter))
+        header = [column.strip() for column in rows[0]]
+        unknown = [key for key in keys if key not in header]
+        if unknown:
+            return (
+                f"error: unknown column(s) {', '.join(repr(key) for key in unknown)} — "
+                f"available: {', '.join(header)}"
+            )
+        indexes = [header.index(key) for key in keys]
+        out = io.StringIO()
+        writer = csv.writer(out, delimiter=delimiter, lineterminator="\n")
+        for row in rows:
+            writer.writerow([row[index] if index < len(row) else "" for index in indexes])
+        return out.getvalue()
+
+    def select(self, *values: str, keys: list[str] | None = None) -> str:
         if not values:
             raise ValueError(f"source.{self._name}.select(...): at least one value is required.")
         lines = self._read_text().splitlines(keepends=True)
@@ -103,4 +139,6 @@ class AvanceArchiveSource(SourceDriver):
             return ""
         needles = [value.lower() for value in values]
         matches = [line for line in lines[1:] if all(needle in line.lower() for needle in needles)]
-        return self._bounded(lines[0] + "".join(matches))
+        if keys is None:
+            return self._bounded(lines[0] + "".join(matches))
+        return self._bounded(self._project([lines[0], *matches], list(keys)))

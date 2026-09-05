@@ -98,7 +98,7 @@ class _FakeToolSet:
     required_specs()/summary_text()/session_id) for AiService's loop to
     drive — call() never raises, matching the real one's contract, and
     just returns whatever's queued next. `required_specs`: the
-    ai-must-query-sources subset (see ToolSet.required_specs) — empty by
+    ai-must-read-sources subset (see ToolSet.required_specs) — empty by
     default, so every existing test (none of which exercises forcing)
     behaves exactly as it did before this parameter existed."""
 
@@ -314,7 +314,7 @@ def test_build_messages_round_trips_the_neutral_tool_history_shapes():
     ]
 
 
-# (g) ai-must-query-sources forcing — see AiService.generate_stream_with_
+# (g) ai-must-read-sources forcing — see AiService.generate_stream_with_
 # metadata's own force_required_tools/required_tools and
 # TrackingProcessor.force_required_tools_for, which decides it. The
 # provider itself only ever translates "required_tools was given" into
@@ -369,7 +369,7 @@ async def test_first_round_of_a_forced_turn_restricts_tool_choice_then_round_two
 async def test_force_required_tools_false_never_restricts_even_with_a_must_source():
     """The second turn in the same state (TrackingProcessor.
     force_required_tools_for returns False) — auto from round 1, even
-    though this state does declare an ai-must-query-sources tool."""
+    though this state does declare an ai-must-read-sources tool."""
     provider, fake_client = _provider([
         _tool_call_response("call_1", "source_flights_select", '{"value": "paris"}'),
         _text_response('{"text": "Paris it is."}'),
@@ -385,7 +385,7 @@ async def test_force_required_tools_false_never_restricts_even_with_a_must_sourc
     assert "tool_choice" not in fake_client.chat.completions.calls[0]
 
 
-async def test_a_state_with_only_ai_may_query_sources_is_never_forced():
+async def test_a_state_with_only_ai_may_read_sources_is_never_forced():
     provider, fake_client = _provider([_text_response('{"text": "hi"}')])
     ai_service = AiService(provider)
     tool_set = _FakeToolSet([_SELECT_SPEC], results=[], required_specs=[])

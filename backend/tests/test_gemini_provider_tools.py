@@ -105,7 +105,7 @@ class _FakeToolSet:
     required_specs()/summary_text()/session_id) for AiService's loop to
     drive — call() never raises, matching the real one's contract, and
     just returns whatever's queued next. `required_specs`: the
-    ai-must-query-sources subset (see ToolSet.required_specs) — empty by
+    ai-must-read-sources subset (see ToolSet.required_specs) — empty by
     default, so every existing test (none of which exercises forcing)
     behaves exactly as it did before this parameter existed."""
 
@@ -467,7 +467,7 @@ async def test_text_streamed_alongside_the_call_is_replayed_in_order():
     assert parts[1].function_call.name == "source_flights_select" and parts[1].thought_signature == b"s"
 
 
-# ai-must-query-sources forcing — see AiService.generate_stream_with_
+# ai-must-read-sources forcing — see AiService.generate_stream_with_
 # metadata's own force_required_tools/required_tools and
 # TrackingProcessor.force_required_tools_for, which decides it. The
 # provider itself only ever translates "required_tools was given" into
@@ -521,7 +521,7 @@ async def test_first_round_of_a_forced_turn_restricts_allowed_names_then_round_t
 async def test_force_required_tools_false_never_restricts_even_with_a_must_source():
     """The second turn in the same state (TrackingProcessor.
     force_required_tools_for returns False) — auto from round 1, even
-    though this state does declare an ai-must-query-sources tool."""
+    though this state does declare an ai-must-read-sources tool."""
     provider, fake_client = _provider([
         _function_call_response("source_flights_select", {"value": "paris"}, call_id="call_1"),
         _function_call_response("respond", {"text": "Paris it is."}),
@@ -537,7 +537,7 @@ async def test_force_required_tools_false_never_restricts_even_with_a_must_sourc
     assert not fake_client.aio.models.calls[0]["config"].tool_config.function_calling_config.allowed_function_names
 
 
-async def test_a_state_with_only_ai_may_query_sources_is_never_forced():
+async def test_a_state_with_only_ai_may_read_sources_is_never_forced():
     provider, fake_client = _provider([_function_call_response("respond", {"text": "hi"})])
     ai_service = AiService(provider)
     tool_set = _FakeToolSet([_SELECT_SPEC], results=[], required_specs=[])

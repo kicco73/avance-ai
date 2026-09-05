@@ -183,25 +183,33 @@ class TestSetStateField:
         editor.set_state_field("a", "contextual-prompt", "brand new prompt")
         assert _builds(editor.serialize()).states["a"].contextual_prompt == "brand new prompt"
 
-    def test_ai_may_query_sources_edit(self):
+    def test_ai_may_read_sources_edit(self):
         editor = _editor(SOURCE_BASE_YAML)
         editor.set_source_field("pino", "ai-definition", "One row per flight.")
-        payload = editor.set_state_field("a", "ai-may-query-sources", ["pino"])
+        payload = editor.set_state_field("a", "ai-may-read-sources", ["pino"])
 
-        assert payload["ai_may_query_sources"] == ["pino"]
-        assert payload["ai_must_query_sources"] == []
+        assert payload["ai_may_read_sources"] == ["pino"]
+        assert payload["ai_must_read_sources"] == []
+        assert payload["ai_may_write_sources"] == []
         automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
-        assert automaton.states["a"].ai_may_query_sources == ("pino",)
-        assert automaton.states["a"].ai_must_query_sources == ()
+        assert automaton.states["a"].ai_may_read_sources == ("pino",)
+        assert automaton.states["a"].ai_must_read_sources == ()
 
-    def test_ai_must_query_sources_edit(self):
+    def test_ai_must_read_sources_edit(self):
         editor = _editor(SOURCE_BASE_YAML)
         editor.set_source_field("pino", "ai-definition", "One row per flight.")
-        payload = editor.set_state_field("a", "ai-must-query-sources", ["pino"])
+        payload = editor.set_state_field("a", "ai-must-read-sources", ["pino"])
 
-        assert payload["ai_must_query_sources"] == ["pino"]
+        assert payload["ai_must_read_sources"] == ["pino"]
         automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
-        assert automaton.states["a"].ai_must_query_sources == ("pino",)
+        assert automaton.states["a"].ai_must_read_sources == ("pino",)
+
+    def test_ai_may_write_sources_edit_round_trips_through_the_payload(self):
+        editor = _editor(SOURCE_BASE_YAML)
+        payload = editor.set_state_field("a", "ai-may-write-sources", ["pino"])
+
+        assert payload["ai_may_write_sources"] == ["pino"]
+        assert "ai-may-write-sources: [pino]" in editor.serialize() or "- pino" in editor.serialize()
 
 
 class TestSetActionField:

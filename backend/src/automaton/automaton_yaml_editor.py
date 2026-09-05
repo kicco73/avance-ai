@@ -11,7 +11,9 @@ from typing import Any, Mapping
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
-from automaton.automaton import ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload
+from automaton.automaton import (
+    AI_ACCESS_NONE, ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload,
+)
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from tracking.sources.url import parse_source_url
 
@@ -171,8 +173,9 @@ class AutomatonYamlEditor:
             "final": len(raw_actions) == 0,
             "chat": raw_state.get("chat", True),
             "actions": [self._action_payload_from_raw(raw_action, state_name) for raw_action in raw_actions],
-            "ai_may_query_sources": list(raw_state.get("ai-may-query-sources") or []),
-            "ai_must_query_sources": list(raw_state.get("ai-must-query-sources") or []),
+            "ai_may_read_sources": list(raw_state.get("ai-may-read-sources") or []),
+            "ai_must_read_sources": list(raw_state.get("ai-must-read-sources") or []),
+            "ai_may_write_sources": list(raw_state.get("ai-may-write-sources") or []),
         }
 
     @staticmethod
@@ -221,10 +224,13 @@ class AutomatonYamlEditor:
     def _env_key_payload(self, name: str) -> EnvKeyPayload:
         raw_env_key = self._env_key(name)
         ui_description = raw_env_key.get("ui-description")
+        ai_definition = raw_env_key.get("ai-definition")
         return {
             "name": name,
             "ui_description": ui_description.strip() if ui_description else None,
             "value": raw_env_key.get("value") or "",
+            "ai_access": raw_env_key.get("ai-access") or AI_ACCESS_NONE,
+            "ai_definition": ai_definition.strip() if ai_definition else None,
         }
 
     def _source_payload(self, name: str) -> SourcePayload:
@@ -356,7 +362,14 @@ class AutomatonYamlEditor:
             if derived_name and derived_name != name:
                 return self.rename_env_key(name, derived_name)
             return self._env_key_payload(name)
-        self._env_key(name)[field] = value
+        raw_env_key = self._env_key(name)
+        # The default access (none) and an empty ai-definition remove the
+        # key rather than storing the default explicitly — AutomatonBuilder
+        # reads a missing key exactly the same way.
+        if (field == "ai-access" and value == AI_ACCESS_NONE) or (field == "ai-definition" and not value):
+            raw_env_key.pop(field, None)
+        else:
+            raw_env_key[field] = value
         return self._env_key_payload(name)
 
     def set_source_field(self, name: str, field: str, value) -> SourcePayload:
@@ -666,17 +679,30 @@ class AutomatonYamlEditor:
         return unresolved
 
     def rewrite_legacy_tools_field(self) -> bool:
-        """Renames every state's own `tools:` key to `ai-may-query-sources:`
-        — see project.archive.legacy_tools_field_migration. A structural
-        key rename (via _rename_key_preserving_comments), not a value
-        change: `ai-may-query-sources` means the same thing `tools` used
-        to (the model decides for itself whether to call one), so nothing
-        about the list itself needs to change, only its own key. Returns
-        whether anything was actually renamed."""
+        """Renames every state's own legacy source-field key to its
+        current name (see AutomatonBuilder.LEGACY_STATE_SOURCE_FIELDS:
+        `tools:` and `ai-may-query-sources:` -> `ai-may-read-sources:`,
+        `ai-must-query-sources:` -> `ai-must-read-sources:`) — see
+        project.archive.legacy_tools_field_migration. A structural key
+        rename (via _rename_key_preserving_comments), never a value
+        change: each new field means exactly what its old name did, so
+        nothing about the list itself needs to change, only its key.
+        Two legacy keys landing on the same new one (a state with both
+        `tools:` and `ai-may-query-sources:`) are merged, in order,
+        without duplicates. Returns whether anything was actually renamed."""
+        from automaton.automaton_builder import LEGACY_STATE_SOURCE_FIELDS
         changed = False
         for raw_state in self._states().values():
-            if "tools" in raw_state:
-                self._rename_key_preserving_comments(raw_state, "tools", "ai-may-query-sources")
+            for legacy_field, replacement in LEGACY_STATE_SOURCE_FIELDS.items():
+                if legacy_field not in raw_state:
+                    continue
+                if replacement in raw_state:
+                    merged = list(raw_state[replacement] or [])
+                    merged += [name for name in (raw_state[legacy_field] or []) if name not in merged]
+                    raw_state[replacement] = merged
+                    del raw_state[legacy_field]
+                else:
+                    self._rename_key_preserving_comments(raw_state, legacy_field, replacement)
                 changed = True
         return changed
 

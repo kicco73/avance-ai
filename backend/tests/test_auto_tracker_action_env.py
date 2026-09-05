@@ -122,10 +122,10 @@ async def test_a_fired_actions_env_is_persisted(db):
 
     assert result["state_changed"] is True
     env = _env(db)
-    # Lands in the action-set store, never the model-reported stored() one.
+    # Lands in the action-set store, never the model's own memory() one.
     # Accept bool or string since either is a valid evaluated representation.
     assert env.action_set().get("reset_counter") in (True, "True")
-    assert env.stored() == {}
+    assert env.memory() == {}
 
 
 async def test_env_is_not_touched_when_the_trigger_does_not_fire(db):
@@ -187,4 +187,4 @@ async def test_an_action_with_no_env_field_never_touches_the_action_set_store(db
     assert result["state_changed"] is True
     env = _env(db)
     assert env.action_set() == {}
-    assert env.stored() == {}
+    assert env.memory() == {}

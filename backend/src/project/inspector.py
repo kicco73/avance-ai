@@ -6,8 +6,7 @@ from automaton.automaton import Action, Automaton, ProjectPayload, State, StateP
 from automaton.identifier_registry import IdentifierRegistry
 from db import Db
 from session import Session
-from tracking.sources import SOURCE_DRIVERS
-from tracking.sources.url import parse_source_url
+from tracking.sources import driver_class_for
 from tracking.tracking_engine import TrackingEngine
 
 from .archive.automaton_loader import AutomatonLoader
@@ -249,8 +248,7 @@ class ProjectInspector:
         registry["source"] = {}
         for source in automaton.sources:
             try:
-                scheme, _ = parse_source_url(source.url)
-                descriptions = SOURCE_DRIVERS[scheme].METHOD_DESCRIPTIONS
+                descriptions = driver_class_for(source.url).METHOD_DESCRIPTIONS
             except (ValueError, KeyError):
                 descriptions = {}
             registry[f"source.{source.name}"] = dict(descriptions)

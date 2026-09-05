@@ -14,7 +14,9 @@ states:
         target: locate_booking
         trigger: "signal.intent_refund > 70"
         env:
-          customer_record: source.tickets.select(user.email)
+          customer_record: source.tickets_sold.select(user.email)
+          flight: source.tickets_sold.select(user.email, keys=['codice_volo'])
+          flight_date: source.tickets_sold.select(user.email, keys=['datetime_volo'])
       - name: go_to_out_of_scope
         ui-label: "Other / Complaint"
         ui-button: "Other issue"
@@ -28,16 +30,17 @@ states:
     ui-label: "Booking lookup"
     ui-description: "Request the PNR or flight details."
     contextual-prompt: |-
-      Look in the customer record if the user mail was found associated to a flight, present the booking details to the user and ask them to confirm if this is their correct booking. If it is, ask the user to provide the PNR code (6-character record locator) for security reasons.
-    ai-must-query-sources: [flight_records]
+      The environment holds what our records say about this customer: `flight` and `flight_date` were filled from the tickets sold to their email (they may hold several rows — pick the one the customer actually means), `pnr` is empty until the customer gives it. Present the booking details and ask the customer to confirm they're right. If the customer corrects the flight or the date, update `flight`/`flight_date` with the values they give you. Once the booking is confirmed, ask for the PNR code (6-character record locator) for security reasons and, when they give it, write it into `pnr` — the verification against our records happens on our side, never assume it passed.
+    ai-must-read-sources: [env, flight_records]
+    ai-may-write-sources: [env]
     actions:
       - name: go_to_verify_entitlement
         ui-label: "Booking found"
         ui-button: "Verify booking"
         target: verify_entitlement
-        trigger: "env.customer_record != '' and signal.pnr_provided"
+        trigger: "source.tickets_sold.select(user.email, env.flight) != '' and env.pnr != ''"
         env:
-          flight_record: source.flight_records.select('')
+          _flight_record: source.flight_records.select(env.flight, env.flight_date[:10])
       - name: go_to_booking_not_found
         ui-label: "Booking not found"
         target: booking_not_found
@@ -69,8 +72,8 @@ states:
     ui-label: "Eligibility assessment"
     ui-description: "Check the cause and fare conditions."
     contextual-prompt: |
-      Determine whether the cancellation was caused by the carrier or whether it is a voluntary withdrawal, checking for any vouchers or chargebacks, and utilizing the flight record delay information available in the environment.
-    ai-may-query-sources: [flight_records]
+      Determine whether the cancellation was caused by the carrier or whether it is a voluntary withdrawal, checking for any vouchers or chargebacks. The environment gives you the confirmed `flight`, `flight_date` and `pnr`; look the flight up in the flight records for its actual departure and arrival times to judge the delay.
+    ai-may-read-sources: [env, flight_records]
     actions:
       - name: go_to_compute_amount
         ui-label: "Eligible"
@@ -205,23 +208,57 @@ signals:
     definition: "Rate from 0 to 100 the AI's confidence in the current classification of the intent or state."
 env:
   customer_record:
-    ui-label: "Customer Record"
+    ui-description: "Every ticket sold to this customer's email, as returned by the tickets source (scripts only)."
     value: ""
-  user_email:
+  flight:
+    ui-description: "The flight code of the booking under discussion — pre-filled from the tickets sold, correctable by the model."
+    ai-access: readwrite
+    ai-definition: |
+      The flight code (e.g. VY3003) of the booking the customer is asking about. Pre-filled from
+      the tickets sold to their email — a column of one or more rows; if the customer names a
+      different flight, set it to the code they give you.
+    value: ""
+  flight_date:
+    ui-description: "The departure date/time of that flight — pre-filled from the tickets sold, correctable by the model."
+    ai-access: readwrite
+    ai-definition: |
+      The departure date and time of that flight, as YYYY-MM-DD HH:MM. Pre-filled from the tickets
+      sold to the customer's email; if the customer gives a different travel date, set it to the
+      one they give you.
+    value: ""
+  pnr:
+    ui-description: "The 6-character record locator, empty until the customer provides it."
+    ai-access: readwrite
+    ai-definition: |
+      The booking's 6-character record locator (PNR). Empty until the customer gives it to you —
+      write it here as soon as they do; whether it matches our records is verified on our side.
+    value: ""
+  customer_email:
+    ui-description: "The logged-in customer's email (read-only for the model)."
+    ai-access: readonly
+    ai-definition: The email address the customer is logged in with — the one their tickets are registered to.
     value: 'user.email'
-  flight_record:
-    ui-label: "Flight Record"
+  _flight_record:
+    ui-description: "The flight-records row matching the confirmed flight and date (scripts only)."
     value: ""
 sources:
-  tickets:
-    ui-label: "Tickets"
+  env:
+    ui-label: "Env"
+    ui-description: "The automaton's own variables, exposed to the model as a one-row table."
+    ai-definition: |
+      The variables of this refund case: the flight code and date under discussion, the PNR the
+      customer gave you, and the customer's own email. Update `flight`/`flight_date` only with
+      values the customer explicitly gives you, and `pnr` as soon as they provide it.
+    url: avance:env
+  tickets_sold:
+    ui-label: "Tickets sold"
     ui-description: "Customer ticket records, looked up by email."
     ai-definition: |
       One row per purchased ticket, columns: codice_volo (flight code),
       datetime_volo (the flight's own departure date and time),
       email_acquirente (buyer's email), costo_euro (price paid),
       datetime_acquisto (when it was bought). Search by the customer's own
-      email (source.tickets.select(user.email)) to find every ticket
+      email (source.tickets_sold.select(user.email)) to find every ticket
       they've bought — a customer with more than one booking gets more
       than one row back, so cross-check the flight code and travel date
       the user gives you against the right one.

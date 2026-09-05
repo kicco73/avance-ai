@@ -38,7 +38,7 @@ def _forward_kwargs(
     `tools` parameter at all must keep receiving the exact same call it
     always did, never a stray `tools=None` it can't accept. `tool_round`/
     `required_tools` ride along only then too — neither means anything
-    without `tools`, and a fake predating ai-must-query-sources forcing
+    without `tools`, and a fake predating ai-must-read-sources forcing
     (every tool-calling test's own double so far) declares no such
     parameters either."""
     kwargs: dict[str, Any] = {"on_metadata": on_metadata}

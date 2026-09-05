@@ -161,29 +161,42 @@ function commitBoolField(field, value) {
   emit('set-field', field, value)
 }
 
-// ai-may-query-sources / ai-must-query-sources — every declared source
-// name is a 3-state toggle (off -> may -> must -> off), same idiom as the
-// boolean badges above; identifierRegistry.value.source is already the
-// live-refreshed source of truth ModelMenu/TriggerEditor's own
-// autocomplete uses, so no separate fetch is needed here.
+// ai-may-read-sources / ai-must-read-sources — every declared source
+// name is a 3-state read toggle (off -> may -> must -> off), same idiom
+// as the boolean badges above; identifierRegistry.value.source is already
+// the live-refreshed source of truth ModelMenu/TriggerEditor's own
+// autocomplete uses, so no separate fetch is needed here. A source whose
+// driver implements `update` (registry key "source.<name>" lists it —
+// today only avance:env) additionally gets a separate write toggle
+// (ai-may-write-sources): reading and writing are independent grants.
 const availableSourceNames = computed(() => Object.keys(identifierRegistry.value.source ?? {}))
+function sourceSupportsWrite(name) {
+  return 'update' in (identifierRegistry.value[`source.${name}`] ?? {})
+}
 function toolState(name) {
-  if ((props.selectedElement?.data.aiMustQuerySources ?? []).includes(name)) return 'must'
-  if ((props.selectedElement?.data.aiMayQuerySources ?? []).includes(name)) return 'may'
+  if ((props.selectedElement?.data.aiMustReadSources ?? []).includes(name)) return 'must'
+  if ((props.selectedElement?.data.aiMayReadSources ?? []).includes(name)) return 'may'
   return 'off'
 }
 function cycleTool(name) {
-  const may = props.selectedElement?.data.aiMayQuerySources ?? []
-  const must = props.selectedElement?.data.aiMustQuerySources ?? []
+  const may = props.selectedElement?.data.aiMayReadSources ?? []
+  const must = props.selectedElement?.data.aiMustReadSources ?? []
   const current = toolState(name)
   if (current === 'off') {
-    emit('set-field', 'ai-may-query-sources', [...may, name])
+    emit('set-field', 'ai-may-read-sources', [...may, name])
   } else if (current === 'may') {
-    emit('set-field', 'ai-may-query-sources', may.filter((t) => t !== name))
-    emit('set-field', 'ai-must-query-sources', [...must, name])
+    emit('set-field', 'ai-may-read-sources', may.filter((t) => t !== name))
+    emit('set-field', 'ai-must-read-sources', [...must, name])
   } else {
-    emit('set-field', 'ai-must-query-sources', must.filter((t) => t !== name))
+    emit('set-field', 'ai-must-read-sources', must.filter((t) => t !== name))
   }
+}
+function writeState(name) {
+  return (props.selectedElement?.data.aiMayWriteSources ?? []).includes(name)
+}
+function toggleWrite(name) {
+  const write = props.selectedElement?.data.aiMayWriteSources ?? []
+  emit('set-field', 'ai-may-write-sources', writeState(name) ? write.filter((t) => t !== name) : [...write, name])
 }
 
 const isDeleteDisabled = computed(() => {
@@ -334,28 +347,44 @@ function selectAttachment(fileName) {
               }"
               :title="
                 toolState(name) === 'must'
-                  ? `Forced: the model must call source.${name} once per entry into this state — click to turn off`
+                  ? `Forced: the model must read source.${name} once per entry into this state — click to turn off`
                   : toolState(name) === 'may'
-                    ? `The model may call source.${name} as a tool — click to force it (ai-must-query-sources)`
-                    : `Click to let the model call source.${name} as a tool while replying in this state`
+                    ? `The model may read source.${name} (select) — click to force it (ai-must-read-sources)`
+                    : `Click to let the model read source.${name} (select) while replying in this state`
               "
               @click.stop="cycleTool(name)"
             >{{ name }}</span>
+            <span
+              v-for="name in availableSourceNames.filter(sourceSupportsWrite)" :key="'tool-write-' + name"
+              class="inspector-detail-badge inspector-detail-badge-toggle"
+              :class="writeState(name) ? 'inspector-detail-badge-toggle-write' : 'inspector-detail-badge-toggle-off'"
+              :title="
+                writeState(name)
+                  ? `The model may write source.${name} (update) in this state — click to turn off`
+                  : `Click to let the model write source.${name} (update) while replying in this state`
+              "
+              @click.stop="toggleWrite(name)"
+            >{{ name }} ✎</span>
           </template>
           <template v-else>
             <span v-if="!selectedElement.data.chat" class="inspector-detail-badge inspector-detail-badge-neutral">No chat</span>
             <span v-if="selectedElement.data.historyCutoff" class="inspector-detail-badge inspector-detail-badge-neutral">History cutoff</span>
             <span v-if="selectedElement.data.reactionsEnabled && selectedElement.data.hasReactions" class="inspector-detail-badge inspector-detail-badge-neutral">Reactions</span>
             <span
-              v-for="name in (selectedElement.data.aiMayQuerySources || [])" :key="'tool-ro-may-' + name"
+              v-for="name in (selectedElement.data.aiMayReadSources || [])" :key="'tool-ro-may-' + name"
               class="inspector-detail-badge inspector-detail-badge-neutral"
-              :title="`Callable by the model as source.${name} (its own choice)`"
+              :title="`Readable by the model as source.${name} (its own choice)`"
             >{{ name }}</span>
             <span
-              v-for="name in (selectedElement.data.aiMustQuerySources || [])" :key="'tool-ro-must-' + name"
+              v-for="name in (selectedElement.data.aiMustReadSources || [])" :key="'tool-ro-must-' + name"
               class="inspector-detail-badge inspector-detail-badge-toggle-required"
-              :title="`Forced: the model must call source.${name} once per entry into this state`"
+              :title="`Forced: the model must read source.${name} once per entry into this state`"
             >{{ name }}</span>
+            <span
+              v-for="name in (selectedElement.data.aiMayWriteSources || [])" :key="'tool-ro-write-' + name"
+              class="inspector-detail-badge inspector-detail-badge-toggle-write"
+              :title="`Writable by the model as source.${name} (update)`"
+            >{{ name }} ✎</span>
           </template>
         </template>
         <template v-else>
@@ -533,9 +562,12 @@ function selectAttachment(fileName) {
 .inspector-detail-badge-toggle { cursor: pointer; }
 .inspector-detail-badge-toggle-off { background: #ccc; color: #555; }
 .inspector-detail-badge-toggle-on { background: #4a6fa5; }
-/* ai-must-query-sources — a forced tool, visually distinct from the
-   plain "on" (ai-may-query-sources) toggle color above. */
+/* ai-must-read-sources — a forced read, visually distinct from the
+   plain "on" (ai-may-read-sources) toggle color above. */
 .inspector-detail-badge-toggle-required { background: #c2410c; }
+/* ai-may-write-sources — a write grant, its own color again: reading and
+   writing the same source are independent toggles. */
+.inspector-detail-badge-toggle-write { background: #6d28d9; }
 .inspector-detail-badge-toggle-locked { cursor: not-allowed; opacity: 0.5; }
 /* Same look and feel as the toggle family above (border-radius/padding/
    cursor/grey-when-off all come from -badge/-toggle/-toggle-off) — only

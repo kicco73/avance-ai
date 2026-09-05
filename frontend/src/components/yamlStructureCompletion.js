@@ -37,7 +37,10 @@ const STATE_FIELDS = [
   { name: 'chat' },
   { name: 'history-cutoff' },
   { name: 'transition-log-level' },
-  { name: 'attachments', nested: true }
+  { name: 'attachments', nested: true },
+  { name: 'ai-may-read-sources', nested: true },
+  { name: 'ai-must-read-sources', nested: true },
+  { name: 'ai-may-write-sources', nested: true }
 ]
 
 const ACTION_FIELDS = [

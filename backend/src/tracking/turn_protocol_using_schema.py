@@ -4,192 +4,102 @@ from typing import AsyncIterator
 
 from ai import MetadataCallback
 from logging_factory import LoggerFactory
-from tracking.env import Env
+from tracking.metadata_channels import MetadataChannel
 from tracking.sources import ToolSet
-from tracking.tag_prompt_builder import TagPromptBuilder
-from tracking.turn_protocol import TurnProtocol, tool_set_kwargs as _tool_set_kwargs
 
 logger = LoggerFactory.get_logger(__name__)
 
-EMBED_AUDIO_TAG_PROMPT = """
-Definition of audio metadata:
-	- a string designed for text-to-speech, not for reading.
-	- Assume the user cannot see the screen at all.
-	- Never refer to anything written on screen.
-	- Use a nice, warm, human, non-robotic, constructive tone.
-	- Keep the audio metadata always concise (ideally under 5 seconds), but never omit information required to solve the task.
-
-Always fill in the 'audio' field of your structured response with the audio metadata value described above.
-"""
-
-EMBED_SIGNAL_TAG_PROMPT = """
-Definition of signals metadata:
-	- a string containing a JSON object, formatted as valid JSON text (e.g. "{\"mood\": 50.2}"),
-	 not a nested object.
-	- it is vitally important to always calculate and return the value for each and any signal specified in the list below.
-	- put all of the signals using their own name as the key and their value as the value.
-
-Always fill in the 'signals' field of your structured response:
-"""
-
-EMBED_ENV_TAG_PROMPT = """
-Definition of env metadata:
-	- a persistent, cross-session memory of free-form facts about the
-	  user/conversation (e.g. preferences, ongoing goals) — distinct from
-	  signals, which are re-evaluated fresh every turn.
-
-Always fill in the 'env' field of your structured response:
-	- format is a string containing plain a "name: value" pair, one per line.
-	- Only include a variable name when you are actually reporting something new or
-	  changed — omit the ones that haven't changed.
-
-Current env memory:
-"""
-# Batch-only variants (BatchSignalSource, covering several turns in one
-# call) — a single live turn or turn-by-turn replay uses the plain
-# EMBED_SIGNAL_TAG_PROMPT/EMBED_ENV_TAG_PROMPT above instead, since it has
-# no turn-numbering concept at all to get wrong. Keeping the two totally
-# separate (rather than one prompt trying to describe both shapes) is
-# deliberate — the shared version proved unstable across single-turn
-# calls (extra rows, wrong turn numbers, missing turn-number prefix).
-EMBED_SIGNAL_BATCH_TAG_PROMPT = """
-Definition of signals metadata:
-	- a small CSV table, as plain text (not a JSON object).
-	- first row: the signal names, comma-separated, e.g. "mood,engagement".
-	- one data row per turn, each starting with that turn's own number — the same
-	  number shown on its "[Turn N]" marker in the conversation transcript —
-	  followed by that turn's values. The transcript's turn numbers always run
-	  1, 2, 3, ... with no gaps, so with 3 marked turns you write exactly 3 rows.
-	- it is vitally important to always calculate and return a value for each and any
-	  signal specified in the list below, for every turn marked in the transcript —
-	  never skip one, never merge two into one row.
-	- after the last turn's row, write one final row whose only cell is the
-	  text [eof], exactly:
-	  mood,engagement
-	  1,50.2,70
-	  2,52.0,68
-	  3,60.0,75
-	  [eof]
-	- never write that [eof] row before every turn has its own row above it.
-
-Always fill in the 'signals' field of your structured response:
-"""
-
-EMBED_ENV_BATCH_TAG_PROMPT = """
-Definition of env metadata:
-	- a persistent, cross-session memory of free-form facts about the
-	  user/conversation (e.g. preferences, ongoing goals) — distinct from
-	  signals, which are re-evaluated fresh every turn.
-
-Always fill in the 'env' field of your structured response:
-	- plain text, not JSON. One line per turn holding just that turn's own
-	  number followed by a colon — the same number shown on its "[Turn N]"
-	  marker in the conversation transcript — then, on the following lines,
-	  one "key=value" pair per line for each variable you are actually
-	  reporting as new or changed that turn (zero of them when nothing
-	  changed). The transcript's turn numbers always run 1, 2, 3, ... with
-	  no gaps, so with 3 marked turns you write exactly 3 turn headers:
-	  1:
-	  favorite_color=blue
-	  2:
-	  3:
-	  mood=better
-	  [eof]
-	- one header per turn marked in the transcript — never skip one, never
-	  merge two into one header.
-	- after the last turn's header (and its key=value lines, if any), write
-	  one final line containing only the text [eof], exactly as shown above —
-	  never write it before every turn has its own header above it.
-"""
-
-EMBED_REACTION_TAG_PROMPT = """
-Definition of reaction metadata:
-	- the key of one reaction from the project's own declared reaction
-	  vocabulary, chosen to react to the user's last message.
-	- leave it empty when no declared reaction fits this turn.
-
-Always fill in the 'reaction' field of your structured response with the
-reaction key described above, or leave it empty.
-"""
-
 SCHEMA_ORDER_PROMPT = """"
-Respond with the structured JSON object described by the response 
+Respond with the structured JSON object described by the response
 schema, filling in its fields in this order:
 """
 
-class TurnProtocolUsingSchema(TurnProtocol):
 
-	prompt_preambles = {
-		'env': EMBED_ENV_TAG_PROMPT,
-		'audio': EMBED_AUDIO_TAG_PROMPT,
-		'signals': EMBED_SIGNAL_TAG_PROMPT,
-		'reaction': EMBED_REACTION_TAG_PROMPT,
-		'text': '',
-		'signals_batch': EMBED_SIGNAL_BATCH_TAG_PROMPT,
-		'env_batch': EMBED_ENV_BATCH_TAG_PROMPT,
-	}
+def _tool_set_kwargs(tool_set: ToolSet | None, force_required_tools: bool = False) -> dict:
+	"""`tool_set` only actually forwarded when given — a fake/stub
+	AiService predating tool-calling (most existing tests' own doubles)
+	declares no `tool_set` parameter at all, so it must keep receiving
+	the exact same call it always did, never a stray `tool_set=None` it
+	can't accept.
 
-	schema = {
-		"audio": "Short textual version for text-to-speech.",
-		"env": "Memory delta: only the keys that are new or whose value changed this turn, in the form key: value, one per line, rendered as text. Empty when nothing changed.",
-		"signals": "JSON dictionary containing required calculated signal values, rendered as text.",
-		"reaction": "The key of a declared reaction to react to the user's last message with, or empty if none fits, rendered as text.",
-		"text": "Normal textual response to the user, in markdown format, rendered as text.",
-		"signals_batch": "CSV table of calculated signal values: header row of signal names, then one row per turn marked in the transcript, each starting with that turn's own [Turn N] number (always 1, 2, 3, ... with no gaps), then a final row whose only cell is the text [eof], e.g. \"mood,engagement\\n1,50.2,70\\n2,52.0,68\\n[eof]\", rendered as text.",
-		"env_batch": "Plain text (not JSON): one '<N>:' header line per turn marked in the transcript (that turn's own [Turn N] number, always 1, 2, 3, ... with no gaps), followed by that turn's own 'key=value' lines (none when nothing changed), then a final line containing only the text [eof], e.g. \"1:\\nfavorite_color=blue\\n2:\\n[eof]\", rendered as text.",
-	}
+	`force_required_tools` is included only when actually True, same
+	reasoning: a fake/stub AiService predating ai-must-read-sources
+	(every existing tool-calling test's own double) declares no such
+	parameter either, and none of them exercises a state with anything to force."""
+	if tool_set is None:
+		return {}
+	kwargs: dict = {"tool_set": tool_set}
+	if force_required_tools:
+		kwargs["force_required_tools"] = force_required_tools
+	return kwargs
 
-	def schema_overhead_text(self, tags: tuple[str, ...] | None = None) -> str:
-		"""Every fixed bit of text this protocol adds on top of the
-		caller's own prompt content for `tags` (defaults to include_tags)
-		— each tag's own preamble (see prompt_preambles) plus
-		SCHEMA_ORDER_PROMPT's field-order instructions, exactly as
-		_generate_reply/generate_reply_with_schema actually append them.
-		Exposed separately, read-only, so TrackingProcessor.
-		_enforce_input_budget can size it without a real generation call —
-		never used by the two methods above, which keep building their
-		own prompt independently."""
-		tags = tags if tags is not None else self.include_tags
-		preambles = "".join(self.prompt_preambles.get(tag, "") for tag in tags)
-		order = "\n".join(f'\t- {tag}' for tag in tags)
+
+class TurnProtocolUsingSchema:
+	"""Drives one turn's own AI generation call against a caller-supplied,
+	already-ordered list of MetadataChannel — building the prompt and JSON
+	schema from them, and decoding each field's raw response through its
+	own channel before handing it to `on_metadata`. The channel list is
+	the entire configuration surface: which fields are asked for, in what
+	order, with what per-turn content — nothing here has any opinion of
+	its own about that."""
+
+	def __init__(self, ai_service) -> None:
+		self._ai_service = ai_service
+
+	def build_final_prompt(self, channels: list[MetadataChannel]) -> str:
+		"""The exact system_prompt generate_reply() would send for
+		`channels`, minus the trailing SCHEMA_ORDER_PROMPT field-order
+		instructions — split out so a caller that only wants the
+		rendered text (e.g. a token estimate) doesn't have to trigger a
+		real generation call to get it."""
+		parts = []
+		for channel in channels:
+			parts += [channel.preamble, channel.content]
+		return "\n\n".join(parts)
+
+	@staticmethod
+	def schema_overhead_text(channels: list[MetadataChannel]) -> str:
+		"""Every fixed bit of text generate_reply adds on top of each
+		channel's own dynamic `content` — every channel's own preamble
+		plus SCHEMA_ORDER_PROMPT's field-order instructions. Exposed
+		separately, read-only, so TrackingProcessor._enforce_input_budget
+		can size it without a real generation call."""
+		preambles = "".join(channel.preamble for channel in channels)
+		order = "\n".join(f'\t- {channel.tag}' for channel in channels)
 		return f"{preambles}{SCHEMA_ORDER_PROMPT}\n{order}"
 
-	def _generate_reply(
-		self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,
-		tool_set: ToolSet | None = None, force_required_tools: bool = False,
+	def generate_reply(
+		self, channels: list[MetadataChannel], chat_history: list[dict], on_metadata: MetadataCallback,
+		tool_set: ToolSet | None = None, force_required_tools: bool = False, env_block: str | None = None,
 	) -> AsyncIterator[str]:
+		"""Returns chunks of text coming from the response streaming,
+		calling on_metadata for each non-"text" field as it completes —
+		with its raw value already decoded through the matching channel
+		(see `channels`), or passed through unchanged for a key with no
+		matching channel (input_tokens/output_tokens/tool_call/tool_result
+		— internal AiService plumbing, never a real schema field).
 
-		schema = {tag: self.schema[tag] for tag in self.include_tags}
-		order_list = [f'\t- {tag}' for tag in schema.keys()]
-		order = '\n'.join(order_list)
-		prompt = f"{prompt}\n\n{SCHEMA_ORDER_PROMPT}\n{order}"
+		`env_block` (see tracking.env_prompt_block.EnvPromptBlock): the
+		automaton's own declared variables, read-only context for the
+		model — never a response field of its own, so it's appended as
+		plain text after every channel's own preamble/content and the
+		schema's field-order instructions, the very last thing in the
+		system prompt. Kept last deliberately: it's the one piece of this
+		prompt that can change turn to turn independently of which
+		channels are active, so keeping it last maximizes how much of the
+		prompt stays a stable, cacheable prefix."""
+		order = "\n".join(f'\t- {channel.tag}' for channel in channels)
+		prompt = f"{self.build_final_prompt(channels)}\n\n{SCHEMA_ORDER_PROMPT}\n{order}"
+		if env_block:
+			prompt = f"{prompt}\n\n{env_block}"
+		schema = {channel.tag: channel.schema_description for channel in channels}
+		channel_by_tag = {channel.tag: channel for channel in channels}
+
+		def decoding_on_metadata(tag: str, raw) -> None:
+			channel = channel_by_tag.get(tag)
+			on_metadata(tag, channel.decode(raw) if channel is not None else raw)
 
 		return self._ai_service.generate_stream_with_metadata(
-			prompt, chat_history, on_metadata=on_metadata, schema=schema,
+			prompt, chat_history, on_metadata=decoding_on_metadata, schema=schema,
 			**_tool_set_kwargs(tool_set, force_required_tools),
 		)
-
-	def generate_reply_with_schema(
-		self, base_prompt: str, env: Env, tag_specs: list[tuple[str, str]], chat_history: list[dict],
-		on_metadata: MetadataCallback,
-		tool_set: ToolSet | None = None, force_required_tools: bool = False,
-	) -> AsyncIterator[str]:
-		preambles = TagPromptBuilder().build(tag_specs, self.prompt_preambles)
-		schema = TagPromptBuilder().build(tag_specs, self.schema)
-		data_by_tag = {'env': env.serialise_as_text()}
-
-		content = []
-		for tag, _ in tag_specs:
-			content += [preambles[tag], data_by_tag.get(tag, "")]
-		content.append(base_prompt)
-		prompt = "\n\n".join(content)
-
-		order_list = [f'\t- {tag}' for tag in schema.keys()]
-		order = '\n'.join(order_list)
-		prompt = f"{prompt}\n\n{SCHEMA_ORDER_PROMPT}\n{order}"
-
-		return self._ai_service.generate_stream_with_metadata(
-			prompt, chat_history, on_metadata=on_metadata, schema=schema,
-			**_tool_set_kwargs(tool_set, force_required_tools),
-		)
-

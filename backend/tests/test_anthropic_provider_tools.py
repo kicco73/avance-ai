@@ -107,7 +107,7 @@ class _FakeToolSet:
     required_specs()/summary_text()/session_id) for AiService's loop to
     drive — call() never raises, matching the real one's contract, and
     just returns whatever's queued next. `required_specs`: the
-    ai-must-query-sources subset (see ToolSet.required_specs) — empty by
+    ai-must-read-sources subset (see ToolSet.required_specs) — empty by
     default, so every existing test (none of which exercises forcing)
     behaves exactly as it did before this parameter existed."""
 
@@ -401,7 +401,7 @@ def test_build_messages_an_assistant_tool_calls_message_with_no_text_carries_no_
     ]
 
 
-# (g) ai-must-query-sources forcing — see AiService.generate_stream_with_
+# (g) ai-must-read-sources forcing — see AiService.generate_stream_with_
 # metadata's own force_required_tools/required_tools and
 # TrackingProcessor.force_required_tools_for, which decides it. The
 # provider itself only ever translates "required_tools was given" into
@@ -462,7 +462,7 @@ async def test_first_round_of_a_forced_turn_restricts_tool_choice_then_round_two
 async def test_force_required_tools_false_never_restricts_even_with_a_must_source():
     """The second turn in the same state (TrackingProcessor.
     force_required_tools_for returns False) — auto from round 1, even
-    though this state does declare an ai-must-query-sources tool."""
+    though this state does declare an ai-must-read-sources tool."""
     tool_call_response = _FakeFinalMessage(
         "tool_use", content=[_FakeToolUseBlock("call_1", "source_flights_select", {"value": "paris"})],
     )
@@ -481,8 +481,8 @@ async def test_force_required_tools_false_never_restricts_even_with_a_must_sourc
     assert "tool_choice" not in fake_client.messages.calls[0]
 
 
-async def test_a_state_with_only_ai_may_query_sources_is_never_forced():
-    """required_specs() empty (no ai-must-query-sources at all for this
+async def test_a_state_with_only_ai_may_read_sources_is_never_forced():
+    """required_specs() empty (no ai-must-read-sources at all for this
     state) — force_required_tools=True has nothing to restrict to, so
     round 1 stays auto regardless."""
     final_response = _FakeFinalMessage("end_turn")

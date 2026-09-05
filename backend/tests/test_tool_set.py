@@ -1,17 +1,19 @@
 """ToolSet — the model's own callable catalog for a state's declared
-`ai-may-query-sources:`/`ai-must-query-sources:` (see automaton.State),
-built by SourceNamespace.tool_set(may_names, must_names): one ToolSpec per
-(named source, SourceDriver method), and call() resolving through the
-same SourceNamespace (and so the same per-session read cache) a
-source.<name>.<method>() expression already uses.
+`ai-may-read-sources:`/`ai-must-read-sources:`/`ai-may-write-sources:` (see
+automaton.State), built by SourceNamespace.tool_set(may_read, must_read,
+may_write): one `select` ToolSpec per read source, one `update` per write
+source, and call() resolving through the same SourceNamespace (and so the
+same per-session read cache and Env) a source.<name>.<method>() expression
+already uses.
 """
 from __future__ import annotations
 
 import pytest
 
-from automaton.automaton import Action, Automaton, Source, State
+from automaton.automaton import Action, Automaton, EnvKey, Source, State
 from db.db import Db
-from tracking.sources import SourceNamespace
+from tracking.env import Env
+from tracking.sources import METHOD_SCHEMAS, SourceNamespace
 
 pytestmark = pytest.mark.contract
 
@@ -34,16 +36,30 @@ def _seed(db, files: dict[str, bytes], content_types: dict[str, str]) -> int:
     return db.get_project_revision(PROJECT_ID)
 
 
-def _automaton(project_id: str, revision: int, sources: list[Source]) -> Automaton:
+def _automaton(
+    project_id: str, revision: int, sources: list[Source], env_keys: list[EnvKey] | None = None,
+) -> Automaton:
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     automaton = Automaton(
         init_action=init_action,
         states={"": State(key="", ui_label="", final=False, actions=[init_action])},
         general_prompt="", signals=[], attachments={}, general_attachments={},
-        autotracking_on_ai_message=False, project_id=project_id, sources=sources,
+        autotracking_on_ai_message=False, project_id=project_id, sources=sources, env_keys=env_keys,
     )
     automaton.set_storage_location(revision)
     return automaton
+
+
+ENV_SOURCE = Source(name="env", url="avance:env", ui_label="Env", ai_definition="The automaton's variables.")
+ENV_KEYS = [
+    EnvKey(name="pnr", ai_access="readwrite", ai_definition="The record locator."),
+    EnvKey(name="customer_email", ai_access="readonly", ai_definition="The customer's email."),
+    EnvKey(name="_hidden"),
+]
+
+
+def _env_automaton(db) -> Automaton:
+    return _automaton(PROJECT_ID, _seed(db, {}, {}), [ENV_SOURCE], ENV_KEYS)
 
 
 def _two_sources(db) -> Automaton:
@@ -140,16 +156,25 @@ def test_status_text_falls_back_to_the_raw_name_for_an_unknown_tool(db):
     assert tool_set.status_text("source_nope_select") == "Searching source_nope_select…"
 
 
-def test_select_s_parameters_schema_is_a_required_array_of_strings(db):
+def test_select_s_parameters_schema_is_the_uniform_method_schema_for_a_driver_that_narrows_nothing(db):
     automaton = _two_sources(db)
     tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
     specs = {spec.name: spec for spec in tool_set.specs()}
 
-    assert specs["source_flights_select"].parameters == {
-        "type": "object",
-        "properties": {"values": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
-        "required": ["values"],
-    }
+    parameters = specs["source_flights_select"].parameters
+    assert parameters is METHOD_SCHEMAS["select"]
+    assert parameters["required"] == ["values"]
+    assert parameters["properties"]["values"]["type"] == "array"
+    assert "minItems" not in parameters["properties"]["values"]
+    assert parameters["properties"]["keys"]["items"] == {"type": "string"}
+
+
+def test_the_uniform_update_schema_takes_values_and_a_non_empty_string_map_of_fields():
+    parameters = METHOD_SCHEMAS["update"]
+    assert parameters["required"] == ["values", "fields"]
+    assert parameters["properties"]["fields"]["type"] == "object"
+    assert parameters["properties"]["fields"]["additionalProperties"] == {"type": "string"}
+    assert parameters["properties"]["fields"]["minProperties"] == 1
 
 
 def test_required_specs_is_empty_when_nothing_is_a_must_source(db):
@@ -165,6 +190,95 @@ def test_required_specs_covers_only_the_must_sources(db):
 
     assert {spec.name for spec in tool_set.specs()} == {"source_flights_select", "source_tickets_select"}
     assert {spec.name for spec in tool_set.required_specs()} == {"source_tickets_select"}
+
+
+def test_a_write_source_gets_an_update_tool_and_a_read_source_a_select_tool(db):
+    automaton = _env_automaton(db)
+    tool_set = SourceNamespace(db, automaton, env=Env()).tool_set(["env"], [], ["env"])
+
+    assert {spec.name for spec in tool_set.specs()} == {"source_env_select", "source_env_update"}
+
+
+def test_required_specs_never_contains_an_update_even_when_the_same_source_is_a_must_read(db):
+    """`must` forces a read only — a write is never forced."""
+    automaton = _env_automaton(db)
+    tool_set = SourceNamespace(db, automaton, env=Env()).tool_set([], ["env"], ["env"])
+
+    assert {spec.name for spec in tool_set.required_specs()} == {"source_env_select"}
+
+
+def test_a_write_on_a_source_whose_driver_has_no_update_raises(db):
+    automaton = _two_sources(db)
+
+    with pytest.raises(ValueError, match="source.flights.update"):
+        SourceNamespace(db, automaton).tool_set([], [], ["flights"])
+
+
+def test_a_driver_s_own_parameter_schema_narrows_the_uniform_one(db):
+    automaton = _env_automaton(db)
+    tool_set = SourceNamespace(db, automaton, env=Env()).tool_set(["env"], [], ["env"])
+    specs = {spec.name: spec for spec in tool_set.specs()}
+
+    select = specs["source_env_select"].parameters
+    assert select["properties"]["keys"]["items"]["enum"] == ["pnr", "customer_email"]
+    update = specs["source_env_update"].parameters
+    assert set(update["properties"]["fields"]["properties"]) == {"pnr"}
+    assert update["properties"]["fields"]["properties"]["pnr"]["description"] == "The record locator."
+    assert update["properties"]["fields"]["additionalProperties"] is False
+    assert update["properties"]["fields"]["minProperties"] == 1
+    assert update["required"] == ["values", "fields"]
+
+
+def test_status_text_says_updating_for_an_update_tool(db):
+    automaton = _env_automaton(db)
+    tool_set = SourceNamespace(db, automaton, env=Env()).tool_set(["env"], [], ["env"])
+
+    assert tool_set.status_text("source_env_update") == "Updating Env…"
+    assert tool_set.status_text("source_env_select") == "Searching Env…"
+
+
+def test_summary_text_for_an_update_lists_one_set_line_per_field(db):
+    automaton = _env_automaton(db)
+    tool_set = SourceNamespace(db, automaton, env=Env()).tool_set(["env"], [], ["env"])
+
+    summary = tool_set.summary_text(
+        "source_env_update", {"values": [], "fields": {"pnr": "ABC123", "flight": "VY3003"}}, "1 row updated",
+    )
+
+    assert summary == 'Set pnr = "ABC123"\nSet flight = "VY3003"'
+
+
+def test_summary_text_for_a_refused_update_reports_the_error(db):
+    automaton = _env_automaton(db)
+    tool_set = SourceNamespace(db, automaton, env=Env()).tool_set(["env"], [], ["env"])
+
+    summary = tool_set.summary_text(
+        "source_env_update", {"values": [], "fields": {"customer_email": "x"}}, "error: 'customer_email' is read-only",
+    )
+
+    assert summary == "Could not update Env: 'customer_email' is read-only"
+
+
+async def test_call_passes_keys_through_to_select_by_keyword(file_db):
+    automaton = _automaton(PROJECT_ID, _seed(
+        file_db, {"flights.csv": b"code,date,city\nVY3003,2026-06-01,Paris\n"}, {"flights.csv": "text/csv"},
+    ), [Source(name="flights", url="avance:flights.csv", ui_label="Flights")])
+    tool_set = SourceNamespace(file_db, automaton).tool_set(["flights"])
+
+    result = await tool_set.call("source_flights_select", {"values": ["VY3003"], "keys": ["city", "code"]})
+
+    assert result == "city,code\nParis,VY3003\n"
+
+
+async def test_call_routes_an_update_to_the_driver_and_writes_the_env(file_db):
+    env = Env()
+    automaton = _env_automaton(file_db)
+    tool_set = SourceNamespace(file_db, automaton, env=env).tool_set(["env"], [], ["env"])
+
+    result = await tool_set.call("source_env_update", {"values": [], "fields": {"pnr": "ABC123"}})
+
+    assert result == "1 row updated"
+    assert env.action_set() == {"pnr": "ABC123"}
 
 
 async def test_call_resolves_to_the_named_source_s_own_driver(file_db):

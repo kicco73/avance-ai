@@ -1,7 +1,8 @@
 """Tests for tracking.env.Env/PersistedEnv — the per-(user, project)
-"environment" memory: free-form, model-reported values (`stored()`) and
-deterministic, action-set values (`action_set()`), each independently
-persisted and merged for prompt rendering.
+store: the model's own free-form notes (`memory()`) and the automaton's
+deterministic, action-set env keys (`action_set()`), each independently
+persisted — memory rendered on its own for the prompt (memory_as_text),
+the env through tracking.env_prompt_block with its own perimeter.
 """
 from __future__ import annotations
 
@@ -10,7 +11,7 @@ from datetime import datetime
 import pytest
 
 from tracking.fixed_project_context import FixedProjectContext
-from tracking.env import PersistedEnv
+from tracking.env import Env, PersistedEnv
 
 USERNAME = "user"
 PROJECT_ID = "proj"
@@ -82,7 +83,7 @@ def test_update_with_empty_values_is_a_noop(db):
 @pytest.mark.contract
 def test_update_drops_a_key_that_is_currently_action_set(db):
     """A model echoing back a key an action's own `env:` field already
-    set must not duplicate into stored() on top of action_set()."""
+    set must not duplicate into memory() on top of action_set()."""
     env = _env(db, _session(db))
     env.update_action_set({"WRONG_ANSWERS_ON_CURRENT_STEP": 2})
 
@@ -108,16 +109,16 @@ def test_action_set_reads_a_value_set_via_update_action_set(db):
     env.update_action_set({"number_of_steps": 3})
 
     assert env.action_set() == {"number_of_steps": 3}
-    assert env.stored() == {}
+    assert env.memory() == {}
 
 
 @pytest.mark.contract
-def test_action_set_and_stored_are_independent_stores(db):
+def test_action_set_and_memory_are_independent_stores(db):
     env = _env(db, _session(db))
     env.update({"favorite_color": "blue"})
     env.update_action_set({"number_of_steps": 3})
 
-    assert env.stored() == {"favorite_color": "blue"}
+    assert env.memory() == {"favorite_color": "blue"}
     assert env.action_set() == {"number_of_steps": 3}
 
 
@@ -151,12 +152,22 @@ def test_get_reads_an_action_set_value_too(db):
 
 
 @pytest.mark.contract
-def test_serialise_as_text_merges_stored_and_action_set(db):
+def test_memory_as_text_renders_memory_only(db):
     env = _env(db, _session(db))
     env.update({"favorite_color": "blue"})
     env.update_action_set({"number_of_steps": 3})
 
-    result = env.serialise_as_text()
+    result = env.memory_as_text()
 
-    assert "favorite_color: blue" in result
-    assert "number_of_steps: 3" in result
+    assert result == "favorite_color: blue"
+
+
+@pytest.mark.contract
+def test_update_action_set_returns_the_tracking_row_id_for_a_persisted_env_and_none_in_memory(db):
+    env = _env(db, _session(db))
+
+    row_id = env.update_action_set({"a": 1})
+
+    assert isinstance(row_id, int)
+    assert Env().update_action_set({"a": 1}) is None
+    assert env.update_action_set({}) is None

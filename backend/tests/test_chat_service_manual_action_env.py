@@ -109,7 +109,7 @@ async def test_a_manually_fired_actions_env_is_persisted(db):
 
     env = _env_for(db)
     assert env.action_set() == {"reset_counter": True}
-    assert env.stored() == {}
+    assert env.memory() == {}
 
 
 async def test_an_action_with_no_env_field_never_touches_env(db):
@@ -119,7 +119,7 @@ async def test_an_action_with_no_env_field_never_touches_env(db):
     await chat_service.apply_manual_action("advance", session["id"])
 
     env = _env_for(db)
-    assert env.stored() == {}
+    assert env.memory() == {}
     assert env.action_set() == {}
 
 

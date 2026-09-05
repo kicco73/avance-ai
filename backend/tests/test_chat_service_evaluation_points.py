@@ -318,9 +318,9 @@ async def test_message_linking_end_to_end_bootstrap_and_one_real_turn(db, chat_s
     row the regenerated reply reported.
     """
     ai_service = FakeSchemaAiService([
-        {"signals": '{"foo": -1}', "env": "stage: opening"},  # opening message — signals not requested, dropped
-        {"signals": '{"foo": 1}', "env": "stage: guessed"},  # optimistic guess — fires "foo >= 0"
-        {"env": "stage: crisis"},  # regenerated reply — signals never re-requested
+        {"signals": '{"foo": -1}', "memory": "stage: opening"},  # opening message — signals not requested, dropped
+        {"signals": '{"foo": 1}', "memory": "stage: guessed"},  # optimistic guess — fires "foo >= 0"
+        {"memory": "stage: crisis"},  # regenerated reply — signals never re-requested
     ])
     chat_service = chat_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
     session_id = await _bootstrap_session(chat_service)

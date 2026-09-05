@@ -267,18 +267,33 @@ class GeminiProvider(LLMProvider):
 
 		return contents
 
-	@staticmethod
-	def __schema_to_gemini_parameters(parameters: dict) -> dict:
-		"""ToolSpec.parameters is plain JSON Schema (lowercase types,
-		ToolSet.specs' own contract: an object of all-required plain
-		strings) — Gemini's own Schema type uses uppercase type names, the
-		same convention build_schema above already follows for
-		response_schema."""
-		return {
-			"type": "OBJECT",
-			"properties": {name: {"type": "STRING"} for name in parameters.get("properties", {})},
-			"required": list(parameters.get("required", [])),
-		}
+	@classmethod
+	def __schema_to_gemini_parameters(cls, parameters: dict) -> dict:
+		"""ToolSpec.parameters is plain JSON Schema (lowercase types — see
+		tracking.sources.METHOD_SCHEMAS: arrays of strings, an object of
+		string fields, enums, descriptions) — Gemini's own Schema dialect
+		uses uppercase type names (the same convention build_schema above
+		already follows for response_schema), knows `properties`/`items`/
+		`required`/`enum`/`description`, and has no `additionalProperties`/
+		`minProperties`/`minItems`, which are simply dropped."""
+		return cls.__json_schema_to_gemini(parameters)
+
+	@classmethod
+	def __json_schema_to_gemini(cls, schema: dict) -> dict:
+		converted: dict = {"type": str(schema.get("type", "string")).upper()}
+		if "description" in schema:
+			converted["description"] = schema["description"]
+		if "enum" in schema:
+			converted["enum"] = list(schema["enum"])
+		if converted["type"] == "OBJECT":
+			converted["properties"] = {
+				name: cls.__json_schema_to_gemini(sub_schema) for name, sub_schema in schema.get("properties", {}).items()
+			}
+			if schema.get("required"):
+				converted["required"] = list(schema["required"])
+		if converted["type"] == "ARRAY" and isinstance(schema.get("items"), dict):
+			converted["items"] = cls.__json_schema_to_gemini(schema["items"])
+		return converted
 
 	def __respond_tool_declaration(self, schema: dict[str, str]) -> types.FunctionDeclaration:
 		return types.FunctionDeclaration(

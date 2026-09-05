@@ -156,7 +156,7 @@ class TestReplayJob(CancelableJob):
             return Env()
         source_env = env_for_session(self._service._db, session)
         until = session['datetime_start']
-        return Env(stored=source_env.stored(until=until), action_set=source_env.action_set(until=until))
+        return Env(memory=source_env.memory(until=until), action_set=source_env.action_set(until=until))
 
     def _chunk_into_batches(self, message_ids: list[int]) -> list[list[int]]:
         if not issubclass(self._signal_source_cls, BatchSignalSource):

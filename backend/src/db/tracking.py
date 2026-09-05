@@ -107,7 +107,14 @@ class TrackingMixin:
         Tracking.update(message=message_id).where(Tracking.id == signal_row_id).execute()
 
     def get_signal_row_by_message(self, message_id: int) -> dict | None:
-        row = Tracking.get_or_none(Tracking.message == message_id)
+        """The evaluation-point row linked to `message_id` — never one of
+        the env/action_env/tool_calls bookkeeping rows that can share the
+        same message link (see set_env's message_id, record_tool_calls,
+        link_tool_env_writes_to_message), same exclusion get_signals uses."""
+        row = Tracking.get_or_none(
+            (Tracking.message == message_id)
+            & Tracking.env.is_null(True) & Tracking.action_env.is_null(True) & Tracking.tool_calls.is_null(True)
+        )
         if row is None:
             return None
         return {'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id, 'origin': row.origin}
@@ -250,8 +257,30 @@ class TrackingMixin:
         row = query.order_by(Tracking.timestamp.desc()).first()
         return json.loads(row.action_env) if row is not None else {}
 
-    def set_action_env(self, session_id: int, action_env: dict) -> None:
-        Tracking.create(session=session_id, action_env=json.dumps(action_env))
+    def set_action_env(self, session_id: int, action_env: dict, origin: str | None = None) -> int:
+        """`origin`: None for an action's own `env:` write; 'tool' for one
+        the model made through an avance:env source's `update` (see
+        tracking.sources.avance_env), so link_tool_env_writes_to_message
+        below can find it once the turn's assistant message exists."""
+        if origin is not None and origin not in TRACKING_ORIGINS:
+            raise ValueError(f"Unknown origin '{origin}' — expected one of {TRACKING_ORIGINS}.")
+        row = Tracking.create(session=session_id, action_env=json.dumps(action_env), origin=origin)
+        return row.id
+
+    def link_tool_env_writes_to_message(self, session_id: int, message_id: int) -> None:
+        """Binds every action_env row the model wrote this turn (origin
+        'tool', see set_action_env) and not yet linked to any message to
+        `message_id` — the turn's own assistant message, which doesn't
+        exist yet when the write happens mid-generation. Same a-posteriori
+        shape record_tool_calls' own message link has."""
+        (
+            Tracking.update(message=message_id)
+            .where(
+                (Tracking.session == session_id) & (Tracking.origin == 'tool')
+                & Tracking.action_env.is_null(False) & Tracking.message.is_null(True)
+            )
+            .execute()
+        )
 
     def record_tool_calls(
         self, session_id: int, tool_calls: list[dict], message_id: int | None = None, timestamp: datetime | None = None,

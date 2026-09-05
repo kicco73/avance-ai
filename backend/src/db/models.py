@@ -153,7 +153,10 @@ class Message(BaseModel):
     class Meta:
         table_name = 'Message'
 
-TRACKING_ORIGINS = ('trigger', 'manual', 'system', 'init-action')
+# 'tool': an action_env row the model itself wrote through an avance:env
+# source's `update` (see tracking.sources.avance_env) — what
+# Db.link_tool_env_writes_to_message binds to the turn's assistant message.
+TRACKING_ORIGINS = ('trigger', 'manual', 'system', 'init-action', 'tool')
 
 
 class Tracking(BaseModel):

@@ -90,7 +90,7 @@ def create_app() -> FastAPI:
         # before anything else touches a project's stored revisions.
         migrate_legacy_source_read(db)
         # One-off: renames every stored index.yml revision's own state-level
-        # `tools:` field to `ai-may-query-sources:` (see the module's own docstring).
+        # legacy source-field names to the current ones (see the module's own docstring).
         migrate_legacy_tools_field(db)
         migrate_env_rows(db)
 
