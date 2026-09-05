@@ -142,6 +142,18 @@ function triggerUpload() {
   fileInputRef.value?.click()
 }
 
+function download() {
+  const blob = new Blob([content.value], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = props.fileName.slice(props.fileName.lastIndexOf('/') + 1)
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
 async function handleUpload(event) {
   const file = event.target.files?.[0]
   event.target.value = ''
@@ -184,6 +196,12 @@ onBeforeUnmount(() => {
         >↻</button>
         <button class="add-row-btn" :disabled="loading || saving" title="Add a row" @click="addRow">+ Row</button>
         <button
+          class="source-content-download-btn"
+          :disabled="loading"
+          title="Download this source's CSV file"
+          @click="download"
+        >Download</button>
+        <button
           class="source-content-upload-btn"
           :disabled="uploading || saving"
           title="Upload a CSV file, replacing this source's current content"
@@ -207,9 +225,9 @@ onBeforeUnmount(() => {
 .source-content-table { flex: 1; min-height: 0; overflow: auto; }
 .undo-redo-btn { padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid #ccc; background: white; cursor: pointer; font-size: 0.9rem; }
 .undo-redo-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.add-row-btn, .source-content-upload-btn { padding: 0.35rem 0.7rem; border-radius: 6px; border: 1px solid #4a6fa5; background: white; color: #4a6fa5; cursor: pointer; font-size: 0.82rem; }
-.add-row-btn:hover:not(:disabled), .source-content-upload-btn:hover:not(:disabled) { background: #eef2f9; }
-.add-row-btn:disabled, .source-content-upload-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.add-row-btn, .source-content-download-btn, .source-content-upload-btn { padding: 0.35rem 0.7rem; border-radius: 6px; border: 1px solid #4a6fa5; background: white; color: #4a6fa5; cursor: pointer; font-size: 0.82rem; }
+.add-row-btn:hover:not(:disabled), .source-content-download-btn:hover:not(:disabled), .source-content-upload-btn:hover:not(:disabled) { background: #eef2f9; }
+.add-row-btn:disabled, .source-content-download-btn:disabled, .source-content-upload-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .source-content-upload-input { display: none; }
 .save-btn { padding: 0.4rem 1rem; border-radius: 6px; border: 1px solid #2e7d32; background: #2e7d32; color: white; cursor: pointer; }
 .save-btn:hover:not(:disabled) { background: #256428; }
