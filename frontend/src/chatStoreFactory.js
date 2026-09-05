@@ -476,7 +476,13 @@ export function createChatStore({
           messages.value[idx] = {
             ...messages.value[idx],
             messageId: result.assistant_message_id,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            // The turn is over — a tool call mid-stream leaves a stale
+            // statusText behind whenever the last event before "done" was
+            // tool_call rather than its matching tool_result. Cleared here
+            // so the at-rest bubble never shows a lingering "Searching…"
+            // line (toStoreMessage's own reload path never sets it at all).
+            statusText: ''
           }
           // The live SSE turn only ever streamed status_text/chunks, never
           // the permanent tool-call trace itself (see toStoreMessage) —

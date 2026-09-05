@@ -35,10 +35,8 @@ class AvanceArchiveSource(SourceDriver):
         "select": (
             "Grep over this source's own archive file: the header row (names the keys) plus every "
             "row matching *every* given value, case-insensitive — e.g. source.<name>.select('Paris'). "
-            "Each row is one record; a match can span several rows, so pass more than one value "
-            "— e.g. select('order_123', '2024-05-01') — to narrow to a single row rather than "
-            "assume the first. Omit `values` for every row. `keys` (optional) picks which columns "
-            "to return, e.g. keys=['status']."
+            "Omit `values` for every row. `keys` (optional) picks which columns to return, e.g. "
+            "keys=['status']."
         ),
     }
 

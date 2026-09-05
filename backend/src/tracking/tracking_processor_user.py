@@ -44,11 +44,19 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 					self.out.reply += chunk
 					self.metadata.on_metadata('chunk', chunk)
 
-		if not self.out.signals_resolved and buffered_text_before_signals_resolved:
-			# Safety net: the model never produced a 'signals' tag/field at
-			# all (malformed output, schema not honored, ...) — without this
-			# the whole buffered reply would be silently lost, since nothing
-			# else ever flushes it into self.out.reply or on to the client.
+		if not self.out.reply and buffered_text_before_signals_resolved and self.user.state == self.out.state:
+			# Safety net — covers two cases, not just the one this used to
+			# guard against (the model never producing a 'signals' tag at
+			# all): in "after" tracking order (signals evaluated on the
+			# model's own reply — see TrackingProcessor._order_channels),
+			# 'signals' is schema-ordered *after* 'text', so it only ever
+			# resolves once every 'text' chunk has already been produced —
+			# there is no chunk left afterwards for the per-iteration check
+			# above to ever observe signals_resolved having flipped True,
+			# so the buffered reply above sits unflushed even though
+			# signals did resolve. Gated on `not self.out.reply` so a
+			# normal "before"-order turn (already flushed live, chunk by
+			# chunk, above) is never double-applied here.
 			self.out.reply = buffered_text_before_signals_resolved
 			self.metadata.on_metadata('chunk', buffered_text_before_signals_resolved)
 

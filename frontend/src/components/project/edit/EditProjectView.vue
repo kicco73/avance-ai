@@ -356,10 +356,17 @@ const selected = ref(null)
 // testStore's own `messages` reshaped into the common input shape
 // buildTimeline expects. The in-flight assistant placeholder has no
 // messageId yet — kept in with `id: null`, unmatched until resolved.
+// `key` carries the store's own ever-incrementing local id instead —
+// stable across a placeholder's whole lifetime (unlike `id`, which
+// jumps from null to the real backend id once the turn resolves) — so
+// ChatTimeline.vue can key its v-for on it and never collide two
+// still-unresolved placeholders (e.g. the just-sent user message and
+// the assistant reply streaming in behind it) onto the same "null" key.
 const rawLiveMessages = computed(() =>
   messages.value.map((m) => ({
     ...m,
     id: m.messageId ?? null,
+    key: m.id,
     audio_text: m.audioText
   }))
 )

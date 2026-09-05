@@ -83,7 +83,7 @@ function isSelfLoop(transition) {
   <div class="chat-timeline" ref="rootEl">
     <template
       v-for="entry in timeline"
-      :key="entry.kind + '-' + (entry.kind === 'message' ? entry.message.id : entry.transition.id)"
+      :key="entry.kind + '-' + (entry.kind === 'message' ? (entry.message.key ?? entry.message.id) : entry.transition.id)"
     >
       <div
         v-if="entry.kind === 'message'"
