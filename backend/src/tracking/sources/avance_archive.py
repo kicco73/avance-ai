@@ -33,12 +33,12 @@ class AvanceArchiveSource(SourceDriver):
     SUPPORTED_METHODS = frozenset({"select"})
     METHOD_DESCRIPTIONS = {
         "select": (
-            "Grep over this source's own archive file: the header row plus every row containing "
-            "*every* given value (case-insensitive) — e.g. source.<name>.select('Paris'). Each "
-            "additional value narrows the result further: search by flight code and date to get a "
-            "single row instead of every date that flight ever flew. Omit `values` entirely to get "
-            "every row. `keys` (optional) names the columns to return, in that order — e.g. "
-            "source.<name>.select('VY3003', keys=['data_partenza'])."
+            "Grep over this source's own archive file: the header row (names the keys) plus every "
+            "row matching *every* given value, case-insensitive — e.g. source.<name>.select('Paris'). "
+            "Each row is one record; a match can span several rows, so pass more than one value "
+            "— e.g. select('order_123', '2024-05-01') — to narrow to a single row rather than "
+            "assume the first. Omit `values` for every row. `keys` (optional) picks which columns "
+            "to return, e.g. keys=['status']."
         ),
     }
 

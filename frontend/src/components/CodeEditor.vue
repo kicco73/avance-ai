@@ -7,7 +7,7 @@ import { Compartment } from '@codemirror/state'
 import { EditorView, basicSetup } from 'codemirror'
 import { keymap } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { HighlightStyle, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
 import { yaml, yamlLanguage } from '@codemirror/lang-yaml'
 import { css, cssLanguage } from '@codemirror/lang-css'
@@ -21,9 +21,12 @@ import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile } from
 
 // @lezer/yaml tags every plain scalar (unquoted values, `|`/`>` block
 // bodies) as tags.content, which defaultHighlightStyle leaves uncolored —
-// so most of index.yml's actual text renders black-on-white. Added
-// alongside the default style (see createEditor's yaml branch), not in
-// place of it.
+// so most of index.yml's actual text renders black-on-white. Registering
+// this as another {fallback: true} style alongside basicSetup's own
+// wouldn't add it: CodeMirror's fallback slot keeps only the first
+// registration and drops the rest. Re-registering defaultHighlightStyle
+// as a *non-fallback* style here instead (see createEditor's yaml
+// branch) works because non-fallback styles union with each other.
 const yamlValueHighlightStyle = HighlightStyle.define([
   { tag: [tags.content, tags.attributeValue], color: '#8b5c00' }
 ])
@@ -103,6 +106,7 @@ function createEditor(doc) {
     extensions.splice(
       1, 0,
       yaml(),
+      syntaxHighlighting(defaultHighlightStyle),
       syntaxHighlighting(yamlValueHighlightStyle),
       yamlLanguage.data.of({ autocomplete: yamlAttachmentCompletionSource(() => props.yamlAttachmentFiles) }),
       yamlLanguage.data.of({ autocomplete: yamlStructureCompletionSource() })

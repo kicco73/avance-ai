@@ -38,7 +38,7 @@ from talk.talk_service import TalkService
 from whatsapp.whatsapp_service import WhatsAppService
 from listen.listen_service import ListenService
 
-__version__ = "1.30.0"
+__version__ = "1.31.0"
 
 logger = LoggerFactory.get_logger(__name__)
 
