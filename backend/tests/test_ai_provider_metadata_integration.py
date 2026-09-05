@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from ai import AiService
+from tracking.channels import AudioChannel, MemoryChannel, SignalsChannel, TextChannel
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 from config import AppConfig, ConfigError
 
@@ -26,16 +27,16 @@ SIGNAL_DEFINITION = "- mood (a number from 0 to 100): how happy the user's own m
 
 PROMPT = (
     'The user just said: "I got promoted today, I\'m overjoyed!". '
-    "Report mood as exactly 95, and store today's good news under the env key "
+    "Report mood as exactly 95, and store today's good news under the memory key "
     "'last_win' with the value 'promotion'."
 )
 
 class _StubEnv:
-    """A throwaway Env-shaped object — TurnProtocol.generate_reply only
-    reads serialise_as_text() off whatever it's given, sparing this test
-    a real Db/session-backed Env."""
+    """A throwaway Env-shaped object — MemoryChannel only reads
+    memory_as_text() off whatever it's given, sparing this test a real
+    Db/session-backed Env."""
 
-    def serialise_as_text(self) -> str:
+    def memory_as_text(self) -> str:
         return ""
 
 
@@ -46,17 +47,16 @@ def _history() -> list[dict]:
     return [{"role": "user", "content": PROMPT}]
 
 
-def _strategy():
-    """Pins a fresh AiService to its first configured provider — True
-    picks one of the two valid tag/field orderings, irrelevant to what
-    this test actually checks."""
+def _protocol() -> TurnProtocolUsingSchema:
+    """Pins a fresh AiService to its first configured provider."""
     ai_service = AiService.for_live(_APP_CONFIG.ai_services)
     ai_service.select_model(0)
-    return TurnProtocolUsingSchema(ai_service, True)
+    return TurnProtocolUsingSchema(ai_service)
 
 
 async def _run():
-    strategy = _strategy()
+    protocol = _protocol()
+    channels = [SignalsChannel(SIGNAL_DEFINITION), AudioChannel(), TextChannel(BASE_PROMPT), MemoryChannel(_StubEnv())]
     chunks: list[str] = []
     live_metadata: dict[str, object] = {}
 
@@ -64,32 +64,34 @@ async def _run():
         # Called sync, fire-and-forget — never awaited by a provider.
         live_metadata[key] = value
 
-    async for chunk in strategy.generate_reply(BASE_PROMPT, SIGNAL_DEFINITION, _StubEnv(), _history(), on_metadata):
+    async for chunk in protocol.generate_reply(channels, _history(), on_metadata):
         chunks.append(chunk)
 
     return "".join(chunks), chunks, live_metadata
 
 
 def _assert_extracted_metadata(reply, live_metadata) -> None:
-    # The schema strategy never embeds [audio]/[signals]/[env] markup in
+    # The schema protocol never embeds [audio]/[signals]/[memory] markup in
     # the visible text to begin with.
     assert reply.strip()
-    for marker in ("[audio]", "[/audio]", "[signals]", "[/signals]", "[env]", "[/env]"):
+    for marker in ("[audio]", "[/audio]", "[signals]", "[/signals]", "[memory]", "[/memory]"):
         assert marker not in reply
 
     assert isinstance(live_metadata.get("audio"), str) and live_metadata["audio"]
 
-    # "signals" arrives through on_metadata as a raw, still-JSON-encoded
-    # string; a layer above (TrackingProcessor) turns it into a dict.
-    assert isinstance(live_metadata.get("signals"), str)
+    # "signals" arrives through on_metadata already decoded (see
+    # SignalsChannel.decode, invoked centrally by TurnProtocolUsingSchema.
+    # generate_reply) — a dict, never the raw JSON string the model itself wrote.
+    assert isinstance(live_metadata.get("signals"), dict)
     assert "mood" in live_metadata["signals"]
 
 
 @pytest.mark.contract
 async def test_generate_reply_streams_chunks_and_reports_metadata():
-    """TurnProtocol.generate_reply always returns an AsyncIterator[str] of
-    visible text chunks, with metadata delivered live through the
-    on_metadata callback's raw string values, never a return tuple."""
+    """TurnProtocolUsingSchema.generate_reply always returns an
+    AsyncIterator[str] of visible text chunks, with metadata delivered
+    live through the on_metadata callback's already-decoded values, never
+    a return tuple."""
     reply, chunks, live_metadata = await _run()
 
     _assert_extracted_metadata(reply, live_metadata)

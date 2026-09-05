@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from tracking.env import Env
-from tracking.metadata_channels import MemoryChannel
+from tracking.channels import MemoryChannel
 
 pytestmark = pytest.mark.contract
 

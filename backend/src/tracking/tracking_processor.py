@@ -14,7 +14,7 @@ from session import Session
 from .env import Env
 from .env_prompt_block import EnvPromptBlock
 from .evaluation_scope import EvaluationScopeBuilder
-from .metadata_channels import (
+from .channels import (
 	AudioChannel, MemoryChannel, MetadataChannel, ReactionChannel, SignalsChannel, TextChannel, TranslateChannel,
 )
 from .priming import build_priming_messages
@@ -220,7 +220,7 @@ class TrackingProcessor(object):
 			rv = self.metadata.audio = value
 		elif key == 'reaction':
 			rv = self.metadata.reaction = value
-		elif key == 'button_translations':
+		elif key == 'translations':
 			rv = self.metadata.button_translations = value
 		elif key == 'input_tokens':
 			rv = self.metadata.input_tokens = (self.metadata.input_tokens or 0) + value

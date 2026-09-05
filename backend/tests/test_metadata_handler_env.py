@@ -26,7 +26,7 @@ import pytest
 
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import Env, PersistedEnv
-from tracking.metadata_channels import (
+from tracking.channels import (
 	MemoryBatchChannel, MemoryChannel, MetadataTurnMismatch, SignalsBatchChannel, SignalsChannel, TextChannel,
 )
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
@@ -206,11 +206,11 @@ def test_generate_reply_renders_an_env_block_with_stored_values_only(db):
 	assert "today:" not in prompt
 
 
-def test_generate_reply_embeds_the_given_signal_definition_verbatim(db):
+def test_generate_reply_embeds_the_given_signal_definition_verbatim():
 	"""build_final_prompt takes the already-rendered definition text
 	directly — it has no opinion of its own on which signals it
 	describes."""
-	env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID))
+	env = Env()
 	channels = [
 		SignalsChannel('- Definition of signals:\n\t- Signal "mood":\nmood definition'),
 		TextChannel("base prompt"), MemoryChannel(env),

@@ -166,11 +166,18 @@ def test_a_source_with_no_url_yet_still_needs_an_ai_definition():
         _build("    ai-may-read-sources: [flights]", "sources:\n  flights:\n    ui-label: Flights\n")
 
 
-def test_a_source_with_no_url_yet_and_an_ai_definition_is_rejected_as_a_read_target():
-    # No url means no driver, so no `select` to expose — the same
-    # "undefined name" a script's own source.flights.select(...) would get.
-    with pytest.raises(ValueError, match=r"references undefined name\(s\): source.flights.select"):
-        _build("    ai-may-read-sources: [flights]", _FLIGHTS_SOURCE)
+def test_a_source_with_no_url_yet_and_an_ai_definition_still_builds_as_a_read_target():
+    # "Created, not yet configured" leniency — a read on a url-less source
+    # builds; it just can't be called until a url picks a driver.
+    automaton = _build("    ai-may-read-sources: [flights]", _FLIGHTS_SOURCE)
+    assert automaton.states["a"].ai_may_read_sources == ("flights",)
+
+
+def test_a_write_on_a_source_with_no_url_yet_is_rejected():
+    # No url means no driver, so no update to expose — unlike a read,
+    # there is nothing lenient about promising a write nobody can serve.
+    with pytest.raises(ValueError, match=r"undefined name\(s\): source.flights.update"):
+        _build("    ai-may-write-sources: [flights]", _FLIGHTS_SOURCE)
 
 
 def test_a_source_not_listed_anywhere_needs_no_ai_definition():
@@ -215,31 +222,34 @@ env:
         assert other_source.reads_env_source(other_source.states["a"]) is False
 
     def test_a_script_may_call_select_with_keys_and_update_with_fields_on_an_env_source(self):
-        automaton = _build("", _ENV_PROJECT + """
-  b:
-    contextual-prompt: there
+        content = """
+project:
+  id: test_project
+env:
+  pnr:
+    ai-access: readwrite
+    ai-definition: The record locator.
+sources:
+  env:
+    url: avance:env
+    ai-definition: The variables.
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
     actions:
-      - name: back
+      - name: advance
         target: a
         trigger: "source.env.select(keys=['pnr']) != ''"
         on-enter: |
           source.env.update(fields={'pnr': 'X'})
-""".replace("\n  b:", "\n  b:", 1))
-        assert "b" in automaton.states
+"""
+        automaton = AutomatonBuilder().build({"index.yml": content})
+        assert automaton.states["a"].actions[0].trigger == "source.env.select(keys=['pnr']) != ''"
 
     def test_a_script_calling_update_on_an_archive_source_is_rejected(self):
-        with pytest.raises(ValueError, match=r"undefined name\(s\): source.flights.update"):
-            _build("", """
-sources:
-  flights:
-    url: avance:flights.csv
-states_extra: ignored
-""".replace("states_extra: ignored\n", "") + """
-""", contents={"flights.csv": "a,b\n"}) if False else _build_with_update_script()
-
-
-def _build_with_update_script():
-    content = """
+        content = """
 project:
   id: test_project
 sources:
@@ -256,4 +266,5 @@ states:
         on-enter: |
           source.flights.update(fields={'a': 'b'})
 """
-    return AutomatonBuilder().build({"index.yml": content, "flights.csv": "a,b\n1,2\n"})
+        with pytest.raises(ValueError, match=r"undefined name\(s\): source.flights.update"):
+            AutomatonBuilder().build({"index.yml": content, "flights.csv": "a,b\n1,2\n"})

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from automaton.automaton import Action, Automaton, State
+from automaton.automaton import Action, Automaton, EnvKey, Source, State
 from chat.chat_service import ChatService
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
@@ -23,10 +23,17 @@ pytestmark = pytest.mark.regression
 PROJECT_ID = "proj"
 
 
-def _automaton(action_env: dict, target: str = "b") -> Automaton:
+def _automaton(action_env: dict, target: str = "b", model_reads_env: bool = False) -> Automaton:
+    """`model_reads_env`: exports every written key read-only and has the
+    destination state read an avance:env source — the one configuration
+    under which an env value ever reaches the model's prompt (see
+    tracking.env_prompt_block); an unexported key never does."""
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target=target, env=action_env)
     state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
-    state_b = State(key="b", ui_label="B", final=target == "b", contextual_prompt="bye", actions=[])
+    state_b = State(
+        key="b", ui_label="B", final=target == "b", contextual_prompt="bye", actions=[],
+        ai_may_read_sources=("env",) if model_reads_env else (),
+    )
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
         init_action=init_action,
@@ -36,6 +43,11 @@ def _automaton(action_env: dict, target: str = "b") -> Automaton:
         attachments={},
         general_attachments={},
         autotracking_on_ai_message=False,
+        env_keys=[
+            EnvKey(name=key, ai_access="readonly" if model_reads_env else "none", ai_definition=f"The {key}.")
+            for key in (action_env or {})
+        ],
+        sources=[Source(name="env", url="avance:env", ui_label="Env", ai_definition="The variables.")] if model_reads_env else [],
     )
 
 
@@ -136,8 +148,9 @@ async def test_manual_actions_env_can_self_reference_a_previously_stored_value(d
 
 async def test_env_update_happens_before_the_transitions_own_prompt_is_built(db):
     """The destination state's own opening-message prompt must already
-    see the updated env value, not last turn's."""
-    chat_service = _chat_service(db, _automaton({"reset_counter": "True"}))
+    see the updated env value, not last turn's — in its env block, which
+    that state gets because it reads the avance:env source."""
+    chat_service = _chat_service(db, _automaton({"reset_counter": "True"}, model_reads_env=True))
     ai_service = chat_service._ai_service
     session = await chat_service.get_current_session_if_any_or_create_new(None)
 
@@ -145,3 +158,16 @@ async def test_env_update_happens_before_the_transitions_own_prompt_is_built(db)
 
     system_prompt, _ = ai_service.calls[0]
     assert "reset_counter: True" in system_prompt
+
+
+async def test_an_unexported_env_key_never_reaches_the_prompt(db):
+    """ai-access: none (the default) — the automaton's env stays out of
+    the model's prompt entirely, whatever the destination state declares."""
+    chat_service = _chat_service(db, _automaton({"reset_counter": "True"}))
+    ai_service = chat_service._ai_service
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
+
+    await chat_service.apply_manual_action("advance", session["id"])
+
+    system_prompt, _ = ai_service.calls[0]
+    assert "reset_counter" not in system_prompt

@@ -12,7 +12,7 @@ from automaton.automaton import Automaton
 from tracking.definitions import Signals
 from tracking.env import Env
 from tracking.fixed_project_context import FixedProjectContext
-from tracking.metadata_channels import MemoryBatchChannel, MemoryChannel, SignalsBatchChannel, SignalsChannel, TextChannel
+from tracking.channels import MemoryBatchChannel, MemoryChannel, SignalsBatchChannel, SignalsChannel, TextChannel
 from tracking.tracking_service import TrackingService
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 from testing.replay_messages import next_assistant_message_id

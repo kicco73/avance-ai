@@ -69,7 +69,7 @@ class RecordingSchemaAiService:
     def get_models_info(self) -> dict:
         return {"auto": True, "current_index": 0, "models": []}
 
-    async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema):
+    async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
         self.calls.append(dict(schema))
         self.prompts.append(system_prompt)
         if len(self.calls) == 1:

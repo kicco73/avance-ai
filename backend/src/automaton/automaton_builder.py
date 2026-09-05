@@ -646,13 +646,16 @@ class AutomatonBuilder(object):
 
     def _validate_state_sources(self, state: State, sources: dict[str, Source]) -> None:
         """Every name in a state's three source fields must be a declared
-        source with its own `ai-definition`; a write additionally needs a
-        driver that implements update — reported with the very same
-        "undefined name(s)" wording a script calling an unsupported method
-        gets (see _validate_namespaced_expression). An avance:env source
-        the model may write but never read in the same state builds
-        (writing blind is legal) but is almost certainly an oversight —
-        a warning, not an error."""
+        source with its own `ai-definition`, and its driver must implement
+        the method the field exposes (`select` for a read, `update` for a
+        write) — reported with the very same "undefined name(s)" wording a
+        script calling an unsupported method gets (see
+        _validate_namespaced_expression). A source with no url yet (see
+        _build_source) keeps its "created, not yet configured" leniency
+        for a read; a write on it is still rejected, since no driver
+        means no update. An avance:env source the model may write but
+        never read in the same state builds (writing blind is legal) but
+        is almost certainly an oversight — a warning, not an error."""
         by_field = {
             "ai-may-read-sources": state.ai_may_read_sources,
             "ai-must-read-sources": state.ai_must_read_sources,
@@ -671,7 +674,7 @@ class AutomatonBuilder(object):
                         f"State '{state.key}': {field_name} '{source_name}' — source '{source_name}' has no "
                         "own 'ai-definition', required for a source exposed to the model as a tool."
                     )
-                if method not in self._supported_methods(source):
+                if (source.url or method == WRITE_METHOD) and method not in self._supported_methods(source):
                     raise ValueError(
                         f"State '{state.key}': {field_name} '{source_name}' references undefined name(s): "
                         f"source.{source_name}.{method}"

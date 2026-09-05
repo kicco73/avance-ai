@@ -4,7 +4,7 @@ from typing import AsyncIterator
 
 from ai import MetadataCallback
 from logging_factory import LoggerFactory
-from tracking.metadata_channels import MetadataChannel
+from tracking.channels import MetadataChannel
 from tracking.sources import ToolSet
 
 logger = LoggerFactory.get_logger(__name__)
