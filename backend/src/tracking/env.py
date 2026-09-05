@@ -124,7 +124,7 @@ class PersistedEnv(Env):
     base class's in-memory dicts."""
 
     def __init__(
-        self, db: Db, project_service: "ProjectService", session_id: int | None,
+        self, db: Db, project_service: "ProjectService", session_id: int,
         username: str | None = None,
     ) -> None:
         """`project_service`: whatever answers get_active_project_id() —
@@ -139,13 +139,15 @@ class PersistedEnv(Env):
         env read here answers for one project and a write lands in
         another's Tracking rows.
 
-        `session_id` has no default on purpose — _write_memory/
-        _write_action_set below persist through it (Tracking.session is a
-        real FK), so a caller with no real session must use a plain Env()
-        instead (see ChatService._schedule_on_enter/tracking.actuators.
-        on_enter_task.ScopeHydrator, both of which branch on session_id
-        before ever constructing one of these) rather than pass None here
-        implicitly and violate that FK on the first write."""
+        `session_id` is required, not just typed as required — raises
+        ValueError on None rather than silently accepting it and only
+        failing later, on the first _write_memory/_write_action_set call
+        (Tracking.session is a real FK): a caller with no real session
+        must use a plain Env() instead (see ChatService._schedule_on_enter/
+        tracking.actuators.on_enter_task.ScopeHydrator, both of which
+        branch on session_id before ever constructing one of these)."""
+        if session_id is None:
+            raise ValueError("PersistedEnv requires a real session_id — use Env() when there is no session.")
         super().__init__()
         self._db = db
         self._project_service = project_service

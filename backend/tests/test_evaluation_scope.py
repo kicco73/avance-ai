@@ -26,7 +26,9 @@ PROJECT_ID = "proj"
 
 def _builder(db) -> EvaluationScopeBuilder:
     project_service = FixedProjectContext(project_id=PROJECT_ID)
-    env = PersistedEnv(db, project_service, session_id=None)
+    # Read-only here (session_id is now required — PersistedEnv(None)
+    # raises — and no test in this file writes through this instance).
+    env = PersistedEnv(db, project_service, session_id=0)
     metrics = MetricService(db, project_service)
     return EvaluationScopeBuilder(env, metrics, SessionFacts(db, project_service), UserFacts(db), db)
 

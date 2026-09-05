@@ -240,7 +240,7 @@ def test_a_fake_actuator_sets_on_enter_still_runs_as_a_task_and_reports(file_db)
     _publish(file_db, project_service, _yml("actuator.send_mail(user.email, 'hi')\n          actuator.celebrate()"))
     automaton = project_service.get_automaton(PROJECT, file_db.get_project_published_revision(PROJECT))
     context = FixedProjectContext(automaton=automaton, project_id=PROJECT)
-    env = PersistedEnv(file_db, context, session_id=None)
+    env = PersistedEnv(file_db, context, session_id=0)
     builder = EvaluationScopeBuilder(
         env, MetricService(file_db, context), SessionFacts(file_db, context), UserFacts(file_db), file_db, None,
         factory.fake(project_id=PROJECT),

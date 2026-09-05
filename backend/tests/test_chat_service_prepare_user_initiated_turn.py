@@ -110,5 +110,5 @@ async def test_still_applies_declared_env_defaults(db):
 
     await chat_service.prepare_user_initiated_turn(session["id"])
 
-    env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id=None)
+    env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id=0)
     assert env.action_set() == {"a": 2}

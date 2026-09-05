@@ -76,7 +76,11 @@ def _chat_service(db, project_service: ProjectService) -> ChatService:
 
 
 def _env(db, project_id: str, username: str = USERNAME) -> PersistedEnv:
-    return PersistedEnv(db, FixedProjectContext(project_id=project_id), session_id=None, username=username)
+    # Read-only in every test here (assertions read action_set()/memory()
+    # straight off project+user; the real writes under test go through
+    # ChatService's own, properly session-scoped PersistedEnv) — session_id
+    # is now required (PersistedEnv(None) raises), so any real id will do.
+    return PersistedEnv(db, FixedProjectContext(project_id=project_id), session_id=0, username=username)
 
 
 @pytest.fixture

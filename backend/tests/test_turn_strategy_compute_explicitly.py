@@ -19,7 +19,7 @@ pytestmark = pytest.mark.contract
 
 
 def _channels(db) -> list:
-    env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id=None)
+    env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id=0)
     return [
         SignalsChannel("- Definition of signals: ..."), AudioChannel(), TextChannel("base prompt"), MemoryChannel(env),
     ]
