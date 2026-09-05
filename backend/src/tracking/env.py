@@ -37,8 +37,7 @@ class Env(object):
     def action_set(self, until: datetime | None = None) -> dict[str, Any]:
         """Just the persisted values an action's own YAML `env:` field set —
         kept separate from stored()'s model-reported values so the `env`
-        evaluation-scope namespace can deliberately exclude free-form ones.
-        `until`: see stored()'s own docstring — ignored here too."""
+        evaluation-scope namespace can deliberately exclude free-form ones."""
         return dict(self._action_set)
 
     def update_action_set(self, values: dict[str, Any]) -> None:
@@ -53,11 +52,7 @@ class Env(object):
     def stored(self, until: datetime | None = None) -> dict[str, Any]:
         """The persisted, free-form key:values — reported separately from
         action_set() so the Inspector Env tab knows which are actually
-        editable/deletable (only these are). `until`: accepted for
-        interface parity with PersistedEnv.stored, always ignored here —
-        a plain in-memory Env keeps no history to look back through, so
-        this always answers with whatever's current (see
-        PersistedEnv.stored's own docstring for who actually uses `until`)."""
+        editable/deletable (only these are)."""
         return dict(self._stored)
 
     def update(self, values: dict[str, Any], message_id: int | None = None) -> None:
@@ -84,13 +79,6 @@ class Env(object):
         self._write_stored(current)
 
     def drop_action_set_keys(self, keys: set[str]) -> None:
-        """Removes every one of `keys` from action_set() at once — a
-        no-op (no write) unless at least one is actually present. Used by
-        a live session's own bootstrap to clean out keys the project's
-        *current* revision no longer declares under `env:` (see
-        chat.chat_service's own orphan-key cleanup, and the one-time
-        migration that does the same for rows already stuck in that state
-        before this existed)."""
         current = self.action_set()
         remaining = {key: value for key, value in current.items() if key not in keys}
         if remaining == current:
@@ -132,19 +120,9 @@ class PersistedEnv(Env):
         session being operated on isn't necessarily the request user's
         active-project session — a supervisor opening someone else's
         session, or any session of a non-active project (see
-        chat.env_for_session): keyed on the active project, an env read
-        here answers for one project and a write lands in another's
-        Tracking rows.
-
-        `session_id`: the session a write through this instance lands
-        on — never resolved by guessing "the latest live session" for
-        (project, user), which is exactly the bug this replaced (a test
-        turn's own env write used to attach to the request user's real
-        live session). None is for a read-only instance (reads stay keyed
-        on project+user, unaffected by session_id — see stored()/
-        action_set() below); a write attempted through one fails loudly
-        (Db.set_env/set_action_env require a real session id) rather than
-        silently guessing a target."""
+        ChatService._env_for_session): keyed on the active project, an
+        env read here answers for one project and a write lands in
+        another's Tracking rows."""
         super().__init__()
         self._db = db
         self._project_service = project_service

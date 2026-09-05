@@ -108,13 +108,6 @@ class AiService(object):
 		# by hand just to exercise the in-memory TokenCounter/cascade
 		# logic, which stays entirely unaffected by this.
 		self._db = db
-		# Same cap chat-service.input-token-budget-per-turn drives on the
-		# TrackingProcessor side (see tracking.tracking_processor's own
-		# pre-flight check) — checked again here, once per round of the
-		# tool-calling loop below, since a round's own accumulated tool
-		# results can grow the request well past what that one-time,
-		# pre-loop check ever saw. None (most tests, and any caller that
-		# never wires it) means no cap at all.
 		self._input_token_budget_per_turn = input_token_budget_per_turn
 
 	@classmethod
@@ -355,12 +348,6 @@ class AiService(object):
 		return tap
 
 	def _enforce_input_budget(self, system_prompt: str, turn_history: list[dict[str, Any]]) -> None:
-		"""Same cap as tracking.tracking_processor's own pre-flight check,
-		re-checked at the top of every tool-calling round: a round's own
-		accumulated tool results (turn_history keeps growing, see
-		generate_stream_with_metadata's own loop) can blow the request
-		well past what that one-time check, run before any tool ever
-		fired, could ever have seen."""
 		if self._input_token_budget_per_turn is None:
 			return
 		history_text = "\n".join(content_to_text(message["content"]) for message in turn_history)

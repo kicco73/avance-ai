@@ -227,11 +227,6 @@ class BatchSignalSource(object):
         session = self._db.get_chat_session(self._session_id)
         if session is None or session['datetime_start'] is None:
             return {}
-        # env_for_session dispatches by session type — ephemeral (in-
-        # memory, always current) for a test/preview session, PersistedEnv
-        # (pinned to this session's own project/user/id) for a live/
-        # imported one; either way it's built straight from `session`
-        # itself, with no need to impersonate Session().user for it.
         return env_for_session(self._db, session).stored(until=session['datetime_start'])
 
     def _user_message_ids(self) -> list[int]:

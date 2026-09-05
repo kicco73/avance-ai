@@ -54,7 +54,8 @@ class ActuatorSet(ABC):
         # whichever state this on-enter is actually evaluated for (see
         # EvaluationScopeBuilder.build's own with_ai_service call), used
         # only by prompt() below. None wherever _ai_service is too, or
-        # for a state with no tools: declared.
+        # for a state with neither ai-may-query-sources nor
+        # ai-must-query-sources declared.
         self._tool_set: "ToolSet | None" = None
         # How this set gets an on-enter script run as a Task. None only
         # for a bare set nobody wired to a JobService (a test replay's

@@ -28,22 +28,10 @@ chat-service:
   # chat/session_manager.py's ChatSessionManager). The single source of
   # truth for this duration; nothing else hardcodes it.
   max-session-duration-in-minutes: 60
-  # Optional, defaults to 16000. A hard cap on a turn's *entire* request,
-  # not just its history: the system prompt (general + contextual prompt,
-  # every env key, every attachment, signal/schema definitions — see
-  # tracking/turn_size_estimate.py) is estimated first (a local, network-
-  # free len(text)//3 guess, deliberately pessimistic); if it alone is
-  # already over this many tokens, the turn is rejected outright with a
-  # 413 before the provider is ever called, and a SystemWarning records
-  # the heaviest offending entries (an env key, an attachment, the prompt
-  # itself). Otherwise the session's own message history gets whatever's
-  # left of the budget: walking backward from the latest message, as many
-  # as fit within that many cumulative tokens (see Message.tokens) are
-  # sent — combined with a project state's own history-cutoff (index.yml),
-  # never a replacement for it (see db/messages.py's get_turn_history).
-  # AiService's own tool-calling loop re-checks the same cap at every
-  # round, since accumulated tool results can grow the request well past
-  # what this one-time, pre-loop check ever saw.
+  # Optional, defaults to 16000. Hard cap on a turn's whole request (system
+  # prompt + history), not just history: over budget rejects with a 413
+  # before calling the provider (see tracking/turn_size_estimate.py);
+  # otherwise history gets whatever's left. Re-checked per tool-loop round.
   input-token-budget-per-turn: 16000
   # Optional, defaults to 200000. Display-only: the max reference the
   # session detail's tokens bar is drawn against (see

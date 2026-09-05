@@ -1,5 +1,5 @@
-"""End-to-end: a state's own `tools:` (see automaton.State.tools)
-produces a real, working ToolSet, threaded all the way from
+"""End-to-end: a state's own `ai-may-query-sources:` (see automaton.
+State.ai_may_query_sources) produces a real, working ToolSet, threaded all the way from
 TrackingProcessor down to AiService — proven with a fake AiService that
 actually drives it mid-turn, resolving a real source.<name>.select()
 call against a real (file-backed) archive.
@@ -92,8 +92,8 @@ class FakeProjectService:
 
 @pytest.fixture
 def file_db(tmp_path) -> Db:
-    # File-backed, not :memory: — a state's own tools: call the driver
-    # via ToolSet.call's own asyncio.to_thread, and a second thread's
+    # File-backed, not :memory: — a state's own ai-may-query-sources
+    # call the driver via ToolSet.call's own asyncio.to_thread, and a second thread's
     # connection to ":memory:" would see a distinct, empty database
     # instead of shared state (see test_tool_set.py's own file_db).
     return Db(f"sqlite:///{tmp_path / 'chat_tool_set.db'}")
@@ -102,14 +102,15 @@ def file_db(tmp_path) -> Db:
 def _automaton_with_a_tool() -> Automaton:
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="a")
     state_a = State(
-        key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action], tools=("flights",),
+        key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action],
+        ai_may_query_sources=("flights",),
     )
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     states = {"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a}
     automaton = Automaton(
         init_action=init_action, states=states, general_prompt="", signals=[], attachments={},
         general_attachments={}, autotracking_on_ai_message=True,
-        sources=[Source(name="flights", url="avance:flights.csv", ui_label="Flights")],
+        sources=[Source(name="flights", url="avance:flights.csv", ui_label="Flights", ai_definition="One row per flight.")],
         project_id=PROJECT_ID,
     )
     return automaton
@@ -149,7 +150,7 @@ async def _bootstrap_session(chat_service: ChatService) -> int:
 @pytest.mark.regression
 async def test_a_real_chat_turn_resolves_a_tool_call_against_the_state_s_own_declared_source(chat_service_for):
     ai_service = FakeToolAwareAiService(
-        [{"env": "stage: greeted"}], tool_call=("source_flights_select", {"value": "paris"}),
+        [{"env": "stage: greeted"}], tool_call=("source_flights_select", {"values": ["paris"]}),
     )
     chat_service = chat_service_for(_automaton_with_a_tool(), ai_service=ai_service)
     session_id = await _bootstrap_session(chat_service)
@@ -163,7 +164,7 @@ async def test_a_real_chat_turn_resolves_a_tool_call_against_the_state_s_own_dec
 @pytest.mark.regression
 async def test_a_real_chat_turn_persists_its_own_tool_calls_onto_the_assistant_message(chat_service_for, file_db):
     ai_service = FakeToolAwareAiService(
-        [{"env": "stage: greeted"}], tool_call=("source_flights_select", {"value": "paris"}),
+        [{"env": "stage: greeted"}], tool_call=("source_flights_select", {"values": ["paris"]}),
     )
     chat_service = chat_service_for(_automaton_with_a_tool(), ai_service=ai_service)
     session_id = await _bootstrap_session(chat_service)
@@ -172,12 +173,48 @@ async def test_a_real_chat_turn_persists_its_own_tool_calls_onto_the_assistant_m
 
     tool_calls_by_message = file_db.get_tool_calls_by_message(session_id)
     assert tool_calls_by_message[result["assistant_message_id"]] == [
-        {"name": "source_flights_select", "arguments": {"value": "paris"}, "result": "city,country\nParis,France\n"},
+        {"name": "source_flights_select", "arguments": {"values": ["paris"]}, "result": "city,country\nParis,France\n"},
     ]
 
 
-def test_build_tool_set_is_none_for_a_state_with_no_tools(file_db):
-    # The init state ("") has no tools: — build_tool_set must return
+@pytest.mark.regression
+async def test_get_messages_surfaces_the_persistent_tool_call_summary_on_reload(chat_service_for, file_db):
+    """The permanent "Searched … · N rows" line a real AiService's own
+    tool-call loop folds into 'tool_result' as summary_text (see
+    ToolSet.summary_text) rides along in Tracking.tool_calls with no
+    separate storage of its own — ChatService.get_messages must surface
+    it again on every reload, keyed to the right message."""
+    ai_service = FakeToolAwareAiService([{"env": "stage: greeted"}])
+    chat_service = chat_service_for(_automaton_with_a_tool(), ai_service=ai_service)
+    session_id = await _bootstrap_session(chat_service)
+    assistant_message_id = file_db.save_message("assistant", "Paris it is.", session_id)
+    tool_call_entry = {
+        "name": "source_flights_select", "arguments": {"values": ["paris"]},
+        "result": "city,country\nParis,France\n", "summary_text": 'Searched Flights for "paris" · 1 row',
+    }
+    file_db.record_tool_calls(session_id, [tool_call_entry], message_id=assistant_message_id)
+
+    messages = await chat_service.get_messages(session_id)
+
+    reloaded = next(m for m in messages if m["id"] == assistant_message_id)
+    assert reloaded["tool_calls"] == [tool_call_entry]
+
+
+@pytest.mark.regression
+async def test_get_messages_omits_tool_calls_for_a_message_with_none(chat_service_for, file_db):
+    ai_service = FakeToolAwareAiService([{"env": "stage: greeted"}])
+    chat_service = chat_service_for(_automaton_with_a_tool(), ai_service=ai_service)
+    session_id = await _bootstrap_session(chat_service)
+    plain_message_id = file_db.save_message("assistant", "no tools here", session_id)
+
+    messages = await chat_service.get_messages(session_id)
+
+    reloaded = next(m for m in messages if m["id"] == plain_message_id)
+    assert "tool_calls" not in reloaded
+
+
+def test_build_tool_set_is_none_for_a_state_with_neither_field(file_db):
+    # The init state ("") declares neither field — build_tool_set must return
     # None for it, so a fake that only answers once tool_set is real
     # (like the one the end-to-end test above uses) never gets called at
     # all for a state without one.

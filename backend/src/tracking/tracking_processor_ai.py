@@ -25,7 +25,7 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 		elif key == 'reaction':
 			rv = self.metadata.reaction = value.strip() or None
 		elif key == 'input_tokens':
-			rv = self.metadata.input_tokens = value
+			rv = self.metadata.input_tokens = (self.metadata.input_tokens or 0) + value
 		elif key == 'output_tokens':
 			rv = self.metadata.output_tokens = value
 		elif key == 'tool_result':

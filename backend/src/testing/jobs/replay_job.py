@@ -154,11 +154,6 @@ class TestReplayJob(CancelableJob):
     def _build_seed_env(self, session: dict) -> Env:
         if session['datetime_start'] is None:
             return Env()
-        # env_for_session dispatches by session type, built straight from
-        # `session` itself — no need to impersonate Session().user for it.
-        # Snapshotted into a fresh, detached Env either way: the rest of
-        # this replay run must never write back through the session's own
-        # (possibly still-live) env.
         source_env = env_for_session(self._service._db, session)
         until = session['datetime_start']
         return Env(stored=source_env.stored(until=until), action_set=source_env.action_set(until=until))

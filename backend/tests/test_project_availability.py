@@ -94,7 +94,7 @@ def test_a_project_whose_own_saved_content_fails_to_build_is_paused(db, project_
 
     is_paused, reason = db.get_project_availability("broken")
     assert is_paused is True
-    assert "Build failed" in reason
+    assert "index.yml no longer builds" in reason
 
 
 def test_a_project_depending_on_a_paused_one_becomes_paused_too(db, project_service):

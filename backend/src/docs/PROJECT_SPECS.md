@@ -138,6 +138,8 @@ states:
 | `history-cutoff` | no | boolean | `false` | `true`: excludes every message from before the most recent transition into this state, both from the model's view and from auto-tracking. Combines (doesn't replace) the server-wide token-budget cutoff in `.config.yml`. |
 | `transition-log-level` | no | `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL` | `"WARNING"` | Log level when a transition **lands on** this state (property of the destination). Operational only. |
 | `attachments` | no | list of filenames | `[]` | Sent with every normal reply this state is "current" for. Not sent for `fixed-message`, nor to an `actuator.prompt(...)` call (§5.4), which is fully isolated. |
+| `ai-may-query-sources` | no | list of source names | `[]` | Native tool-calling catalog the model may call at its own discretion while replying in this state — §4.2. |
+| `ai-must-query-sources` | no | list of source names | `[]` | Same catalog, but forced once per entry into this state — §4.2. A source name can appear in at most one of these two fields. |
 
 **4.1 `fixed-message` states.** The model is never asked for free-form
 content: every reply is a translation of `fixed-message` into the user's
@@ -145,6 +147,41 @@ last-message language, instructed not to alter meaning/add/react.
 Typical use: a safety/compliance message that must not be paraphrased.
 `contextual-prompt`, `general-prompt`, and this state's `attachments` are
 unused for that call.
+
+**4.2 Native tool-calling.** `ai-may-query-sources`/`ai-must-query-sources`
+each list names from this project's own top-level `sources:` (§5.2) that
+the model may call, mid-turn, as native tools while replying in this
+state — one tool per (source, method) pair, e.g. a source named
+`flight_records` becomes the callable `source_flight_records_select`. The
+two fields differ only in how much the model is trusted to decide for itself:
+
+- **`ai-may-query-sources`** — the model sees the catalog and decides for
+  itself whether/when to call one, same as any other tool-calling setup.
+- **`ai-must-query-sources`** — same catalog, but **forced once per entry
+  into this state**: on the very first tool-call round of the first turn
+  generated since this state was last entered (including the project's
+  own bootstrap into its initial state, and a self-loop action re-entering
+  the same state), the model is restricted to calling one of *these*
+  tools — it cannot just answer instead. From the second round of that
+  same turn onward, and every turn after the first, it's `auto` again with
+  the full catalog (both fields' tools together). Whether this is "the
+  first turn since entering the state" is decided by the backend, from
+  the session's own transition/message history — **never left to the
+  model to decide, and never re-askable by prompting alone.**
+
+A source named in either field must declare its own `ai-definition`
+(§5.2) — a build error otherwise, the same requirement a signal's own
+`definition` gets. The same source name can't appear in both fields for
+one state.
+
+Neither field has a project-wide default, deliberately: a tool catalog
+costs real tokens on **every** turn in that state, whether or not the
+model ends up calling anything — each tool's own JSON schema plus the
+provider's own function-calling overhead, on the order of ~1,000 tokens
+per turn for three declared sources. Declaring the catalog per state
+also documents *where* the model is allowed to look, not just that it's
+allowed to look somewhere — a state with neither field declared sends the
+exact same request a turn always did, before tool-calling existed at all.
 
 ## 5. `actions:` (nested under a state)
 
@@ -233,6 +270,10 @@ sources:
   pino:
     ui-label: Flight records
     ui-description: This app's own flight-schedule CSV.
+    ai-definition: |
+      One row per flight, columns: flight code, date, delay reason.
+      Search by flight code alone to get every date it ever flew — add
+      the date too to narrow down to one row.
     url: avance:behaviour/flights.csv
 ```
 
@@ -240,7 +281,17 @@ sources:
 | --- | --- | --- | --- | --- |
 | `url` | no | string, `<scheme>:<path>` | `""` (unconfigured) | Which driver resolves this source, and that driver's own target. Left unset, the source builds fine but none of its methods can be called yet — an "undefined name(s)" error, same as an undeclared source. |
 | `ui-label` | no | string | this source's own key | Shown in the frontend. |
-| `ui-description` | no | string | `None` | Shown in the frontend. |
+| `ui-description` | no | string | `None` | Shown in the frontend — **never sent to the model.** |
+| `ai-definition` | conditionally | string | `None` | Written *for the model*: what this file contains and how to search it well. Becomes part of the tool's own description whenever this source is exposed as a native tool. **Required** (build error otherwise) for any source named in some state's own `ai-may-query-sources`/`ai-must-query-sources` (§4.2) — same requirement a signal's own `definition` gets; optional otherwise. |
+
+`ui-description` and `ai-definition` serve two different readers, and the
+distinction is load-bearing, not stylistic: `ui-description` is UI text —
+it never reaches the model, the same way an action's own `ui-description`
+doesn't. `ai-definition` is the only place a project author gets to tell
+the model what a source's raw file actually contains and how to query it
+well (e.g. "search by flight code *and* date, or you'll get every date
+that flight ever flew") — write it with the model as the reader, not a
+human skimming the Inspector.
 
 Every source — whatever its driver — is bounded by construction: every
 method it exposes returns at most `MAX_SOURCE_RESULT_CHARS`, truncated
@@ -256,12 +307,18 @@ the conversation's own pinned automaton revision, never "whatever's
 published now" — not the `attachments:` mechanism, nothing is eagerly
 loaded):
 
-- `select(value)` — grep-like lookup over that same file. Assumes a
-  normalized CSV (header + one row per record); returns the header plus
-  every row containing `value` as a case-insensitive substring anywhere
-  in the line. E.g. `source.pino.select('Paris')`. This is the only
-  method `avance` implements — `create`/`update`/`delete` don't exist on
-  any driver, and a whole-file read is `attachment.read(name)`'s job
+- `select(*values)` — grep-like lookup over that same file, one or more
+  values. Assumes a normalized CSV (header + one row per record); returns
+  the header plus every row containing **every** given value
+  (case-insensitive substring match, AND'd), still bounded by
+  `MAX_SOURCE_RESULT_CHARS` regardless of how many values are given. A
+  single value works exactly as before: `source.pino.select('Paris')`.
+  Each additional value narrows the result further —
+  `source.pino.select('VY3003', '2026-08-16')` finds the one row for that
+  flight on that date, where `source.pino.select('VY3003')` alone would
+  return every date that flight ever flew. This is the only method
+  `avance` implements — `create`/`update`/`delete` don't exist on any
+  driver, and a whole-file read is `attachment.read(name)`'s job
   (on-enter only), not a `source.*` capability.
 
 New drivers are a code change, not something a project author adds.
@@ -511,6 +568,7 @@ of how you're likely to hit them:
 - No signal named after a reserved core metric (§2).
 - Every `attachments:` entry (global/signal/state, not action) names a file actually present alongside `index.yml`.
 - Every `sources:` entry's own `url`, if set, has a recognized driver scheme, and (for `avance`) its path names a file actually present alongside `index.yml`.
+- Every name in a state's own `ai-may-query-sources`/`ai-must-query-sources` (§4.2) names a source actually declared in `sources:`, that source declares its own `ai-definition`, and no name appears in both fields for the same state.
 
 ## 9. Worked examples
 

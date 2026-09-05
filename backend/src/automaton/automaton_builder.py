@@ -10,6 +10,7 @@ from tracking.sources import SOURCE_DRIVERS
 from tracking.sources.url import parse_source_url
 
 from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 import base64
 import inspect
 from pathlib import Path
@@ -750,12 +751,17 @@ class AutomatonBuilder(object):
         carrying whatever self._current_line/_current_section were last
         set to (see _at/_line_of) — never re-derived at each individual
         raise site. An AutomatonBuildError raised directly (there are
-        none today, but a future call site might) passes through unchanged."""
+        none today, but a future call site might) passes through unchanged.
+        A YAMLError (malformed index.yml — ruamel raises its own
+        exception hierarchy, not ValueError, straight out of _load_yaml)
+        is wrapped the same way: it's just as much a build failure as any
+        validation error below it, and every caller (AutomatonLoader,
+        ProjectHealthChecker) only ever prepares to catch ValueError."""
         try:
             return self._build(contents, known_projects, legacy_project_id=legacy_project_id)
         except AutomatonBuildError:
             raise
-        except ValueError as exc:
+        except (ValueError, YAMLError) as exc:
             raise AutomatonBuildError(
                 str(exc), line=self._current_line, section=self._current_section,
             ) from exc

@@ -8,6 +8,8 @@ from datetime import datetime
 
 import pytest
 
+from db.models import Tracking
+
 pytestmark = pytest.mark.regression
 
 
@@ -85,6 +87,17 @@ def test_reset_project_wipes_env_for_every_user_of_that_project(db):
     assert db.get_env("proj", "bob") == {}
     # A different project's env is untouched.
     assert db.get_env("other-proj", "alice") == {"a": "1"}
+
+
+def test_set_env_writes_onto_the_given_session_never_the_latest_live_one(db):
+    older = _session(db, start=datetime(2026, 1, 1))
+    newer = _session(db, start=datetime(2026, 1, 2))
+    assert db.get_latest_chat_session("user", "proj")["id"] == newer
+
+    db.set_env(older, {"a": "1"})
+
+    row = Tracking.get(Tracking.env.is_null(False))
+    assert row.session_id == older
 
 
 def test_reset_project_for_user_also_wipes_their_env(db):

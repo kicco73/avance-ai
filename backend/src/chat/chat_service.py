@@ -87,14 +87,6 @@ class ChatService(object):
 		return session
 
 	def _env_for_session(self, session_id: int) -> Env:
-		"""The Env `session_id` actually owns: ephemeral (in-memory, never
-		persisted) for a test/preview session, or PersistedEnv pinned to
-		its own project and user for a live/imported one — never a
-		request-user-wide env, which is what let a session of another
-		project (the Sessions panel, a supervisor reading someone else's
-		session, WhatsApp) read/write a completely different project's
-		Tracking rows. See chat.env_for_session's own docstring for why a
-		test/preview session's env must never reach the database at all."""
 		return env_for_session(self._db, self._require_session(session_id))
 
 	def _tracking_engine_for_session(self, session_id: int) -> tuple[TrackingEngine, "ActuatorSet"]:
@@ -127,11 +119,6 @@ class ChatService(object):
 		if session_id is not None:
 			tracking_engine, _ = self._tracking_engine_for_session(session_id)
 		else:
-			# Only ever reached from reset_test_sessions's own project-wide
-			# reset (no single session to pin to yet) — a fresh, empty Env,
-			# never PersistedEnv: this on-enter belongs to the test
-			# automaton, and a test session's own env must never touch the
-			# database (see chat.env_for_session).
 			env = Env()
 			scope_builder = EvaluationScopeBuilder(
 				env, self.metric_service, self._session_facts, self._user_facts,
@@ -648,13 +635,6 @@ class ChatService(object):
 		return {'signals': data['signals'], 'transitions': transitions}
 
 	def get_env(self, session_id: int, message_id: int | None = None) -> dict:
-		"""{"stored": ..., "action_set": ...} for `session_id`'s own env,
-		reported separately so the Inspector Env tab knows which section
-		each value belongs in and which are editable. Current, or as of
-		`message_id` if given — for a test/preview session this is always
-		current: an in-memory Env keeps no history to look back through
-		(see chat.env_for_session and tracking.env.Env.stored's own
-		docstring), so `message_id` is accepted but has no effect there."""
 		self._require_own_session(session_id)
 		until = self._until_from_message(message_id)
 		env = self._env_for_session(session_id)
@@ -664,22 +644,16 @@ class ChatService(object):
 		}
 
 	def set_env_value(self, session_id: int, key: str, value: str) -> dict:
-		"""Edits one stored env key on `session_id`'s own env — always
-		current, no "editing history"."""
 		self._require_own_session(session_id)
 		self._env_for_session(session_id).set_value(key, value)
 		return self.get_env(session_id)
 
 	def delete_env_key(self, session_id: int, key: str) -> dict:
-		"""Removes one stored env key outright (see chat.env.Env.
-		delete_key) — always current. Returns the same shape as get_env."""
 		self._require_own_session(session_id)
 		self._env_for_session(session_id).delete_key(key)
 		return self.get_env(session_id)
 
 	def clear_env(self, session_id: int) -> dict:
-		"""Wipes every stored and action-set env key at once (see
-		chat.env.Env.clear). Always current. Returns the same shape as get_env."""
 		self._require_own_session(session_id)
 		self._env_for_session(session_id).clear()
 		return self.get_env(session_id)
@@ -829,17 +803,6 @@ class ChatService(object):
 	def _cleanup_orphan_action_env_keys(
 		self, automaton: Automaton, project_id: str, session_id: int, session_type: str
 	) -> None:
-		"""A live session's own action_set() keys the project's *current*
-		revision no longer declares under `env:` get dropped here, once
-		per session opened against that revision — self-limiting exactly
-		like _apply_declared_env_defaults above: once nothing's left to
-		drop, every later open is a no-op read, never a write. Live only —
-		a test/preview session's own env is ephemeral and starts empty
-		every time (see chat.env_for_session), so there is nothing for it
-		to have accumulated. This is what actually removes a key like a
-		leftover `flight_record` from a since-edited project (see the
-		one-time migration for rows already stuck in that state before
-		this existed)."""
 		if session_type != "live":
 			return
 		env = self._env_for_session(session_id)

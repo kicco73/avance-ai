@@ -241,10 +241,6 @@ class TrackingMixin:
         return json.loads(row.env) if row is not None else {}
 
     def set_env(self, session_id: int, env: dict, message_id: int | None=None) -> None:
-        """Writes onto `session_id` itself — never "whichever session is
-        latest" for its (project, user): a session id the caller resolved
-        some other way (guessing) used to let one session's own env
-        writes land on a completely different one (see PersistedEnv)."""
         Tracking.create(session=session_id, env=json.dumps(env), message=message_id)
 
     def get_action_env(self, project_id: str, user: str, until: datetime | None=None) -> dict:
@@ -255,7 +251,6 @@ class TrackingMixin:
         return json.loads(row.action_env) if row is not None else {}
 
     def set_action_env(self, session_id: int, action_env: dict) -> None:
-        """Same session-pinning as set_env above."""
         Tracking.create(session=session_id, action_env=json.dumps(action_env))
 
     def record_tool_calls(

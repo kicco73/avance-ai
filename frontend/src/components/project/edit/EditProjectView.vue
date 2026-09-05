@@ -39,7 +39,7 @@ import {
   getStateInputTokens,
   getUsers
 } from '../../../api.js'
-import { setApiWarning } from '../../../errorStore.js'
+import { clearApiError, setApiWarning } from '../../../errorStore.js'
 import { confirmDialog, chooseDialog, customDialog } from '../../../dialogStore.js'
 import { refreshIdentifierRegistry } from '../../../identifierRegistry.js'
 import { refreshProjectFiles } from '../../../projectFiles.js'
@@ -393,6 +393,14 @@ const availableStates = ref([])
 // Every declared project env key's name — the Actions tab's Env editor
 // <select> options (see InspectorDetailCard.vue's availableEnvKeys prop).
 const availableEnvKeys = ref([])
+// Set whenever the backend reports code="project_broken" (the stored
+// draft doesn't build) — the graph/signals/env-key/identifiers panels
+// just stay at their last-known (or empty) value in that case, since the
+// automaton-derived endpoints all refuse the same way; the file editor
+// (which reads/writes archives directly, never the automaton) is what
+// stays usable to actually fix it. Cleared automatically the next time
+// refreshValidStateKeys succeeds — e.g. right after a save that builds.
+const projectBroken = ref(false)
 
 // The live chat's timeline (see ChatTimeline.vue's resolveStateLabel
 // prop) shows a transition's ui-label instead of its raw state key.
@@ -418,7 +426,18 @@ async function refreshValidStateKeys() {
     actionLabelsByState.value = new Map(
       edges.map((e) => [`${e.source}::${e.action.name}`, e.action.ui_label])
     )
-  } catch {
+    if (projectBroken.value) {
+      projectBroken.value = false
+      clearApiError()
+    }
+  } catch (err) {
+    if (err?.code === 'project_broken') {
+      projectBroken.value = true
+      setApiWarning(
+        `Project '${props.projectId}' is broken — its stored index.yml no longer builds. Fix it below using the file editor.`,
+        err.message
+      )
+    }
     // already surfaced via apiFetch
   }
   try {
@@ -752,11 +771,14 @@ watch(selected, () => {
 })
 
 // A session switch (testStore's own selectSession) always shows *that*
-// session's timeline from scratch.
+// session's timeline from scratch — including the Env tab, which is now
+// scoped to whichever session is current (see InspectorEnvTab.vue's own
+// sessionId prop) rather than showing the same data regardless of it.
 watch(currentSessionId, () => {
   selected.value = null
   refreshSessionStartState()
   refreshSignalsLog()
+  if (inspecting.value) nextTick(() => inspectorRef.value?.refresh())
 })
 
 // Gates mounting CodeEditor/IndexYmlEditorPanel (passed as history-cleared)
@@ -1008,7 +1030,12 @@ onBeforeUnmount(() => {
               <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" :project-id="projectId" />
             </template>
             <template #tab-env="{ registerTab }">
-              <InspectorEnvTab :ref="registerTab('env')" :until-message-id="untilMessageId" :editable="envEditable" />
+              <InspectorEnvTab
+                :ref="registerTab('env')"
+                :session-id="currentSessionId"
+                :until-message-id="untilMessageId"
+                :editable="envEditable"
+              />
             </template>
             <template #tab-env-keys="{ registerTab }">
               <InspectorEnvKeysTab

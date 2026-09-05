@@ -229,9 +229,6 @@ class SessionMixin:
         ChatSession.update(username=username).where(ChatSession.id.in_(session_ids)).execute()
 
     def delete_sessions_by_username_and_type(self, username: str, type: str) -> list[int]:
-        """Returns the deleted ids — a caller that keeps its own per-
-        session state keyed by id (see chat.ephemeral_env_registry.
-        EphemeralEnvRegistry) needs them to clean that up too."""
         session_ids = [
             row.id for row in ChatSession.select(ChatSession.id).where(
                 (ChatSession.username == username) & (ChatSession.type == type)

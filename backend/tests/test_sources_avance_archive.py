@@ -117,6 +117,34 @@ def test_select_result_beyond_the_char_limit_is_truncated_with_a_final_line(db):
     assert last_line.startswith("[truncated: ") and last_line.endswith(" more characters]")
 
 
+def test_select_with_more_than_one_value_ands_them_together(db):
+    content = "code,date\nVY3003,2026-06-01\nVY3003,2026-06-02\nVY4000,2026-06-01\n"
+    revision = _seed(db, {"flights.csv": content.encode()}, {"flights.csv": "text/csv"})
+    automaton = _automaton(PROJECT_ID, revision)
+
+    result = _driver(automaton, db, "flights.csv").select("VY3003", "2026-06-01")
+
+    assert result == "code,date\nVY3003,2026-06-01\n"
+
+
+def test_select_with_one_value_still_returns_every_match_uncascaded(db):
+    content = "code,date\nVY3003,2026-06-01\nVY3003,2026-06-02\nVY4000,2026-06-01\n"
+    revision = _seed(db, {"flights.csv": content.encode()}, {"flights.csv": "text/csv"})
+    automaton = _automaton(PROJECT_ID, revision)
+
+    result = _driver(automaton, db, "flights.csv").select("VY3003")
+
+    assert result == "code,date\nVY3003,2026-06-01\nVY3003,2026-06-02\n"
+
+
+def test_select_with_no_values_raises(db):
+    revision = _seed(db, {"cities.csv": CSV.encode()}, {"cities.csv": "text/csv"})
+    automaton = _automaton(PROJECT_ID, revision)
+
+    with pytest.raises(ValueError):
+        _driver(automaton, db, "cities.csv").select()
+
+
 def test_create_update_delete_no_longer_exist_on_a_source_driver(db):
     # Not "unsupported" (the base class's own default for an operation a
     # driver opts out of) — gone entirely, from SourceDriver itself, not

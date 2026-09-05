@@ -47,11 +47,12 @@ class Metadata:
 	reaction: str | None = None
 	input_tokens: int | None = None
 	output_tokens: int | None = None
-	# One {name, arguments, result} entry per tool call this turn's own
-	# AI generation made (see AiService's own tool-call loop and each
-	# _get_ai_reply's on_receiving_metadata_* handler's 'tool_result'
-	# branch), in the order they ran — empty for a turn with no tools:
-	# declared, or one that never actually called any.
+	# One {name, arguments, result, summary_text} entry per tool call this
+	# turn's own AI generation made (see AiService's own tool-call loop and
+	# each _get_ai_reply's on_receiving_metadata_* handler's 'tool_result'
+	# branch), in the order they ran — empty for a turn with neither
+	# ai-may-query-sources nor ai-must-query-sources declared, or one that
+	# never actually called any.
 	tool_calls: list[dict] = field(default_factory=list)
 
 @dataclass(frozen=True, slots=True)
@@ -192,12 +193,6 @@ class TrackingProcessor(object):
 		self, base_prompt: str, signal_definition: str | None, reaction_definition: str | None,
 		turn_attachments: list,
 	) -> int | None:
-		"""Estimates this turn's own system prompt (see turn_size_estimate)
-		and rejects the turn outright — before ever calling the provider —
-		if it alone is already over input_token_budget_per_turn. Otherwise
-		returns whatever's left of the budget for the history to fill (see
-		_build_chat_history) — None (no cap at all) straight through when
-		input_token_budget_per_turn itself is None."""
 		budget = self.input_token_budget_per_turn
 		if budget is None:
 			return None
@@ -255,11 +250,7 @@ class TrackingProcessor(object):
 	def _build_base_prompt_and_history(self, state: State) -> tuple[str, list[dict]]:
 		"""Same base_prompt/chat_history generate_reply itself builds for
 		`state` — exposed single-underscore (rather than name-mangled) so
-		a caller can get those two pieces without the full TurnProtocol.generate_reply machinery.
-		signal_definition/reaction_definition are never embedded in this
-		particular prompt (see this method's own callers), so the budget
-		estimate below leaves them out too — including them would overstate
-		what's actually sent and reject a turn that would have fit."""
+		a caller can get those two pieces without the full TurnProtocol.generate_reply machinery."""
 		base_prompt, _signal_definition, _reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
 		remaining_history_budget = self._enforce_input_budget(base_prompt, None, None, turn_attachments)
 		return base_prompt, self._build_chat_history(turn_attachments, remaining_history_budget)

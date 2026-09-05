@@ -22,6 +22,12 @@ _SELECT_SPEC = ToolSpec(
     parameters={"type": "object", "properties": {"value": {"type": "string"}}, "required": ["value"]},
 )
 
+_TICKETS_SPEC = ToolSpec(
+    name="source_tickets_select",
+    description="Grep over the tickets archive.",
+    parameters={"type": "object", "properties": {"value": {"type": "string"}}, "required": ["value"]},
+)
+
 
 class _FakeUsage:
     def __init__(self, total_token_count: int = 3, prompt_token_count: int = 2, candidates_token_count: int = 1) -> None:
@@ -95,20 +101,34 @@ class _FakeGeminiClient:
 
 
 class _FakeToolSet:
-    """Enough of tracking.sources.ToolSet's own contract (specs()/call())
-    for AiService's loop to drive — call() never raises, matching the
-    real one's contract, and just returns whatever's queued next."""
+    """Enough of tracking.sources.ToolSet's own contract (specs()/call()/
+    required_specs()/summary_text()/session_id) for AiService's loop to
+    drive — call() never raises, matching the real one's contract, and
+    just returns whatever's queued next. `required_specs`: the
+    ai-must-query-sources subset (see ToolSet.required_specs) — empty by
+    default, so every existing test (none of which exercises forcing)
+    behaves exactly as it did before this parameter existed."""
 
-    def __init__(self, specs: list[ToolSpec], results: list[str]) -> None:
+    def __init__(
+        self, specs: list[ToolSpec], results: list[str], required_specs: list[ToolSpec] | None = None,
+    ) -> None:
         self._specs = specs
         self._results = list(results)
+        self._required_specs = required_specs or []
         self.calls: list[tuple[str, dict]] = []
+        self.session_id = 99
 
     def specs(self) -> list[ToolSpec]:
         return self._specs
 
+    def required_specs(self) -> list[ToolSpec]:
+        return self._required_specs
+
     def status_text(self, name: str) -> str:
         return f"Searching {name}…"
+
+    def summary_text(self, name: str, arguments: dict, result: str) -> str:
+        return f"Searched {name} · fake summary"
 
     async def call(self, name: str, arguments: dict) -> str:
         self.calls.append((name, arguments))
@@ -445,3 +465,87 @@ async def test_text_streamed_alongside_the_call_is_replayed_in_order():
     parts = raised.value.assistant_content["gemini_parts"]
     assert [p.text for p in parts] == ["Let me check.", None]
     assert parts[1].function_call.name == "source_flights_select" and parts[1].thought_signature == b"s"
+
+
+# ai-must-query-sources forcing — see AiService.generate_stream_with_
+# metadata's own force_required_tools/required_tools and
+# TrackingProcessor.force_required_tools_for, which decides it. The
+# provider itself only ever translates "required_tools was given" into
+# its own function_calling_config dialect; it never decides *whether* to
+# force. Unlike Anthropic/OpenAI, the full `tools` declaration (respond
+# included) is always sent — allowed_function_names is what restricts the
+# *callable* set for this one round, deliberately excluding "respond".
+async def test_required_tools_restricts_allowed_function_names_excluding_respond():
+    provider, fake_client = _provider([_text_response('{"text": "ok"}')])
+
+    await _drain(provider.generate_stream_with_schema(
+        "sys", [], {"text": "t"}, tools=[_SELECT_SPEC, _TICKETS_SPEC], required_tools=[_SELECT_SPEC],
+    ))
+
+    config = fake_client.aio.models.calls[0]["config"]
+    declared_names = {decl.name for tool in config.tools for decl in tool.function_declarations}
+    assert declared_names == {"respond", "source_flights_select", "source_tickets_select"}
+    assert config.tool_config.function_calling_config.mode == types.FunctionCallingConfigMode.ANY
+    assert config.tool_config.function_calling_config.allowed_function_names == ["source_flights_select"]
+
+
+async def test_no_required_tools_leaves_allowed_function_names_unset():
+    provider, fake_client = _provider([_text_response('{"text": "ok"}')])
+
+    await _drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}, tools=[_SELECT_SPEC, _TICKETS_SPEC]))
+
+    config = fake_client.aio.models.calls[0]["config"]
+    assert config.tool_config.function_calling_config.mode == types.FunctionCallingConfigMode.ANY
+    assert not config.tool_config.function_calling_config.allowed_function_names
+
+
+async def test_first_round_of_a_forced_turn_restricts_allowed_names_then_round_two_is_auto():
+    provider, fake_client = _provider([
+        _function_call_response("source_flights_select", {"value": "paris"}, call_id="call_1"),
+        _function_call_response("respond", {"text": "Paris it is."}),
+    ])
+    ai_service = AiService(provider)
+    tool_set = _FakeToolSet([_SELECT_SPEC], results=["city,country\nParis,France\n"], required_specs=[_SELECT_SPEC])
+
+    async for _ in ai_service.generate_stream_with_metadata(
+        "sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}, tool_set=tool_set,
+        force_required_tools=True,
+    ):
+        pass
+
+    round_1, round_2 = fake_client.aio.models.calls
+    assert round_1["config"].tool_config.function_calling_config.allowed_function_names == ["source_flights_select"]
+    assert not round_2["config"].tool_config.function_calling_config.allowed_function_names
+
+
+async def test_force_required_tools_false_never_restricts_even_with_a_must_source():
+    """The second turn in the same state (TrackingProcessor.
+    force_required_tools_for returns False) — auto from round 1, even
+    though this state does declare an ai-must-query-sources tool."""
+    provider, fake_client = _provider([
+        _function_call_response("source_flights_select", {"value": "paris"}, call_id="call_1"),
+        _function_call_response("respond", {"text": "Paris it is."}),
+    ])
+    ai_service = AiService(provider)
+    tool_set = _FakeToolSet([_SELECT_SPEC], results=["city,country\nParis,France\n"], required_specs=[_SELECT_SPEC])
+
+    async for _ in ai_service.generate_stream_with_metadata(
+        "sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}, tool_set=tool_set,
+    ):
+        pass
+
+    assert not fake_client.aio.models.calls[0]["config"].tool_config.function_calling_config.allowed_function_names
+
+
+async def test_a_state_with_only_ai_may_query_sources_is_never_forced():
+    provider, fake_client = _provider([_function_call_response("respond", {"text": "hi"})])
+    ai_service = AiService(provider)
+    tool_set = _FakeToolSet([_SELECT_SPEC], results=[], required_specs=[])
+
+    async for _ in ai_service.generate_stream_with_metadata(
+        "sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}, tool_set=tool_set,
+        force_required_tools=True,
+    ):
+        pass
+
+    assert not fake_client.aio.models.calls[0]["config"].tool_config.function_calling_config.allowed_function_names

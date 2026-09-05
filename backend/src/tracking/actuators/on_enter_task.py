@@ -254,12 +254,6 @@ class ScopeHydrator(object):
             actuator_set = self._actuator_factory.fake(project_id=project_id)
         else:
             actuator_set = self._actuator_factory.live(project_id=project_id)
-        # A deferred call carries no session_id at all (see the module
-        # docstring), and a since-deleted session resolves to None either
-        # way — PersistedEnv, unpinned to any session, same as before
-        # test/preview sessions existed. A still-real session dispatches
-        # through env_for_session like everything else, so a test/preview
-        # session's own on-enter never reaches the database here either.
         firing_session_id = payload.get("session_id")
         firing_session = self._db.get_chat_session(firing_session_id) if firing_session_id is not None else None
         env = env_for_session(self._db, firing_session) if firing_session is not None else PersistedEnv(self._db, context)

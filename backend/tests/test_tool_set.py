@@ -1,8 +1,8 @@
 """ToolSet — the model's own callable catalog for a state's declared
-`tools:` (see automaton.State.tools), built by
-SourceNamespace.tool_set(names): one ToolSpec per (named source,
-SourceDriver method), and call() resolving through the same
-SourceNamespace (and so the same per-session read cache) a
+`ai-may-query-sources:`/`ai-must-query-sources:` (see automaton.State),
+built by SourceNamespace.tool_set(may_names, must_names): one ToolSpec per
+(named source, SourceDriver method), and call() resolving through the
+same SourceNamespace (and so the same per-session read cache) a
 source.<name>.<method>() expression already uses.
 """
 from __future__ import annotations
@@ -53,7 +53,7 @@ def _two_sources(db) -> Automaton:
         {"flights.csv": "text/csv", "tickets.csv": "text/csv"},
     )
     sources = [
-        Source(name="flights", url="avance:flights.csv", ui_label="Flights", ui_description="Flight records."),
+        Source(name="flights", url="avance:flights.csv", ui_label="Flights", ai_definition="Flight records."),
         Source(name="tickets", url="avance:tickets.csv", ui_label="Tickets"),
     ]
     return _automaton(PROJECT_ID, revision, sources)
@@ -82,7 +82,14 @@ def test_an_unknown_name_passed_to_tool_set_raises(db):
         SourceNamespace(db, automaton).tool_set(["nope"])
 
 
-def test_description_combines_the_method_blurb_and_the_source_s_own_ui_description(db):
+def test_an_unknown_name_in_must_names_raises_too(db):
+    automaton = _two_sources(db)
+
+    with pytest.raises(ValueError, match="source.nope"):
+        SourceNamespace(db, automaton).tool_set([], ["nope"])
+
+
+def test_description_combines_the_method_blurb_and_the_source_s_own_ai_definition(db):
     automaton = _two_sources(db)
     tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
 
@@ -91,7 +98,25 @@ def test_description_combines_the_method_blurb_and_the_source_s_own_ui_descripti
     assert "Flight records." in select_spec.description
 
 
-def test_description_is_just_the_method_blurb_when_the_source_has_no_ui_description(db):
+def test_ui_description_never_leaks_into_the_tool_description(db):
+    """ui-description is written for the human (the Inspector/design
+    view); ai-definition is written for the model. Only the latter may
+    ever reach a ToolSpec — a source with both must show only its own
+    ai-definition, never the ui-description text."""
+    automaton = _automaton(PROJECT_ID, _seed(
+        db, {"flights.csv": b"a,b\n1,2\n"}, {"flights.csv": "text/csv"},
+    ), [Source(
+        name="flights", url="avance:flights.csv", ui_label="Flights",
+        ui_description="Shown in the Inspector only.", ai_definition="Read by the model only.",
+    )])
+    tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
+
+    select_spec = next(spec for spec in tool_set.specs() if spec.name == "source_flights_select")
+    assert "Read by the model only." in select_spec.description
+    assert "Shown in the Inspector only." not in select_spec.description
+
+
+def test_description_is_just_the_method_blurb_when_the_source_has_no_ai_definition(db):
     automaton = _two_sources(db)
     tool_set = SourceNamespace(db, automaton).tool_set(["tickets"])
 
@@ -115,29 +140,57 @@ def test_status_text_falls_back_to_the_raw_name_for_an_unknown_tool(db):
     assert tool_set.status_text("source_nope_select") == "Searching source_nope_select…"
 
 
-def test_select_s_parameters_schema_is_one_required_string(db):
+def test_select_s_parameters_schema_is_a_required_array_of_strings(db):
     automaton = _two_sources(db)
     tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
     specs = {spec.name: spec for spec in tool_set.specs()}
 
     assert specs["source_flights_select"].parameters == {
-        "type": "object", "properties": {"value": {"type": "string"}}, "required": ["value"],
+        "type": "object",
+        "properties": {"values": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
+        "required": ["values"],
     }
+
+
+def test_required_specs_is_empty_when_nothing_is_a_must_source(db):
+    automaton = _two_sources(db)
+    tool_set = SourceNamespace(db, automaton).tool_set(["flights", "tickets"])
+
+    assert tool_set.required_specs() == []
+
+
+def test_required_specs_covers_only_the_must_sources(db):
+    automaton = _two_sources(db)
+    tool_set = SourceNamespace(db, automaton).tool_set(["flights"], ["tickets"])
+
+    assert {spec.name for spec in tool_set.specs()} == {"source_flights_select", "source_tickets_select"}
+    assert {spec.name for spec in tool_set.required_specs()} == {"source_tickets_select"}
 
 
 async def test_call_resolves_to_the_named_source_s_own_driver(file_db):
     automaton = _two_sources(file_db)
     tool_set = SourceNamespace(file_db, automaton).tool_set(["flights", "tickets"])
 
-    assert await tool_set.call("source_flights_select", {"value": "paris"}) == "city,country\nParis,France\n"
-    assert await tool_set.call("source_tickets_select", {"value": "12A"}) == "id,seat\n1,12A\n"
+    assert await tool_set.call("source_flights_select", {"values": ["paris"]}) == "city,country\nParis,France\n"
+    assert await tool_set.call("source_tickets_select", {"values": ["12A"]}) == "id,seat\n1,12A\n"
+
+
+async def test_call_with_more_than_one_value_narrows_down_the_result(file_db):
+    automaton = _automaton(PROJECT_ID, _seed(
+        file_db, {"flights.csv": b"code,date\nVY3003,2026-06-01\nVY3003,2026-06-02\n"}, {"flights.csv": "text/csv"},
+    ), [Source(name="flights", url="avance:flights.csv", ui_label="Flights")])
+    tool_set = SourceNamespace(file_db, automaton).tool_set(["flights"])
+
+    result = await tool_set.call("source_flights_select", {"values": ["VY3003", "2026-06-01"]})
+
+    assert result == "code,date\nVY3003,2026-06-01\n"
 
 
 async def test_call_with_an_unknown_tool_name_returns_an_error_string_not_an_exception(db):
     automaton = _two_sources(db)
     tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
 
-    result = await tool_set.call("source_nope_select", {"value": "x"})
+    result = await tool_set.call("source_nope_select", {"values": ["x"]})
 
     assert result == "error: unknown tool 'source_nope_select'."
 
@@ -146,9 +199,9 @@ async def test_call_a_driver_exception_comes_back_as_an_error_string_too(file_db
     automaton = _two_sources(file_db)
     tool_set = SourceNamespace(file_db, automaton).tool_set(["flights"])
 
-    # 'value' is required by select() — omitting it raises inside the
+    # No values at all — select() requires at least one, raises inside the
     # driver call, which call() must turn into a string, never propagate.
-    result = await tool_set.call("source_flights_select", {})
+    result = await tool_set.call("source_flights_select", {"values": []})
 
     assert result.startswith("error:")
 
@@ -161,6 +214,37 @@ async def test_call_never_blocks_the_event_loop(file_db):
     automaton = _two_sources(file_db)
     tool_set = SourceNamespace(file_db, automaton).tool_set(["flights"])
 
-    result = await tool_set.call("source_flights_select", {"value": "paris"})
+    result = await tool_set.call("source_flights_select", {"values": ["paris"]})
 
     assert result == "city,country\nParis,France\n"
+
+
+def test_summary_text_reports_the_ui_label_query_and_row_count(db):
+    automaton = _two_sources(db)
+    tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
+
+    summary = tool_set.summary_text(
+        "source_flights_select", {"values": ["VY3003"]}, "header\nrow1\nrow2\n",
+    )
+
+    assert summary == 'Searched Flights for "VY3003" · 2 rows'
+
+
+def test_summary_text_uses_singular_row_for_exactly_one_match(db):
+    automaton = _two_sources(db)
+    tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
+
+    summary = tool_set.summary_text("source_flights_select", {"values": ["VY3003"]}, "header\nrow1\n")
+
+    assert summary == 'Searched Flights for "VY3003" · 1 row'
+
+
+def test_summary_text_does_not_count_a_trailing_truncation_marker_as_a_row(db):
+    automaton = _two_sources(db)
+    tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
+
+    summary = tool_set.summary_text(
+        "source_flights_select", {"values": ["x"]}, "header\nrow1\n[truncated: 500 more characters]",
+    )
+
+    assert summary == 'Searched Flights for "x" · 1 row'

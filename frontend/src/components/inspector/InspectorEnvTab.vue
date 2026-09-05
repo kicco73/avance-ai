@@ -4,6 +4,9 @@ import { clearEnv, deleteEnvValue, getEnv, putEnvValue } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 
 const props = defineProps({
+  // Whose env this tab shows/edits — every call below is scoped to it.
+  // null (no session resolved yet) just shows the empty state.
+  sessionId: { type: [Number, String], default: null },
   // When set, shows a historical point-in-time snapshot instead of live env.
   untilMessageId: { type: [Number, String], default: null },
   // Edits only ever apply going forward from "now", so this is true only
@@ -24,9 +27,14 @@ const storedEntries = computed(() => Object.entries(stored.value))
 const actionSetEntries = computed(() => Object.entries(actionSet.value))
 
 async function loadEnv() {
+  if (props.sessionId == null) {
+    stored.value = {}
+    actionSet.value = {}
+    return
+  }
   envLoading.value = true
   try {
-    const result = await getEnv(props.untilMessageId ?? undefined)
+    const result = await getEnv(props.sessionId, props.untilMessageId ?? undefined)
     stored.value = result.stored
     actionSet.value = result.action_set
   } catch {
@@ -66,7 +74,7 @@ async function commitEditing() {
   const value = editingValue.value
   if (value === stored.value[key]) return // unchanged — skip the round trip
   try {
-    const result = await putEnvValue(key, value)
+    const result = await putEnvValue(props.sessionId, key, value)
     stored.value = result.stored
     actionSet.value = result.action_set
   } catch {
@@ -76,7 +84,7 @@ async function commitEditing() {
 
 async function removeKey(key) {
   try {
-    const result = await deleteEnvValue(key)
+    const result = await deleteEnvValue(props.sessionId, key)
     stored.value = result.stored
     actionSet.value = result.action_set
   } catch {
@@ -93,7 +101,7 @@ async function clearAll() {
   })
   if (!ok) return
   try {
-    const result = await clearEnv()
+    const result = await clearEnv(props.sessionId)
     stored.value = result.stored
     actionSet.value = result.action_set
   } catch {

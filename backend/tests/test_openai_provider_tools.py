@@ -20,6 +20,12 @@ _SELECT_SPEC = ToolSpec(
     parameters={"type": "object", "properties": {"value": {"type": "string"}}, "required": ["value"]},
 )
 
+_TICKETS_SPEC = ToolSpec(
+    name="source_tickets_select",
+    description="Grep over the tickets archive.",
+    parameters={"type": "object", "properties": {"value": {"type": "string"}}, "required": ["value"]},
+)
+
 
 class _FakeUsage:
     def __init__(self, total_tokens: int = 3, prompt_tokens: int = 2, completion_tokens: int = 1) -> None:
@@ -88,20 +94,34 @@ class _FakeAsyncOpenAIClient:
 
 
 class _FakeToolSet:
-    """Enough of tracking.sources.ToolSet's own contract (specs()/call())
-    for AiService's loop to drive — call() never raises, matching the
-    real one's contract, and just returns whatever's queued next."""
+    """Enough of tracking.sources.ToolSet's own contract (specs()/call()/
+    required_specs()/summary_text()/session_id) for AiService's loop to
+    drive — call() never raises, matching the real one's contract, and
+    just returns whatever's queued next. `required_specs`: the
+    ai-must-query-sources subset (see ToolSet.required_specs) — empty by
+    default, so every existing test (none of which exercises forcing)
+    behaves exactly as it did before this parameter existed."""
 
-    def __init__(self, specs: list[ToolSpec], results: list[str]) -> None:
+    def __init__(
+        self, specs: list[ToolSpec], results: list[str], required_specs: list[ToolSpec] | None = None,
+    ) -> None:
         self._specs = specs
         self._results = list(results)
+        self._required_specs = required_specs or []
         self.calls: list[tuple[str, dict]] = []
+        self.session_id = 99
 
     def specs(self) -> list[ToolSpec]:
         return self._specs
 
+    def required_specs(self) -> list[ToolSpec]:
+        return self._required_specs
+
     def status_text(self, name: str) -> str:
         return f"Searching {name}…"
+
+    def summary_text(self, name: str, arguments: dict, result: str) -> str:
+        return f"Searched {name} · fake summary"
 
     async def call(self, name: str, arguments: dict) -> str:
         self.calls.append((name, arguments))
@@ -292,3 +312,88 @@ def test_build_messages_round_trips_the_neutral_tool_history_shapes():
         },
         {"role": "tool", "tool_call_id": "call_1", "content": "city,country\nParis,France\n"},
     ]
+
+
+# (g) ai-must-query-sources forcing — see AiService.generate_stream_with_
+# metadata's own force_required_tools/required_tools and
+# TrackingProcessor.force_required_tools_for, which decides it. The
+# provider itself only ever translates "required_tools was given" into
+# its own tool_choice dialect; it never decides *whether* to force.
+async def test_required_tools_restricts_tools_and_forces_tool_choice_required():
+    provider, fake_client = _provider([_text_response('{"text": "ok"}')])
+
+    await _drain(provider.generate_stream_with_schema(
+        "sys", [], {"text": "t"}, tools=[_SELECT_SPEC, _TICKETS_SPEC], required_tools=[_SELECT_SPEC],
+    ))
+
+    sent = fake_client.chat.completions.calls[0]
+    assert sent["tools"] == [{
+        "type": "function",
+        "function": {
+            "name": "source_flights_select", "description": "Grep over the flights archive.",
+            "parameters": _SELECT_SPEC.parameters,
+        },
+    }]
+    assert sent["tool_choice"] == "required"
+
+
+async def test_no_required_tools_sends_the_full_catalog_with_no_tool_choice():
+    provider, fake_client = _provider([_text_response('{"text": "ok"}')])
+
+    await _drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}, tools=[_SELECT_SPEC, _TICKETS_SPEC]))
+
+    sent = fake_client.chat.completions.calls[0]
+    assert {t["function"]["name"] for t in sent["tools"]} == {"source_flights_select", "source_tickets_select"}
+    assert "tool_choice" not in sent
+
+
+async def test_first_round_of_a_forced_turn_restricts_tool_choice_then_round_two_is_auto():
+    provider, fake_client = _provider([
+        _tool_call_response("call_1", "source_flights_select", '{"value": "paris"}'),
+        _text_response('{"text": "Paris it is."}'),
+    ])
+    ai_service = AiService(provider)
+    tool_set = _FakeToolSet([_SELECT_SPEC], results=["city,country\nParis,France\n"], required_specs=[_SELECT_SPEC])
+
+    async for _ in ai_service.generate_stream_with_metadata(
+        "sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}, tool_set=tool_set,
+        force_required_tools=True,
+    ):
+        pass
+
+    round_1, round_2 = fake_client.chat.completions.calls
+    assert round_1["tool_choice"] == "required"
+    assert "tool_choice" not in round_2
+
+
+async def test_force_required_tools_false_never_restricts_even_with_a_must_source():
+    """The second turn in the same state (TrackingProcessor.
+    force_required_tools_for returns False) — auto from round 1, even
+    though this state does declare an ai-must-query-sources tool."""
+    provider, fake_client = _provider([
+        _tool_call_response("call_1", "source_flights_select", '{"value": "paris"}'),
+        _text_response('{"text": "Paris it is."}'),
+    ])
+    ai_service = AiService(provider)
+    tool_set = _FakeToolSet([_SELECT_SPEC], results=["city,country\nParis,France\n"], required_specs=[_SELECT_SPEC])
+
+    async for _ in ai_service.generate_stream_with_metadata(
+        "sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}, tool_set=tool_set,
+    ):
+        pass
+
+    assert "tool_choice" not in fake_client.chat.completions.calls[0]
+
+
+async def test_a_state_with_only_ai_may_query_sources_is_never_forced():
+    provider, fake_client = _provider([_text_response('{"text": "hi"}')])
+    ai_service = AiService(provider)
+    tool_set = _FakeToolSet([_SELECT_SPEC], results=[], required_specs=[])
+
+    async for _ in ai_service.generate_stream_with_metadata(
+        "sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}, tool_set=tool_set,
+        force_required_tools=True,
+    ):
+        pass
+
+    assert "tool_choice" not in fake_client.chat.completions.calls[0]

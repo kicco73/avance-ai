@@ -92,10 +92,6 @@ def create_app() -> FastAPI:
         # One-off: renames every stored index.yml revision's own state-level
         # `tools:` field to `ai-may-query-sources:` (see the module's own docstring).
         migrate_legacy_tools_field(db)
-        # One-off: deletes every Tracking env/action_env row that belongs to
-        # a test/preview session, and drops any live session's own
-        # action_env key a project's current published revision no longer
-        # declares (see the module's own docstring).
         migrate_env_rows(db)
 
         ai_live_service = AiService.for_live(

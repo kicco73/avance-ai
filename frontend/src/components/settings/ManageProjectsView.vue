@@ -439,6 +439,8 @@ defineExpose({ refresh: load })
                   <span class="project-card-title-row">
                     <span class="project-card-title">{{ projectTitle(row.id) }}</span>
                     <span v-if="row.published_revision != null" class="project-card-rev">rev. {{ row.published_revision }}</span>
+                    <span v-if="row.broken?.published" class="project-card-broken" :title="row.broken.published">broken</span>
+                    <span v-if="row.broken?.draft" class="project-card-draft-broken" :title="row.broken.draft">draft broken</span>
                   </span>
                   <span v-if="projectDescription(row.id)" class="project-card-desc">{{ projectDescription(row.id) }}</span>
                   <!-- Hover/focus-only hint that clicking the body enters
@@ -951,6 +953,26 @@ defineExpose({ refresh: load })
   color: #888;
   font-size: 0.65rem;
   font-weight: 500;
+}
+
+.project-card-broken,
+.project-card-draft-broken {
+  flex-shrink: 0;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  cursor: help;
+}
+
+.project-card-broken {
+  background: #fdecea;
+  color: #c0392b;
+}
+
+.project-card-draft-broken {
+  background: #fdf1e3;
+  color: #b06a00;
 }
 
 .project-card-desc {

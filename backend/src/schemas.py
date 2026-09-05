@@ -152,7 +152,8 @@ class SetProjectFieldRequest(BaseModel):
     # Editable fields are free text (ui-label, contextual-prompt, etc.), a
     # plain boolean (a state's history-cutoff/chat), a mapping of
     # env-key -> expression source (an action's own 'env' field only), or
-    # a list of source names (a state's own 'tools' field only).
+    # a list of source names (a state's own 'ai-may-query-sources'/
+    # 'ai-must-query-sources' fields only).
     value: str | bool | dict[str, str] | list[str]
 
     @field_validator("value")
@@ -163,7 +164,8 @@ class SetProjectFieldRequest(BaseModel):
         """Trims string values so incidental UI whitespace (e.g. "Action ")
         never creates a duplicate distinct from "Action". A bare boolean
         (history-cutoff/chat) passes through untouched; a mapping (env) or
-        a list (tools) is stripped entry by entry the same way."""
+        a list (ai-may-query-sources/ai-must-query-sources) is stripped
+        entry by entry the same way."""
         if isinstance(value, str):
             return value.strip()
         if isinstance(value, dict):

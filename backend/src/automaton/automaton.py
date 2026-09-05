@@ -459,15 +459,6 @@ class Automaton(object):
         )
 
     def declared_env_key_names(self) -> set[str]:
-        """Every env key name this automaton actually declares — its own
-        top-level `env_keys`, plus (defensively — for an older revision
-        published before an action's own `env:` was required to already
-        be declared there, or a hand-built Automaton that sets one
-        without the other) every name init_action or any state action's
-        own `env:` writes. Used to tell an action_env key some earlier
-        revision set apart from one the *current* automaton no longer
-        recognizes at all (see chat.chat_service's own bootstrap-time
-        cleanup and tracking.legacy_env_migration's one-time sweep)."""
         names = {env_key.name for env_key in self.env_keys}
         if self.init_action.env:
             names |= set(self.init_action.env)

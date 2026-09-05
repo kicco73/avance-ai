@@ -183,6 +183,26 @@ class TestSetStateField:
         editor.set_state_field("a", "contextual-prompt", "brand new prompt")
         assert _builds(editor.serialize()).states["a"].contextual_prompt == "brand new prompt"
 
+    def test_ai_may_query_sources_edit(self):
+        editor = _editor(SOURCE_BASE_YAML)
+        editor.set_source_field("pino", "ai-definition", "One row per flight.")
+        payload = editor.set_state_field("a", "ai-may-query-sources", ["pino"])
+
+        assert payload["ai_may_query_sources"] == ["pino"]
+        assert payload["ai_must_query_sources"] == []
+        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
+        assert automaton.states["a"].ai_may_query_sources == ("pino",)
+        assert automaton.states["a"].ai_must_query_sources == ()
+
+    def test_ai_must_query_sources_edit(self):
+        editor = _editor(SOURCE_BASE_YAML)
+        editor.set_source_field("pino", "ai-definition", "One row per flight.")
+        payload = editor.set_state_field("a", "ai-must-query-sources", ["pino"])
+
+        assert payload["ai_must_query_sources"] == ["pino"]
+        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
+        assert automaton.states["a"].ai_must_query_sources == ("pino",)
+
 
 class TestSetActionField:
     def test_ui_label_edit_never_touches_the_name(self):
@@ -676,6 +696,14 @@ class TestSetSourceField:
         editor = _editor(SOURCE_BASE_YAML)
         payload = editor.set_source_field("cities", "url", "avance:flights.csv")
         assert payload["url"] == "avance:flights.csv"
+
+    def test_ai_definition_field_is_a_plain_edit(self):
+        editor = _editor(SOURCE_BASE_YAML)
+        payload = editor.set_source_field("pino", "ai-definition", "One row per flight.")
+        assert payload["ai_definition"] == "One row per flight."
+        assert payload["ui_description"] is None
+        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
+        assert next(s for s in automaton.sources if s.name == "pino").ai_definition == "One row per flight."
 
     def test_name_edit_that_does_not_change_the_sanitized_name_stays_in_place(self):
         editor = _editor(SOURCE_BASE_YAML)

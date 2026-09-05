@@ -1,23 +1,3 @@
-"""One-off, boot-time data migration for the test/live env-separation fix
-(see chat.env_for_session's own docstring): before session type was ever
-considered, a `Db.get_latest_chat_session` call with no type filter could
-resolve to a test/preview session whenever no live session existed yet
-for that (project, user) — attaching a test turn's own env/action_env
-row to a session that was never live at all. Every such row is deleted
-here, once.
-
-Separately (and unrelated to *how* a row got there): a live session's own
-action_env can still carry a key a project's *current* published revision
-no longer declares under `env:` — left over from an earlier revision
-(e.g. a since-removed `flight_record` key whose value kept growing every
-turn). Cleaned up here too, once, for whatever's already stuck in that
-state; chat.chat_service's own bootstrap-time cleanup handles it from
-here on for every later revision change (see
-ChatService._cleanup_orphan_action_env_keys).
-
-Both are proven-safe, backed-up-first bulk rewrites (see Db.backup_now),
-same shape as project.archive.legacy_source_read_migration.
-"""
 from __future__ import annotations
 
 from db import Db
@@ -43,7 +23,7 @@ def migrate_env_rows(db: Db) -> None:
         Tracking.delete().where(Tracking.id.in_(stray_row_ids)).execute()
         logger.warning(
             "Env migration: deleted %s Tracking row(s) carrying env/action_env that belonged to a "
-            "test/preview session — never a legitimate target for those (see chat.env_for_session).",
+            "test/preview session.",
             len(stray_row_ids),
         )
     for (project_id, username), orphan_keys in orphans_by_pair.items():
@@ -64,11 +44,6 @@ def _stray_test_session_env_row_ids(db: Db) -> list[int]:
 
 
 def _orphan_action_env_keys(db: Db) -> dict[tuple[str, str], set[str]]:
-    """{(project_id, username): {orphan key, ...}} for every (project,
-    user) pair with at least one live session whose current action_env
-    carries a key the project's own current published revision no longer
-    declares. A project never published at all has nothing to compare
-    against, so it's skipped rather than treated as "declares nothing"."""
     automaton_loader = AutomatonLoader(db)
     result: dict[tuple[str, str], set[str]] = {}
     pairs = (
@@ -107,7 +82,6 @@ def _drop_orphan_keys(db: Db, project_id: str, username: str, orphan_keys: set[s
     cleaned = {key: value for key, value in current.items() if key not in orphan_keys}
     db.set_action_env(session["id"], cleaned)
     logger.warning(
-        "Env migration: project '%s', user '%s': removed orphaned action_env key(s) %s — no longer "
-        "declared by the published revision's own 'env' section.",
+        "Env migration: project '%s', user '%s': removed orphaned action_env key(s) %s.",
         project_id, username, sorted(orphan_keys),
     )

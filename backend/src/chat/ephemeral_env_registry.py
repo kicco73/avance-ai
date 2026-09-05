@@ -1,12 +1,3 @@
-"""In-memory Env store for test/preview sessions, one per session id —
-never backed by the database (see chat.env_for_session's own docstring
-for why). A process-wide singleton, same shape as session.Session: every
-caller that resolves a test/preview session's own env — ChatService,
-TrackingService, ScopeHydrator, a testing/ replay — must see the same
-instance for a given session id, or a chat turn's own env write would be
-invisible to whoever reads it back (the Inspector, a later turn in the
-same session, ...).
-"""
 from __future__ import annotations
 
 from tracking.env import Env
@@ -23,9 +14,6 @@ class EphemeralEnvRegistry(object):
         return cls._instance
 
     def get(self, session_id: int) -> Env:
-        """Creates an empty Env the first time `session_id` is seen —
-        which is also what a "reset" needs (see discard below): the next
-        get() after a discard() starts fresh, since the row is gone."""
         env = self._envs.get(session_id)
         if env is None:
             env = Env()
@@ -33,20 +21,8 @@ class EphemeralEnvRegistry(object):
         return env
 
     def discard(self, session_id: int) -> None:
-        """The three points a test/preview session's own lifecycle ends —
-        ChatService.delete_session, ChatService.close_session, a test-
-        session reset, and create_preview_session's own bulk cleanup of
-        the previous preview session — call this so a gone session's own
-        Env doesn't linger here forever. A no-op for a live/imported
-        session id (never registered here in the first place)."""
         self._envs.pop(session_id, None)
 
     @classmethod
     def _reset_for_tests(cls) -> None:
-        """This registry is a process-global singleton, same as
-        events.dispatcher's own _subscribers — a test suite's own
-        per-test :memory: database restarts session ids from 1 every
-        time (see conftest.db), so without this a session id from one
-        test would collide with an unrelated one's leftover Env from an
-        earlier test. See conftest.py's own autouse fixture."""
         cls._instance = None

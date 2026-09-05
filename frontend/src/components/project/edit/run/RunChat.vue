@@ -7,7 +7,7 @@ import ChatView from '../../../chat/ChatView.vue'
 import ChatTimeline from '../../../chat/ChatTimeline.vue'
 import RestartFromHereButton from '../../../chat/RestartFromHereButton.vue'
 import SessionsPanel from '../../../chat/SessionsPanel.vue'
-import { clearEnv, getMessages, deleteSession } from '../../../../api.js'
+import { getMessages, deleteSession } from '../../../../api.js'
 import { spokenTextEnabled, totalTokenBudgetPerSession } from '../../../../chatStoreFactory.js'
 import { applyAspect } from '../../../../chatSkin.js'
 import { testStore } from '../../../../testChatStore.js'
@@ -99,11 +99,13 @@ async function onDeleteSession(session) {
 // outright and immediately opens a brand new one, no confirmation (test
 // sessions are cheap/disposable, same reasoning as handleNewSession's
 // own confirmNewSession: false for this store — see testChatStore.js).
+// Deleting the session already wipes its own (ephemeral) env with it —
+// no separate clearEnv() call needed, and none scoped to the just-deleted
+// session would even make sense anymore.
 async function onClearSession() {
   const sessionId = currentSessionId.value
   try {
     if (sessionId != null) await deleteSession(sessionId)
-    await clearEnv()
   } catch {
     // already surfaced via apiFetch
   }

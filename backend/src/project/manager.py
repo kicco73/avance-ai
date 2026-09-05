@@ -154,7 +154,11 @@ class ProjectManager:
         only" instead of a stray 400/500 from deep inside the Inspector/
         Editor. Never about is_paused: a broken draft with a healthy
         published revision must never block editing (see
-        recompute_availability's own docstring)."""
+        recompute_availability's own docstring). A no-op for a project
+        that doesn't exist at all — that's a 404, same as always, not a
+        "broken" one; the caller's own real lookup raises it right after."""
+        if not self._db.project_exists(project_id):
+            return
         health = self._health_checker.current(project_id)
         if health.draft.error is not None:
             raise ServiceError(health.draft.error, status_code=HTTPStatus.CONFLICT, code="project_broken")
@@ -292,7 +296,11 @@ class ProjectManager:
             raise ValueError(f"Project '{project_id}' isn't manually paused (status: '{status}') — can't be resumed.")
         health = self._health_checker.current(project_id)
         if health.published is not None and health.published.error is not None:
-            raise ValueError(f"Project '{project_id}' can't be resumed — its published revision no longer builds: {health.published.error}")
+            raise ServiceError(
+                f"Project '{project_id}' can't be resumed — its published revision no longer builds: "
+                f"{health.published.error}",
+                status_code=HTTPStatus.CONFLICT, code="project_broken",
+            )
         self._db.set_manually_paused(project_id, False)
         self.recompute_availability(project_id)
         return self.get_project_runtime_status(project_id)
