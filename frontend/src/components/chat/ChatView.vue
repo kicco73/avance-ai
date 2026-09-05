@@ -317,7 +317,7 @@ watch(
       <slot name="timeline">
         <MessageBubble
           v-for="(msg, i) in messages"
-          :key="msg.messageId || msg.id || i"
+          :key="msg.id ?? msg.messageId ?? i"
           :message="msg"
           :spoken-text-enabled="spokenTextEnabled"
           :reactions="state?.reactions || []"
