@@ -87,7 +87,7 @@ class TestProcessor(object):
         self._metrics.advance_to(message_id, real_timestamp)
 
         signal_values, stored_env = await self._signal_source.get_turn_data(message_id, self._current_state)
-        self._env.update(stored_env)
+        self._env.update(stored_env, declared_keys=self._automaton.declared_env_key_names())
 
         state = self._automaton.get_state(self._current_state)
         action = self._tracking_engine.evaluate_triggered_action(self._automaton, state, signal_values)

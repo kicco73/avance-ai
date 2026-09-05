@@ -66,15 +66,17 @@ class Env(object):
         editable/deletable (only these are)."""
         return dict(self._memory)
 
-    def update(self, values: dict[str, Any], message_id: int | None = None) -> None:
+    def update(self, values: dict[str, Any], message_id: int | None = None, declared_keys: set[str] | None = None) -> None:
         """Merges the reply's own `memory` delta onto memory(). A key the
-        automaton declares and has set (action_set()) is dropped, never
-        duplicated into memory — the model is told to change those only
-        through the `update` tool, and this is the backstop."""
+        automaton *declares* (`declared_keys`, e.g. Automaton.
+        declared_env_key_names() — Env itself never imports the automaton)
+        is dropped, never duplicated into memory, whether or not that key
+        has actually been set yet — the model is told to change those only
+        through the `update` tool, and this is the backstop. `declared_keys`
+        omitted (no automaton in scope) means nothing is filtered."""
         if not values:
             return
-        action_set = self.action_set()
-        filtered = {key: value for key, value in values.items() if key not in action_set}
+        filtered = {key: value for key, value in values.items() if key not in (declared_keys or set())}
         if not filtered:
             return
         merged = {**self.memory(), **filtered}

@@ -15,8 +15,9 @@ states:
         trigger: "signal.intent_refund > 70"
         env:
           customer_record: source.tickets_sold.select(user.email)
-          flight: source.tickets_sold.select(user.email, keys=['codice_volo'])
-          flight_date: source.tickets_sold.select(user.email, keys=['datetime_volo'])
+          flight: source.tickets_sold.value(user.email, key='codice_volo')
+          flight_date: source.tickets_sold.value(user.email, key='datetime_volo')
+          pnr: "''"
       - name: go_to_out_of_scope
         ui-label: "Other / Complaint"
         ui-button: "Other issue"

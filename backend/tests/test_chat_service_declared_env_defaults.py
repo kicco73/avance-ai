@@ -121,3 +121,16 @@ async def test_a_key_that_already_has_a_value_is_never_recomputed(db):
     await chat_service.open_if_needed(session["id"])
 
     assert _env_for(db).action_set() == {"a": 99}
+
+
+async def test_a_key_present_only_in_memory_is_not_already_set_the_default_still_applies(db):
+    # memory() and action_set() are different stores with different
+    # owners (see Env's own docstring) — a same-named memory note must
+    # never count as "already set" for the automaton's own env default.
+    chat_service = _chat_service(db, _automaton({"a": "2"}))
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    _env_for(db, session["id"]).update({"a": "stale note"})
+
+    await chat_service.open_if_needed(session["id"])
+
+    assert _env_for(db).action_set() == {"a": 2}

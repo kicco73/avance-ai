@@ -809,8 +809,10 @@ class ChatService(object):
 		key's value already persisted (a single shared apply_action_env
 		call evaluates every key against one static scope snapshot taken
 		before any of them run, which a same-batch reference could never
-		see). Only whichever keys don't already have a stored or
-		action-set value are (re-)evaluated."""
+		see). Only whichever keys don't already have an action-set value
+		are (re-)evaluated — a same-named memory note never counts as
+		"already set" (memory is the model's own free-form store, action_set()
+		the automaton's deterministic one; see Env's own docstring)."""
 		action = automaton.init_action
 		if not action.env:
 			return
@@ -818,7 +820,7 @@ class ChatService(object):
 		# tracking_engine below writes through, so "already has a value"
 		# is answered by the project the defaults belong to.
 		env = self._env_for_session(session_id)
-		current = {**env.memory(), **env.action_set()}
+		current = env.action_set()
 		missing = {key: expression for key, expression in action.env.items() if key not in current}
 		if not missing:
 			return

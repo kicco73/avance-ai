@@ -190,21 +190,19 @@ class ToolSet:
         for free (see AiService's own tool-call loop and
         db.tracking.record_tool_calls) so reopening the session can render
         it again with no separate storage of its own. Row count: every
-        line after the header, minus a trailing "[truncated: ...]" marker
-        line if SourceDriver._bounded added one — a best-effort count
-        against a driver's own tabular-text convention, not a hard contract."""
+        line after the header — a best-effort count against a driver's
+        own tabular-text convention, not a hard contract."""
         ui_label = self._ui_labels.get(name, name)
         if self._method_of(name) == WRITE_METHOD:
             if result.startswith("error:"):
                 return f"Could not update {ui_label}: {result[len('error:'):].strip()}"
             fields = arguments.get("fields") or {}
             return "\n".join(f'Set {key} = "{value}"' for key, value in fields.items()) or f"Updated {ui_label}"
+        if result.startswith("error:"):
+            return f"Could not search {ui_label}: {result[len('error:'):].strip()}"
         values = arguments.get("values") or []
         query = ", ".join(f'"{value}"' for value in values)
-        lines = result.splitlines()
-        if lines and lines[-1].startswith("[truncated:"):
-            lines = lines[:-1]
-        rows = max(0, len(lines) - 1)
+        rows = max(0, len(result.splitlines()) - 1)
         row_word = "row" if rows == 1 else "rows"
         return f"Searched {ui_label} for {query} · {rows} {row_word}"
 

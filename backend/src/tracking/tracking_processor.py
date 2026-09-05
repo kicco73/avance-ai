@@ -161,7 +161,7 @@ class TrackingProcessor(object):
 		# Linked to the assistant's own message right away — this turn's
 		# reply is what actually reported these memory values, unlike
 		# self.out.tracking_id, which may already be linked to an earlier message.
-		self.env.update(self.metadata.memory, message_id=assistant_id)
+		self.env.update(self.metadata.memory, message_id=assistant_id, declared_keys=self.user.automaton.declared_env_key_names())
 
 		if self.metadata.tool_calls:
 			self.db.record_tool_calls(self.user.session_id, self.metadata.tool_calls, message_id=assistant_id)

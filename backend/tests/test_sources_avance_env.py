@@ -102,6 +102,26 @@ class TestSelect:
         assert _driver(env).select(keys=["flight"]) == 'flight\n"VY3003, VY3004"\n'
 
 
+class TestValue:
+    def test_returns_the_current_value_of_one_variable(self):
+        env = Env(action_set={"flight": "VY3003"})
+
+        assert _driver(env).value(key="flight") == "VY3003"
+
+    def test_an_unset_exported_key_is_the_empty_string(self):
+        env = Env()
+
+        assert _driver(env).value(key="flight") == ""
+
+    def test_an_unexported_or_unknown_key_is_reported_as_text(self):
+        env = Env(action_set={"_flight_record": "secret"})
+
+        result = _driver(env).value(key="_flight_record")
+
+        assert result.startswith("error: unknown variable(s) '_flight_record'")
+        assert "secret" not in result
+
+
 class TestUpdate:
     def test_writes_a_readwrite_key_into_an_in_memory_env_and_reports_one_row(self):
         env = Env(action_set={"flight": "VY1"})

@@ -6,14 +6,15 @@ Reads straight from Db at the automaton's own (project_name, revision)
 in-memory copy, so every test here seeds real Archive rows instead of
 building a MemoryArchive.
 
-select() is the only method this driver implements (see SourceDriver's
-own docstring on why a whole-file read isn't a source.* capability at all
-— and `update`, part of the uniform interface, stays unsupported here) —
-every test below that used to call read() to exercise the shared
-_read_text/_read_canonical machinery (the content-type guard, the
-per-session cache) now goes through select() instead: for a single-line
-file, `select()` still returns that one line verbatim (its own "header"
-is always included, unconditionally), so the same assertions hold.
+select()/value() are the only methods this driver implements (see
+SourceDriver's own docstring on why a whole-file read isn't a source.*
+capability at all — and `update`, part of the uniform interface, stays
+unsupported here) — every test below that used to call read() to
+exercise the shared _read_text/_read_canonical machinery (the
+content-type guard, the per-session cache) now goes through select()
+instead, against a two-line (header + one row) file: select() returns ""
+— not even the header — when nothing matches, so a single-line file (no
+data row at all) can no longer stand in for "the whole file, verbatim."
 """
 from __future__ import annotations
 
@@ -96,17 +97,29 @@ def test_select_returns_the_header_plus_every_case_insensitive_match(db):
     assert result == "city,country\nParis,France\nparis,Texas\n"
 
 
-def test_select_returns_just_the_header_when_nothing_matches(db):
+def test_select_returns_the_empty_string_not_even_the_header_when_nothing_matches(db):
+    # "" means "not found," full stop — the header only ever appears
+    # alongside at least one matching row (see SourceDriver.select's own
+    # docstring), so `select(...) != ''` is a real existence check.
     revision = _seed(db, {"cities.csv": CSV.encode()}, {"cities.csv": "text/csv"})
     automaton = _automaton(PROJECT_ID, revision)
 
-    assert _driver(automaton, db, "cities.csv").select("Tokyo") == "city,country\n"
+    assert _driver(automaton, db, "cities.csv").select("Tokyo") == ""
 
 
-def test_select_result_beyond_the_char_limit_is_truncated_with_a_final_line(db):
+def test_select_with_one_matching_row_returns_the_header_plus_that_row(db):
+    revision = _seed(db, {"cities.csv": CSV.encode()}, {"cities.csv": "text/csv"})
+    automaton = _automaton(PROJECT_ID, revision)
+
+    assert _driver(automaton, db, "cities.csv").select("London") == "city,country\nLondon,UK\n"
+
+
+def test_select_result_beyond_the_char_limit_is_refused_with_the_header_still_attached(db):
     # One header row plus enough matching rows to blow well past
     # MAX_SOURCE_RESULT_CHARS — every source.*/tool result is bounded
-    # the same way, regardless of caller (see SourceDriver._bounded).
+    # the same way, regardless of caller (see SourceDriver._bounded). The
+    # header rides along on the refusal so the model still knows the
+    # field names to narrow its next query by.
     rows = "\n".join(f"paris-row-{i}" for i in range(MAX_SOURCE_RESULT_CHARS))
     content = f"header\n{rows}\n"
     revision = _seed(db, {"big.csv": content.encode()}, {"big.csv": "text/csv"})
@@ -114,10 +127,7 @@ def test_select_result_beyond_the_char_limit_is_truncated_with_a_final_line(db):
 
     result = _driver(automaton, db, "big.csv").select("paris")
 
-    assert len(result) <= MAX_SOURCE_RESULT_CHARS + len("\n[truncated: 999999999 more characters]")
-    assert result.startswith("header\nparis-row-0\n")
-    last_line = result.splitlines()[-1]
-    assert last_line.startswith("[truncated: ") and last_line.endswith(" more characters]")
+    assert result == "error: response too long — provide more specific filters, then try again.\nheader"
 
 
 def test_select_with_more_than_one_value_ands_them_together(db):
@@ -212,14 +222,40 @@ class TestSelectKeysProjection:
         assert result == "codice_volo,data_partenza,datetime_partenza_reale\nVY3003,2026-08-17,2026-08-17 07:05\n"
 
 
+class TestValue:
+    CONTENT = "codice_volo,data_partenza\nVY3003,2026-08-16\nVY3003,2026-08-17\nVY4000,2026-08-16\n"
+
+    def test_returns_the_key_cell_of_the_first_matching_row(self, db):
+        revision = _seed(db, {"flights.csv": self.CONTENT.encode()}, {"flights.csv": "text/csv"})
+        automaton = _automaton(PROJECT_ID, revision)
+
+        result = _driver(automaton, db, "flights.csv").value("VY3003", key="data_partenza")
+
+        assert result == "2026-08-16"
+
+    def test_returns_the_empty_string_when_no_row_matches(self, db):
+        revision = _seed(db, {"flights.csv": self.CONTENT.encode()}, {"flights.csv": "text/csv"})
+        automaton = _automaton(PROJECT_ID, revision)
+
+        assert _driver(automaton, db, "flights.csv").value("VY9999", key="data_partenza") == ""
+
+    def test_an_unknown_column_is_reported_as_text(self, db):
+        revision = _seed(db, {"flights.csv": self.CONTENT.encode()}, {"flights.csv": "text/csv"})
+        automaton = _automaton(PROJECT_ID, revision)
+
+        result = _driver(automaton, db, "flights.csv").value("VY3003", key="nope")
+
+        assert result.startswith("error: unknown column(s) 'nope'")
+
+
 def test_source_namespace_resolves_a_declared_name_to_its_driver(db):
-    revision = _seed(db, {"notes.txt": b"hello from the archive"}, {"notes.txt": "text/plain"})
+    revision = _seed(db, {"notes.txt": b"note\nhello from the archive\n"}, {"notes.txt": "text/plain"})
     automaton = _automaton(PROJECT_ID, revision, sources=[Source(name="pino", url="avance:notes.txt", ui_label="pino")])
 
     resolved = SourceNamespace(db, automaton).pino
 
     assert isinstance(resolved, AvanceArchiveSource)
-    assert resolved.select("archive") == "hello from the archive"
+    assert resolved.select("archive") == "note\nhello from the archive\n"
 
 
 def test_source_namespace_raises_for_an_undeclared_name(db):
@@ -235,46 +271,47 @@ class TestPerSessionReadCache:
     select() goes straight to the canonical archive and never writes a
     cache copy — same behavior as before this cache existed. With one,
     it reads through cache/sessions/<id>/<archive path> instead,
-    duplicating the canonical content into it on a miss."""
+    duplicating the canonical content into it on a miss. Content is
+    always header + one data row here so select() has something to match."""
 
     def test_no_session_id_reads_canonical_directly_and_writes_no_cache_copy(self, db):
-        revision = _seed(db, {"notes.txt": b"hello"}, {"notes.txt": "text/plain"})
+        revision = _seed(db, {"notes.txt": b"note\nhello\n"}, {"notes.txt": "text/plain"})
         automaton = _automaton(PROJECT_ID, revision)
 
-        assert _driver(automaton, db, "notes.txt", session_id=None).select("hello") == "hello"
+        assert _driver(automaton, db, "notes.txt", session_id=None).select("hello") == "note\nhello\n"
         assert not any(name.startswith("cache/") for name in db.list_archives(PROJECT_ID, revision=revision))
 
     def test_a_session_id_duplicates_the_canonical_content_into_its_own_cache_copy_on_first_read(self, db):
-        revision = _seed(db, {"notes.txt": b"hello"}, {"notes.txt": "text/plain"})
+        revision = _seed(db, {"notes.txt": b"note\nhello\n"}, {"notes.txt": "text/plain"})
         automaton = _automaton(PROJECT_ID, revision)
 
-        assert _driver(automaton, db, "notes.txt", session_id=42).select("hello") == "hello"
+        assert _driver(automaton, db, "notes.txt", session_id=42).select("hello") == "note\nhello\n"
 
         cached = db.get_archive(PROJECT_ID, "cache/sessions/42/notes.txt", revision=revision)
-        assert cached == b"hello"
+        assert cached == b"note\nhello\n"
 
     def test_a_cache_hit_is_read_straight_from_its_own_copy_without_touching_the_canonical_content(self, db):
-        revision = _seed(db, {"notes.txt": b"original"}, {"notes.txt": "text/plain"})
+        revision = _seed(db, {"notes.txt": b"note\noriginal\n"}, {"notes.txt": "text/plain"})
         automaton = _automaton(PROJECT_ID, revision)
-        _driver(automaton, db, "notes.txt", session_id=42).select("x")  # populates the cache copy
+        _driver(automaton, db, "notes.txt", session_id=42).select("original")  # populates the cache copy
 
         # The project gets edited/republished underneath the still-open
         # session — the canonical archive now reads differently...
-        db.save_project_files(PROJECT_ID, {"notes.txt": b"edited"}, {"notes.txt": "text/plain"})
+        db.save_project_files(PROJECT_ID, {"notes.txt": b"note\nedited\n"}, {"notes.txt": "text/plain"})
 
         # ...but this session's own cached copy is untouched, so it keeps
         # seeing exactly what it first read, all conversation long.
-        assert _driver(automaton, db, "notes.txt", session_id=42).select("x") == "original"
+        assert _driver(automaton, db, "notes.txt", session_id=42).select("original") == "note\noriginal\n"
 
     def test_two_different_sessions_get_their_own_independent_cache_copies(self, db):
-        revision = _seed(db, {"notes.txt": b"hello"}, {"notes.txt": "text/plain"})
+        revision = _seed(db, {"notes.txt": b"note\nhello\n"}, {"notes.txt": "text/plain"})
         automaton = _automaton(PROJECT_ID, revision)
 
         _driver(automaton, db, "notes.txt", session_id=1).select("x")
         _driver(automaton, db, "notes.txt", session_id=2).select("x")
 
-        assert db.get_archive(PROJECT_ID, "cache/sessions/1/notes.txt", revision=revision) == b"hello"
-        assert db.get_archive(PROJECT_ID, "cache/sessions/2/notes.txt", revision=revision) == b"hello"
+        assert db.get_archive(PROJECT_ID, "cache/sessions/1/notes.txt", revision=revision) == b"note\nhello\n"
+        assert db.get_archive(PROJECT_ID, "cache/sessions/2/notes.txt", revision=revision) == b"note\nhello\n"
 
     def test_select_also_reads_through_the_session_cache(self, db):
         revision = _seed(db, {"cities.csv": CSV.encode()}, {"cities.csv": "text/csv"})

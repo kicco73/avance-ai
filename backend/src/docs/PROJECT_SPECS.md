@@ -318,9 +318,11 @@ that flight ever flew") — write it with the model as the reader, not a
 human skimming the Inspector.
 
 Every source — whatever its driver — implements the same two-method
-interface, and is bounded by construction: every method returns at most
-`MAX_SOURCE_RESULT_CHARS`, truncated with a trailing `[truncated: N more
-characters]` line rather than left to grow unbounded. A given driver only
+interface, and is bounded by construction: a result over
+`MAX_SOURCE_RESULT_CHARS` is refused outright with an `error: response too
+long — try again by providing more specific filterso.` — never silently
+truncated, so the model always knows a result it gets is the complete
+match set. A given driver only
 ever implements the methods that make sense for it (its
 `SUPPORTED_METHODS`); calling one it doesn't — in a script or through a
 state's tool fields — is rejected at build time the same way an
@@ -330,14 +332,26 @@ support is the whole compatibility story.
 - `select(*values, keys=None)` — grep-like lookup: the header row plus
   every row containing **every** given value (case-insensitive substring
   match, AND'd), then — when `keys` is given — projected onto just those
-  columns, in the order asked for (the header always included). An
+  columns, in the order asked for (the header included whenever at least
+  one row matched). No row at all satisfying the filter returns `""` —
+  not even the header — so `source.<name>.select(...) != ''` is a real
+  existence check ("the model proposes, the script verifies," below). An
   unknown column comes back as an error *text*, never an exception.
   `source.pino.select('VY3003', '2026-08-16')` finds the one row for that
   flight on that date; `source.pino.select('VY3003', '2026-08-16',
   keys=['data_partenza'])` returns two lines with a single column.
+- `value(*values, key)` — the `key` cell of the *first* row satisfying
+  the same filter as `select`, as a single scalar string; `""` if no row
+  matches, an error *text* if `key` isn't a real column. Scripts and
+  trigger/env: expressions only — never exposed to the model, which reads
+  through `select` instead. `source.pino.value('VY3003', key='flight')`
+  reads one field without parsing a table.
 - `update(*values, fields={...})` — assigns `fields` (column → new value)
   to every row containing every value; returns how many rows it touched
   (`"1 row updated"`). Unsupported by a driver that can't write.
+
+Every driver implements `select`; `value` and `update` only where it
+makes sense for that driver (its own `SUPPORTED_METHODS`).
 
 Two drivers exist today, both under the scheme `avance`:
 
@@ -347,8 +361,9 @@ basename under `behaviour/`, resolved directly from storage at the
 conversation's own pinned automaton revision, never "whatever's published
 now" — not the `attachments:` mechanism, nothing is eagerly loaded).
 Assumes a normalized CSV (header + one row per record; the separator is
-detected). Implements `select` only — a whole-file read is
-`attachment.read(name)`'s job (on-enter only), not a `source.*` capability.
+detected). Implements `select` and `value` — never `update`, read-only. A
+whole-file read is `attachment.read(name)`'s job (on-enter only), not a
+`source.*` capability.
 
 **`avance:env` — the project's own env keys.** A one-row table whose
 columns are the env keys with `ai-access` other than `none` (§5.3) — the
@@ -359,12 +374,14 @@ row (`select(keys=[...])` just the named variables); `update(fields={...})`
 writes the `readwrite` keys into the session's own env exactly as an
 action's `env:` script would (persisted for a live session, ephemeral for
 a test one), and refuses a `readonly` or unexported key as error text,
-writing nothing. Its tool schemas are narrowed for the model: `keys` to
-the exported names, `fields` to the writable ones, each described by its
-own `ai-definition`. Declaring an `avance:env` source when no key has
-`ai-access` other than `none` is a build error (an empty table); exported
-keys without an `avance:env` source are fine (the key still serves
-scripts). A script may call it too (`source.env.select(keys=['pnr'])`),
+writing nothing. `value(key=...)` reads one exported key's value as a
+scalar, script/trigger-only like every other source's `value`. Its tool
+schemas are narrowed for the model: `keys` to the exported names, `fields`
+to the writable ones, each described by its own `ai-definition`.
+Declaring an `avance:env` source when no key has `ai-access` other than
+`none` is a build error (an empty table); exported keys without an
+`avance:env` source are fine (the key still serves scripts). A script may
+call it too (`source.env.select(keys=['pnr'])`, `source.env.value(key='pnr')`),
 and is subject to the same `readwrite` check on `update`.
 
 New drivers are a code change, not something a project author adds.
@@ -425,14 +442,18 @@ key keeps `ai-access: none` until its author decides otherwise.
 state whose `ai-may-read-sources`/`ai-must-read-sources` lists an
 `avance:env` source; there, the system prompt ends with a "Current
 environment" block — one `key: value` line per key with `ai-access` other
-than `none`, every value truncated to 200 characters with a
-`[truncated: N more chars — use select]` pointer, placed last so its
-per-turn changes never invalidate the cacheable prefix. Anywhere else the
+than `none`, every value cut to 200 characters with a
+`[response too long — provide more specific filters via select]` pointer,
+placed last so its per-turn changes never invalidate the cacheable prefix. Anywhere else the
 block does not exist, not even empty. The memory block is a separate
 block with its own heading, and the model is told to change variables
-only with `update`, never in the `memory` field (a declared key echoed
-there is discarded). A project that declares nothing (the Hello world
-sample) has no tools and no env block: just the memory.
+only with `update`, never in the `memory` field — a *declared* key
+named there is discarded outright (`Env.update`'s own `declared_keys`
+filter), whether or not that key has been set yet: the model reporting
+`pnr` as a memory note before ever calling `update` on it must not let
+it leak into memory instead of being silently dropped. A project that
+declares nothing (the Hello world sample) has no tools and no env
+block: just the memory.
 
 **The model proposes, the script verifies.** The intended way to use the
 binding: give the model `readwrite` keys for the facts it has to collect

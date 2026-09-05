@@ -5,7 +5,8 @@ like any other source (`url: avance:env`, no other parameter; ui-label/
 ai-definition as usual) and listed per state like any other: a state
 that puts it in ai-may/must-read-sources gets `select` (and the prompt's
 own env block, see tracking.env_prompt_block), one that puts it in
-ai-may-write-sources gets `update`. This is the model's *only* channel
+ai-may-write-sources gets `update`. `value(key=...)` — one variable as a
+scalar string — is never a tool: scripts/triggers only. This is the model's *only* channel
 for writing an automaton variable: `update(fields=...)` writes the
 readwrite keys into the session's own env through Env.update_action_set
 — PersistedEnv for a live session, the ephemeral one for a test session,
@@ -27,7 +28,7 @@ PATH = "env"
 
 
 class AvanceEnvSource(SourceDriver):
-    SUPPORTED_METHODS = frozenset({"select", "update"})
+    SUPPORTED_METHODS = frozenset({"select", "update", "value"})
     METHOD_DESCRIPTIONS = {
         "select": (
             "The automaton's own variables as a one-row table: the header row names every variable "
@@ -39,6 +40,10 @@ class AvanceEnvSource(SourceDriver):
             "value, e.g. source.<name>.update(fields={'pnr': 'ABC123'}). Only the variables listed in this "
             "tool's own schema can be written; the rest are read-only. `values` is ignored: there is only "
             "one row."
+        ),
+        "value": (
+            "One variable's current value as a scalar string — e.g. source.<name>.value(key='pnr'). "
+            "`values` is ignored: there is only one row. Scripts/triggers only, never a model tool."
         ),
     }
 
@@ -72,6 +77,12 @@ class AvanceEnvSource(SourceDriver):
         writer.writerow(columns)
         writer.writerow([current[column] for column in columns])
         return self._bounded(out.getvalue())
+
+    def value(self, *values: str, key: str) -> str:
+        current = self._current_values()
+        if key not in current:
+            return f"error: unknown variable(s) {key!r} — available: {', '.join(current)}"
+        return current[key]
 
     def update(self, *values: str, fields: dict[str, str]) -> str:
         if not fields:

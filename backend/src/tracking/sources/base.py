@@ -10,7 +10,7 @@ parameter_schema() only ever *narrows* a method's uniform argument schema
 
 Bounded by construction: `select` (and any future result-returning
 method a driver adds) must return a result at most MAX_SOURCE_RESULT_CHARS
-long, truncated here — once, for every caller alike (a trigger/env:
+long — refused outright here, once, for every caller alike (a trigger/env:
 expression, or the model itself via ToolSet.call), never left to each
 driver to remember."""
 from __future__ import annotations
@@ -68,13 +68,22 @@ class SourceDriver:
         return ValueError(f"source.{self._name}.{method}(...): not supported by this source.")
 
     @staticmethod
-    def _bounded(text: str) -> str:
+    def _bounded(text: str, header: str | None = None) -> str:
         """The one seam every result-returning method routes through — a
-        single place bounding a driver's own output, regardless of who's asking."""
+        single place bounding a driver's own output, regardless of who's
+        asking. Oversized output is refused outright rather than silently
+        truncated: a truncated result looks complete to the model, which
+        then reasons over a partial table without knowing it; an explicit
+        error instead tells it to narrow the query itself. `header` (the
+        result's own first line, when the caller has one) rides along on
+        the refusal too — the model still needs the field names to know
+        what to narrow the query *by*."""
         if len(text) <= MAX_SOURCE_RESULT_CHARS:
             return text
-        remaining = len(text) - MAX_SOURCE_RESULT_CHARS
-        return f"{text[:MAX_SOURCE_RESULT_CHARS]}\n[truncated: {remaining} more characters]"
+        message = "error: response too long — provide more specific filters, then try again."
+        if header:
+            return f"{message}\n{header.rstrip(chr(10))}"
+        return message
 
     def select(self, *values: str, keys: list[str] | None = None) -> str:
         """Header row plus every row containing *every* value (case-
@@ -83,8 +92,22 @@ class SourceDriver:
         means every column. No values at all means every row, exactly as
         tracking.sources._VALUES_PARAMETER's own schema promises the
         model. An unknown column comes back as an error *text* (the model
-        reads it and retries), never an exception."""
+        reads it and retries), never an exception. No row at all satisfying
+        the filter (rather than one column of it) is the one case where
+        even the header is dropped — "" means "not found," full stop, so
+        `source.x.select(...) != ''` is a real existence check (see
+        tracking.sources.avance_archive/avance_env's own select())."""
         raise self._unsupported("select")
+
+    def value(self, *values: str, key: str) -> str:
+        """The `key` cell of the *first* row containing every value
+        (same filter as select), as a string — "" if no row satisfies it,
+        an error *text* if `key` isn't a real column. Never a ToolSet
+        tool (ToolSet only ever wires up select/update, see its own
+        _add_tool) — scripts and trigger/env: expressions only, where a
+        single scalar reads better than parsing select()'s own table
+        text."""
+        raise self._unsupported("value")
 
     def update(self, *values: str, fields: dict[str, str]) -> str:
         """Assigns `fields` (column -> new value) to every row containing

@@ -71,14 +71,16 @@ def test_a_state_only_writing_the_env_source_gets_no_block_either():
     assert EnvPromptBlock.for_state(Env(action_set={"flight": "VY3003"}), automaton, WRITING_ONLY) is None
 
 
-def test_a_value_beyond_the_cap_is_truncated_with_a_pointer_at_select():
+def test_a_value_beyond_the_cap_is_cut_with_a_pointer_at_select():
     long_value = "x" * (MAX_ENV_VALUE_CHARS + 37)
     env = Env(action_set={"flight": long_value})
     automaton = _automaton(READING, OTHER)
 
     lines = EnvPromptBlock.for_state(env, automaton, READING).lines()
 
-    assert lines["flight"] == "x" * MAX_ENV_VALUE_CHARS + "[truncated: 37 more chars — use select]"
+    assert lines["flight"] == (
+        "x" * MAX_ENV_VALUE_CHARS + "[response too long — provide more specific filters via select]"
+    )
 
 
 def test_a_value_exactly_at_the_cap_is_left_alone():

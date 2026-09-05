@@ -47,8 +47,7 @@ class EnvPromptBlock:
         text = "" if value is None else str(value)
         if len(text) <= MAX_ENV_VALUE_CHARS:
             return text
-        remaining = len(text) - MAX_ENV_VALUE_CHARS
-        return f"{text[:MAX_ENV_VALUE_CHARS]}[truncated: {remaining} more chars — use select]"
+        return f"{text[:MAX_ENV_VALUE_CHARS]}[response too long — provide more specific filters via select]"
 
     def lines(self) -> dict[str, str]:
         """key -> rendered (already truncated) value, in declaration order

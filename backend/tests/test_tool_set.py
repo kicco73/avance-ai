@@ -83,6 +83,17 @@ def test_specs_covers_every_named_source_and_every_supported_method(db):
     assert names == {"source_flights_select", "source_tickets_select"}
 
 
+def test_value_is_never_exposed_as_a_tool_even_for_a_driver_that_supports_it(db):
+    # AvanceEnvSource.SUPPORTED_METHODS includes "value" (scripts/triggers
+    # only) — ToolSet must still only ever wire up select/update.
+    automaton = _env_automaton(db)
+    tool_set = SourceNamespace(db, automaton, env=Env()).tool_set(["env"], may_write_names=["env"])
+
+    names = {spec.name for spec in tool_set.specs()}
+    assert names == {"source_env_select", "source_env_update"}
+    assert not any(name.endswith("_value") for name in names)
+
+
 def test_only_the_named_sources_are_included_even_when_more_are_declared(db):
     automaton = _two_sources(db)
     tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
@@ -355,12 +366,13 @@ def test_summary_text_uses_singular_row_for_exactly_one_match(db):
     assert summary == 'Searched Flights for "VY3003" · 1 row'
 
 
-def test_summary_text_does_not_count_a_trailing_truncation_marker_as_a_row(db):
+def test_summary_text_reports_a_refused_oversized_select_as_an_error(db):
     automaton = _two_sources(db)
     tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
 
     summary = tool_set.summary_text(
-        "source_flights_select", {"values": ["x"]}, "header\nrow1\n[truncated: 500 more characters]",
+        "source_flights_select", {"values": ["x"]},
+        "error: response too long — provide more specific filters, then try again.",
     )
 
-    assert summary == 'Searched Flights for "x" · 1 row'
+    assert summary == "Could not search Flights: response too long — provide more specific filters, then try again."

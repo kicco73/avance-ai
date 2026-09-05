@@ -124,7 +124,7 @@ def test_declared_source_is_usable_in_an_env_expression_end_to_end(db):
     in-memory copy, which is why this seeds the file through
     save_project_files rather than constructing a MemoryArchive."""
     db.ensure_project(PROJECT_ID)
-    db.save_project_files(PROJECT_ID, {"notes.txt": b"hello from the archive"}, {"notes.txt": "text/plain"})
+    db.save_project_files(PROJECT_ID, {"notes.txt": b"note\nhello from the archive\n"}, {"notes.txt": "text/plain"})
     revision = db.get_project_revision(PROJECT_ID)
     action = Action(
         name="advance", ui_label="Advance", ui_button="Advance", target="b",
@@ -142,8 +142,8 @@ def test_declared_source_is_usable_in_an_env_expression_end_to_end(db):
 
     scope = _builder(db).build(automaton, "a", {})
 
-    assert scope["source"].pino.select("hello") == "hello from the archive"
-    assert Automaton.eval_action_env(action, scope) == {"notes": "hello from the archive"}
+    assert scope["source"].pino.select("hello") == "note\nhello from the archive\n"
+    assert Automaton.eval_action_env(action, scope) == {"notes": "note\nhello from the archive\n"}
 
 
 def test_attachment_read_is_usable_from_the_actuator_view_of_a_scope_end_to_end(db):
