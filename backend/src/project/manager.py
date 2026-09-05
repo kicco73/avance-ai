@@ -142,9 +142,19 @@ class ProjectManager:
         is recomputed from scratch — the in-memory ProjectHealthChecker
         starts out empty on every process start, by design (see its own
         docstring) — and its availability recast accordingly, cascading
-        through automaton.* dependencies exactly like any other recompute."""
+        through automaton.* dependencies exactly like any other recompute.
+        One project's own unexpected failure here must never take the
+        whole boot down with it (same "one broken revision must never
+        block the rest" contract as the legacy migrations run just before
+        this) — the whole point of this sweep is to turn exactly that
+        into a paused project instead."""
         for project_id in self._db.list_projects():
-            self.recompute_availability(project_id)
+            try:
+                self.recompute_availability(project_id)
+            except Exception:
+                logger.exception(
+                    "recompute_availability failed for project '%s' during the boot-time sweep.", project_id
+                )
 
     def ensure_project_not_broken(self, project_id: str) -> None:
         """Raises a 409 ServiceError (code="project_broken") when

@@ -70,7 +70,15 @@ def _declared_env_keys(db: Db, automaton_loader: AutomatonLoader, project_id: st
     revision = db.get_project_published_revision(project_id)
     if revision is None:
         return None
-    automaton = automaton_loader.load_at_revision(project_id, revision)
+    try:
+        automaton = automaton_loader.load_at_revision(project_id, revision)
+    except (ValueError, FileNotFoundError):
+        # A published revision that doesn't build is ProjectManager.
+        # recompute_availability's own concern (it runs right after every
+        # migration here, at boot) — this cleanup just skips the project
+        # for now rather than taking the whole boot down with it; the
+        # same orphan check runs again next boot, once it's fixed.
+        return None
     return automaton.declared_env_key_names()
 
 

@@ -91,6 +91,28 @@ def test_a_project_never_published_is_skipped_not_treated_as_declaring_nothing(d
     assert db.get_action_env(PROJECT_ID, USERNAME) == {"a": 1}
 
 
+def test_a_project_whose_published_revision_no_longer_builds_is_skipped_not_crashed(db):
+    """The exact boot-crash this regressed into: a published revision
+    that doesn't build under today's AutomatonBuilder rules (e.g. a
+    stricter rule shipped since it was last saved) must never take the
+    whole migration — and thus the whole boot — down with it. Skipped
+    exactly like a never-published project above; ProjectManager.
+    recompute_availability (run right after every migration, at boot) is
+    what actually pauses it."""
+    _publish(db, ["a"])
+    live_session = _session(db, type="live")
+    db.set_action_env(live_session, {"a": 1})
+    from db.models import Archive
+    revision = db.get_project_published_revision(PROJECT_ID)
+    Archive.update(content=b"not: [valid, yaml: at all").where(
+        (Archive.project == PROJECT_ID) & (Archive.archive_name == "index.yml") & (Archive.revision == revision)
+    ).execute()
+
+    migrate_env_rows(db)  # must not raise
+
+    assert db.get_action_env(PROJECT_ID, USERNAME) == {"a": 1}
+
+
 def test_no_op_when_nothing_needs_cleanup(db):
     _publish(db, ["a"])
     live_session = _session(db, type="live")
