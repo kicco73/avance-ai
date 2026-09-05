@@ -4,9 +4,13 @@ the reply is being generated for (see automaton.triggerable_signal_names)
 — asking the model to calculate signal values nothing in that state could
 ever act on is pure waste: no definition in the prompt, no 'signals'
 field in the schema. The gate only ever switches off that *request*: the
-trigger evaluation itself still runs every turn, against the empty
-signals set (see test_auto_tracker_metrics.py for a metric-/env-only
-trigger firing with no signal requested at all).
+trigger evaluation itself still runs every turn with a real user message,
+against the empty signals set (see test_auto_tracker_metrics.py for a
+metric-/env-only trigger firing with no signal requested at all) —
+*except* at the opening turn (the automaton's own AI-generated first
+message, no real user message behind it yet), which skips that
+evaluation outright rather than let an env./metric./source.*-only
+trigger fire off the opener alone.
 """
 from __future__ import annotations
 
@@ -109,3 +113,44 @@ async def test_a_state_with_something_triggerable_still_requests_signals(db):
 
     assert len(ai_service.calls) == 1
     assert "signals" in ai_service.calls[0]
+
+
+def _env_only_trigger_automaton() -> Automaton:
+    """`advance`'s own trigger references only env.ready — no signal at
+    all, so triggerable_signal_names("a") is empty and _evaluate_signals_
+    for is False regardless of turn type; that's exactly the case the
+    opening-turn gate has to distinguish from "asks for nothing, but
+    still evaluates" (the real-user-message case above)."""
+    action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="env.ready == True")
+    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="You are in A.", actions=[action])
+    state_b = State(key="b", ui_label="B", final=True, contextual_prompt="You are in B.")
+    init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
+    return Automaton(
+        init_action=init_action,
+        states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
+        general_prompt="",
+        signals=[],
+        attachments={},
+        general_attachments={},
+        autotracking_on_ai_message=False,
+    )
+
+
+async def test_an_env_only_trigger_never_fires_at_the_opening_turn(db):
+    automaton = _env_only_trigger_automaton()
+    processor, _ = _processor(db, automaton)
+    processor.env.update_action_set({"ready": True})
+
+    await processor.process(None)  # the automaton's own AI-generated opener, no real user message
+
+    assert processor.out.state.key == "a"  # never transitioned to "b"
+
+
+async def test_the_same_env_only_trigger_fires_on_the_first_real_user_message(db):
+    automaton = _env_only_trigger_automaton()
+    processor, _ = _processor(db, automaton)
+    processor.env.update_action_set({"ready": True})
+
+    await processor.process("hello")
+
+    assert processor.out.state.key == "b"

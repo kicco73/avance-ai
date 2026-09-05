@@ -19,14 +19,27 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 
 		self.out = OutVariables("", [], None, self.user.state, None)
 		if not self._evaluate_signals_for(self.user.state):
-			# Nothing signal-backed to ask the model for this turn — the
-			# state's own triggers are still evaluated, right now, against
-			# the empty signals set (a metric.*/env.*/source.* trigger fires
-			# exactly as it always did; a signal-backed one short-circuits
-			# to false): the gate switches off the request, never the
-			# evaluation. The outcome is known before the first chunk, so
-			# there's nothing to buffer text for either way.
-			self._resolve_signals({})
+			if self.user.has_ai_started_conversation:
+				# The opening turn — has_ai_started_conversation True means
+				# there is no real user message yet, so a trigger with
+				# nothing behind it but env./metric./source.* must not fire
+				# off the automaton's own AI-generated opener alone; it
+				# waits for the first real turn, same as a signal-backed
+				# trigger already does. Still marked resolved immediately
+				# (skipping the real evaluate_triggered_action call, not
+				# just the request) so the reply keeps streaming live,
+				# chunk by chunk, exactly as the non-opening branch below does.
+				self.metadata.signals = {}
+				self.out.signals_resolved = True
+			else:
+				# Nothing signal-backed to ask the model for this turn — the
+				# state's own triggers are still evaluated, right now, against
+				# the empty signals set (a metric.*/env.*/source.* trigger fires
+				# exactly as it always did; a signal-backed one short-circuits
+				# to false): the gate switches off the request, never the
+				# evaluation. The outcome is known before the first chunk, so
+				# there's nothing to buffer text for either way.
+				self._resolve_signals({})
 
 		buffered_text_before_signals_resolved = ""
 		if self.user.state == self.out.state:

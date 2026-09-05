@@ -409,9 +409,14 @@ class TrackingProcessor(object):
 		"before"/"after" strategies; pointless when nothing in `state`
 		could trigger from them (no definition in the prompt, no
 		'signals' field in the schema). This gates the *request* only,
-		never the trigger evaluation itself: a turn that asks for nothing
-		still runs _resolve_signals against the empty set, so a trigger
-		referencing only metric.*/env.*/source.* keeps firing. Exposed on
+		never the trigger evaluation itself: a turn with a real user
+		message that asks for nothing still runs _resolve_signals against
+		the empty set, so a trigger referencing only metric.*/env.*/
+		source.* keeps firing — except at the opening turn (see
+		TrackingProcessorAfterUserMessage._get_ai_reply's own has_ai_
+		started_conversation branch), which skips that evaluation outright
+		rather than let the automaton's own AI-generated opener alone fire
+		a transition nothing in the conversation asked for. Exposed on
 		its own (not just inlined in build_turn_channels) so a caller can
 		know this upfront without building the full channel list — see
 		TrackingProcessorAfterUserMessage's own upfront resolution."""
