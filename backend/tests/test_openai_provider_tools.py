@@ -12,7 +12,7 @@ import pytest
 
 from ai.ai_service import AiService, MAX_TOOL_ROUNDS
 from ai._providers.openai_provider_v2 import OpenAICompatibleProvider
-from ai.llm_provider import AIServiceConfig, AIServiceRequestError, ToolCall, ToolCallsRequested, ToolSpec
+from ai.llm_provider import AIServiceConfig, AIServiceRequestError, SystemPrompt, ToolCall, ToolCallsRequested, ToolSpec
 
 _SELECT_SPEC = ToolSpec(
     name="source_flights_select",
@@ -27,11 +27,22 @@ _TICKETS_SPEC = ToolSpec(
 )
 
 
+class _FakePromptTokensDetails:
+    def __init__(self, cached_tokens: int | None = None) -> None:
+        self.cached_tokens = cached_tokens
+
+
 class _FakeUsage:
-    def __init__(self, total_tokens: int = 3, prompt_tokens: int = 2, completion_tokens: int = 1) -> None:
+    def __init__(
+        self, total_tokens: int = 3, prompt_tokens: int = 2, completion_tokens: int = 1,
+        prompt_tokens_details: "_FakePromptTokensDetails | None" = None,
+    ) -> None:
         self.total_tokens = total_tokens
         self.prompt_tokens = prompt_tokens
         self.completion_tokens = completion_tokens
+        # None (the default) matches a real CompletionUsage that never
+        # populated this — the provider must fall back to 0.
+        self.prompt_tokens_details = prompt_tokens_details
 
 
 class _FakeDeltaFunction:

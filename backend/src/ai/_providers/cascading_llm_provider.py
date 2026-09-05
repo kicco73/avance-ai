@@ -16,6 +16,7 @@ from ai.llm_provider import (
     AIServiceProviderUnavailableError,
     LLMProvider,
     MetadataCallback,
+    SystemPrompt,
     ToolSpec,
 )
 from logging_factory import LoggerFactory
@@ -74,7 +75,7 @@ class AutoLiveLLMProvider(LLMProvider):
         return self.current_provider.get_input_tokens(prompt)
 
     async def generate_stream_with_schema(
-        self, system_prompt: str, history: list[dict], schema: dict[str, str], on_metadata: MetadataCallback | None = None,
+        self, system_prompt: "str | SystemPrompt", history: list[dict], schema: dict[str, str], on_metadata: MetadataCallback | None = None,
         tools: list[ToolSpec] | None = None, tool_round: int = 1, required_tools: list[ToolSpec] | None = None,
     ) -> AsyncIterator[str]:
         provider = self._cascade.current
@@ -105,7 +106,7 @@ class AutoTestLLMProvider(AutoLiveLLMProvider):
 
     async def generate_stream_with_schema(
         self,
-        system_prompt: str,
+        system_prompt: "str | SystemPrompt",
         history: list[dict],
         schema: dict[str, str],
         on_metadata: MetadataCallback | None = None,

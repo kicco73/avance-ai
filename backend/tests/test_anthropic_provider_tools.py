@@ -11,7 +11,7 @@ import pytest
 
 from ai.ai_service import AiService, MAX_TOOL_ROUNDS
 from ai._providers.anthropic_provider_v2 import AnthropicProvider
-from ai.llm_provider import AIServiceConfig, AIServiceRequestError, ToolCall, ToolCallsRequested, ToolSpec
+from ai.llm_provider import AIServiceConfig, AIServiceRequestError, SystemPrompt, ToolCall, ToolCallsRequested, ToolSpec
 from db.models import AiTokenUsage
 
 _SELECT_SPEC = ToolSpec(
@@ -28,9 +28,17 @@ _TICKETS_SPEC = ToolSpec(
 
 
 class _FakeUsage:
-    def __init__(self, input_tokens: int = 2, output_tokens: int = 1) -> None:
+    def __init__(
+        self, input_tokens: int = 2, output_tokens: int = 1,
+        cache_read_input_tokens: int | None = None, cache_creation_input_tokens: int | None = None,
+    ) -> None:
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
+        # None (the default) matches a real anthropic.types.Usage that
+        # never populated these — the provider must fall back to 0 rather
+        # than propagate a None into a token count.
+        self.cache_read_input_tokens = cache_read_input_tokens
+        self.cache_creation_input_tokens = cache_creation_input_tokens
 
 
 class _FakeTextBlock:
@@ -497,3 +505,84 @@ async def test_a_state_with_only_ai_may_read_sources_is_never_forced():
         pass
 
     assert "tool_choice" not in fake_client.messages.calls[0]
+
+
+# (h) SystemPrompt splitting — one cache breakpoint on `stable` alone; see
+# ai.llm_provider.SystemPrompt and AnthropicProvider._build_system.
+async def test_a_plain_str_system_prompt_produces_one_cached_block():
+    final = _FakeFinalMessage("end_turn")
+    provider, fake_client = _provider([(['{"text": "hi"}'], final)])
+
+    await _drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}))
+
+    sent_system = fake_client.messages.calls[0]["system"]
+    assert sent_system == [{"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}]
+
+
+async def test_a_system_prompt_with_no_volatile_tail_produces_one_cached_block():
+    final = _FakeFinalMessage("end_turn")
+    provider, fake_client = _provider([(['{"text": "hi"}'], final)])
+
+    await _drain(provider.generate_stream_with_schema(SystemPrompt(stable="sys"), [], {"text": "t"}))
+
+    sent_system = fake_client.messages.calls[0]["system"]
+    assert sent_system == [{"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}]
+
+
+async def test_a_system_prompt_with_a_volatile_tail_produces_two_blocks_cache_on_the_first_only():
+    final = _FakeFinalMessage("end_turn")
+    provider, fake_client = _provider([(['{"text": "hi"}'], final)])
+
+    await _drain(provider.generate_stream_with_schema(
+        SystemPrompt(stable="stable part", volatile="volatile part"), [], {"text": "t"},
+    ))
+
+    sent_system = fake_client.messages.calls[0]["system"]
+    assert sent_system == [
+        {"type": "text", "text": "stable part", "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": "volatile part"},
+    ]
+
+
+# (i) cache-read/cache-creation token accounting — usage.input_tokens
+# excludes cache entirely on this provider, so on_metadata's own
+# "input_tokens" must be normalized into a true, cache-inclusive total.
+async def test_cache_read_and_creation_tokens_are_normalized_into_the_input_total():
+    usage = _FakeUsage(input_tokens=10, output_tokens=5, cache_read_input_tokens=100, cache_creation_input_tokens=20)
+    final = _FakeFinalMessage("end_turn", usage=usage)
+    provider, _ = _provider([(['{"text": "hi"}'], final)])
+    events: list[tuple[str, object]] = []
+
+    await _drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}, on_metadata=lambda k, v: events.append((k, v))))
+
+    assert ("cache_read_tokens", 100) in events
+    assert ("cache_creation_tokens", 20) in events
+    # 10 (excludes cache) + 100 + 20 = 130 — the true, cache-inclusive input.
+    assert ("input_tokens", 130) in events
+    assert ("output_tokens", 5) in events
+    assert provider.get_total_tokens() == 130 + 5
+
+
+async def test_a_usage_with_no_cache_fields_reports_zero_cache_tokens():
+    final = _FakeFinalMessage("end_turn", usage=_FakeUsage(input_tokens=10, output_tokens=5))
+    provider, _ = _provider([(['{"text": "hi"}'], final)])
+    events: list[tuple[str, object]] = []
+
+    await _drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}, on_metadata=lambda k, v: events.append((k, v))))
+
+    assert ("cache_read_tokens", 0) in events
+    assert ("cache_creation_tokens", 0) in events
+    assert ("input_tokens", 10) in events
+
+
+async def test_a_row_is_recorded_with_the_normalized_input_total_and_both_cache_fields(db):
+    usage = _FakeUsage(input_tokens=10, output_tokens=5, cache_read_input_tokens=100, cache_creation_input_tokens=20)
+    final = _FakeFinalMessage("end_turn", usage=usage)
+    provider, _ = _provider([(['{"text": "hi"}'], final)])
+    ai_service = AiService(provider, db=db)
+
+    async for _ in ai_service.generate_stream_with_metadata("sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}):
+        pass
+
+    row = AiTokenUsage.get()
+    assert (row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens) == (130, 5, 100, 20)

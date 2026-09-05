@@ -15,7 +15,14 @@ const props = defineProps({
   // Today's own token spend for this provider (see db/ai_usage.py) —
   // null while Manage services > AI hasn't loaded it yet, or for a
   // talk/listen provider (only ai-service ones carry a daily budget).
-  usageToday: { type: Number, default: null }
+  usageToday: { type: Number, default: null },
+  // Of usageToday, how much was served from cache (see AiTokenUsage.
+  // cache_read_tokens) — null under the same conditions as usageToday.
+  usageTodayCacheRead: { type: Number, default: null },
+  // Share (0..1) of *input* tokens served from cache over the trailing
+  // 24h (see db/ai_usage.py's own cache_read_ratio) — a longer, steadier
+  // window than "today", which resets at midnight.
+  cacheReadRatio: { type: Number, default: null }
 })
 
 const open = ref(false)
@@ -24,6 +31,19 @@ const dailyBudget = computed(() => props.provider['token-budget-per-day'])
 const { width: tokensBarWidth, level: tokensBarLevel } = useTokensBar(
   computed(() => props.usageToday), dailyBudget
 )
+// The cached share of today's own bar, as a distinct segment drawn on
+// top of tokensBarWidth above — never wider than the bar's own fill
+// (cache_read_tokens is always a subset of usageToday's input tokens).
+const cacheBarWidth = computed(() => {
+  const cap = dailyBudget.value
+  if (!cap) return '0%'
+  const value = Math.min(props.usageTodayCacheRead ?? 0, props.usageToday ?? 0, cap)
+  return `${value / cap * 100}%`
+})
+const cacheReadPercentLabel = computed(() => {
+  if (props.cacheReadRatio == null) return null
+  return `${Math.round(props.cacheReadRatio * 100)}% from cache (24h)`
+})
 const {
   visible: tokensTooltipVisible, style: tokensTooltipStyle, show: showTokensTooltip, hide: hideTokensTooltip
 } = useFloatingTooltip()
@@ -90,7 +110,13 @@ const flagBadges = computed(() => {
             :class="`services-provider-tokens-bar-fill-${tokensBarLevel}`"
             :style="{ width: tokensBarWidth }"
           ></div>
+          <div
+            v-if="usageTodayCacheRead != null"
+            class="services-provider-tokens-bar-cache"
+            :style="{ width: cacheBarWidth }"
+          ></div>
         </div>
+        <span v-if="cacheReadPercentLabel" class="services-provider-tokens-cache-label">{{ cacheReadPercentLabel }}</span>
       </div>
     </div>
     <Teleport to="body">
@@ -98,7 +124,7 @@ const flagBadges = computed(() => {
         v-if="tokensTooltipVisible"
         class="services-provider-tokens-tooltip-floating"
         :style="tokensTooltipStyle"
-      >{{ usageToday.toLocaleString() }} / {{ dailyBudget.toLocaleString() }} tokens today</span>
+      >{{ usageToday.toLocaleString() }} / {{ dailyBudget.toLocaleString() }} tokens today<template v-if="usageTodayCacheRead != null"> ({{ usageTodayCacheRead.toLocaleString() }} from cache)</template></span>
     </Teleport>
     <div class="inspector-detail-body">
       <Transition name="crossfade" mode="out-in">
@@ -166,6 +192,11 @@ const flagBadges = computed(() => {
 .services-provider-tokens-bar-fill-green { background: #2e7d32; }
 .services-provider-tokens-bar-fill-orange { background: #f5a623; }
 .services-provider-tokens-bar-fill-red { background: #c62828; }
+/* The cache-served share of today's own bar — a distinct segment drawn
+   on top of the fill above, left-aligned on the same track so it always
+   reads as "this much of the bar was served from cache". */
+.services-provider-tokens-bar-cache { position: absolute; top: 0; left: 0; height: 100%; background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0 3px, transparent 3px 6px); transition: width 0.3s ease; }
+.services-provider-tokens-cache-label { flex-shrink: 0; font-size: 0.68rem; color: #888; }
 </style>
 
 <style>

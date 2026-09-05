@@ -79,19 +79,36 @@ class TurnProtocolUsingSchema:
 		matching channel (input_tokens/output_tokens/tool_call/tool_result
 		— internal AiService plumbing, never a real schema field).
 
-		`env_block` (see tracking.env_prompt_block.EnvPromptBlock): the
-		automaton's own declared variables, read-only context for the
-		model — never a response field of its own, so it's appended as
-		plain text after every channel's own preamble/content and the
-		schema's field-order instructions, the very last thing in the
-		system prompt. Kept last deliberately: it's the one piece of this
-		prompt that can change turn to turn independently of which
-		channels are active, so keeping it last maximizes how much of the
-		prompt stays a stable, cacheable prefix."""
+		The system prompt handed to AiService is a SystemPrompt, split so
+		a provider that caches a prefix (see AnthropicProvider._build_system)
+		can actually hit that cache across consecutive turns in the same
+		automaton state: `stable` is everything that depends only on state/
+		automaton (every channel's own preamble, MemoryChannel's included —
+		its data header excepted — plus SCHEMA_ORDER_PROMPT's field-order
+		instructions), identical turn after turn while the state doesn't
+		change; `volatile` is whatever depends on the session/turn instead —
+		MemoryChannel's own "Current memory:" header and its current
+		content, and `env_block` (see tracking.env_prompt_block.
+		EnvPromptBlock: the automaton's own declared variables, read-only
+		context for the model, never a response field of its own). No
+		wording changes versus the old single concatenated prompt, only
+		where each byte-identical block ends up."""
 		order = "\n".join(f'\t- {channel.tag}' for channel in channels)
-		prompt = f"{self.build_final_prompt(channels)}\n\n{SCHEMA_ORDER_PROMPT}\n{order}"
+		stable_parts: list[str] = []
+		volatile_parts: list[str] = []
+		for channel in channels:
+			if isinstance(channel, MemoryChannel):
+				stable_parts.append(channel.stable_preamble)
+				volatile_parts += [channel.volatile_header, channel.content]
+			else:
+				stable_parts += [channel.preamble, channel.content]
+		stable_body = "\n\n".join(stable_parts)
+		stable = f"{stable_body}\n\n{SCHEMA_ORDER_PROMPT}\n{order}"
 		if env_block:
-			prompt = f"{prompt}\n\n{env_block}"
+			volatile_parts.append(env_block)
+		volatile_body = "\n\n".join(volatile_parts)
+		volatile = f"\n\n{volatile_body}" if volatile_parts else ""
+		system_prompt = SystemPrompt(stable=stable, volatile=volatile)
 		schema = {channel.tag: channel.schema_description for channel in channels}
 		channel_by_tag = {channel.tag: channel for channel in channels}
 
@@ -100,6 +117,6 @@ class TurnProtocolUsingSchema:
 			on_metadata(tag, channel.decode(raw) if channel is not None else raw)
 
 		return self._ai_service.generate_stream_with_metadata(
-			prompt, chat_history, on_metadata=decoding_on_metadata, schema=schema,
+			system_prompt, chat_history, on_metadata=decoding_on_metadata, schema=schema,
 			**_tool_set_kwargs(tool_set, force_required_tools),
 		)

@@ -164,6 +164,6 @@ async def test_regeneration_prompt_includes_existing_memory_and_the_firing_actio
     await processor.process("hello")
 
     assert len(ai_service.prompts) == 2
-    regeneration_prompt = ai_service.prompts[1]
+    regeneration_prompt = ai_service.prompts[1].full_text()
     assert "greeting: hi" in regeneration_prompt
     assert "mood_score: 80" in regeneration_prompt

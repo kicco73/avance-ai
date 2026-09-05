@@ -422,6 +422,31 @@ def test_upgrade_rebuilds_a_table_needing_both_a_constraint_change_and_a_new_not
     assert _query(db_path, "PRAGMA foreign_key_check") == []
 
 
+def test_upgrade_adds_the_cache_token_columns_to_an_existing_ai_token_usage_table(tmp_path):
+    """AiTokenUsage.cache_read_tokens/cache_creation_tokens are new,
+    NOT NULL-with-default columns (see db/models.py) — added via the same
+    generic add-column path as any other new column, never a bespoke
+    migration script."""
+    db_path = tmp_path / "test.db"
+    Db(f"sqlite:///{db_path}")
+    _run_sql(db_path, [
+        "DROP TABLE AiTokenUsage",
+        "CREATE TABLE AiTokenUsage (id INTEGER PRIMARY KEY, provider_label TEXT, timestamp TEXT, "
+        "input_tokens INTEGER, output_tokens INTEGER)",
+        "INSERT INTO AiTokenUsage (provider_label, timestamp, input_tokens, output_tokens) "
+        "VALUES ('anthropic/claude-x', '2026-01-01 00:00:00', 100, 20)",
+    ])
+
+    Db(f"sqlite:///{db_path}", migration_strategy="upgrade")
+
+    columns = {row[1] for row in _query(db_path, "PRAGMA table_info(AiTokenUsage)")}
+    assert {"cache_read_tokens", "cache_creation_tokens"} <= columns
+    assert _query(
+        db_path,
+        "SELECT provider_label, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens FROM AiTokenUsage",
+    ) == [("anthropic/claude-x", 100, 20, 0, 0)]
+
+
 def test_drop_removes_a_parent_table_referenced_by_a_still_existing_child(tmp_path):
     db_path = tmp_path / "test.db"
     _make_sqlite_file(db_path, FK_PARENT_FIRST_DDL)

@@ -311,8 +311,17 @@ class AiTokenUsage(BaseModel):
     # bill against the same real-world provider/model either way.
     provider_label = CharField(index=True)
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
+    # input_tokens is the call's total input, cache included (see each
+    # provider's own on_metadata normalization) — cache_read_tokens/
+    # cache_creation_tokens are already folded into it, never additional
+    # on top; they exist purely to break that total down for display
+    # (db/ai_usage.py's own cache-read ratio), defaulting to 0 for a
+    # provider that never reports either (Gemini/OpenAI always report 0
+    # cache_creation_tokens, having no cache-write concept of their own).
     input_tokens = IntegerField(default=0)
     output_tokens = IntegerField(default=0)
+    cache_read_tokens = IntegerField(default=0)
+    cache_creation_tokens = IntegerField(default=0)
 
     class Meta:
         table_name = 'AiTokenUsage'

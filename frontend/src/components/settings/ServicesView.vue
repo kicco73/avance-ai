@@ -52,7 +52,7 @@ const loading = ref(true)
 // (see db/ai_usage.py) — loaded once alongside `services` below, same as
 // every other Manage services tab: no live refresh while the panel
 // stays open, just whatever was true when it was last (re)opened.
-const aiUsage = ref({ today: {}, history: [] })
+const aiUsage = ref({ today: {}, today_cache_read: {}, history: [], cache_read_ratio: {} })
 
 // Settings > Manage services > Scheduler — the segmented control's own
 // selected status (default 'pending', its first option) plus the sort
@@ -316,6 +316,8 @@ async function selectCleanUnusedRevisions() {
               class="services-provider-row-card"
               :provider="provider"
               :usage-today="aiUsage.today[providerLabel(provider)] ?? null"
+              :usage-today-cache-read="aiUsage.today_cache_read[providerLabel(provider)] ?? null"
+              :cache-read-ratio="aiUsage.cache_read_ratio[providerLabel(provider)] ?? null"
             />
             <StatusToggleButton
               :status="isProviderActive(i) ? 'running' : 'manually_paused'"

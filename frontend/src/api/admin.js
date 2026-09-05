@@ -118,7 +118,9 @@ export function getServicesConfig() {
 
 // Settings > Manage services > AI — each provider's own daily token
 // spend, fetched once when the panel opens (see db/ai_usage.py):
-// {today: {label: tokens}, history: [{timestamp, values: {label: tokens}}, ...]}.
+// {today: {label: tokens}, today_cache_read: {label: tokens},
+// history: [{timestamp, values: {label: tokens}, cache_read: {label: tokens}}, ...],
+// cache_read_ratio: {label: 0..1}}.
 export function getAiUsage() {
   return apiFetch(`${API_URL}/settings/services/ai-usage`)
 }

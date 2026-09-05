@@ -139,12 +139,14 @@ async def test_the_prompt_of_a_state_reading_the_env_source_ends_with_the_env_bl
 
     await processor.process("hello")
 
-    prompt = ai_service.prompts[0]
+    prompt = ai_service.prompts[0].full_text()
     block = prompt[prompt.index(ENV_BLOCK_HEADER):]
     assert block == f"{ENV_BLOCK_HEADER}\nflight: VY3003\npnr: \ncustomer_email: a@b.c"
     assert "secret" not in prompt
     assert "Current memory:" in prompt and "goal: quit" in prompt
-    assert prompt.index("goal: quit") < prompt.index("filling in its fields") < prompt.index(ENV_BLOCK_HEADER)
+    # Memory/env are the volatile tail now (see SystemPrompt) — both land
+    # after the stable prefix's own schema-order instructions.
+    assert prompt.index("filling in its fields") < prompt.index("goal: quit") < prompt.index(ENV_BLOCK_HEADER)
 
 
 async def test_a_state_not_reading_the_env_source_gets_no_env_block_but_still_its_memory(db):
@@ -156,7 +158,7 @@ async def test_a_state_not_reading_the_env_source_gets_no_env_block_but_still_it
 
     await processor.process("hello")
 
-    prompt = ai_service.prompts[0]
+    prompt = ai_service.prompts[0].full_text()
     assert ENV_BLOCK_HEADER not in prompt and "VY3003" not in prompt
     assert "goal: quit" in prompt
     assert ai_service.tool_sets == [None]
@@ -170,8 +172,8 @@ async def test_hello_world_sends_no_tools_and_no_env_block(db):
     await processor.process("hello")
 
     assert ai_service.tool_sets == [None]
-    assert ENV_BLOCK_HEADER not in ai_service.prompts[0]
-    assert "Current memory:" in ai_service.prompts[0]
+    assert ENV_BLOCK_HEADER not in ai_service.prompts[0].full_text()
+    assert "Current memory:" in ai_service.prompts[0].full_text()
 
 
 async def test_a_must_read_on_the_env_source_forces_its_select_and_never_its_update(db):
@@ -213,7 +215,7 @@ async def test_an_env_update_during_the_discarded_optimistic_reply_survives_into
     result = await processor.process("my locator is ABC123")
 
     assert ai_service.tool_results == ["1 row updated"]
-    assert len(ai_service.prompts) == 2 and "pnr: ABC123" in ai_service.prompts[1]
+    assert len(ai_service.prompts) == 2 and "pnr: ABC123" in ai_service.prompts[1].full_text()
     assert env.action_set()["pnr"] == "ABC123"
     assert result["state"]["key"] == "b"
     tool_row = Tracking.get((Tracking.origin == "tool") & Tracking.action_env.is_null(False))

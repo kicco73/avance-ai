@@ -130,4 +130,4 @@ async def test_reaction_definition_text_reaches_the_built_prompt():
     async for _ in protocol.generate_reply(channels, HISTORY, lambda k, v: None):
         pass
 
-    assert reaction_definition in captured["prompt"]
+    assert reaction_definition in captured["prompt"].full_text()

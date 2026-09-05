@@ -157,7 +157,7 @@ async def test_env_update_happens_before_the_transitions_own_prompt_is_built(db)
     await chat_service.apply_manual_action("advance", session["id"])
 
     system_prompt, _ = ai_service.calls[0]
-    assert "reset_counter: True" in system_prompt
+    assert "reset_counter: True" in system_prompt.full_text()
 
 
 async def test_an_unexported_env_key_never_reaches_the_prompt(db):
@@ -170,4 +170,4 @@ async def test_an_unexported_env_key_never_reaches_the_prompt(db):
     await chat_service.apply_manual_action("advance", session["id"])
 
     system_prompt, _ = ai_service.calls[0]
-    assert "reset_counter" not in system_prompt
+    assert "reset_counter" not in system_prompt.full_text()

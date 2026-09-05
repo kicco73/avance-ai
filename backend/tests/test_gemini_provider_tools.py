@@ -14,7 +14,7 @@ from google.genai import types
 
 from ai.ai_service import AiService, MAX_TOOL_ROUNDS
 from ai._providers.gemini_provider_v2 import GeminiProvider
-from ai.llm_provider import AIServiceConfig, AIServiceRequestError, ToolCall, ToolCallsRequested, ToolSpec
+from ai.llm_provider import AIServiceConfig, AIServiceRequestError, SystemPrompt, ToolCall, ToolCallsRequested, ToolSpec
 
 _SELECT_SPEC = ToolSpec(
     name="source_flights_select",
@@ -30,10 +30,16 @@ _TICKETS_SPEC = ToolSpec(
 
 
 class _FakeUsage:
-    def __init__(self, total_token_count: int = 3, prompt_token_count: int = 2, candidates_token_count: int = 1) -> None:
+    def __init__(
+        self, total_token_count: int = 3, prompt_token_count: int = 2, candidates_token_count: int = 1,
+        cached_content_token_count: int | None = None,
+    ) -> None:
         self.total_token_count = total_token_count
         self.prompt_token_count = prompt_token_count
         self.candidates_token_count = candidates_token_count
+        # None (the default) matches a real UsageMetadata that never
+        # populated this — the provider must fall back to 0.
+        self.cached_content_token_count = cached_content_token_count
 
 
 class _FakeFunctionCall:
@@ -549,3 +555,53 @@ async def test_a_state_with_only_ai_may_read_sources_is_never_forced():
         pass
 
     assert not fake_client.aio.models.calls[0]["config"].tool_config.function_calling_config.allowed_function_names
+
+
+# (h) SystemPrompt — no native cache breakpoint here (unlike Anthropic),
+# so this provider just concatenates stable+volatile into one
+# system_instruction; see ai.llm_provider.SystemPrompt.
+async def test_a_plain_str_system_prompt_is_sent_as_is():
+    provider, fake_client = _provider([_text_response('{"text": "hi"}')])
+
+    await _drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}))
+
+    assert fake_client.aio.models.calls[0]["config"].system_instruction == "sys"
+
+
+async def test_a_system_prompt_is_sent_as_stable_then_volatile_concatenated():
+    provider, fake_client = _provider([_text_response('{"text": "hi"}')])
+
+    await _drain(provider.generate_stream_with_schema(
+        SystemPrompt(stable="stable part", volatile="volatile part"), [], {"text": "t"},
+    ))
+
+    assert fake_client.aio.models.calls[0]["config"].system_instruction == "stable partvolatile part"
+
+
+# (i) cache-read accounting — already folded into prompt_token_count, so
+# input_tokens is untouched; cache_creation_tokens is always 0 (Gemini has
+# no cache-write concept of its own).
+async def test_cache_read_tokens_are_reported_and_input_tokens_is_untouched():
+    responses = [_FakeChunk(
+        candidates=[_FakeCandidate(finish_reason=types.FinishReason.STOP)],
+        usage_metadata=_FakeUsage(prompt_token_count=50, candidates_token_count=5, cached_content_token_count=40),
+        text='{"text": "hi"}',
+    )]
+    provider, _ = _provider([responses])
+    events: list[tuple[str, object]] = []
+
+    await _drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}, on_metadata=lambda k, v: events.append((k, v))))
+
+    assert ("cache_read_tokens", 40) in events
+    assert ("cache_creation_tokens", 0) in events
+    assert ("input_tokens", 50) in events
+
+
+async def test_a_usage_with_no_cache_field_reports_zero_cache_read():
+    provider, fake_client = _provider([_text_response('{"text": "hi"}')])
+    events: list[tuple[str, object]] = []
+
+    await _drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}, on_metadata=lambda k, v: events.append((k, v))))
+
+    assert ("cache_read_tokens", 0) in events
+    assert ("cache_creation_tokens", 0) in events

@@ -49,4 +49,28 @@ def test_today_ignores_the_hours_window_and_counts_the_whole_calendar_day(db):
 def test_empty_provider_labels_short_circuits(db):
     AiTokenUsage.create(provider_label="p1", timestamp=datetime.utcnow(), input_tokens=3, output_tokens=0)
 
-    assert db.get_ai_token_usage_snapshot([]) == {"today": {}, "history": []}
+    assert db.get_ai_token_usage_snapshot([]) == {
+        "today": {}, "today_cache_read": {}, "history": [], "cache_read_ratio": {},
+    }
+
+
+def test_cache_read_tokens_are_broken_out_per_minute_today_and_as_a_ratio_of_input(db):
+    minute = datetime.utcnow().replace(second=0, microsecond=0) - timedelta(minutes=5)
+    AiTokenUsage.create(
+        provider_label="p1", timestamp=minute, input_tokens=100, output_tokens=20,
+        cache_read_tokens=80, cache_creation_tokens=5,
+    )
+    AiTokenUsage.create(
+        provider_label="p1", timestamp=minute + timedelta(seconds=10), input_tokens=50, output_tokens=10,
+        cache_read_tokens=0, cache_creation_tokens=0,
+    )
+
+    snapshot = db.get_ai_token_usage_snapshot(["p1"], hours=24)
+
+    assert snapshot["history"][0]["cache_read"] == {"p1": 80}
+    assert snapshot["today_cache_read"] == {"p1": 80}
+    assert snapshot["cache_read_ratio"]["p1"] == 80 / 150
+
+
+def test_cache_read_ratio_is_empty_for_a_provider_with_no_rows_at_all(db):
+    assert db.get_ai_token_usage_snapshot(["p1"])["cache_read_ratio"] == {}
