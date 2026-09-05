@@ -1,4 +1,5 @@
 from automaton.automaton import Action, EnvKey, MemoryArchive, Automaton, Reaction, Signal, Source, SourceDict, State
+from automaton.build_error import AutomatonBuildError
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from typing import Any
@@ -40,7 +41,46 @@ VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 class AutomatonBuilder(object):
     """Builds an Automaton from a project's index.yml: parses the YAML,
     resolves attachments, validates the result, and constructs the
-    Automaton — the one place that shape is decided."""
+    Automaton — the one place that shape is decided.
+
+    Every raise site below still raises a plain ValueError, exactly as
+    before — build() itself is the one place that turns it into an
+    AutomatonBuildError, stamped with wherever self._current_line/
+    _current_section were last set (see _at/_line_of below) at the
+    moment it fired. A fresh AutomatonBuilder is always constructed per
+    build() call (never reused/shared across requests — see every call
+    site), so this ambient state carries no cross-call concurrency risk."""
+
+    def __init__(self) -> None:
+        self._current_line: int | None = None
+        self._current_section: str | None = None
+
+    def _at(self, line: int | None, section: str) -> None:
+        self._current_line = line
+        self._current_section = section
+
+    @staticmethod
+    def _line_of(parent, key: str) -> int | None:
+        """0-based line where `key` is declared inside `parent`, a
+        ruamel round-trip CommentedMap — matches CodeEditor.vue's own
+        jumpToLine convention. None whenever that's not available (a
+        plain dict, or `key` genuinely absent) rather than raising —
+        this is best-effort positional context, never load-bearing."""
+        try:
+            return parent.lc.key(key)[0]
+        except (AttributeError, KeyError, TypeError):
+            return None
+
+    @staticmethod
+    def _own_line(node) -> int | None:
+        """0-based line where `node`'s own mapping starts — correct for
+        a CommentedMap reached as a *sequence item* (e.g. one action
+        inside its state's `actions:` list), where the content starts on
+        the same line as the list marker. NOT correct for a CommentedMap
+        reached via a parent key (use _line_of instead there) — a child
+        reached that way starts its own content one line below the
+        parent's own key, so .lc.line would point past it."""
+        return getattr(getattr(node, "lc", None), "line", None)
 
     @staticmethod
     def _convert_contents_to_archives(contents: dict) -> dict[str, MemoryArchive]:
@@ -147,15 +187,16 @@ class AutomatonBuilder(object):
                 )
             if scheme == "avance":
                 self._extract_required_archives([path], all_archives, f"source '{name}'")
+        raw_ai_definition = raw_source.get("ai-definition")
         return Source(
             name=name,
             url=url,
             ui_label=raw_source.get("ui-label", name),
             ui_description=raw_source.get("ui-description"),
+            ai_definition=raw_ai_definition.strip() if raw_ai_definition else None,
         )
 
-    @staticmethod
-    def _validate_env_key_default_order(env_keys: dict[str, EnvKey]) -> None:
+    def _validate_env_key_default_order(self, env_keys: dict[str, EnvKey], raw_env_keys) -> None:
         """A later env key's own default may reference an earlier one
         (`env.<name>`); referencing itself or a key declared further down
         is rejected here. Only checked against *known* key names — a
@@ -166,10 +207,12 @@ class AutomatonBuilder(object):
         name" error rather than a confusing ordering one. Likewise a bad
         expression's own syntax error is left to that same pass — a
         SyntaxError here just means nothing resolves to the 'env'
-        namespace, so there's nothing for this check to flag."""
+        namespace, so there's nothing for this check to flag. `raw_env_keys`
+        is only for positional context (see _line_of) — never read otherwise."""
         all_names = set(env_keys.keys())
         declared_so_far: set[str] = set()
         for name, env_key in env_keys.items():
+            self._at(self._line_of(raw_env_keys, name), f"env.{name}")
             if env_key.value:
                 try:
                     referenced = TriggerExpressionAnalyzer.namespace_refs(env_key.value).get("env", set())
@@ -200,6 +243,8 @@ class AutomatonBuilder(object):
 
     def _build_action(self, key: str, raw_action: dict, all_archives: dict[str, MemoryArchive]) -> Action:
         on_enter = raw_action.get("on-enter")
+        line = self._own_line(raw_action)
+        self._at(line, f"states.{key}.actions.{raw_action.get('name', '?')}")
         return Action(
             name=raw_action["name"],
             ui_description=raw_action.get("ui-description"),
@@ -212,9 +257,11 @@ class AutomatonBuilder(object):
             attachments=self._extract_required_archives(raw_action.get("attachments", []), all_archives, f"action {raw_action['name']}"),
             on_enter=on_enter,
             env=self._build_action_env(raw_action.get("env"), raw_action["name"]),
+            line=line,
         )
 
-    def _build_state(self, key: str, raw_state: dict, all_archives: dict[str, MemoryArchive]) -> State:
+    def _build_state(self, key: str, raw_state: dict, all_archives: dict[str, MemoryArchive], line: int | None = None) -> State:
+        self._at(line, f"states.{key}")
         raw_actions = raw_state.get("actions", [])
         actions: list[Action] = []
         action_names_by_ui_label: dict[str, str] = {}
@@ -228,6 +275,7 @@ class AutomatonBuilder(object):
                 )
             action_names_by_ui_label[action.ui_label] = action.name
             actions.append(action)
+        self._at(line, f"states.{key}")  # actions loop above moved this on — reset for the state-level checks below
         fixed_message = raw_state.get("fixed-message")
         contextual_prompt = raw_state.get("contextual-prompt")
 
@@ -247,9 +295,25 @@ class AutomatonBuilder(object):
                 f"'{transition_log_level}' must be one of {sorted(VALID_LOG_LEVELS)}"
             )
 
-        raw_tools = raw_state.get("tools", [])
-        if not isinstance(raw_tools, list) or not all(isinstance(t, str) for t in raw_tools):
-            raise ValueError(f"State '{key}': 'tools' must be a list of source names if present.")
+        if "tools" in raw_state:
+            raise ValueError(
+                f"State '{key}': 'tools' is no longer a valid field — use 'ai-may-query-sources' "
+                "(the model decides whether to call it) or 'ai-must-query-sources' (forced once per "
+                "entry into this state) instead."
+            )
+        raw_may_query_sources = raw_state.get("ai-may-query-sources", [])
+        raw_must_query_sources = raw_state.get("ai-must-query-sources", [])
+        for field_name, raw_list in (
+            ("ai-may-query-sources", raw_may_query_sources), ("ai-must-query-sources", raw_must_query_sources),
+        ):
+            if not isinstance(raw_list, list) or not all(isinstance(t, str) for t in raw_list):
+                raise ValueError(f"State '{key}': '{field_name}' must be a list of source names if present.")
+        overlap = set(raw_may_query_sources) & set(raw_must_query_sources)
+        if overlap:
+            raise ValueError(
+                f"State '{key}': {', '.join(sorted(overlap))} declared in both 'ai-may-query-sources' "
+                "and 'ai-must-query-sources' — a source can only be in one."
+            )
 
         return State(
             key=key,
@@ -265,9 +329,12 @@ class AutomatonBuilder(object):
             chat=raw_state.get("chat", True),
             reactions_enabled=raw_state.get("reactions-enabled", False),
             # Existence of each name (against this project's own
-            # `sources:`) is checked later, once `sources` itself is fully
-            # built — see _actions_sanity_check's own tools_violations.
-            tools=tuple(raw_tools),
+            # `sources:`) and its own required `ai-definition` are checked
+            # later, once `sources` itself is fully built — see
+            # _actions_sanity_check.
+            ai_may_query_sources=tuple(raw_may_query_sources),
+            ai_must_query_sources=tuple(raw_must_query_sources),
+            line=line,
         )
 
     @staticmethod
@@ -447,13 +514,24 @@ class AutomatonBuilder(object):
         the automaton.* existence check entirely."""
         registry_without_actuator = IdentifierRegistry.for_triggers(registry)
         registry_without_session = IdentifierRegistry.for_actuators(registry)
-        for tool_name in state.tools:
-            if tool_name not in sources:
-                raise ValueError(
-                    f"State '{state.key}': tools '{tool_name}' — 'sources.{tool_name}' is not declared "
-                    "in the project's own 'sources:' section."
-                )
+        self._at(state.line, f"states.{key}")
+        for field_name, tool_names in (
+            ("ai-may-query-sources", state.ai_may_query_sources), ("ai-must-query-sources", state.ai_must_query_sources),
+        ):
+            for tool_name in tool_names:
+                source = sources.get(tool_name)
+                if source is None:
+                    raise ValueError(
+                        f"State '{state.key}': {field_name} '{tool_name}' — 'sources.{tool_name}' is not "
+                        "declared in the project's own 'sources:' section."
+                    )
+                if not source.ai_definition:
+                    raise ValueError(
+                        f"State '{state.key}': {field_name} '{tool_name}' — source '{tool_name}' has no "
+                        "own 'ai-definition', required for a source exposed to the model as a tool."
+                    )
         for action in state.actions:
+            self._at(action.line, f"states.{key}.actions.{action.name}")
             if action.target not in declared_states:
                 raise ValueError(
                     f"State '{state.key}', action '{action.name}': "
@@ -530,6 +608,8 @@ class AutomatonBuilder(object):
         also declare its own explicit `env:` mapping, exactly like a
         regular action — applied on top, so it overrides a given key's
         declared default rather than replacing every key's default outright."""
+        line = self._line_of(raw, "init-action")
+        self._at(line, "init-action")
         raw_init_action = raw.get("init-action")
         if not isinstance(raw_init_action, dict) or not raw_init_action.get("target"):
             raise ValueError(
@@ -547,6 +627,7 @@ class AutomatonBuilder(object):
             target=raw_init_action["target"],
             on_enter=init_on_enter,
             env=env or None,
+            line=line,
         )
         return init_action
 
@@ -662,24 +743,47 @@ class AutomatonBuilder(object):
         automaton.<id>.env.<key> reference — already narrowed to this
         project's own family (see AutomatonLoader.known_projects_env_keys),
         so a cross-family (or family-less) id simply isn't here. None
-        skips that check. `legacy_project_id`: see _build_project_metadata."""
+        skips that check. `legacy_project_id`: see _build_project_metadata.
+
+        Every ValueError raised below (directly, or by anything this
+        calls) is caught once, here, and turned into an AutomatonBuildError
+        carrying whatever self._current_line/_current_section were last
+        set to (see _at/_line_of) — never re-derived at each individual
+        raise site. An AutomatonBuildError raised directly (there are
+        none today, but a future call site might) passes through unchanged."""
+        try:
+            return self._build(contents, known_projects, legacy_project_id=legacy_project_id)
+        except AutomatonBuildError:
+            raise
+        except ValueError as exc:
+            raise AutomatonBuildError(
+                str(exc), line=self._current_line, section=self._current_section,
+            ) from exc
+
+    def _build(
+        self, contents: dict, known_projects: dict[str, frozenset[str]] | None, *,
+        legacy_project_id: str | None,
+    ) -> Automaton:
         all_archives = self._convert_contents_to_archives(contents=contents)
 
         raw = _load_yaml(contents['index.yml'])
         if not isinstance(raw, dict):
             raise ValueError(f"index.yml must be a YAML mapping at the top level, got {type(raw).__name__}.")
 
+        self._at(self._line_of(raw, "project"), "project")
         project_id, project_family, project_revision, project_ui_label, project_ui_description, autotracking_on_ai_message, talk_enabled = (
             self._build_project_metadata(raw, legacy_project_id=legacy_project_id)
         )
 
         raw_signals = raw.get("signals", {})
         if not isinstance(raw_signals, dict):
+            self._at(self._line_of(raw, "signals"), "signals")
             raise ValueError(f"'signals' must be a mapping of signal name -> fields, got {type(raw_signals).__name__}.")
 
         signals: dict[str, Signal] = {}
         signal_names_by_ui_label: dict[str, str] = {}
         for name, raw_signal in raw_signals.items():
+            self._at(self._line_of(raw_signals, name), f"signals.{name}")
             signal = self._build_signal(name, raw_signal, all_archives)
             existing_name = signal_names_by_ui_label.get(signal.ui_label)
             if existing_name is not None:
@@ -692,6 +796,7 @@ class AutomatonBuilder(object):
 
         reserved_names = set(signals.keys()) & metric_names()
         if reserved_names:
+            self._at(None, "signals")
             raise ValueError(
                 "Signal name(s) reserved for core metrics (see metrics_framework) cannot be "
                 f"reused as signal names: {', '.join(sorted(reserved_names))}"
@@ -699,11 +804,13 @@ class AutomatonBuilder(object):
 
         raw_reactions = raw.get("reactions", {})
         if not isinstance(raw_reactions, dict):
+            self._at(self._line_of(raw, "reactions"), "reactions")
             raise ValueError(f"'reactions' must be a mapping of reaction name -> fields, got {type(raw_reactions).__name__}.")
 
         reactions: dict[str, Reaction] = {}
         reaction_names_by_ui_label: dict[str, str] = {}
         for name, raw_reaction in raw_reactions.items():
+            self._at(self._line_of(raw_reactions, name), f"reactions.{name}")
             reaction = self._build_reaction(name, raw_reaction)
             existing_name = reaction_names_by_ui_label.get(reaction.ui_label)
             if existing_name is not None:
@@ -716,17 +823,21 @@ class AutomatonBuilder(object):
 
         raw_env_keys = raw.get("env", {})
         if not isinstance(raw_env_keys, dict):
+            self._at(self._line_of(raw, "env"), "env")
             raise ValueError(f"'env' must be a mapping of env key -> fields, got {type(raw_env_keys).__name__}.")
-        env_keys: dict[str, EnvKey] = {
-            name: self._build_env_key(name, raw_env_key) for name, raw_env_key in raw_env_keys.items()
-        }
+        env_keys: dict[str, EnvKey] = {}
+        for name, raw_env_key in raw_env_keys.items():
+            self._at(self._line_of(raw_env_keys, name), f"env.{name}")
+            env_keys[name] = self._build_env_key(name, raw_env_key)
 
         raw_sources = raw.get("sources", {})
         if not isinstance(raw_sources, dict):
+            self._at(self._line_of(raw, "sources"), "sources")
             raise ValueError(f"'sources' must be a mapping of source name -> fields, got {type(raw_sources).__name__}.")
-        sources: dict[str, Source] = {
-            name: self._build_source(name, raw_source, all_archives) for name, raw_source in raw_sources.items()
-        }
+        sources: dict[str, Source] = {}
+        for name, raw_source in raw_sources.items():
+            self._at(self._line_of(raw_sources, name), f"sources.{name}")
+            sources[name] = self._build_source(name, raw_source, all_archives)
         # Unlike every other forward reference in this file (see the
         # comment on Pass 1 below), env keys' own defaults are a real
         # exception: they're applied top-to-bottom, once, the first time
@@ -736,12 +847,14 @@ class AutomatonBuilder(object):
         # persisted) — so a later key's default may reference an earlier
         # one, the same way a plain sequential variable declaration
         # would, but never the other way around.
-        self._validate_env_key_default_order(env_keys)
+        self._validate_env_key_default_order(env_keys, raw_env_keys)
 
         raw_states = raw["states"]
         if not isinstance(raw_states, dict):
+            self._at(self._line_of(raw, "states"), "states")
             raise ValueError(f"'states' must be a mapping of state name -> fields, got {type(raw_states).__name__}.")
         if "" in raw_states:
+            self._at(self._line_of(raw_states, ""), "states")
             raise ValueError(
                 "State '' is reserved for the implicit initial state (see init-action) "
                 "and cannot be declared in 'states'."
@@ -756,6 +869,8 @@ class AutomatonBuilder(object):
 
         state_keys_by_ui_label: dict[str, str] = {}
         for key, raw_state in raw_states.items():
+            state_line = self._line_of(raw_states, key)
+            self._at(state_line, f"states.{key}")
             if not isinstance(raw_state, dict):
                 raise ValueError(
                     f"State '{key}': expected a mapping of fields (ui-label, ui-description, "
@@ -765,7 +880,7 @@ class AutomatonBuilder(object):
                     "so YAML parsed it as its own separate state."
                 )
 
-            states[key] = self._build_state(key, raw_state, all_archives)
+            states[key] = self._build_state(key, raw_state, all_archives, line=state_line)
             existing_key = state_keys_by_ui_label.get(states[key].ui_label)
             if existing_key is not None:
                 raise ValueError(

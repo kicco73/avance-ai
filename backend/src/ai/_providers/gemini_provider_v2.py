@@ -315,6 +315,8 @@ class GeminiProvider(LLMProvider):
 		schema: dict[str, str] | None = None,
 		on_metadata: MetadataCallback | None = None,
 		tools: list[ToolSpec] | None = None,
+		tool_round: int = 1,
+		required_tools: list[ToolSpec] | None = None,
 	) -> AsyncIterator[str]:
 		contents = self.__build_contents(history)
 		schema = schema or {}
@@ -326,13 +328,20 @@ class GeminiProvider(LLMProvider):
 			# a synthetic "respond" tool instead (see _RESPOND_TOOL_NAME),
 			# forced via tool_config so every turn ends in *some* function
 			# call — a real one, or "respond" once nothing else is needed.
+			# A forced round (required_tools) restricts the *callable* set
+			# to just those tool names, deliberately excluding "respond" —
+			# unlike Anthropic/OpenAI, the full catalog still gets declared
+			# in `tools` below, since Gemini's own allowed_function_names
+			# is the restriction mechanism, not the tools list itself.
+			function_calling_config = types.FunctionCallingConfig(
+				mode=types.FunctionCallingConfigMode.ANY,
+				**({"allowed_function_names": [spec.name for spec in required_tools]} if required_tools else {}),
+			)
 			config: types.GenerateContentConfig = types.GenerateContentConfig(
 				system_instruction=system_prompt,
 				max_output_tokens=self.__max_output_tokens,
 				tools=[types.Tool(function_declarations=self.__tool_declarations(tools, schema))],
-				tool_config=types.ToolConfig(
-					function_calling_config=types.FunctionCallingConfig(mode=types.FunctionCallingConfigMode.ANY),
-				),
+				tool_config=types.ToolConfig(function_calling_config=function_calling_config),
 			)
 		else:
 			config = types.GenerateContentConfig(

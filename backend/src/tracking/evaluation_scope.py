@@ -102,14 +102,22 @@ class EvaluationScopeBuilder(object):
             scope["automaton"] = self._automaton_namespace.scoped_to(automaton.family)
         if self._ai_service is not None:
             # actuator.prompt()'s own tool catalog — this on-enter's own
-            # state's tools:, resolved through the same SourceNamespace
-            # (and so the same per-session read cache) `scope["source"]`
-            # above already uses. None wherever the state itself declares
-            # none, or isn't found (a stale automaton snapshot, never a
-            # real config error — AutomatonBuilder already validated
-            # every tools: name against sources: at build time).
+            # state's ai-may-query-sources/ai-must-query-sources, resolved
+            # through the same SourceNamespace (and so the same
+            # per-session read cache) `scope["source"]` above already
+            # uses. None wherever the state itself declares neither, or
+            # isn't found (a stale automaton snapshot, never a real config
+            # error — AutomatonBuilder already validated every name
+            # against sources: at build time). Never forced here — an
+            # actuator.prompt() call is a single isolated request, not
+            # part of a state's own multi-round chat turn, so "first turn
+            # in this state" has no meaning for it.
             state = automaton.states.get(state_key)
-            tool_set = source_namespace.tool_set(state.tools) if state is not None and state.tools else None
+            has_tools = state is not None and (state.ai_may_query_sources or state.ai_must_query_sources)
+            tool_set = (
+                source_namespace.tool_set(state.ai_may_query_sources, state.ai_must_query_sources)
+                if has_tools else None
+            )
             scope["actuator"] = self._actuator_set.with_ai_service(self._ai_service, tool_set=tool_set)
         else:
             scope["actuator"] = self._actuator_set

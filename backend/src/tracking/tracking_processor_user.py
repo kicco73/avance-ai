@@ -119,6 +119,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 				chat_history=chat_history,
 				on_metadata=self.on_receiving_metadata_when_repeating_the_call,
 				tool_set=self.build_tool_set(self.out.state),
+				force_required_tools=self.force_required_tools_for(self.out.state),
 			):
 				self.out.reply += chunk
 				self.metadata.on_metadata('chunk', chunk)

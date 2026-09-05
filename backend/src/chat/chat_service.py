@@ -17,12 +17,14 @@ from session import Session
 
 from tracking.actuators import ActuatorSet, ActuatorSetFactory
 from tracking.automaton_namespace import AutomatonNamespace
-from tracking.env import PersistedEnv
+from tracking.env import Env
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.user_facts import UserFacts
 from chat.channels import WHATSAPP_CHAT
+from chat.env_for_session import env_for_session
+from chat.ephemeral_env_registry import EphemeralEnvRegistry
 from chat.errors import ChatServiceError
 from chat.session_manager import ChatSessionManager, SessionNotWritable
 from chat.session_report_task import SessionReportHydrator, SessionReportScheduler, SessionReportTask
@@ -64,7 +66,6 @@ class ChatService(object):
 		session_report_hydrator = SessionReportHydrator(db, ai_service)
 		job_service.register_task_type(SessionReportTask.TYPE, session_report_hydrator.hydrate)
 		session_manager.set_session_report_scheduler(SessionReportScheduler(job_service, session_report_hydrator))
-		self.env = PersistedEnv(db, project_service)
 		self._session_facts = SessionFacts(db, project_service)
 		self._user_facts = UserFacts(db)
 		self._automaton_namespace = AutomatonNamespace(db, project_service)
@@ -78,32 +79,30 @@ class ChatService(object):
 		session = self._db.get_chat_session(session_id)
 		return self._ai_test_service if session is not None and session["type"] in ("test", "preview") else self._ai_service
 
-	def _env_for_session(self, session_id: int) -> PersistedEnv:
-		"""The env `session_id` actually lives in: its own project and its
-		own user — never `self.env`, which is the *request user's active
-		project*. The two differ whenever a session of another project
-		is opened (the Sessions panel, a supervisor reading someone
-		else's session, WhatsApp): keyed on the active project,
-		_apply_declared_env_defaults read one project's env to decide
-		what was "missing" and wrote the other project's declared
-		defaults into it — and, since the read kept answering for the
-		wrong project, re-wrote them on every open."""
+	def _require_session(self, session_id: int) -> dict:
 		session = self._db.get_chat_session(session_id)
 		if session is None:
 			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
-		return PersistedEnv(
-			self._db, FixedProjectContext(project_id=session["project_id"]), username=session["username"],
-		)
+		return session
+
+	def _env_for_session(self, session_id: int) -> Env:
+		"""The Env `session_id` actually owns: ephemeral (in-memory, never
+		persisted) for a test/preview session, or PersistedEnv pinned to
+		its own project and user for a live/imported one — never a
+		request-user-wide env, which is what let a session of another
+		project (the Sessions panel, a supervisor reading someone else's
+		session, WhatsApp) read/write a completely different project's
+		Tracking rows. See chat.env_for_session's own docstring for why a
+		test/preview session's env must never reach the database at all."""
+		return env_for_session(self._db, self._require_session(session_id))
 
 	def _tracking_engine_for_session(self, session_id: int) -> tuple[TrackingEngine, "ActuatorSet"]:
 		"""Same per-session pinning TrackingService.process already does
 		with its own FixedProjectContext: env and session facts are the
 		session's, not the request user's active project's."""
-		session = self._db.get_chat_session(session_id)
-		if session is None:
-			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
+		session = self._require_session(session_id)
 		fixed_context = FixedProjectContext(project_id=session["project_id"])
-		env = PersistedEnv(self._db, fixed_context, username=session["username"])
+		env = env_for_session(self._db, session)
 		session_facts = SessionFacts(self._db, fixed_context)
 		actuator_set = self._actuator_factory.for_session(session_id)
 		scope_builder = EvaluationScopeBuilder(
@@ -127,11 +126,17 @@ class ChatService(object):
 		if session_id is not None:
 			tracking_engine, _ = self._tracking_engine_for_session(session_id)
 		else:
+			# Only ever reached from reset_test_sessions's own project-wide
+			# reset (no single session to pin to yet) — a fresh, empty Env,
+			# never PersistedEnv: this on-enter belongs to the test
+			# automaton, and a test session's own env must never touch the
+			# database (see chat.env_for_session).
+			env = Env()
 			scope_builder = EvaluationScopeBuilder(
-				self.env, self.metric_service, self._session_facts, self._user_facts,
+				env, self.metric_service, self._session_facts, self._user_facts,
 				self._db, self._automaton_namespace, self._actuator_factory.fake(project_id=project_id),
 			)
-			tracking_engine = TrackingEngine(DbTrackingSink(self._db), self.env, scope_builder)
+			tracking_engine = TrackingEngine(DbTrackingSink(self._db), env, scope_builder)
 		tracking_engine.schedule_on_enter(automaton, action, action.target, session_id=session_id)
 
 	@property
@@ -338,11 +343,18 @@ class ChatService(object):
 		return await self._create_session_of_type(get_session_type_strategy('test'), project_id)
 
 	async def create_preview_session(self, project_id: str) -> dict:
-		self._db.delete_sessions_by_username_and_type(self._username, 'preview')
+		deleted_ids = self._db.delete_sessions_by_username_and_type(self._username, 'preview')
+		for deleted_id in deleted_ids:
+			EphemeralEnvRegistry().discard(deleted_id)
 		return await self._create_session_of_type(get_session_type_strategy('preview'), project_id)
 
 	def reset_test_sessions(self, project_id: str) -> dict:
+		reset_session_ids = [
+			session["id"] for session in self._db.list_chat_sessions(self._username, project_id, type='test')
+		]
 		self._project_service.reset_test_sessions(project_id)
+		for reset_id in reset_session_ids:
+			EphemeralEnvRegistry().discard(reset_id)
 		automaton, state = self._project_service.get_automaton_and_state(project_id, type='test')
 		self._schedule_on_enter(automaton, automaton.init_action, None, project_id)
 		return automaton.get_state_payload(state)
@@ -384,6 +396,7 @@ class ChatService(object):
 		self._require_own_session(session_id)
 		project_id = self._project_id_for_session(session_id)
 		self._db.delete_chat_session(session_id)
+		EphemeralEnvRegistry().discard(session_id)
 		# A source's own per-session read cache (tracking.sources.
 		# avance_archive) — same cleanup ChatSessionManager.close_session
 		# does, needed here too since a session can be deleted outright
@@ -405,6 +418,7 @@ class ChatService(object):
 			session = self._db.get_chat_session(session_id)
 			assert session is not None
 			self._session_manager.close_session(session, "manual-user")
+		EphemeralEnvRegistry().discard(session_id)
 		return self._reloaded_session_payload(session_id)
 
 	def _reloaded_session_payload(self, session_id: int) -> dict:
@@ -588,37 +602,42 @@ class ChatService(object):
 		transitions.sort(key=lambda transition: transition['timestamp'])
 		return {'signals': data['signals'], 'transitions': transitions}
 
-	def get_env(self, message_id: int | None = None) -> dict:
-		"""{"stored": ..., "action_set": ...}, reported separately so the
-		Inspector Env tab knows which section each value belongs in and
-		which are editable. Live, or as of `message_id` if given."""
+	def get_env(self, session_id: int, message_id: int | None = None) -> dict:
+		"""{"stored": ..., "action_set": ...} for `session_id`'s own env,
+		reported separately so the Inspector Env tab knows which section
+		each value belongs in and which are editable. Current, or as of
+		`message_id` if given — for a test/preview session this is always
+		current: an in-memory Env keeps no history to look back through
+		(see chat.env_for_session and tracking.env.Env.stored's own
+		docstring), so `message_id` is accepted but has no effect there."""
+		self._require_own_session(session_id)
 		until = self._until_from_message(message_id)
+		env = self._env_for_session(session_id)
 		return {
-			"stored": self.env.stored(until),
-			"action_set": self.env.action_set(until),
+			"stored": env.stored(until),
+			"action_set": env.action_set(until),
 		}
 
-	async def set_env_value(self, key: str, value: str) -> dict:
-		"""Edits one stored env key — always live, no "editing history".
-		A direct human edit can happen before any turn ever ran, so this
-		bootstraps a session first since db.Db.set_env is a no-op without one."""
-		await self.get_current_session_if_any_or_create_new(None)
-		self.env.set_value(key, value)
-		return self.get_env()
+	def set_env_value(self, session_id: int, key: str, value: str) -> dict:
+		"""Edits one stored env key on `session_id`'s own env — always
+		current, no "editing history"."""
+		self._require_own_session(session_id)
+		self._env_for_session(session_id).set_value(key, value)
+		return self.get_env(session_id)
 
-	async def delete_env_key(self, key: str) -> dict:
+	def delete_env_key(self, session_id: int, key: str) -> dict:
 		"""Removes one stored env key outright (see chat.env.Env.
-		delete_key) — always live. Returns the same shape as get_env."""
-		await self.get_current_session_if_any_or_create_new(None)
-		self.env.delete_key(key)
-		return self.get_env()
+		delete_key) — always current. Returns the same shape as get_env."""
+		self._require_own_session(session_id)
+		self._env_for_session(session_id).delete_key(key)
+		return self.get_env(session_id)
 
-	async def clear_env(self) -> dict:
+	def clear_env(self, session_id: int) -> dict:
 		"""Wipes every stored and action-set env key at once (see
-		chat.env.Env.clear). Always live. Returns the same shape as get_env."""
-		await self.get_current_session_if_any_or_create_new(None)
-		self.env.clear()
-		return self.get_env()
+		chat.env.Env.clear). Always current. Returns the same shape as get_env."""
+		self._require_own_session(session_id)
+		self._env_for_session(session_id).clear()
+		return self.get_env(session_id)
 
 	def get_benchmark_metrics(self, project_id: str, session_id: int | None = None) -> list[dict]:
 		"""Expert-annotation-vs-actual benchmark metrics for `project_id`
@@ -728,10 +747,7 @@ class ChatService(object):
 			yield
 
 	def _project_id_for_session(self, session_id: int) -> str:
-		session = self._db.get_chat_session(session_id)
-		if session is None:
-			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
-		return session["project_id"]
+		return self._require_session(session_id)["project_id"]
 
 	def _apply_declared_env_defaults(self, automaton: Automaton, project_id: str, session_id: int) -> None:
 		"""See open_if_needed's own call site. `automaton.init_action.env`
@@ -765,6 +781,33 @@ class ChatService(object):
 				username=self._username, project_id=project_id, session_id=session_id,
 			)
 
+	def _cleanup_orphan_action_env_keys(
+		self, automaton: Automaton, project_id: str, session_id: int, session_type: str
+	) -> None:
+		"""A live session's own action_set() keys the project's *current*
+		revision no longer declares under `env:` get dropped here, once
+		per session opened against that revision — self-limiting exactly
+		like _apply_declared_env_defaults above: once nothing's left to
+		drop, every later open is a no-op read, never a write. Live only —
+		a test/preview session's own env is ephemeral and starts empty
+		every time (see chat.env_for_session), so there is nothing for it
+		to have accumulated. This is what actually removes a key like a
+		leftover `flight_record` from a since-edited project (see the
+		one-time migration for rows already stuck in that state before
+		this existed)."""
+		if session_type != "live":
+			return
+		env = self._env_for_session(session_id)
+		declared = {env_key.name for env_key in automaton.env_keys}
+		orphans = set(env.action_set()) - declared
+		if not orphans:
+			return
+		env.drop_action_set_keys(orphans)
+		logger.warning(
+			"Session %s (project '%s'): dropped orphaned action_env key(s) %s — no longer declared by the "
+			"current revision's own 'env' section.", session_id, project_id, sorted(orphans),
+		)
+
 	async def _ensure_project_bootstrap(
 		self, session_id: int
 	) -> tuple[Automaton, State] | tuple[None, None]:
@@ -789,6 +832,7 @@ class ChatService(object):
 		# model/an action/the user set afterwards, and it's a no-op
 		# (no DB write) once every declared key already has one.
 		self._apply_declared_env_defaults(automaton, project_id, session_id)
+		self._cleanup_orphan_action_env_keys(automaton, project_id, session_id, session["type"])
 
 		if self._db.get_current_state(project_id) is None:
 			action = automaton.init_action

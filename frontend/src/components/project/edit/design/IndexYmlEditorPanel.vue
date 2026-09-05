@@ -25,7 +25,9 @@ const props = defineProps({
   // Forwarded to InspectorGraph so a selection made elsewhere (e.g. clicking
   // a row in the Inspector's Actions tab) shows up highlighted here too, not
   // just a selection made by tapping the graph itself.
-  selectedElement: { type: Object, default: null }
+  selectedElement: { type: Object, default: null },
+  // Forwarded to CodeEditor — see its own currentRevision prop.
+  currentRevision: { type: Number, default: null }
 })
 
 const emit = defineEmits(['jump-to-definition', 'select', 'saved'])
@@ -57,6 +59,15 @@ function actionsForState(stateKey) { return graphRef.value?.actionsForState(stat
 // segments itself, since Graph/Code is the user's own choice to make.
 function jumpToLine(lineIndex) {
   if (segment.value !== 'code') return
+  codeEditorRef.value?.jumpToLine(lineIndex)
+}
+
+// CodeEditor's own 'build-error' — unlike jumpToLine above, this one DOES
+// switch to the Code segment: it's a direct, immediate consequence of the
+// user's own Save click on this exact buffer, not an unrelated background
+// event, so there's no "Graph/Code is the user's own choice" concern here.
+function onBuildError(lineIndex) {
+  segment.value = 'code'
   codeEditorRef.value?.jumpToLine(lineIndex)
 }
 
@@ -182,7 +193,9 @@ defineExpose({
         :project-id="projectId"
         file-name="index.yml"
         :yaml-attachment-files="attachmentFiles"
+        :current-revision="currentRevision"
         @saved="emit('saved', $event)"
+        @build-error="onBuildError"
       />
     </div>
   </div>

@@ -210,6 +210,24 @@ class TrackingMixin:
         transition = query.order_by(Tracking.timestamp.desc()).first()
         return transition.timestamp if transition else None
 
+    def get_last_entry_timestamp_for_session(self, session_id: int, state_key: str) -> datetime | None:
+        """Most recent Tracking row landing this session on `state_key` —
+        unlike get_last_transition_timestamp_for_session, this deliberately
+        includes a self-loop (old_state == new_state == state_key): a
+        self-loop action still lands the session back on this same state,
+        which TrackingProcessor.force_required_tools_for treats as a fresh
+        entry into it, same as any other transition. None means no
+        Tracking row has ever landed this session there yet — including
+        before the project's own bootstrap transition is recorded, which
+        force_required_tools_for treats as "the first turn ever"."""
+        transition = (
+            Tracking.select()
+            .where((Tracking.session == session_id) & (Tracking.new_state == state_key))
+            .order_by(Tracking.timestamp.desc())
+            .first()
+        )
+        return transition.timestamp if transition else None
+
     def history_cutoff_for_session(self, session_id: int, needs_cutoff: bool) -> datetime | None:
         if not needs_cutoff:
             return None
@@ -222,11 +240,12 @@ class TrackingMixin:
         row = query.order_by(Tracking.timestamp.desc()).first()
         return json.loads(row.env) if row is not None else {}
 
-    def set_env(self, project_id: str, env: dict, user: str, message_id: int | None=None) -> None:
-        session = self.get_latest_chat_session(user, project_id)
-        if session is None:
-            return
-        Tracking.create(session=session['id'], env=json.dumps(env), message=message_id)
+    def set_env(self, session_id: int, env: dict, message_id: int | None=None) -> None:
+        """Writes onto `session_id` itself — never "whichever session is
+        latest" for its (project, user): a session id the caller resolved
+        some other way (guessing) used to let one session's own env
+        writes land on a completely different one (see PersistedEnv)."""
+        Tracking.create(session=session_id, env=json.dumps(env), message=message_id)
 
     def get_action_env(self, project_id: str, user: str, until: datetime | None=None) -> dict:
         query = Tracking.select(Tracking.action_env).join(ChatSession, on=Tracking.session == ChatSession.id).where((ChatSession.project == project_id) & (ChatSession.username == user) & Tracking.action_env.is_null(False))
@@ -235,11 +254,9 @@ class TrackingMixin:
         row = query.order_by(Tracking.timestamp.desc()).first()
         return json.loads(row.action_env) if row is not None else {}
 
-    def set_action_env(self, project_id: str, action_env: dict, user: str) -> None:
-        session = self.get_latest_chat_session(user, project_id)
-        if session is None:
-            return
-        Tracking.create(session=session['id'], action_env=json.dumps(action_env))
+    def set_action_env(self, session_id: int, action_env: dict) -> None:
+        """Same session-pinning as set_env above."""
+        Tracking.create(session=session_id, action_env=json.dumps(action_env))
 
     def record_tool_calls(
         self, session_id: int, tool_calls: list[dict], message_id: int | None = None, timestamp: datetime | None = None,

@@ -875,6 +875,7 @@ onBeforeUnmount(() => {
           :current-source-name="currentSourceName"
           :sources-root-selected="sourcesRootSelected"
           :modified-files="projectRevision?.modified_files ?? []"
+          :current-revision="projectRevision?.revision ?? null"
           @start-explorer-drag="startExplorerDrag"
           @new-attachment="handleNewAttachment"
           @new-aspect="handleNewAspect"

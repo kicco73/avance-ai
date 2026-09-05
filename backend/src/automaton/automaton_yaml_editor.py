@@ -171,7 +171,8 @@ class AutomatonYamlEditor:
             "final": len(raw_actions) == 0,
             "chat": raw_state.get("chat", True),
             "actions": [self._action_payload_from_raw(raw_action, state_name) for raw_action in raw_actions],
-            "tools": list(raw_state.get("tools") or []),
+            "ai_may_query_sources": list(raw_state.get("ai-may-query-sources") or []),
+            "ai_must_query_sources": list(raw_state.get("ai-must-query-sources") or []),
         }
 
     @staticmethod
@@ -229,10 +230,12 @@ class AutomatonYamlEditor:
     def _source_payload(self, name: str) -> SourcePayload:
         raw_source = self._source(name)
         ui_description = raw_source.get("ui-description")
+        ai_definition = raw_source.get("ai-definition")
         return {
             "name": name,
             "ui_label": raw_source.get("ui-label", name),
             "ui_description": ui_description.strip() if ui_description else None,
+            "ai_definition": ai_definition.strip() if ai_definition else None,
             "url": raw_source.get("url") or "",
         }
 
@@ -661,6 +664,21 @@ class AutomatonYamlEditor:
                 if rewritten is not None:
                     raw_action["on-enter"] = rewritten
         return unresolved
+
+    def rewrite_legacy_tools_field(self) -> bool:
+        """Renames every state's own `tools:` key to `ai-may-query-sources:`
+        — see project.archive.legacy_tools_field_migration. A structural
+        key rename (via _rename_key_preserving_comments), not a value
+        change: `ai-may-query-sources` means the same thing `tools` used
+        to (the model decides for itself whether to call one), so nothing
+        about the list itself needs to change, only its own key. Returns
+        whether anything was actually renamed."""
+        changed = False
+        for raw_state in self._states().values():
+            if "tools" in raw_state:
+                self._rename_key_preserving_comments(raw_state, "tools", "ai-may-query-sources")
+                changed = True
+        return changed
 
     def _declared_avance_source_paths(self) -> dict[str, str]:
         paths: dict[str, str] = {}

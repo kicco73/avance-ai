@@ -11,6 +11,7 @@ from http import HTTPStatus
 from fastapi import HTTPException, Request, Response
 
 from automaton.automaton_yaml_editor import InitActionTargetError
+from automaton.build_error import AutomatonBuildError
 from chat.chat_service import ChatService
 from project.project_service import ProjectService
 from schemas import AiEditRequest, PublishProjectRequest, RenameProjectFileRequest, ReorderActionRequest, SetProjectFieldRequest
@@ -23,7 +24,8 @@ from .project_commit_mixin import ProjectCommitMixin
 # below — name/key is deliberately never in any of these three: it's
 # generated once at creation and immutable from then on.
 STATE_EDITABLE_FIELDS = {
-    "ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat", "reactions-enabled", "tools",
+    "ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat", "reactions-enabled",
+    "ai-may-query-sources", "ai-must-query-sources",
 }
 ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "target", "trigger", "on-enter", "env"}
 # The init-action is an action like any other (see AutomatonYamlEditor.
@@ -43,7 +45,7 @@ ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value"}
 # absent: it's system-managed (ProjectEditor.add_source/set_source_field
 # keep it in lockstep with the source's own cache archive), never a field
 # a client sets directly.
-SOURCE_EDITABLE_FIELDS = {"name", "ui-label", "ui-description"}
+SOURCE_EDITABLE_FIELDS = {"name", "ui-label", "ui-description", "ai-definition"}
 # The optional top-level `project:` section — 'id' is what other
 # projects reach this one as through automaton.<id>. 'general-prompt' is
 # actually its own separate top-level key (see AutomatonYamlEditor.
@@ -89,6 +91,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         TestsTree.vue)."""
         try:
             return self.project_service.get_project_states(project_id)
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -101,6 +105,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             return self.project_service.get_project_graph(project_id, session_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -115,6 +121,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             return {"tokens": self.project_service.get_state_input_tokens(project_id, state_name, session_id)}
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -127,6 +135,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             return {"signals": self.project_service.get_project_signals(project_id, state_key, session_id)}
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -138,6 +148,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             return {"env_keys": self.project_service.get_project_env_keys(project_id, session_id)}
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -149,6 +161,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             return {"sources": self.project_service.get_project_sources(project_id, session_id)}
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -160,6 +174,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             return {"project": self.project_service.get_project_metadata(project_id)}
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -215,6 +231,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             content, content_type = self.project_service.get_project_file_content(project_id, file_name, session_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         etag = f'"{hashlib.sha256(content).hexdigest()}"'
@@ -239,6 +257,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             if file_name == "index.css":
                 return Response(status_code=HTTPStatus.NO_CONTENT)
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -252,6 +272,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             return await self.project_service.undo_project_file(project_id, file_name, content)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -264,6 +286,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             return await self.project_service.redo_project_file(project_id, file_name, content)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -279,6 +303,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             content = await self.project_service.generate_index_yml_ai_edit(project_id, req.instruction)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"content": content}
@@ -294,6 +320,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             content = await self.project_service.generate_index_css_ai_edit(project_id, req.instruction)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"content": content}
@@ -322,6 +350,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return result
@@ -337,6 +367,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return result
@@ -351,6 +383,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except PermissionError as exc:
             raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
@@ -365,6 +399,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             return await self.project_service.add_legal_terms(project_id, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -378,6 +414,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             return await self.project_service.add_state(project_id, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -387,6 +425,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             return await self.project_service.add_signal(project_id, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -396,6 +436,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             return await self.project_service.add_env_key(project_id, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -405,6 +447,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             return await self.project_service.add_source(project_id, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -414,6 +458,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             return await self.project_service.add_action(project_id, state_name, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -430,6 +476,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -448,6 +496,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -464,6 +514,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -480,6 +532,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -496,6 +550,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -515,6 +571,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -531,6 +589,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -547,6 +607,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -558,6 +620,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except InitActionTargetError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
@@ -568,6 +632,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             await self.project_service.delete_action(project_id, state_name, action_name, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
@@ -578,6 +644,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             await self.project_service.delete_signal(project_id, signal_name, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
@@ -588,6 +656,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             await self.project_service.delete_env_key(project_id, env_key_name, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
@@ -598,6 +668,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             await self.project_service.delete_source(project_id, source_name, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
@@ -630,6 +702,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             return self.project_service.publish_project(project_id, req.remap_to)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 

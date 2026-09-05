@@ -26,10 +26,18 @@ const props = defineProps({
   // Basenames an `attachments:` entry can complete to — the Behavior
   // branch's own attachments (index.yml/index.css/Theme assets excluded).
   // Only meaningful for index.yml's text/yaml buffer; ignored otherwise.
-  yamlAttachmentFiles: { type: Array, default: () => [] }
+  yamlAttachmentFiles: { type: Array, default: () => [] },
+  // The project's current draft revision, for save()'s own build-error
+  // handling below — a failed build's own `fields.revision` (see
+  // AutomatonBuildError) is only safe to jump to while it still matches
+  // this; a stale one (another save/publish/revert landed meanwhile)
+  // suppresses the jump instead of pointing at a line that may no
+  // longer mean what the error said. Only meaningful for index.yml;
+  // null for every other file, where no build error can occur at all.
+  currentRevision: { type: Number, default: null }
 })
 
-const emit = defineEmits(['saved', 'renamed'])
+const emit = defineEmits(['saved', 'renamed', 'build-error'])
 
 const loading = ref(true)
 const saving = ref(false)
@@ -166,7 +174,20 @@ async function save() {
     canRedo.value = result.can_redo
     emit('saved', result)
     return true
-  } catch {
+  } catch (err) {
+    // A build error names exactly this project/file — jump-worthy only
+    // while `currentRevision` (the draft this save() was actually
+    // attempted against) still matches what the backend built: a save/
+    // publish/revert landing in between means the line may no longer
+    // mean what the error said, so the jump is suppressed rather than
+    // risking pointing at the wrong place. See AutomatonBuildError.
+    const fields = err?.fields
+    if (
+      fields?.project_id === props.projectId && fields?.file === props.fileName &&
+      fields?.line != null && fields?.revision === props.currentRevision
+    ) {
+      emit('build-error', fields.line)
+    }
     return false
   } finally {
     saving.value = false

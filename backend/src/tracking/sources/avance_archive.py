@@ -1,10 +1,11 @@
 """The `avance` source driver — read-only access to one of a project's
 own stored archive files, addressed by a `sources:` entry's own
 `url: avance:<archive path>` (e.g. `avance:sources/flights.csv`).
-`select(value)` replaces search(): the same per-line case-insensitive
-match against that one file, bounded (see SourceDriver._bounded)
-regardless of how big a match set it finds. A whole-file read is
-`attachment.read(name)`'s job now (on-enter only, see
+`select(*values)` replaces search(): the header row plus every row
+containing *every* value (case-insensitive, AND'd — one value narrows
+down to a single row, several narrow further), bounded (see
+SourceDriver._bounded) regardless of how big a match set it finds. A
+whole-file read is `attachment.read(name)`'s job now (on-enter only, see
 tracking.actuators.attachment_namespace) — SourceDriver itself no longer
 has one at all: every method here must return a bounded result, and a
 whole file is exactly what bounding a result doesn't make sense for.
@@ -28,7 +29,9 @@ class AvanceArchiveSource(SourceDriver):
     METHOD_DESCRIPTIONS = {
         "select": (
             "Grep over this source's own archive file: the header row plus every row containing "
-            "`value` (case-insensitive) — e.g. source.<name>.select('Paris')."
+            "*every* given value (case-insensitive) — e.g. source.<name>.select('Paris'). Each "
+            "additional value narrows the result further: search by flight code and date to get a "
+            "single row instead of every date that flight ever flew."
         ),
     }
 
@@ -92,10 +95,12 @@ class AvanceArchiveSource(SourceDriver):
         )
         return content
 
-    def select(self, value: str) -> str:
+    def select(self, *values: str) -> str:
+        if not values:
+            raise ValueError(f"source.{self._name}.select(...): at least one value is required.")
         lines = self._read_text().splitlines(keepends=True)
         if not lines:
             return ""
-        needle = value.lower()
-        matches = [line for line in lines[1:] if needle in line.lower()]
+        needles = [value.lower() for value in values]
+        matches = [line for line in lines[1:] if all(needle in line.lower() for needle in needles)]
         return self._bounded(lines[0] + "".join(matches))

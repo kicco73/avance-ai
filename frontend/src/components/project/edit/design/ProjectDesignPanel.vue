@@ -46,7 +46,10 @@ const props = defineProps({
   // the editor pane over with an empty state, same as currentSourceName
   // does for a real source.
   sourcesRootSelected: { type: Boolean, default: false },
-  modifiedFiles: { type: Array, default: () => [] }
+  modifiedFiles: { type: Array, default: () => [] },
+  // Forwarded to IndexYmlEditorPanel/CodeEditor — see CodeEditor.vue's
+  // own currentRevision prop.
+  currentRevision: { type: Number, default: null }
 })
 
 // sources/<id>.csv — same convention ProjectEditor._source_archive
@@ -140,6 +143,7 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
           :auto-jump-on-highlight-change="true"
           :fired-action-edge="firedActionEdge"
           :selected-element="selectedElement"
+          :current-revision="currentRevision"
           @jump-to-definition="emit('jump-to-definition', $event)"
           @select="emit('select', $event)"
           @saved="emit('saved', $event)"

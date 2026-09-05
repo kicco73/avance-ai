@@ -74,35 +74,35 @@ class ChatController(BaseController):
         reports the latest persisted snapshot."""
         return self.chat_service.get_latest_signals()
 
-    @get("/api/chat/env")
-    def get_env(self, message_id: int | None = None):
-        """{"stored": ..., "action_set": ...} — the active project's
+    @get("/api/chat/sessions/{session_id}/env")
+    def get_env(self, session_id: int, message_id: int | None = None):
+        """{"stored": ..., "action_set": ...} — session_id's own
         "environment" memory, split so the Inspector Env tab knows which
         section each value belongs in (only "stored" is editable)."""
-        return self.chat_service.get_env(message_id)
+        return self.chat_service.get_env(session_id, message_id)
 
-    @delete("/api/chat/env")
-    async def clear_env(self):
-        """Wipes every stored and action-set env key at once (see
-        ChatService.clear_env). Always live."""
-        return await self.chat_service.clear_env()
+    @delete("/api/chat/sessions/{session_id}/env")
+    def clear_env(self, session_id: int):
+        """Wipes every stored and action-set env key at once for
+        session_id (see ChatService.clear_env)."""
+        return self.chat_service.clear_env(session_id)
 
-    @put("/api/chat/env/{key}")
-    async def put_env_value(self, key: str, req: SetEnvValueRequest):
+    @put("/api/chat/sessions/{session_id}/env/{key}")
+    def put_env_value(self, session_id: int, key: str, req: SetEnvValueRequest):
         """Edits one stored env key (see ChatService.set_env_value) —
         the Inspector Env tab's own "click a value to edit it". Always
-        live: there's no "editing history"."""
+        current: there's no "editing history"."""
         try:
-            return await self.chat_service.set_env_value(key, req.value)
+            return self.chat_service.set_env_value(session_id, key, req.value)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @delete("/api/chat/env/{key}")
-    async def delete_env_value(self, key: str):
+    @delete("/api/chat/sessions/{session_id}/env/{key}")
+    def delete_env_value(self, session_id: int, key: str):
         """Removes one stored env key outright (see ChatService.
         delete_env_key) — the Inspector Env tab's own delete button."""
         try:
-            return await self.chat_service.delete_env_key(key)
+            return self.chat_service.delete_env_key(session_id, key)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 

@@ -9,14 +9,24 @@ from tracking.env import Env
 from tracking.sources import ToolSet
 
 
-def tool_set_kwargs(tool_set: ToolSet | None) -> dict:
+def tool_set_kwargs(tool_set: ToolSet | None, force_required_tools: bool = False) -> dict:
 	"""`tool_set` only actually forwarded when given — a fake/stub
 	AiService predating tool-calling (most existing tests' own doubles)
 	declares no `tool_set` parameter at all, so it must keep receiving
 	the exact same call it always did, never a stray `tool_set=None` it
 	can't accept. Shared by both TurnProtocol subclasses' own calls into
-	AiService.generate_stream_with_metadata/generate_stream."""
-	return {"tool_set": tool_set} if tool_set is not None else {}
+	AiService.generate_stream_with_metadata/generate_stream.
+
+	`force_required_tools` is included only when actually True, same
+	reasoning: a fake/stub AiService predating ai-must-query-sources
+	(every existing tool-calling test's own double) declares no such
+	parameter either, and none of them exercises a state with anything to force."""
+	if tool_set is None:
+		return {}
+	kwargs: dict = {"tool_set": tool_set}
+	if force_required_tools:
+		kwargs["force_required_tools"] = force_required_tools
+	return kwargs
 
 class TurnProtocol(ABC):
 
@@ -54,16 +64,26 @@ class TurnProtocol(ABC):
 		# Default None: every caller that never enables reactions (the
 		# common case for most existing tests) is unaffected.
 		reaction_definition: str | None = None,
-		# The current state's own tool catalog (see automaton.State.tools)
-		# — forwarded as-is to AiService; None (no tools: for this state)
-		# all the way down to a request identical to before tool-calling
-		# existed. TurnProtocol never inspects this itself.
+		# The current state's own tool catalog (see automaton.State.
+		# ai_may_query_sources/ai_must_query_sources) — forwarded as-is
+		# to AiService; None (neither declared for this state) all the way
+		# down to a request identical to before tool-calling existed.
+		# TurnProtocol never inspects this itself.
 		tool_set: ToolSet | None = None,
+		# Whether this is the first turn since the state
+		# ai_must_query_sources belongs to was entered (see
+		# TrackingProcessor.force_required_tools_for) — forwarded as-is
+		# to AiService, which restricts tool_choice to that state's own
+		# ai-must-query-sources for the first tool-call round only when
+		# this is True. Meaningless with tool_set=None.
+		force_required_tools: bool = False,
 	) -> AsyncIterator[str]:
 		"""Returns chunks of text coming from the response streaming,
 		calling on_metadata for each non-"text" field as it completes."""
 		final_prompt = self.build_final_prompt(base_prompt, signal_definition, env, reaction_definition)
-		return self._generate_reply(final_prompt, chat_history, on_metadata, **tool_set_kwargs(tool_set))
+		return self._generate_reply(
+			final_prompt, chat_history, on_metadata, **tool_set_kwargs(tool_set, force_required_tools),
+		)
 
 	def build_final_prompt(
 		self, base_prompt: str, signal_definition: str | None, env: Env, reaction_definition: str | None = None,
@@ -79,7 +99,7 @@ class TurnProtocol(ABC):
 	@abstractmethod
 	def _generate_reply(
 		self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,
-		tool_set: ToolSet | None = None,
+		tool_set: ToolSet | None = None, force_required_tools: bool = False,
 	) -> AsyncIterator[str]:
 		raise NotImplementedError
 
@@ -87,7 +107,7 @@ class TurnProtocol(ABC):
 	def generate_reply_with_schema(
 		self, base_prompt: str, env: Env, tag_specs: list[tuple[str, str]], chat_history: list[dict],
 		on_metadata: MetadataCallback,
-		tool_set: ToolSet | None = None,
+		tool_set: ToolSet | None = None, force_required_tools: bool = False,
 	) -> AsyncIterator[str]:
 		raise NotImplementedError
 

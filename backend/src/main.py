@@ -25,6 +25,7 @@ from logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from notification.notification_service import NotificationService
 from project.archive.legacy_source_read_migration import migrate_legacy_source_read
+from project.archive.legacy_tools_field_migration import migrate_legacy_tools_field
 from project.project_service import ProjectService
 from ai import AiService
 from testing.test_service import TestService
@@ -86,6 +87,9 @@ def create_app() -> FastAPI:
         # wherever it safely can (see the module's own docstring) —
         # before anything else touches a project's stored revisions.
         migrate_legacy_source_read(db)
+        # One-off: renames every stored index.yml revision's own state-level
+        # `tools:` field to `ai-may-query-sources:` (see the module's own docstring).
+        migrate_legacy_tools_field(db)
 
         ai_live_service = AiService.for_live(config.ai_services, db=db)
         ai_test_service = AiService.for_test(config.ai_services, db=db)

@@ -79,7 +79,13 @@ class User(BaseModel):
         table_name = 'User'
         indexes = ((('provider', 'provider_user_id'), True),)
 
-SESSION_CLOSE_REASONS = ('channel-switch', 'force-new-session', 'manual-user', 'manual-assistant')
+SESSION_CLOSE_REASONS = (
+    'channel-switch', 'force-new-session', 'manual-user', 'manual-assistant',
+    # A session still pinned to a stored revision that no longer builds
+    # under current AutomatonBuilder rules — see
+    # AutomatonLoader.load_at_revision's own force-close sweep.
+    'revision-invalid',
+)
 
 
 class ChatSession(BaseModel):

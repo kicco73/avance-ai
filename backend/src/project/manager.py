@@ -11,6 +11,7 @@ from automaton.automaton import Automaton
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from automaton.automaton_builder import AutomatonBuilder
+from automaton.build_error import AutomatonBuildError
 from chat.session_manager import ChatSessionManager
 from db import Db
 from events import AvailabilityChanged, publish, subscribe
@@ -276,9 +277,18 @@ class ProjectManager:
         # with the right id/family — relevant only in the rare case this
         # same edit is also changing project.id/family itself (see finalize_update).
         declared_id, declared_family, _ = AutomatonBuilder.read_declared_env_keys(merged["index.yml"])
-        automaton = AutomatonBuilder().build(
-            merged, self._automaton_loader.known_projects_env_keys(declared_id or project_id, declared_family)
-        )
+        try:
+            automaton = AutomatonBuilder().build(
+                merged, self._automaton_loader.known_projects_env_keys(declared_id or project_id, declared_family)
+            )
+        except AutomatonBuildError as exc:
+            # The one place that knows which draft revision `files` was
+            # actually merged onto — build() itself is revision-agnostic,
+            # and the frontend needs this to decide whether a build
+            # error's own line is still safe to jump to (see CodeEditor.vue).
+            exc.project_id = exc.project_id or project_id
+            exc.revision = self._db.get_project_revision(project_id)
+            raise
         self._validate_project_id_globally_unique(project_id, automaton.project_id)
 
         if not self._project_update_changed(existing, files):
@@ -508,6 +518,8 @@ class ProjectManager:
             automaton = AutomatonBuilder().build(
                 files, self._automaton_loader.known_projects_env_keys(declared_id, declared_family)
             )
+        except AutomatonBuildError:
+            raise
         except (zipfile.BadZipFile, ValueError) as exc:
             raise ValueError(str(exc)) from exc
         except Exception as exc:

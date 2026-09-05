@@ -141,7 +141,7 @@ class TurnProtocolUsingSchema(TurnProtocol):
 
 	def _generate_reply(
 		self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,
-		tool_set: ToolSet | None = None,
+		tool_set: ToolSet | None = None, force_required_tools: bool = False,
 	) -> AsyncIterator[str]:
 
 		schema = {tag: self.schema[tag] for tag in self.include_tags}
@@ -150,13 +150,14 @@ class TurnProtocolUsingSchema(TurnProtocol):
 		prompt = f"{prompt}\n\n{SCHEMA_ORDER_PROMPT}\n{order}"
 
 		return self._ai_service.generate_stream_with_metadata(
-			prompt, chat_history, on_metadata=on_metadata, schema=schema, **_tool_set_kwargs(tool_set),
+			prompt, chat_history, on_metadata=on_metadata, schema=schema,
+			**_tool_set_kwargs(tool_set, force_required_tools),
 		)
 
 	def generate_reply_with_schema(
 		self, base_prompt: str, env: Env, tag_specs: list[tuple[str, str]], chat_history: list[dict],
 		on_metadata: MetadataCallback,
-		tool_set: ToolSet | None = None,
+		tool_set: ToolSet | None = None, force_required_tools: bool = False,
 	) -> AsyncIterator[str]:
 		preambles = TagPromptBuilder().build(tag_specs, self.prompt_preambles)
 		schema = TagPromptBuilder().build(tag_specs, self.schema)
@@ -173,6 +174,7 @@ class TurnProtocolUsingSchema(TurnProtocol):
 		prompt = f"{prompt}\n\n{SCHEMA_ORDER_PROMPT}\n{order}"
 
 		return self._ai_service.generate_stream_with_metadata(
-			prompt, chat_history, on_metadata=on_metadata, schema=schema, **_tool_set_kwargs(tool_set),
+			prompt, chat_history, on_metadata=on_metadata, schema=schema,
+			**_tool_set_kwargs(tool_set, force_required_tools),
 		)
 

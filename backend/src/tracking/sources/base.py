@@ -46,5 +46,5 @@ class SourceDriver:
         remaining = len(text) - MAX_SOURCE_RESULT_CHARS
         return f"{text[:MAX_SOURCE_RESULT_CHARS]}\n[truncated: {remaining} more characters]"
 
-    def select(self, value: str) -> str:
+    def select(self, *values: str) -> str:
         raise self._unsupported("select")

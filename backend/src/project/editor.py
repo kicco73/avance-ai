@@ -8,6 +8,7 @@ from automaton.automaton import (
     ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload,
 )
 from automaton.automaton_builder import AutomatonBuilder, EXTENSION_TO_MEDIA_TYPE
+from automaton.build_error import AutomatonBuildError
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
 from db import ContentRestored, Db, FileRenamed
 from logging_factory import LoggerFactory
@@ -325,6 +326,8 @@ class ProjectEditor:
 
         try:
             new_automaton, to_persist = self._manager.prepare_update(project_id, {file_name: update_value})
+        except AutomatonBuildError:
+            raise
         except Exception as exc:
             raise ValueError(f"Invalid project update: {exc}") from exc
 
@@ -402,6 +405,8 @@ class ProjectEditor:
         try:
             _, family, _ = AutomatonBuilder.read_declared_env_keys(archives["index.yml"])
             new_automaton = AutomatonBuilder().build(archives, self._automaton_loader.known_projects_env_keys(project_id, family))
+        except AutomatonBuildError:
+            raise
         except Exception as exc:
             raise ValueError(f"Invalid project update: {exc}") from exc
 
@@ -676,6 +681,8 @@ class ProjectEditor:
                 del archives[name]
             _, family, _ = AutomatonBuilder.read_declared_env_keys(archives["index.yml"])
             new_automaton = AutomatonBuilder().build(archives, self._automaton_loader.known_projects_env_keys(project_id, family))
+        except AutomatonBuildError:
+            raise
         except Exception as exc:
             raise ValueError(f"Invalid project definition: {exc}") from exc
 

@@ -173,7 +173,7 @@ class LLMProvider(TokenCounter, ABC):
 	@abstractmethod
 	async def generate_stream_with_schema(
 		self, system_prompt: str, history: list[dict], schema: dict[str, str], on_metadata: MetadataCallback | None = None,
-		tools: list[ToolSpec] | None = None,
+		tools: list[ToolSpec] | None = None, tool_round: int = 1, required_tools: list[ToolSpec] | None = None,
 	) -> AsyncIterator[str]:
 		"""`history` is provider-neutral, including for tool turns: beyond
 		the plain {role, content} shape, two more message shapes appear —
@@ -185,7 +185,18 @@ class LLMProvider(TokenCounter, ABC):
 		`tools` empty/None, a provider must send the exact same request it
 		always has — no tool-call machinery engaged at all. When the model
 		ends its turn asking for tools instead of completing normally,
-		raise ToolCallsRequested in place of finishing the stream."""
+		raise ToolCallsRequested in place of finishing the stream.
+
+		`required_tools`: non-empty only for the one round AiService itself
+		decided must force a call (see its own generate_stream_with_metadata
+		and TrackingProcessor.force_required_tools_for) — a subset of
+		`tools` the model must be restricted to calling from, in that
+		provider's own tool_choice/function_calling_config dialect, rather
+		than left free to also just answer. None/empty means this round is
+		`auto`, exactly as tool-calling has always behaved. `tool_round` is
+		AiService's own 1-based round counter, informational only (e.g. for
+		a provider's own log line) — the forcing decision itself is always
+		`required_tools`'s own presence, never this number."""
 		raise NotImplementedError
 		yield
 

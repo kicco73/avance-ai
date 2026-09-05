@@ -127,6 +127,24 @@ class TestPutActionField:
         assert response.json()["has_trigger"] is True
         assert "trigger:" in _index_yml(client, hello_project)
 
+    def test_an_invalid_trigger_returns_structured_error_fields(self, client, hello_project):
+        """See AutomatonBuildError — CodeEditor.vue's own jump-to-error
+        needs project_id/file/line/section, not just a message string."""
+        action = client.post(f"/api/projects/{hello_project}/states/Hello/actions").json()
+
+        response = client.put(
+            f"/api/projects/{hello_project}/states/Hello/actions/{action['name']}/trigger",
+            json={"value": "signal.definitely_not_declared == 1"},
+        )
+
+        assert response.status_code == 400
+        fields = response.json()["error"]["fields"]
+        assert fields["project_id"] == hello_project
+        assert fields["file"] == "index.yml"
+        assert fields["section"] == f"states.Hello.actions.{action['name']}"
+        assert isinstance(fields["line"], int)
+        assert isinstance(fields["revision"], int)
+
     def test_clearing_trigger_removes_it_rather_than_storing_an_empty_string(self, client, hello_project):
         action = client.post(f"/api/projects/{hello_project}/states/Hello/actions").json()
         client.put(

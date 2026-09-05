@@ -1,17 +1,34 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from automaton.automaton import Automaton
 from automaton.automaton_builder import AutomatonBuilder
+from automaton.build_error import AutomatonBuildError
 from db import Db
+from logging_factory import LoggerFactory
 
 from .layout import ArchiveLayout
 
+if TYPE_CHECKING:
+    # Type-only: ChatSessionManager doesn't import this module, so a real
+    # top-level import would be safe too, but every other cross-package
+    # dependency here already sits behind TYPE_CHECKING/local imports —
+    # kept consistent rather than the one exception.
+    from chat.session_manager import ChatSessionManager
+
+logger = LoggerFactory.get_logger(__name__)
+
 
 class AutomatonLoader:
-    def __init__(self, db: Db) -> None:
+    def __init__(self, db: Db, session_manager: "ChatSessionManager | None" = None) -> None:
         self._db = db
+        # Only for force-closing a session still open on a stored revision
+        # that no longer builds (see load_at_revision) — None is fine for
+        # any caller with no session to worry about (e.g. the boot-time
+        # legacy_source_read_migration), it just means that cleanup never runs.
+        self._session_manager = session_manager
         # (project_id, revision) -> Automaton. Revision-keyed so a caller
         # pinned to one specific revision and a caller wanting "whatever's
         # current" can share the cache without cross-serving.
@@ -23,6 +40,12 @@ class AutomatonLoader:
         # "whatever's current" — the only thing known_projects_env_keys
         # scans other projects for. (declared_id, family, env_key_names).
         self._declared_meta_cache: dict[tuple[str, int], tuple[str | None, str | None, frozenset[str]]] = {}
+        # (project_id, revision) already logged + swept for force-close —
+        # load_at_revision is hit from several per-request read paths
+        # (see ProjectInspector), so without this a broken revision under
+        # active use would re-run the close sweep (a DB query) on every
+        # single failed load rather than once per process lifetime.
+        self._broken_revisions: set[tuple[str, int]] = set()
 
     @staticmethod
     def is_safe_project_name(project_id: str) -> bool:
@@ -124,17 +147,41 @@ class AutomatonLoader:
             automaton = AutomatonBuilder().build(
                 decoded, self.known_projects_env_keys(project_id, family), legacy_project_id=project_id,
             )
-        except ValueError as exc:
+        except AutomatonBuildError as exc:
             # Names *which* stored revision no longer builds under the
             # current AutomatonBuilder rules — this surfaces on whichever
             # endpoint happens to touch a session pinned to it, far from
-            # any index.yml the caller is looking at.
-            raise ValueError(
-                f"Project '{project_id}', stored revision {revision}: index.yml no longer builds — {exc}"
-            ) from exc
+            # any index.yml the caller is looking at. Kept in `detail`,
+            # not `message` — the builder's own message (and its line/
+            # section) stay exactly as it raised them, for a caller that
+            # cares about the structured fields rather than this summary.
+            exc.project_id = exc.project_id or project_id
+            exc.revision = revision
+            exc.detail = f"Project '{project_id}', stored revision {revision}: index.yml no longer builds — {exc}"
+            self._handle_broken_revision(project_id, revision, exc)
+            raise
         automaton.set_storage_location(revision)
         self.set_cached(project_id, revision, automaton)
         return automaton
+
+    def _handle_broken_revision(self, project_id: str, revision: int, exc: AutomatonBuildError) -> None:
+        """Logs once and force-closes any session still open on this
+        exact (project_id, revision) — never re-run for the same one
+        twice in this process's lifetime (see _broken_revisions), since
+        this fires from hot per-request read paths (ProjectInspector)
+        that could otherwise re-query/re-close on every single failed load."""
+        key = (project_id, revision)
+        if key in self._broken_revisions:
+            return
+        self._broken_revisions.add(key)
+        logger.warning(
+            "Project '%s', stored revision %s no longer builds — %s", project_id, revision, exc,
+        )
+        if self._session_manager is None:
+            return
+        for session in self._db.list_live_sessions_for_revision(project_id, revision):
+            if self._session_manager.is_open(session):
+                self._session_manager.close_session(session, 'revision-invalid')
 
     def load(self, project_id: str) -> Automaton:
         """Whatever's current for `project_id` right now — the most

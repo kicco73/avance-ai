@@ -171,6 +171,8 @@ class OpenAICompatibleProvider(LLMProvider):
         schema: Optional[Dict[str, str]] = None,
         on_metadata: Optional[MetadataCallback] = None,
         tools: Optional[List[ToolSpec]] = None,
+        tool_round: int = 1,
+        required_tools: Optional[List[ToolSpec]] = None,
     ) -> AsyncIterator[str]:
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
         messages.extend(self._build_messages(history))
@@ -185,9 +187,17 @@ class OpenAICompatibleProvider(LLMProvider):
                     "schema": self.build_schema(schema),
                 },
             }
-        openai_tools = self._build_tools(tools)
-        if openai_tools:
-            extra_kwargs["tools"] = openai_tools
+        if required_tools:
+            # Forced round: restricted to *only* required_tools (never the
+            # full catalog) — OpenAI's own tool_choice "required" forces a
+            # call among whatever `tools` carries, so restricting the
+            # candidate set means restricting `tools` itself for this one call.
+            extra_kwargs["tools"] = self._build_tools(required_tools)
+            extra_kwargs["tool_choice"] = "required"
+        else:
+            openai_tools = self._build_tools(tools)
+            if openai_tools:
+                extra_kwargs["tools"] = openai_tools
 
         total_tokens = 0
         input_tokens = 0

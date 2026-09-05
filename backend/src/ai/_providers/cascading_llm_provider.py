@@ -29,14 +29,24 @@ _FAILOVER_ERRORS = (
 )
 
 
-def _forward_kwargs(on_metadata: MetadataCallback | None, tools: list[ToolSpec] | None) -> dict[str, Any]:
+def _forward_kwargs(
+    on_metadata: MetadataCallback | None, tools: list[ToolSpec] | None,
+    tool_round: int = 1, required_tools: list[ToolSpec] | None = None,
+) -> dict[str, Any]:
     """`tools` only actually included when given — a wrapped provider
     (real or a test fake) that predates tool-calling and so declares no
     `tools` parameter at all must keep receiving the exact same call it
-    always did, never a stray `tools=None` it can't accept."""
+    always did, never a stray `tools=None` it can't accept. `tool_round`/
+    `required_tools` ride along only then too — neither means anything
+    without `tools`, and a fake predating ai-must-query-sources forcing
+    (every tool-calling test's own double so far) declares no such
+    parameters either."""
     kwargs: dict[str, Any] = {"on_metadata": on_metadata}
     if tools is not None:
         kwargs["tools"] = tools
+        kwargs["tool_round"] = tool_round
+        if required_tools is not None:
+            kwargs["required_tools"] = required_tools
     return kwargs
 
 
@@ -65,11 +75,11 @@ class AutoLiveLLMProvider(LLMProvider):
 
     async def generate_stream_with_schema(
         self, system_prompt: str, history: list[dict], schema: dict[str, str], on_metadata: MetadataCallback | None = None,
-        tools: list[ToolSpec] | None = None,
+        tools: list[ToolSpec] | None = None, tool_round: int = 1, required_tools: list[ToolSpec] | None = None,
     ) -> AsyncIterator[str]:
         provider = self._cascade.current
         try:
-            async for chunk in provider.generate_stream_with_schema(system_prompt, history, schema=schema, **_forward_kwargs(on_metadata, tools)):  # type: ignore
+            async for chunk in provider.generate_stream_with_schema(system_prompt, history, schema=schema, **_forward_kwargs(on_metadata, tools, tool_round, required_tools)):  # type: ignore
                 yield chunk
         except _FAILOVER_ERRORS as exc:
             logger.error(f"AI (live) provider #{self._cascade.current_index + 1} failed: {type(exc).__name__}: {exc}")
@@ -100,6 +110,8 @@ class AutoTestLLMProvider(AutoLiveLLMProvider):
         schema: dict[str, str],
         on_metadata: MetadataCallback | None = None,
         tools: list[ToolSpec] | None = None,
+        tool_round: int = 1,
+        required_tools: list[ToolSpec] | None = None,
     ) -> AsyncIterator[str]:
         last_error: BaseException | None = None
         for _ in range(len(self._cascade)):
@@ -109,7 +121,7 @@ class AutoTestLLMProvider(AutoLiveLLMProvider):
             yielded = False
             while True:
                 try:
-                    async for chunk in provider.generate_stream_with_schema(system_prompt, history, schema=schema, **_forward_kwargs(on_metadata, tools)):  # type: ignore
+                    async for chunk in provider.generate_stream_with_schema(system_prompt, history, schema=schema, **_forward_kwargs(on_metadata, tools, tool_round, required_tools)):  # type: ignore
                         yielded = True
                         yield chunk
                     return

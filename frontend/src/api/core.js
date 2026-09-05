@@ -49,12 +49,19 @@ export async function apiFetch(url, options, { parse = 'json', onProgress, onCom
     let message = `Error ${res.status}`
     let detail = ''
     let code = null
+    let fields = null
     try {
       const body = await res.json()
       if (body?.error?.message) {
         message = body.error.message
         detail = body.error.detail ?? ''
         code = body.error.code ?? null
+        // Only ever present on an AutomatonBuildError (see
+        // error_handlers.py's own ApiErrorHandlers._body) — project_id/
+        // revision/file/line/section, whichever the backend actually
+        // knew at the point it raised. CodeEditor.vue's own save() is
+        // the one place that uses this, to jump straight to the error.
+        fields = body.error.fields ?? null
       }
     } catch {
 
@@ -70,6 +77,7 @@ export async function apiFetch(url, options, { parse = 'json', onProgress, onCom
     err.status = res.status
     err.detail = detail
     err.code = code
+    err.fields = fields
     throw err
   }
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
+import time
 from collections import OrderedDict
 from typing import Any, AsyncIterator, Sequence, TYPE_CHECKING, overload
 
@@ -339,6 +340,11 @@ class AiService(object):
 		on_metadata: MetadataCallback,
 		schema: dict[str, str],
 		tool_set: "ToolSet | None" = None,
+		# Restricts tool_choice to tool_set.required_specs() for the first
+		# tool-call round only (see TrackingProcessor.
+		# force_required_tools_for) — meaningless (and ignored) with no
+		# tool_set, or a tool_set with nothing in required_specs().
+		force_required_tools: bool = False,
 	) -> AsyncIterator[str]:
 		"""With no tool_set, this is exactly the single call it always was
 		— same request, same live incremental parsing/yielding, byte for
@@ -369,14 +375,32 @@ class AiService(object):
 		# and it's gone once this generator returns.
 		turn_history = list(history)
 		tool_specs = tool_set.specs()
+		required_specs = tool_set.required_specs()
+		# Summed across every round, for the end-of-turn log line below —
+		# never re-derived from _tap_token_usage's own AiTokenUsage writes,
+		# which reset per round by design (see its own docstring).
+		input_tokens_by_round: list[int] = []
+
+		def _tally_input_tokens(name: str, value: Any) -> None:
+			if name == "input_tokens":
+				input_tokens_by_round.append(value)
+			tapped_on_metadata(name, value)
 
 		for round_number in range(1, MAX_TOOL_ROUNDS + 1):
+			# Only the first round of the first turn since ai-must-query-
+			# sources' own state was entered is ever restricted — every
+			# later round in this same turn, and every turn after the
+			# first, is auto with the full catalog (see this method's own
+			# force_required_tools docstring and TrackingProcessor's).
+			required_this_round = required_specs if (round_number == 1 and force_required_tools and required_specs) else None
 			logger.info(
 				f"generate_stream_with_metadata: provider={provider_label} fields={list(schema.keys())} "
-				f"tool_round={round_number} tools={[spec.name for spec in tool_specs]}"
+				f"tool_round={round_number} tools={[spec.name for spec in tool_specs]} "
+				f"required_tools={[spec.name for spec in required_this_round] if required_this_round else []}"
 			)
 			response_stream = self._active_provider.generate_stream_with_schema(
-				system_prompt, turn_history, schema=schema, on_metadata=tapped_on_metadata, tools=tool_specs,
+				system_prompt, turn_history, schema=schema, on_metadata=_tally_input_tokens, tools=tool_specs,
+				tool_round=round_number, required_tools=required_this_round,
 			) # type: ignore
 			try:
 				round_chunks = [chunk async for chunk in response_stream]
@@ -396,11 +420,24 @@ class AiService(object):
 					# own on_metadata handler — the durable record persisted
 					# to Tracking.tool_calls (see db.tracking.record_tool_calls).
 					tapped_on_metadata("tool_call", {"status_text": tool_set.status_text(call.name)})
+					call_started = time.monotonic()
 					result = await tool_set.call(call.name, call.arguments)
-					tapped_on_metadata("tool_result", {"name": call.name, "arguments": call.arguments, "result": result})
+					elapsed_ms = round((time.monotonic() - call_started) * 1000)
+					logger.info(
+						f"tool call: session={tool_set.session_id} round={round_number} name={call.name} "
+						f"arguments={call.arguments} result_chars={len(result)} duration_ms={elapsed_ms}"
+					)
+					tapped_on_metadata("tool_result", {
+						"name": call.name, "arguments": call.arguments, "result": result,
+						"summary_text": tool_set.summary_text(call.name, call.arguments, result),
+					})
 					turn_history.append({"role": "tool", "tool_call_id": call.id, "content": result})
 				continue
 
+			logger.info(
+				f"generate_stream_with_metadata: turn done, provider={provider_label} rounds={round_number} "
+				f"total_input_tokens={sum(input_tokens_by_round)}"
+			)
 			# The stream ended with no further tool request — the model's
 			# real final answer, already fully collected above; replay it
 			# through the exact same parser a live stream would use.

@@ -43,6 +43,14 @@ class Action:
     # merged onto the env store so the next prompt sees the update. Same
     # scope/mechanics as `trigger` (see _eval_trigger), minus the boolean cast.
     env: dict[str, str] | None = None
+    # 0-based line in the project's own index.yml where this action is
+    # declared (see AutomatonBuilder._build_action) — None for a
+    # synthetic action with no YAML origin of its own. Matches
+    # CodeEditor.vue's own jumpToLine convention; carried so a build
+    # error raised well after the original YAML node is gone
+    # (_actions_sanity_check, long past Pass 1) can still report where
+    # it happened (see AutomatonBuildError).
+    line: int | None = None
 
 @dataclass
 class State:
@@ -77,10 +85,22 @@ class State:
     # Names of this project's own `sources:` the model may call as native
     # tools while replying in this state (see tracking.sources.ToolSet) —
     # every name already validated at build time against `sources:`
-    # (AutomatonBuilder's own sanity check). Empty means no tool catalog
-    # at all this turn — TrackingProcessor passes tool_set=None then, the
-    # same request shape a turn always sent before tool-calling existed.
-    tools: tuple[str, ...] = ()
+    # (AutomatonBuilder's own sanity check), and each one's own source
+    # required to carry an `ai-definition` (see Source.ai_definition).
+    # The model decides for itself whether/when to call one of these.
+    ai_may_query_sources: tuple[str, ...] = ()
+    # Same validation as ai_may_query_sources, but forced once per entry
+    # into this state (see TrackingProcessor.force_required_tools_for):
+    # the first tool-call round after a transition lands here restricts
+    # the model to calling one of *these* — never both fields at once for
+    # the same source name (AutomatonBuilder rejects that overlap).
+    ai_must_query_sources: tuple[str, ...] = ()
+    # Empty for both fields means no tool catalog at all this turn —
+    # TrackingProcessor passes tool_set=None then, the same request shape
+    # a turn always sent before tool-calling existed.
+    # Same convention as Action.line above — None for the synthetic ""
+    # pseudo-state.
+    line: int | None = None
 
     @property
     def has_triggerable_actions(self) -> bool:
@@ -129,6 +149,14 @@ class Source:
     url: str
     ui_label: str
     ui_description: str | None = None
+    # Text written *for the model*, never the UI (see ui_description
+    # above, which is for the human) — becomes part of the tool's own
+    # description whenever this source is exposed as a native tool (see
+    # tracking.sources.ToolSet). Required (build error otherwise) for any
+    # source named in a state's own ai-may-query-sources/
+    # ai-must-query-sources — same requirement a signal's own `definition`
+    # gets — optional for every other source.
+    ai_definition: str | None = None
 
 
 # Functional syntax (not the class form the other Payload types use):
@@ -160,8 +188,9 @@ class StatePayload(TypedDict):
     reactions: list[ReactionOptionPayload]
     actions: list[ActionPayload]
     # Names of this project's own `sources:` this state exposes to the
-    # model as native tools — see State.tools.
-    tools: list[str]
+    # model as native tools — see State.ai_may_query_sources/ai_must_query_sources.
+    ai_may_query_sources: list[str]
+    ai_must_query_sources: list[str]
 
 def manual_actions_for(actions: list[ActionPayload], auto_tracking_enabled: bool) -> list[ActionPayload]:
     return [a for a in actions if not a["has_trigger"] or not auto_tracking_enabled]
@@ -234,6 +263,7 @@ class SourcePayload(TypedDict):
     name: str
     ui_label: str
     ui_description: str | None
+    ai_definition: str | None
     url: str
 
 class ProjectPayload(TypedDict):
@@ -378,6 +408,7 @@ class Automaton(object):
             "name": source.name,
             "ui_label": source.ui_label,
             "ui_description": source.ui_description,
+            "ai_definition": source.ai_definition,
             "url": source.url,
         }
 
@@ -405,7 +436,8 @@ class Automaton(object):
             "chat": state.chat,
             "reactions": [self.get_reaction_option_payload(r) for r in self.reactions],
             "actions": [Automaton.get_action_payload(a) for a in state.actions],
-            "tools": list(state.tools),
+            "ai_may_query_sources": list(state.ai_may_query_sources),
+            "ai_must_query_sources": list(state.ai_must_query_sources),
         }
 
     def reactions_enabled_for(self, state: State) -> bool:

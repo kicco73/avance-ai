@@ -90,3 +90,12 @@ class MessageMixin:
         if since is not None:
             query = query.where(Message.timestamp > since)
         return query.exists()
+
+    def has_assistant_message_since(self, session_id: int, since: datetime | None) -> bool:
+        """Same shape as has_messages_since, narrowed to the assistant's
+        own replies — TrackingProcessor.force_required_tools_for's own
+        "has a turn already answered since entering this state" check."""
+        query = Message.select().where((Message.session == session_id) & (Message.role == "assistant"))
+        if since is not None:
+            query = query.where(Message.timestamp > since)
+        return query.exists()

@@ -45,7 +45,7 @@ class ProjectService(object):
             session_manager = ChatSessionManager(db)
         session_export_manager = SessionExportManager(db)
         session_import_manager = SessionImportManager(db)
-        self._automaton_loader = AutomatonLoader(db)
+        self._automaton_loader = AutomatonLoader(db, session_manager=session_manager)
         self._inspector = ProjectInspector(db, self._automaton_loader, ai_service)
         self._manager = ProjectManager(
             db, self._automaton_loader, self._inspector, session_export_manager, session_import_manager,

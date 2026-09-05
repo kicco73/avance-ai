@@ -181,17 +181,37 @@ class TrackingProcessor(object):
 		return protocol.generate_reply(
 			base_prompt, signal_definition, self.env, chat_history, on_metadata,
 			reaction_definition=reaction_definition, tool_set=self.build_tool_set(state),
+			force_required_tools=self.force_required_tools_for(state),
 		)
 
 	def build_tool_set(self, state: State) -> ToolSet | None:
-		"""`state`'s own tool catalog (see automaton.State.tools) — None
-		(no tools: declared) all the way down to a request identical to
-		before tool-calling existed. Resolved fresh per call against this
-		turn's own automaton/session, same SourceNamespace shape a
-		source.<name> trigger/env: reference already uses."""
-		if not state.tools:
+		"""`state`'s own tool catalog (see automaton.State.
+		ai_may_query_sources/ai_must_query_sources) — None (neither
+		declared) all the way down to a request identical to before
+		tool-calling existed. Resolved fresh per call against this turn's
+		own automaton/session, same SourceNamespace shape a source.<name>
+		trigger/env: reference already uses."""
+		if not state.ai_may_query_sources and not state.ai_must_query_sources:
 			return None
-		return SourceNamespace(self.db, self.user.automaton, self.user.session_id).tool_set(state.tools)
+		return SourceNamespace(self.db, self.user.automaton, self.user.session_id).tool_set(
+			state.ai_may_query_sources, state.ai_must_query_sources,
+		)
+
+	def force_required_tools_for(self, state: State) -> bool:
+		"""Whether this turn is the first one generated since `state` was
+		last entered — the one turn ai-must-query-sources actually forces a
+		call on (see AiService.generate_stream_with_metadata's own
+		force_required_tools). Decided here, from Tracking/Message history,
+		never left to the model: a session with no assistant message yet
+		since the Tracking row that landed it on `state` (including the
+		project's own bootstrap into its initial state, and a self-loop
+		action re-entering the same state) still owes that first call."""
+		if not state.ai_must_query_sources:
+			return False
+		since = self.db.get_last_entry_timestamp_for_session(self.user.session_id, state.key)
+		if since is None:
+			return True
+		return not self.db.has_assistant_message_since(self.user.session_id, since)
 
 	def _build_base_prompt_and_history(self, state: State) -> tuple[str, list[dict]]:
 		"""Same base_prompt/chat_history generate_reply itself builds for

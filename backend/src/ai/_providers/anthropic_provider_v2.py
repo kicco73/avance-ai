@@ -290,6 +290,8 @@ class AnthropicProvider(LLMProvider):
 		schema: dict[str, str] | None = None,
 		on_metadata: MetadataCallback | None = None,
 		tools: list[ToolSpec] | None = None,
+		tool_round: int = 1,
+		required_tools: list[ToolSpec] | None = None,
 	) -> AsyncIterator[str]:
 		messages: list[MessageParam] = self._build_messages(
 			history
@@ -303,8 +305,6 @@ class AnthropicProvider(LLMProvider):
 			schema or {}
 		)
 
-		anthropic_tools = self._build_tools(tools)
-
 		# tools omitted entirely (not passed as None) when there aren't
 		# any — matches _build_tools' own contract; the SDK's own `tools`
 		# param type doesn't even accept None, only Iterable[...] or Omit.
@@ -315,8 +315,17 @@ class AnthropicProvider(LLMProvider):
 			"messages": messages,
 			"output_config": output_config,
 		}
-		if anthropic_tools:
-			stream_kwargs["tools"] = anthropic_tools
+		if required_tools:
+			# Forced round: restricted to *only* required_tools (never the
+			# full catalog) — Anthropic's own tool_choice "any" forces a
+			# call among whatever `tools` carries, so restricting the
+			# candidate set means restricting `tools` itself for this one call.
+			stream_kwargs["tools"] = self._build_tools(required_tools)
+			stream_kwargs["tool_choice"] = {"type": "any"}
+		else:
+			anthropic_tools = self._build_tools(tools)
+			if anthropic_tools:
+				stream_kwargs["tools"] = anthropic_tools
 
 		stop_reason: str | None = None
 		final_content: list[Any] = []

@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ai import AIServiceError
+from automaton.build_error import AutomatonBuildError
 from logging_factory import LoggerFactory
 from service_error import ServiceError
 
@@ -20,10 +21,17 @@ class ApiErrorHandlers:
     raise, each normalized to the same {error: {message, detail}} body."""
 
     @staticmethod
-    def _body(message: str, detail: str | None = None, code: str | None = None) -> dict:
+    def _body(message: str, detail: str | None = None, code: str | None = None, fields: dict | None = None) -> dict:
         body = {"error": {"message": message, "detail": detail}}
         if code is not None:
             body["error"]["code"] = code
+        if fields:
+            # Isolated key: never disturbs the flat message/detail/code
+            # shape every other error path already relies on. Only
+            # AutomatonBuildError populates this today (see
+            # AutomatonBuildError.fields — project_id/revision/file/line/
+            # section, whichever are actually known).
+            body["error"]["fields"] = fields
         return body
 
     @classmethod
@@ -58,7 +66,8 @@ class ApiErrorHandlers:
         any future subclass — in one handler, since Starlette resolves handlers
         by walking the exception's MRO rather than requiring an exact type match."""
         logger.exception("Service error on %s %s", request.method, request.url.path)
-        return JSONResponse(status_code=exc.status_code, content=cls._body(exc.message, exc.detail, exc.code))
+        fields = exc.fields() if isinstance(exc, AutomatonBuildError) else None
+        return JSONResponse(status_code=exc.status_code, content=cls._body(exc.message, exc.detail, exc.code, fields))
 
     @classmethod
     def register(cls, app: FastAPI) -> None:
