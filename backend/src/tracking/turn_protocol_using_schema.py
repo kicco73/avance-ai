@@ -139,6 +139,21 @@ class TurnProtocolUsingSchema(TurnProtocol):
 		"env_batch": "Plain text (not JSON): one '<N>:' header line per turn marked in the transcript (that turn's own [Turn N] number, always 1, 2, 3, ... with no gaps), followed by that turn's own 'key=value' lines (none when nothing changed), then a final line containing only the text [eof], e.g. \"1:\\nfavorite_color=blue\\n2:\\n[eof]\", rendered as text.",
 	}
 
+	def schema_overhead_text(self, tags: tuple[str, ...] | None = None) -> str:
+		"""Every fixed bit of text this protocol adds on top of the
+		caller's own prompt content for `tags` (defaults to include_tags)
+		— each tag's own preamble (see prompt_preambles) plus
+		SCHEMA_ORDER_PROMPT's field-order instructions, exactly as
+		_generate_reply/generate_reply_with_schema actually append them.
+		Exposed separately, read-only, so TrackingProcessor.
+		_enforce_input_budget can size it without a real generation call —
+		never used by the two methods above, which keep building their
+		own prompt independently."""
+		tags = tags if tags is not None else self.include_tags
+		preambles = "".join(self.prompt_preambles.get(tag, "") for tag in tags)
+		order = "\n".join(f'\t- {tag}' for tag in tags)
+		return f"{preambles}{SCHEMA_ORDER_PROMPT}\n{order}"
+
 	def _generate_reply(
 		self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,
 		tool_set: ToolSet | None = None, force_required_tools: bool = False,

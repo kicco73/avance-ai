@@ -179,10 +179,12 @@ class TrackingProcessor(object):
 	def generate_reply(self, state: State, on_metadata: MetadataCallback,
 	) -> AsyncIterator[str]:
 		base_prompt, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
-		remaining_history_budget = self._enforce_input_budget(base_prompt, signal_definition, reaction_definition, turn_attachments)
+		protocol = self.build_turn_protocol(state)
+		remaining_history_budget = self._enforce_input_budget(
+			base_prompt, signal_definition, reaction_definition, turn_attachments, protocol,
+		)
 		chat_history = self._build_chat_history(turn_attachments, remaining_history_budget)
 
-		protocol = self.build_turn_protocol()
 		return protocol.generate_reply(
 			base_prompt, signal_definition, self.env, chat_history, on_metadata,
 			reaction_definition=reaction_definition, tool_set=self.build_tool_set(state),
@@ -191,12 +193,20 @@ class TrackingProcessor(object):
 
 	def _enforce_input_budget(
 		self, base_prompt: str, signal_definition: str | None, reaction_definition: str | None,
-		turn_attachments: list,
+		turn_attachments: list, protocol: TurnProtocol | None = None,
 	) -> int | None:
 		budget = self.input_token_budget_per_turn
 		if budget is None:
 			return None
-		estimate = estimate_turn_request(base_prompt, signal_definition, reaction_definition, self.env, turn_attachments)
+		# The protocol's own fixed tag preambles + SCHEMA_ORDER_PROMPT are
+		# real prompt bytes the model actually sees, on top of base_prompt/
+		# signal_definition/reaction_definition — omitted here, the
+		# estimate used to under-count every request by that much.
+		schema_overhead = protocol.schema_overhead_text() if isinstance(protocol, TurnProtocolUsingSchema) else ""
+		estimate = estimate_turn_request(
+			base_prompt, signal_definition, reaction_definition, self.env, turn_attachments,
+			schema_overhead=schema_overhead,
+		)
 		if estimate.total_tokens > budget:
 			self._reject_over_budget(estimate, budget)
 		return budget - estimate.total_tokens
@@ -251,8 +261,11 @@ class TrackingProcessor(object):
 		"""Same base_prompt/chat_history generate_reply itself builds for
 		`state` — exposed single-underscore (rather than name-mangled) so
 		a caller can get those two pieces without the full TurnProtocol.generate_reply machinery."""
-		base_prompt, _signal_definition, _reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
-		remaining_history_budget = self._enforce_input_budget(base_prompt, None, None, turn_attachments)
+		base_prompt, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
+		protocol = self.build_turn_protocol(state)
+		remaining_history_budget = self._enforce_input_budget(
+			base_prompt, signal_definition, reaction_definition, turn_attachments, protocol,
+		)
 		return base_prompt, self._build_chat_history(turn_attachments, remaining_history_budget)
 
 	def _build_chat_history(self, turn_attachments: list, token_budget: int | None) -> list[dict]:
@@ -262,7 +275,15 @@ class TrackingProcessor(object):
 			self.db.get_turn_history(self.user.session_id, since, token_budget)
 		)
 
-	def build_turn_protocol(self) -> TurnProtocol:
+	def build_turn_protocol(self, state: State | None = None) -> TurnProtocol:
+		"""`state`: whichever state this turn's own reply is actually
+		about to be generated in — defaults to self.user.state (the
+		turn's own pre-transition state), but the regenerate-after-
+		transition path (TrackingProcessorAfterUserMessage) must pass its
+		own self.out.state instead: the gate below is about what's
+		triggerable from THAT state, not the one the turn started in."""
+		if state is None:
+			state = self.user.state
 		has_to_evaluate_signals_before_ai_reply = not self.user.automaton.autotracking_on_ai_message
 		talk_enabled = self.talk_enabled and self.user.automaton.talk_enabled
 		logger.info(
@@ -276,8 +297,13 @@ class TrackingProcessor(object):
 		# placeholder), so there's nothing real to evaluate yet. The
 		# "after" strategy evaluates the AI's own freshly-generated reply
 		# instead, which is real content even on an AI-started turn, so it
-		# isn't affected.
-		evaluate_signals = not (has_to_evaluate_signals_before_ai_reply and self.user.has_ai_started_conversation)
+		# isn't affected. Either way, asking for signals at all is pointless
+		# when nothing in `state` could even trigger from them — no
+		# definition in the prompt, no 'signals' field in the schema, no
+		# evaluation once the reply comes back.
+		evaluate_signals = (
+			not (has_to_evaluate_signals_before_ai_reply and self.user.has_ai_started_conversation)
+		) and bool(self.user.automaton.triggerable_signal_names(state.key))
 		return TurnProtocolUsingSchema(
 			self.ai_service, has_to_evaluate_signals_before_ai_reply, evaluate_signals=evaluate_signals,
 			reactions_enabled=self.user.automaton.reactions_enabled_for(self.user.state),

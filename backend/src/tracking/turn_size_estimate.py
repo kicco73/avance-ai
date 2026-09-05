@@ -28,9 +28,14 @@ class TurnSizeEstimate:
 
 def estimate_turn_request(
     base_prompt: str, signal_definition: str | None, reaction_definition: str | None,
-    env: Env, attachments: list[MemoryArchive],
+    env: Env, attachments: list[MemoryArchive], schema_overhead: str = "",
 ) -> TurnSizeEstimate:
-    prompt_text = base_prompt + (signal_definition or "") + (reaction_definition or "")
+    """`schema_overhead`: TurnProtocolUsingSchema.schema_overhead_text()
+    — the fixed tag preambles and SCHEMA_ORDER_PROMPT text the protocol
+    itself adds on top of base_prompt/signal_definition/reaction_definition
+    once it actually builds a request, which none of those three account
+    for on their own."""
+    prompt_text = base_prompt + (signal_definition or "") + (reaction_definition or "") + schema_overhead
     entries = [SizeEntry("prompt", "prompt", estimate_tokens(prompt_text))]
     for key, value in {**env.stored(), **env.action_set()}.items():
         entries.append(SizeEntry("env", key, estimate_tokens(f"{key}: {value}")))

@@ -10,7 +10,7 @@ import SettingsMenu from './SettingsMenu.vue'
 import StatusToggleButton from './StatusToggleButton.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import AppHeader from '../AppHeader.vue'
-import AppDetailPanel from '../appStore/AppDetailPanel.vue'
+import ProjectDetailPanel from './ProjectDetailPanel.vue'
 import ShareProjectDialog from './ShareProjectDialog.vue'
 import avanceLogoUrl from '../../assets/avance-logo.png'
 import avanceLogoLargeUrl from '../../assets/avance-logo-large.png'
@@ -39,7 +39,7 @@ const props = defineProps({
 // plain pass-through of SettingsMenu.vue's own emits; profile/logout are
 // the same pass-through of ProfileMenu.vue's own.
 const emit = defineEmits([
-  'new-project', 'upload', 'delete', 'edit', 'label', 'download', 'chat',
+  'new-project', 'upload', 'delete', 'edit', 'label', 'download',
   'manage-users', 'manage-services', 'app-store', 'about',
   'home', 'profile', 'logout'
 ])
@@ -78,7 +78,6 @@ function findIconFile(files) {
   return files.find((name) => ICON_FILE_RE.test(name)) ?? null
 }
 
-const openMenuFor = ref(null)
 const addMenuOpen = ref(false)
 // "Broken project" warnings counter/list — a durable audit trail (see
 // getProjectBrokenWarnings) distinct from each row's own live `broken`
@@ -128,10 +127,6 @@ function handleHeaderResize(entries) {
   }
 }
 
-function toggleActionsMenu(id) {
-  openMenuFor.value = openMenuFor.value === id ? null : id
-}
-
 function toggleAddMenu() {
   addMenuOpen.value = !addMenuOpen.value
 }
@@ -165,9 +160,6 @@ function selectUploadProject() {
 }
 
 function handleDocumentClick(event) {
-  if (openMenuFor.value && !event.target.closest('.manage-projects-actions-menu')) {
-    openMenuFor.value = null
-  }
   if (addMenuOpen.value && !event.target.closest('.manage-projects-add-menu')) {
     addMenuOpen.value = false
   }
@@ -304,10 +296,6 @@ function selectEdit(id) {
 
 function selectLabelSessions(id) {
   emit('label', id)
-}
-
-function selectChat(id) {
-  emit('chat', id)
 }
 
 function selectDownload(id) {
@@ -477,7 +465,7 @@ defineExpose({ refresh: load })
             </td>
             <td class="manage-projects-name">
               <div class="project-card">
-                <button type="button" class="project-card-icon-btn" title="Open chat" @click.stop="selectChat(row.id)">
+                <span class="project-card-icon-btn">
                   <img
                     v-if="iconFileById[row.id] && !iconFailedById[row.id]"
                     :src="projectFileContentUrl(row.id, iconFileById[row.id])"
@@ -486,8 +474,8 @@ defineExpose({ refresh: load })
                     @error="iconFailedById[row.id] = true"
                   />
                   <img v-else :src="avanceLogoUrl" class="project-card-fallback-logo" alt="" />
-                </button>
-                <button type="button" class="project-card-body" title="Edit project" @click.stop="selectEdit(row.id)">
+                </span>
+                <div class="project-card-body">
                   <span class="project-card-title-row">
                     <span class="project-card-title">{{ projectTitle(row.id) }}</span>
                     <span v-if="row.published_revision != null" class="project-card-rev">rev. {{ row.published_revision }}</span>
@@ -495,61 +483,6 @@ defineExpose({ refresh: load })
                     <span v-if="row.broken?.draft" class="project-card-draft-broken" :title="row.broken.draft">draft broken</span>
                   </span>
                   <span v-if="projectDescription(row.id)" class="project-card-desc">{{ projectDescription(row.id) }}</span>
-                  <!-- Hover/focus-only hint that clicking the body enters
-                       edit — the icon button above stays its own separate
-                       "open chat" target, so this only overlays the body. -->
-                  <span class="project-card-edit-hint">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-                    </svg>
-                  </span>
-                </button>
-                <div class="project-card-menu" @click.stop>
-                  <div class="manage-projects-actions-menu">
-                    <button type="button" class="manage-projects-menu-btn" title="More actions" @click="toggleActionsMenu(row.id)">⋮</button>
-                    <Transition name="manage-projects-menu-panel">
-                      <div v-if="openMenuFor === row.id" class="manage-projects-menu-panel">
-                        <ul class="manage-projects-menu-list">
-                          <li>
-                            <button type="button" class="manage-projects-menu-item" @click="selectLabelSessions(row.id); openMenuFor = null">
-                              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                                <path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.41l9 9c.36.36.86.59 1.41.59s1.05-.23 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM6.5 8C5.67 8 5 7.33 5 6.5S5.67 5 6.5 5 8 5.67 8 6.5 7.33 8 6.5 8z" />
-                              </svg>
-                              <span>Label sessions</span>
-                            </button>
-                          </li>
-                          <li>
-                            <button type="button" class="manage-projects-menu-item" @click="selectDownload(row.id); openMenuFor = null">
-                              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                                <path d="M12 3a1 1 0 0 1 1 1v9.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V4a1 1 0 0 1 1-1zM5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
-                              </svg>
-                              <span>Download project</span>
-                            </button>
-                          </li>
-                          <li>
-                            <button
-                              type="button"
-                              class="manage-projects-menu-item"
-                              @click="selectShare(row.id); openMenuFor = null"
-                            >
-                              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                                <path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM19 19h2v2h-2zM13 13h2v2h-2zM15 15h2v2h-2zM13 17h2v2h-2zM15 19h2v2h-2zM17 17h2v2h-2zM17 13h2v2h-2zM19 15h2v2h-2z" />
-                              </svg>
-                              <span>Share project</span>
-                            </button>
-                          </li>
-                          <li>
-                            <button type="button" class="manage-projects-menu-item manage-projects-menu-item-danger" @click="selectDelete(row.id); openMenuFor = null">
-                              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                                <path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
-                              </svg>
-                              <span>Delete project</span>
-                            </button>
-                          </li>
-                        </ul>
-                      </div>
-                    </Transition>
-                  </div>
                 </div>
               </div>
             </td>
@@ -586,15 +519,15 @@ defineExpose({ refresh: load })
       </div>
 
       <div class="manage-projects-preview">
-        <AppDetailPanel
+        <ProjectDetailPanel
           v-if="selectedAppStoreApp"
           :key="selectedAppStoreApp.id"
           :app="selectedAppStoreApp"
-          :show-free-badge="false"
-          hide-install-actions
-          try-button-label="Test"
-          :timed-session="false"
-          @open="selectChat"
+          @edit="selectEdit"
+          @label="selectLabelSessions"
+          @download="selectDownload"
+          @share="selectShare"
+          @delete="selectDelete"
         />
         <p v-else-if="selectedProjectId" class="manage-projects-status">This project hasn't been published yet — no preview available.</p>
         <p v-else class="manage-projects-status">Select a project to see its details.</p>
@@ -950,39 +883,16 @@ defineExpose({ refresh: load })
 }
 
 .project-card {
-  position: relative;
   box-sizing: border-box;
   display: flex;
-  /* stretch, not center — the icon/body buttons below must each span
-     the card's full height themselves, or hovering/clicking the empty
-     vertical space beside a short title (no description) would miss
-     both the edit hint and the edit click target entirely. */
   align-items: stretch;
   gap: 0.6rem;
   width: 100%;
   max-width: 320px;
-  /* Right-padded to clear the corner menu overlay below — its own
-     absolute positioning takes it out of flow, so this is what actually
-     keeps the title/rev-badge from running underneath it. */
-  padding: 0.5rem 2.6rem 0.5rem 0.7rem;
+  padding: 0.5rem 0.7rem;
   border: 1px solid #eee;
   border-radius: 8px;
   background: #fafafa;
-}
-
-/* The "..." more-actions menu — top-right corner of the card itself
-   (see manage-projects-actions-menu below for the button/panel it
-   wraps), not a separate column beside the row. */
-.project-card-menu {
-  position: absolute;
-  top: 0.35rem;
-  right: 0.35rem;
-}
-
-.project-card-menu .manage-projects-menu-btn {
-  width: 2rem;
-  height: 2rem;
-  font-size: 1rem;
 }
 
 .project-card-icon-btn {
@@ -991,10 +901,7 @@ defineExpose({ refresh: load })
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: none;
   border-radius: 15px;
-  background: none;
-  cursor: pointer;
 }
 
 .project-card-icon {
@@ -1003,7 +910,6 @@ defineExpose({ refresh: load })
   height: 65px;
   border-radius: 15px;
   object-fit: cover;
-  transition: transform 0.15s ease;
 }
 
 .project-card-fallback-logo {
@@ -1012,14 +918,6 @@ defineExpose({ refresh: load })
   height: 65px;
   object-fit: contain;
   opacity: 0.25;
-  transition: transform 0.15s ease;
-}
-
-.project-card-icon-btn:hover .project-card-icon,
-.project-card-icon-btn:hover .project-card-fallback-logo,
-.project-card-icon-btn:focus-visible .project-card-icon,
-.project-card-icon-btn:focus-visible .project-card-fallback-logo {
-  transform: scale(1.12);
 }
 
 .project-card-body {
@@ -1029,40 +927,6 @@ defineExpose({ refresh: load })
   flex-direction: column;
   justify-content: center;
   gap: 0.1rem;
-  padding: 0;
-  border: none;
-  background: none;
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
-}
-
-/* Hidden until the body itself is hovered/focused — hints that clicking
-   it (as opposed to the icon button, which opens live chat instead)
-   enters edit. Sized off .project-card itself (the nearest positioned
-   ancestor, since project-card-body no longer is one) so it covers the
-   whole card, not just the body's own narrower box. */
-.project-card-edit-hint {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  /* White, not the card's own blue — a blue-tinted wash at any real
-     strength competed with the (also blue) pencil icon sitting on top
-     of it, so this lightens the card as a clear "you're hovering the
-     edit target" cue instead. */
-  background: rgba(255, 255, 255, 0.75);
-  color: #4a6fa5;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-  pointer-events: none;
-}
-
-.project-card-body:hover .project-card-edit-hint,
-.project-card-body:focus-visible .project-card-edit-hint {
-  opacity: 1;
 }
 
 .project-card-title-row {
@@ -1176,97 +1040,5 @@ defineExpose({ refresh: load })
   border-radius: 999px;
   background: #4a6fa5;
   transition: width 0.3s ease;
-}
-
-.manage-projects-actions-menu {
-  position: relative;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.manage-projects-menu-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.88rem;
-  height: 2.88rem;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: #4a6fa5;
-  cursor: pointer;
-  font-size: 1.3rem;
-  line-height: 1;
-}
-
-.manage-projects-menu-btn:hover {
-  background: #f0f4fa;
-}
-
-.manage-projects-menu-panel {
-  position: absolute;
-  top: calc(100% + 0.2rem);
-  right: 0;
-  min-width: 12rem;
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  z-index: 100;
-  overflow: hidden;
-  transform-origin: top right;
-}
-
-.manage-projects-menu-panel-enter-active,
-.manage-projects-menu-panel-leave-active {
-  transition: opacity 0.15s ease, transform 0.15s ease;
-}
-
-.manage-projects-menu-panel-enter-from,
-.manage-projects-menu-panel-leave-to {
-  opacity: 0;
-  transform: translateY(-6px) scale(0.96);
-}
-
-.manage-projects-menu-list {
-  list-style: none;
-  margin: 0;
-  padding: 0.3rem 0;
-}
-
-.manage-projects-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  width: 100%;
-  text-align: left;
-  padding: 0.5rem 0.9rem;
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: 0.85rem;
-  color: #4a6fa5;
-}
-
-.manage-projects-menu-item:hover {
-  background: #f0f4fa;
-}
-
-.manage-projects-menu-item svg {
-  flex-shrink: 0;
-  color: #4a6fa5;
-}
-
-.manage-projects-menu-item-danger {
-  color: #c62828;
-}
-
-.manage-projects-menu-item-danger svg {
-  color: #c62828;
-}
-
-.manage-projects-menu-item-danger:hover {
-  background: #fdecea;
 }
 </style>

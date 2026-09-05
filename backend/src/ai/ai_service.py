@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import threading
 import time
 from collections import OrderedDict
@@ -21,6 +22,7 @@ from ai.llm_provider import (
 from ai._providers.cascading_llm_provider import AutoLiveLLMProvider, AutoTestLLMProvider
 from ai._providers import gemini_provider_v2, openai_provider_v2, anthropic_provider_v2
 from db import Db
+from session import Session
 from token_estimate import estimate_tokens
 from logging_factory import LoggerFactory
 
@@ -41,6 +43,36 @@ logger = LoggerFactory.get_logger(__name__)
 # looping, so AiService gives up with a clear error rather than running
 # away with API calls.
 MAX_TOOL_ROUNDS = 5
+
+
+def estimate_history_tokens(turn_history: list[dict[str, Any]]) -> int:
+	"""turn_history's own rough size, for _enforce_input_budget — content_to_text
+	alone can't handle every shape a tool-calling round appends there: an
+	assistant tool-call message's own {"role": "assistant", "tool_calls":
+	[...], "content": ...} can carry None as `content` (nothing said
+	before the call) or a provider-specific opaque replay payload (e.g.
+	Gemini's own {"gemini_parts": [...]}) — content_to_text has no
+	meaningful text for either shape and raises trying to iterate them.
+	What actually counts toward size there is the call arguments
+	themselves, since those are what round-trips back to the model on the
+	next round; a replay payload is opaque parts, not text, and counts as
+	nothing. A 'tool' result message's own `content` is always a plain
+	string (see ToolSet.call, which never raises). Every other message
+	(str or list-of-blocks content) is exactly what content_to_text
+	already handles, unchanged."""
+	pieces: list[str] = []
+	for message in turn_history:
+		content = message.get("content")
+		if message.get("role") == "assistant" and "tool_calls" in message:
+			if isinstance(content, str):
+				pieces.append(content)
+			pieces.extend(json.dumps(call.arguments) for call in message["tool_calls"])
+		elif message.get("role") == "tool":
+			assert isinstance(content, str)
+			pieces.append(content)
+		else:
+			pieces.append(content_to_text(content))
+	return estimate_tokens("\n".join(pieces))
 
 class LRUCache(OrderedDict):
 	def __init__(self, maxsize: int = 128) -> None:
@@ -347,17 +379,34 @@ class AiService(object):
 
 		return tap
 
-	def _enforce_input_budget(self, system_prompt: str, turn_history: list[dict[str, Any]]) -> None:
+	def _enforce_input_budget(
+		self, system_prompt: str, turn_history: list[dict[str, Any]], tool_set: "ToolSet",
+		tool_call_records: list[dict[str, Any]], round_number: int,
+	) -> None:
 		if self._input_token_budget_per_turn is None:
 			return
-		history_text = "\n".join(content_to_text(message["content"]) for message in turn_history)
-		total = estimate_tokens(system_prompt) + estimate_tokens(history_text)
+		total = estimate_tokens(system_prompt) + estimate_history_tokens(turn_history)
 		if total <= self._input_token_budget_per_turn:
 			return
-		raise ChatServiceError(
+		message = (
 			f"This request's own estimated size (~{total} tokens, including accumulated tool results) is "
-			f"over the {self._input_token_budget_per_turn}-token input-token-budget-per-turn cap.",
-			status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE, code="input_budget_exceeded",
+			f"over the {self._input_token_budget_per_turn}-token input-token-budget-per-turn cap."
+		)
+		if self._db is not None:
+			def _entry_tokens(record: dict[str, Any]) -> int:
+				return estimate_tokens(json.dumps(record["arguments"])) + estimate_tokens(record["result"])
+			heaviest = sorted(tool_call_records, key=_entry_tokens, reverse=True)[:3]
+			heaviest_text = "; ".join(
+				f"{record['name']}({record['arguments']}) ~{_entry_tokens(record)} tok" for record in heaviest
+			)
+			warning_message = (
+				f"{message} Session {tool_set.session_id} (project '{tool_set.project_id}'), round "
+				f"{round_number}, ~{total} tokens total. Heaviest accumulated tool result(s): {heaviest_text}."
+			)
+			logger.warning(warning_message)
+			self._db.save_system_warning(Session().user, tool_set.project_id, "input_budget_exceeded", warning_message)
+		raise ChatServiceError(
+			message, status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE, code="input_budget_exceeded",
 		)
 
 	async def generate_stream_with_metadata(
@@ -407,6 +456,10 @@ class AiService(object):
 		# never re-derived from _tap_token_usage's own AiTokenUsage writes,
 		# which reset per round by design (see its own docstring).
 		input_tokens_by_round: list[int] = []
+		# One {name, arguments, result} entry per call across every round so
+		# far — for _enforce_input_budget's own SystemWarning, naming the
+		# heaviest accumulated results if a later round goes over budget.
+		tool_call_records: list[dict[str, Any]] = []
 
 		def _tally_input_tokens(name: str, value: Any) -> None:
 			if name == "input_tokens":
@@ -414,7 +467,7 @@ class AiService(object):
 			tapped_on_metadata(name, value)
 
 		for round_number in range(1, MAX_TOOL_ROUNDS + 1):
-			self._enforce_input_budget(system_prompt, turn_history)
+			self._enforce_input_budget(system_prompt, turn_history, tool_set, tool_call_records, round_number)
 			# Only the first round of the first turn since ai-must-query-
 			# sources' own state was entered is ever restricted — every
 			# later round in this same turn, and every turn after the
@@ -460,6 +513,7 @@ class AiService(object):
 						"summary_text": tool_set.summary_text(call.name, call.arguments, result),
 					})
 					turn_history.append({"role": "tool", "tool_call_id": call.id, "content": result})
+					tool_call_records.append({"name": call.name, "arguments": call.arguments, "result": result})
 				continue
 
 			logger.info(

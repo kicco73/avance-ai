@@ -114,6 +114,13 @@ class ToolSet:
         generate_stream_with_metadata) only; nothing else here needs it."""
         return self._namespace.session_id
 
+    @property
+    def project_id(self) -> str:
+        """Forwarded from this ToolSet's own SourceNamespace — AiService
+        has no other way to name the project a SystemWarning over budget
+        belongs to (see its own _enforce_input_budget)."""
+        return self._namespace.project_id
+
     def specs(self) -> list[ToolSpec]:
         return list(self._specs)
 
@@ -194,6 +201,10 @@ class SourceNamespace:
     @property
     def session_id(self) -> int | None:
         return self._session_id
+
+    @property
+    def project_id(self) -> str:
+        return self._automaton.project_id
 
     def __getattr__(self, name: str) -> Any:
         if name.startswith("__"):

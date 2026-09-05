@@ -113,7 +113,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			# would be wasted and must not trigger a second trigger
 			# evaluation, so this regeneration only ever requests audio/text/env.
 			base_prompt, chat_history = self._build_base_prompt_and_history(self.out.state)
-			async for chunk in self.build_turn_protocol().generate_reply_with_schema(
+			async for chunk in self.build_turn_protocol(self.out.state).generate_reply_with_schema(
 				base_prompt, self.env,
 				tag_specs=[('audio', 'audio'), ('text', 'text'), ('env', 'env')],
 				chat_history=chat_history,
