@@ -580,7 +580,7 @@ async def test_a_system_prompt_is_sent_as_stable_then_volatile_concatenated():
         SystemPrompt(stable="stable part", volatile="volatile part"), [], {"text": "t"},
     ))
 
-    assert fake_client.aio.models.calls[0]["config"].system_instruction == "stable partvolatile part"
+    assert fake_client.aio.models.calls[0]["config"].system_instruction == "stable part\n\nvolatile part"
 
 
 # (i) cache-read accounting — already folded into prompt_token_count, so
@@ -600,6 +600,28 @@ async def test_cache_read_tokens_are_reported_and_input_tokens_is_untouched():
     assert ("cache_read_tokens", 40) in events
     assert ("cache_creation_tokens", 0) in events
     assert ("input_tokens", 50) in events
+
+
+async def test_a_later_chunk_missing_the_cache_field_keeps_the_earlier_chunks_value():
+    # Same accumulate-only-if-present pattern as total/prompt/candidates
+    # token counts above — a later chunk that simply doesn't repeat
+    # cached_content_token_count must not reset it back to 0.
+    responses = [[
+        _FakeChunk(usage_metadata=_FakeUsage(
+            prompt_token_count=50, candidates_token_count=1, cached_content_token_count=40,
+        )),
+        _FakeChunk(
+            candidates=[_FakeCandidate(finish_reason=types.FinishReason.STOP)],
+            usage_metadata=_FakeUsage(prompt_token_count=50, candidates_token_count=5),
+            text='{"text": "hi"}',
+        ),
+    ]]
+    provider, _ = _provider(responses)
+    events: list[tuple[str, object]] = []
+
+    await _drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}, on_metadata=lambda k, v: events.append((k, v))))
+
+    assert ("cache_read_tokens", 40) in events
 
 
 async def test_a_usage_with_no_cache_field_reports_zero_cache_read():

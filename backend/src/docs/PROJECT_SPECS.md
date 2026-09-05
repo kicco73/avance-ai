@@ -188,7 +188,9 @@ fails the build with the same "undefined name(s): source.<name>.update"
 message a script calling it would get. An `avance:env` source in
 `ai-may-write-sources` but in neither read field of the same state builds
 with a **warning** (the model would write variables it never sees), not
-an error.
+an error. An `avance:env` source in `ai-may-write-sources` with **no**
+`ai-access: readwrite` key at all *is* a build error — the model's
+`update` tool would have nothing it could ever write.
 
 No field has a project-wide default, deliberately: a tool catalog costs
 real tokens on **every** turn in that state, whether or not the model

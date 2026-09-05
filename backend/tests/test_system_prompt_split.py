@@ -120,5 +120,10 @@ def test_coerce_leaves_an_existing_system_prompt_untouched():
     assert SystemPrompt.coerce(original) is original
 
 
-def test_full_text_concatenates_stable_then_volatile_with_no_separator_of_its_own():
-    assert SystemPrompt(stable="a", volatile="b").full_text() == "ab"
+def test_full_text_joins_stable_and_volatile_with_a_blank_line_when_both_are_non_empty():
+    assert SystemPrompt(stable="a", volatile="b").full_text() == "a\n\nb"
+
+
+def test_full_text_adds_no_separator_when_either_half_is_empty():
+    assert SystemPrompt(stable="a", volatile="").full_text() == "a"
+    assert SystemPrompt(stable="", volatile="b").full_text() == "b"

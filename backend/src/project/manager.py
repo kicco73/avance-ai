@@ -56,6 +56,15 @@ class ProjectManager:
         self._session_import_manager = session_import_manager
         self._session_manager = session_manager
         self._health_checker = ProjectHealthChecker(db, automaton_loader)
+        # project_id currently inside recompute_availability, for
+        # _on_revision_build_failed alone (see its own docstring) —
+        # load_at_revision, called from inside check() below, can itself
+        # synchronously publish ProjectRevisionBuildFailed for this same
+        # project_id (a build failure discovered *during* this very
+        # recompute), which would otherwise reenter recompute_availability
+        # before this call's own previous_health/_last bookkeeping settles
+        # and fire ProjectPublishedHealthChanged twice for one transition.
+        self._recomputing: set[str] = set()
 
     @staticmethod
     def _automaton_project_refs(automaton: Automaton) -> set[str]:
@@ -91,34 +100,45 @@ class ProjectManager:
         available. Writes only on change — this is what makes it safe to
         call from a cascade with no cycle detection. A broken *draft* with
         a healthy published revision never pauses anything — see
-        ensure_project_not_broken for that case's own, separate gate."""
-        previous_health = self._health_checker.last_checked(project_id)
-        health = self._health_checker.check(project_id)
-        self._notify_published_health_change(project_id, previous_health, health)
+        ensure_project_not_broken for that case's own, separate gate.
+        Reentrant-safe for this exact project_id (see self._recomputing's
+        own docstring): a build failure discovered mid-call — inside
+        check() below — publishes ProjectRevisionBuildFailed synchronously,
+        which _on_revision_build_failed refuses to act on while this same
+        project is already being recomputed one level up, so
+        previous_health/_last settle exactly once per real call, never
+        twice for one transition."""
+        self._recomputing.add(project_id)
+        try:
+            previous_health = self._health_checker.last_checked(project_id)
+            health = self._health_checker.check(project_id)
+            self._notify_published_health_change(project_id, previous_health, health)
 
-        if self._db.get_manually_paused(project_id):
-            available, reason = False, "Manually paused."
-        elif health.published is not None and health.published.error is not None:
-            available, reason = False, health.published.error
-        else:
-            available, reason = True, None
-            blocking = None
-            for dep_id in self._db.get_observed_projects(project_id):
-                is_unavailable, label = self._dependency_unavailable(dep_id)
-                if is_unavailable:
-                    blocking = label
-                    break
-            if blocking is not None:
-                available, reason = False, f"Depends on unavailable project '{blocking}'."
+            if self._db.get_manually_paused(project_id):
+                available, reason = False, "Manually paused."
+            elif health.published is not None and health.published.error is not None:
+                available, reason = False, health.published.error
+            else:
+                available, reason = True, None
+                blocking = None
+                for dep_id in self._db.get_observed_projects(project_id):
+                    is_unavailable, label = self._dependency_unavailable(dep_id)
+                    if is_unavailable:
+                        blocking = label
+                        break
+                if blocking is not None:
+                    available, reason = False, f"Depends on unavailable project '{blocking}'."
 
-        current = self._db.get_project_availability(project_id)
-        if current is None:
-            return  # project no longer exists — nothing left to update
-        was_paused, _ = current
-        if was_paused == (not available):
-            return  # unchanged — see this method's own docstring on why this is the whole guard
-        self._db.set_project_availability(project_id, is_paused=not available, paused_reason=reason)
-        publish(AvailabilityChanged(project_id=project_id, available=available))
+            current = self._db.get_project_availability(project_id)
+            if current is None:
+                return  # project no longer exists — nothing left to update
+            was_paused, _ = current
+            if was_paused == (not available):
+                return  # unchanged — see this method's own docstring on why this is the whole guard
+            self._db.set_project_availability(project_id, is_paused=not available, paused_reason=reason)
+            publish(AvailabilityChanged(project_id=project_id, available=available))
+        finally:
+            self._recomputing.discard(project_id)
 
     def _notify_published_health_change(
         self, project_id: str, previous: ProjectHealth | None, current: ProjectHealth,
@@ -194,7 +214,17 @@ class ProjectManager:
         until now (see _filter_resolvable_project_ids silently dropping
         it) — those can only be found by re-scanning every project's raw
         triggers directly, and need their own observer-index row
-        refreshed before a recompute of theirs means anything."""
+        refreshed before a recompute of theirs means anything. Before that
+        Every cached build failure is dropped first, for every project
+        (see AutomatonLoader.clear_all_build_failures's own docstring):
+        whatever just changed here (a new id/family starting to exist, an
+        old one stopping) may be exactly what made some other project's
+        build fail or newly succeed, and a project that failed only
+        because it referenced this id/family has no observer-index entry
+        to find it by — its own load() below would otherwise just replay
+        a stale cached failure instead of actually retrying. Rare event,
+        cheap to over-clear (see that method's own docstring)."""
+        self._automaton_loader.clear_all_build_failures()
         affected: set[str] = set(self._db.get_observers(old_project_id))
 
         if new_project_id is not None:
@@ -238,6 +268,16 @@ class ProjectManager:
             )
 
     def _on_revision_build_failed(self, event: ProjectRevisionBuildFailed) -> None:
+        """Never reenters for a project_id already mid-recompute (see
+        self._recomputing's own docstring) — that outer call's own check()
+        is exactly what triggered this event in the first place (a build
+        failure discovered while loading the revision it's currently
+        checking), and it will see the very same failure once its own
+        load_at_revision call raises. Reentering here would let a stale
+        previous_health snapshot fire ProjectPublishedHealthChanged twice
+        for one real transition."""
+        if event.project_id in self._recomputing:
+            return
         try:
             self.recompute_availability(event.project_id)
         except Exception:

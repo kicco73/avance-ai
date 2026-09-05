@@ -289,6 +289,84 @@ def test_project_health_notifications_submits_a_job_on_the_event(db):
     assert isinstance(submitted[0], ProjectHealthNotificationJob)
 
 
+# --- A cached build failure that depended on another project's identity ---
+
+
+DEP_YML = """
+project:
+  id: dep
+  family: fam5
+env:
+  flag:
+    value: "'x'"
+init-action:
+  target: a
+states:
+  a:
+    ui-label: A
+    contextual-prompt: hi
+"""
+
+WATCHER_YML = """
+project:
+  id: watcher_a
+  family: fam5
+init-action:
+  target: a
+states:
+  a:
+    ui-label: A
+    contextual-prompt: hi
+    actions:
+      - name: notice
+        target: a
+        trigger: "automaton.dep.env.flag == 'x'"
+"""
+
+
+def test_a_stale_build_failure_that_depended_on_a_deleted_and_recreated_project_clears_itself(
+    db, project_service,
+):
+    """watcher_a's own self-loop trigger references automaton.dep.env.flag
+    — resolved at *build* time against whichever projects currently exist
+    in its own family (AutomatonLoader.known_projects_env_keys), not just
+    checked for runtime availability. Deleting 'dep' and forcing a fresh
+    build of watcher_a while it's gone makes that build genuinely fail
+    (not just "unavailable") — AutomatonLoader caches that failure per
+    (project_id, revision), keyed on watcher_a alone, with nothing
+    watching for 'dep' to come back. Recreating 'dep' must still heal
+    watcher_a without a restart (see ProjectManager._recheck_dependents_
+    of_changed_id's own clear_all_build_failures call)."""
+    _publish(db, project_service, "dep", DEP_YML)
+    _publish(db, project_service, "watcher_a", WATCHER_YML)
+    assert db.get_project_availability("watcher_a") == (False, None)  # available
+
+    async def commit(_project_id, _automaton):
+        pass
+
+    asyncio.run(project_service._manager.delete_project("dep", commit))
+    project_service.recompute_availability("watcher_a")
+    assert db.get_project_availability("watcher_a")[0] is True  # paused: dep unavailable
+
+    # Force watcher_a's own cached (still-successful) automaton out, then
+    # check while 'dep' is still gone — this is what actually makes
+    # watcher_a's *build* fail (a real AutomatonBuildError, not just a
+    # dependency-unavailable pause) and cache that failure.
+    project_service._manager._automaton_loader.invalidate_cache("watcher_a")
+    health = project_service._manager._health_checker.current("watcher_a")
+    assert health.published is not None and "automaton.dep" in health.published.error
+    cache_key = ("watcher_a", db.get_project_published_revision("watcher_a"))
+    assert cache_key in project_service._manager._automaton_loader._build_failures
+
+    _publish(db, project_service, "dep", DEP_YML)  # recreated, same id/family
+
+    # No explicit recompute_availability("watcher_a") call here — recreating
+    # 'dep' alone must be what heals it.
+    is_paused, reason = db.get_project_availability("watcher_a")
+    assert is_paused is False
+    assert reason is None
+
+
 # --- Lazy recompute: a build failure discovered outside any save/publish ---
 
 
@@ -328,11 +406,20 @@ states:
 
 def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_field(db, project_service):
     """Stands in for main.py's own boot sequence (Db(...) then
-    recompute_all_availability(), with nothing in between touching stored
-    revisions anymore — see PROJECT_SPECS.md §8's own note): an already-
-    published revision still declaring the long-removed `tools:` field is
-    never rewritten, only paused, with the builder's own message surfaced
-    as a project_broken SystemWarning."""
+    register_availability_cascade(), then recompute_all_availability(),
+    with nothing in between touching stored revisions anymore — see
+    PROJECT_SPECS.md §8's own note): an already-published revision still
+    declaring the long-removed `tools:` field is never rewritten, only
+    paused, with the builder's own message surfaced as a project_broken
+    SystemWarning — exactly once, not twice. The cascade being wired up
+    (as it really is at boot) is what makes this a regression test for
+    ProjectManager's own reentrancy guard: recompute_all_availability's
+    own recompute_availability call discovers the broken build inside
+    ProjectHealthChecker.check(), which publishes ProjectRevisionBuildFailed
+    synchronously — with no guard, that reenters recompute_availability for
+    the same project before the outer call's own previous_health/_last
+    bookkeeping settles, firing ProjectPublishedHealthChanged (and so this
+    SystemWarning/push) twice for one real transition."""
     _publish(db, project_service, "old_format", VALID_YML)
     revision = db.get_project_published_revision("old_format")
     from db.models import Archive
@@ -346,6 +433,7 @@ def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_fiel
     ws_adapter = FakeWsAdapter()
     notifications = ProjectHealthNotifications(db, _SyncJobService(), ws_adapter)
     notifications.register()
+    project_service.register_availability_cascade()
 
     project_service.recompute_all_availability()
 
@@ -360,6 +448,7 @@ def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_fiel
     assert len(warnings) == 1
     assert warnings[0]["kind"] == "project_broken"
     assert "'tools' is no longer a valid field" in warnings[0]["message"]
+    assert len(ws_adapter.pushed) == 1
 
 
 class _SyncJobService:

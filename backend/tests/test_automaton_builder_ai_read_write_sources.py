@@ -197,6 +197,22 @@ sources:
     ai-definition: The automaton's variables.
 """)
 
+    def test_a_write_source_with_no_readwrite_key_at_all_is_rejected(self):
+        # readonly-only is a real, buildable env source for select() — but
+        # writing to it would give the model an `update` tool whose
+        # `fields` schema can never have a single property.
+        with pytest.raises(ValueError, match="ai-may-write-sources 'env'.*no env key declares 'ai-access: readwrite'"):
+            _build("    ai-may-write-sources: [env]", """
+env:
+  customer_email:
+    ai-access: readonly
+    ai-definition: The customer's email.
+sources:
+  env:
+    url: avance:env
+    ai-definition: The automaton's variables.
+""")
+
     def test_exported_keys_with_no_env_source_build_fine(self):
         automaton = _build("", """
 env:

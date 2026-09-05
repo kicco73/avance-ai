@@ -6,7 +6,7 @@ import threading
 import time
 from collections import OrderedDict
 from http import HTTPStatus
-from typing import Any, AsyncIterator, Sequence, TYPE_CHECKING, overload
+from typing import Any, AsyncIterator, Protocol, Sequence, TYPE_CHECKING, overload
 
 import partial_json_parser
 from chat.errors import ChatServiceError
@@ -51,6 +51,15 @@ _TOOL_ERROR_DIRECTIVE = (
 	" This call failed — no data was returned. Tell the user the lookup could not be completed; "
 	"never invent data to fill the gap."
 )
+
+
+class ToolAbortDecider(Protocol):
+	"""Structural — anything with a `should_abort_tools()` method conforms
+	(see tracking.tracking_processor.TrackingProcessor's own
+	implementation). generate_stream_with_metadata consults this, never a
+	bare Callable, so the caller passes the object that actually owns the
+	turn's own signals/transition state rather than a closure over it."""
+	def should_abort_tools(self) -> bool: ...
 
 
 def estimate_history_tokens(turn_history: list[dict[str, Any]]) -> int:
@@ -438,17 +447,30 @@ class AiService(object):
 		# force_required_tools_for) — meaningless (and ignored) with no
 		# tool_set, or a tool_set with nothing in required_specs().
 		force_required_tools: bool = False,
+		# Consulted only when a round ends in ToolCallsRequested — None
+		# (the default, and every caller before this parameter existed)
+		# means never abort, i.e. always resolve the calls and continue,
+		# same as before this existed. A caller that knows this turn's own
+		# signals already resolved into a transition (see
+		# tracking.tracking_processor.TrackingProcessor.should_abort_tools)
+		# passes itself here so a tool round requested past that point is
+		# discarded instead of run — its reply would only ever be thrown
+		# away and regenerated in the new state anyway.
+		tool_abort: "ToolAbortDecider | None" = None,
 	) -> AsyncIterator[str]:
-		"""With no tool_set, this is exactly the single call it always was
-		— same request, same live incremental parsing/yielding, byte for
-		byte (see _stream_final_answer, unchanged from before tools
-		existed). With one, the model may end a round asking for tools
-		instead of answering: that round's own text (the model rarely
-		produces any under a JSON-schema response, but nothing here
-		assumes it doesn't) is drained and discarded, never yielded here —
-		only the round that finally completes without a further
-		ToolCallsRequested streams outward, so the partial-JSON parser
-		below never has to reason about a tool-only interruption."""
+		"""Every round — with or without a tool_set — streams live through
+		the exact same incremental partial-JSON parser as it arrives
+		(_stream_final_answer): no round is ever collected into a list
+		and replayed after the fact. A round may end asking for tools
+		instead of completing; unless `tool_abort` says otherwise (see
+		above), those calls are resolved and a further round continues
+		the turn, its own text deltas simply picking up after whatever
+		this round already streamed. `emitted` (which schema fields have
+		already been delivered to `on_metadata`) is shared across every
+		round of one turn, so a field a tool-interrupted round already
+		delivered is never delivered again by a later round's own parser
+		— which otherwise starts from scratch each round, since each is a
+		genuinely separate model response."""
 		provider_label = self._current_provider_label
 		tapped_on_metadata = self._tap_token_usage(on_metadata, provider_label)
 
@@ -483,6 +505,12 @@ class AiService(object):
 				input_tokens_by_round.append(value)
 			tapped_on_metadata(name, value)
 
+		# Shared across every round of this turn (see this method's own
+		# docstring) — never reset per round, unlike accumulated_json/
+		# last_text_length inside _stream_final_answer, which are genuinely
+		# fresh each round since each is a separate model response.
+		emitted: set[str] = set()
+
 		for round_number in range(1, MAX_TOOL_ROUNDS + 1):
 			self._enforce_input_budget(system_prompt, turn_history, tool_set, tool_call_records, round_number)
 			# Only the first round of the first turn since ai-must-query-
@@ -501,8 +529,20 @@ class AiService(object):
 				tool_round=round_number, required_tools=required_this_round,
 			) # type: ignore
 			try:
-				round_chunks = [chunk async for chunk in response_stream]
+				# Live, exactly like the no-tool-set path above — this
+				# round's own text/metadata reach the caller as they
+				# arrive, never buffered until the round's own end.
+				async for chunk in self._stream_final_answer(
+					response_stream, schema, tapped_on_metadata, provider_label, emitted=emitted,
+				):
+					yield chunk
 			except ToolCallsRequested as requested:
+				if tool_abort is not None and tool_abort.should_abort_tools():
+					logger.info(
+						f"generate_stream_with_metadata: tool round {round_number} requested after this turn's own "
+						f"signals already resolved into a transition — discarding, no further round"
+					)
+					return
 				turn_history.append({
 					"role": "assistant", "tool_calls": requested.calls, "content": requested.assistant_content,
 				})
@@ -538,13 +578,6 @@ class AiService(object):
 				f"generate_stream_with_metadata: turn done, provider={provider_label} rounds={round_number} "
 				f"total_input_tokens={sum(input_tokens_by_round)}"
 			)
-			# The stream ended with no further tool request — the model's
-			# real final answer, already fully collected above; replay it
-			# through the exact same parser a live stream would use.
-			async for chunk in self._stream_final_answer(
-				self._as_async_iter(round_chunks), schema, tapped_on_metadata, provider_label,
-			):
-				yield chunk
 			return
 
 		logger.info(
@@ -554,13 +587,8 @@ class AiService(object):
 		response_stream = self._active_provider.generate_stream_with_schema(
 			system_prompt, turn_history, schema=schema, on_metadata=tapped_on_metadata,
 		) # type: ignore
-		async for chunk in self._stream_final_answer(response_stream, schema, tapped_on_metadata, provider_label):
+		async for chunk in self._stream_final_answer(response_stream, schema, tapped_on_metadata, provider_label, emitted=emitted):
 			yield chunk
-
-	@staticmethod
-	async def _as_async_iter(items: list[str]) -> AsyncIterator[str]:
-		for item in items:
-			yield item
 
 	async def _stream_final_answer(
 		self,
@@ -568,17 +596,46 @@ class AiService(object):
 		schema: dict[str, str],
 		on_metadata: MetadataCallback,
 		provider_label: str,
+		# Which schema fields this *turn* (not just this round) has already
+		# delivered to `on_metadata` — shared across every round a
+		# tool-calling turn runs (see generate_stream_with_metadata's own
+		# docstring), so a field a tool-interrupted round already delivered
+		# is never delivered again by a later round's own parser, which
+		# otherwise starts from scratch each round. None (every caller
+		# before tool rounds existed) means this is the turn's only round —
+		# a fresh, local set, exactly the old behavior.
+		emitted: set[str] | None = None,
 	) -> AsyncIterator[str]:
 		"""The model's own actual answer to `schema` — incremental
-		partial-JSON parsing exactly as generate_stream_with_metadata
-		always did it, before tool calls existed. `response_stream` is
-		either the live provider call directly (no tool_set) or an
-		already-fully-collected round's chunks replayed in order (a tool
-		turn's own final round) — this method has no way to tell the two
-		apart, and doesn't need to."""
+		partial-JSON parsing, live, chunk by chunk, exactly as
+		generate_stream_with_metadata always did it before tool calls
+		existed. `response_stream` is always the live provider call
+		directly — with a tool_set, one call per round, this method run
+		fresh (own accumulated_json/last_text_length) for each; `emitted`
+		is the only state carried from one round's own call to the next."""
+		if emitted is None:
+			emitted = set()
 		accumulated_json = ""
-		emitted: set[str] = set()
 		last_text_length = 0
+
+		def _deliver_last_field() -> None:
+			# The one field this round's own live loop below could never
+			# have delivered as "completed": whichever key is still last in
+			# accumulated_json never got superseded by a later key to prove
+			# it finished, since the stream itself ended (or was
+			# interrupted by a tool call) right there. Empty accumulated_json
+			# (a round that requested a tool before streaming anything at
+			# all — the common case with a JSON-schema response) has
+			# nothing to parse; partial_json_parser itself raises on "".
+			if not accumulated_json:
+				return
+			final_parsed = partial_json_parser.parse_json(accumulated_json)
+			if not isinstance(final_parsed, dict) or not final_parsed:
+				return
+			last_inserted = next(reversed(final_parsed))
+			if last_inserted != 'text' and last_inserted not in emitted:
+				on_metadata(last_inserted, final_parsed[last_inserted])
+				emitted.add(last_inserted)
 
 		try:
 			async for chunk in response_stream:
@@ -604,6 +661,17 @@ class AiService(object):
 						delta = current_text[last_text_length:]
 						last_text_length = len(current_text)
 						yield delta
+		except ToolCallsRequested:
+			# The round ended asking for a tool instead of completing —
+			# whichever field this round's own live loop above never got to
+			# emit (its own last, "potentially incomplete" key) is still
+			# genuine model output, produced before it chose to call the
+			# tool rather than mid-value truncation (see
+			# AIServiceProviderOutputTruncatedError's own, untrusting
+			# handling below) — deliver it, then let the caller's own
+			# round loop decide what to do with the tool request itself.
+			_deliver_last_field()
+			raise
 		except AIServiceProviderOutputTruncatedError as exc:
 			# The trailing field (whichever key is still last in
 			# accumulated_json) was cut off mid-value — unlike every other
@@ -623,9 +691,4 @@ class AiService(object):
 			raise
 
 		logger.info(f"generate_stream_with_metadata: stream ended normally, provider={provider_label} accumulated_json_length={len(accumulated_json)}")
-		final_parsed = partial_json_parser.parse_json(accumulated_json)
-		if not isinstance(final_parsed, dict) or not final_parsed:
-			return
-		last_inserted = next(reversed(final_parsed))
-		if last_inserted != 'text' and last_inserted not in emitted:
-			on_metadata(last_inserted, final_parsed[last_inserted])
+		_deliver_last_field()

@@ -132,7 +132,12 @@ function onVisibilityChange() {
   if (document.visibilityState !== 'visible') return
   disconnectChat()
   connectChat()
-  reloadMessages?.()
+  // A reload mid-turn would replace `messages` out from under the
+  // in-flight assistant bubble submitMessage is still streaming into —
+  // it reconciles that bubble itself once the turn's own `done` arrives
+  // (see chatStoreFactory.js's submitMessage), so skip here while a turn
+  // is in flight rather than race it.
+  if (!chatLoading.value) reloadMessages?.()
 }
 
 onMounted(() => {
@@ -317,7 +322,7 @@ watch(
       <slot name="timeline">
         <MessageBubble
           v-for="(msg, i) in messages"
-          :key="msg.id ?? msg.messageId ?? i"
+          :key="msg.id"
           :message="msg"
           :spoken-text-enabled="spokenTextEnabled"
           :reactions="state?.reactions || []"

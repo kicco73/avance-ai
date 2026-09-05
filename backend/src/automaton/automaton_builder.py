@@ -596,7 +596,7 @@ class AutomatonBuilder(object):
         registry_without_actuator = IdentifierRegistry.for_triggers(registry)
         registry_without_session = IdentifierRegistry.for_actuators(registry)
         self._at(state.line, f"states.{key}")
-        self._validate_state_sources(state, sources)
+        self._validate_state_sources(state, sources, env_keys)
         for action in state.actions:
             self._at(action.line, f"states.{key}.actions.{action.name}")
             if action.target not in declared_states:
@@ -643,7 +643,7 @@ class AutomatonBuilder(object):
                     all_archives,
                 )
 
-    def _validate_state_sources(self, state: State, sources: dict[str, Source]) -> None:
+    def _validate_state_sources(self, state: State, sources: dict[str, Source], env_keys: dict[str, EnvKey]) -> None:
         """Every name in a state's three source fields must be a declared
         source with its own `ai-definition`, and its driver must implement
         the method the field exposes (`select` for a read, `update` for a
@@ -654,7 +654,12 @@ class AutomatonBuilder(object):
         for a read; a write on it is still rejected, since no driver
         means no update. An avance:env source the model may write but
         never read in the same state builds (writing blind is legal) but
-        is almost certainly an oversight — a warning, not an error."""
+        is almost certainly an oversight — a warning, not an error. An
+        avance:env source in ai-may-write-sources with no `readwrite` key
+        at all would give the model an `update` tool whose `fields` schema
+        can never have a single property (see AvanceEnvSource.
+        parameter_schema) — always a mistake, so it's a build error here
+        rather than a tool the model can call but never usefully use."""
         by_field = {
             "ai-may-read-sources": state.ai_may_read_sources,
             "ai-must-read-sources": state.ai_must_read_sources,
@@ -678,6 +683,7 @@ class AutomatonBuilder(object):
                         f"State '{state.key}': {field_name} '{source_name}' references undefined name(s): "
                         f"source.{source_name}.{method}"
                     )
+        any_readwrite_key = any(env_key.writable for env_key in env_keys.values())
         for source_name in state.ai_may_write_sources:
             source = sources[source_name]
             if source.is_env_source and source_name not in state.ai_read_source_names:
@@ -685,6 +691,12 @@ class AutomatonBuilder(object):
                     f"State '{state.key}': ai-may-write-sources '{source_name}' — the model may write the env "
                     f"here but never sees the current values: add '{source_name}' to 'ai-may-read-sources' or "
                     "'ai-must-read-sources' too."
+                )
+            if source.is_env_source and not any_readwrite_key:
+                raise ValueError(
+                    f"State '{state.key}': ai-may-write-sources '{source_name}' — url 'avance:env' exposes the "
+                    "model an 'update' tool, but no env key declares 'ai-access: readwrite' — nothing it could "
+                    "ever write."
                 )
 
     @staticmethod

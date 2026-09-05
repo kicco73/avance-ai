@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from automaton.automaton_builder import AutomatonBuilder
 from ai._providers.gemini_provider_v2 import GeminiProvider
 from ai.llm_provider import AIServiceConfig, ToolSpec
 from tracking.sources import METHOD_SCHEMAS
@@ -58,3 +59,39 @@ def test_a_narrowed_update_schema_keeps_enums_properties_and_descriptions_and_dr
     assert declaration.parameters.required == ["values", "fields"]
     dumped = fields.model_dump(exclude_none=True)
     assert "additionalProperties" not in dumped and "minProperties" not in dumped
+
+
+def test_an_update_tool_with_an_empty_fields_schema_can_never_reach_this_conversion_at_all():
+    """An avance:env source's own `update` schema narrows `fields` to just
+    its readwrite keys (AvanceEnvSource.parameter_schema) — if none exist,
+    that would be an object schema with zero properties, and Gemini's own
+    Schema (unlike plain JSON Schema) rejects an OBJECT with no properties
+    outright. This never has to be handled here because AutomatonBuilder
+    refuses to build a state's own ai-may-write-sources for an avance:env
+    source with no 'ai-access: readwrite' key at all (see
+    AutomatonBuilder._validate_state_sources) — so no ToolSet, and so no
+    tool declaration, for a schema shaped like this ever exists to send to
+    any provider, Gemini included."""
+    with pytest.raises(ValueError, match="no env key declares 'ai-access: readwrite'"):
+        AutomatonBuilder().build({"index.yml": """
+project:
+  id: test_project
+env:
+  customer_email:
+    ai-access: readonly
+    ai-definition: The customer's email.
+sources:
+  env:
+    url: avance:env
+    ai-definition: The automaton's variables.
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
+    ai-may-write-sources: [env]
+    actions:
+      - name: advance
+        ui-label: Advance
+        target: a
+"""})

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from ai import MetadataCallback, SystemPrompt
+from ai import MetadataCallback, SystemPrompt, ToolAbortDecider
 from logging_factory import LoggerFactory
 from tracking.channels import MemoryChannel, MetadataChannel
 from tracking.sources import ToolSet
@@ -15,22 +15,27 @@ schema, filling in its fields in this order:
 """
 
 
-def _tool_set_kwargs(tool_set: ToolSet | None, force_required_tools: bool = False) -> dict:
+def _tool_set_kwargs(
+	tool_set: ToolSet | None, force_required_tools: bool = False, tool_abort: ToolAbortDecider | None = None,
+) -> dict:
 	"""`tool_set` only actually forwarded when given — a fake/stub
 	AiService predating tool-calling (most existing tests' own doubles)
 	declares no `tool_set` parameter at all, so it must keep receiving
 	the exact same call it always did, never a stray `tool_set=None` it
 	can't accept.
 
-	`force_required_tools` is included only when actually True, same
-	reasoning: a fake/stub AiService predating ai-must-read-sources
-	(every existing tool-calling test's own double) declares no such
-	parameter either, and none of them exercises a state with anything to force."""
+	`force_required_tools`/`tool_abort` are each included only when
+	actually given, same reasoning: a fake/stub AiService predating
+	either (every existing tool-calling test's own double predates
+	tool_abort) declares no such parameter, and none of them exercises a
+	state with anything to force or a turn that needs to abort a round."""
 	if tool_set is None:
 		return {}
 	kwargs: dict = {"tool_set": tool_set}
 	if force_required_tools:
 		kwargs["force_required_tools"] = force_required_tools
+	if tool_abort is not None:
+		kwargs["tool_abort"] = tool_abort
 	return kwargs
 
 
@@ -71,6 +76,11 @@ class TurnProtocolUsingSchema:
 	def generate_reply(
 		self, channels: list[MetadataChannel], chat_history: list[dict], on_metadata: MetadataCallback,
 		tool_set: ToolSet | None = None, force_required_tools: bool = False, env_block: str | None = None,
+		# Forwarded to AiService.generate_stream_with_metadata's own
+		# tool_abort — see its docstring and TrackingProcessor.
+		# should_abort_tools. None (every caller before this existed)
+		# means a tool round is always resolved and never discarded.
+		tool_abort: ToolAbortDecider | None = None,
 	) -> AsyncIterator[str]:
 		"""Returns chunks of text coming from the response streaming,
 		calling on_metadata for each non-"text" field as it completes —
@@ -106,8 +116,7 @@ class TurnProtocolUsingSchema:
 		stable = f"{stable_body}\n\n{SCHEMA_ORDER_PROMPT}\n{order}"
 		if env_block:
 			volatile_parts.append(env_block)
-		volatile_body = "\n\n".join(volatile_parts)
-		volatile = f"\n\n{volatile_body}" if volatile_parts else ""
+		volatile = "\n\n".join(volatile_parts)
 		system_prompt = SystemPrompt(stable=stable, volatile=volatile)
 		schema = {channel.tag: channel.schema_description for channel in channels}
 		channel_by_tag = {channel.tag: channel for channel in channels}
@@ -118,5 +127,5 @@ class TurnProtocolUsingSchema:
 
 		return self._ai_service.generate_stream_with_metadata(
 			system_prompt, chat_history, on_metadata=decoding_on_metadata, schema=schema,
-			**_tool_set_kwargs(tool_set, force_required_tools),
+			**_tool_set_kwargs(tool_set, force_required_tools, tool_abort),
 		)

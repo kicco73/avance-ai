@@ -17,13 +17,18 @@
                          ToolSet (tracking.sources.ToolSet) hands to
                          AiService — the only ai.* type built outside
                          this package, so it alone needs to be public.
+    ToolAbortDecider   — structural protocol generate_stream_with_
+                         metadata's own tool_abort parameter expects;
+                         TrackingProcessor conforms to it directly (see
+                         its own should_abort_tools).
 
 The concrete providers (Gemini, Anthropic, OpenAI-compatible) and the
 failover cascade live in ai/_providers/ and are private: AiService is the
 only consumer. tests/test_ai_package_boundary.py keeps it that way."""
-from .ai_service import AiService
+from .ai_service import AiService, ToolAbortDecider
 from .llm_provider import AIServiceConfig, AIServiceError, MetadataCallback, SystemPrompt, ToolSpec, content_to_text
 
 __all__ = [
 	"AiService", "AIServiceConfig", "AIServiceError", "MetadataCallback", "SystemPrompt", "ToolSpec", "content_to_text",
+	"ToolAbortDecider",
 ]

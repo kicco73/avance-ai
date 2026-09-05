@@ -6,7 +6,7 @@ from typing import Any, AsyncIterator
 from chat.errors import ChatServiceError
 from db.db import Db
 from ai import AiService
-from ai import MetadataCallback, content_to_text
+from ai import MetadataCallback, ToolAbortDecider, content_to_text
 from automaton.automaton import Action, Automaton, State, StatePayload
 from logging_factory import LoggerFactory
 from session import Session
@@ -249,7 +249,7 @@ class TrackingProcessor(object):
 		has nothing new to record."""
 		return bool(self.metadata.signals) or self.out.action is not None
 
-	def generate_reply(self, state: State, on_metadata: MetadataCallback,
+	def generate_reply(self, state: State, on_metadata: MetadataCallback, tool_abort: "ToolAbortDecider | None" = None,
 	) -> AsyncIterator[str]:
 		base_prompt, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
 		channels = self.build_turn_channels(state, base_prompt, signal_definition, reaction_definition)
@@ -262,8 +262,19 @@ class TrackingProcessor(object):
 		return TurnProtocolUsingSchema(self.ai_service).generate_reply(
 			channels, chat_history, on_metadata,
 			tool_set=self.build_tool_set(state), force_required_tools=self.force_required_tools_for(state),
-			env_block=env_block.text() if env_block else None,
+			env_block=env_block.text() if env_block else None, tool_abort=tool_abort,
 		)
+
+	def should_abort_tools(self) -> bool:
+		"""AiService.generate_stream_with_metadata's own tool_abort check —
+		whether a tool-call round arriving after this turn's own signals
+		already resolved into a transition should be discarded rather than
+		run. Once the automaton has moved, whatever reply that round would
+		produce is thrown away and regenerated from scratch in the new
+		state (see TrackingProcessorAfterUserMessage's own `transitioned`
+		branch), so resolving the tool call first would only ever be
+		wasted work."""
+		return self.out.signals_resolved and self.user.state != self.out.state
 
 	def _enforce_input_budget(
 		self, base_prompt: str, signal_definition: str | None, reaction_definition: str | None,
@@ -498,8 +509,18 @@ class TrackingProcessor(object):
 
 	def _build_turn_response(self, user_message_id: int | None, assistant_message_id: int | None) -> dict:
 		action = self.out.action
+		# The turn's own persisted assistant message, same shape
+		# apply_manual_action's own "reply" already sends (see
+		# ChatService._messages_for_transition) — lets a live SSE/WS turn's
+		# frontend reconcile its streaming bubble against the persisted
+		# row on `done`, instead of trusting the stream to have delivered
+		# every chunk. Empty exactly when there's no such message
+		# (assistant_message_id is always set by process()'s own
+		# save_message call today, but this stays defensive against a
+		# future caller that doesn't).
+		reply = [self.db.get_message(assistant_message_id)] if assistant_message_id is not None else []
 		return {
-			"reply": self.out.messages,
+			"reply": reply,
 			"user_message_id": user_message_id,
 			"assistant_message_id": assistant_message_id,
 			# The bot's own reaction to the user's message this turn (see

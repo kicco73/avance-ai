@@ -402,7 +402,8 @@ class GeminiProvider(LLMProvider):
 						input_tokens = usage.prompt_token_count
 					if usage.candidates_token_count is not None:
 						output_tokens = usage.candidates_token_count
-					cache_read_tokens = getattr(usage, "cached_content_token_count", None) or 0
+					if getattr(usage, "cached_content_token_count", None) is not None:
+						cache_read_tokens = usage.cached_content_token_count
 				if chunk.candidates and chunk.candidates[0].finish_reason is not None:
 					finish_reason = chunk.candidates[0].finish_reason
 				if tools:

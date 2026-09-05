@@ -146,6 +146,11 @@ export function createChatStore({
   // by every place that (re)loads a session's full history from scratch.
   function toStoreMessage(m) {
     return {
+      // Same local-id sequence a placeholder gets (see submitMessage below)
+      // — never the backend's own m.id, which restarts from 1 per session
+      // and would collide with a placeholder's counter value. `messageId`
+      // (below) still carries the real backend id.
+      id: ++nextMessageId,
       role: m.role, content: m.content, audioText: m.audio_text, reaction: m.reaction,
       timestamp: m.timestamp, failed: false, messageId: m.id,
       // The permanent "Searched <source> for ... · N rows" line(s) this
@@ -405,6 +410,11 @@ export function createChatStore({
     // turn never carries the persisted trace itself (see the
     // result.assistant_message_id branch below).
     let hadToolCall = false
+    // Whether any real text chunk was ever applied to this bubble — once
+    // true, the bubble must never be silently dropped again (see the
+    // catch block below): a user who's already seen partial text must not
+    // have it vanish just because the stream later failed.
+    let hasChunk = false
 
     try {
       const result = await sendChatMessage(message.content, turnSessionId, {
@@ -422,6 +432,7 @@ export function createChatStore({
         },
         onChunk: (chunkText) => {
           if (currentSessionId.value !== turnSessionId) return
+          hasChunk = true
           // Replace with a new object (not mutate in place) to trigger Vue reactivity
           const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
           if (idx !== -1) {
@@ -466,52 +477,81 @@ export function createChatStore({
         if (result.user_message_reaction) playReactionChime()
       }
 
-      const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
-      if (idx !== -1) {
-        if (result.assistant_message_id != null) {
-          // The timestamp must be re-stamped too, not just messageId — the
-          // placeholder's original timestamp predates however long the
-          // response actually took, which can tie (or nearly tie) with the
-          // next turn's own timestamp and confuse buildTimeline's tie-break.
-          messages.value[idx] = {
-            ...messages.value[idx],
-            messageId: result.assistant_message_id,
-            timestamp: new Date().toISOString(),
-            // The turn is over — a tool call mid-stream leaves a stale
-            // statusText behind whenever the last event before "done" was
-            // tool_call rather than its matching tool_result. Cleared here
-            // so the at-rest bubble never shows a lingering "Searching…"
-            // line (toStoreMessage's own reload path never sets it at all).
-            statusText: ''
-          }
-          // The live SSE turn only ever streamed status_text/chunks, never
-          // the permanent tool-call trace itself (see toStoreMessage) —
-          // fetched here, once, straight from what a reload would show,
-          // so the two paths agree instead of the trace only ever
-          // appearing after a reload.
-          if (hadToolCall) {
-            getMessages(turnSessionId).then((history) => {
-              if (currentSessionId.value !== turnSessionId) return
-              const persisted = history.find((m) => m.id === result.assistant_message_id)
-              if (!persisted?.tool_calls) return
-              const toolCallsIdx = messages.value.findIndex((m) => m.id === assistantMsgId)
-              if (toolCallsIdx !== -1) {
-                messages.value[toolCallsIdx] = {
-                  ...messages.value[toolCallsIdx],
-                  toolCalls: persisted.tool_calls
-                }
-              }
-            }).catch(() => {
-              // Best-effort — the live trace is cosmetic; a manual reload
-              // still shows it via the normal toStoreMessage path.
-            })
-          }
-        } else {
-          // No AI reply was generated this turn (e.g. a pre-turn transition
-          // landed in a state that doesn't chat at all) — remove the empty,
-          // orphaned bubble instead of leaving it.
-          messages.value.splice(idx, 1)
+      // The turn's own persisted assistant message, in the same
+      // {id, content, audio_text, timestamp} shape handleAction already
+      // consumes (see ChatService._build_turn_response) — the one
+      // reconciliation point for this bubble: content is *replaced* here
+      // (never concatenated — a lost chunk earlier in the stream must not
+      // leave a truncated prefix baked in), and the timestamp is the
+      // server's own, not the client clock.
+      const replyMsg = result.reply?.[0] ?? null
+      let idx = messages.value.findIndex((m) => m.id === assistantMsgId)
+      if (replyMsg) {
+        const reconciled = {
+          role: 'assistant',
+          content: replyMsg.content,
+          audioText: replyMsg.audio_text,
+          messageId: replyMsg.id,
+          timestamp: replyMsg.timestamp,
+          // The turn is over — a tool call mid-stream leaves a stale
+          // statusText behind whenever the last event before "done" was
+          // tool_call rather than its matching tool_result. Cleared here
+          // so the at-rest bubble never shows a lingering "Searching…"
+          // line (toStoreMessage's own reload path never sets it at all).
+          statusText: ''
         }
+        if (idx !== -1) {
+          messages.value[idx] = { ...messages.value[idx], ...reconciled }
+        } else {
+          // The bubble is gone — e.g. onVisibilityChange's own
+          // reloadMessages replaced the whole list mid-turn. The reply is
+          // real and already persisted; it must still show up rather than
+          // silently vanish, so it's appended fresh at the end.
+          messages.value.push({ id: assistantMsgId, ...reconciled })
+          idx = messages.value.length - 1
+        }
+      } else if (result.assistant_message_id == null) {
+        // No AI reply was generated this turn (e.g. a pre-turn transition
+        // landed in a state that doesn't chat at all) — remove the empty,
+        // orphaned bubble instead of leaving it.
+        if (idx !== -1) messages.value.splice(idx, 1)
+        idx = -1
+      } else if (idx !== -1) {
+        // Defensive fallback — an assistant_message_id with no matching
+        // reply entry shouldn't happen, but the bubble must never be
+        // dropped once it exists: keep whatever text it already streamed.
+        messages.value[idx] = {
+          ...messages.value[idx],
+          messageId: result.assistant_message_id,
+          timestamp: new Date().toISOString(),
+          statusText: ''
+        }
+      }
+
+      // The live SSE turn only ever streamed status_text/chunks, never the
+      // permanent tool-call trace itself (see toStoreMessage) — fetched
+      // here, once, straight from what a reload would show, so the two
+      // paths agree instead of the trace only ever appearing after a
+      // reload. Keyed off result.assistant_message_id (not replyMsg,
+      // which may be absent even though a tool call — and the message it
+      // produced — really happened).
+      if (hadToolCall && idx !== -1 && result.assistant_message_id != null) {
+        const assistantBackendId = result.assistant_message_id
+        getMessages(turnSessionId).then((history) => {
+          if (currentSessionId.value !== turnSessionId) return
+          const persisted = history.find((m) => m.id === assistantBackendId)
+          if (!persisted?.tool_calls) return
+          const toolCallsIdx = messages.value.findIndex((m) => m.id === assistantMsgId)
+          if (toolCallsIdx !== -1) {
+            messages.value[toolCallsIdx] = {
+              ...messages.value[toolCallsIdx],
+              toolCalls: persisted.tool_calls
+            }
+          }
+        }).catch(() => {
+          // Best-effort — the live trace is cosmetic; a manual reload
+          // still shows it via the normal toStoreMessage path.
+        })
       }
 
       playMessageChime()
@@ -534,11 +574,19 @@ export function createChatStore({
       if (sessionsPanelOpen.value) loadSessions()
       bumpTurn()
     } catch (err) {
-      // On send failure, remove the empty/incomplete bubble — a no-op if
+      // On send failure, drop the bubble only if it never showed any real
+      // text — once a chunk has been applied, the user has already seen
+      // it, so it stays (marked failed) rather than vanishing. A no-op if
       // the user's since switched chats (messages.value is a different
       // session's array by then, never containing assistantMsgId).
       const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
-      if (idx !== -1) messages.value.splice(idx, 1)
+      if (idx !== -1) {
+        if (hasChunk) {
+          messages.value[idx] = { ...messages.value[idx], failed: true, statusText: '' }
+        } else {
+          messages.value.splice(idx, 1)
+        }
+      }
       setMessageFailed(message.id, true)
 
       // Only the still-current chat's own "session went inactive" banner

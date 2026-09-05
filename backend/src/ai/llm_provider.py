@@ -43,8 +43,16 @@ class SystemPrompt:
 		"""The complete prompt text a provider with no notion of its own
 		of a stable/volatile split would send — used for token-estimate
 		callers (see AiService._enforce_input_budget) and by a provider
-		that just concatenates the two (Gemini/OpenAI)."""
-		return f"{self.stable}{self.volatile}"
+		that just concatenates the two (Gemini/OpenAI). The "\\n\\n"
+		separator lives here, not inside `volatile` itself — the one
+		producer (TurnProtocolUsingSchema) hands over a bare block, and
+		every consumer (this method, AnthropicProvider._build_system)
+		decides for itself whether/where a separator belongs; omitted
+		outright when either half is empty, so a caller with only one
+		half never sees a stray leading/trailing blank line."""
+		if not self.stable or not self.volatile:
+			return f"{self.stable}{self.volatile}"
+		return f"{self.stable}\n\n{self.volatile}"
 
 
 @dataclass(frozen=True)

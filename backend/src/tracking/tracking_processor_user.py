@@ -35,7 +35,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			# transition) needed exactly this one call anyway. Skipped
 			# outright when the upfront evaluation above already moved the
 			# automaton: that reply would only ever be discarded below.
-			async for chunk in self.generate_reply(self.user.state, self.on_receiving_metadata):
+			async for chunk in self.generate_reply(self.user.state, self.on_receiving_metadata, tool_abort=self):
 				if not self.out.signals_resolved:
 					buffered_text_before_signals_resolved += chunk
 				elif self.user.state == self.out.state:
@@ -94,7 +94,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 				channels, chat_history, on_metadata=self.on_receiving_metadata,
 				tool_set=self.build_tool_set(self.out.state),
 				force_required_tools=self.force_required_tools_for(self.out.state),
-				env_block=env_block.text() if env_block else None,
+				env_block=env_block.text() if env_block else None, tool_abort=self,
 			):
 				self.out.reply += chunk
 				self.metadata.on_metadata('chunk', chunk)

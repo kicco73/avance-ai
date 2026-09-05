@@ -127,6 +127,20 @@ class AutomatonLoader:
         for key in [k for k in self._build_failures if k[0] == project_id]:
             del self._build_failures[key]
 
+    def clear_all_build_failures(self) -> None:
+        """Drops every cached build failure, for every project — the
+        blunt fallback ProjectManager reaches for whenever some project's
+        own identity (id/family) just started existing or changed: a
+        project that failed to build only because it referenced that id/
+        family before it resolved to anything has no entry in the
+        observer index to find it by (a failed build never reaches
+        set_project_observers, see ProjectManager.finalize_update), so
+        there's no way to know *which* cached failures are now stale
+        without a full rescan. A rare event (create/import/rename), and
+        the cost of over-clearing is just a rebuild on the next check —
+        cheap next to leaving a now-fixable project paused until restart."""
+        self._build_failures.clear()
+
     def invalidate(self, project_id: str, revision: int) -> None:
         """Same as invalidate_cache, narrowed to one exact revision —
         every write to that revision's own stored files (a design-view
