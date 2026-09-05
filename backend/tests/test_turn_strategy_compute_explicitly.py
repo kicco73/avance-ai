@@ -17,7 +17,7 @@ pytestmark = pytest.mark.contract
 
 
 def _env(db) -> PersistedEnv:
-    return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID))
+    return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id=None)
 
 
 class FakeAiServiceV2:

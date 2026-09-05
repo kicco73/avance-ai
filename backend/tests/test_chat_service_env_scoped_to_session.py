@@ -76,7 +76,7 @@ def _chat_service(db, project_service: ProjectService) -> ChatService:
 
 
 def _env(db, project_id: str, username: str = USERNAME) -> PersistedEnv:
-    return PersistedEnv(db, FixedProjectContext(project_id=project_id), username=username)
+    return PersistedEnv(db, FixedProjectContext(project_id=project_id), session_id=None, username=username)
 
 
 @pytest.fixture

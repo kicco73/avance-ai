@@ -287,3 +287,26 @@ def test_project_health_notifications_submits_a_job_on_the_event(db):
 
     assert len(submitted) == 1
     assert isinstance(submitted[0], ProjectHealthNotificationJob)
+
+
+# --- Lazy recompute: a build failure discovered outside any save/publish ---
+
+
+def test_a_lazy_load_failure_on_the_published_revision_pauses_the_project(db, project_service):
+    """AutomatonLoader has no reference to ProjectManager — the only way
+    a build failure discovered by some unrelated read (never a save/
+    publish/boot sweep) reaches recompute_availability is the
+    ProjectRevisionBuildFailed event (see register_availability_cascade)."""
+    from automaton.build_error import AutomatonBuildError
+
+    _publish(db, project_service, "flaky", VALID_YML)
+    project_service.register_availability_cascade()
+    _corrupt_published_revision(db, project_service, "flaky")
+    assert db.get_project_availability("flaky") == (False, None)  # not yet noticed
+
+    with pytest.raises(AutomatonBuildError):
+        project_service.get_automaton("flaky", db.get_project_published_revision("flaky"))
+
+    is_paused, reason = db.get_project_availability("flaky")
+    assert is_paused is True
+    assert "index.yml no longer builds" in reason

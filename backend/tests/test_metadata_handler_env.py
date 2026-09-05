@@ -218,7 +218,7 @@ def test_generate_reply_renders_an_env_block_with_stored_values_only(db):
         start_state="a", end_state="a",
     )
     db.set_env(session_id, {"favorite_color": "blue"})
-    env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID))
+    env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id=None)
     protocol = _RecordingProtocol()
 
     protocol.generate_reply("base prompt", "- Definition of signals:\n", env, [], lambda k, v: None)
@@ -232,7 +232,7 @@ def test_generate_reply_renders_an_env_block_with_stored_values_only(db):
 def test_generate_reply_embeds_the_given_signal_definition_verbatim(db):
     """__build_prompt takes the already-rendered definition text directly
     — it has no opinion of its own on which signals it describes."""
-    env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID))
+    env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id=None)
     protocol = _RecordingProtocol()
 
     protocol.generate_reply(

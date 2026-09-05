@@ -24,7 +24,7 @@ from db.models import Task as TaskRow, User
 from job import JobService
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
-from tracking.actuators.on_enter_task import OnEnterTask
+from tracking.actuators.on_enter_task import ACTUATORS_LIVE, OnEnterTask, ScopeHydrator
 from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
@@ -149,6 +149,35 @@ def _fire_go(db: Db, factory, project_service: ProjectService, signal_values: di
 
 def _due_now(key: str) -> None:
     TaskRow.update(run_at=datetime.utcnow() - timedelta(seconds=1)).where(TaskRow.key == key).execute()
+
+
+# --- PersistedEnv requires a real session_id --------------------------------
+
+def test_persisted_env_cannot_be_constructed_without_a_session_id(db):
+    with pytest.raises(TypeError):
+        PersistedEnv(db, FixedProjectContext(project_id=PROJECT))  # session_id omitted
+
+
+def test_build_scope_with_no_session_never_constructs_a_persisted_env(file_db):
+    """reset_test_sessions' own project-wide reset schedules an OnEnterTask
+    with session_id=None (see ChatService._schedule_on_enter) — build_scope
+    must fall back to a plain, ephemeral Env() for that, never PersistedEnv
+    (which now requires a real session_id — see its own constructor): this
+    used to fall through to PersistedEnv(db, context) with none at all,
+    which would have crashed on its first write (Tracking.session is a
+    real FK) — now it fails fast, right here, if it regresses."""
+    _, project_service, factory = _process(file_db)
+    _publish(file_db, project_service, _yml("actuator.notify(user.name, 'welcome')"))
+    hydrator = ScopeHydrator(file_db, project_service, factory, None)
+    payload = {
+        "project_id": PROJECT,
+        "project_revision": file_db.get_project_published_revision(PROJECT),
+        "state_key": "a",
+        "snapshot": {},
+        "actuators": ACTUATORS_LIVE,
+    }
+
+    hydrator.build_scope(USERNAME, payload)  # must not raise
 
 
 # --- immediate on-enter ------------------------------------------------------

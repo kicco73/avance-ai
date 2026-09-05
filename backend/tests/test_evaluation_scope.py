@@ -26,7 +26,7 @@ PROJECT_ID = "proj"
 
 def _builder(db) -> EvaluationScopeBuilder:
     project_service = FixedProjectContext(project_id=PROJECT_ID)
-    env = PersistedEnv(db, project_service)
+    env = PersistedEnv(db, project_service, session_id=None)
     metrics = MetricService(db, project_service)
     return EvaluationScopeBuilder(env, metrics, SessionFacts(db, project_service), UserFacts(db), db)
 
