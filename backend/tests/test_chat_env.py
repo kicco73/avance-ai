@@ -17,7 +17,9 @@ USERNAME = "user"
 PROJECT_ID = "proj"
 
 
-def _env(db, session_id: int | None = None) -> PersistedEnv:
+def _env(db, session_id: int = 0) -> PersistedEnv:
+    # session_id is now required (PersistedEnv(None) raises) — every
+    # no-arg call below is read-only, so a placeholder id is fine.
     return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
 
 
@@ -81,13 +83,18 @@ def test_update_with_empty_values_is_a_noop(db):
 
 
 @pytest.mark.contract
-def test_update_drops_a_key_that_is_currently_action_set(db):
-    """A model echoing back a key an action's own `env:` field already
-    set must not duplicate into memory() on top of action_set()."""
+def test_update_drops_a_declared_key_the_automaton_owns(db):
+    """A model echoing back a key the automaton declares must not
+    duplicate into memory() on top of action_set() — whether or not an
+    action's own `env:` field has actually set it yet (see Env.update's
+    own declared_keys parameter)."""
     env = _env(db, _session(db))
     env.update_action_set({"WRONG_ANSWERS_ON_CURRENT_STEP": 2})
 
-    env.update({"WRONG_ANSWERS_ON_CURRENT_STEP": "2", "favorite_color": "blue"})
+    env.update(
+        {"WRONG_ANSWERS_ON_CURRENT_STEP": "2", "favorite_color": "blue"},
+        declared_keys={"WRONG_ANSWERS_ON_CURRENT_STEP"},
+    )
 
     assert db.get_env(PROJECT_ID, USERNAME) == {"favorite_color": "blue"}
     assert env.action_set() == {"WRONG_ANSWERS_ON_CURRENT_STEP": 2}
@@ -96,9 +103,8 @@ def test_update_drops_a_key_that_is_currently_action_set(db):
 @pytest.mark.regression
 def test_update_is_a_noop_when_every_key_is_filtered_out(db):
     env = _env(db, _session(db))
-    env.update_action_set({"a": 1})
 
-    env.update({"a": "1"})
+    env.update({"a": "1"}, declared_keys={"a"})
 
     assert db.get_env(PROJECT_ID, USERNAME) == {}
 

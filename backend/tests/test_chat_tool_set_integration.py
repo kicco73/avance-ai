@@ -42,7 +42,7 @@ class FakeToolAwareAiService:
     def is_provider_with_schema(self) -> bool:
         return True
 
-    async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None):
+    async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False, tool_abort=None):
         if self._tool_call is not None and tool_set is not None and self.call_count == 0:
             name, arguments = self._tool_call
             result = await tool_set.call(name, arguments)
@@ -157,7 +157,10 @@ async def test_a_real_chat_turn_resolves_a_tool_call_against_the_state_s_own_dec
 
     result = await chat_service.process_turn(session_id, "where's my flight to Paris?")
 
-    assert result["reply"] == []  # FakeToolAwareAiService.generate_stream_with_metadata's own "Hi!" chunk
+    # The turn's own persisted assistant message (see
+    # TrackingProcessor._build_turn_response) — "Hi!" is
+    # FakeToolAwareAiService.generate_stream_with_metadata's own chunk.
+    assert [m["content"] for m in result["reply"]] == ["Hi!"]
     assert ai_service.tool_results == ["city,country\nParis,France\n"]
 
 

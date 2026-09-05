@@ -25,7 +25,7 @@ from job import JobService
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from tracking.actuators.on_enter_task import ACTUATORS_LIVE, OnEnterTask, ScopeHydrator
-from tracking.env import PersistedEnv
+from tracking.env import Env, PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
@@ -138,7 +138,10 @@ def _fire_go(db: Db, factory, project_service: ProjectService, signal_values: di
     does — env: synchronously, on-enter as a task."""
     automaton = project_service.get_automaton(PROJECT, db.get_project_published_revision(PROJECT))
     context = FixedProjectContext(automaton=automaton, project_id=PROJECT)
-    env = PersistedEnv(db, context, session_id=session_id)
+    # Same branch production code takes (see PersistedEnv's own docstring
+    # and tracking.actuators.on_enter_task.ScopeHydrator): no real session
+    # means a plain, in-memory Env(), never PersistedEnv(None).
+    env = PersistedEnv(db, context, session_id=session_id) if session_id is not None else Env()
     builder = EvaluationScopeBuilder(
         env, MetricService(db, context), SessionFacts(db, context),
         UserFacts(db), db, None, factory.live(project_id=PROJECT), ai_service=ai_service,

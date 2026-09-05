@@ -190,7 +190,10 @@ def test_source_namespace_lists_one_entry_per_declared_source(client):
 
     assert response.status_code == 200
     body = response.json()
-    assert set(body["source.pino"]) == {"select"}
+    # value(*values, key=...) is a real method for scripts/triggers too
+    # (never a model tool — see tracking.sources.SourceDriver.value), so
+    # it belongs in the design view's own autocomplete alongside select.
+    assert set(body["source.pino"]) == {"select", "value"}
     # A source with no url yet (see AutomatonBuilder._build_source) is
     # still listed under its own name, just with nothing to call on it.
     assert body["source.unconfigured"] == {}

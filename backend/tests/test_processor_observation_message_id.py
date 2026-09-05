@@ -14,6 +14,9 @@ class _FakeAutomaton:
     def get_state(self, key):
         return key
 
+    def declared_env_key_names(self):
+        return set()
+
 
 class _FakeTrackingEngine:
     def __init__(self):
@@ -29,7 +32,7 @@ class _FakeTrackingEngine:
 
 
 class _FakeEnv:
-    def update(self, stored_env):
+    def update(self, stored_env, declared_keys=None):
         pass
 
 

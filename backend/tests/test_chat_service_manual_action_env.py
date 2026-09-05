@@ -109,7 +109,9 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
     )
 
 
-def _env_for(db, session_id: int | None = None) -> PersistedEnv:
+def _env_for(db, session_id: int = 0) -> PersistedEnv:
+    # session_id is now required (PersistedEnv(None) raises) — every
+    # no-arg call below is read-only, so a placeholder id is fine.
     return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
 
 
