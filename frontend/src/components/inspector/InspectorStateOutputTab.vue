@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { getProjectMetadata } from '../../api.js'
 import CardMenu from './CardMenu.vue'
 
@@ -56,6 +56,13 @@ async function deleteOutputKey(name) {
 }
 
 onMounted(loadOutputKeys)
+
+watch(() => props.stateKey, loadOutputKeys)
+watch(() => props.recentlyAddedKey, () => {
+  if (props.recentlyAddedKey?.startsWith('output-key:')) {
+    loadOutputKeys()
+  }
+})
 </script>
 
 <template>
