@@ -307,8 +307,12 @@ class TrackingProcessor(object):
 		fired transition always does; an evaluation with no transition
 		only when the model actually reported signals worth a snapshot
 		(see TrackingEngine.apply_transition) — one against the empty set
-		has nothing new to record."""
-		return bool(self.metadata.signals) or self.out.action is not None
+		has nothing new to record. A state with output_keys also earns a
+		row on its own even with no signals/trigger at all — otherwise a
+		state that only ever produces output, never fires an action off
+		it, would never get its output linked to a message (see
+		ChatService.get_output's own message_id lookup)."""
+		return bool(self.metadata.signals) or bool(self.metadata.output) or self.out.action is not None
 
 	def generate_reply(self, state: State, on_metadata: MetadataCallback) -> AsyncIterator[str]:
 		base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
