@@ -14,6 +14,7 @@ import InspectorSignalsTab from '../../inspector/InspectorSignalsTab.vue'
 import InspectorMetricsTab from '../../inspector/InspectorMetricsTab.vue'
 import InspectorEnvTab from '../../inspector/InspectorEnvTab.vue'
 import InspectorEnvKeysTab from '../../inspector/InspectorEnvKeysTab.vue'
+import InspectorStateOutputTab from '../../inspector/InspectorStateOutputTab.vue'
 import InspectorStateTab from '../../inspector/InspectorStateTab.vue'
 import ActionsOrderDialog from '../../inspector/ActionsOrderDialog.vue'
 import SessionDetailCard from '../../inspector/SessionDetailCard.vue'
@@ -196,10 +197,13 @@ const inspectorTabs = computed(() => {
   if (mode.value === 'edit' && (currentSourceName.value != null || sourcesRootSelected.value || !isBehaviorNodeSelected.value)) {
     return [{ id: 'state', label: 'Info' }]
   }
+  const thirdTab = selectedGraphElement.value?.kind === 'state'
+    ? { id: 'output', label: 'Output' }
+    : { id: 'env-keys', label: 'Env' }
   return [
     { id: 'state', label: 'Info' },
     { id: 'signals', label: 'Signals' },
-    { id: 'env-keys', label: 'Env' }
+    thirdTab
   ]
 })
 const inspectorActiveTab = ref('states')
@@ -594,6 +598,18 @@ onBeforeUnmount(() => {
                 :session-id="currentSessionId"
                 :until-message-id="untilMessageId"
                 :editable="envEditable"
+              />
+            </template>
+            <template #tab-output="{ registerTab }">
+              <InspectorStateOutputTab
+                v-if="selectedStateKey"
+                :ref="registerTab('output')"
+                :project-id="projectId"
+                :state-key="selectedStateKey"
+                :recently-added-key="recentlyAddedKey"
+                @set-field="handleSetSelectedElementField"
+                @add-output-key="handleAddOutputKey"
+                @delete="(name) => handleSetSelectedElementField('output', Object.fromEntries(selectedGraphElement.data.output_keys.filter(k => k.name !== name).map(k => [k.name, k])))"
               />
             </template>
             <template #tab-env-keys="{ registerTab }">
