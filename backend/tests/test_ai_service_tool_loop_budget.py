@@ -45,12 +45,6 @@ class _FakeToolSet:
     def required_specs(self) -> list[ToolSpec]:
         return []
 
-    def status_text(self, name: str) -> str:
-        return f"Searching {name}…"
-
-    def summary_text(self, name: str, arguments: dict, result: str) -> str:
-        return "Searched Flights · 1 row"
-
     async def call(self, name: str, arguments: dict) -> str:
         return self._result
 

@@ -112,7 +112,7 @@ class _FakeAsyncClient:
 
 class _FakeToolSet:
     """Enough of tracking.sources.ToolSet's own contract (specs()/call()/
-    required_specs()/summary_text()/session_id) for AiService's loop to
+    required_specs()/session_id) for AiService's loop to
     drive — call() never raises, matching the real one's contract, and
     just returns whatever's queued next. `required_specs`: the
     ai-must-read-sources subset (see ToolSet.required_specs) — empty by
@@ -133,12 +133,6 @@ class _FakeToolSet:
 
     def required_specs(self) -> list[ToolSpec]:
         return self._required_specs
-
-    def status_text(self, name: str) -> str:
-        return f"Searching {name}…"
-
-    def summary_text(self, name: str, arguments: dict, result: str) -> str:
-        return f"Searched {name} · fake summary"
 
     async def call(self, name: str, arguments: dict) -> str:
         self.calls.append((name, arguments))
@@ -239,39 +233,6 @@ async def test_ai_service_resolves_one_tool_call_then_streams_the_final_response
     }
 
 
-async def test_a_tool_call_emits_a_tool_call_event_then_a_tool_result_event():
-    """See ai_service.py's own tool-call loop: 'tool_call' fires before
-    the call itself (status_text only, for a live transient bubble
-    line), 'tool_result' fires after (the durable {name, arguments,
-    result, summary_text} record TrackingProcessor persists to
-    Tracking.tool_calls)."""
-    tool_call_response = _FakeFinalMessage(
-        "tool_use", content=[_FakeToolUseBlock("call_1", "source_flights_select", {"value": "paris"})],
-    )
-    final_response = _FakeFinalMessage("end_turn")
-    provider, _ = _provider([([], tool_call_response), (['{"text": "Paris it is."}'], final_response)])
-    ai_service = AiService(provider)
-    tool_set = _FakeToolSet([_SELECT_SPEC], results=["city,country\nParis,France\n"])
-    events: list[tuple[str, object]] = []
-
-    async for _ in ai_service.generate_stream_with_metadata(
-        "sys", [{"role": "user", "content": "where's my flight?"}],
-        on_metadata=lambda k, v: events.append((k, v)), schema={"text": "t"}, tool_set=tool_set,
-    ):
-        pass
-
-    tool_events = [event for event in events if event[0] in ("tool_call", "tool_result")]
-    assert tool_events == [
-        ("tool_call", {"status_text": "Searching source_flights_select…"}),
-        ("tool_result", {
-            "name": "source_flights_select", "arguments": {"value": "paris"},
-            "result": "city,country\nParis,France\n",
-            "summary_text": "Searched source_flights_select · fake summary",
-        }),
-    ]
-    # 'tool_call' strictly before 'tool_result' — the frontend's own
-    # transient line must appear, then clear, never the other way round.
-    assert [event[0] for event in events].index("tool_call") < [event[0] for event in events].index("tool_result")
 
 
 # (c) two rounds before the real response.

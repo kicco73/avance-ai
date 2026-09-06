@@ -102,9 +102,6 @@ class ToolSet:
         self._namespace = namespace
         # tool name ("source_<name>_<method>") -> (source name, method name)
         self._resolved: dict[str, tuple[str, str]] = {}
-        # tool name -> its own source's ui_label, for status_text()/
-        # summary_text() below.
-        self._ui_labels: dict[str, str] = {}
         self._specs: list[ToolSpec] = []
         # Every ai-must-read-sources `select` tool name — the subset
         # AiService forces tool_choice down to on the first round after
@@ -135,7 +132,6 @@ class ToolSet:
             description = f"{description}\n\n{source.ai_definition}" if description else source.ai_definition
         parameters = driver.parameter_schema(method) or METHOD_SCHEMAS[method]
         self._resolved[tool_name] = (source.name, method)
-        self._ui_labels[tool_name] = source.ui_label
         self._specs.append(ToolSpec(name=tool_name, description=description, parameters=parameters))
         if required:
             self._required_names.add(tool_name)
@@ -165,47 +161,6 @@ class ToolSet:
         ai-must-read-sources at all; never contains an `update`."""
         return [spec for spec in self._specs if spec.name in self._required_names]
 
-    def _method_of(self, name: str) -> str | None:
-        resolved = self._resolved.get(name)
-        return resolved[1] if resolved else None
-
-    def status_text(self, name: str) -> str:
-        """A short, human line describing what calling `name` is about to
-        do — e.g. "Searching Flights…" / "Updating Env…" — the
-        backend-composed text AiService's own tool-call loop attaches to
-        its 'tool_call' event for the frontend to show verbatim as a
-        transient line while the call is in flight. Falls back to the raw
-        tool name for one this ToolSet doesn't itself recognize
-        (defensive only: every name AiService's loop passes here came
-        straight out of specs())."""
-        verb = "Updating" if self._method_of(name) == WRITE_METHOD else "Searching"
-        return f"{verb} {self._ui_labels.get(name, name)}…"
-
-    def summary_text(self, name: str, arguments: dict, result: str) -> str:
-        """The permanent, compact line left under the assistant's message
-        once a call completes — `Searched Flight records for "VY3003" · 57
-        rows` for a select, one `Set flight = "VY3003"` line per field for
-        an update — sent alongside 'tool_result' as `summary_text` and, by
-        riding along in that same dict, persisted into Tracking.tool_calls
-        for free (see AiService's own tool-call loop and
-        db.tracking.record_tool_calls) so reopening the session can render
-        it again with no separate storage of its own. Row count: every
-        line after the header — a best-effort count against a driver's
-        own tabular-text convention, not a hard contract."""
-        ui_label = self._ui_labels.get(name, name)
-        if self._method_of(name) == WRITE_METHOD:
-            if result.startswith("error:"):
-                return f"Could not update {ui_label}: {result[len('error:'):].strip()}"
-            fields = arguments.get("fields") or {}
-            return "\n".join(f'Set {key} = "{value}"' for key, value in fields.items()) or f"Updated {ui_label}"
-        if result.startswith("error:"):
-            return f"Could not search {ui_label}: {result[len('error:'):].strip()}"
-        values = arguments.get("values") or []
-        query = ", ".join(f'"{value}"' for value in values)
-        rows = max(0, len(result.splitlines()) - 1)
-        row_word = "row" if rows == 1 else "rows"
-        return f"Searched {ui_label} for {query} · {rows} {row_word}"
-
     async def call(self, name: str, arguments: dict) -> str:
         """Never raises — an unknown tool name, a bad argument, or the
         driver's own exception all come back as "error: <message>" so the
@@ -218,7 +173,11 @@ class ToolSet:
         synchronous (disk/DB I/O) — always off the event loop via
         asyncio.to_thread, never blocking it. `values` is every method's
         own variadic parameter (see SourceDriver), unpacked positionally;
-        every other argument is passed through by keyword."""
+        every other argument is passed through by keyword. A write
+        (`method == WRITE_METHOD`) also gets `origin="tool"` injected here,
+        in Python, never through `arguments` — origin is never part of any
+        tool's own JSON schema, so the model can neither see nor spoof it
+        (see AvanceEnvSource.update's own `origin` docstring)."""
         resolved = self._resolved.get(name)
         if resolved is None:
             return f"error: unknown tool '{name}'."
@@ -228,6 +187,8 @@ class ToolSet:
             bound_method = getattr(driver, method)
             values = arguments.get("values") or []
             keywords = {key: value for key, value in arguments.items() if key != "values"}
+            if method == WRITE_METHOD:
+                keywords["origin"] = "tool"
             return await asyncio.to_thread(bound_method, *values, **keywords)
         except Exception as exc:
             return f"error: {exc}"

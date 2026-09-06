@@ -160,7 +160,7 @@ class FakeAiService:
         # callers consume it with `async for`.
         yield "Fake AI reply."
 
-    async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False, tool_abort=None):
+    async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
         # What TurnProtocolUsingSchema actually calls — this fake reports
         # no metadata of its own (no test here cares about signals/audio/
         # env extraction; see FakeSchemaAiService in

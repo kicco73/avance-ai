@@ -531,11 +531,10 @@ class ChatService(object):
 		messages = self._db.get_messages(session_id, last_n=last_n)
 		if init_message is not None:
 			messages.insert(0, init_message)
-		# The permanent "Searched <source> for ... · N rows" line(s) under
-		# an assistant message that made a tool call (see AiService's own
-		# tool-call loop, which folds a summary_text into each entry) —
-		# only added when a message actually has any, so a session with no
-		# tool calls at all gets byte-identical payloads to before this existed.
+		# Persisted tool-call records for an assistant message that made
+		# one, if any — only added when a message actually has any, so a
+		# session with no tool calls at all gets byte-identical payloads
+		# to before this existed.
 		tool_calls_by_message = self._db.get_tool_calls_by_message(session_id)
 		for message in messages:
 			tool_calls = tool_calls_by_message.get(message["id"])

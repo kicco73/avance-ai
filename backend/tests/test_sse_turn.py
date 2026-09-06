@@ -21,22 +21,6 @@ async def _drain(turn: SseChatTurn) -> list[tuple[str, dict]]:
     return events
 
 
-async def test_a_tool_call_event_forwards_its_status_text():
-    turn = SseChatTurn(chat_service=None, session_id=1, text="hi")
-
-    await turn.on_metadata("tool_call", {"status_text": "Searching Flights…"})
-
-    assert await _drain(turn) == [("tool_call", {"status_text": "Searching Flights…"})]
-
-
-async def test_a_tool_result_event_carries_no_payload():
-    turn = SseChatTurn(chat_service=None, session_id=1, text="hi")
-
-    await turn.on_metadata("tool_result", {"name": "source_flights_select", "arguments": {}, "result": "row"})
-
-    assert await _drain(turn) == [("tool_result", {})]
-
-
 async def test_an_unrecognized_metadata_key_is_silently_dropped():
     turn = SseChatTurn(chat_service=None, session_id=1, text="hi")
 

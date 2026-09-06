@@ -106,7 +106,7 @@ class _FakeAsyncOpenAIClient:
 
 class _FakeToolSet:
     """Enough of tracking.sources.ToolSet's own contract (specs()/call()/
-    required_specs()/summary_text()/session_id) for AiService's loop to
+    required_specs()/session_id) for AiService's loop to
     drive — call() never raises, matching the real one's contract, and
     just returns whatever's queued next. `required_specs`: the
     ai-must-read-sources subset (see ToolSet.required_specs) — empty by
@@ -127,12 +127,6 @@ class _FakeToolSet:
 
     def required_specs(self) -> list[ToolSpec]:
         return self._required_specs
-
-    def status_text(self, name: str) -> str:
-        return f"Searching {name}…"
-
-    def summary_text(self, name: str, arguments: dict, result: str) -> str:
-        return f"Searched {name} · fake summary"
 
     async def call(self, name: str, arguments: dict) -> str:
         self.calls.append((name, arguments))

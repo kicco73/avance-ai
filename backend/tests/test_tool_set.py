@@ -152,21 +152,6 @@ def test_description_is_just_the_method_blurb_when_the_source_has_no_ai_definiti
     assert "\n\n" not in select_spec.description
 
 
-def test_status_text_reports_the_source_s_own_ui_label(db):
-    automaton = _two_sources(db)
-    tool_set = SourceNamespace(db, automaton).tool_set(["flights", "tickets"])
-
-    assert tool_set.status_text("source_flights_select") == "Searching Flights…"
-    assert tool_set.status_text("source_tickets_select") == "Searching Tickets…"
-
-
-def test_status_text_falls_back_to_the_raw_name_for_an_unknown_tool(db):
-    automaton = _two_sources(db)
-    tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
-
-    assert tool_set.status_text("source_nope_select") == "Searching source_nope_select…"
-
-
 def test_select_s_parameters_schema_is_the_uniform_method_schema_for_a_driver_that_narrows_nothing(db):
     automaton = _two_sources(db)
     tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
@@ -240,36 +225,6 @@ def test_a_driver_s_own_parameter_schema_narrows_the_uniform_one(db):
     assert update["required"] == ["values", "fields"]
 
 
-def test_status_text_says_updating_for_an_update_tool(db):
-    automaton = _env_automaton(db)
-    tool_set = SourceNamespace(db, automaton, env=Env()).tool_set(["env"], [], ["env"])
-
-    assert tool_set.status_text("source_env_update") == "Updating Env…"
-    assert tool_set.status_text("source_env_select") == "Searching Env…"
-
-
-def test_summary_text_for_an_update_lists_one_set_line_per_field(db):
-    automaton = _env_automaton(db)
-    tool_set = SourceNamespace(db, automaton, env=Env()).tool_set(["env"], [], ["env"])
-
-    summary = tool_set.summary_text(
-        "source_env_update", {"values": [], "fields": {"pnr": "ABC123", "flight": "VY3003"}}, "1 row updated",
-    )
-
-    assert summary == 'Set pnr = "ABC123"\nSet flight = "VY3003"'
-
-
-def test_summary_text_for_a_refused_update_reports_the_error(db):
-    automaton = _env_automaton(db)
-    tool_set = SourceNamespace(db, automaton, env=Env()).tool_set(["env"], [], ["env"])
-
-    summary = tool_set.summary_text(
-        "source_env_update", {"values": [], "fields": {"customer_email": "x"}}, "error: 'customer_email' is read-only",
-    )
-
-    assert summary == "Could not update Env: 'customer_email' is read-only"
-
-
 async def test_call_passes_keys_through_to_select_by_keyword(file_db):
     automaton = _automaton(PROJECT_ID, _seed(
         file_db, {"flights.csv": b"code,date,city\nVY3003,2026-06-01,Paris\n"}, {"flights.csv": "text/csv"},
@@ -290,6 +245,32 @@ async def test_call_routes_an_update_to_the_driver_and_writes_the_env(file_db):
 
     assert result == "1 row updated"
     assert env.action_set() == {"pnr": "ABC123"}
+
+
+async def test_call_injects_origin_tool_for_a_write_never_from_the_models_own_arguments(file_db):
+    # origin is never part of any tool's own JSON schema (the model can't
+    # see or spoof it) — ToolSet.call injects it itself, in Python, only
+    # for a write (see its own docstring).
+    from datetime import datetime
+
+    from db.models import Tracking
+    from tracking.env import PersistedEnv
+    from tracking.fixed_project_context import FixedProjectContext
+
+    file_db.ensure_project(PROJECT_ID)
+    file_db.publish_project(PROJECT_ID)
+    session_id = file_db.create_chat_session(
+        username="user", project_id=PROJECT_ID, revision=file_db.get_project_published_revision(PROJECT_ID),
+        datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1), start_state="a", end_state="a",
+    )
+    env = PersistedEnv(file_db, FixedProjectContext(project_id=PROJECT_ID), session_id)
+    automaton = _env_automaton(file_db)
+    tool_set = SourceNamespace(file_db, automaton, env=env).tool_set(["env"], [], ["env"])
+
+    await tool_set.call("source_env_update", {"values": [], "fields": {"pnr": "ABC123"}})
+
+    row = Tracking.get(Tracking.action_env.is_null(False))
+    assert row.origin == "tool"
 
 
 async def test_call_resolves_to_the_named_source_s_own_driver(file_db):
@@ -346,33 +327,3 @@ async def test_call_never_blocks_the_event_loop(file_db):
     assert result == "city,country\nParis,France\n"
 
 
-def test_summary_text_reports_the_ui_label_query_and_row_count(db):
-    automaton = _two_sources(db)
-    tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
-
-    summary = tool_set.summary_text(
-        "source_flights_select", {"values": ["VY3003"]}, "header\nrow1\nrow2\n",
-    )
-
-    assert summary == 'Searched Flights for "VY3003" · 2 rows'
-
-
-def test_summary_text_uses_singular_row_for_exactly_one_match(db):
-    automaton = _two_sources(db)
-    tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
-
-    summary = tool_set.summary_text("source_flights_select", {"values": ["VY3003"]}, "header\nrow1\n")
-
-    assert summary == 'Searched Flights for "VY3003" · 1 row'
-
-
-def test_summary_text_reports_a_refused_oversized_select_as_an_error(db):
-    automaton = _two_sources(db)
-    tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
-
-    summary = tool_set.summary_text(
-        "source_flights_select", {"values": ["x"]},
-        "error: response too long — provide more specific filters, then try again.",
-    )
-
-    assert summary == "Could not search Flights: response too long — provide more specific filters, then try again."

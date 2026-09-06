@@ -70,7 +70,7 @@ class RecordingAiService:
         return {"auto": True, "current_index": 0, "models": []}
 
     async def generate_stream_with_metadata(
-        self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False, tool_abort=None,
+        self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False,
     ):
         call_index = len(self.prompts)
         self.prompts.append(system_prompt)
@@ -80,7 +80,6 @@ class RecordingAiService:
             name, arguments = self._tool_call
             result = await tool_set.call(name, arguments)
             self.tool_results.append(result)
-            on_metadata("tool_result", {"name": name, "arguments": arguments, "result": result, "summary_text": ""})
         metadata = self._metadata_per_call[min(call_index, len(self._metadata_per_call) - 1)]
         for key, value in metadata.items():
             on_metadata(key, value)

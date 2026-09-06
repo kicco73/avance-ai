@@ -1,12 +1,13 @@
 
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from http import HTTPStatus
 from typing import Any, AsyncIterator
 
 from chat.errors import ChatServiceError
 from db.db import Db
 from ai import AiService
-from ai import MetadataCallback, ToolAbortDecider, content_to_text
+from ai import MetadataCallback, content_to_text
 from automaton.automaton import Action, Automaton, State, StatePayload
 from logging_factory import LoggerFactory
 from session import Session
@@ -53,13 +54,10 @@ class Metadata:
 	reaction: str | None = None
 	input_tokens: int | None = None
 	output_tokens: int | None = None
-	# One {name, arguments, result, summary_text} entry per tool call this
-	# turn's own AI generation made (see AiService's own tool-call loop and
-	# TrackingProcessor.on_receiving_metadata's own 'tool_result' branch),
-	# in the order they ran — empty for a turn with neither
-	# ai-may-query-sources nor ai-must-query-sources declared, or one that
-	# never actually called any.
-	tool_calls: list[dict] = field(default_factory=list)
+	# Of input_tokens, how many were served from cache — summed across
+	# rounds exactly like input_tokens itself (see on_receiving_metadata),
+	# never a separate total (see Message.cache_read_tokens's own docstring).
+	cache_read_tokens: int | None = None
 	# {action name: translated button label} for this turn's own resulting
 	# state — only ever non-empty when a TranslateChannel was actually
 	# appended to that turn's own channel list (see
@@ -128,12 +126,18 @@ class TrackingProcessor(object):
 	def _save_user_message(self, text: str | None) -> None:
 		"""Persists this turn's own user-facing message — the real text if
 		there is one, a '...' placeholder otherwise — and records enough
-		on self.user for process() to later delete that placeholder rather than keep it as a fake user turn."""
+		on self.user for process() to later delete that placeholder rather than keep it as a fake user turn.
+		Also stamps this turn's own start (see self._turn_started_at's own
+		use in process()) — captured *before* the save, never after, so it
+		can never postdate a tool write this same turn later makes."""
+		self._turn_started_at = datetime.utcnow()
 		message_id = self.db.save_message("user", text or '...', self.user.session_id)
 		self.user = replace(self.user, message_id=message_id, has_ai_started_conversation=not text)
 
 	async def process(self, text: str | None, on_metadata: MetadataCallback | None = None) -> dict:
-
+		"""Tool calls this turn's own AI generation makes are not recorded
+		in Tracking.tool_calls as of this commit — that lands again once
+		the tool loop reports a structured event to persist."""
 		state = self.user.state
 
 		if not state.chat and text not in (None, "", "..."):
@@ -163,12 +167,10 @@ class TrackingProcessor(object):
 		# self.out.tracking_id, which may already be linked to an earlier message.
 		self.env.update(self.metadata.memory, message_id=assistant_id, declared_keys=self.user.automaton.declared_env_key_names())
 
-		if self.metadata.tool_calls:
-			self.db.record_tool_calls(self.user.session_id, self.metadata.tool_calls, message_id=assistant_id)
 		# Binds any avance:env `update` tool call this turn made to the
 		# assistant's own message, same reasoning as record_tool_calls
 		# above — a no-op when nothing wrote through that tool this turn.
-		self.db.link_tool_env_writes_to_message(self.user.session_id, assistant_id)
+		self.db.link_tool_env_writes_to_message(self.user.session_id, assistant_id, since=self._turn_started_at)
 
 		if self.out.tracking_id is not None and not self.out.tracking_linked_to_message:
 			self.db.link_signal_to_message(self.out.tracking_id, assistant_id)
@@ -186,7 +188,7 @@ class TrackingProcessor(object):
 			self.db.set_message_reaction(user_message_id, self.metadata.reaction)
 
 		if self.metadata.input_tokens is not None and user_message_id is not None:
-			self.db.set_message_tokens(user_message_id, self.metadata.input_tokens)
+			self.db.set_message_tokens(user_message_id, self.metadata.input_tokens, self.metadata.cache_read_tokens or 0)
 
 		return self._build_turn_response(user_message_id, assistant_id)
 
@@ -221,8 +223,8 @@ class TrackingProcessor(object):
 			rv = self.metadata.input_tokens = (self.metadata.input_tokens or 0) + value
 		elif key == 'output_tokens':
 			rv = self.metadata.output_tokens = value
-		elif key == 'tool_result':
-			self.metadata.tool_calls.append(value)
+		elif key == 'cache_read_tokens':
+			rv = self.metadata.cache_read_tokens = (self.metadata.cache_read_tokens or 0) + value
 		self.metadata.on_metadata(key, rv)
 
 	def _resolve_signals(self, signal_values: dict[str, float]) -> None:
@@ -249,8 +251,7 @@ class TrackingProcessor(object):
 		has nothing new to record."""
 		return bool(self.metadata.signals) or self.out.action is not None
 
-	def generate_reply(self, state: State, on_metadata: MetadataCallback, tool_abort: "ToolAbortDecider | None" = None,
-	) -> AsyncIterator[str]:
+	def generate_reply(self, state: State, on_metadata: MetadataCallback) -> AsyncIterator[str]:
 		base_prompt, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
 		channels = self.build_turn_channels(state, base_prompt, signal_definition, reaction_definition)
 		env_block = EnvPromptBlock.for_state(self.env, self.user.automaton, state)
@@ -262,19 +263,8 @@ class TrackingProcessor(object):
 		return TurnProtocolUsingSchema(self.ai_service).generate_reply(
 			channels, chat_history, on_metadata,
 			tool_set=self.build_tool_set(state), force_required_tools=self.force_required_tools_for(state),
-			env_block=env_block.text() if env_block else None, tool_abort=tool_abort,
+			env_block=env_block.text() if env_block else None,
 		)
-
-	def should_abort_tools(self) -> bool:
-		"""AiService.generate_stream_with_metadata's own tool_abort check —
-		whether a tool-call round arriving after this turn's own signals
-		already resolved into a transition should be discarded rather than
-		run. Once the automaton has moved, whatever reply that round would
-		produce is thrown away and regenerated from scratch in the new
-		state (see TrackingProcessorAfterUserMessage's own `transitioned`
-		branch), so resolving the tool call first would only ever be
-		wasted work."""
-		return self.out.signals_resolved and self.user.state != self.out.state
 
 	def _enforce_input_budget(
 		self, base_prompt: str, signal_definition: str | None, reaction_definition: str | None,

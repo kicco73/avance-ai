@@ -143,12 +143,6 @@ class _FakeToolSet:
     def required_specs(self):
         return []
 
-    def status_text(self, name: str) -> str:
-        return "Looking something up..."
-
-    def summary_text(self, name: str, arguments: dict, result: str) -> str:
-        return "Done."
-
     async def call(self, name: str, arguments: dict) -> str:
         return "x" * 1000
 
@@ -203,3 +197,32 @@ async def test_message_tokens_is_the_sum_of_every_rounds_own_input_tokens(db):
 
     user_message = db.get_message(result["user_message_id"])
     assert user_message["tokens"] == 250
+
+
+class MultiRoundAiServiceWithCacheReads(MultiRoundAiService):
+    async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, **kwargs):
+        on_metadata("input_tokens", 100)
+        on_metadata("cache_read_tokens", 40)
+        on_metadata("output_tokens", 20)
+        on_metadata("input_tokens", 150)
+        on_metadata("cache_read_tokens", 60)
+        on_metadata("output_tokens", 30)
+        yield "hi"
+
+
+async def test_message_cache_read_tokens_is_also_summed_across_every_round(db):
+    automaton = _automaton(contextual_prompt="hi")
+    session_id = _session_id(db)
+    project_service = FixedProjectContext(project_id=PROJECT_ID)
+    metrics = MetricService(db, project_service)
+    env = PersistedEnv(db, project_service, session_id)
+    scope_builder = EvaluationScopeBuilder(env, metrics, SessionFacts(db, project_service), UserFacts(db), db)
+
+    processor = TrackingProcessorAfterUserMessage(
+        MultiRoundAiServiceWithCacheReads(), scope_builder, env, db, _user_variables(automaton, session_id),
+    )
+    result = await processor.process("hello")
+
+    user_message = db.get_message(result["user_message_id"])
+    assert user_message["tokens"] == 250
+    assert user_message["cache_read_tokens"] == 100

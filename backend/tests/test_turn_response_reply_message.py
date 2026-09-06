@@ -49,7 +49,7 @@ class PlainAiService:
     def get_models_info(self) -> dict:
         return {"auto": True, "current_index": 0, "models": []}
 
-    async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False, tool_abort=None):
+    async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
         yield "Hello there"
 
 
