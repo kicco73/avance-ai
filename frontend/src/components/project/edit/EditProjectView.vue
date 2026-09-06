@@ -607,6 +607,7 @@ onBeforeUnmount(() => {
                 :ref="registerTab('output')"
                 :project-id="projectId"
                 :state-key="selectedStateKey"
+                :state-data="selectedGraphElement?.data"
                 :recently-added-key="recentlyAddedKey"
                 @set-field="(name, field, value) => handleSetOutputKeyField(selectedStateKey, name, field, value)"
                 @add-output-key="() => handleAddOutputKey(selectedStateKey)"

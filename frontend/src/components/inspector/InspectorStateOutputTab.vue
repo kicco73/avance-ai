@@ -1,11 +1,11 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import { getProjectStates } from '../../api.js'
+import { ref, watch } from 'vue'
 import CardMenu from './CardMenu.vue'
 
 const props = defineProps({
   projectId: { type: String, required: true },
   stateKey: { type: String, required: true },
+  stateData: { type: Object, default: null },
   recentlyAddedKey: { type: String, default: null },
 })
 
@@ -18,14 +18,8 @@ const editUiLabel = ref('')
 const editUiDescription = ref('')
 const editAiDefinition = ref('')
 
-async function loadOutputKeys() {
-  try {
-    const states = await getProjectStates(props.projectId)
-    const state = states.find(s => s.id === props.stateKey)
-    outputKeys.value = state?.output_keys || []
-  } catch (e) {
-    console.error('Failed to load output keys:', e)
-  }
+function loadOutputKeys() {
+  outputKeys.value = props.stateData?.output_keys || []
 }
 
 function selectOutputKey(name) {
@@ -55,12 +49,7 @@ async function deleteOutputKey(name) {
   await loadOutputKeys()
 }
 
-onMounted(loadOutputKeys)
-
-watch(() => props.stateKey, loadOutputKeys)
-watch(() => props.recentlyAddedKey, (newKey) => {
-  if (newKey?.startsWith('output-key:')) loadOutputKeys()
-})
+watch(() => props.stateData?.output_keys, loadOutputKeys, { deep: true, immediate: true })
 </script>
 
 <template>
@@ -238,8 +227,7 @@ watch(() => props.recentlyAddedKey, (newKey) => {
 }
 
 .add-button {
-  flex: 1;
-  padding: 0.5rem;
+  padding: 0.5rem 1rem;
   border-radius: 6px;
   border: 1px dashed #4a6fa5;
   background: white;
