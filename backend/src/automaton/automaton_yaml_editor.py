@@ -12,7 +12,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from automaton.automaton import (
-    AI_ACCESS_NONE, ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload,
+    AI_ACCESS_NONE, ActionPayload, EnvKeyPayload, OutputKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload,
 )
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 
@@ -527,6 +527,41 @@ class AutomatonYamlEditor:
         self._transform_triggers_referencing(
             "env", name, lambda tree: self._strip_namespaced_ref_from_trigger(tree, "env", name)
         )
+
+    def _output_key(self, state_name: str, name: str) -> CommentedMap:
+        state = self._state(state_name)
+        output = state.setdefault("output", CommentedMap())
+        if name not in output:
+            output[name] = CommentedMap()
+        return output[name]
+
+    def _output_key_payload(self, state_name: str, name: str) -> OutputKeyPayload:
+        raw_output_key = self._output_key(state_name, name)
+        return {
+            "name": name,
+            "ui_label": raw_output_key.get("ui-label"),
+            "ui_description": raw_output_key.get("ui-description"),
+            "ai_definition": raw_output_key.get("ai-definition"),
+        }
+
+    def add_output_key(self, state_name: str) -> OutputKeyPayload:
+        output = self._state(state_name).setdefault("output", CommentedMap())
+        name = self._unique_signal_name("new_output_key", set(output.keys()))
+        output[name] = CommentedMap()
+        return self._output_key_payload(state_name, name)
+
+    def set_output_key_field(self, state_name: str, name: str, field: str, value) -> OutputKeyPayload:
+        raw_output_key = self._output_key(state_name, name)
+        if value is None or value == "":
+            raw_output_key.pop(field, None)
+        else:
+            raw_output_key[field] = value
+        return self._output_key_payload(state_name, name)
+
+    def delete_output_key(self, state_name: str, name: str) -> None:
+        output = self._state(state_name).get("output", {})
+        if name in output:
+            del output[name]
 
     def delete_source(self, name: str) -> None:
         sources = self._sources()
