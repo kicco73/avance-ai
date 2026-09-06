@@ -553,8 +553,20 @@ class AutomatonYamlEditor:
 
     def set_output_key_field(self, state_name: str, name: str, field: str, value) -> OutputKeyPayload:
         # Same "editing this field renames the entry" convention as
-        # set_env_key_field's 'name' case — output has no separate ui-label
-        # driving its id the way a signal's does.
+        # set_signal_field's 'ui-label' case — the card only ever exposes
+        # ui-label as the editable identity; the underlying snake_case key
+        # is derived from it, same as a signal's own name never is edited
+        # directly. 'name' is kept too for direct/programmatic renames.
+        if field == "ui_label":
+            raw_output_key = self._output_key(state_name, name)
+            if value:
+                raw_output_key["ui-label"] = value
+            else:
+                raw_output_key.pop("ui-label", None)
+            derived_name = self.to_snake_case(value) if value else None
+            if derived_name and derived_name != name:
+                return self.rename_output_key(state_name, name, derived_name)
+            return self._output_key_payload(state_name, name)
         if field == "name":
             derived_name = self.to_snake_case(value)
             if derived_name and derived_name != name:
