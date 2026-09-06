@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { renderMarkdown as renderMarkdownBase } from '../../markdown.js'
+import { toolTraceLine } from '../../toolTraceLine.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 import MessageReactionButton from './MessageReactionButton.vue'
 
@@ -208,7 +209,7 @@ const {
              expandable to the raw arguments/result on click. -->
         <div v-if="message.role === 'assistant' && message.toolCalls?.length" class="tool-call-trace">
           <details v-for="(call, idx) in message.toolCalls" :key="idx" class="tool-call-entry">
-            <summary>{{ call.summary_text || call.name }}</summary>
+            <summary>{{ toolTraceLine(call) }}</summary>
             <pre class="tool-call-raw">{{ JSON.stringify({ arguments: call.arguments, result: call.result }, null, 2) }}</pre>
           </details>
         </div>

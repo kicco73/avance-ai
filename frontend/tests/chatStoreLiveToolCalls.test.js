@@ -43,15 +43,19 @@ describe('a live turn backfills its own persisted tool-call trace once it lands'
         state: { key: 'a', ui_label: 'A', actions: [] }, 'on-enter': null, session_id: 1,
       }
     })
+    const toolCallRecord = {
+      name: 'source_flights_select', arguments: { values: ['VY3003'] }, result: 'city\nParis\n',
+      label: 'Flights', rows: 1, error: false, duration_ms: 12,
+    }
     api.getMessages.mockResolvedValue([
-      { id: 51, role: 'assistant', content: 'Found it.', timestamp: 't', tool_calls: [{ name: 'source_flights_select', summary_text: 'Searched Flights for "VY3003" · 1 row' }] },
+      { id: 51, role: 'assistant', content: 'Found it.', timestamp: 't', tool_calls: [toolCallRecord] },
     ])
 
     await chatStore.handleSend('where is my flight?')
 
     await vi.waitFor(() => {
       const msg = chatStore.messages.value.find((m) => m.messageId === 51)
-      expect(msg?.toolCalls).toEqual([{ name: 'source_flights_select', summary_text: 'Searched Flights for "VY3003" · 1 row' }])
+      expect(msg?.toolCalls).toEqual([toolCallRecord])
     })
   })
 
