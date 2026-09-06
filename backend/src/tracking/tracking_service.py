@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import asyncio
 from http import HTTPStatus
-from typing import Any
 
 from automaton.automaton import Automaton, SignalPayload
 from ai import AiService
@@ -292,10 +290,6 @@ class TrackingService(object):
 			ai_service=ai_service,
 		)
 
-		def on_metadata_sync_to_async(key: str, value: Any):
-			if on_metadata:
-				asyncio.ensure_future(on_metadata(key, value))
-
 		tracking_processor = TrackingProcessor(
 			ai_service, scope_builder,
 			env, self._db, user_vars,
@@ -304,4 +298,4 @@ class TrackingService(object):
 			input_token_budget_per_turn=self._input_token_budget_per_turn,
 		)
 
-		return await tracking_processor.process(text, on_metadata=on_metadata_sync_to_async)
+		return await tracking_processor.process(text, on_metadata=on_metadata)

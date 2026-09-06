@@ -179,7 +179,7 @@ class _FakeChatService:
             # rest of the reply is written — mirrored here, with a yield to
             # the loop so whatever that callback started gets to run mid-turn.
             if on_metadata is not None and self.announces_audio and self.reply_audio_text:
-                await on_metadata("audio", self.announced_audio_text or self.reply_audio_text)
+                on_metadata("audio", self.announced_audio_text or self.reply_audio_text)
                 await asyncio.sleep(0)
             self.db.add(session_id, "user", text)
             self.db.add(session_id, "assistant", f"**Hola** — has dicho: {text}", audio_text=self.reply_audio_text)

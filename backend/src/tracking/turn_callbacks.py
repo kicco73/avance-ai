@@ -8,7 +8,9 @@ from __future__ import annotations
 from typing import Any, Awaitable, Callable
 
 OnChunk = Callable[[str], Awaitable[None]]
-# Awaited — called at most once per metadata key ("audio", "signals",
-# "env", ...) a turn's own reply carries, in whatever order the active
-# TurnStrategy resolves them.
-OnMetadata = Callable[[str, Any], Awaitable[None]]
+# Synchronous, never awaited — called at most once per metadata key
+# ("audio", "signals", "env", ...) a turn's own reply carries, in whatever
+# order the active TurnStrategy resolves them; every event reaches its
+# consumer in the exact order it was raised, so a "done" queued right
+# after the turn returns can never overtake a chunk.
+OnMetadata = Callable[[str, Any], None]

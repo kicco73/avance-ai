@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import threading
@@ -536,7 +535,6 @@ class AiService(object):
 						f"tool call: session={tool_set.session_id} round={event['round']} name={event['name']} "
 						f"arguments={event['arguments']} result_chars={len(event['result'])} duration_ms={event['duration_ms']}"
 					)
-					await asyncio.sleep(1.5) # TEMP: slows the tool trace down so its own fade is visible; remove once confirmed
 					tapped_on_metadata("tool", event)
 					model_facing_result = result + _TOOL_ERROR_DIRECTIVE if result.startswith("error:") else result
 					turn_history.append({"role": "tool", "tool_call_id": call.id, "content": model_facing_result})

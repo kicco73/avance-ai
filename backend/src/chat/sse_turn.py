@@ -20,13 +20,13 @@ class SseChatTurn(object):
         self._text = text
         self._events: asyncio.Queue[tuple[str, dict]] = asyncio.Queue()
 
-    async def on_metadata(self, key: str, value) -> None:
+    def on_metadata(self, key: str, value) -> None:
         if key == "audio":
-            await self._events.put(("audio_text", {"content": value}))
+            self._events.put_nowait(("audio_text", {"content": value}))
         elif key == "chunk":
-            await self._events.put(("chunk", {"content": value}))
+            self._events.put_nowait(("chunk", {"content": value}))
         elif key == "text":
-            await self._events.put(("text", {"content": value}))
+            self._events.put_nowait(("text", {"content": value}))
         elif key == "tool":
             # One SSE event, "tool", for both phases — the frontend's own
             # reader (chatClient.js) tells them apart by data.phase.
@@ -34,7 +34,7 @@ class SseChatTurn(object):
             # tool_status_text's own docstring); "result" carries the
             # payload verbatim.
             payload = {**value, "status_text": tool_status_text(value)} if value["phase"] == "start" else value
-            await self._events.put(("tool", payload))
+            self._events.put_nowait(("tool", payload))
 
     def response(self) -> StreamingResponse:
         return StreamingResponse(self._stream(), media_type="text/event-stream")
@@ -44,15 +44,15 @@ class SseChatTurn(object):
             result = await self._chat_service.process_turn(
                 self._session_id, self._text, on_metadata=self.on_metadata
             )
-            await self._events.put(("done", result))
+            self._events.put_nowait(("done", result))
         except ServiceError as exc:
             data = {"message": exc.message, "detail": getattr(exc, "detail", str(exc))}
             if exc.code is not None:
                 data["code"] = exc.code
-            await self._events.put(("error", data))
+            self._events.put_nowait(("error", data))
         except Exception as exc:
             logger.exception(f"Unexpected error while processing a chat turn: {str(exc)}")
-            await self._events.put((
+            self._events.put_nowait((
                 "error",
                 {"message": "Unexpected server error.", "detail": str(exc)},
             ))

@@ -8,8 +8,18 @@
 // through the real, absolute VITE_API_URL) loaded fine. Resolution moved
 // entirely client-side (see cssAssetUrls.js's own docstring) — this
 // verifies it actually produces an absolute, cross-origin-correct URL.
-import { describe, expect, it } from 'vitest'
-import { resolveCssAssetUrls } from '../src/cssAssetUrls.js'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
+
+// Pinned here, not read off the running environment: the module-level
+// API_URL every api/*.js file derives from VITE_API_URL is resolved at
+// import time, so the stub must land before the dynamic import below.
+let resolveCssAssetUrls
+
+beforeAll(async () => {
+  vi.stubEnv('VITE_API_URL', 'http://localhost:8000/api')
+  vi.resetModules()
+  ;({ resolveCssAssetUrls } = await import('../src/cssAssetUrls.js'))
+})
 
 describe('resolveCssAssetUrls', () => {
   it('rewrites a relative url(...) to the real, absolute API origin — not a same-origin-relative path', () => {

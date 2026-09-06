@@ -9,12 +9,14 @@
 // dedicated tests — see onEnterActions.test.js.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildTimeline } from '../src/testTimeline.js'
+import { TOOL_STATUS_MIN_MS } from '../src/toolStatusHold.js'
 
 vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
   postAction: vi.fn(),
   getSessions: vi.fn(),
-  getAiModels: vi.fn()
+  getAiModels: vi.fn(),
+  getMessages: vi.fn()
 }))
 vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn() }))
 
@@ -160,24 +162,30 @@ describe('submitMessage correlates ids directly, never through result.reply', ()
     expect(userMessage.reaction).toBe('listening')
   })
 
-  it('sets statusText on the streaming bubble on a tool_call event, and clears it on tool_result', async () => {
-    let duringCall = null
-    let afterResult = null
-    chatClient.sendMessage.mockImplementation(async (text, sessionId, { onStatus }) => {
-      onStatus('Searching Flights…')
-      duringCall = chatStore.messages.value.find((m) => m.role === 'assistant')?.statusText
-      onStatus('')
-      afterResult = chatStore.messages.value.find((m) => m.role === 'assistant')?.statusText
-      return {
-        reply: [], user_message_id: 42, assistant_message_id: 5,
-        state: { key: 'a', ui_label: 'A', actions: [] }, 'on-enter': null, session_id: 1
-      }
-    })
+  it('sets statusText on the streaming bubble on a tool_call event, and clears it on tool_result once the minimum display time is up', async () => {
+    vi.useFakeTimers()
+    try {
+      const api = await import('../src/api.js')
+      api.getMessages.mockResolvedValue([])
+      let duringCall = null
+      chatClient.sendMessage.mockImplementation(async (text, sessionId, { onStatus }) => {
+        onStatus('Searching Flights…')
+        duringCall = chatStore.messages.value.find((m) => m.role === 'assistant')?.statusText
+        vi.advanceTimersByTime(TOOL_STATUS_MIN_MS)
+        onStatus('')
+        return {
+          reply: [], user_message_id: 42, assistant_message_id: 5,
+          state: { key: 'a', ui_label: 'A', actions: [] }, 'on-enter': null, session_id: 1
+        }
+      })
 
-    await chatStore.handleSend('hello')
+      await chatStore.handleSend('hello')
 
-    expect(duringCall).toBe('Searching Flights…')
-    expect(afterResult).toBe('')
+      expect(duringCall).toBe('Searching Flights…')
+      expect(chatStore.messages.value.find((m) => m.role === 'assistant')?.statusText).toBe('')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('clears any stale reaction on the local user bubble when this turn carries none', async () => {

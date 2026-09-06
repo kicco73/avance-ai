@@ -23,7 +23,7 @@ async def _drain(turn: SseChatTurn) -> list[tuple[str, dict]]:
 async def test_an_unrecognized_metadata_key_is_silently_dropped():
     turn = SseChatTurn(chat_service=None, session_id=1, text="hi")
 
-    await turn.on_metadata("something_new", {"whatever": True})
+    turn.on_metadata("something_new", {"whatever": True})
 
     assert await _drain(turn) == []
 
@@ -41,7 +41,7 @@ async def test_a_tool_start_event_forwards_the_structured_fields_plus_status_tex
     turn = SseChatTurn(chat_service=None, session_id=1, text="hi")
     payload = _tool_event("start")
 
-    await turn.on_metadata("tool", payload)
+    turn.on_metadata("tool", payload)
 
     [(event, data)] = await _drain(turn)
     assert event == "tool"
@@ -52,6 +52,6 @@ async def test_a_tool_result_event_forwards_the_full_payload_with_no_status_text
     turn = SseChatTurn(chat_service=None, session_id=1, text="hi")
     payload = _tool_event("result", result="city,country\nParis,France\n", rows=1, error=False, duration_ms=12)
 
-    await turn.on_metadata("tool", payload)
+    turn.on_metadata("tool", payload)
 
     assert await _drain(turn) == [("tool", payload)]

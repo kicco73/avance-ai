@@ -5,11 +5,13 @@
 // Response-shaped SSE body), all the way up into the chat store and
 // MessageBubble-facing message shape. Proves the whole pipe end to end:
 // while the tool call is in flight the bubble shows status_text, the
-// "result" phase clears it, chunks accumulate, and once the turn is done
+// "result" phase clears it once TOOL_STATUS_MIN_MS is up (even past
+// "done"), chunks accumulate, and once the turn is done
 // the persisted tool_calls record (fetched via getMessages, same as a
 // reload) renders through toolTraceLine.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toolTraceLine } from '../src/toolTraceLine.js'
+import { TOOL_STATUS_MIN_MS } from '../src/toolStatusHold.js'
 
 vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
@@ -108,12 +110,17 @@ describe('a live turn shows the tool status then the persisted trace, end to end
     await sendPromise
 
     const finished = chatStore.messages.value.find((m) => m.messageId === 51)
-    expect(finished.statusText).toBe('')
+    expect(finished.statusText).toBe(TOOL_START.status_text)
     expect(finished.content).toBe('Your flight is on time.')
 
     await vi.waitFor(() => {
-      expect(finished.toolCalls).toEqual([PERSISTED_RECORD])
+      expect(chatStore.messages.value.find((m) => m.messageId === 51)?.statusText).toBe('')
+    }, { timeout: TOOL_STATUS_MIN_MS + 1000 })
+
+    const traced = () => chatStore.messages.value.find((m) => m.messageId === 51)
+    await vi.waitFor(() => {
+      expect(traced().toolCalls).toEqual([PERSISTED_RECORD])
     })
-    expect(toolTraceLine(finished.toolCalls[0])).toBe('Searched Flight records for "VY3003" · 1 row')
+    expect(toolTraceLine(traced().toolCalls[0])).toBe('Searched Flight records for "VY3003" · 1 row')
   })
 })

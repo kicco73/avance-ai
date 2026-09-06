@@ -5,8 +5,18 @@
 // Unlike the other API tests, this imports admin.js for real (only fetch
 // itself is stubbed) so a module-level mistake like a missing import
 // actually throws here instead of being hidden behind a mocked api.js.
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { putProject } from '../src/api/admin.js'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// Pinned here, not read off the running environment: admin.js resolves
+// its API_URL from VITE_API_URL at import time, so the stub must land
+// before the dynamic import below.
+let putProject
+
+beforeAll(async () => {
+  vi.stubEnv('VITE_API_URL', 'http://localhost:8000/api')
+  vi.resetModules()
+  ;({ putProject } = await import('../src/api/admin.js'))
+})
 
 function fakeSseResponse(messages) {
   const bytes = new TextEncoder().encode(messages.map((m) => `data: ${JSON.stringify(m)}\n\n`).join(''))

@@ -193,9 +193,10 @@ const {
         <!-- A tool call mid-stream (text already arrived, more still to
              come) leaves no trace above once isAwaitingReply flips false —
              this is that same status line, just appended below the partial
-             text instead of replacing the typing dots. Never renders once
-             the turn ends: submitMessage clears statusText the moment the
-             turn's own result lands, so the at-rest render (a reload's
+             text instead of replacing the typing dots. Cleared by the tool's
+             own result, no sooner than TOOL_STATUS_MIN_MS after it was shown
+             (see toolStatusHold.js) — it may outlive "done" by a moment and
+             fade out over the finished text; the at-rest render (a reload's
              toStoreMessage never sets statusText at all) is unaffected. -->
         <Transition name="tool-status-fade">
           <span

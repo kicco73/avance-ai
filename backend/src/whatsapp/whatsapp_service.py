@@ -603,7 +603,7 @@ class VoiceNoteSynthesizer(object):
         self._talk_service = talk_service
         self._pending: dict[str, asyncio.Task[bytes]] = {}
 
-    async def on_metadata(self, key: str, value) -> None:
+    def on_metadata(self, key: str, value) -> None:
         if key != "audio" or not value or value in self._pending:
             return
         while len(self._pending) >= self._MAX_PENDING:

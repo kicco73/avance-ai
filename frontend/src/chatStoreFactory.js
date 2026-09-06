@@ -5,6 +5,7 @@ import {
   getAiModels, postAiModelSelection
 } from './api.js'
 import { sendMessage as sendChatMessage } from './chatClient.js'
+import { ToolStatusHold } from './toolStatusHold.js'
 import { subscribeToStateNotifications } from './notificationBus.js'
 import { playMessageChime, playMessageAudio, playReactionChime, unlockAudioPlayback } from './audio.js'
 import { clearApiError, setApiError } from './errorStore.js'
@@ -399,10 +400,18 @@ export function createChatStore({
       // Backend-composed line (e.g. "Searching Flights…") shown in place
       // of the typing dots while a tool call is in flight — see
       // MessageBubble.vue's own isAwaitingReply branch. Cleared by the
-      // matching tool_result event, same as chatStatus below.
+      // matching tool_result event, no sooner than TOOL_STATUS_MIN_MS
+      // after it was shown (see ToolStatusHold) — "done" never cuts it short.
       statusText: ''
     }
     messages.value.push(assistantMsg)
+    const statusHold = new ToolStatusHold({
+      setStatusText: (text) => {
+        if (currentSessionId.value !== turnSessionId) return
+        const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
+        if (idx !== -1) messages.value[idx] = { ...messages.value[idx], statusText: text }
+      }
+    })
 
     // Set the moment onStatus first fires with a non-empty status_text
     // (a live tool_call event) — the signal that this turn's own
@@ -422,13 +431,8 @@ export function createChatStore({
           if (currentSessionId.value !== turnSessionId) return
           if (text) hadToolCall = true
           chatStatus.value = text
-          const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
-          if (idx !== -1) {
-            messages.value[idx] = {
-              ...messages.value[idx],
-              statusText: text
-            }
-          }
+          if (text) statusHold.show(text)
+          else statusHold.hide()
         },
         onChunk: (chunkText) => {
           if (currentSessionId.value !== turnSessionId) return
@@ -492,13 +496,7 @@ export function createChatStore({
           content: replyMsg.content,
           audioText: replyMsg.audio_text,
           messageId: replyMsg.id,
-          timestamp: replyMsg.timestamp,
-          // The turn is over — a tool call mid-stream leaves a stale
-          // statusText behind whenever the last event before "done" was
-          // tool_call rather than its matching tool_result. Cleared here
-          // so the at-rest bubble never shows a lingering "Searching…"
-          // line (toStoreMessage's own reload path never sets it at all).
-          statusText: ''
+          timestamp: replyMsg.timestamp
         }
         if (idx !== -1) {
           messages.value[idx] = { ...messages.value[idx], ...reconciled }
@@ -523,10 +521,11 @@ export function createChatStore({
         messages.value[idx] = {
           ...messages.value[idx],
           messageId: result.assistant_message_id,
-          timestamp: new Date().toISOString(),
-          statusText: ''
+          timestamp: new Date().toISOString()
         }
       }
+
+      statusHold.hide()
 
       // The live SSE turn only ever streamed status_text/chunks, never the
       // permanent tool-call trace itself (see toStoreMessage) — fetched
@@ -579,6 +578,7 @@ export function createChatStore({
       // it, so it stays (marked failed) rather than vanishing. A no-op if
       // the user's since switched chats (messages.value is a different
       // session's array by then, never containing assistantMsgId).
+      statusHold.cancel()
       const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
       if (idx !== -1) {
         if (hasChunk) {

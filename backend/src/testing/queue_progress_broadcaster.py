@@ -68,7 +68,7 @@ class QueueProgressBroadcaster:
         with self._lock:
             bucket = self._pending.pop(username, None)
             connections = list(self._connections.get(username, {}).items())
-        if not bucket:
+        if not bucket or (not connections and self._ws_notifications is None):
             return
         tokens = self._ai_service.get_total_tokens()
         for message in bucket.values():
