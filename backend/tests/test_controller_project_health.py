@@ -130,3 +130,19 @@ def test_resume_is_rejected_for_a_project_whose_published_revision_is_broken(cli
 
     assert response.status_code == HTTPStatus.CONFLICT, response.text
     assert response.json()["error"]["code"] == "project_broken"
+
+
+def test_own_broken_project_warnings_can_be_dismissed(client, app_db):
+    app_db.get_or_create_user("test", "sub-user", "user", "user", None, user_id="user")
+    warning_id = app_db.save_system_warning("user", "p", "project_broken", "nope", file="index.yml", line=2)
+    app_db.get_or_create_user("test", "sub-other", "other", "other", None, user_id="other")
+    foreign_id = app_db.save_system_warning("other", "p", "project_broken", "nope")
+
+    listed = client.get("/api/settings/warnings?kind=project_broken").json()["warnings"]
+    assert [(w["id"], w["file"], w["line"]) for w in listed] == [(warning_id, "index.yml", 2)]
+
+    assert client.delete(f"/api/settings/warnings/{warning_id}").status_code == 200
+    assert client.get("/api/settings/warnings?kind=project_broken").json()["warnings"] == []
+    assert client.delete(f"/api/settings/warnings/{warning_id}").status_code == HTTPStatus.NOT_FOUND
+    assert client.delete(f"/api/settings/warnings/{foreign_id}").status_code == HTTPStatus.NOT_FOUND
+    assert len(app_db.get_system_warnings("other", "p")) == 1

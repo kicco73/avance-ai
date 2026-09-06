@@ -281,7 +281,9 @@ def test_broken_notification_job_warns_every_admin_and_pushes_to_connected_ones(
     # default non-admin role — must never get a warning.
     ws_notifications = FakeWsAdapter()
 
-    job = ProjectHealthNotificationJob(db, ws_notifications, "broken", 3, "index.yml no longer builds — nope")
+    job = ProjectHealthNotificationJob(
+        db, ws_notifications, "broken", 3, "index.yml no longer builds — nope", file="index.yml", line=7,
+    )
     job.prepare()
     asyncio.run(job.run_next_step())
 
@@ -291,12 +293,19 @@ def test_broken_notification_job_warns_every_admin_and_pushes_to_connected_ones(
     assert len(warnings_admin1) == 1 and warnings_admin1[0]["kind"] == "project_broken"
     assert len(warnings_admin2) == 1
     assert warnings_user == []
+    listed = db.list_system_warnings_for_user("admin1", kind="project_broken")
+    assert len(listed) == 1 and listed[0]["file"] == "index.yml" and listed[0]["line"] == 7
     pushed_usernames = {username for username, _ in ws_notifications.pushed}
     assert pushed_usernames == {"admin1", "admin2"}
+    assert all(payload["file"] == "index.yml" and payload["line"] == 7 for _, payload in ws_notifications.pushed)
 
 
-def test_recovery_notification_job_warns_nobody(db):
+def test_recovery_notification_job_warns_nobody_and_clears_the_projects_own_warnings(db):
     _make_admin(db, "admin1")
+    _make_admin(db, "admin2")
+    db.save_system_warning("admin1", "flaky", "project_broken", "nope")
+    db.save_system_warning("admin2", "flaky", "project_broken", "nope")
+    db.save_system_warning("admin1", "other", "project_broken", "still broken")
     ws_notifications = FakeWsAdapter()
 
     job = ProjectHealthNotificationJob(db, ws_notifications, "flaky", 4, None)
@@ -304,7 +313,20 @@ def test_recovery_notification_job_warns_nobody(db):
     asyncio.run(job.run_next_step())
 
     assert db.get_system_warnings("admin1", "flaky") == []
+    assert db.get_system_warnings("admin2", "flaky") == []
+    assert len(db.get_system_warnings("admin1", "other")) == 1
     assert ws_notifications.pushed == []
+
+
+def test_a_broken_published_revision_reports_where_it_broke(db, project_service):
+    _publish(db, project_service, "broken", VALID_YML)
+    _corrupt_published_revision(db, project_service, "broken")
+
+    health = project_service._manager._health_checker.current("broken")
+
+    assert health.published.error is not None
+    assert health.published.file == "index.yml"
+    assert health.published.line == 0
 
 
 def test_project_health_notifications_submits_a_job_on_the_event(db):
@@ -317,10 +339,11 @@ def test_project_health_notifications_submits_a_job_on_the_event(db):
     notifications = ProjectHealthNotifications(db, FakeJobService(), FakeWsAdapter())
     notifications.register()
 
-    publish(ProjectPublishedHealthChanged(project_id="broken", revision=1, error="nope"))
+    publish(ProjectPublishedHealthChanged(project_id="broken", revision=1, error="nope", file="index.yml", line=3))
 
     assert len(submitted) == 1
     assert isinstance(submitted[0], ProjectHealthNotificationJob)
+    assert submitted[0]._file == "index.yml" and submitted[0]._line == 3
 
 
 # --- A cached build failure that depended on another project's identity ---

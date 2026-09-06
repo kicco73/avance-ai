@@ -15,21 +15,21 @@ from logging_factory import LoggerFactory
 from session import Session
 from tracking.session_import import SessionImportManager
 
-from .archive.automaton_loader import AutomatonLoader
-from .archive.layout import (
+from ..archive.automaton_loader import AutomatonLoader
+from ..archive.layout import (
     IMAGE_CONTENT_TYPE_BY_EXTENSION, IMAGE_EXTENSIONS, SESSIONS_EXPORT_FILENAME, TESTS_EXPORT_FILENAME,
     TEXT_CONTENT_TYPE_BY_EXTENSION,
 )
-from .archive.zip_importer import ZipImporter
-from .project_import_bundle_job import ProjectImportBundleJob
-from .types import FAMILY_NOT_CHECKED, CommitCallback
+from ..archive.zip_importer import ZipImporter
+from ..project_import_bundle_job import ProjectImportBundleJob
+from ..types import FAMILY_NOT_CHECKED, CommitCallback
 
 if TYPE_CHECKING:
-    from .manager import ProjectManager
+    from .project_manager import ProjectManager
 
 logger = LoggerFactory.get_logger(__name__)
 
-NEW_PROJECT_TEMPLATE = Path(__file__).resolve().parents[2] / "samples" / "projects" / "Hello world.zip"
+NEW_PROJECT_TEMPLATE = Path(__file__).resolve().parents[3] / "samples" / "projects" / "Hello world.zip"
 
 
 class ProjectUploader:

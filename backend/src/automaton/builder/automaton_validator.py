@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import inspect
 
-from automaton.archive_resolver import ArchiveResolver
+from automaton.builder.archive_resolver import ArchiveResolver
 from automaton.automaton import EnvKey, MemoryArchive, Source, State
-from automaton.build_cursor import BuildCursor
+from automaton.builder.build_cursor import BuildCursor
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from metrics.metrics_framework import metric_names

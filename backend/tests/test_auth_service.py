@@ -79,16 +79,20 @@ def invite_code(db, project_service) -> str:
     return invite["code"]
 
 
+def _alice(db) -> None:
+    db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
+
+
 class TestLogin:
-    def test_unknown_provider_raises_value_error(self, auth_service):
+    def test_an_unknown_provider_is_a_value_error_and_an_invalid_credential_an_auth_error(self, auth_service):
         with pytest.raises(ValueError):
             auth_service.login("not-a-real-provider", "whatever")
-
-    def test_invalid_credential_raises_auth_error(self, auth_service):
         with pytest.raises(AuthError):
             auth_service.login("google", "bad-credential")
 
-    def test_valid_credential_returns_a_token_without_creating_a_user(self, db, auth_service, identity, jwt_secret):
+    def test_a_valid_credential_returns_a_token_creating_no_user_until_registration_then_updates_last_login(
+        self, db, auth_service, identity, jwt_secret, invite_code
+    ):
         """login() deliberately defers user creation to
         complete_registration() (see TestCompleteRegistration below) — a
         first-time identity gets a token, not a User row, so rejecting
@@ -102,20 +106,10 @@ class TestLogin:
         assert payload["provider"] == "google"
         assert db.get_user_by_id(identity.email) is None
 
-    def test_a_second_login_from_the_same_identity_before_registering_still_creates_no_user(
-        self, db, auth_service, identity
-    ):
         auth_service.login("google", "good-credential")
-        auth_service.login("google", "good-credential")
-
         assert db.get_user_by_id(identity.email) is None
 
-    def test_login_updates_last_login_for_an_already_registered_user(
-        self, db, auth_service, identity, jwt_secret, invite_code
-    ):
-        first_token = auth_service.login("google", "good-credential")
-        auth_service.complete_registration(first_token, invite_code)
-
+        auth_service.complete_registration(token, invite_code)
         second_token = auth_service.login("google", "good-credential")
         payload = jwt.decode(second_token, jwt_secret, algorithms=["HS256"])
         user = db.get_user_by_id(payload["email"])
@@ -124,7 +118,15 @@ class TestLogin:
 
 
 class TestCompleteRegistration:
-    def test_accepting_terms_creates_the_user_row(self, db, auth_service, identity, invite_code):
+    def test_a_valid_invite_code_creates_the_user_keeps_the_token_valid_and_records_the_redemption(
+        self, db, auth_service, identity, invite_code
+    ):
+        """The one door open: arriving via a "share project" invite link
+        (see shareLink.js/useAppBoot.js) — recognizable by a code that
+        resolves to a real, unexpired, still-available Invite. The other
+        half (UserProjectMixin.record_invite_redemption) stamps invite_id/
+        invite_timestamp on the new (user, project) row, which is also how
+        count_invite_redemptions knows this invite's own cardinality."""
         token = auth_service.login("google", "good-credential")
 
         auth_service.complete_registration(token, invite_code)
@@ -135,45 +137,31 @@ class TestCompleteRegistration:
         assert user["provider_user_id"] == identity.provider_user_id
         assert user["last_login"] is not None
 
-    def test_the_same_token_still_works_after_registering(self, auth_service, identity, invite_code):
-        token = auth_service.login("google", "good-credential")
-        auth_service.complete_registration(token, invite_code)
-
         verified = auth_service.verify_token(token)
-
         assert verified is not None
         assert verified.email == identity.email
         assert verified.role is not None
 
-    def test_an_invalid_token_raises_value_error(self, auth_service):
-        with pytest.raises(ValueError):
-            auth_service.complete_registration("not-a-real-jwt")
+        invite = db.get_invite_by_code(invite_code)
+        assert db.count_invite_redemptions(invite.id) == 1
 
-    def test_a_valid_token_with_no_invite_code_is_refused_as_uninvited(self, db, auth_service, identity):
+    def test_an_invalid_token_a_missing_invite_an_unresolvable_or_expired_one_are_all_refused(
+        self, db, auth_service, identity
+    ):
         """The old self-service behavior — a fresh Google sign-in
         registering itself with no invite context at all — is exactly
         what's now forbidden."""
+        with pytest.raises(ValueError):
+            auth_service.complete_registration("not-a-real-jwt")
+
+        db.ensure_project("expired-project")
+        db.create_invite("EXPIRED", "expired-project", None, datetime.utcnow() - timedelta(days=1), max_shares=3)
         token = auth_service.login("google", "good-credential")
 
         with pytest.raises(PermissionError):
             auth_service.complete_registration(token)
-
-        assert db.get_user_by_id(identity.email) is None
-
-    def test_an_invite_code_that_does_not_resolve_is_refused(self, db, auth_service, identity):
-        token = auth_service.login("google", "good-credential")
-
         with pytest.raises(PermissionError):
             auth_service.complete_registration(token, "no-such-code")
-
-        assert db.get_user_by_id(identity.email) is None
-
-    def test_an_expired_invite_is_refused(self, db, auth_service, identity, project_service):
-        db.ensure_project("expired-project")
-        expired_at = datetime.utcnow() - timedelta(days=1)
-        db.create_invite("EXPIRED", "expired-project", None, expired_at, max_shares=3)
-        token = auth_service.login("google", "good-credential")
-
         with pytest.raises(PermissionError):
             auth_service.complete_registration(token, "EXPIRED")
 
@@ -200,32 +188,11 @@ class TestCompleteRegistration:
             second_service.complete_registration(second_token, invite["code"])
         assert db.get_user_by_id("bob@example.com") is None
 
-    def test_a_valid_invite_code_allows_registration(self, db, auth_service, identity, invite_code):
-        """The one door still open: arriving via a "share project" invite
-        link (see shareLink.js/useAppBoot.js) — recognizable by a code
-        that resolves to a real, unexpired, still-available Invite."""
-        token = auth_service.login("google", "good-credential")
-
-        auth_service.complete_registration(token, invite_code)
-
-        assert db.get_user_by_id(identity.email) is not None
-
-    def test_registration_records_the_redemption_on_user_project(self, db, auth_service, identity, invite_code):
-        """The other half of a successful invite-based registration (see
-        UserProjectMixin.record_invite_redemption) — invite_id/
-        invite_timestamp on the new (user, project) row, which is also
-        how a later count_invite_redemptions knows this invite's own
-        cardinality."""
-        token = auth_service.login("google", "good-credential")
-
-        auth_service.complete_registration(token, invite_code)
-
-        invite = db.get_invite_by_code(invite_code)
-        assert db.count_invite_redemptions(invite.id) == 1
-
 
 class TestRegisterViaWhatsapp:
-    def test_a_valid_invite_code_creates_a_whatsapp_user(self, db, auth_service, invite_code):
+    def test_a_valid_invite_code_creates_a_whatsapp_user_activates_the_project_and_records_the_redemption(
+        self, db, auth_service, invite_code
+    ):
         project_name = auth_service.register_via_whatsapp("34600000001", invite_code)
 
         assert project_name == "invite-project"
@@ -234,11 +201,8 @@ class TestRegisterViaWhatsapp:
         assert user["email"] is None
         assert user["provider"] == "whatsapp"
         assert db.get_user_by_whatsapp_phone_number("34600000001")["id"] == "34600000001"
-
-    def test_sets_the_invited_project_as_active(self, db, auth_service, invite_code):
-        auth_service.register_via_whatsapp("34600000001", invite_code)
-
         assert db.get_active_project_id("34600000001") == "invite-project"
+        assert db.count_invite_redemptions(db.get_invite_by_code(invite_code).id) == 1
 
     def test_an_unknown_code_is_refused_with_the_same_message_as_the_web(self, db, auth_service):
         with pytest.raises(PermissionError):
@@ -246,34 +210,25 @@ class TestRegisterViaWhatsapp:
 
         assert db.get_user_by_id("34600000001") is None
 
-    def test_records_the_redemption_on_user_project(self, db, auth_service, invite_code):
-        auth_service.register_via_whatsapp("34600000001", invite_code)
-
-        invite = db.get_invite_by_code(invite_code)
-        assert db.count_invite_redemptions(invite.id) == 1
-
 
 class TestSetWhatsAppPhoneNumber:
-    def test_sets_the_number_with_no_collision(self, db, auth_service):
-        db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
-
-        result = auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001")
-
-        assert result["whatsapp_phone_number"] == "34600000001"
-
-    def test_a_non_digit_number_is_refused(self, db, auth_service):
-        db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
+    def test_sets_a_digits_only_number_with_no_collision(self, db, auth_service):
+        _alice(db)
 
         with pytest.raises(ValueError, match="digits only"):
             auth_service.set_whatsapp_phone_number("alice@example.com", "abc123")
 
-    def test_collision_as_a_regular_user_reports_that_unification_needs_an_admin(self, db, auth_service):
-        db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
+        result = auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001")
+        assert result["whatsapp_phone_number"] == "34600000001"
+
+    def test_a_collision_as_a_regular_user_reports_that_unification_needs_an_admin_and_cannot_be_forced(
+        self, db, auth_service, invite_code
+    ):
+        _alice(db)
         db.get_or_create_user("google", "sub-2", "bob@example.com", "Bob", None)
         auth_service.set_whatsapp_phone_number("bob@example.com", "34600000001")
 
         result = auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001")
-
         assert result["merge_required"] is True
         assert result["merge_allowed"] is False
         assert result["existing_account_id"] == "bob@example.com"
@@ -281,83 +236,55 @@ class TestSetWhatsAppPhoneNumber:
         assert db.get_user_by_email("alice@example.com")["whatsapp_phone_number"] is None
         assert db.get_user_by_email("bob@example.com")["whatsapp_phone_number"] == "34600000001"
 
-    def test_a_whatsapp_native_account_is_no_exception_for_a_regular_user(self, db, auth_service, invite_code):
-        db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
-        auth_service.register_via_whatsapp("34600000001", invite_code)
-
-        result = auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001")
-
+        auth_service.register_via_whatsapp("34600000002", invite_code)
+        result = auth_service.set_whatsapp_phone_number("alice@example.com", "34600000002")
         assert result["merge_required"] is True
         assert result["merge_allowed"] is False
         assert result["existing_account_provider"] == "whatsapp"
-        assert db.get_user_by_id("34600000001") is not None
-
-    def test_a_regular_user_cannot_force_the_merge(self, db, auth_service, invite_code):
-        db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
-        auth_service.register_via_whatsapp("34600000001", invite_code)
 
         with pytest.raises(PermissionError, match="requires admin privileges"):
-            auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001", confirm_merge=True)
-
+            auth_service.set_whatsapp_phone_number("alice@example.com", "34600000002", confirm_merge=True)
         assert db.get_user_by_email("alice@example.com")["whatsapp_phone_number"] is None
-        assert db.get_user_by_id("34600000001") is not None
+        assert db.get_user_by_id("34600000002") is not None
 
-    def test_collision_as_an_admin_asks_for_confirmation_first(self, db, auth_service, invite_code):
-        db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
-        auth_service.register_via_whatsapp("34600000001", invite_code)
-
-        result = auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001", role="admin")
-
-        assert result["merge_required"] is True
-        assert result["merge_allowed"] is True
-        assert result["existing_account_id"] == "34600000001"
-        assert result["existing_account_session_count"] == 0
-        assert result["existing_account_created_at"] is not None
-        # Nothing changed yet — neither account, no merge without confirm_merge.
-        assert db.get_user_by_email("alice@example.com")["whatsapp_phone_number"] is None
-        assert db.get_user_by_id("34600000001") is not None
-
-    def test_confirmed_merge_moves_the_number_and_deletes_the_absorbed_account(self, db, auth_service, invite_code):
-        db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
-        auth_service.register_via_whatsapp("34600000001", invite_code)
-
-        result = auth_service.set_whatsapp_phone_number(
-            "alice@example.com", "34600000001", confirm_merge=True, role="admin",
-        )
-
-        assert result["whatsapp_phone_number"] == "34600000001"
-        assert db.get_user_by_id("34600000001") is None
-
-    def test_an_admin_can_absorb_a_real_account_too(self, db, auth_service):
-        db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
-        db.get_or_create_user("google", "sub-2", "bob@example.com", "Bob", None)
-        auth_service.set_whatsapp_phone_number("bob@example.com", "34600000001")
-
-        result = auth_service.set_whatsapp_phone_number(
-            "alice@example.com", "34600000001", confirm_merge=True, role="admin",
-        )
-
-        assert result["whatsapp_phone_number"] == "34600000001"
-        assert db.get_user_by_id("bob@example.com") is None
-
-    def test_confirmed_merge_reassigns_the_absorbed_accounts_sessions_and_project_access(
-        self, db, auth_service, invite_code,
+    def test_an_admin_is_asked_to_confirm_then_the_merge_moves_the_number_deleting_the_absorbed_account_with_its_sessions_reassigned(
+        self, db, auth_service, invite_code
     ):
-        db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
+        _alice(db)
         auth_service.register_via_whatsapp("34600000001", invite_code)
         session_id = db.create_chat_session("34600000001", "invite-project", 0)
 
-        auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001", confirm_merge=True, role="admin")
+        result = auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001", role="admin")
+        assert result["merge_required"] is True
+        assert result["merge_allowed"] is True
+        assert result["existing_account_id"] == "34600000001"
+        assert result["existing_account_session_count"] == 1
+        assert result["existing_account_created_at"] is not None
+        assert db.get_user_by_email("alice@example.com")["whatsapp_phone_number"] is None
+        assert db.get_user_by_id("34600000001") is not None
 
+        result = auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001", confirm_merge=True, role="admin")
+        assert result["whatsapp_phone_number"] == "34600000001"
+        assert db.get_user_by_id("34600000001") is None
         assert db.get_chat_session(session_id)["username"] == "alice@example.com"
         assert db.count_sessions_for_user("alice@example.com") == 1
         assert db.get_latest_chat_session("alice@example.com", "invite-project")["id"] == session_id
         assert db.user_has_project_access("alice@example.com", "invite-project")
 
-    def test_confirmed_merge_drops_the_absorbed_accounts_project_row_if_target_already_has_one(
-        self, db, auth_service, project_service, invite_code,
+    def test_an_admin_can_absorb_a_real_account_too(self, db, auth_service):
+        _alice(db)
+        db.get_or_create_user("google", "sub-2", "bob@example.com", "Bob", None)
+        auth_service.set_whatsapp_phone_number("bob@example.com", "34600000001")
+
+        result = auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001", confirm_merge=True, role="admin")
+
+        assert result["whatsapp_phone_number"] == "34600000001"
+        assert db.get_user_by_id("bob@example.com") is None
+
+    def test_a_confirmed_merge_drops_the_absorbed_accounts_project_row_if_the_target_already_has_one(
+        self, db, auth_service, project_service, invite_code
     ):
-        db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
+        _alice(db)
         invite = project_service.validate_invite_for_registration(invite_code)
         project_service.redeem_invite(invite, "alice@example.com")
         auth_service.register_via_whatsapp("34600000001", invite_code)
@@ -384,57 +311,11 @@ class TestPreWiredAdminRegistration:
         )
 
     @pytest.fixture
-    def admin_provider(self, admin_identity) -> _FakeProvider:
-        return _FakeProvider("admin-credential", admin_identity)
+    def admin_auth_service(self, db, admin_identity, project_service) -> AuthService:
+        return _auth_service(db, _FakeProvider("admin-credential", admin_identity), project_service)
 
-    @pytest.fixture
-    def admin_auth_service(self, db, admin_provider, project_service) -> AuthService:
-        return _auth_service(db, admin_provider, project_service)
-
-    def test_logging_in_as_a_pre_wired_admin_creates_no_user_row(self, db, admin_auth_service, admin_identity):
-        admin_auth_service.login("google", "admin-credential")
-
-        assert db.get_user_by_id(admin_identity.email) is None
-
-    def test_a_pre_wired_admin_before_accepting_terms_resolves_to_a_pending_identity(
-        self, admin_auth_service, admin_identity
-    ):
-        token = admin_auth_service.login("google", "admin-credential")
-
-        verified = admin_auth_service.verify_token(token)
-
-        assert verified is not None
-        assert verified.email == admin_identity.email
-        assert verified.role is None
-
-    def test_a_pre_wired_admin_can_complete_registration_with_no_invite_code(
-        self, db, admin_auth_service, admin_identity
-    ):
-        """The one exception a pre-wired admin gets over a regular
-        identity (see TestCompleteRegistration.
-        test_a_valid_token_with_no_invite_code_is_refused_as_uninvited
-        above) — but only reachable, same as anyone else, through this
-        method, itself only ever called from TermsView.vue's Accept."""
-        token = admin_auth_service.login("google", "admin-credential")
-
-        admin_auth_service.complete_registration(token)
-
-        user = db.get_user_by_id(admin_identity.email)
-        assert user is not None
-        assert user["role"] == "admin"
-
-    def test_a_pre_wired_admin_still_has_to_accept_terms_to_get_a_real_role(
-        self, admin_auth_service, admin_identity
-    ):
-        token = admin_auth_service.login("google", "admin-credential")
-        assert admin_auth_service.verify_token(token).role is None
-
-        admin_auth_service.complete_registration(token)
-
-        assert admin_auth_service.verify_token(token).role == "admin"
-
-    def test_is_invite_exempt_holds_for_a_pre_wired_admin_even_with_no_user_row(
-        self, admin_auth_service, admin_identity, db
+    def test_logging_in_creates_no_user_row_resolves_to_a_pending_identity_yet_is_invite_exempt_unlike_a_regular_one(
+        self, db, admin_auth_service, admin_identity, auth_service, identity
     ):
         """Regression: a pre-wired admin who "Erase all my data"'d their
         User row and then just logs back in (no share link involved)
@@ -442,49 +323,62 @@ class TestPreWiredAdminRegistration:
         vs-InviteRequiredView gate (GET /api/auth/pending-status) relies
         on this to avoid dead-ending them at InviteRequiredView, which
         has no path back to a registered account at all."""
+        token = admin_auth_service.login("google", "admin-credential")
+
         assert db.get_user_by_id(admin_identity.email) is None
-
+        verified = admin_auth_service.verify_token(token)
+        assert verified is not None
+        assert verified.email == admin_identity.email
+        assert verified.role is None
         assert admin_auth_service.is_invite_exempt(admin_identity.email) is True
-
-    def test_is_invite_exempt_is_false_for_a_regular_identity(self, auth_service, identity):
         assert auth_service.is_invite_exempt(identity.email) is False
+
+    def test_completing_registration_needs_no_invite_code_but_still_has_to_happen_to_get_the_admin_role(
+        self, db, admin_auth_service, admin_identity
+    ):
+        """The one exception a pre-wired admin gets over a regular
+        identity — but only reachable, same as anyone else, through this
+        method, itself only ever called from TermsView.vue's Accept."""
+        token = admin_auth_service.login("google", "admin-credential")
+        assert admin_auth_service.verify_token(token).role is None
+
+        admin_auth_service.complete_registration(token)
+
+        user = db.get_user_by_id(admin_identity.email)
+        assert user is not None
+        assert user["role"] == "admin"
+        assert admin_auth_service.verify_token(token).role == "admin"
 
 
 class TestVerifyToken:
-    def test_a_token_issued_by_login_verifies_to_a_pending_identity(self, auth_service, identity):
+    def test_a_login_token_verifies_to_a_pending_identity_then_to_the_registered_one_once_terms_are_accepted(
+        self, auth_service, identity, invite_code
+    ):
         """No User row exists yet right after login() — verify_token
         still resolves the identity (straight off the token), just with
         role=None, rather than treating it as unauthenticated."""
         token = auth_service.login("google", "good-credential")
 
-        verified = auth_service.verify_token(token)
+        pending = auth_service.verify_token(token)
+        assert pending is not None
+        assert pending.email == identity.email
+        assert pending.provider_user_id == identity.provider_user_id
+        assert pending.name == identity.name
+        assert pending.role is None
 
-        assert verified is not None
-        assert verified.email == identity.email
-        assert verified.provider_user_id == identity.provider_user_id
-        assert verified.name == identity.name
-        assert verified.role is None
-
-    def test_a_token_verifies_to_the_registered_identity_once_terms_are_accepted(
-        self, auth_service, identity, invite_code
-    ):
-        token = auth_service.login("google", "good-credential")
         auth_service.complete_registration(token, invite_code)
 
-        verified = auth_service.verify_token(token)
+        registered = auth_service.verify_token(token)
+        assert registered is not None
+        assert registered.email == identity.email
+        assert registered.role is not None
 
-        assert verified is not None
-        assert verified.email == identity.email
-        assert verified.role is not None
-
-    def test_a_garbage_token_returns_none(self, auth_service):
+    def test_a_garbage_forged_or_expired_token_returns_none(self, auth_service, jwt_secret):
         assert auth_service.verify_token("not-a-real-jwt") is None
 
-    def test_a_token_signed_with_a_different_secret_returns_none(self, auth_service):
         forged = jwt.encode({"email": "alice@example.com", "provider": "google"}, "wrong-secret", algorithm="HS256")
         assert auth_service.verify_token(forged) is None
 
-    def test_an_expired_token_returns_none(self, auth_service, jwt_secret):
         expired = jwt.encode(
             {"email": "alice@example.com", "provider": "google", "exp": datetime.now(timezone.utc) - timedelta(days=1)},
             jwt_secret, algorithm="HS256",

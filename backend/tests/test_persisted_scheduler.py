@@ -118,11 +118,20 @@ def _future(hours: float = 1) -> datetime:
     return datetime.now(timezone.utc) + timedelta(hours=hours)
 
 
-def test_a_future_task_becomes_a_pending_row_and_nothing_else(file_db):
+def _due_row(file_db: Db, key: str, value: int, type: str = "stub") -> None:
+    file_db.create_task(key, type, "user", "p", datetime.now(timezone.utc) - timedelta(minutes=1), {"value": value}, "l", "d")
+
+
+def _dispatched(key: str, at: datetime | None) -> None:
+    TaskRow.update(status="dispatched", dispatched_at=at).where(TaskRow.key == key).execute()
+
+
+def test_a_future_task_becomes_a_pending_row_that_does_not_run_and_cancelling_it_marks_it_canceled(file_db):
     sink: list = []
     scheduler = _make(file_db, sink)
+    task = StubTask("stub:1", "user", {"value": 1}, sink)
 
-    scheduler.submit(StubTask("stub:1", "user", {"value": 1}, sink), timestamp=_future())
+    scheduler.submit(task, timestamp=_future())
 
     row = file_db.get_task("stub:1")
     assert row["status"] == "pending"
@@ -135,16 +144,23 @@ def test_a_future_task_becomes_a_pending_row_and_nothing_else(file_db):
     time.sleep(0.3)
     assert sink == []
 
+    scheduler.cancel(task)
+    assert _status(file_db, "stub:1") == "canceled"
+    assert file_db.next_task_due_at() is None
 
-def test_a_due_task_is_claimed_run_and_settled_done(file_db):
+
+def test_a_due_task_is_claimed_run_and_settled_done_while_a_failing_one_is_recorded_failed_with_its_error(file_db):
     sink: list = []
     scheduler = _make(file_db, sink)
 
     scheduler.submit(StubTask("stub:1", "user", {"value": 1}, sink), timestamp=datetime.now(timezone.utc) - timedelta(seconds=1))
+    scheduler.submit(StubTask("stub:2", "user", {"value": 2, "fail": True}, sink))
 
     assert _wait_until(lambda: _status(file_db, "stub:1") == "done")
     assert sink == [1]
     assert file_db.get_task("stub:1")["settled_at"] is not None
+    assert _wait_until(lambda: _status(file_db, "stub:2") == "failed")
+    assert file_db.get_task("stub:2")["error"] == "boom"
 
 
 def test_a_task_due_soon_runs_at_its_time_without_waiting_for_a_poll(file_db):
@@ -158,29 +174,7 @@ def test_a_task_due_soon_runs_at_its_time_without_waiting_for_a_poll(file_db):
     assert _wait_until(lambda: sink == [1], timeout=1.0)
 
 
-def test_a_failing_task_is_recorded_as_failed_with_its_error(file_db):
-    sink: list = []
-    scheduler = _make(file_db, sink)
-
-    scheduler.submit(StubTask("stub:1", "user", {"value": 1, "fail": True}, sink))
-
-    assert _wait_until(lambda: _status(file_db, "stub:1") == "failed")
-    assert file_db.get_task("stub:1")["error"] == "boom"
-
-
-def test_cancelling_a_pending_task_marks_its_row_canceled(file_db):
-    sink: list = []
-    scheduler = _make(file_db, sink)
-    task = StubTask("stub:1", "user", {"value": 1}, sink)
-    scheduler.submit(task, timestamp=_future())
-
-    scheduler.cancel(task)
-
-    assert _status(file_db, "stub:1") == "canceled"
-    assert file_db.next_task_due_at() is None
-
-
-def test_a_non_task_job_is_refused(file_db):
+def test_a_non_task_job_or_a_task_of_an_unregistered_type_is_refused_leaving_no_row(file_db):
     class Plain(CancelableJob):
         def __init__(self):
             super().__init__("plain", "user")
@@ -195,17 +189,12 @@ def test_a_non_task_job_is_refused(file_db):
         async def _run_next_step(self):
             pass
 
-    scheduler = _make(file_db, [])
-    with pytest.raises(TypeError, match="jobs.Task"):
-        scheduler.submit(Plain())
-    assert file_db.list_tasks() == []
-
-
-def test_a_task_of_an_unregistered_type_is_refused(file_db):
     class Other(StubTask):
         TYPE = "other"
 
     scheduler = _make(file_db, [])
+    with pytest.raises(TypeError, match="jobs.Task"):
+        scheduler.submit(Plain())
     with pytest.raises(ValueError, match="no hydrator is registered"):
         scheduler.submit(Other("other:1", "user", {"value": 1}, []))
     assert file_db.list_tasks() == []
@@ -238,72 +227,52 @@ class TestTheTableIsTheQueue:
 
         assert _wait_until(lambda: _status(file_db, "stub:1") == "done")
         assert sink == [1]
-        assert [row["key"] for row in file_db.list_tasks()] == ["stub:1"]  # never duplicated
+        assert [row["key"] for row in file_db.list_tasks()] == ["stub:1"]
 
-    def test_a_row_claimed_longer_than_the_lease_ago_and_never_settled_runs_again(self, file_db):
-        """A dead process's claim: older than the lease, no settlement."""
-        file_db.create_task("stub:1", "stub", "user", "p", datetime.now(timezone.utc) - timedelta(minutes=1), {"value": 7}, "l", "d")
-        TaskRow.update(status="dispatched", dispatched_at=datetime.utcnow() - timedelta(hours=1)).where(TaskRow.key == "stub:1").execute()
+    def test_a_claim_older_than_the_lease_or_predating_the_lease_column_runs_again_while_a_fresh_one_is_left_alone(self, file_db):
+        """A dead process's claim: older than the lease, no settlement.
+        Another live instance (or a worker of this one) running a fresh
+        claim must not be second-guessed just because it is dispatched."""
+        _due_row(file_db, "stub:stale", 7)
+        _dispatched("stub:stale", datetime.utcnow() - timedelta(hours=1))
+        _due_row(file_db, "stub:legacy", 8)
+        _dispatched("stub:legacy", None)
+        _due_row(file_db, "stub:fresh", 9)
+        _dispatched("stub:fresh", datetime.utcnow())
         sink: list = []
 
         _make(file_db, sink)
 
-        assert _wait_until(lambda: _status(file_db, "stub:1") == "done")
-        assert sink == [7]
-
-    def test_a_row_claimed_before_the_lease_column_existed_runs_again(self, file_db):
-        file_db.create_task("stub:1", "stub", "user", "p", datetime.now(timezone.utc) - timedelta(minutes=1), {"value": 7}, "l", "d")
-        TaskRow.update(status="dispatched", dispatched_at=None).where(TaskRow.key == "stub:1").execute()
-        sink: list = []
-
-        _make(file_db, sink)
-
-        assert _wait_until(lambda: _status(file_db, "stub:1") == "done")
-        assert sink == [7]
-
-    def test_a_fresh_claim_is_left_to_whoever_holds_it(self, file_db):
-        """Another live instance (or a worker of this one) is running it:
-        a new scheduler must not re-run it just because it is dispatched."""
-        file_db.create_task("stub:1", "stub", "user", "p", datetime.now(timezone.utc) - timedelta(minutes=1), {"value": 7}, "l", "d")
-        TaskRow.update(status="dispatched", dispatched_at=datetime.utcnow()).where(TaskRow.key == "stub:1").execute()
-        sink: list = []
-
-        _make(file_db, sink)
-
+        assert _wait_until(lambda: _status(file_db, "stub:stale") == "done" and _status(file_db, "stub:legacy") == "done")
         time.sleep(0.6)
-        assert _status(file_db, "stub:1") == "dispatched"
-        assert sink == []
+        assert sorted(sink) == [7, 8]
+        assert _status(file_db, "stub:fresh") == "dispatched"
 
     def test_a_stale_claim_is_recovered_by_a_running_scheduler_too_not_only_at_boot(self, file_db):
         sink: list = []
         _make(file_db, sink, lease_seconds=0.3)
-        file_db.create_task("stub:1", "stub", "user", "p", datetime.now(timezone.utc) - timedelta(minutes=1), {"value": 7}, "l", "d")
-        TaskRow.update(status="dispatched", dispatched_at=datetime.utcnow()).where(TaskRow.key == "stub:1").execute()
+        _due_row(file_db, "stub:1", 7)
+        _dispatched("stub:1", datetime.utcnow())
 
         assert _wait_until(lambda: _status(file_db, "stub:1") == "done", timeout=3.0)
         assert sink == [7]
 
-    def test_settled_rows_are_never_run(self, file_db):
+    def test_settled_rows_are_never_run_and_a_row_of_an_unknown_type_is_marked_failed_not_dropped(self, file_db):
         for key, status in (("stub:done", "done"), ("stub:failed", "failed"), ("stub:canceled", "canceled")):
-            file_db.create_task(key, "stub", "user", "p", datetime.now(timezone.utc) - timedelta(minutes=1), {"value": 0}, "l", "d")
+            _due_row(file_db, key, 0)
             file_db.settle_task(key, status)
+        _due_row(file_db, "weird:1", 0, type="weird")
         sink: list = []
 
         _make(file_db, sink)
 
+        assert _wait_until(lambda: _status(file_db, "weird:1") == "failed")
+        assert "no hydrator" in file_db.get_task("weird:1")["error"]
         time.sleep(0.3)
         assert sink == []
 
-    def test_a_row_of_an_unknown_type_is_marked_failed_not_dropped(self, file_db):
-        file_db.create_task("weird:1", "weird", "user", "p", datetime.now(timezone.utc) - timedelta(minutes=1), {}, "l", "d")
-
-        _make(file_db, [])
-
-        assert _wait_until(lambda: _status(file_db, "weird:1") == "failed")
-        assert "no hydrator" in file_db.get_task("weird:1")["error"]
-
     def test_a_row_the_hydrator_rejects_is_marked_failed_with_the_reason(self, file_db):
-        file_db.create_task("stub:1", "stub", "user", "p", datetime.now(timezone.utc) - timedelta(minutes=1), {"value": 1}, "l", "d")
+        _due_row(file_db, "stub:1", 1)
 
         def refuse(key, username, payload):
             raise ValueError("payload from the future")
@@ -326,29 +295,25 @@ class TestTheTableIsTheQueue:
         time.sleep(0.8)
         assert sink == []
 
-    def test_deleting_the_project_cascades_its_pending_tasks_away(self, file_db):
+    def test_deleting_the_project_or_erasing_the_user_cascades_their_pending_tasks_away(self, file_db):
         sink: list = []
         scheduler = _make(file_db, sink)
+
         scheduler.submit(StubTask("stub:1", "user", {"value": 1}, sink), timestamp=_future())
         assert file_db.list_tasks(project_id="p")
-
-        file_db.delete_archives("p")  # what ProjectManager.delete_project does — drops the Project row
-
+        file_db.erase_user_data("user")
         assert file_db.list_tasks() == []
 
-    def test_erasing_the_user_cascades_their_pending_tasks_away(self, file_db):
-        sink: list = []
-        scheduler = _make(file_db, sink)
-        scheduler.submit(StubTask("stub:1", "user", {"value": 1}, sink), timestamp=_future())
-
-        file_db.erase_user_data("user")
-
+        file_db.get_or_create_user("test", "sub-user", "user", "user", None)
+        scheduler.submit(StubTask("stub:2", "user", {"value": 2}, sink), timestamp=_future())
+        assert file_db.list_tasks(project_id="p")
+        file_db.delete_archives("p")  # what ProjectManager.delete_project does — drops the Project row
         assert file_db.list_tasks() == []
 
     def test_two_schedulers_over_one_table_never_run_the_same_row_twice(self, file_db):
         sink: list = []
         for i in range(20):
-            file_db.create_task(f"stub:{i}", "stub", "user", "p", datetime.now(timezone.utc) - timedelta(minutes=1), {"value": i}, "l", "d")
+            _due_row(file_db, f"stub:{i}", i)
 
         _make(file_db, sink)
         _make(file_db, sink)

@@ -11,10 +11,11 @@ from automaton.automaton_builder import AutomatonBuilder
 pytestmark = pytest.mark.contract
 
 
-def _build(action_yaml: str, env_section: str = ""):
+def _build(action_yaml: str, env_section: str = "", top_section: str = ""):
     content = f"""
 project:
   id: test_project
+{top_section}
 {env_section}
 init-action:
   target: a
@@ -31,231 +32,68 @@ states:
     return AutomatonBuilder().build({"index.yml": content})
 
 
-def test_env_field_is_parsed_as_a_key_to_expression_mapping():
-    automaton = _build(
-        """
-        env:
-          reset_counter: True
-          number_of_steps: env.number_of_steps + 1
-""",
-        env_section="""
-env:
-  reset_counter: {}
-  number_of_steps: {}
-""",
+def _action_env(action_yaml: str, env_section: str = "", top_section: str = ""):
+    return _build(action_yaml, env_section, top_section).states["a"].actions[0].env
+
+
+def _env_write(key: str, expression: str) -> str:
+    return f"        env:\n          {key}: {expression}\n"
+
+
+def _declared(key: str, value: str | None = None) -> str:
+    return f"env:\n  {key}:\n    value: {value}\n" if value is not None else f"env:\n  {key}: {{}}\n"
+
+
+def test_env_is_parsed_as_a_key_to_expression_source_mapping_or_none_when_absent_or_empty():
+    two_keys = _action_env(
+        "        env:\n          reset_counter: True\n          number_of_steps: env.number_of_steps + 1\n",
+        "env:\n  reset_counter: {}\n  number_of_steps: {}\n",
     )
+    assert two_keys == {"reset_counter": "True", "number_of_steps": "env.number_of_steps + 1"}
 
-    action = automaton.states["a"].actions[0]
-    assert action.env == {"reset_counter": "True", "number_of_steps": "env.number_of_steps + 1"}
-
-
-def test_non_string_yaml_values_are_normalized_to_expression_source():
-    automaton = _build(
-        """
-        env:
-          enabled: true
-          count: 42
-          nothing: null
-""",
-        env_section="""
-env:
-  enabled: {}
-  count: {}
-  nothing: {}
-""",
+    normalized = _action_env(
+        "        env:\n          enabled: true\n          count: 42\n          nothing: null\n",
+        "env:\n  enabled: {}\n  count: {}\n  nothing: {}\n",
     )
+    assert normalized == {"enabled": "True", "count": "42", "nothing": "None"}
 
-    action = automaton.states["a"].actions[0]
-    assert action.env == {"enabled": "True", "count": "42", "nothing": "None"}
+    assert _action_env("") is None
+    assert _action_env("        env: {}\n") is None
 
-
-def test_no_env_field_leaves_it_as_none():
-    automaton = _build("")
-
-    assert automaton.states["a"].actions[0].env is None
-
-
-def test_an_empty_env_mapping_is_normalized_to_none():
-    automaton = _build("""
-        env: {}
-""")
-
-    assert automaton.states["a"].actions[0].env is None
-
-
-def test_env_referencing_a_declared_signal_is_valid():
-    content = """
-project:
-  id: test_project
-signals:
-  mySignal:
-    definition: "Some domain-specific signal."
-env:
-  last_signal: {}
-init-action:
-  target: a
-states:
-  a:
-    contextual-prompt: hi
-    actions:
-      - name: go
-        target: b
-        env:
-          last_signal: signal.mySignal
-  b:
-    contextual-prompt: there
-"""
-    automaton = AutomatonBuilder().build({"index.yml": content})
-    assert automaton.states["a"].actions[0].env == {"last_signal": "signal.mySignal"}
-
-
-def test_env_referencing_an_undeclared_env_key_is_rejected():
-    """A genuinely undeclared `env.` read is a build error. `last_value`
-    is declared, isolating this from the write-side check below."""
-    with pytest.raises(ValueError, match="undefined name\\(s\\).*env.never_declared_anywhere"):
-        _build(
-            """
-        env:
-          last_value: env.never_declared_anywhere
-""",
-            env_section="""
-env:
-  last_value: {}
-""",
-        )
-
-
-def test_env_write_to_an_undeclared_key_is_rejected():
-    """The write side: an action's `env:` field cannot introduce a new
-    key just by writing to it; the key must already be declared."""
-    with pytest.raises(ValueError, match="env key 'never_declared_anywhere' is not declared"):
-        _build("""
-        env:
-          never_declared_anywhere: "1"
-""")
-
-
-def test_env_with_a_syntactically_invalid_expression_is_rejected():
-    with pytest.raises(ValueError, match="is not a valid expression"):
-        _build(
-            """
-        env:
-          broken: "1 +"
-""",
-            env_section="""
-env:
-  broken: {}
-""",
-        )
-
-
-def test_writing_a_number_to_a_string_declared_key_is_rejected():
-    with pytest.raises(ValueError, match="is a number, but 'greeting' was declared as a string"):
-        _build(
-            """
-        env:
-          greeting: "42"
-""",
-            env_section="""
-env:
-  greeting:
-    value: "'hello'"
-""",
-        )
-
-
-def test_writing_a_string_to_a_number_declared_key_is_rejected():
-    with pytest.raises(ValueError, match="is a string, but 'counter' was declared as a number"):
-        _build(
-            """
-        env:
-          counter: "'not a number'"
-""",
-            env_section="""
-env:
-  counter:
-    value: "0"
-""",
-        )
-
-
-def test_writing_a_number_to_a_bool_declared_key_is_rejected():
-    """bool and number are kept strictly separate here — unlike the
-    ordering-comparison leniency (True >= 0.5 is legal Python), a flag
-    switching to holding an arbitrary count is exactly the kind of drift
-    this check exists to catch."""
-    with pytest.raises(ValueError, match="is a number, but 'enabled' was declared as a bool"):
-        _build(
-            """
-        env:
-          enabled: "2"
-""",
-            env_section="""
-env:
-  enabled:
-    value: "True"
-""",
-        )
-
-
-def test_writing_a_matching_type_is_accepted():
-    automaton = _build(
-        """
-        env:
-          counter: "5"
-""",
-        env_section="""
-env:
-  counter:
-    value: "0"
-""",
+    with_signal = _action_env(
+        _env_write("last_signal", "signal.mySignal"), _declared("last_signal"),
+        top_section='signals:\n  mySignal:\n    definition: "Some domain-specific signal."\n',
     )
-    action = automaton.states["a"].actions[0]
-    assert action.env == {"counter": "5"}
+    assert with_signal == {"last_signal": "signal.mySignal"}
 
 
-def test_an_env_key_with_no_declared_default_has_no_fixed_type():
+@pytest.mark.parametrize(("action_yaml", "env_section", "match"), [
+    (_env_write("last_value", "env.never_declared_anywhere"), _declared("last_value"), r"undefined name\(s\).*env.never_declared_anywhere"),
+    (_env_write("never_declared_anywhere", '"1"'), "", "env key 'never_declared_anywhere' is not declared"),
+    (_env_write("broken", '"1 +"'), _declared("broken"), "is not a valid expression"),
+    ("        env:\n          - not\n          - a\n          - mapping\n", "", "'env' must be a mapping"),
+    (_env_write("greeting", '"42"'), _declared("greeting", "\"'hello'\""), "is a number, but 'greeting' was declared as a string"),
+    (_env_write("counter", "\"'not a number'\""), _declared("counter", '"0"'), "is a string, but 'counter' was declared as a number"),
+    (_env_write("enabled", '"2"'), _declared("enabled", '"True"'), "is a number, but 'enabled' was declared as a bool"),
+], ids=[
+    "undeclared-read", "undeclared-write", "invalid-expression", "not-a-mapping",
+    "number-to-string", "string-to-number", "number-to-bool",
+])
+def test_build_rejects_undeclared_reads_or_writes_invalid_expressions_non_mappings_and_type_drift(action_yaml, env_section, match):
+    """The write side: an action's `env:` field cannot introduce a new key
+    just by writing to it. bool and number are kept strictly separate —
+    unlike the ordering-comparison leniency (True >= 0.5 is legal Python),
+    a flag switching to holding an arbitrary count is exactly the kind of
+    drift this check exists to catch."""
+    with pytest.raises(ValueError, match=match):
+        _build(action_yaml, env_section)
+
+
+def test_a_matching_type_an_untyped_key_and_a_statically_unknowable_expression_are_all_accepted():
     """An empty 'value' never establishes a type to begin with, so any
-    expression is accepted — same free-form behavior as before this check existed."""
-    automaton = _build(
-        """
-        env:
-          anything: "'a string now'"
-""",
-        env_section="""
-env:
-  anything: {}
-""",
-    )
-    action = automaton.states["a"].actions[0]
-    assert action.env == {"anything": "'a string now'"}
-
-
-def test_an_expression_whose_kind_is_not_statically_knowable_is_not_flagged():
-    """`env.other` reads another key at runtime — its own kind isn't
-    knowable ahead of a real turn, so the check is silently skipped
-    rather than guessing wrong."""
-    automaton = _build(
-        """
-        env:
-          counter: env.other
-""",
-        env_section="""
-env:
-  counter:
-    value: "0"
-  other: {}
-""",
-    )
-    action = automaton.states["a"].actions[0]
-    assert action.env == {"counter": "env.other"}
-
-
-def test_env_must_be_a_mapping():
-    with pytest.raises(ValueError, match="'env' must be a mapping"):
-        _build("""
-        env:
-          - not
-          - a
-          - mapping
-""")
+    expression is accepted; `env.other` reads another key at runtime — its
+    own kind isn't knowable ahead of a real turn, so the check is silently
+    skipped rather than guessing wrong."""
+    assert _action_env(_env_write("counter", '"5"'), _declared("counter", '"0"')) == {"counter": "5"}
+    assert _action_env(_env_write("anything", "\"'a string now'\""), _declared("anything")) == {"anything": "'a string now'"}
+    assert _action_env(_env_write("counter", "env.other"), "env:\n  counter:\n    value: \"0\"\n  other: {}\n") == {"counter": "env.other"}

@@ -5,7 +5,7 @@ import io
 import pytest
 
 from talk.talk_format import PcmWavCodec
-from whatsapp.audio import WHATSAPP_AUDIO_MIME, split_wav, wav_to_mp3
+from whatsapp.audio import WHATSAPP_AUDIO_MIME, Mp3Encoder, split_wav, wav_to_mp3
 from whatsapp.cloud_api_client import split_text
 from whatsapp.whatsapp_service import (
     REPLY_AUDIO_NOT_UNDERSTOOD, REPLY_NOT_LINKED, REPLY_OPTIONS_PROMPT, REPLY_PAUSED, REPLY_UNSUPPORTED_AUDIO,
@@ -17,48 +17,60 @@ from whatsapp_helpers import (  # noqa: F401 — env/voice_env are fixtures
 
 pytestmark = pytest.mark.contract
 
+TEXT_REPLY = "*Hola* — has dicho: hola"
+VOICE_TEXT_REPLY = "*Hola* — has dicho: hola por voz"
+
+
+def _voice():
+    talk, listen = _FakeTalk(), _FakeListen()
+    client, service, chat, db, api = _build(talk=talk, listen=listen)
+    talk.chat = chat
+    return client, service, chat, db, api, talk, listen
+
+
+def _spoken_voice_note(**chat_overrides):
+    client, _, chat, _, api, talk, listen = _voice()
+    chat.reply_audio_text = "Hola."
+    for name, value in chat_overrides.items():
+        setattr(chat, name, value)
+    return client, chat, api, talk, listen
+
+
+# --- voice in ------------------------------------------------------------- #
+
 def test_voice_note_is_transcribed_and_processed_as_text(voice_env):
     client, _, chat, db, api, talk, listen = voice_env
     _post(client, _payload(mtype="audio"))
     assert listen.heard == [b"OggS-fake-opus"]
     assert chat.calls == [("session", LINKED_EMAIL), ("turn", LINKED_EMAIL)]
-    # The transcript is what got persisted as the user's own message.
     assert [m["content"] for m in db.messages if m["role"] == "user"] == ["hola por voz"]
 
 
-def test_voice_note_without_listen_service_gets_notice(env):
+def test_a_voice_note_that_cannot_be_transcribed_gets_a_notice_and_no_turn(env):
     client, _, chat, _, api = env
     _post(client, _payload(mtype="audio"))
     assert chat.calls == []
     assert api.sent == [(LINKED_NUMBER, REPLY_UNSUPPORTED_AUDIO)]
 
-
-def test_unintelligible_voice_note_gets_notice(voice_env):
-    client, _, chat, _, api, _, listen = voice_env
+    client, _, chat, _, api, _, listen = _voice()
     listen.transcript = "   "
     _post(client, _payload(mtype="audio"))
     assert chat.calls == []
     assert api.sent == [(LINKED_NUMBER, REPLY_AUDIO_NOT_UNDERSTOOD)]
 
-
-def test_transcription_failure_gets_notice_not_exception(voice_env):
-    client, _, chat, _, api, _, listen = voice_env
+    client, _, chat, _, api, _, listen = _voice()
     listen.fail = True
     _post(client, _payload(mtype="audio"))
     assert chat.calls == []
     assert api.sent == [(LINKED_NUMBER, REPLY_AUDIO_NOT_UNDERSTOOD)]
 
-
-def test_media_download_failure_gets_notice(voice_env):
-    client, _, chat, _, api, _, _ = voice_env
+    client, _, chat, _, api, _, _ = _voice()
     api.media.clear()
     _post(client, _payload(mtype="audio"))
     assert chat.calls == []
     assert api.sent == [(LINKED_NUMBER, REPLY_AUDIO_NOT_UNDERSTOOD)]
 
-
-def test_voice_note_from_unlinked_number_is_not_transcribed(voice_env):
-    client, _, chat, _, api, _, listen = voice_env
+    client, _, chat, _, api, _, listen = _voice()
     _post(client, _payload(sender="34699999999", mtype="audio"))
     assert listen.heard == [] and chat.calls == []
     assert api.sent == [("34699999999", REPLY_NOT_LINKED)]
@@ -66,137 +78,96 @@ def test_voice_note_from_unlinked_number_is_not_transcribed(voice_env):
 
 # --- voice out ------------------------------------------------------------ #
 
-def test_voice_note_in_gets_voice_note_out(voice_env):
-    client, _, chat, _, api, talk, _ = voice_env
-    chat.reply_audio_text = "Hola, te he oído."
+def test_the_default_policy_answers_in_kind_voice_for_voice_and_text_for_text():
+    client, chat, api, talk, _ = _spoken_voice_note(reply_audio_text="Hola, te he oído.")
     _post(client, _payload(mtype="audio"))
     assert talk.spoken == ["Hola, te he oído."]
     (mp3, mime), = api.uploaded
     assert mime == WHATSAPP_AUDIO_MIME and mp3[:3] == b"ID3"
     assert api.audio_sent == [(LINKED_NUMBER, "media-1")]
-    # Answer in kind: the voice note replaces the text, it doesn't duplicate it.
     assert api.sent == []
 
-
-def test_text_in_gets_text_out_even_with_voice_available(voice_env):
-    client, _, chat, _, api, talk, _ = voice_env
-    chat.reply_audio_text = "Hola."
+    client, chat, api, talk, _ = _spoken_voice_note()
     _post(client, _payload(text="hola"))
     assert talk.spoken == [] and api.audio_sent == []
-    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola")]
+    assert api.sent == [(LINKED_NUMBER, TEXT_REPLY)]
 
 
-def test_voice_policy_always_speaks_text_replies_too():
+def test_the_always_policy_speaks_text_replies_and_the_never_policy_stays_text():
     talk = _FakeTalk()
     client, _, chat, _, api = _build(config=_config(voice_replies="always"), talk=talk)
     chat.reply_audio_text = "Hola."
     _post(client, _payload(text="hola"))
     assert talk.spoken == ["Hola."] and len(api.audio_sent) == 1 and api.sent == []
 
-
-def test_voice_policy_never_stays_text():
     talk, listen = _FakeTalk(), _FakeListen()
     client, _, chat, _, api = _build(config=_config(voice_replies="never"), talk=talk, listen=listen)
     chat.reply_audio_text = "Hola."
     _post(client, _payload(mtype="audio"))
     assert talk.spoken == [] and api.audio_sent == []
-    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
+    assert api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
 
 
-def test_synthesis_starts_while_the_turn_is_still_running(voice_env):
+def test_synthesis_starts_mid_turn_when_announced_otherwise_from_the_persisted_text_and_afresh_when_it_differs():
     """The reply's [audio] text is the first thing the model emits; the
-    voice note's synthesis starts right then, not once the whole turn
-    (text, signals, env, persistence) is over — the send itself then
-    finds that generation in flight or cached."""
-    client, _, chat, _, api, talk, _ = voice_env
-    chat.reply_audio_text = "Hola."
+    voice note's synthesis starts right then. The prefetch is an
+    optimisation, not a dependency: with no audio metadata during the turn
+    the note is synthesized on the spot from the persisted audio text, and
+    when a regenerated reply persists a different text the note follows
+    the persisted one."""
+    client, _, api, talk, _ = _spoken_voice_note()
     _post(client, _payload(mtype="audio"))
     assert talk.spoken == ["Hola."]
     assert talk.requested_during_turn == [True]
     assert api.audio_sent == [(LINKED_NUMBER, "media-1")]
 
-
-def test_a_turn_that_never_announced_its_audio_text_still_gets_a_voice_note(voice_env):
-    """The prefetch is an optimisation, not a dependency: with no audio
-    metadata during the turn (a fixed-message state, an older strategy),
-    the note is synthesized on the spot from the persisted audio text."""
-    client, _, chat, _, api, talk, _ = voice_env
-    chat.reply_audio_text = "Hola."
-    chat.announces_audio = False
+    client, _, api, talk, _ = _spoken_voice_note(announces_audio=False)
     _post(client, _payload(mtype="audio"))
     assert talk.spoken == ["Hola."]
     assert talk.requested_during_turn == [False]
     assert api.audio_sent == [(LINKED_NUMBER, "media-1")]
 
-
-def test_a_regenerated_reply_with_a_different_audio_text_is_synthesized_afresh(voice_env):
-    """A state transition regenerates the reply, so the audio text the
-    model first announced isn't the one persisted — the note follows the
-    persisted one, and the early synthesis is simply left unused."""
-    client, _, chat, _, api, talk, _ = voice_env
-    chat.reply_audio_text = "Hola."
-    chat.announced_audio_text = "Hola, primer intento."
+    client, _, api, talk, _ = _spoken_voice_note(announced_audio_text="Hola, primer intento.")
     _post(client, _payload(mtype="audio"))
     assert talk.spoken == ["Hola, primer intento.", "Hola."]
     assert api.audio_sent == [(LINKED_NUMBER, "media-1")]
 
 
-def test_no_synthesis_ahead_of_a_typed_message_under_the_default_policy(voice_env):
-    client, _, chat, _, api, talk, _ = voice_env
-    chat.reply_audio_text = "Hola."
-    _post(client, _payload(text="hola"))
-    assert talk.spoken == []
-    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola")]
-
-
-def test_reply_without_audio_text_falls_back_to_text(voice_env):
-    client, _, chat, _, api, talk, _ = voice_env
-    chat.reply_audio_text = None
-    _post(client, _payload(mtype="audio"))
-    assert talk.spoken == [] and api.audio_sent == []
-    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
-
-
-def test_voice_note_without_talk_service_falls_back_to_text():
-    client, _, chat, _, api = _build(listen=_FakeListen())
-    chat.reply_audio_text = "Hola."
-    _post(client, _payload(mtype="audio"))
-    assert api.audio_sent == []
-    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
-
-
-def test_encoding_error_of_any_kind_falls_back_to_text(voice_env, monkeypatch):
+def test_every_voice_note_failure_falls_back_to_the_text_reply(monkeypatch):
     """The encoder goes through PyAV, whose own exception types don't
     derive from ValueError/httpx.HTTPError/ImportError — this used to
     escape _try_voice_note uncaught and leave the user with no reply at
     all instead of the text fallback."""
-    client, _, chat, _, api, talk, _ = voice_env
+    client, _, api, talk, _ = _spoken_voice_note(reply_audio_text=None)
+    _post(client, _payload(mtype="audio"))
+    assert talk.spoken == [] and api.audio_sent == []
+    assert api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
+
+    client, _, chat, _, api = _build(listen=_FakeListen())
     chat.reply_audio_text = "Hola."
+    _post(client, _payload(mtype="audio"))
+    assert api.audio_sent == []
+    assert api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
+
+    client, _, api, talk, _ = _spoken_voice_note()
+    api.fail_upload = True
+    _post(client, _payload(mtype="audio"))
+    assert talk.spoken == ["Hola."] and api.audio_sent == []
+    assert api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
+
+    client, _, api, talk, _ = _spoken_voice_note()
+    talk.silent = True
+    _post(client, _payload(mtype="audio"))
+    assert api.uploaded == [] and api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
 
     def _boom(self, wav):
         raise RuntimeError("pyav exploded")
 
     monkeypatch.setattr("whatsapp.audio.Mp3Encoder.push", _boom)
+    client, _, api, talk, _ = _spoken_voice_note()
     _post(client, _payload(mtype="audio"))
     assert api.audio_sent == [] and api.uploaded == []
-    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
-
-
-def test_upload_failure_falls_back_to_text(voice_env):
-    client, _, chat, _, api, talk, _ = voice_env
-    chat.reply_audio_text = "Hola."
-    api.fail_upload = True
-    _post(client, _payload(mtype="audio"))
-    assert talk.spoken == ["Hola."] and api.audio_sent == []
-    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
-
-
-def test_silent_talk_service_falls_back_to_text(voice_env):
-    client, _, chat, _, api, talk, _ = voice_env
-    chat.reply_audio_text = "Hola."
-    talk.silent = True
-    _post(client, _payload(mtype="audio"))
-    assert api.uploaded == [] and api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
+    assert api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
 
 
 def test_notices_are_never_spoken(voice_env):
@@ -206,9 +177,8 @@ def test_notices_are_never_spoken(voice_env):
     assert talk.spoken == [] and api.sent == [(LINKED_NUMBER, REPLY_PAUSED)]
 
 
-def test_spoken_reply_with_manual_actions_gets_buttons_on_a_follow_up(voice_env):
-    client, _, chat, _, api, talk, _ = voice_env
-    chat.reply_audio_text = "Hola."
+def test_manual_actions_follow_a_spoken_reply_as_buttons_and_stay_on_the_text_fallback():
+    client, chat, api, _, _ = _spoken_voice_note()
     chat.state = {**chat.state, "manual_actions": [_action("go", "Go"), _action("stop", "Stop")]}
     _post(client, _payload(mtype="audio"))
     assert api.timeline == ["typing", "audio", "buttons"]
@@ -216,31 +186,28 @@ def test_spoken_reply_with_manual_actions_gets_buttons_on_a_follow_up(voice_env)
     assert body == REPLY_OPTIONS_PROMPT and [b[0] for b in buttons] == ["go", "stop"]
     assert api.sent == []
 
-
-def test_spoken_reply_fallback_keeps_buttons_on_the_text(voice_env):
-    client, _, chat, _, api, talk, _ = voice_env
-    chat.reply_audio_text = "Hola."
+    client, chat, api, _, _ = _spoken_voice_note()
     chat.state = {**chat.state, "manual_actions": [_action("go", "Go")]}
     api.fail_upload = True
     _post(client, _payload(mtype="audio"))
     assert api.timeline == ["typing", "buttons"]
-    assert api.interactive[0][2] == "*Hola* — has dicho: hola por voz"
+    assert api.interactive[0][2] == VOICE_TEXT_REPLY
 
 
 # --- audio encoding ------------------------------------------------------- #
 
 def test_split_wav_handles_streaming_header_and_complete_file():
     pcm, rate = split_wav(_wav(rate=24000))
-    assert rate == 24000 and len(pcm) == 12000 * 2  # 0.5 s of 16-bit mono
+    assert rate == 24000 and len(pcm) == 12000 * 2
     streamed = PcmWavCodec.streaming_header(24000) + pcm
     assert split_wav(streamed) == (pcm, 24000)
 
 
-def test_wav_to_mp3_produces_mono_48k_mp3():
+def test_wav_to_mp3_produces_mono_48k_mp3_and_rejects_empty_audio():
     import av
 
     mp3 = wav_to_mp3(_wav(seconds=1.0))
-    assert mp3[:3] == b"ID3"  # PyAV's mp3 muxer always writes an ID3v2 header
+    assert mp3[:3] == b"ID3"
     container = av.open(io.BytesIO(mp3))
     try:
         stream = container.streams.audio[0]
@@ -250,12 +217,14 @@ def test_wav_to_mp3_produces_mono_48k_mp3():
         container.close()
     assert len(mp3) < len(_wav(seconds=1.0)) // 3
 
+    with pytest.raises(ValueError):
+        wav_to_mp3(PcmWavCodec.streaming_header(22050))
 
-def test_incremental_encoder_matches_whole_file_encoding():
+
+def test_incremental_encoder_matches_whole_file_encoding_and_finishes_empty_with_no_audio():
     """Pushing the stream in arbitrary pieces — the header split too —
     must decode to the same audio as encoding the complete WAV at once."""
     import av
-    from whatsapp.audio import Mp3Encoder
 
     def decoded_samples(mp3: bytes) -> int:
         container = av.open(io.BytesIO(mp3))
@@ -272,28 +241,17 @@ def test_incremental_encoder_matches_whole_file_encoding():
     assert streamed[:3] == b"ID3"
     assert decoded_samples(streamed) == decoded_samples(wav_to_mp3(wav))
 
-
-def test_incremental_encoder_with_no_audio_finishes_empty():
-    from whatsapp.audio import Mp3Encoder
-
-    encoder = Mp3Encoder()
-    encoder.push(PcmWavCodec.streaming_header(22050))
-    assert encoder.finish() == b""
-
-
-def test_wav_to_mp3_rejects_empty_audio():
-    with pytest.raises(ValueError):
-        wav_to_mp3(PcmWavCodec.streaming_header(22050))
+    empty = Mp3Encoder()
+    empty.push(PcmWavCodec.streaming_header(22050))
+    assert empty.finish() == b""
 
 
 # --- helpers -------------------------------------------------------------- #
 
-def test_markdown_flattening():
+def test_markdown_flattening_and_text_splitting_lose_nothing():
     src = "## Título\n\nHola **fuerte** y __otro__, mira [esto](https://x.y).\n\n* uno\n* dos\n- tres"
     assert to_whatsapp_markdown(src) == "*Título*\n\nHola *fuerte* y *otro*, mira esto (https://x.y).\n\n- uno\n- dos\n- tres"
 
-
-def test_split_text_respects_limit_and_loses_nothing():
     text = ("palabra " * 1000).strip()
     chunks = split_text(text, 4096)
     assert len(chunks) == 2 and all(len(c) <= 4096 for c in chunks)

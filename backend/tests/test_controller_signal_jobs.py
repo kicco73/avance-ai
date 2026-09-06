@@ -9,6 +9,8 @@ import time
 
 import pytest
 
+from conftest import chat_turn
+
 pytestmark = pytest.mark.contract
 
 
@@ -36,7 +38,7 @@ def _wait_for_run_terminal(client, project_name, run_id, timeout=5.0, interval=0
 
 def _make_labeled_session(client):
     session = client.get("/api/chat/session").json()
-    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
+    chat_turn(client, session['id'], "hi")
     client.put(f"/api/chat/sessions/{session['id']}/labeled", json={"labeled": True})
     return session["id"]
 

@@ -12,6 +12,8 @@ import time
 
 import pytest
 
+from conftest import chat_turn
+
 from jobs.job_queue import JobQueue
 from testing.test_service import AllSignalsAggregationJob
 from testing.jobs.base import _AggregationJob
@@ -31,7 +33,7 @@ def _wait_until(predicate, timeout=5.0, interval=0.02):
 def _make_completed_run(client, hello_project):
     session = client.get("/api/chat/session").json()
     session_id = session["id"]
-    client.post(f"/api/chat/sessions/{session_id}/messages", json={"message": "hi"})
+    chat_turn(client, session_id, "hi")
     client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": True})
 
     leaf_run = client.post(

@@ -29,111 +29,50 @@ def _build(trigger: str, known_projects: dict | None = None):
     return AutomatonBuilder().build({"index.yml": yml}, known_projects)
 
 
-def test_known_projects_omitted_skips_the_check_entirely():
+def test_known_projects_omitted_or_none_skips_the_check_entirely():
     """Referencing a nonexistent project.id, or an undeclared env key,
     is not a build-time error when known_projects isn't passed."""
-    automaton = _build("automaton.nowhere.state == 'x'")
-    assert automaton is not None
-
-    automaton = _build("automaton.nowhere.env.whatever == 1")
-    assert automaton is not None
+    assert _build("automaton.nowhere.state == 'x'") is not None
+    assert _build("automaton.nowhere.env.whatever == 1") is not None
+    assert _build("automaton.nowhere.state == 'x'", known_projects=None) is not None
 
 
-def test_known_projects_none_explicitly_also_skips_the_check():
-    automaton = _build("automaton.nowhere.state == 'x'", known_projects=None)
-    assert automaton is not None
-
-
-def test_rejects_a_project_id_absent_from_known_projects():
+def test_a_referenced_project_id_must_be_known_and_a_non_env_chain_needs_no_env_key_at_all():
+    """A non-.env chain never touches the env-key half of the check —
+    only the project.id itself needs to exist."""
     with pytest.raises(ValueError, match="automaton.nowhere"):
         _build("automaton.nowhere.state == 'x'", known_projects={"real_project": frozenset()})
+    assert _build("automaton.real_project.state == 'x'", known_projects={"real_project": frozenset()}) is not None
+    assert _build("automaton.dep.state == 'x'", known_projects={"dep": frozenset()}) is not None
 
 
-def test_accepts_a_project_id_present_in_known_projects():
-    automaton = _build("automaton.real_project.state == 'x'", known_projects={"real_project": frozenset()})
-    assert automaton is not None
-
-
-def test_rejects_an_env_key_absent_from_the_named_projects_declared_set():
-    with pytest.raises(ValueError, match="automaton.dep.env.missing_key"):
-        _build("automaton.dep.env.missing_key == 1", known_projects={"dep": frozenset({"known_key"})})
-
-
-def test_accepts_an_env_key_present_in_the_named_projects_declared_set():
-    automaton = _build("automaton.dep.env.known_key == 1", known_projects={"dep": frozenset({"known_key"})})
-    assert automaton is not None
-
-
-def test_an_unknown_env_key_on_an_unknown_project_reports_the_project_not_the_key():
+def test_every_referenced_env_key_must_be_in_the_named_projects_declared_set_after_the_project_itself_checks_out():
     """The project-existence check runs first, so the caller fixes the
     project reference before chasing an unresolvable key name."""
+    with pytest.raises(ValueError, match="automaton.dep.env.missing_key"):
+        _build("automaton.dep.env.missing_key == 1", known_projects={"dep": frozenset({"known_key"})})
+    assert _build("automaton.dep.env.known_key == 1", known_projects={"dep": frozenset({"known_key"})}) is not None
+
     with pytest.raises(ValueError, match="automaton.nowhere"):
         _build("automaton.nowhere.env.whatever == 1", known_projects={"real_project": frozenset()})
 
-
-def test_multiple_references_in_one_trigger_are_all_checked():
-    automaton = _build(
-        "automaton.dep.env.k1 == 1 and automaton.dep.env.k2 == 2",
-        known_projects={"dep": frozenset({"k1", "k2"})},
-    )
-    assert automaton is not None
-
+    both = "automaton.dep.env.k1 == 1 and automaton.dep.env.k2 == 2"
+    assert _build(both, known_projects={"dep": frozenset({"k1", "k2"})}) is not None
     with pytest.raises(ValueError, match="automaton.dep.env.k2"):
-        _build(
-            "automaton.dep.env.k1 == 1 and automaton.dep.env.k2 == 2",
-            known_projects={"dep": frozenset({"k1"})},
-        )
+        _build(both, known_projects={"dep": frozenset({"k1"})})
 
 
-def test_a_bare_automaton_dot_project_reference_with_no_env_needs_no_env_key_at_all():
-    """A non-.env chain never touches the env-key half of the check —
-    only the project.id itself needs to exist."""
-    automaton = _build("automaton.dep.state == 'x'", known_projects={"dep": frozenset()})
-    assert automaton is not None
-
-
-class TestReadDeclaredEnvKeys:
+@pytest.mark.parametrize(("yml", "expected"), [
+    ("project:\n  id: dep_id\nenv:\n  k1:\n    value: \"'a'\"\n  k2:\n    value: \"'b'\"\n" + MINIMAL_STATES, ("dep_id", None, frozenset({"k1", "k2"}))),
+    ("project:\n  id: dep_id\n  family: shared_family\n" + MINIMAL_STATES, ("dep_id", "shared_family", frozenset())),
+    (MINIMAL_STATES, (None, None, frozenset())),
+    ("project:\n  id: dep_id\n" + MINIMAL_STATES, ("dep_id", None, frozenset())),
+    ("project:\n  id: 'not a valid id'\n" + MINIMAL_STATES, (None, None, frozenset())),
+    ("project: not-a-mapping\n" + MINIMAL_STATES, (None, None, frozenset())),
+], ids=["id-and-keys", "family", "no-project-section", "no-env-section", "invalid-id", "non-mapping-project"])
+def test_read_declared_env_keys_reports_id_family_and_key_names_from_raw_yaml_never_raising(yml, expected):
     """AutomatonBuilder.read_declared_env_keys — a raw-YAML-only read used
     to populate known_projects for every other project, without a full
-    build of it."""
-
-    def test_reads_id_and_declared_env_key_names(self):
-        yml = "project:\n  id: dep_id\nenv:\n  k1:\n    value: \"'a'\"\n  k2:\n    value: \"'b'\"\n" + MINIMAL_STATES
-        project_id, family, env_keys = AutomatonBuilder.read_declared_env_keys(yml)
-        assert project_id == "dep_id"
-        assert family is None
-        assert env_keys == frozenset({"k1", "k2"})
-
-    def test_reads_the_declared_family_too(self):
-        yml = "project:\n  id: dep_id\n  family: shared_family\n" + MINIMAL_STATES
-        project_id, family, env_keys = AutomatonBuilder.read_declared_env_keys(yml)
-        assert project_id == "dep_id"
-        assert family == "shared_family"
-        assert env_keys == frozenset()
-
-    def test_no_project_section_reports_no_id(self):
-        project_id, family, env_keys = AutomatonBuilder.read_declared_env_keys(MINIMAL_STATES)
-        assert project_id is None
-        assert family is None
-        assert env_keys == frozenset()
-
-    def test_no_env_section_reports_an_empty_set(self):
-        yml = "project:\n  id: dep_id\n" + MINIMAL_STATES
-        project_id, family, env_keys = AutomatonBuilder.read_declared_env_keys(yml)
-        assert project_id == "dep_id"
-        assert family is None
-        assert env_keys == frozenset()
-
-    def test_an_invalid_identifier_id_reports_no_id(self):
-        """This method never raises on a malformed id, it just reports
-        no id, so it never blocks validating a different project."""
-        yml = "project:\n  id: 'not a valid id'\n" + MINIMAL_STATES
-        project_id, _, _ = AutomatonBuilder.read_declared_env_keys(yml)
-        assert project_id is None
-
-    def test_a_non_mapping_project_section_reports_no_id_rather_than_raising(self):
-        yml = "project: not-a-mapping\n" + MINIMAL_STATES
-        project_id, family, env_keys = AutomatonBuilder.read_declared_env_keys(yml)
-        assert project_id is None
-        assert family is None
-        assert env_keys == frozenset()
+    build of it. It never raises on a malformed id, it just reports no
+    id, so it never blocks validating a different project."""
+    assert AutomatonBuilder.read_declared_env_keys(yml) == expected

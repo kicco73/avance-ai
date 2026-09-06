@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import parse_sse_result
+from conftest import parse_sse_result, chat_turn
 
 # retention/activity_consistency are scoped to {all_sessions_per_user,
 # all_sessions}, so they're excluded from the one_session context here.
@@ -42,8 +42,7 @@ def test_engagement_rises_after_sending_messages(client, hello_project):
     baseline = {m["name"]: m["value"] for m in client.get(f"/api/projects/{hello_project}/metrics").json()}["engagement"]
 
     for text in ("hi", "how are you", "tell me more"):
-        response = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": text})
-        assert response.status_code == 200
+        chat_turn(client, session['id'], text)
 
     after = {m["name"]: m["value"] for m in client.get(f"/api/projects/{hello_project}/metrics").json()}["engagement"]
     assert after > baseline
@@ -64,7 +63,7 @@ def test_metrics_are_scoped_to_the_url_project(client):
     client.put(f"/api/projects/{names['hello']}/activate")
     session = client.get("/api/chat/session").json()
     for text in ("hi", "again", "and again"):
-        client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": text})
+        chat_turn(client, session['id'], text)
     hello_engagement = {m["name"]: m["value"] for m in client.get(f"/api/projects/{names['hello']}/metrics").json()}["engagement"]
 
     client.put(f"/api/projects/{names['cat']}/activate")

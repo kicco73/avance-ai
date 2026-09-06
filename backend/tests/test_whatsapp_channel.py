@@ -20,33 +20,45 @@ from whatsapp_helpers import (  # noqa: F401 — env is a fixture
 
 pytestmark = pytest.mark.contract
 
+GONE_SESSION_CODES = ["session_closed", "session_not_found"]
+TAKEN_OVER_CODES = ["session_channel_mismatch", "session_superseded"]
+REPLY_TEXT = "*Hola* — has dicho: hola"
+
+
+def _conflict(code: str, message: str = "Session is not active.") -> ServiceError:
+    return ServiceError(message, status_code=HTTPStatus.CONFLICT, code=code)
+
+
+def _non_chat_state() -> ServiceError:
+    return _conflict("state_not_chat", "This state doesn't accept messages; use an action instead.")
+
+
+def _cloud_api_client(handler):
+    from whatsapp.cloud_api_client import WhatsAppCloudApiClient
+
+    api_client = WhatsAppCloudApiClient("tok", "123", "v23.0")
+    api_client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://graph.facebook.com/v23.0")
+    return api_client
+
+
 # --- webhook plumbing ----------------------------------------------------- #
 
-def test_verification_handshake_echoes_challenge(env):
+def test_verification_handshake_echoes_the_challenge_and_rejects_a_wrong_token(env):
     client, *_ = env
-    r = client.get("/api/whatsapp/webhook", params={"hub.mode": "subscribe", "hub.verify_token": "my-verify-token", "hub.challenge": "42"})
-    assert r.status_code == HTTPStatus.OK and r.text == "42"
+    ok = client.get("/api/whatsapp/webhook", params={"hub.mode": "subscribe", "hub.verify_token": "my-verify-token", "hub.challenge": "42"})
+    assert ok.status_code == HTTPStatus.OK and ok.text == "42"
+    wrong = client.get("/api/whatsapp/webhook", params={"hub.mode": "subscribe", "hub.verify_token": "nope", "hub.challenge": "42"})
+    assert wrong.status_code == HTTPStatus.FORBIDDEN
 
 
-def test_verification_rejects_wrong_token(env):
-    client, *_ = env
-    r = client.get("/api/whatsapp/webhook", params={"hub.mode": "subscribe", "hub.verify_token": "nope", "hub.challenge": "42"})
-    assert r.status_code == HTTPStatus.FORBIDDEN
-
-
-def test_bad_signature_never_reaches_a_turn(env):
+def test_bad_signatures_status_updates_and_redeliveries_never_produce_a_second_turn(env):
     client, _, chat, _, api = env
     assert _post(client, _payload(), signature="sha256=deadbeef").status_code == HTTPStatus.FORBIDDEN
     assert chat.calls == [] and api.sent == []
 
+    statuses = {"entry": [{"changes": [{"value": {"messaging_product": "whatsapp", "statuses": [{"id": "wamid.x", "status": "delivered"}]}}]}]}
+    assert WhatsAppService.extract_incoming(statuses) == []
 
-def test_status_updates_are_ignored():
-    payload = {"entry": [{"changes": [{"value": {"messaging_product": "whatsapp", "statuses": [{"id": "wamid.x", "status": "delivered"}]}}]}]}
-    assert WhatsAppService.extract_incoming(payload) == []
-
-
-def test_redelivery_is_deduplicated(env):
-    client, _, chat, _, _ = env
     _post(client, _payload(msg_id="wamid.dup"))
     _post(client, _payload(msg_id="wamid.dup"))
     assert [c for c in chat.calls if c[0] == "turn"] == [("turn", LINKED_EMAIL)]
@@ -54,43 +66,43 @@ def test_redelivery_is_deduplicated(env):
 
 # --- identity gate -------------------------------------------------------- #
 
-def test_unlinked_number_sending_non_text_gets_canned_reply(env):
-    client, _, chat, _, api = env
+def test_unlinked_unregistered_or_non_text_senders_get_a_canned_reply_and_no_turn():
+    client, _, chat, _, api = _build()
     _post(client, _payload(sender="34699999999", mtype="audio"))
     assert chat.calls == []
     assert api.sent == [("34699999999", REPLY_NOT_LINKED)]
 
-
-def test_unlinked_number_with_an_unknown_code_gets_the_same_message_as_the_web(env):
-    client, _, chat, _, api = env
+    client, _, chat, _, api = _build()
     _post(client, _payload(sender="34699999999", text="NOTACODE"))
     assert chat.calls == []
     assert api.sent == [("34699999999", "This invite link is invalid.")]
 
+    client, _, chat, db, api = _build()
+    db.users[LINKED_NUMBER]["role"] = None
+    _post(client, _payload())
+    assert chat.calls == []
+    assert api.sent == [(LINKED_NUMBER, REPLY_NOT_REGISTERED)]
 
-def test_unlinked_number_with_a_valid_code_registers_and_welcomes(env):
-    client, service, chat, db, api = env
+    client, _, chat, _, api = _build()
+    _post(client, _payload(mtype="image"))
+    assert chat.calls == []
+    assert api.sent == [(LINKED_NUMBER, REPLY_UNSUPPORTED)]
+
+
+def test_a_valid_invite_code_plain_or_wame_prefixed_registers_welcomes_and_delivers_the_opening_message():
+    client, service, chat, db, api = _build()
     service._auth_service.valid_codes["GOODCODE"] = "demo-project"
+    chat.opening_message = "Bienvenida."
     r = _post(client, _payload(sender="34699999999", text="GOODCODE"))
     assert r.status_code == HTTPStatus.OK
     assert db.users["34699999999"]["role"] == "user"
     assert chat.calls == [("session", "34699999999")]
-    assert api.sent == [("34699999999", REPLY_REGISTERED)]
+    assert [body for _, body in api.sent] == [REPLY_REGISTERED, "Bienvenida."]
 
-
-def test_unlinked_number_with_the_prefixed_wame_text_still_registers(env):
-    client, service, _, db, _ = env
+    client, service, _, db, _ = _build()
     service._auth_service.valid_codes["GOODCODE"] = "demo-project"
     _post(client, _payload(sender="34699999999", text="Invitation code: GOODCODE"))
     assert db.users["34699999999"]["role"] == "user"
-
-
-def test_registration_delivers_the_projects_opening_message_too(env):
-    client, service, chat, _, api = env
-    service._auth_service.valid_codes["GOODCODE"] = "demo-project"
-    chat.opening_message = "Bienvenida."
-    _post(client, _payload(sender="34699999999", text="GOODCODE"))
-    assert [body for _, body in api.sent] == [REPLY_REGISTERED, "Bienvenida."]
 
 
 def test_unexpected_error_during_redeem_gets_an_apology_not_silence(env):
@@ -103,35 +115,21 @@ def test_unexpected_error_during_redeem_gets_an_apology_not_silence(env):
     assert "34699999999" not in db.users
 
 
-def test_linked_but_unregistered_account_is_refused(env):
-    client, _, chat, db, api = env
-    db.users[LINKED_NUMBER]["role"] = None
-    _post(client, _payload())
-    assert chat.calls == []
-    assert api.sent == [(LINKED_NUMBER, REPLY_NOT_REGISTERED)]
-
-
-def test_non_text_message_gets_courtesy_reply(env):
-    client, _, chat, _, api = env
-    _post(client, _payload(mtype="image"))
-    assert chat.calls == []
-    assert api.sent == [(LINKED_NUMBER, REPLY_UNSUPPORTED)]
-
-
 # --- turn orchestration --------------------------------------------------- #
 
-def test_turn_runs_as_the_linked_account_and_replies_with_persisted_assistant_messages(env):
-    client, _, chat, _, api = env
+def test_turn_runs_as_the_linked_account_after_a_typing_indicator_replying_only_with_the_new_assistant_message(env):
+    """A normal WhatsApp turn is the user's own — no AI-initiated opening
+    message ahead of it (unlike the invite welcome), and earlier history
+    is never resent."""
+    client, _, chat, db, api = env
+    chat.opening_message = "Bienvenida."
+    db.add(7, "assistant", "mensaje de ayer")
+
     assert _post(client, _payload(text="hola")).status_code == HTTPStatus.OK
+
     assert chat.calls == [("session", LINKED_EMAIL), ("turn", LINKED_EMAIL)]
     assert api.read == ["wamid.1"]
-    # Markdown flattened to WhatsApp's own subset on the way out.
-    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola")]
-
-
-def test_typing_indicator_goes_out_before_the_reply_is_ready(env):
-    client, _, _, _, api = env
-    _post(client, _payload(text="hola"))
+    assert api.sent == [(LINKED_NUMBER, REPLY_TEXT)]
     assert api.timeline == ["typing", "text"]
 
 
@@ -144,18 +142,14 @@ def test_no_typing_indicator_when_mark_read_is_off():
     assert api.timeline == ["text"]
 
 
-def test_cloud_api_client_sends_the_read_receipt_with_the_typing_indicator():
-    from whatsapp.cloud_api_client import WhatsAppCloudApiClient
-
+def test_cloud_api_client_sends_the_read_receipt_with_the_typing_indicator_and_swallows_a_failure():
     posted: list[dict] = []
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    def ok(request: httpx.Request) -> httpx.Response:
         posted.append(json.loads(request.content))
         return httpx.Response(200, json={"success": True})
 
-    api_client = WhatsAppCloudApiClient("tok", "123", "v23.0")
-    api_client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://graph.facebook.com/v23.0")
-    asyncio.run(api_client.mark_read_and_show_typing("wamid.1"))
+    asyncio.run(_cloud_api_client(ok).mark_read_and_show_typing("wamid.1"))
     assert posted == [{
         "messaging_product": "whatsapp",
         "status": "read",
@@ -163,143 +157,112 @@ def test_cloud_api_client_sends_the_read_receipt_with_the_typing_indicator():
         "typing_indicator": {"type": "text"},
     }]
 
-
-def test_cloud_api_client_typing_indicator_failure_is_swallowed():
-    from whatsapp.cloud_api_client import WhatsAppCloudApiClient
-
-    def handler(request: httpx.Request) -> httpx.Response:
+    def failing(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, json={"error": "boom"})
 
-    api_client = WhatsAppCloudApiClient("tok", "123", "v23.0")
-    api_client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://graph.facebook.com/v23.0")
-    asyncio.run(api_client.mark_read_and_show_typing("wamid.1"))
+    asyncio.run(_cloud_api_client(failing).mark_read_and_show_typing("wamid.1"))
 
 
-def test_no_ai_initiated_opening_message_ahead_of_the_users_own_turn(env):
-    """Unlike the invite welcome (test_registration_delivers_the_projects_
-    opening_message_too), a normal WhatsApp turn is the user's own —
-    prepare_user_initiated_turn never announces the state on its own."""
-    client, _, chat, _, api = env
-    chat.opening_message = "Bienvenida."
-    _post(client, _payload(text="hola"))
-    assert [body for _, body in api.sent] == ["*Hola* — has dicho: hola"]
-
-
-def test_a_chat_blocked_states_own_wrap_up_message_still_goes_out(env):
-    client, _, chat, _, api = env
+def test_a_non_chat_state_becomes_a_notice_after_the_states_own_wrap_up_and_with_its_own_buttons():
+    """The notice says "use an action instead" — it had better come with
+    actions to use, not leave the user stuck with no buttons at all."""
+    client, _, chat, _, api = _build()
     chat.wrap_up_message = "Conversación finalizada."
-    chat.turn_error = ServiceError("This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT, code="state_not_chat")
+    chat.turn_error = _non_chat_state()
     _post(client, _payload(text="hola"))
     assert [body for _, body in api.sent] == ["Conversación finalizada.", REPLY_NO_CHAT_STATE]
 
-
-def test_earlier_history_is_not_resent(env):
-    client, _, chat, db, api = env
-    db.add(7, "assistant", "mensaje de ayer")
-    _post(client, _payload(text="hola"))
-    assert [body for _, body in api.sent] == ["*Hola* — has dicho: hola"]
-
-
-def test_non_chat_state_conflict_becomes_a_notice(env):
-    client, _, chat, _, api = env
-    chat.turn_error = ServiceError("This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT, code="state_not_chat")
-    _post(client, _payload())
-    assert api.sent == [(LINKED_NUMBER, REPLY_NO_CHAT_STATE)]
-
-
-def test_non_chat_state_conflict_still_sends_the_states_own_buttons(env):
-    """The notice says "use an action instead" — it had better come with
-    actions to use, not leave the user stuck with no buttons at all."""
-    client, _, chat, _, api = env
-    chat.turn_error = ServiceError("This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT, code="state_not_chat")
+    client, _, chat, _, api = _build()
+    chat.turn_error = _non_chat_state()
     chat.state["manual_actions"] = [_action("go", "Go")]
     _post(client, _payload())
     assert api.sent == []
     assert api.interactive == [("button", LINKED_NUMBER, REPLY_NO_CHAT_STATE, [("go", "Go")])]
 
 
-# --- error codes -> replies (phase 4 point 6) ------------------------------- #
+# --- error codes -> replies ------------------------------------------------ #
 
-@pytest.mark.parametrize("code", ["session_channel_mismatch", "session_superseded"])
-def test_turn_taken_over_codes_become_the_taken_over_notice(env, code):
-    client, _, chat, _, api = env
-    chat.turn_error = ServiceError("Session is not active.", status_code=HTTPStatus.CONFLICT, code=code)
-    _post(client, _payload(text="hola"))
-    assert api.sent == [(LINKED_NUMBER, REPLY_SESSION_TAKEN_OVER)]
+def test_taken_over_codes_become_the_taken_over_notice_for_turns_and_actions():
+    for code in TAKEN_OVER_CODES:
+        client, _, chat, _, api = _build()
+        chat.turn_error = _conflict(code)
+        _post(client, _payload(text="hola"))
+        assert api.sent == [(LINKED_NUMBER, REPLY_SESSION_TAKEN_OVER)], code
 
-
-@pytest.mark.parametrize("code", ["session_channel_mismatch", "session_superseded"])
-def test_action_taken_over_codes_become_the_taken_over_notice(env, code):
-    client, _, chat, _, api = env
-    chat.action_error = ServiceError("Session is not active.", status_code=HTTPStatus.CONFLICT, code=code)
-    _post(client, _interactive_payload())
-    assert api.sent == [(LINKED_NUMBER, REPLY_SESSION_TAKEN_OVER)]
+        client, _, chat, _, api = _build()
+        chat.action_error = _conflict(code)
+        _post(client, _interactive_payload())
+        assert api.sent == [(LINKED_NUMBER, REPLY_SESSION_TAKEN_OVER)], code
 
 
-def test_turn_in_progress_code_becomes_the_busy_notice(env):
-    client, _, chat, _, api = env
-    chat.turn_error = ServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT, code="turn_in_progress")
+def test_turn_in_progress_becomes_the_busy_notice_for_turns_and_actions_with_no_buttons():
+    busy = _conflict("turn_in_progress", "A chat reply is already being generated.")
+
+    client, _, chat, _, api = _build()
+    chat.turn_error = busy
     _post(client, _payload(text="hola"))
     assert api.sent == [(LINKED_NUMBER, REPLY_BUSY)]
 
+    client, _, chat, _, api = _build()
+    chat.action_error = busy
+    chat.state["manual_actions"] = [_action("stay", "Stay")]
+    _post(client, _interactive_payload())
+    assert api.sent == [(LINKED_NUMBER, REPLY_BUSY)]
+    assert api.interactive == []
 
-@pytest.mark.parametrize("code", ["session_closed", "session_not_found"])
-def test_turn_retries_once_on_a_gone_session_and_succeeds(env, code):
-    client, _, chat, _, api = env
-    chat.turn_error = ServiceError("Session is closed.", status_code=HTTPStatus.CONFLICT, code=code)
+
+@pytest.mark.parametrize("code", GONE_SESSION_CODES)
+def test_a_gone_session_is_retried_once_for_turns_and_actions_reporting_a_technical_problem_if_it_fails_again(code):
+    client, _, chat, _, api = _build()
+    chat.turn_error = _conflict(code, "Session is closed.")
     chat.turn_error_clears_after_raise = True
     _post(client, _payload(text="hola"))
     assert [call for call in chat.calls if call[0] == "session"] == [("session", LINKED_EMAIL), ("session", LINKED_EMAIL)]
-    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola")]
+    assert api.sent == [(LINKED_NUMBER, REPLY_TEXT)]
 
-
-@pytest.mark.parametrize("code", ["session_closed", "session_not_found"])
-def test_turn_reports_a_technical_problem_when_the_retry_also_fails(env, code):
-    client, _, chat, _, api = env
-    chat.turn_error = ServiceError("Session is closed.", status_code=HTTPStatus.CONFLICT, code=code)
+    client, _, chat, _, api = _build()
+    chat.turn_error = _conflict(code, "Session is closed.")
     _post(client, _payload(text="hola"))
     assert api.sent == [(LINKED_NUMBER, REPLY_TECHNICAL_PROBLEM)]
 
-
-@pytest.mark.parametrize("code", ["session_closed", "session_not_found"])
-def test_action_retries_once_on_a_gone_session_and_succeeds(env, code):
-    client, _, chat, _, api = env
-    chat.action_error = ServiceError("Session is closed.", status_code=HTTPStatus.CONFLICT, code=code)
+    client, _, chat, _, api = _build()
+    chat.action_error = _conflict(code, "Session is closed.")
     chat.action_error_clears_after_raise = True
     _post(client, _interactive_payload())
     assert [call for call in chat.calls if call[0] == "session"] == [("session", LINKED_EMAIL), ("session", LINKED_EMAIL)]
     assert api.sent == [(LINKED_NUMBER, chat.state["ui_label"])]
 
-
-@pytest.mark.parametrize("code", ["session_closed", "session_not_found"])
-def test_action_reports_a_technical_problem_when_the_retry_also_fails(env, code):
-    client, _, chat, _, api = env
-    chat.action_error = ServiceError("Session is closed.", status_code=HTTPStatus.CONFLICT, code=code)
+    client, _, chat, _, api = _build()
+    chat.action_error = _conflict(code, "Session is closed.")
     _post(client, _interactive_payload())
     assert api.sent == [(LINKED_NUMBER, REPLY_TECHNICAL_PROBLEM)]
 
 
 # --- manual actions as buttons/list ---------------------------------------- #
 
-def test_turn_landing_on_a_state_with_two_manual_actions_sends_buttons(env):
-    client, _, chat, _, api = env
+def test_manual_actions_become_buttons_excluding_triggered_ones_truncating_long_titles_and_plain_text_when_none():
+    client, _, chat, _, api = _build()
     chat.state["actions"] = [_action("go", "Go"), _action("stay", "Stay")]
     chat.state["manual_actions"] = chat.state["actions"]
     _post(client, _payload(text="hola"))
     assert api.sent == []
-    assert api.interactive == [
-        ("button", LINKED_NUMBER, "*Hola* — has dicho: hola", [("go", "Go"), ("stay", "Stay")])
-    ]
+    assert api.interactive == [("button", LINKED_NUMBER, REPLY_TEXT, [("go", "Go"), ("stay", "Stay")])]
 
-
-def test_manual_actions_not_shown_are_excluded(env):
-    client, _, chat, _, api = env
+    client, _, chat, _, api = _build()
     triggered = _action("auto", "Auto", has_trigger=True)
-    manual = _action("go", "Go")
+    manual = _action("go", "A very very long button label indeed")
     chat.state["actions"] = [triggered, manual]
     chat.state["manual_actions"] = [manual]
     _post(client, _payload(text="hola"))
-    assert api.interactive[0][3] == [("go", "Go")]
+    assert api.interactive[0][3] == [("go", "A very very long bu…")]
+    assert len(api.interactive[0][3][0][1]) == 20
+
+    client, _, chat, _, api = _build()
+    chat.state["actions"] = [triggered]
+    chat.state["manual_actions"] = []
+    _post(client, _payload(text="hola"))
+    assert api.sent == [(LINKED_NUMBER, REPLY_TEXT)]
+    assert api.interactive == []
 
 
 def test_five_manual_actions_send_a_list(env):
@@ -315,33 +278,12 @@ def test_five_manual_actions_send_a_list(env):
     assert rows[0] == ("a0", "Action 0", "Does 0")
 
 
-def test_button_title_longer_than_20_chars_is_truncated(env):
-    client, _, chat, _, api = env
-    chat.state["actions"] = [_action("go", "A very very long button label indeed")]
-    chat.state["manual_actions"] = chat.state["actions"]
-    _post(client, _payload(text="hola"))
-    _, _, _, buttons = api.interactive[0]
-    assert buttons == [("go", "A very very long bu…")]
-    assert len(buttons[0][1]) == 20
-
-
-def test_state_with_no_manual_actions_sends_plain_text_only(env):
-    client, _, chat, _, api = env
-    chat.state["actions"] = [_action("auto", "Auto", has_trigger=True)]
-    chat.state["manual_actions"] = []
-    _post(client, _payload(text="hola"))
-    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola")]
-    assert api.interactive == []
-
-
-def test_extract_incoming_ignores_an_unsupported_interactive_reply():
+def test_button_and_list_replies_apply_the_action_as_the_linked_account_while_an_unsupported_reply_is_ignored():
     payload = _interactive_payload(kind="nfm_reply", reply={"response_json": "{}"})
     [message] = WhatsAppService.extract_incoming(payload)
     assert message.type == "interactive" and message.action_id is None
 
-
-def test_button_reply_applies_the_action_as_the_linked_account(env):
-    client, _, chat, _, api = env
+    client, _, chat, _, api = _build()
     chat.state["manual_actions"] = [_action("stay", "Stay")]
     chat.action_reply_message = "You picked go."
     _post(client, _interactive_payload(kind="button_reply", reply={"id": "go", "title": "Go"}))
@@ -349,46 +291,31 @@ def test_button_reply_applies_the_action_as_the_linked_account(env):
     assert api.sent == []
     assert api.interactive == [("button", LINKED_NUMBER, "You picked go.", [("stay", "Stay")])]
 
-
-def test_list_reply_applies_the_action_too(env):
-    client, _, chat, _, api = env
+    client, _, chat, _, api = _build()
     chat.action_reply_message = "You picked the list option."
     _post(client, _interactive_payload(kind="list_reply", reply={"id": "opt2", "title": "Option 2"}))
     assert chat.calls == [("session", LINKED_EMAIL), ("action", LINKED_EMAIL, "opt2")]
     assert api.sent == [(LINKED_NUMBER, "You picked the list option.")]
 
 
-def test_action_with_no_produced_message_falls_back_to_the_new_states_ui_label(env):
-    client, _, chat, _, api = env
+def test_an_action_with_no_message_falls_back_to_the_states_ui_label_then_done_and_an_invalid_one_gets_a_notice_with_buttons():
+    client, _, chat, _, api = _build()
     chat.state["ui_label"] = "State Y"
     _post(client, _interactive_payload())
     assert api.sent == [(LINKED_NUMBER, "State Y")]
 
-
-def test_action_with_no_message_and_no_ui_label_falls_back_to_done(env):
-    client, _, chat, _, api = env
+    client, _, chat, _, api = _build()
     chat.state["ui_label"] = None
     _post(client, _interactive_payload())
     assert api.sent == [(LINKED_NUMBER, REPLY_DONE)]
 
-
-def test_invalid_action_gets_a_notice_and_the_current_states_buttons(env):
-    client, _, chat, _, api = env
+    client, _, chat, _, api = _build()
     chat.action_error = ValueError("Action 'go' not available in state 'x'")
     chat.state["manual_actions"] = [_action("stay", "Stay")]
     _post(client, _interactive_payload())
     assert chat.calls == [("session", LINKED_EMAIL), ("action", LINKED_EMAIL, "go")]
     assert api.sent == []
     assert api.interactive == [("button", LINKED_NUMBER, REPLY_INVALID_ACTION, [("stay", "Stay")])]
-
-
-def test_action_conflict_gets_only_the_busy_notice(env):
-    client, _, chat, _, api = env
-    chat.action_error = ServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT, code="turn_in_progress")
-    chat.state["manual_actions"] = [_action("stay", "Stay")]
-    _post(client, _interactive_payload())
-    assert api.sent == [(LINKED_NUMBER, REPLY_BUSY)]
-    assert api.interactive == []
 
 
 def test_paused_project_gate_is_relayed(env):
@@ -401,7 +328,7 @@ def test_paused_project_gate_is_relayed(env):
 
 # --- legal terms ------------------------------------------------------------ #
 
-def test_pending_terms_send_the_content_with_an_accept_button(env):
+def test_pending_terms_send_the_content_with_an_accept_button_instead_of_a_turn(env):
     client, _, chat, _, api = env
     chat.session_payload = {"legal_terms_pending": True, "project_id": "demo-project"}
     chat.terms_content = "## Terms\n\nBe nice."
@@ -426,30 +353,23 @@ def test_registration_with_pending_terms_sends_terms_instead_of_the_welcome(env)
     assert buttons == [("__whatsapp_accept_terms__", REPLY_ACCEPT_TERMS_LABEL)]
 
 
-def test_accepting_terms_calls_accept_legal_terms_and_bootstraps(env):
-    client, _, chat, _, api = env
-    chat.session_payload = {"legal_terms_pending": True, "project_id": "demo-project"}
+def test_accepting_terms_bootstraps_with_the_opening_message_or_a_plain_confirmation_never_resending_history():
+    accept = _interactive_payload(reply={"id": "__whatsapp_accept_terms__", "title": "Accept"})
+    pending = {"legal_terms_pending": True, "project_id": "demo-project"}
+
+    client, _, chat, _, api = _build()
+    chat.session_payload = dict(pending)
     chat.resolved_session_payload = {"id": 7}
     chat.opening_message = "Bienvenida."
-    _post(client, _interactive_payload(reply={"id": "__whatsapp_accept_terms__", "title": "Accept"}))
+    _post(client, accept)
     assert chat.accepted_terms_for == ["demo-project"]
     assert api.sent == [(LINKED_NUMBER, "Bienvenida.")]
 
-
-def test_accepting_terms_with_no_new_content_gets_a_plain_confirmation(env):
-    client, _, chat, _, api = env
-    chat.session_payload = {"legal_terms_pending": True, "project_id": "demo-project"}
-    chat.resolved_session_payload = {"id": 7}
-    _post(client, _interactive_payload(reply={"id": "__whatsapp_accept_terms__", "title": "Accept"}))
-    assert api.sent == [(LINKED_NUMBER, REPLY_TERMS_ACCEPTED)]
-
-
-def test_accepting_terms_does_not_resend_a_sessions_prior_history(env):
-    client, _, chat, db, api = env
+    client, _, chat, db, api = _build()
     db.add(7, "assistant", "mensaje de ayer")
-    chat.session_payload = {"legal_terms_pending": True, "project_id": "demo-project"}
+    chat.session_payload = dict(pending)
     chat.resolved_session_payload = {"id": 7}
-    _post(client, _interactive_payload(reply={"id": "__whatsapp_accept_terms__", "title": "Accept"}))
+    _post(client, accept)
     assert api.sent == [(LINKED_NUMBER, REPLY_TERMS_ACCEPTED)]
 
 
@@ -460,6 +380,3 @@ async def test_impersonation_does_not_leak_past_the_turn(env):
     await service.handle(IncomingMessage(id="wamid.9", sender=LINKED_NUMBER, type="text", text="hola"))
     assert chat.calls == [("session", LINKED_EMAIL), ("turn", LINKED_EMAIL)]
     assert Session().user == "user"
-
-
-# --- voice in ------------------------------------------------------------- #

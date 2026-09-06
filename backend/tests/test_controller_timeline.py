@@ -9,7 +9,7 @@ import pytest
 
 from session import Session
 
-from conftest import parse_chat_turn_sse
+from conftest import chat_turn
 
 pytestmark = pytest.mark.contract
 
@@ -35,7 +35,7 @@ def test_timeline_excludes_signal_rows_but_still_includes_the_initial_state(clie
     with Session().impersonate("bob"):
         session = client.get("/api/chat/session").json()
         client.get(f"/api/chat/sessions/{session['id']}/messages")
-        turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}))
+        turn = chat_turn(client, session['id'], "hi")
         client.put(
             f"/api/chat/messages/{turn['assistant_message_id']}/expected-state", json={"expected_state": "Hello"},
         )

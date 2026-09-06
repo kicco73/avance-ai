@@ -66,9 +66,28 @@ function jumpToLine(lineIndex) {
 // switch to the Code segment: it's a direct, immediate consequence of the
 // user's own Save click on this exact buffer, not an unrelated background
 // event, so there's no "Graph/Code is the user's own choice" concern here.
-function onBuildError(lineIndex) {
-  segment.value = 'code'
+const pendingBuildErrorLine = ref(null)
+
+function applyBuildErrorLine(lineIndex) {
+  if (lineIndex == null) return
+  codeEditorRef.value?.markErrorLine(lineIndex)
   codeEditorRef.value?.jumpToLine(lineIndex)
+}
+
+function showBuildError(lineIndex) {
+  segment.value = 'code'
+  if (!codeEditorRef.value || codeEditorRef.value.loading) {
+    pendingBuildErrorLine.value = lineIndex
+    return
+  }
+  applyBuildErrorLine(lineIndex)
+}
+
+function onCodeLoaded() {
+  if (pendingBuildErrorLine.value == null) return
+  const lineIndex = pendingBuildErrorLine.value
+  pendingBuildErrorLine.value = null
+  applyBuildErrorLine(lineIndex)
 }
 
 // The raw YAML text and its dirty flag, for EditProjectView.vue's unsaved-
@@ -112,7 +131,7 @@ async function aiEdit() {
 }
 
 defineExpose({
-  loadGraph, resize, fit, refresh, reloadCode, reload, jumpToLine, stateElementFor, actionsForState,
+  loadGraph, resize, fit, refresh, reloadCode, reload, jumpToLine, showBuildError, stateElementFor, actionsForState,
   content, isDirty, saving, save, discard, undo, redo
 })
 </script>
@@ -195,7 +214,8 @@ defineExpose({
         :yaml-attachment-files="attachmentFiles"
         :current-revision="currentRevision"
         @saved="emit('saved', $event)"
-        @build-error="onBuildError"
+        @build-error="showBuildError"
+        @loaded="onCodeLoaded"
       />
     </div>
   </div>

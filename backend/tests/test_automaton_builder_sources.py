@@ -13,6 +13,9 @@ from automaton.automaton_builder import AutomatonBuilder
 
 pytestmark = pytest.mark.contract
 
+_FLIGHTS = {"flights.csv": "a,b\n1,2\n"}
+_PINO_FLIGHTS = "sources:\n  pino:\n    url: avance:flights.csv\n"
+
 
 def _build(sources_yaml: str, trigger: str | None = None, contents: dict[str, str] | None = None) -> object:
     trigger_line = f'        trigger: "{trigger}"' if trigger else ""
@@ -34,109 +37,55 @@ states:
     return AutomatonBuilder().build({"index.yml": content, **(contents or {})})
 
 
-def test_a_declared_source_is_parsed():
-    automaton = _build(
-        """
-sources:
-  pino:
-    ui-label: Flights
-    ui-description: Flight records.
-    url: avance:behaviour/flights.csv
-""",
+def test_a_declared_source_is_parsed_with_ui_label_defaulting_to_its_name_and_an_absent_section_or_url_still_builds():
+    """A freshly-added source (AutomatonYamlEditor.add_source) has no url
+    until the user configures one — buildable either way, exactly like an
+    env key's own empty default."""
+    full = _build(
+        "sources:\n  pino:\n    ui-label: Flights\n    ui-description: Flight records.\n    url: avance:behaviour/flights.csv\n",
         contents={"behaviour/flights.csv": "a,b\n1,2\n"},
-    )
-    source = automaton.sources[0]
-    assert source.name == "pino"
-    assert source.ui_label == "Flights"
-    assert source.ui_description == "Flight records."
-    assert source.url == "avance:behaviour/flights.csv"
+    ).sources[0]
+    assert full.name == "pino"
+    assert full.ui_label == "Flights"
+    assert full.ui_description == "Flight records."
+    assert full.url == "avance:behaviour/flights.csv"
+
+    assert _build(_PINO_FLIGHTS, contents=_FLIGHTS).sources[0].ui_label == "pino"
+    assert _build("").sources == []
+    assert _build("sources:\n  pino:\n    ui-label: Flights\n").sources[0].url == ""
 
 
-def test_ui_label_defaults_to_the_source_name():
-    automaton = _build(
-        "sources:\n  pino:\n    url: avance:flights.csv\n",
-        contents={"flights.csv": "a,b\n1,2\n"},
-    )
-    assert automaton.sources[0].ui_label == "pino"
+@pytest.mark.parametrize(("sources_yaml", "trigger", "match"), [
+    ("sources:\n  - not\n  - a\n  - mapping\n", None, "'sources' must be a mapping"),
+    ("sources:\n  pino:\n    url: flights.csv\n", None, "not a valid source url"),
+    ("sources:\n  pino:\n    url: s3:flights.csv\n", None, "url scheme 's3' must be one of"),
+    ("sources:\n  pino:\n    ui-label: Flights\n", "source.pino.select('x') != 'x'", r"undefined name\(s\).*source.pino.select"),
+], ids=["not-a-mapping", "no-scheme", "unknown-scheme", "referenced-without-url"])
+def test_build_rejects_a_malformed_sources_section_a_bad_url_or_a_reference_to_a_source_with_no_url_yet(sources_yaml, trigger, match):
+    with pytest.raises(ValueError, match=match):
+        _build(sources_yaml, trigger=trigger)
 
 
-def test_no_sources_section_leaves_sources_empty():
-    automaton = _build("")
-    assert automaton.sources == []
-
-
-def test_sources_section_must_be_a_mapping():
-    with pytest.raises(ValueError, match="'sources' must be a mapping"):
-        _build("sources:\n  - not\n  - a\n  - mapping\n")
-
-
-def test_a_source_with_no_url_yet_builds_fine_but_can_t_be_referenced():
-    """A freshly-added source (AutomatonYamlEditor.add_source) has no
-    url until the user configures one — buildable either way, exactly
-    like an env key's own empty default."""
-    automaton = _build("sources:\n  pino:\n    ui-label: Flights\n")
-    assert automaton.sources[0].url == ""
-
-    with pytest.raises(ValueError, match="undefined name\\(s\\).*source.pino.select"):
-        _build("sources:\n  pino:\n    ui-label: Flights\n", trigger="source.pino.select('x') != 'x'")
-
-
-def test_url_without_a_scheme_is_rejected():
-    with pytest.raises(ValueError, match="not a valid source url"):
-        _build("sources:\n  pino:\n    url: flights.csv\n")
-
-
-def test_url_with_an_unknown_scheme_is_rejected():
-    with pytest.raises(ValueError, match="url scheme 's3' must be one of"):
-        _build("sources:\n  pino:\n    url: s3:flights.csv\n")
-
-
-def test_avance_url_referencing_a_never_seen_archive_is_provisioned_empty():
+def test_an_avance_url_is_provisioned_empty_when_never_seen_and_a_trigger_may_call_a_declared_sources_select():
     """'avance' is the project's own embedded default driver — a source
     naming an archive it hasn't seen yet still builds, backed by an
     empty archive, instead of failing the whole project."""
-    automaton = _build(
-        "sources:\n  pino:\n    url: avance:flights.csv\n",
-        trigger="source.pino.select('x') == 'x'",
-    )
-    assert automaton.sources[0].url == "avance:flights.csv"
+    provisioned = _build(_PINO_FLIGHTS, trigger="source.pino.select('x') == 'x'")
+    assert provisioned.sources[0].url == "avance:flights.csv"
+
+    seeded = _build(_PINO_FLIGHTS, trigger="source.pino.select('x') != 'nope'", contents=_FLIGHTS)
+    assert seeded.sources[0].name == "pino"
 
 
-def test_a_trigger_may_call_a_declared_source_s_select():
-    automaton = _build(
-        """
-sources:
-  pino:
-    url: avance:flights.csv
-""",
-        trigger="source.pino.select('x') != 'nope'",
-        contents={"flights.csv": "a,b\n1,2\n"},
-    )
-    assert automaton.sources[0].name == "pino"
-
-
-def test_a_trigger_referencing_an_undeclared_source_is_rejected():
-    with pytest.raises(ValueError, match="undefined name\\(s\\).*source.pino"):
-        _build("", trigger="source.pino.select('x') == 'x'")
-
-
-def test_a_trigger_calling_an_unsupported_method_on_a_declared_source_is_rejected():
-    with pytest.raises(ValueError, match="undefined name\\(s\\).*source.pino.create"):
-        _build(
-            "sources:\n  pino:\n    url: avance:flights.csv\n",
-            trigger="source.pino.create('k', 'v') == None",
-            contents={"flights.csv": "a,b\n1,2\n"},
-        )
-
-
-def test_a_trigger_calling_read_on_a_source_points_to_attachment_read_instead():
+@pytest.mark.parametrize(("sources_yaml", "trigger", "match"), [
+    ("", "source.pino.select('x') == 'x'", r"undefined name\(s\).*source.pino"),
+    (_PINO_FLIGHTS, "source.pino.create('k', 'v') == None", r"undefined name\(s\).*source.pino.create"),
+    (_PINO_FLIGHTS, "source.pino.read() == ''", r"attachment.read\(name\)'s job"),
+], ids=["undeclared-source", "unsupported-method", "read-points-to-attachment-read"])
+def test_a_trigger_may_only_call_a_supported_method_on_a_declared_source(sources_yaml, trigger, match):
     # SourceDriver has no `read` at all, by design — a whole-file read is
     # attachment.read(name)'s job (on-enter only), never a source.*
-    # capability, so this gets a more useful message than a bare
+    # capability, so that one gets a more useful message than a bare
     # "undefined name."
-    with pytest.raises(ValueError, match="attachment.read\\(name\\)'s job"):
-        _build(
-            "sources:\n  pino:\n    url: avance:flights.csv\n",
-            trigger="source.pino.read() == ''",
-            contents={"flights.csv": "a,b\n1,2\n"},
-        )
+    with pytest.raises(ValueError, match=match):
+        _build(sources_yaml, trigger=trigger, contents=_FLIGHTS)

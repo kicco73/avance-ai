@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from conftest import parse_chat_turn_sse
+from conftest import chat_turn
 
 pytestmark = pytest.mark.contract
 
@@ -27,7 +27,7 @@ def _wait_for_aggregate_result(client, project_name, kind, strategy, target=None
 
 def _make_session_annotated_at_hello(client, *, labeled=False):
     session = client.get("/api/chat/session").json()
-    turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}))
+    turn = chat_turn(client, session['id'], "hi")
     client.put(
         f"/api/chat/messages/{turn['assistant_message_id']}/expected-state", json={"expected_state": "Hello"},
     )

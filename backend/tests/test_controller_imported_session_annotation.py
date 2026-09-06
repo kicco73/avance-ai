@@ -10,7 +10,7 @@ import zipfile
 
 import pytest
 
-from conftest import parse_chat_turn_sse
+from conftest import chat_turn
 from conftest import parse_sse_result
 
 pytestmark = pytest.mark.contract
@@ -119,9 +119,7 @@ def test_a_native_sessions_message_is_unaffected_by_the_imported_fallback(client
     turn's user message on a live session must still 409; only the
     session's literal first message gets the existing treatment."""
     native_session_id = _setup_project(client, autotracking_on_ai_message=False)
-    turn = client.post(f"/api/chat/sessions/{native_session_id}/messages", json={"message": "hi"})
-    assert turn.status_code == 200, turn.text
-    user_message_id = parse_chat_turn_sse(turn)["user_message_id"]
+    user_message_id = chat_turn(client, native_session_id, "hi")["user_message_id"]
 
     resp = client.put(
         f"/api/chat/messages/{user_message_id}/expected-state", json={"expected_state": "a"}

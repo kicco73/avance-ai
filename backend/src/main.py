@@ -169,10 +169,11 @@ def create_app() -> FastAPI:
         )
 
         # Single shared /ws/notifications connection per user (see
-        # chat/ws_notifications.py) — a push-only channel, handed to whatever
-        # needs to push onto an already-open connection (WakeupService,
-        # actuator_factory's own deferred calls).
-        ws_notifications = WsNotifications(auth_service)
+        # chat/ws_notifications.py) — the chat channel itself, both
+        # directions, also handed to whatever needs to push onto an
+        # already-open connection (WakeupService, actuator_factory's own
+        # deferred calls).
+        ws_notifications = WsNotifications(auth_service, chat_service)
         actuator_factory.set_ws_notifications(ws_notifications)
         test_event_broadcaster.set_ws_notifications(ws_notifications)
 

@@ -28,8 +28,8 @@ from chat.env_for_session import env_for_session
 from chat.ephemeral_env_registry import EphemeralEnvRegistry
 from chat.errors import ChatServiceError
 from chat.session_manager import ChatSessionManager, SessionNotWritable
-from chat.session_insights import SessionInsights
-from chat.session_ownership import SessionOwnership
+from chat.sessions.session_insights import SessionInsights
+from chat.sessions.session_ownership import SessionOwnership
 from chat.session_report_task import SessionReportHydrator, SessionReportScheduler, SessionReportTask
 from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from job import JobService
@@ -674,21 +674,43 @@ class ChatService(object):
 				"session_id": session["id"],
 			}
 
+	def accept_user_message(self, session_id: int, text: str) -> int:
+		"""Persists a user message the moment its frame is read — before any
+		processing, ahead of the session lock — so the order of the messages
+		is the order they arrived on the wire (see WsNotifications). Runs
+		the same checks a turn runs, so a message for a closed, foreign or
+		paused session is refused rather than stored."""
+		session = self._db.get_chat_session(session_id)
+		if session is None:
+			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND, code="session_not_found")
+		project_id = session["project_id"]
+		self._ensure_project_available(project_id)
+		_, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
+		self._require_active_session(session_id, project_id, state.key)
+		if not state.chat:
+			raise ChatServiceError(
+				"This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT,
+				code="state_not_chat",
+			)
+		return self._db.save_message("user", text, session_id)
+
 	async def process_turn(
 		self,
 		session_id: int,
 		text: str | None = None,
 		on_metadata: OnMetadata | None = None,
+		user_message_id: int | None = None,
 	) -> dict:
 		project_id = self._project_id_for_session(session_id)
 		async with self._session_scope(project_id, session_id):
-			return await self._process_turn_body(session_id, text, on_metadata)
+			return await self._process_turn_body(session_id, text, on_metadata, user_message_id)
 
 	async def _process_turn_body(
 		self,
 		session_id: int,
 		text: str | None = None,
 		on_metadata: OnMetadata | None = None,
+		user_message_id: int | None = None,
 	) -> dict:
 		session = self._db.get_chat_session(session_id)
 		if session is None:
@@ -698,7 +720,9 @@ class ChatService(object):
 		ai_service = self._ai_test_service if session["type"] == "test" else self._ai_service
 		_, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 		self._require_active_session(session_id, project_id, state.key)
-		reply = await self._tracking_service._process(session_id, text, ai_service, on_metadata)
+		reply = await self._tracking_service._process(
+			session_id, text, ai_service, on_metadata, user_message_id=user_message_id,
+		)
 		self._session_manager.touch_session(reply['session_id'], reply['state']['key'])
 		reply['state'] = self._with_manual_actions(session_id, reply['state'])
 		return reply

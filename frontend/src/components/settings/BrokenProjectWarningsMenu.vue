@@ -1,15 +1,17 @@
 <script setup>
 import { ref } from 'vue'
 import '../../styles/headerMenu.css'
-import { getProjectBrokenWarnings } from '../../api.js'
+import { deleteProjectBrokenWarning, getProjectBrokenWarnings } from '../../api.js'
 import { useOutsideClickClose } from '../../composables/useOutsideClickClose.js'
 
 const props = defineProps({
   metadataById: { type: Object, required: true }
 })
 
+const emit = defineEmits(['open'])
+
 const rootEl = ref(null)
-const { open, toggle } = useOutsideClickClose(rootEl)
+const { open, toggle, close } = useOutsideClickClose(rootEl)
 const warnings = ref([])
 
 async function load() {
@@ -26,8 +28,26 @@ function toggleMenu() {
   if (open.value) load()
 }
 
+async function dismiss(warning) {
+  try {
+    await deleteProjectBrokenWarning(warning.id)
+    warnings.value = warnings.value.filter((row) => row.id !== warning.id)
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+function openWarning(warning) {
+  close()
+  emit('open', warning)
+}
+
 function projectTitle(id) {
   return props.metadataById[id]?.ui_label || id
+}
+
+function summary(warning) {
+  return `${warning.file || 'index.yml'} no longer builds`
 }
 
 function formatTimestamp(timestamp) {
@@ -51,9 +71,12 @@ defineExpose({ refresh: load })
         <p class="warnings-title">Broken project warnings</p>
         <ul class="warnings-list">
           <li v-for="warning in warnings" :key="warning.id" class="warnings-item">
-            <span class="warnings-item-project">{{ projectTitle(warning.project_id) }}</span>
-            <span class="warnings-item-time">{{ formatTimestamp(warning.timestamp) }}</span>
-            <span class="warnings-item-message">{{ warning.message }}</span>
+            <button type="button" class="warnings-item-open" title="Open the project at the problem" @click="openWarning(warning)">
+              <span class="warnings-item-project">{{ projectTitle(warning.project_id) }}</span>
+              <span class="warnings-item-time">{{ formatTimestamp(warning.timestamp) }}</span>
+              <span class="warnings-item-message" :title="warning.message">{{ summary(warning) }}</span>
+            </button>
+            <button type="button" class="warnings-item-dismiss" title="Dismiss" @click="dismiss(warning)">×</button>
           </li>
         </ul>
       </div>
@@ -115,10 +138,45 @@ defineExpose({ refresh: load })
 
 .warnings-item {
   display: flex;
+  align-items: flex-start;
+  border-bottom: 1px solid #f3f3f3;
+}
+
+.warnings-item-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
   flex-direction: column;
   gap: 0.1rem;
   padding: 0.5rem 0.9rem;
-  border-bottom: 1px solid #f3f3f3;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.warnings-item-open:hover {
+  background: #fdf3f2;
+}
+
+.warnings-item-dismiss {
+  flex-shrink: 0;
+  margin: 0.4rem 0.5rem 0 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: #999;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.warnings-item-dismiss:hover {
+  background: #eee;
+  color: #333;
 }
 
 .warnings-item:last-child {
@@ -139,7 +197,5 @@ defineExpose({ refresh: load })
 .warnings-item-message {
   font-size: 0.75rem;
   color: #555;
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 </style>

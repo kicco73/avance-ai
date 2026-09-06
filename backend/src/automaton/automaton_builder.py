@@ -1,12 +1,12 @@
 from automaton.automaton import (
     AI_ACCESS_NONE, AI_ACCESS_VALUES, Action, EnvKey, MemoryArchive, Automaton, Reaction, Signal, Source, State,
 )
-from automaton.archive_resolver import ArchiveResolver
-from automaton.automaton_validator import AutomatonValidator, STATE_SOURCE_FIELDS
-from automaton.build_cursor import BuildCursor
+from automaton.builder.archive_resolver import ArchiveResolver
+from automaton.builder.automaton_validator import AutomatonValidator, STATE_SOURCE_FIELDS
+from automaton.builder.build_cursor import BuildCursor
 from automaton.build_error import AutomatonBuildError
 from automaton.identifier_registry import IdentifierRegistry
-from automaton.project_metadata import ProjectMetadata, load_yaml, peek_declared_revision, read_declared_env_keys
+from automaton.builder.project_metadata import ProjectMetadata, load_yaml, peek_declared_revision, read_declared_env_keys
 from typing import Any
 from logging_factory import LoggerFactory
 from metrics.metrics_framework import metric_names
@@ -257,7 +257,11 @@ class AutomatonBuilder(object):
             return self._build(contents, known_projects, legacy_project_id=legacy_project_id)
         except AutomatonBuildError:
             raise
-        except (ValueError, YAMLError) as exc:
+        except YAMLError as exc:
+            mark = getattr(exc, "problem_mark", None)
+            line = mark.line if mark is not None else self._cursor.line
+            raise AutomatonBuildError(str(exc), line=line, section=self._cursor.section) from exc
+        except ValueError as exc:
             raise AutomatonBuildError(str(exc), line=self._cursor.line, section=self._cursor.section) from exc
 
     def _require_mapping_section(self, raw: dict, section: str, item_label: str) -> dict:

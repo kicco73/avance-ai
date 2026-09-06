@@ -1,14 +1,12 @@
-"""End to end, through the real SseChatTurn.response() stream and a real
-AiService driven by a fake provider: every event a turn raises reaches the
-SSE stream in the order it was raised, and "done" always comes last —
-after every chunk, whether the turn made tool calls (a collected round
-replayed without ever yielding the loop) or not. on_metadata is
-synchronous end to end (see tracking/turn_callbacks.py's own OnMetadata):
-nothing is scheduled, so nothing can be overtaken.
+"""End to end, through a real WsChatTurn (see chat/ws_turn.py) and a real
+AiService driven by a fake provider: every frame a turn raises reaches the
+connection in the order it was raised, each with the turn's own turn_id,
+and "done" always comes last — after every chunk, whether the turn made
+tool calls (a collected round replayed without ever yielding the loop) or
+not. on_metadata is synchronous end to end (see tracking/turn_callbacks.py's
+own OnMetadata): nothing is scheduled, so nothing can be overtaken.
 """
 from __future__ import annotations
-
-import json
 
 import pytest
 
@@ -17,7 +15,7 @@ from ai.llm_provider import ToolCall, ToolCallsRequested
 from automaton.automaton import Action, Automaton, Source, State
 from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
-from chat.sse_turn import SseChatTurn
+from chat.ws_turn import WsChatTurn
 from conftest import make_test_actuator_factory, make_test_job_service
 from db.db import Db
 from metrics.metric_service import MetricService
@@ -97,15 +95,22 @@ def chat_service_for(tmp_path):
     return make
 
 
+class _RecordingConnection:
+    def __init__(self) -> None:
+        self.frames: list[dict] = []
+
+    def send(self, payload: dict) -> None:
+        self.frames.append(payload)
+
+
 async def _streamed_events(chat_service: ChatService, text: str) -> list[tuple[str, dict]]:
     session = await chat_service.get_current_session_if_any_or_create_new(None)
-    response = SseChatTurn(chat_service, session["id"], text).response()
-    events = []
-    async for frame in response.body_iterator:
-        for block in frame.strip().split("\n\n"):
-            event_line, data_line = block.split("\n", 1)
-            events.append((event_line.removeprefix("event: "), json.loads(data_line.removeprefix("data: "))))
-    return events
+    connection = _RecordingConnection()
+    turn = WsChatTurn(chat_service, connection, "turn-1", session["id"], text)
+    assert turn.accept()
+    await turn.run()
+    assert {frame["turn_id"] for frame in connection.frames} == {"turn-1"}
+    return [(frame["type"], frame) for frame in connection.frames]
 
 
 def _kinds(events: list[tuple[str, dict]]) -> list[str]:

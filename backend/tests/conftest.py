@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import socket
+from contextlib import contextmanager
 import threading
 import time
 from pathlib import Path
@@ -11,14 +12,17 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from auth.auth_service import AuthService
+from auth.auth_provider import AuthenticatedUser
+from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from chat.channels import NATIVE_CHAT
 from chat.chat_service import ChatService
 from chat.ephemeral_env_registry import EphemeralEnvRegistry
 from chat.session_manager import ChatSessionManager
+from chat.ws_notifications import WsNotifications
 from config import NotificationServiceConfig
 from controller import AvanceController
 from db import Db
+from db.models import User
 from error_handlers import ApiErrorHandlers
 from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
 from job import JobService
@@ -49,24 +53,50 @@ def parse_sse_result(response) -> dict:
     return message["result"]
 
 
-def _parse_chat_turn_sse_events(response) -> dict:
-    events = {}
-    for block in response.text.strip().split("\n\n"):
-        event_line, data_line = block.split("\n", 1)
-        events[event_line[len("event: "):]] = json.loads(data_line[len("data: "):])
-    return events
+@contextmanager
+def chat_socket(client: TestClient, username: str | None = None):
+    """The one chat channel a browser has (see chat/ws_notifications.py),
+    opened as the current Session().user (or `username`): the User row
+    and a real session cookie are minted here, since the `app` fixture
+    never goes through AuthMiddleware and the websocket handshake checks
+    the cookie itself."""
+    app = client.app
+    username = username or Session().user
+    app.state.db.get_or_create_user("test", f"sub-{username}", username, username, None)
+    # A row another path created first (a FK-driven placeholder) may
+    # carry no email — verify_token resolves the identity off that column.
+    User.update(email=username, role=Session().role).where(User.id == username).execute()
+    identity = AuthenticatedUser(provider_user_id=f"sub-{username}", email=username, name=username, picture_url=None)
+    token = app.state.auth_service._issue_token(identity, "test")
+    with client.websocket_connect("/ws/notifications", headers={"cookie": f"{SESSION_COOKIE_NAME}={token}"}) as ws:
+        yield ws
 
 
-def parse_chat_turn_sse(response) -> dict:
-    events = _parse_chat_turn_sse_events(response)
-    assert "error" not in events, events.get("error")
-    return events["done"]
+def chat_turn_frames(client: TestClient, session_id: int, text: str, turn_id: str = "t1") -> list[dict]:
+    """One turn over the websocket, every frame it produced in order —
+    the last one is its `done` or `error`."""
+    with chat_socket(client) as ws:
+        ws.send_json({"type": "turn", "turn_id": turn_id, "session_id": session_id, "text": text})
+        frames = []
+        while True:
+            frame = ws.receive_json()
+            frames.append(frame)
+            if frame["type"] in ("done", "error"):
+                return frames
 
 
-def parse_chat_turn_sse_error(response) -> dict:
-    events = _parse_chat_turn_sse_events(response)
-    assert "done" not in events, events.get("done")
-    return events["error"]
+def chat_turn(client: TestClient, session_id: int, text: str = "hi") -> dict:
+    """The `done` body of one turn, exactly what the browser's own store
+    gets (see chatClient.js) — asserts the turn did not fail."""
+    final = chat_turn_frames(client, session_id, text)[-1]
+    assert final["type"] == "done", final
+    return final
+
+
+def chat_turn_error(client: TestClient, session_id: int, text: str = "hi") -> dict:
+    final = chat_turn_frames(client, session_id, text)[-1]
+    assert final["type"] == "error", final
+    return final
 
 
 @pytest.fixture(autouse=True)
@@ -269,10 +299,13 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     controller = AvanceController(
         chat_service, project_service, None, None, app_db, tracking_service, test_service,
         auth_service, test_event_broadcaster, job_service, "test-version", services_config,
+        ws_notifications=WsNotifications(auth_service, chat_service),
     )
     fastapi_app.include_router(controller.router)
     fastapi_app.state.test_service = test_service
     fastapi_app.state.chat_service = chat_service
+    fastapi_app.state.db = app_db
+    fastapi_app.state.auth_service = auth_service
     # For tests that need to watch an on-enter task run: start the
     # service and register a fake websocket on the factory (see
     # run_on_enter_tasks below). Never started here — most tests only
@@ -283,14 +316,13 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
 
 
 class FakeWebSocket:
-    """Just enough to stand in for a real connection in WsAdapter's
-    username -> WebSocket _connections registry — push only calls
-    send_json on it."""
+    """Just enough to stand in for a WsConnection in WsNotifications'
+    username -> connection registry — push only calls send on it."""
 
     def __init__(self):
         self.sent: list[dict] = []
 
-    async def send_json(self, payload: dict):
+    def send(self, payload: dict):
         self.sent.append(payload)
 
 
@@ -300,8 +332,6 @@ def run_on_enter_tasks(app: FastAPI, username: str = "user", timeout: float = 5.
     and returns the frames the browser would have received. Stops the
     service afterwards so its thread never outlives the test."""
     import time
-    from chat.ws_notifications import WsNotifications
-
     factory = app.state.actuator_factory
     websocket = FakeWebSocket()
     ws_notifications = WsNotifications(auth_service=None)

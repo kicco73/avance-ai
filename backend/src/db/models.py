@@ -304,6 +304,8 @@ class SystemWarning(BaseModel):
     project_id = CharField(index=True)
     kind = CharField()
     message = TextField()
+    file = CharField(null=True)
+    line = IntegerField(null=True)
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
 
     class Meta:

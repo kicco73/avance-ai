@@ -20,6 +20,10 @@ export function getProjectBrokenWarnings() {
   return apiFetch(`${API_URL}/settings/warnings?kind=project_broken`)
 }
 
+export function deleteProjectBrokenWarning(warningId) {
+  return apiFetch(`${API_URL}/settings/warnings/${encodeURIComponent(warningId)}`, { method: 'DELETE' })
+}
+
 export function getUsers() {
   return apiFetch(`${API_URL}/users`)
 }

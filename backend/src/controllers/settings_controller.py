@@ -132,6 +132,12 @@ class SettingsController(BaseController, ProjectCommitMixin):
         "project_broken"), even past the project actually being fixed."""
         return {"warnings": self.db.list_system_warnings_for_user(Session().user, kind=kind)}
 
+    @delete("/api/settings/warnings/{warning_id}", role="admin")
+    def delete_warning(self, warning_id: int):
+        if not self.db.delete_system_warning(Session().user, warning_id):
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"Warning {warning_id} not found.")
+        return {"status": "ok"}
+
     @get("/api/settings/tasks", role="admin")
     def get_scheduled_tasks(self, status: str | None = None, order: str = "asc"):
         """Settings > Manage services > Scheduler — Task rows for one

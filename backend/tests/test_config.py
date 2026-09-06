@@ -43,443 +43,181 @@ def _load(monkeypatch, tmp_path, content: str) -> AppConfig:
 
 
 class TestGetOptionalPositiveFloat:
-    """Unit tests against the parsing helper directly — no file I/O."""
+    def _get(self, raw):
+        return AppConfig._get_optional_positive_float(raw, "chat-service", "max-session-duration-in-minutes", "cfg", default=60.0)
 
-    def test_returns_the_default_when_the_field_is_absent(self):
-        raw = {"chat-service": {"transport": "rest"}}
-        value = AppConfig._get_optional_positive_float(raw, "chat-service", "max-session-duration-in-minutes", "cfg", default=60.0)
-        assert value == 60.0
+    def test_returns_the_default_when_absent_and_the_configured_int_or_float_when_present(self):
+        assert self._get({"chat-service": {"transport": "rest"}}) == 60.0
+        assert self._get({"chat-service": {"max-session-duration-in-minutes": 30}}) == 30.0
+        assert self._get({"chat-service": {"max-session-duration-in-minutes": 12.5}}) == 12.5
 
-    def test_returns_the_configured_value_when_present(self):
-        raw = {"chat-service": {"max-session-duration-in-minutes": 30}}
-        value = AppConfig._get_optional_positive_float(raw, "chat-service", "max-session-duration-in-minutes", "cfg", default=60.0)
-        assert value == 30.0
-
-    def test_accepts_a_float_value(self):
-        raw = {"chat-service": {"max-session-duration-in-minutes": 12.5}}
-        value = AppConfig._get_optional_positive_float(raw, "chat-service", "max-session-duration-in-minutes", "cfg", default=60.0)
-        assert value == 12.5
-
-    @pytest.mark.parametrize("bad_value", [0, -5, "60", True, None])
-    def test_rejects_non_positive_or_non_numeric_values(self, bad_value):
-        raw = {"chat-service": {"max-session-duration-in-minutes": bad_value}}
+    @pytest.mark.parametrize("raw", [
+        {"chat-service": {"max-session-duration-in-minutes": 0}},
+        {"chat-service": {"max-session-duration-in-minutes": -5}},
+        {"chat-service": {"max-session-duration-in-minutes": "60"}},
+        {"chat-service": {"max-session-duration-in-minutes": True}},
+        {"chat-service": {"max-session-duration-in-minutes": None}},
+        {},
+    ])
+    def test_rejects_non_positive_non_numeric_values_and_a_missing_section(self, raw):
         with pytest.raises(ConfigError):
-            AppConfig._get_optional_positive_float(raw, "chat-service", "max-session-duration-in-minutes", "cfg", default=60.0)
-
-    def test_raises_if_the_section_itself_is_missing(self):
-        with pytest.raises(ConfigError):
-            AppConfig._get_optional_positive_float({}, "chat-service", "max-session-duration-in-minutes", "cfg", default=60.0)
-
-
-class TestMaxSessionDurationInMinutes:
-    """End-to-end: a real AppConfig() built from a real (temp) config file."""
-
-    def test_defaults_to_60_when_omitted(self, monkeypatch, tmp_path):
-        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.max_session_duration_in_minutes == 60.0
-
-    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            "chat-service: {}",
-            "chat-service:\n  max-session-duration-in-minutes: 15",
-        )
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.max_session_duration_in_minutes == 15.0
-
-    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            "chat-service: {}",
-            "chat-service:\n  max-session-duration-in-minutes: 0",
-        )
-        with pytest.raises(ConfigError):
-            _load(monkeypatch, tmp_path, content)
-
-
-class TestInputTokenBudgetPerTurn:
-    """End-to-end: a real AppConfig() built from a real (temp) config file."""
-
-    def test_defaults_to_16000_when_omitted(self, monkeypatch, tmp_path):
-        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.input_token_budget_per_turn == 16000
-
-    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            "chat-service: {}",
-            "chat-service:\n  input-token-budget-per-turn: 4000",
-        )
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.input_token_budget_per_turn == 4000
-
-    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            "chat-service: {}",
-            "chat-service:\n  input-token-budget-per-turn: 0",
-        )
-        with pytest.raises(ConfigError):
-            _load(monkeypatch, tmp_path, content)
-
-
-class TestTotalTokenBudgetPerSession:
-    """End-to-end: a real AppConfig() built from a real (temp) config file."""
-
-    def test_defaults_to_200000_when_omitted(self, monkeypatch, tmp_path):
-        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.total_token_budget_per_session == 200000
-
-    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            "chat-service: {}",
-            "chat-service:\n  total-token-budget-per-session: 50000",
-        )
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.total_token_budget_per_session == 50000
-
-    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            "chat-service: {}",
-            "chat-service:\n  total-token-budget-per-session: 0",
-        )
-        with pytest.raises(ConfigError):
-            _load(monkeypatch, tmp_path, content)
+            self._get(raw)
 
 
 class TestGetOptionalChoice:
-    def test_returns_the_default_when_the_field_is_absent(self):
-        raw = {"database": {"url": "sqlite:///x.db"}}
-        value = AppConfig._get_optional_choice(raw, "database", "migration-strategy", "cfg", default="stop", choices=("stop", "upgrade", "drop"))
-        assert value == "stop"
+    def _get(self, raw):
+        return AppConfig._get_optional_choice(raw, "database", "migration-strategy", "cfg", default="stop", choices=("stop", "upgrade", "drop"))
 
-    @pytest.mark.parametrize("configured", ["stop", "upgrade", "drop"])
-    def test_returns_the_configured_value_when_present(self, configured):
-        raw = {"database": {"migration-strategy": configured}}
-        value = AppConfig._get_optional_choice(raw, "database", "migration-strategy", "cfg", default="stop", choices=("stop", "upgrade", "drop"))
-        assert value == configured
+    def test_returns_the_default_when_absent_and_any_listed_choice_when_present(self):
+        assert self._get({"database": {"url": "sqlite:///x.db"}}) == "stop"
+        for configured in ("stop", "upgrade", "drop"):
+            assert self._get({"database": {"migration-strategy": configured}}) == configured
 
     @pytest.mark.parametrize("bad_value", ["wipe", True, 1, None])
     def test_rejects_values_outside_the_choices(self, bad_value):
-        raw = {"database": {"migration-strategy": bad_value}}
         with pytest.raises(ConfigError):
-            AppConfig._get_optional_choice(raw, "database", "migration-strategy", "cfg", default="stop", choices=("stop", "upgrade", "drop"))
-
-
-class TestDatabaseMigrationStrategy:
-    def test_defaults_to_stop_when_omitted(self, monkeypatch, tmp_path):
-        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.database_migration_strategy == "stop"
-
-    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            'database:\n  url: "sqlite:///:memory:"',
-            'database:\n  url: "sqlite:///:memory:"\n  migration-strategy: upgrade',
-        )
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.database_migration_strategy == "upgrade"
-
-    def test_rejects_an_unknown_strategy(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            'database:\n  url: "sqlite:///:memory:"',
-            'database:\n  url: "sqlite:///:memory:"\n  migration-strategy: wipe',
-        )
-        with pytest.raises(ConfigError):
-            _load(monkeypatch, tmp_path, content)
-
-
-class TestAuthTokenTtlInHours:
-    """End-to-end: a real AppConfig() built from a real (temp) config file."""
-
-    def test_defaults_to_7_days_when_omitted(self, monkeypatch, tmp_path):
-        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.auth_token_ttl_in_hours == 24 * 7
-
-    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            "auth-service:\n  providers:",
-            "auth-service:\n  token-ttl-in-hours: 12\n  providers:",
-        )
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.auth_token_ttl_in_hours == 12
-
-    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            "auth-service:\n  providers:",
-            "auth-service:\n  token-ttl-in-hours: 0\n  providers:",
-        )
-        with pytest.raises(ConfigError):
-            _load(monkeypatch, tmp_path, content)
+            self._get({"database": {"migration-strategy": bad_value}})
 
 
 class TestGetOptionalPositiveInt:
-    """Unit tests against the parsing helper directly — no file I/O."""
+    def _get(self, raw):
+        return AppConfig._get_optional_positive_int(raw, "jobs", "max_concurrent", "cfg", default=2)
 
-    def test_returns_the_default_when_the_field_is_absent(self):
-        raw = {"jobs": {}}
-        value = AppConfig._get_optional_positive_int(raw, "jobs", "max_concurrent", "cfg", default=2)
-        assert value == 2
+    def test_returns_the_default_when_the_field_or_section_is_absent_and_the_configured_value_when_present(self):
+        assert self._get({"jobs": {}}) == 2
+        assert self._get({}) == 2
+        assert self._get({"jobs": {"max_concurrent": 5}}) == 5
 
-    def test_returns_the_default_when_the_whole_section_is_absent(self):
-        value = AppConfig._get_optional_positive_int({}, "jobs", "max_concurrent", "cfg", default=2)
-        assert value == 2
-
-    def test_returns_the_configured_value_when_present(self):
-        raw = {"jobs": {"max_concurrent": 5}}
-        value = AppConfig._get_optional_positive_int(raw, "jobs", "max_concurrent", "cfg", default=2)
-        assert value == 5
-
-    @pytest.mark.parametrize("bad_value", [0, -1, 1.5, "2", True, None])
-    def test_rejects_non_positive_or_non_integer_values(self, bad_value):
-        raw = {"jobs": {"max_concurrent": bad_value}}
+    @pytest.mark.parametrize("raw", [
+        {"jobs": {"max_concurrent": 0}},
+        {"jobs": {"max_concurrent": -1}},
+        {"jobs": {"max_concurrent": 1.5}},
+        {"jobs": {"max_concurrent": "2"}},
+        {"jobs": {"max_concurrent": True}},
+        {"jobs": {"max_concurrent": None}},
+        {"jobs": "nope"},
+    ])
+    def test_rejects_non_positive_non_integer_values_and_a_non_mapping_section(self, raw):
         with pytest.raises(ConfigError):
-            AppConfig._get_optional_positive_int(raw, "jobs", "max_concurrent", "cfg", default=2)
-
-    def test_rejects_a_non_mapping_section(self):
-        with pytest.raises(ConfigError):
-            AppConfig._get_optional_positive_int({"jobs": "nope"}, "jobs", "max_concurrent", "cfg", default=2)
+            self._get(raw)
 
 
 class TestGetOptionalNonNegativeInt:
-    """Unit tests against the parsing helper directly — no file I/O."""
+    def _get(self, raw, default=0):
+        return AppConfig._get_optional_non_negative_int(raw, "jobs", "min_job_interval_ms", "cfg", default=default)
 
-    def test_returns_the_default_when_the_field_is_absent(self):
-        raw = {"jobs": {}}
-        value = AppConfig._get_optional_non_negative_int(raw, "jobs", "min_job_interval_ms", "cfg", default=0)
-        assert value == 0
+    def test_returns_the_default_when_absent_and_accepts_zero_or_positive_values(self):
+        assert self._get({"jobs": {}}) == 0
+        assert self._get({"jobs": {"min_job_interval_ms": 500}}) == 500
+        assert self._get({"jobs": {"min_job_interval_ms": 0}}, default=1) == 0
 
-    def test_returns_the_configured_value_when_present(self):
-        raw = {"jobs": {"min_job_interval_ms": 500}}
-        value = AppConfig._get_optional_non_negative_int(raw, "jobs", "min_job_interval_ms", "cfg", default=0)
-        assert value == 500
-
-    def test_accepts_zero(self):
-        raw = {"jobs": {"min_job_interval_ms": 0}}
-        value = AppConfig._get_optional_non_negative_int(raw, "jobs", "min_job_interval_ms", "cfg", default=1)
-        assert value == 0
-
-    @pytest.mark.parametrize("bad_value", [-1, 1.5, "2", True, None])
-    def test_rejects_negative_or_non_integer_values(self, bad_value):
-        raw = {"jobs": {"min_job_interval_ms": bad_value}}
+    @pytest.mark.parametrize("raw", [
+        {"jobs": {"min_job_interval_ms": -1}},
+        {"jobs": {"min_job_interval_ms": 1.5}},
+        {"jobs": {"min_job_interval_ms": "2"}},
+        {"jobs": {"min_job_interval_ms": True}},
+        {"jobs": {"min_job_interval_ms": None}},
+        {"jobs": "nope"},
+    ])
+    def test_rejects_negative_non_integer_values_and_a_non_mapping_section(self, raw):
         with pytest.raises(ConfigError):
-            AppConfig._get_optional_non_negative_int(raw, "jobs", "min_job_interval_ms", "cfg", default=0)
-
-    def test_rejects_a_non_mapping_section(self):
-        with pytest.raises(ConfigError):
-            AppConfig._get_optional_non_negative_int({"jobs": "nope"}, "jobs", "min_job_interval_ms", "cfg", default=0)
+            self._get(raw)
 
 
-class TestJobsSharedMaxConcurrent:
-    def test_defaults_when_the_jobs_section_is_omitted(self, monkeypatch, tmp_path):
+def _chat(field: str, value) -> str:
+    return MINIMAL_CONFIG.replace("chat-service: {}", f"chat-service:\n  {field}: {value}")
+
+
+def _database(field: str, value) -> str:
+    return MINIMAL_CONFIG.replace(
+        'database:\n  url: "sqlite:///:memory:"', f'database:\n  url: "sqlite:///:memory:"\n  {field}: {value}'
+    )
+
+
+def _auth(field: str, value) -> str:
+    return MINIMAL_CONFIG.replace("auth-service:\n  providers:", f"auth-service:\n  {field}: {value}\n  providers:")
+
+
+def _section(section: str, field: str, value) -> str:
+    return MINIMAL_CONFIG + f"\n{section}:\n  {field}: {value}\n"
+
+
+SETTINGS = [
+    ("max_session_duration_in_minutes", 60.0, _chat("max-session-duration-in-minutes", 15), 15.0, _chat("max-session-duration-in-minutes", 0)),
+    ("input_token_budget_per_turn", 16000, _chat("input-token-budget-per-turn", 4000), 4000, _chat("input-token-budget-per-turn", 0)),
+    ("total_token_budget_per_session", 200000, _chat("total-token-budget-per-session", 50000), 50000, _chat("total-token-budget-per-session", 0)),
+    ("database_migration_strategy", "stop", _database("migration-strategy", "upgrade"), "upgrade", _database("migration-strategy", "wipe")),
+    ("auth_token_ttl_in_hours", 24 * 7, _auth("token-ttl-in-hours", 12), 12, _auth("token-ttl-in-hours", 0)),
+    ("jobs_shared_max_concurrent", 2, _section("jobs", "shared-max-concurrent", 3), 3, _section("jobs", "shared-max-concurrent", 0)),
+    ("test_service_max_concurrent_tests", 4, _section("test-service", "max-concurrent-tests", 5), 5, _section("test-service", "max-concurrent-tests", 0)),
+    ("test_service_max_tests_per_minute", 1_000_000, _section("test-service", "max-tests-per-minute", 30), 30, _section("test-service", "max-tests-per-minute", 0)),
+    ("test_service_min_test_interval_ms", 0, _section("test-service", "min-test-interval-ms", 500), 500, _section("test-service", "min-test-interval-ms", -1)),
+    ("invite_valid_days", 7, _section("project-service", "invite-valid-days", 14), 14, _section("project-service", "invite-valid-days", 0)),
+    ("invite_max_shares", 3, _section("project-service", "invite-max-shares", 10), 10, _section("project-service", "invite-max-shares", 0)),
+]
+
+
+class TestOptionalSettingsEndToEnd:
+    def test_every_optional_setting_falls_back_to_its_default_when_omitted(self, monkeypatch, tmp_path):
         config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.jobs_shared_max_concurrent == 2
+        for attribute, default, _, _, _ in SETTINGS:
+            assert getattr(config, attribute) == default, attribute
 
-    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\njobs:\n  shared-max-concurrent: 3\n"
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.jobs_shared_max_concurrent == 3
-
-    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\njobs:\n  shared-max-concurrent: 0\n"
+    @pytest.mark.parametrize(("attribute", "default", "custom_yaml", "custom_value", "invalid_yaml"), SETTINGS, ids=[s[0] for s in SETTINGS])
+    def test_reads_a_custom_value_and_rejects_an_invalid_one(self, monkeypatch, tmp_path, attribute, default, custom_yaml, custom_value, invalid_yaml):
+        assert getattr(_load(monkeypatch, tmp_path, custom_yaml), attribute) == custom_value
         with pytest.raises(ConfigError):
-            _load(monkeypatch, tmp_path, content)
+            _load(monkeypatch, tmp_path, invalid_yaml)
 
-
-class TestServiceMaxConcurrentTests:
-    def test_defaults_when_the_section_is_omitted(self, monkeypatch, tmp_path):
-        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.test_service_max_concurrent_tests == 4
-
-    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\ntest-service:\n  max-concurrent-tests: 5\n"
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.test_service_max_concurrent_tests == 5
-
-    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\ntest-service:\n  max-concurrent-tests: 0\n"
-        with pytest.raises(ConfigError):
-            _load(monkeypatch, tmp_path, content)
-
-
-class TestServiceMaxTestsPerMinute:
-    def test_defaults_when_the_section_is_omitted(self, monkeypatch, tmp_path):
-        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.test_service_max_tests_per_minute == 1_000_000
-
-    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\ntest-service:\n  max-tests-per-minute: 30\n"
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.test_service_max_tests_per_minute == 30
-
-    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\ntest-service:\n  max-tests-per-minute: 0\n"
-        with pytest.raises(ConfigError):
-            _load(monkeypatch, tmp_path, content)
-
-
-class TestServiceMinTestIntervalMs:
-    def test_defaults_when_the_section_is_omitted(self, monkeypatch, tmp_path):
-        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
+    def test_min_test_interval_accepts_an_explicit_zero(self, monkeypatch, tmp_path):
+        config = _load(monkeypatch, tmp_path, _section("test-service", "min-test-interval-ms", 0))
         assert config.test_service_min_test_interval_ms == 0
 
-    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\ntest-service:\n  min-test-interval-ms: 500\n"
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.test_service_min_test_interval_ms == 500
 
-    def test_accepts_zero(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\ntest-service:\n  min-test-interval-ms: 0\n"
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.test_service_min_test_interval_ms == 0
+_ONE_PROVIDER = "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n"
 
-    def test_rejects_a_negative_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\ntest-service:\n  min-test-interval-ms: -1\n"
-        with pytest.raises(ConfigError):
-            _load(monkeypatch, tmp_path, content)
+
+def _sole_provider_modes(modes: str) -> str:
+    return MINIMAL_CONFIG.replace("      key: fake-key\n", f"      key: fake-key\n      modes: {modes}\n")
+
+
+def _first_provider_modes_with_sibling(modes: str, sibling: str = "    - driver: gemini\n      model: other-model\n      key: fake-key\n") -> str:
+    return MINIMAL_CONFIG.replace(_ONE_PROVIDER, _ONE_PROVIDER + f"      modes: {modes}\n" + sibling)
 
 
 class TestAiServiceProvidersModes:
-    """AIServiceConfig.modes — see AiService.for_live/for_test, which
-    each filter config.ai_services down to only the entries whose own
-    modes include that one."""
+    def test_defaults_to_both_reads_an_explicit_both_and_deduplicates_repeats(self, monkeypatch, tmp_path):
+        assert _load(monkeypatch, tmp_path, MINIMAL_CONFIG).ai_services[0].modes == ("live", "test")
+        assert _load(monkeypatch, tmp_path, _sole_provider_modes("[live, test]")).ai_services[0].modes == ("live", "test")
+        assert _load(monkeypatch, tmp_path, _first_provider_modes_with_sibling("[live, live]")).ai_services[0].modes == ("live",)
 
-    def test_defaults_to_both_live_and_test_when_omitted(self, monkeypatch, tmp_path):
-        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.ai_services[0].modes == ("live", "test")
+    def test_a_partial_or_empty_or_no_auto_entry_is_valid_while_a_sibling_covers_the_rest(self, monkeypatch, tmp_path):
+        split = _load(monkeypatch, tmp_path, _first_provider_modes_with_sibling(
+            "[live]", "    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n      modes: [test]\n"
+        ))
+        assert split.ai_services[0].modes == ("live",)
+        assert split.ai_services[1].modes == ("test",)
 
-    def test_reads_a_live_only_entry(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n",
-            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n"
-            "      modes: [live]\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n"
-            "      modes: [test]\n",
-        )
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.ai_services[0].modes == ("live",)
-        assert config.ai_services[1].modes == ("test",)
+        empty = _load(monkeypatch, tmp_path, _first_provider_modes_with_sibling("[]"))
+        assert empty.ai_services[0].modes == ()
+        assert empty.ai_services[1].modes == ("live", "test")
 
-    def test_reads_an_explicit_both_entry(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            "      key: fake-key\n",
-            "      key: fake-key\n      modes: [live, test]\n",
-        )
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.ai_services[0].modes == ("live", "test")
+        assert _load(monkeypatch, tmp_path, _first_provider_modes_with_sibling("[no-auto]")).ai_services[0].modes == ("no-auto",)
 
-    def test_deduplicates_repeated_entries(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n",
-            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n"
-            "      modes: [live, live]\n    - driver: gemini\n      model: other-model\n      key: fake-key\n",
-        )
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.ai_services[0].modes == ("live",)
+        live_no_auto = _load(monkeypatch, tmp_path, _first_provider_modes_with_sibling("[live, no-auto]"))
+        assert live_no_auto.ai_services[0].modes == ("live", "no-auto")
+        assert live_no_auto.ai_services[1].modes == ("live", "test")
 
-    def test_an_explicit_empty_list_excludes_the_entry_from_both_but_a_sibling_still_covers_them(
-        self, monkeypatch, tmp_path
-    ):
-        content = MINIMAL_CONFIG.replace(
-            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n",
-            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n"
-            "      modes: []\n    - driver: gemini\n      model: other-model\n      key: fake-key\n",
-        )
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.ai_services[0].modes == ()
-        assert config.ai_services[1].modes == ("live", "test")
-
-    def test_rejects_a_non_list_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            "      key: fake-key\n",
-            "      key: fake-key\n      modes: live\n",
-        )
-        with pytest.raises(ConfigError):
-            _load(monkeypatch, tmp_path, content)
-
-    def test_rejects_an_invalid_mode_name(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            "      key: fake-key\n",
-            "      key: fake-key\n      modes: [live, staging]\n",
-        )
-        with pytest.raises(ConfigError, match="staging"):
-            _load(monkeypatch, tmp_path, content)
-
-    def test_rejects_leaving_the_live_cascade_completely_empty(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            "      key: fake-key\n",
-            "      key: fake-key\n      modes: [test]\n",
-        )
-        with pytest.raises(ConfigError, match="'live'"):
-            _load(monkeypatch, tmp_path, content)
-
-    def test_rejects_leaving_the_test_cascade_completely_empty(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            "      key: fake-key\n",
-            "      key: fake-key\n      modes: [live]\n",
-        )
-        with pytest.raises(ConfigError, match="'test'"):
-            _load(monkeypatch, tmp_path, content)
-
-    def test_no_auto_alone_is_syntactically_valid_though_inert(self, monkeypatch, tmp_path):
-        # Not a mistake worth rejecting: a provider tagged only "no-auto"
-        # (no live/test) simply never appears in either cascade — same as
-        # an explicit empty modes list, harmless as long as a sibling
-        # still covers both mandatory modes.
-        content = MINIMAL_CONFIG.replace(
-            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n",
-            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n"
-            "      modes: [no-auto]\n    - driver: gemini\n      model: other-model\n      key: fake-key\n",
-        )
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.ai_services[0].modes == ("no-auto",)
-
-    def test_a_sibling_keeps_the_live_auto_cascade_covered_when_one_entry_is_no_auto(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG.replace(
-            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n",
-            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n"
-            "      modes: [live, no-auto]\n    - driver: gemini\n      model: other-model\n      key: fake-key\n",
-        )
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.ai_services[0].modes == ("live", "no-auto")
-        assert config.ai_services[1].modes == ("live", "test")
-
-    def test_rejects_when_every_live_entry_is_no_auto(self, monkeypatch, tmp_path):
-        # The sole provider is nominally "in" live mode, but tagged
-        # no-auto — its own auto cascade would end up with zero entries,
-        # the same class of misconfiguration as leaving live empty outright.
-        content = MINIMAL_CONFIG.replace(
-            "      key: fake-key\n",
-            "      key: fake-key\n      modes: [live, test, no-auto]\n",
-        )
-        with pytest.raises(ConfigError, match="'live'"):
-            _load(monkeypatch, tmp_path, content)
-
-
-class TestInviteValidDays:
-    def test_defaults_to_7_when_the_section_is_omitted(self, monkeypatch, tmp_path):
-        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.invite_valid_days == 7
-
-    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\nproject-service:\n  invite-valid-days: 14\n"
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.invite_valid_days == 14
-
-    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\nproject-service:\n  invite-valid-days: 0\n"
-        with pytest.raises(ConfigError):
-            _load(monkeypatch, tmp_path, content)
-
-
-class TestInviteMaxShares:
-    def test_defaults_to_3_when_the_section_is_omitted(self, monkeypatch, tmp_path):
-        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.invite_max_shares == 3
-
-    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\nproject-service:\n  invite-max-shares: 10\n"
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.invite_max_shares == 10
-
-    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\nproject-service:\n  invite-max-shares: 0\n"
-        with pytest.raises(ConfigError):
-            _load(monkeypatch, tmp_path, content)
+    @pytest.mark.parametrize(("modes", "match"), [
+        ("live", None),
+        ("[live, staging]", "staging"),
+        ("[test]", "'live'"),
+        ("[live]", "'test'"),
+        ("[live, test, no-auto]", "'live'"),
+    ])
+    def test_rejects_a_non_list_an_unknown_mode_and_leaving_either_auto_cascade_empty(self, monkeypatch, tmp_path, modes, match):
+        with pytest.raises(ConfigError, match=match):
+            _load(monkeypatch, tmp_path, _sole_provider_modes(modes))
 
 
 _WHATSAPP_SERVICE_MINIMAL = """
@@ -495,43 +233,23 @@ _WHATSAPP_SERVICE_WITH_PHONE_NUMBER = _WHATSAPP_SERVICE_MINIMAL + "  phone-numbe
 
 
 class TestWhatsAppServiceConfig:
-    def test_absent_section_leaves_the_channel_disabled(self, monkeypatch, tmp_path):
-        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.whatsapp_service_config is None
+    def test_an_absent_section_or_enabled_false_leaves_the_channel_disabled(self, monkeypatch, tmp_path):
+        assert _load(monkeypatch, tmp_path, MINIMAL_CONFIG).whatsapp_service_config is None
+        assert _load(monkeypatch, tmp_path, MINIMAL_CONFIG + "\nwhatsapp-service:\n  enabled: false\n").whatsapp_service_config is None
 
-    def test_enabled_false_leaves_the_channel_disabled(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\nwhatsapp-service:\n  enabled: false\n"
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.whatsapp_service_config is None
+    def test_enabled_parses_with_or_without_a_phone_number_normalized_to_digits_and_a_default_graph_version(self, monkeypatch, tmp_path):
+        without_phone = _load(monkeypatch, tmp_path, MINIMAL_CONFIG + "\n" + _WHATSAPP_SERVICE_MINIMAL).whatsapp_service_config
+        assert without_phone is not None
+        assert without_phone.phone_number is None
+        assert without_phone.graph_version == "v23.0"
 
-    def test_enabled_with_no_phone_number_still_parses(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\n" + _WHATSAPP_SERVICE_MINIMAL
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.whatsapp_service_config is not None
-        assert config.whatsapp_service_config.phone_number is None
+        with_phone = _load(monkeypatch, tmp_path, MINIMAL_CONFIG + "\n" + _WHATSAPP_SERVICE_WITH_PHONE_NUMBER).whatsapp_service_config
+        assert with_phone.phone_number == "34600000001"
 
-    def test_phone_number_is_normalized_to_digits_only(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\n" + _WHATSAPP_SERVICE_WITH_PHONE_NUMBER
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.whatsapp_service_config.phone_number == "34600000001"
-
-    def test_rejects_a_non_digit_phone_number(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\n" + _WHATSAPP_SERVICE_MINIMAL + "  phone-number: not-a-number\n"
-        with pytest.raises(ConfigError, match="phone-number"):
+    @pytest.mark.parametrize(("content", "match"), [
+        (MINIMAL_CONFIG + "\n" + _WHATSAPP_SERVICE_MINIMAL + "  phone-number: not-a-number\n", "phone-number"),
+        (MINIMAL_CONFIG + "\nwhatsapp-service:\n  enabled: true\n  app-secret: my-app-secret\n  access-token: my-access-token\n  phone-number-id: \"123456\"\n", "verify-token"),
+    ])
+    def test_rejects_a_non_digit_phone_number_and_a_missing_verify_token(self, monkeypatch, tmp_path, content, match):
+        with pytest.raises(ConfigError, match=match):
             _load(monkeypatch, tmp_path, content)
-
-    def test_enabled_without_verify_token_is_rejected(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + """
-whatsapp-service:
-  enabled: true
-  app-secret: my-app-secret
-  access-token: my-access-token
-  phone-number-id: "123456"
-"""
-        with pytest.raises(ConfigError, match="verify-token"):
-            _load(monkeypatch, tmp_path, content)
-
-    def test_graph_version_defaults_to_v23(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\n" + _WHATSAPP_SERVICE_MINIMAL
-        config = _load(monkeypatch, tmp_path, content)
-        assert config.whatsapp_service_config.graph_version == "v23.0"

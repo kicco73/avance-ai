@@ -257,6 +257,7 @@ class TrackingService(object):
 		text: str | None,
 		ai_service: AiService,
 		on_metadata: OnMetadata | None = None,
+		user_message_id: int | None = None,
 		):
 
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
@@ -298,4 +299,4 @@ class TrackingService(object):
 			input_token_budget_per_turn=self._input_token_budget_per_turn,
 		)
 
-		return await tracking_processor.process(text, on_metadata=on_metadata)
+		return await tracking_processor.process(text, on_metadata=on_metadata, user_message_id=user_message_id)

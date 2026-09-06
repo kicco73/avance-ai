@@ -50,6 +50,8 @@ class ProjectPublishedHealthChanged:
     project_id: str
     revision: int
     error: str | None
+    file: str | None = None
+    line: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

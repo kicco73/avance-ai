@@ -12,6 +12,8 @@ import time
 
 import pytest
 
+from conftest import chat_turn
+
 from jobs import CancelableJob
 from testing.jobs import AllStatesAggregationJob
 from testing.jobs.state_aggregation_job import StateAggregationJob
@@ -164,7 +166,7 @@ def test_reset_cache_clears_the_broadcasters_recorded_state(client, hello_projec
     was just deleted."""
     session = client.get("/api/chat/session").json()
     session_id = session["id"]
-    client.post(f"/api/chat/sessions/{session_id}/messages", json={"message": "hi"})
+    chat_turn(client, session_id, "hi")
     client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": True})
 
     response = client.post(f"/api/projects/{hello_project}/sessions/test", json={"strategy": "turn_by_turn"})

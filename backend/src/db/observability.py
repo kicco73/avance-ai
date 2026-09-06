@@ -9,9 +9,25 @@ class ObservabilityMixin:
     ProjectObserverIndex (reverse index of who references a project via
     automaton.*) — grouped since neither is conversation nor project-file data."""
 
-    def save_system_warning(self, username: str, project_id: str, kind: str, message: str) -> int:
-        row = SystemWarning.create(user_id=username, project_id=project_id, kind=kind, message=message)
+    def save_system_warning(
+        self, username: str, project_id: str, kind: str, message: str, *,
+        file: str | None = None, line: int | None = None,
+    ) -> int:
+        row = SystemWarning.create(
+            user_id=username, project_id=project_id, kind=kind, message=message, file=file, line=line,
+        )
         return row.id
+
+    def delete_system_warning(self, username: str, warning_id: int) -> bool:
+        deleted = SystemWarning.delete().where(
+            (SystemWarning.id == warning_id) & (SystemWarning.user_id == username)
+        ).execute()
+        return deleted > 0
+
+    def delete_project_system_warnings(self, project_id: str, kind: str) -> int:
+        return SystemWarning.delete().where(
+            (SystemWarning.project_id == project_id) & (SystemWarning.kind == kind)
+        ).execute()
 
     def get_system_warnings(self, username: str, project_id: str) -> list[dict]:
         rows = (
@@ -38,7 +54,7 @@ class ObservabilityMixin:
         return [
             {
                 "id": row.id, "project_id": row.project_id, "kind": row.kind, "message": row.message,
-                "timestamp": _utc_iso(row.timestamp),
+                "file": row.file, "line": row.line, "timestamp": _utc_iso(row.timestamp),
             }
             for row in rows
         ]

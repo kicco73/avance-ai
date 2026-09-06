@@ -17,6 +17,8 @@ class BuildOutcome:
     # Automaton to read them off); never new warnings of this checker's
     # own, just surfacing what AutomatonBuilder already computes.
     warnings: list[str] = field(default_factory=list)
+    file: str | None = None
+    line: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,7 +66,8 @@ class ProjectHealthChecker:
     def _build_outcome(self, project_id: str, revision: int) -> BuildOutcome:
         try:
             automaton = self._automaton_loader.load_at_revision(project_id, revision)
+        except AutomatonBuildError as exc:
+            return BuildOutcome(revision=revision, error=exc.detail or str(exc), file=exc.file, line=exc.line)
         except (ValueError, FileNotFoundError) as exc:
-            message = exc.detail if isinstance(exc, AutomatonBuildError) and exc.detail else str(exc)
-            return BuildOutcome(revision=revision, error=message)
+            return BuildOutcome(revision=revision, error=str(exc))
         return BuildOutcome(revision=revision, error=None, warnings=automaton.build_warnings)

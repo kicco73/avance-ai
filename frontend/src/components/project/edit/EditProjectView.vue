@@ -49,7 +49,8 @@ const props = defineProps({
     type: String,
     required: true
   },
-  profile: { type: Object, default: null }
+  profile: { type: Object, default: null },
+  buildError: { type: Object, default: null }
 })
 
 setTestProject(props.projectId)
@@ -387,6 +388,10 @@ onMounted(async () => {
     // already surfaced via apiFetch
   } finally {
     historyCleared.value = true
+  }
+  if (props.buildError?.file === 'index.yml') {
+    await nextTick()
+    indexYmlEditorRef.value?.showBuildError(props.buildError.line)
   }
 })
 onBeforeUnmount(() => {

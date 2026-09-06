@@ -3,9 +3,9 @@
 // `fileName` for its lifetime — callers remount via :key="fileName" when
 // switching files, so a stale in-flight fetch can't leak across files.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Compartment } from '@codemirror/state'
+import { Compartment, StateEffect, StateField } from '@codemirror/state'
 import { EditorView, basicSetup } from 'codemirror'
-import { keymap } from '@codemirror/view'
+import { Decoration, keymap } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
 import { HighlightStyle, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
@@ -31,6 +31,26 @@ const yamlValueHighlightStyle = HighlightStyle.define([
   { tag: [tags.content, tags.attributeValue], color: '#8b5c00' }
 ])
 
+const setErrorLine = StateEffect.define()
+const errorLineDecoration = Decoration.line({ class: 'cm-error-line' })
+const errorLineField = StateField.define({
+  create: () => Decoration.none,
+  update(decorations, transaction) {
+    let next = decorations.map(transaction.changes)
+    for (const effect of transaction.effects) {
+      if (!effect.is(setErrorLine)) continue
+      if (effect.value === null) {
+        next = Decoration.none
+      } else {
+        const lineInfo = transaction.state.doc.line(effect.value + 1)
+        next = Decoration.set([errorLineDecoration.range(lineInfo.from)])
+      }
+    }
+    return next
+  },
+  provide: (field) => EditorView.decorations.from(field)
+})
+
 const props = defineProps({
   projectId: { type: String, required: true },
   fileName: { type: String, required: true },
@@ -51,7 +71,7 @@ const props = defineProps({
   currentRevision: { type: Number, default: null }
 })
 
-const emit = defineEmits(['saved', 'renamed', 'build-error'])
+const emit = defineEmits(['saved', 'renamed', 'build-error', 'loaded'])
 
 const loading = ref(true)
 const saving = ref(false)
@@ -85,6 +105,7 @@ function createEditor(doc) {
   const extensions = [
     basicSetup,
     EditorView.lineWrapping,
+    errorLineField,
     editableCompartment.of(EditorView.editable.of(true)),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) content.value = update.state.doc.toString()
@@ -143,7 +164,7 @@ function destroyEditor() {
 // `content` updates itself via the updateListener; never set directly.
 function setEditorDoc(newContent) {
   if (!view) return
-  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: newContent } })
+  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: newContent }, effects: setErrorLine.of(null) })
 }
 
 async function load() {
@@ -171,11 +192,13 @@ async function load() {
   // only on the very first load).
   if (view) {
     setEditorDoc(content.value)
+    emit('loaded')
     return
   }
   await nextTick() // editorHost is v-show'd by loading above — wait a tick for layout to settle
   if (token !== requestToken) return
   createEditor(content.value)
+  emit('loaded')
 }
 
 // Persistence only, no navigation — callers stay open regardless of
@@ -273,6 +296,12 @@ function jumpToLine(lineIndex) {
   view.focus()
 }
 
+function markErrorLine(lineIndex) {
+  if (!view) return
+  if (lineIndex < 0 || lineIndex >= view.state.doc.lines) return
+  view.dispatch({ effects: setErrorLine.of(lineIndex) })
+}
+
 // Re-fetches this file's content and replaces the live buffer — for
 // callers that changed the file through some other path. Caller must
 // ensure there are no unsaved local edits first; this always overwrites.
@@ -280,7 +309,7 @@ async function reload() {
   await load()
 }
 
-defineExpose({ content, isDirty, canUndo, canRedo, mediaType, contentType, loading, saving, save, discard, setContent, undo, redo, jumpToLine, reload })
+defineExpose({ content, isDirty, canUndo, canRedo, mediaType, contentType, loading, saving, save, discard, setContent, undo, redo, jumpToLine, markErrorLine, reload })
 
 // Read-only while a save is in flight — typing over content that's
 // about to be overwritten by the save response would be silently lost.
@@ -303,4 +332,6 @@ onBeforeUnmount(destroyEditor)
 .code-editor { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .code-editor-status { margin: 0; padding: 1rem; color: #444; }
 .code-editor-host { flex: 1; min-height: 0; overflow: auto; }
+.code-editor-host :deep(.cm-error-line),
+.code-editor-host :deep(.cm-activeLine.cm-error-line) { background: rgba(220, 38, 38, 0.32); }
 </style>

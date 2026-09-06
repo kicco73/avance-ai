@@ -130,18 +130,23 @@ class TrackingProcessor(object):
 	async def _get_ai_reply(self) -> OutVariables:
 		raise NotImplementedError
 
-	def _save_user_message(self, text: str | None) -> None:
+	def _save_user_message(self, text: str | None, user_message_id: int | None = None) -> None:
 		"""Persists this turn's own user-facing message — the real text if
 		there is one, a '...' placeholder otherwise — and records enough
 		on self.user for process() to later delete that placeholder rather than keep it as a fake user turn.
+		A message the transport already persisted in arrival order (see
+		ChatService.accept_user_message) is taken as-is by its id.
 		Also stamps this turn's own start (see self._turn_started_at's own
 		use in process()) — captured *before* the save, never after, so it
 		can never postdate a tool write this same turn later makes."""
 		self._turn_started_at = datetime.utcnow()
-		message_id = self.db.save_message("user", text or '...', self.user.session_id)
-		self.user = replace(self.user, message_id=message_id, has_ai_started_conversation=not text)
+		if user_message_id is None:
+			user_message_id = self.db.save_message("user", text or '...', self.user.session_id)
+		self.user = replace(self.user, message_id=user_message_id, has_ai_started_conversation=not text)
 
-	async def process(self, text: str | None, on_metadata: MetadataCallback | None = None) -> dict:
+	async def process(
+		self, text: str | None, on_metadata: MetadataCallback | None = None, user_message_id: int | None = None,
+	) -> dict:
 		state = self.user.state
 
 		if not state.chat and text not in (None, "", "..."):
@@ -150,7 +155,7 @@ class TrackingProcessor(object):
 				code="state_not_chat",
 			)
 
-		self._save_user_message(text)
+		self._save_user_message(text, user_message_id)
 
 		def dummy_on_metadata(key: str, value: str) -> None:
 			pass

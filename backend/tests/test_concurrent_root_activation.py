@@ -7,7 +7,7 @@ import pytest
 
 from session import Session
 
-from conftest import parse_chat_turn_sse
+from conftest import chat_turn
 
 pytestmark = pytest.mark.contract
 
@@ -25,7 +25,7 @@ def _make_labeled_session_for(client, app_db, project_id, username):
     app_db.set_active_project_id(project_id, username)
     with Session().impersonate(username):
         session = client.get("/api/chat/session").json()
-        turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}))
+        turn = chat_turn(client, session['id'], "hi")
         client.put(
             f"/api/chat/messages/{turn['assistant_message_id']}/expected-state", json={"expected_state": "Hello"},
         )

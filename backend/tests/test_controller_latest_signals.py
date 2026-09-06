@@ -12,7 +12,7 @@ import pytest
 
 from session import Session
 
-from conftest import parse_chat_turn_sse
+from conftest import chat_turn
 
 pytestmark = pytest.mark.contract
 
@@ -21,7 +21,7 @@ def test_latest_signals_returns_the_most_recent_sessions_latest_snapshot(client,
     app_db.set_active_project_id(hello_project, "alice")
     with Session().impersonate("alice"):
         session = client.get("/api/chat/session").json()
-        turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}))
+        turn = chat_turn(client, session['id'], "hi")
         app_db.save_signal_snapshot({"foo": 1}, session["id"])
         app_db.save_signal_snapshot({"foo": 42}, session["id"], message_id=turn["assistant_message_id"])
 

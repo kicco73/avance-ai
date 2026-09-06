@@ -28,6 +28,7 @@ import { peekInviteCode } from './shareLink.js'
 const hasSharedInvite = !!peekInviteCode()
 
 const editProjectId = ref(null)
+const editProjectBuildError = ref(null)
 const labelProjectId = ref(null)
 const liveChatProjectId = ref(null)
 const currentUserProfile = ref(null)
@@ -62,9 +63,10 @@ const {
 
 // The embedded "Test" chat runs against the server-side active project, so
 // opening Edit for a non-active project activates it first.
-async function handleModelEdit(projectId) {
+async function handleModelEdit(projectId, buildError = null) {
   await activateAndRefresh(projectId)
   editProjectId.value = projectId
+  editProjectBuildError.value = buildError
   pushView('edit')
 }
 
@@ -258,6 +260,7 @@ onBeforeUnmount(() => {
               v-if="pushedView === 'edit'"
               :key="editProjectId"
               :project-id="editProjectId"
+              :build-error="editProjectBuildError"
               :profile="currentUserProfile"
               @saved="handleModelEditSaved"
               @back="popPushedView"

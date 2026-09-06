@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import parse_chat_turn_sse
+from conftest import chat_turn
 
 pytestmark = pytest.mark.contract
 
@@ -14,7 +14,7 @@ pytestmark = pytest.mark.contract
 @pytest.mark.contract
 def test_put_comment_sets_and_is_visible_in_session_signals(client, hello_project):
     session = client.get("/api/chat/session").json()
-    turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}))
+    turn = chat_turn(client, session['id'], "hi")
     message_id = turn["assistant_message_id"]
 
     response = client.put(f"/api/chat/messages/{message_id}/comment", json={"comment": "Worth a second look."})
@@ -29,7 +29,7 @@ def test_put_comment_sets_and_is_visible_in_session_signals(client, hello_projec
 @pytest.mark.contract
 def test_put_comment_clears_with_null(client, hello_project):
     session = client.get("/api/chat/session").json()
-    turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}))
+    turn = chat_turn(client, session['id'], "hi")
     message_id = turn["assistant_message_id"]
     client.put(f"/api/chat/messages/{message_id}/comment", json={"comment": "note"})
 
@@ -42,7 +42,7 @@ def test_put_comment_clears_with_null(client, hello_project):
 @pytest.mark.contract
 def test_put_comment_strips_whitespace_and_treats_blank_as_clear(client, hello_project):
     session = client.get("/api/chat/session").json()
-    turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}))
+    turn = chat_turn(client, session['id'], "hi")
     message_id = turn["assistant_message_id"]
 
     padded = client.put(f"/api/chat/messages/{message_id}/comment", json={"comment": "  spaced out  "})
@@ -57,7 +57,7 @@ def test_put_comment_succeeds_for_a_non_evaluation_point_message(client, hello_p
     """A comment is never gated on evaluation-point status, unlike
     expected-state (see test_controller_benchmark.py)."""
     session = client.get("/api/chat/session").json()
-    turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}))
+    turn = chat_turn(client, session['id'], "hi")
     message_id = turn["assistant_message_id"]
 
     response = client.put(f"/api/chat/messages/{message_id}/comment", json={"comment": "still commentable"})
@@ -75,7 +75,7 @@ def test_put_comment_is_404_for_an_unknown_message(client, hello_project):
 @pytest.mark.regression
 def test_put_comment_does_not_disturb_expected_state_on_the_same_row(client, hello_project):
     session = client.get("/api/chat/session").json()
-    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
+    chat_turn(client, session['id'], "hi")
     # Picks the side with a real Tracking row, so the comment is written
     # alongside an existing expected_state rather than a bare row.
     session_id = session["id"]

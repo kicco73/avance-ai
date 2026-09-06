@@ -10,6 +10,8 @@ from unittest.mock import patch
 
 import pytest
 
+from conftest import chat_turn
+
 from session import Session
 from testing.test_service import UsersAggregationJob
 
@@ -46,7 +48,7 @@ def _make_labeled_session_for(client, app_db, project_name, username):
     app_db.set_active_project_id(project_name, username)
     with Session().impersonate(username):
         session = client.get("/api/chat/session").json()
-        client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
+        chat_turn(client, session['id'], "hi")
         client.put(f"/api/chat/sessions/{session['id']}/labeled", json={"labeled": True})
     return session["id"]
 

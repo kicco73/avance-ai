@@ -52,172 +52,110 @@ def _driver(env: Env, automaton: Automaton | None = None) -> AvanceEnvSource:
     return AvanceEnvSource(context, "env", "env")
 
 
-def _live_session(db) -> int:
+def _live_env(db) -> PersistedEnv:
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
-    return db.create_chat_session(
+    session_id = db.create_chat_session(
         username=USERNAME, project_id=PROJECT_ID, revision=db.get_project_published_revision(PROJECT_ID),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1), start_state="a", end_state="a",
     )
+    return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
 
 
-def test_driver_class_for_picks_the_env_driver_for_avance_env_and_the_archive_one_for_any_other_avance_path():
+def test_avance_env_resolves_to_the_env_driver_and_any_other_avance_path_to_the_archive_one(db):
     assert driver_class_for("avance:env") is AvanceEnvSource
     assert driver_class_for("avance:behaviour/env.csv") is AvanceArchiveSource
     assert driver_class_for("avance:sources/flights.csv") is AvanceArchiveSource
+    assert isinstance(SourceNamespace(db, _automaton(), env=Env()).env, AvanceEnvSource)
 
 
-def test_source_namespace_resolves_an_env_source_to_the_env_driver(db):
-    resolved = SourceNamespace(db, _automaton(), env=Env()).env
-    assert isinstance(resolved, AvanceEnvSource)
+def test_select_returns_the_exported_keys_header_and_one_quoted_row_projected_onto_keys_in_order_ignoring_values():
+    env = Env(action_set={"flight": "VY3003", "customer_email": "a@b.c", "_flight_record": "secret"})
+    assert _driver(env).select() == "flight,pnr,customer_email\nVY3003,,a@b.c\n"
+    assert _driver(env).select("nothing-like-this") == _driver(env).select()
+
+    ordered = Env(action_set={"flight": "VY3003", "pnr": "ABC123"})
+    assert _driver(ordered).select(keys=["pnr", "flight"]) == "pnr,flight\nABC123,VY3003\n"
+
+    quoted = Env(action_set={"flight": "VY3003, VY3004"})
+    assert _driver(quoted).select(keys=["flight"]) == 'flight\n"VY3003, VY3004"\n'
+
+    unexported = _driver(env).select(keys=["_flight_record"])
+    assert unexported.startswith("error: unknown variable(s) '_flight_record'")
+    assert "secret" not in unexported
 
 
-class TestSelect:
-    def test_returns_the_header_of_exported_keys_and_one_row_of_current_values(self):
-        env = Env(action_set={"flight": "VY3003", "customer_email": "a@b.c", "_flight_record": "secret"})
+def test_value_returns_the_current_value_the_empty_string_when_unset_and_error_text_for_an_unexported_key():
+    assert _driver(Env(action_set={"flight": "VY3003"})).value(key="flight") == "VY3003"
+    assert _driver(Env()).value(key="flight") == ""
 
-        assert _driver(env).select() == "flight,pnr,customer_email\nVY3003,,a@b.c\n"
-
-    def test_keys_project_onto_the_requested_columns_in_that_order(self):
-        env = Env(action_set={"flight": "VY3003", "pnr": "ABC123"})
-
-        assert _driver(env).select(keys=["pnr", "flight"]) == "pnr,flight\nABC123,VY3003\n"
-
-    def test_values_are_ignored_there_is_only_one_row(self):
-        env = Env(action_set={"flight": "VY3003"})
-
-        assert _driver(env).select("nothing-like-this") == _driver(env).select()
-
-    def test_an_unexported_or_unknown_key_is_reported_as_text(self):
-        env = Env(action_set={"_flight_record": "secret"})
-
-        result = _driver(env).select(keys=["_flight_record"])
-
-        assert result.startswith("error: unknown variable(s) '_flight_record'")
-        assert "secret" not in result
-
-    def test_a_value_with_a_comma_is_quoted_so_the_row_stays_one_row(self):
-        env = Env(action_set={"flight": "VY3003, VY3004"})
-
-        assert _driver(env).select(keys=["flight"]) == 'flight\n"VY3003, VY3004"\n'
+    result = _driver(Env(action_set={"_flight_record": "secret"})).value(key="_flight_record")
+    assert result.startswith("error: unknown variable(s) '_flight_record'")
+    assert "secret" not in result
 
 
-class TestValue:
-    def test_returns_the_current_value_of_one_variable(self):
-        env = Env(action_set={"flight": "VY3003"})
+def test_update_writes_readwrite_keys_into_an_ephemeral_env_with_no_tracking_row_and_refuses_readonly_unexported_or_empty_writes(db):
+    env = Env(action_set={"flight": "VY1"})
+    assert _driver(env).update(fields={"pnr": "ABC123", "flight": "VY3003"}) == "1 row updated"
+    assert env.action_set() == {"flight": "VY3003", "pnr": "ABC123"}
+    assert Tracking.select().count() == 0
 
-        assert _driver(env).value(key="flight") == "VY3003"
+    readonly = Env(action_set={"customer_email": "a@b.c"})
+    assert _driver(readonly).update(fields={"customer_email": "x@y.z", "pnr": "ABC123"}).startswith("error: 'customer_email' is read-only")
+    assert readonly.action_set() == {"customer_email": "a@b.c"}
 
-    def test_an_unset_exported_key_is_the_empty_string(self):
-        env = Env()
+    hidden = Env()
+    assert "'_flight_record' is not a variable you can access" in _driver(hidden).update(fields={"_flight_record": "x"})
+    assert hidden.action_set() == {}
 
-        assert _driver(env).value(key="flight") == ""
-
-    def test_an_unexported_or_unknown_key_is_reported_as_text(self):
-        env = Env(action_set={"_flight_record": "secret"})
-
-        result = _driver(env).value(key="_flight_record")
-
-        assert result.startswith("error: unknown variable(s) '_flight_record'")
-        assert "secret" not in result
+    assert _driver(Env()).update(fields={}).startswith("error:")
 
 
-class TestUpdate:
-    def test_writes_a_readwrite_key_into_an_in_memory_env_and_reports_one_row(self):
-        env = Env(action_set={"flight": "VY1"})
+def test_a_live_session_write_lands_in_a_tracking_row_carrying_the_origin_only_when_the_tool_set_injects_it(db):
+    # origin="tool" is what ToolSet.call() itself injects for a real
+    # model-made call (see tracking.sources.ToolSet.call) — never the
+    # driver's own default. A script/trigger calling source.env.update(...)
+    # directly never claims to be the model — origin stays None,
+    # indistinguishable from an action's own `env:` write.
+    env = _live_env(db)
 
-        result = _driver(env).update(fields={"pnr": "ABC123", "flight": "VY3003"})
+    assert _driver(env).update(fields={"pnr": "ABC123"}, origin="tool") == "1 row updated"
+    tool_row = Tracking.get(Tracking.action_env.is_null(False))
+    assert tool_row.origin == "tool" and tool_row.message_id is None
 
-        assert result == "1 row updated"
-        assert env.action_set() == {"flight": "VY3003", "pnr": "ABC123"}
-
-    def test_a_readonly_key_is_refused_as_text_and_nothing_is_written(self):
-        env = Env(action_set={"customer_email": "a@b.c"})
-
-        result = _driver(env).update(fields={"customer_email": "x@y.z", "pnr": "ABC123"})
-
-        assert result.startswith("error: 'customer_email' is read-only")
-        assert env.action_set() == {"customer_email": "a@b.c"}
-
-    def test_an_unexported_key_is_refused_as_text_and_nothing_is_written(self):
-        env = Env()
-
-        result = _driver(env).update(fields={"_flight_record": "x"})
-
-        assert "'_flight_record' is not a variable you can access" in result
-        assert env.action_set() == {}
-
-    def test_an_empty_fields_map_is_refused_as_text(self):
-        env = Env()
-
-        assert _driver(env).update(fields={}).startswith("error:")
-
-    def test_a_live_session_write_lands_in_a_tracking_row_with_origin_tool_and_no_message_yet(self, db):
-        # origin="tool" is what ToolSet.call() itself injects for a real
-        # model-made call (see tracking.sources.ToolSet.call) — never the
-        # driver's own default, so this simulates that call site exactly.
-        session_id = _live_session(db)
-        env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
-
-        assert _driver(env).update(fields={"pnr": "ABC123"}, origin="tool") == "1 row updated"
-
-        row = Tracking.get(Tracking.action_env.is_null(False))
-        assert row.origin == "tool" and row.message_id is None
-
-    def test_a_direct_call_with_no_origin_behaves_like_an_action_s_own_env_write(self, db):
-        # A script/trigger calling source.env.update(...) directly (not
-        # through ToolSet) never claims to be the model — origin stays
-        # None, indistinguishable from an action's own `env:` write.
-        session_id = _live_session(db)
-        env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
-
-        assert _driver(env).update(fields={"pnr": "ABC123"}) == "1 row updated"
-
-        row = Tracking.get(Tracking.action_env.is_null(False))
-        assert row.origin is None
-        assert db.get_action_env(PROJECT_ID, USERNAME) == {"pnr": "ABC123"}
-
-    def test_link_tool_env_writes_to_message_binds_the_turn_s_writes_to_the_assistant_message(self, db):
-        session_id = _live_session(db)
-        env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
-        env.update_action_set({"flight": "VY1"})  # an action's own env: write — never a tool write
-        _driver(env).update(fields={"pnr": "ABC123"}, origin="tool")
-        assistant_id = db.save_message("assistant", "Noted.", session_id)
-
-        db.link_tool_env_writes_to_message(session_id, assistant_id)
-
-        rows = list(Tracking.select().where(Tracking.action_env.is_null(False)).order_by(Tracking.id))
-        assert [row.message_id for row in rows] == [None, assistant_id]
-        # The bookkeeping row never masquerades as the message's evaluation point.
-        assert db.get_signal_row_by_message(assistant_id) is None
-
-    def test_a_test_session_s_ephemeral_env_takes_the_write_with_no_tracking_row(self, db):
-        env = Env()
-
-        _driver(env).update(fields={"pnr": "ABC123"})
-
-        assert env.action_set() == {"pnr": "ABC123"}
-        assert Tracking.select().count() == 0
+    assert _driver(env).update(fields={"flight": "VY1"}) == "1 row updated"
+    rows = list(Tracking.select().where(Tracking.action_env.is_null(False)).order_by(Tracking.id))
+    assert [row.origin for row in rows] == ["tool", None]
+    assert db.get_action_env(PROJECT_ID, USERNAME) == {"pnr": "ABC123", "flight": "VY1"}
 
 
-class TestParameterSchema:
-    def test_select_narrows_keys_to_an_enum_of_the_exported_keys(self):
-        schema = _driver(Env()).parameter_schema("select")
+def test_link_tool_env_writes_to_message_binds_only_the_turns_tool_writes_to_the_assistant_message(db):
+    env = _live_env(db)
+    env.update_action_set({"flight": "VY1"})
+    _driver(env).update(fields={"pnr": "ABC123"}, origin="tool")
+    assistant_id = db.save_message("assistant", "Noted.", env._session_id if hasattr(env, "_session_id") else db.get_latest_chat_session(USERNAME, PROJECT_ID)["id"])
 
-        assert schema["properties"]["keys"]["items"]["enum"] == ["flight", "pnr", "customer_email"]
-        assert schema["required"] == ["values"]
+    db.link_tool_env_writes_to_message(db.get_latest_chat_session(USERNAME, PROJECT_ID)["id"], assistant_id)
 
-    def test_update_lists_only_the_readwrite_keys_each_described_by_its_ai_definition(self):
-        schema = _driver(Env()).parameter_schema("update")
+    rows = list(Tracking.select().where(Tracking.action_env.is_null(False)).order_by(Tracking.id))
+    assert [row.message_id for row in rows] == [None, assistant_id]
+    # The bookkeeping row never masquerades as the message's evaluation point.
+    assert db.get_signal_row_by_message(assistant_id) is None
 
-        fields = schema["properties"]["fields"]
-        assert fields["properties"] == {
-            "flight": {"type": "string", "description": "The flight code."},
-            "pnr": {"type": "string", "description": "The record locator."},
-        }
-        assert fields["additionalProperties"] is False
-        assert fields["minProperties"] == 1
-        assert "values" in schema["properties"]
 
-    def test_an_unknown_method_narrows_nothing(self):
-        assert _driver(Env()).parameter_schema("nope") is None
+def test_parameter_schemas_narrow_select_keys_to_the_exported_ones_and_update_fields_to_the_readwrite_ones():
+    select = _driver(Env()).parameter_schema("select")
+    assert select["properties"]["keys"]["items"]["enum"] == ["flight", "pnr", "customer_email"]
+    assert select["required"] == ["values"]
+
+    update = _driver(Env()).parameter_schema("update")
+    fields = update["properties"]["fields"]
+    assert fields["properties"] == {
+        "flight": {"type": "string", "description": "The flight code."},
+        "pnr": {"type": "string", "description": "The record locator."},
+    }
+    assert fields["additionalProperties"] is False
+    assert fields["minProperties"] == 1
+    assert "values" in update["properties"]
+
+    assert _driver(Env()).parameter_schema("nope") is None

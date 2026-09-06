@@ -4,6 +4,8 @@ import time
 
 import pytest
 
+from conftest import chat_turn
+
 pytestmark = pytest.mark.contract
 
 
@@ -14,7 +16,7 @@ def test_get_test_status_reflects_a_completed_job(client, hello_project):
     snapshot — a plain GET, pollable, no live connection needed."""
     session = client.get("/api/chat/session").json()
     session_id = session["id"]
-    client.post(f"/api/chat/sessions/{session_id}/messages", json={"message": "hi"})
+    chat_turn(client, session_id, "hi")
     client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": True})
 
     target_key = f"batch:session:{session_id}"

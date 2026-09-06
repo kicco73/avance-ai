@@ -176,6 +176,10 @@ function selectEdit(id) {
   emit('edit', id)
 }
 
+function openWarning(warning) {
+  emit('edit', warning.project_id, { file: warning.file, line: warning.line })
+}
+
 function selectLabelSessions(id) {
   emit('label', id)
 }
@@ -220,7 +224,7 @@ defineExpose({ refresh })
             @app-store="emit('app-store')"
           />
           <AddProjectMenu @new-project="emit('new-project')" @upload="emit('upload')" />
-          <BrokenProjectWarningsMenu ref="warningsMenu" :metadata-by-id="metadataById" />
+          <BrokenProjectWarningsMenu ref="warningsMenu" :metadata-by-id="metadataById" @open="openWarning" />
           <span class="manage-projects-env-tag" :class="envTag.className">{{ envTag.label }}</span>
         </div>
       </template>

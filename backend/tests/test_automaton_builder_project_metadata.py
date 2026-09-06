@@ -20,70 +20,42 @@ def _build(project_yaml: str = "project:\n  id: my_project\n") -> object:
     return AutomatonBuilder().build({"index.yml": project_yaml + MINIMAL_STATES})
 
 
-def test_project_section_is_required():
-    with pytest.raises(ValueError, match="'project' is required"):
-        AutomatonBuilder().build({"index.yml": MINIMAL_STATES})
+def test_every_project_field_is_parsed_with_its_default_when_absent():
+    defaults = _build()
+    assert defaults.project_id == "my_project"
+    assert defaults.project_ui_label is None
+    assert defaults.project_ui_description is None
+    assert defaults.family is None
+    assert defaults.project_revision == 0
+    assert defaults.autotracking_on_ai_message is False
 
-
-def test_signal_tracking_on_ai_message_is_parsed_from_project():
-    automaton = _build("project:\n  id: my_project\n  signal-tracking-on-ai-message: true\n")
-    assert automaton.autotracking_on_ai_message is True
-
-
-def test_project_id_ui_label_ui_description_are_parsed():
-    automaton = _build(
+    full = _build(
         "project:\n"
-        "  id: my_project\n"
+        "  id: _my_project_2\n"
+        "  family: my_family\n"
+        "  revision: 5\n"
         "  ui-label: My Project\n"
         "  ui-description: A friendly description.\n"
+        "  signal-tracking-on-ai-message: true\n"
     )
-    assert automaton.project_id == "my_project"
-    assert automaton.project_ui_label == "My Project"
-    assert automaton.project_ui_description == "A friendly description."
+    assert full.project_id == "_my_project_2"
+    assert full.family == "my_family"
+    assert full.project_revision == 5
+    assert full.project_ui_label == "My Project"
+    assert full.project_ui_description == "A friendly description."
+    assert full.autotracking_on_ai_message is True
 
 
-def test_ui_label_and_ui_description_default_to_none_when_absent():
-    automaton = _build("project:\n  id: my_project\n")
-    assert automaton.project_ui_label is None
-    assert automaton.project_ui_description is None
-
-
-def test_project_must_be_a_mapping():
+def test_the_project_section_is_required_must_be_a_mapping_and_its_revision_non_negative():
+    with pytest.raises(ValueError, match="'project' is required"):
+        AutomatonBuilder().build({"index.yml": MINIMAL_STATES})
     with pytest.raises(ValueError, match="must be a mapping"):
         _build("project: not-a-mapping\n")
+    with pytest.raises(ValueError, match="non-negative integer"):
+        _build("project:\n  id: my_project\n  revision: -1\n")
 
 
 @pytest.mark.parametrize("bad_id", ["not valid", "1starts_with_digit", "has-hyphen", "has.dot", ""])
 def test_rejects_an_id_that_is_not_a_valid_python_identifier(bad_id):
     with pytest.raises(ValueError, match="must be a valid identifier"):
         _build(f"project:\n  id: '{bad_id}'\n")
-
-
-def test_accepts_underscores_and_digits_not_leading():
-    automaton = _build("project:\n  id: _my_project_2\n")
-    assert automaton.project_id == "_my_project_2"
-
-
-def test_family_is_none_when_absent():
-    automaton = _build("project:\n  id: my_project\n")
-    assert automaton.family is None
-
-
-def test_family_is_parsed_when_present():
-    automaton = _build("project:\n  id: my_project\n  family: my_family\n")
-    assert automaton.family == "my_family"
-
-
-def test_revision_defaults_to_zero():
-    automaton = _build("project:\n  id: my_project\n")
-    assert automaton.project_revision == 0
-
-
-def test_revision_is_parsed_when_present():
-    automaton = _build("project:\n  id: my_project\n  revision: 5\n")
-    assert automaton.project_revision == 5
-
-
-def test_rejects_a_negative_revision():
-    with pytest.raises(ValueError, match="non-negative integer"):
-        _build("project:\n  id: my_project\n  revision: -1\n")

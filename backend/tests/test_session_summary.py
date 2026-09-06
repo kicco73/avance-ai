@@ -8,15 +8,14 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from conftest import run_on_enter_tasks
+from conftest import run_on_enter_tasks, chat_turn
 
 pytestmark = pytest.mark.contract
 
 
 def test_closing_a_live_session_produces_a_summary(client, app, app_db, hello_project):
     session = client.get("/api/chat/session").json()
-    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
-
+    chat_turn(client, session['id'], "hi")
     assert app_db.get_chat_session(session["id"])["ai_summary"] is None
 
     resp = client.post(f"/api/chat/sessions/{session['id']}/close")
@@ -30,8 +29,7 @@ def test_closing_a_live_session_produces_a_summary(client, app, app_db, hello_pr
 def test_closing_a_live_session_also_sets_the_title_and_the_apps_ai_summary(client, app, app_db, hello_project):
     app_db.install_project("user", hello_project)
     session = client.get("/api/chat/session").json()
-    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
-
+    chat_turn(client, session['id'], "hi")
     resp = client.post(f"/api/chat/sessions/{session['id']}/close")
     assert resp.status_code == 200, resp.text
 
@@ -45,8 +43,7 @@ def test_closing_a_live_session_also_sets_the_title_and_the_apps_ai_summary(clie
 
 def test_a_still_open_session_has_no_summary(client, app, app_db, hello_project):
     session = client.get("/api/chat/session").json()
-    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
-
+    chat_turn(client, session['id'], "hi")
     run_on_enter_tasks(app)
 
     assert app_db.get_chat_session(session["id"])["ai_summary"] is None
@@ -58,7 +55,7 @@ def test_a_session_merely_expired_by_the_open_window_is_never_queued(client, app
     a report, so a session nobody ever closed must never get one even
     once it reads as closed via is_open()."""
     session = client.get("/api/chat/session").json()
-    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
+    chat_turn(client, session['id'], "hi")
     app_db.touch_chat_session(session["id"], datetime.utcnow() - timedelta(hours=2), session["end_state"])
 
     new_session = client.get("/api/chat/session").json()

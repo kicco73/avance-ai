@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import parse_sse_result
+from conftest import parse_sse_result, chat_turn
 
 pytestmark = pytest.mark.regression
 
@@ -176,9 +176,9 @@ def test_a_chat_turn_against_a_test_session_is_accepted_as_active(client):
     _publish(client, "isolation_4")
     test_session = client.post("/api/projects/isolation_4/test-sessions").json()
 
-    response = client.post(f"/api/chat/sessions/{test_session['id']}/messages", json={"message": "hi"})
+    turn = chat_turn(client, test_session['id'], "hi")
 
-    assert response.status_code == 200
+    assert turn["session_id"] == test_session["id"]
 
 
 PROJECT_WITH_A_SELF_LOOP = """

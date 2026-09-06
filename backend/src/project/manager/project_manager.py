@@ -16,16 +16,16 @@ from session import Session
 from tracking.session_export import SessionExportManager
 from tracking.session_import import SessionImportManager
 
-from .health import ProjectHealthChecker
-from .inspector import ProjectInspector
-from .archive.automaton_loader import AutomatonLoader
-from .archive.layout import (
+from ..health import ProjectHealthChecker
+from ..inspector import ProjectInspector
+from ..archive.automaton_loader import AutomatonLoader
+from ..archive.layout import (
     CACHE_DIR, ArchiveLayout, LEGAL_TERMS_FILE_NAME, SESSIONS_EXPORT_FILENAME, TESTS_EXPORT_FILENAME,
 )
-from .project_import_bundle_job import ProjectImportBundleJob
+from ..project_import_bundle_job import ProjectImportBundleJob
 from .availability import ProjectAvailability
 from .uploader import ProjectUploader
-from .types import FAMILY_NOT_CHECKED, CommitCallback
+from ..types import FAMILY_NOT_CHECKED, CommitCallback
 
 logger = LoggerFactory.get_logger(__name__)
 

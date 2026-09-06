@@ -1,6 +1,6 @@
 """Composition root for the project subsystem — wires AutomatonLoader
 (project/archive/automaton_loader.py), ProjectInspector (project/inspector.py),
-ProjectManager (project/manager.py), and ProjectEditor (project/editor.py),
+ProjectManager (project/manager/), and ProjectEditor (project/editor.py),
 then exposes every one of their public methods under a single facade so no
 external caller (chat/, tracking/, controllers/) needs to know which
 collaborator actually does the work."""

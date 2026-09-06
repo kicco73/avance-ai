@@ -84,4 +84,4 @@ class AvanceController(object):
         for controller in controllers:
             controller.register_routes(self.router)
         if ws_notifications is not None:
-            self.router.add_api_websocket_route("/ws/notifications", ws_notifications.notification_loop)
+            self.router.add_api_websocket_route("/ws/notifications", ws_notifications.channel_loop)

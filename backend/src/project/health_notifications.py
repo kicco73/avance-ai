@@ -20,13 +20,18 @@ logger = LoggerFactory.get_logger(__name__)
 
 
 class ProjectHealthNotificationJob(CancelableJob):
-    def __init__(self, db: Db, ws_notifications: WsNotifications, project_id: str, revision: int, error: str | None) -> None:
+    def __init__(
+        self, db: Db, ws_notifications: WsNotifications, project_id: str, revision: int, error: str | None, *,
+        file: str | None = None, line: int | None = None,
+    ) -> None:
         super().__init__(key=f"project-health:{project_id}:{revision}:{error is not None}", username="system")
         self._db = db
         self._ws_notifications = ws_notifications
         self._project_id = project_id
         self._revision = revision
         self._error = error
+        self._file = file
+        self._line = line
 
     def _prepare(self) -> tuple[int, tuple[CancelableJob, ...]]:
         return 1, ()
@@ -42,16 +47,19 @@ class ProjectHealthNotificationJob(CancelableJob):
     async def _run_next_step(self) -> None:
         if self._error is None:
             logger.info("Project '%s' revision %s builds again.", self._project_id, self._revision)
+            self._db.delete_project_system_warnings(self._project_id, "project_broken")
             return
         logger.error(
             "Project '%s' revision %s no longer builds — %s", self._project_id, self._revision, self._error,
         )
         admin_ids = [user["id"] for user in self._db.list_users() if role_satisfies(user["role"], "admin")]
         for admin_id in admin_ids:
-            self._db.save_system_warning(admin_id, self._project_id, "project_broken", self._error)
+            self._db.save_system_warning(
+                admin_id, self._project_id, "project_broken", self._error, file=self._file, line=self._line,
+            )
         payload = {
             "type": "system_warning", "kind": "project_broken",
-            "project_id": self._project_id, "message": self._error,
+            "project_id": self._project_id, "message": self._error, "file": self._file, "line": self._line,
         }
         for admin_id in admin_ids:
             await self._ws_notifications.push(admin_id, payload)
@@ -69,7 +77,10 @@ class ProjectHealthNotifications:
     def _on_event(self, event: ProjectPublishedHealthChanged) -> None:
         try:
             self._job_service.submit(
-                ProjectHealthNotificationJob(self._db, self._ws_notifications, event.project_id, event.revision, event.error)
+                ProjectHealthNotificationJob(
+                    self._db, self._ws_notifications, event.project_id, event.revision, event.error,
+                    file=event.file, line=event.line,
+                )
             )
         except Exception:
             logger.exception(

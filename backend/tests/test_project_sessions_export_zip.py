@@ -11,7 +11,7 @@ import zipfile
 
 import pytest
 
-from conftest import parse_sse_result
+from conftest import parse_sse_result, chat_turn
 from session import Session
 
 pytestmark = pytest.mark.contract
@@ -142,8 +142,7 @@ def test_download_then_reupload_round_trips_a_live_session_from_another_user(cli
     app_db.set_active_project_id(project_id, "alice")
     with Session().impersonate("alice"):
         live_session = client.get("/api/chat/session").json()
-        client.post(f"/api/chat/sessions/{live_session['id']}/messages", json={"message": "hi"})
-
+        chat_turn(client, live_session['id'], "hi")
     zip_bytes = client.get(f"/api/projects/{project_id}").content
 
     resp = client.post(

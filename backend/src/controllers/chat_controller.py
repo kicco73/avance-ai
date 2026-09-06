@@ -13,7 +13,6 @@ from fastapi import HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from chat.chat_service import ChatService
-from chat.sse_turn import SseChatTurn
 from listen.listen_service import ListenService, ListenServiceError, ListenServiceNotAvailableError
 from project.project_service import ProjectService
 from talk.talk_service import TalkService, TalkServiceNotAvailableError
@@ -22,7 +21,6 @@ from schemas import (
     ActuatorsRequest,
     AiModelSelectionRequest,
     AutoTrackingRequest,
-    ChatMessageRequest,
     ReactionRequest,
     SetEnvValueRequest,
 )
@@ -240,13 +238,6 @@ class ChatController(BaseController):
     @get("/api/chat/sessions/{session_id}/messages")
     async def get_messages(self, session_id: int):
         return await self.chat_service.get_messages(session_id)
-
-    @post("/api/chat/sessions/{session_id}/messages")
-    async def post_message(self, session_id: int, req: ChatMessageRequest):
-        text = req.message.strip()
-        if not text:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Message cannot be empty.")
-        return SseChatTurn(self.chat_service, session_id, text).response()
 
     @post("/api/chat/sessions/{session_id}/action")
     async def post_action(self, session_id: int, req: ActionRequest):

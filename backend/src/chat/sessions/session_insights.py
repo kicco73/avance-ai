@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from chat.session_ownership import SessionOwnership
+from chat.sessions.session_ownership import SessionOwnership
 from db import Db, _utc_iso
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService

@@ -9,8 +9,8 @@ from events import AvailabilityChanged, ProjectPublishedHealthChanged, ProjectRe
 from logging_factory import LoggerFactory
 from service_error import ServiceError
 
-from .health import ProjectHealth, ProjectHealthChecker
-from .archive.automaton_loader import AutomatonLoader
+from ..health import ProjectHealth, ProjectHealthChecker
+from ..archive.automaton_loader import AutomatonLoader
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -78,10 +78,16 @@ class ProjectAvailability:
         if is_broken == was_broken:
             return
         if current.published is not None:
-            revision, error = current.published.revision, current.published.error
+            outcome = current.published
+            event = ProjectPublishedHealthChanged(
+                project_id=project_id, revision=outcome.revision, error=outcome.error,
+                file=outcome.file, line=outcome.line,
+            )
         else:
-            revision, error = self._db.get_project_revision(project_id), None
-        publish(ProjectPublishedHealthChanged(project_id=project_id, revision=revision, error=error))
+            event = ProjectPublishedHealthChanged(
+                project_id=project_id, revision=self._db.get_project_revision(project_id), error=None,
+            )
+        publish(event)
 
     def recompute_all(self) -> None:
         for project_id in self._db.list_projects():
