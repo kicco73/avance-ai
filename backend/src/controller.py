@@ -8,7 +8,7 @@ from fastapi import APIRouter
 
 from auth.auth_service import AuthService
 from chat.chat_service import ChatService
-from chat.ws_adapter import WsAdapter
+from chat.ws_notifications import WsNotifications
 from db import Db
 from job import JobService
 from listen.listen_service import ListenService
@@ -46,7 +46,7 @@ class AvanceController(object):
         version: str,
         services_config: dict,
         whatsapp_service: WhatsAppService | None = None,
-        ws_adapter: WsAdapter | None = None,
+        ws_notifications: WsNotifications | None = None,
     ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
@@ -83,5 +83,5 @@ class AvanceController(object):
         self.router = APIRouter()
         for controller in controllers:
             controller.register_routes(self.router)
-        if ws_adapter is not None:
-            self.router.add_api_websocket_route("/ws/chat", ws_adapter.chat_loop)
+        if ws_notifications is not None:
+            self.router.add_api_websocket_route("/ws/notifications", ws_notifications.notification_loop)

@@ -11,7 +11,7 @@ from .on_enter_task import ACTUATORS_FAKE, ACTUATORS_LIVE, OnEnterTask, ScopeHyd
 
 if TYPE_CHECKING:
     from ai import AiService
-    from chat.ws_adapter import WsAdapter
+    from chat.ws_notifications import WsNotifications
     from project.project_service import ProjectService
     from whatsapp.whatsapp_service import WhatsAppService
 
@@ -34,17 +34,17 @@ class ActuatorSetFactory:
         self._db = db
         self._job_service = job_service
         self._enabled_test_sessions: set[int] = set()
-        self._ws_adapter: "WsAdapter | None" = None
+        self._ws_notifications: "WsNotifications | None" = None
         self._whatsapp_service: "WhatsAppService | None" = None
         self._hydrator = ScopeHydrator(db, project_service, self, ai_service)
         job_service.register_task_type(OnEnterTask.TYPE, self._hydrator.hydrate)
 
-    def set_ws_adapter(self, ws_adapter: "WsAdapter") -> None:
-        self._ws_adapter = ws_adapter
+    def set_ws_notifications(self, ws_notifications: "WsNotifications") -> None:
+        self._ws_notifications = ws_notifications
 
     @property
-    def ws_adapter(self) -> "WsAdapter | None":
-        return self._ws_adapter
+    def ws_notifications(self) -> "WsNotifications | None":
+        return self._ws_notifications
 
     def set_whatsapp_service(self, whatsapp_service: "WhatsAppService | None") -> None:
         self._whatsapp_service = whatsapp_service

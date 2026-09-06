@@ -4,13 +4,11 @@ state-aggregation machinery its own Performance tab drives.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 from http import HTTPStatus
 from urllib.parse import quote
 
-from fastapi import HTTPException, Request, Response, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import HTTPException, Response, UploadFile
 
 from chat.chat_service import ChatService
 from job import JobService
@@ -341,22 +339,6 @@ class LabelProjectController(BaseController):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No aggregate result for this key yet.")
         return result
 
-    @get("/api/projects/{project_id}/test-events", role="supervisor")
-    async def get_test_events(self, project_id: str, request: Request):
-        username = Session().user
-        connection = self.test_event_broadcaster.connect(username)
-
-        async def events():
-            try:
-                for message in self.test_event_broadcaster.snapshot():
-                    yield f"data: {json.dumps(message)}\n\n"
-                while not await request.is_disconnected():
-                    try:
-                        message = await asyncio.wait_for(connection.get(), timeout=1.0)
-                    except asyncio.TimeoutError:
-                        continue
-                    yield f"data: {json.dumps(message)}\n\n"
-            finally:
-                self.test_event_broadcaster.disconnect(username, connection)
-
-        return StreamingResponse(events(), media_type="text/event-stream")
+    @get("/api/projects/{project_id}/test-status", role="supervisor")
+    def get_test_status(self, project_id: str):
+        return {"events": self.test_event_broadcaster.snapshot()}

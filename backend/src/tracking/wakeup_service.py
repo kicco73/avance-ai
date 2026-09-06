@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from ai import AiService
 from automaton.automaton import manual_actions_for
-from chat.ws_adapter import WsAdapter
+from chat.ws_notifications import WsNotifications
 from db.db import Db
 from events import EnvChanged, StateChanged, subscribe
 from job import JobService
@@ -54,7 +54,7 @@ class WakeupJob(CancelableJob):
 class WakeupService:
     def __init__(
         self, db: Db, project_service: ProjectService, job_service: JobService, actuator_factory: ActuatorSetFactory,
-        ws_adapter: WsAdapter | None = None, tracking_service: TrackingService | None = None,
+        ws_notifications: WsNotifications | None = None, tracking_service: TrackingService | None = None,
         ai_service: AiService | None = None,
     ) -> None:
         self._db = db
@@ -64,7 +64,7 @@ class WakeupService:
         # None whenever no websocket transport is configured — push is
         # simply skipped in that case; a re-evaluated self-loop is still
         # applied and persisted either way, only live delivery depends on this.
-        self._ws_adapter = ws_adapter
+        self._ws_notifications = ws_notifications
         self._tracking_service = tracking_service
         # Only actuator.prompt() needs this — None here just means a
         # self-loop's own on-enter falls back to actuator.prompt()'s own
@@ -139,13 +139,13 @@ class WakeupService:
                 # Best-effort live nudge only; the transition above is already
                 # persisted regardless, and its on-enter arrives in its own
                 # frame, from the OnEnterTask apply_transition scheduled.
-                if self._ws_adapter is not None:
+                if self._ws_notifications is not None:
                     state_payload = automaton.get_state_payload(state)
                     auto_tracking_enabled = (
                         self._tracking_service.is_auto_tracking_enabled(session["id"])
                         if self._tracking_service is not None else True
                     )
-                    await self._ws_adapter.push(username, {
+                    await self._ws_notifications.push(username, {
                         "type": "notification",
                         # Deliberately still "project_name", not "project_id":
                         # chatClient.js (frontend, off-limits — "NEVER TOUCH

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import asyncio
+    from chat.ws_notifications import WsNotifications
 
 
 class LastStatusBroadcaster:
@@ -27,6 +28,9 @@ class LastStatusBroadcaster:
 
     def disconnect(self, username: str, connection: "asyncio.Queue") -> None:
         self._inner.disconnect(username, connection)
+
+    def set_ws_notifications(self, ws_notifications: "WsNotifications") -> None:
+        self._inner.set_ws_notifications(ws_notifications)
 
     def push(self, username: str, message: dict) -> None:
         key = message.get("key")

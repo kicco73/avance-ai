@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from chat.ws_adapter import WsAdapter
+from chat.ws_notifications import WsNotifications
 from conftest import FakeAiService, make_test_actuator_factory, make_test_job_service
 from db import Db
 from db.models import Task as TaskRow, User
@@ -125,9 +125,9 @@ def _process(db: Db, websocket: _FakeWebSocket | None = None, *, start: bool = F
     project_service = ProjectService(db)
     factory = make_test_actuator_factory(db, job_service, project_service, ai_service)
     if websocket is not None:
-        ws_adapter = WsAdapter(chat_service=None, db=db, auth_service=None)
-        ws_adapter._connections[USERNAME] = websocket
-        factory.set_ws_adapter(ws_adapter)
+        ws_notifications = WsNotifications(auth_service=None)
+        ws_notifications._connections[USERNAME] = websocket
+        factory.set_ws_notifications(ws_notifications)
     if start:
         job_service.start()
     return job_service, project_service, factory

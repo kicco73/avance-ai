@@ -1,6 +1,6 @@
-// Regression for chatClient.js's own readSseTurnStream: a 'tool_call'
-// SSE event's own status_text must reach the caller's onStatus verbatim,
-// and a following 'tool_result' event must clear it (onStatus('')) —
+// Regression for chatClient.js's own readSseTurnStream: a 'tool' SSE
+// event's own status_text must reach the caller's onStatus verbatim on
+// phase "start", and any other phase must clear it (onStatus('')) —
 // see ai_service.py's own tool-call loop and chatStoreFactory.js's own
 // per-bubble statusText wiring this feeds.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -28,7 +28,7 @@ function fakeSseResponse(events) {
   }
 }
 
-describe('sendMessage forwards tool_call/tool_result as onStatus', () => {
+describe('sendMessage forwards the tool event as onStatus', () => {
   let chatClient
   let api
 
@@ -48,10 +48,10 @@ describe('sendMessage forwards tool_call/tool_result as onStatus', () => {
     vi.clearAllMocks()
   })
 
-  it('calls onStatus with status_text on tool_call, then with empty string on tool_result', async () => {
+  it('calls onStatus with status_text on phase "start", then with empty string on phase "result"', async () => {
     api.postChatMessage.mockResolvedValue(fakeSseResponse([
-      ['tool_call', { status_text: 'Searching Flights…' }],
-      ['tool_result', {}],
+      ['tool', { phase: 'start', status_text: 'Searching Flights…' }],
+      ['tool', { phase: 'result' }],
       ['done', { reply: [], session_id: 1 }]
     ]))
     const statuses = []

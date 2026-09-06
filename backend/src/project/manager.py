@@ -42,6 +42,13 @@ logger = LoggerFactory.get_logger(__name__)
 # template's own id is already taken after the very first use.
 NEW_PROJECT_TEMPLATE = Path(__file__).resolve().parents[2] / "samples" / "projects" / "Hello world.zip"
 
+# finalize_update's own old_family default — distinguishes "this caller
+# never checked" (skip the family-change rescan entirely, the original
+# behavior every other caller keeps) from "checked, and it was None"
+# (family itself is a legitimate value, so None can't double as the
+# sentinel).
+_FAMILY_NOT_CHECKED = object()
+
 
 class ProjectManager:
     def __init__(
@@ -315,6 +322,9 @@ class ProjectManager:
                     "published": health.published.error if health.published is not None else None,
                     "draft": health.draft.error,
                 },
+                # The draft's own build_warnings only — never the
+                # published revision's, which nobody is about to re-edit.
+                "build_warnings": health.draft.warnings,
             })
         return rows
 
@@ -439,7 +449,8 @@ class ProjectManager:
             )
 
     async def finalize_update(
-        self, project_id: str, automaton: Automaton, commit: CommitCallback, *, is_new_project: bool = False
+        self, project_id: str, automaton: Automaton, commit: CommitCallback, *,
+        is_new_project: bool = False, old_family: str | None | object = _FAMILY_NOT_CHECKED,
     ) -> str:
         """Called by every project-mutating path before awaiting `commit`.
         `project_id` is this project's own *current* id; if `automaton`'s
@@ -454,16 +465,25 @@ class ProjectManager:
         ensure_project themselves before this) triggers the same dangling-
         reference rescan a rename does: some other project may already
         have an unresolvable automaton.* reference to this id, saved
-        before it ever existed. Refreshes the automaton cache and resets
-        the active project's live conversation only when its current
-        state no longer exists."""
+        before it ever existed. `old_family`: this project's own declared
+        family *before* this same edit, for a caller that read it ahead of
+        its own save (project.id unchanged, so the rename branch below
+        never runs, but a family change gates automaton.* visibility
+        exactly like an id change does — AutomatonBuilder.known_projects_
+        env_keys narrows by family — so it needs the exact same rescan).
+        Left at its default (never compared to anything) for every caller
+        that never bothered to read it first: a family-only edit reaching
+        finalize_update through one of those simply doesn't get the
+        rescan, same gap as before this parameter existed. Refreshes the
+        automaton cache and resets the active project's live conversation
+        only when its current state no longer exists."""
         if automaton.project_id != project_id:
             old_project_id = project_id
             self._db.rename_project_id(old_project_id, automaton.project_id)
             self._automaton_loader.invalidate_cache(old_project_id)
             project_id = automaton.project_id
             self._recheck_dependents_of_changed_id(project_id, old_project_id, project_id)
-        elif is_new_project:
+        elif is_new_project or (old_family is not _FAMILY_NOT_CHECKED and old_family != automaton.family):
             self._recheck_dependents_of_changed_id(project_id, project_id, project_id)
 
         self._db.set_project_metadata(project_id, automaton.project_ui_label, automaton.project_ui_description)
@@ -689,6 +709,13 @@ class ProjectManager:
         existing_published = (
             self._db.get_project_published_revision(project_id) if self._db.project_exists(project_id) else None
         )
+        # Read before anything below touches this id's own stored files —
+        # a re-upload of an *existing* id is the one put_project case that
+        # can silently change project.family without ever going through
+        # finalize_update's own id-rename branch (project.id itself isn't
+        # changing), so it needs the same old_family comparison
+        # put_project_file's own save path does (see finalize_update).
+        old_family = self._automaton_loader.declared_family(project_id) if existing_published is not None else _FAMILY_NOT_CHECKED
         declared_revision = AutomatonBuilder.peek_declared_revision(files["index.yml"])
 
         if existing_published is not None:
@@ -703,11 +730,13 @@ class ProjectManager:
 
         return await self._persist_uploaded_project(
             project_id, final_revision, automaton, files, sessions_to_import, tests_to_import, commit,
+            old_family=old_family,
         )
 
     async def _persist_uploaded_project(
         self, project_id: str, revision: int, automaton: Automaton, files: dict[str, str | bytes],
         sessions_to_import: list[dict], tests_to_import: list[dict], commit: CommitCallback,
+        *, old_family: str | None | object = _FAMILY_NOT_CHECKED,
     ) -> tuple[dict, ProjectImportBundleJob]:
         # content_type is inferred from each entry's own extension, same
         # as put_project_file — image extensions (a zip's aspect/ assets
@@ -733,7 +762,7 @@ class ProjectManager:
             self._db.reset_project(project_id)
         self._db.import_new_revision(project_id, revision, files_bytes, content_types)
         self._db.set_active_project_id(project_id, Session().user)
-        await self.finalize_update(project_id, automaton, commit, is_new_project=is_new_project)
+        await self.finalize_update(project_id, automaton, commit, is_new_project=is_new_project, old_family=old_family)
         self.publish_project(project_id)
 
         job = ProjectImportBundleJob(

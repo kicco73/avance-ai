@@ -1,12 +1,13 @@
-// End-to-end: a live turn's own SSE stream — tool_call (with status_text
-// and the structured fields), tool_result, three chunks, done — driven
-// through chatClient.js's REAL readSseTurnStream (only api.js's
-// postChatMessage is faked, returning a Response-shaped SSE body), all
-// the way up into the chat store and MessageBubble-facing message shape.
-// Proves the whole pipe end to end: while the tool call is in flight the
-// bubble shows status_text, tool_result clears it, chunks accumulate,
-// and once the turn is done the persisted tool_calls record (fetched via
-// getMessages, same as a reload) renders through toolTraceLine.
+// End-to-end: a live turn's own SSE stream — one 'tool' event on phase
+// "start" (with status_text and the structured fields), one on phase
+// "result", three chunks, done — driven through chatClient.js's REAL
+// readSseTurnStream (only api.js's postChatMessage is faked, returning a
+// Response-shaped SSE body), all the way up into the chat store and
+// MessageBubble-facing message shape. Proves the whole pipe end to end:
+// while the tool call is in flight the bubble shows status_text, the
+// "result" phase clears it, chunks accumulate, and once the turn is done
+// the persisted tool_calls record (fetched via getMessages, same as a
+// reload) renders through toolTraceLine.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toolTraceLine } from '../src/toolTraceLine.js'
 
@@ -86,8 +87,8 @@ describe('a live turn shows the tool status then the persisted trace, end to end
   it('streams status_text, clears it, accumulates chunks, then shows the persisted trace', async () => {
     chatStore.currentSessionId.value = 1
     api.postChatMessage.mockResolvedValue(fakeSseResponse([
-      ['tool_call', TOOL_START],
-      ['tool_result', TOOL_RESULT],
+      ['tool', TOOL_START],
+      ['tool', TOOL_RESULT],
       ['chunk', { content: 'Your ' }],
       ['chunk', { content: 'flight ' }],
       ['chunk', { content: 'is on time.' }],

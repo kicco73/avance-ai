@@ -57,7 +57,7 @@ from session import Session
 
 if TYPE_CHECKING:
     from ai import AiService
-    from chat.ws_adapter import WsAdapter
+    from chat.ws_notifications import WsNotifications
     from db import Db
     from project.project_service import ProjectService
     from tracking.actuators.factory import ActuatorSetFactory
@@ -197,9 +197,9 @@ class OnEnterTask(Task):
 
     async def _run_next_step(self) -> None:
         on_enter = self._hydrator.run(self.username, self._payload)
-        ws_adapter = self._hydrator.ws_adapter
-        if on_enter and ws_adapter is not None:
-            await ws_adapter.push(self.username, {"type": "notification", "on-enter": on_enter})
+        ws_notifications = self._hydrator.ws_notifications
+        if on_enter and ws_notifications is not None:
+            await ws_notifications.push(self.username, {"type": "notification", "on-enter": on_enter})
 
 
 class ScopeHydrator(object):
@@ -220,8 +220,8 @@ class ScopeHydrator(object):
         self._ai_service = ai_service
 
     @property
-    def ws_adapter(self) -> "WsAdapter | None":
-        return self._actuator_factory.ws_adapter
+    def ws_notifications(self) -> "WsNotifications | None":
+        return self._actuator_factory.ws_notifications
 
     def hydrate(self, key: str, username: str, payload: dict[str, Any]) -> OnEnterTask:
         """JobService's hydrator for OnEnterTask.TYPE. Cheap and

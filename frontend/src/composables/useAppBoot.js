@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { getState, getMe, getProjects, postRedeemInviteCode, activateProject, postAcceptTerms, postLogout, getPendingStatus } from '../api.js'
-import { disconnect as disconnectChat } from '../chatClient.js'
+import { connect as connectChat, disconnect as disconnectChat } from '../chatClient.js'
 import { clearApiError } from '../errorStore.js'
 import { requireLogin } from '../authStore.js'
 import { confirmDialog } from '../dialogStore.js'
@@ -117,10 +117,10 @@ export function useAppBoot(
       loadMessages()
     }
     loadAiModels()
-    // No proactive chat-socket connect here: chatClient.js connects lazily
-    // on the first sendMessage() call, and the opening message (if any) is
-    // already covered by loadMessages() above — it's persisted server-side
-    // by the time the backend finishes booting, regardless of transport.
+    // The /ws/notifications channel carries more than chat turns now
+    // (test-run updates, on-enter notifications, health pushes), so every
+    // role connects here at boot rather than lazily on first chat use.
+    connectChat()
   }
 
   // The one shared way to resolve "the active project" for a caller with no

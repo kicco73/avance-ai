@@ -9,7 +9,7 @@ where there is no running event loop to push over a websocket from directly."""
 from __future__ import annotations
 
 from auth.roles import role_satisfies
-from chat.ws_adapter import WsAdapter
+from chat.ws_notifications import WsNotifications
 from db import Db
 from events import ProjectPublishedHealthChanged, subscribe
 from job import JobService
@@ -20,10 +20,10 @@ logger = LoggerFactory.get_logger(__name__)
 
 
 class ProjectHealthNotificationJob(CancelableJob):
-    def __init__(self, db: Db, ws_adapter: WsAdapter, project_id: str, revision: int, error: str | None) -> None:
+    def __init__(self, db: Db, ws_notifications: WsNotifications, project_id: str, revision: int, error: str | None) -> None:
         super().__init__(key=f"project-health:{project_id}:{revision}:{error is not None}", username="system")
         self._db = db
-        self._ws_adapter = ws_adapter
+        self._ws_notifications = ws_notifications
         self._project_id = project_id
         self._revision = revision
         self._error = error
@@ -54,14 +54,14 @@ class ProjectHealthNotificationJob(CancelableJob):
             "project_id": self._project_id, "message": self._error,
         }
         for admin_id in admin_ids:
-            await self._ws_adapter.push(admin_id, payload)
+            await self._ws_notifications.push(admin_id, payload)
 
 
 class ProjectHealthNotifications:
-    def __init__(self, db: Db, job_service: JobService, ws_adapter: WsAdapter) -> None:
+    def __init__(self, db: Db, job_service: JobService, ws_notifications: WsNotifications) -> None:
         self._db = db
         self._job_service = job_service
-        self._ws_adapter = ws_adapter
+        self._ws_notifications = ws_notifications
 
     def register(self) -> None:
         subscribe(ProjectPublishedHealthChanged, self._on_event)
@@ -69,7 +69,7 @@ class ProjectHealthNotifications:
     def _on_event(self, event: ProjectPublishedHealthChanged) -> None:
         try:
             self._job_service.submit(
-                ProjectHealthNotificationJob(self._db, self._ws_adapter, event.project_id, event.revision, event.error)
+                ProjectHealthNotificationJob(self._db, self._ws_notifications, event.project_id, event.revision, event.error)
             )
         except Exception:
             logger.exception(

@@ -8,9 +8,14 @@ let socket = null
 let socketConnectingPromise = null
 
 let notificationHandler = null
+let testUpdateHandler = null
 
 export function onNotification(handler) {
   notificationHandler = handler
+}
+
+export function onTestUpdate(handler) {
+  testUpdateHandler = handler
 }
 
 function normalizeResult(data) {
@@ -42,6 +47,8 @@ function handleSocketMessage(event) {
       state: data.state,
       'on-enter': data['on-enter']
     })
+  } else if (data.type === 'test_update') {
+    testUpdateHandler?.(data)
   }
 }
 
@@ -98,12 +105,8 @@ async function readSseTurnStream(res, { onChunk, onStatus } = {}) {
         if (data.content && onChunk) onChunk(data.content)
         continue
       }
-      if (eventType === 'tool_call') {
-        if (onStatus) onStatus(data.status_text || '')
-        continue
-      }
-      if (eventType === 'tool_result') {
-        if (onStatus) onStatus('')
+      if (eventType === 'tool') {
+        if (onStatus) onStatus(data.phase === 'start' ? data.status_text || '' : '')
         continue
       }
       if (eventType === 'error') {

@@ -1,8 +1,7 @@
 import { apiFetch } from './core.js'
-import { setApiError } from '../errorStore.js'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
-const WS_URL = import.meta.env.VITE_WS_URL ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/chat`
+const WS_URL = import.meta.env.VITE_WS_URL ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/notifications`
 
 export function getCurrentSession(sessionId) {
   const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
@@ -61,68 +60,8 @@ export function createChatSocket() {
   return new WebSocket(WS_URL)
 }
 
-export function createTestEventsSource(projectId) {
-  return new EventSource(
-    `${API_URL}/projects/${encodeURIComponent(projectId)}/test-events`, { withCredentials: true }
-  )
-}
-
-export function sendWebSocketMessage(payload, { onChunk, onStatus, onDone, onError } = {}) {
-  return new Promise((resolve, reject) => {
-    let ws
-    try {
-      ws = createChatSocket()
-    } catch (err) {
-      if (onError) onError(err)
-      reject(err)
-      return
-    }
-
-    ws.onopen = () => {
-      const messageData = typeof payload === 'string' ? { message: payload } : payload
-      ws.send(JSON.stringify(messageData))
-    }
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-
-        if (data.type === 'status' || data.status) {
-          if (onStatus) onStatus(data.status || data.message)
-        }
-        if (data.type === 'chunk' || data.chunk || data.delta || data.content) {
-          const chunkText = data.chunk ?? data.delta ?? data.content ?? ''
-          if (onChunk) onChunk(chunkText)
-        }
-        if (data.type === 'done' || data.done || data.finished) {
-          if (onDone) onDone(data)
-          ws.close()
-          resolve(data)
-        }
-        if (data.type === 'error' || data.error) {
-          const errMsg = data.error?.message || data.error || 'WebSocket Streaming Error'
-          setApiError(errMsg, data.error?.detail || '')
-          const err = new Error(errMsg)
-          if (onError) onError(err)
-          ws.close()
-          reject(err)
-        }
-      } catch (e) {
-        if (onChunk) onChunk(event.data)
-      }
-    }
-
-    ws.onerror = (evt) => {
-      const err = new Error('WebSocket connection error')
-      setApiError('WebSocket connection error', '')
-      if (onError) onError(err)
-      reject(err)
-    }
-
-    ws.onclose = () => {
-      
-    }
-  })
+export function getTestStatus(projectId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/test-status`)
 }
 
 export function postChatMessage(text, sessionId) {

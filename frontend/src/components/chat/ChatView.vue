@@ -122,7 +122,7 @@ const chatDisabledReason = computed(() => {
 // nothing was listening for the return trip before this. connect()/
 // disconnect() are chatClient.js's own public API (that file itself is
 // off-limits to edit) — reconnecting is a plain close-then-reopen, same
-// as a fresh mount does today. This can't repair one specific case: a
+// as boot's own connect does. This can't repair one specific case: a
 // transient failure sets chatClient.js's own websocketUnavailable latch,
 // which has no exposed reset, so connect() silently no-ops for the rest
 // of the page's life after that — fixing that needs a small change
@@ -141,12 +141,10 @@ function onVisibilityChange() {
 }
 
 onMounted(() => {
-  connectChat()
   document.addEventListener('visibilitychange', onVisibilityChange)
   if (props.themeMode === 'manual') applyAspect.value = manualApplyAspectPreference.value
 })
 onBeforeUnmount(() => {
-  disconnectChat()
   document.removeEventListener('visibilitychange', onVisibilityChange)
   if (props.themeMode === 'manual') {
     manualApplyAspectPreference.value = applyAspect.value

@@ -324,6 +324,11 @@ class ProjectEditor:
             update_value = content
             to_save = content
 
+        # Read before prepare_update/save touch anything — the only way to
+        # later tell a family-only edit (project.id unchanged) apart from
+        # any other save, so finalize_update knows to re-run the dependents
+        # rescan (see its own old_family parameter).
+        old_family = self._automaton_loader.declared_family(project_id)
         try:
             new_automaton, to_persist = self._manager.prepare_update(project_id, {file_name: update_value})
         except AutomatonBuildError:
@@ -333,7 +338,7 @@ class ProjectEditor:
 
         if to_persist is not None:
             self._db.save_project_file(Session().user, project_id, file_name, to_save, content_type)
-        project_id = await self._manager.finalize_update(project_id, new_automaton, commit)
+        project_id = await self._manager.finalize_update(project_id, new_automaton, commit, old_family=old_family)
 
         return {"success": True, "project_id": project_id, **self._file_undo_redo_info(project_id, file_name)}
 

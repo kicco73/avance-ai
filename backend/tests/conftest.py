@@ -300,13 +300,13 @@ def run_on_enter_tasks(app: FastAPI, username: str = "user", timeout: float = 5.
     and returns the frames the browser would have received. Stops the
     service afterwards so its thread never outlives the test."""
     import time
-    from chat.ws_adapter import WsAdapter
+    from chat.ws_notifications import WsNotifications
 
     factory = app.state.actuator_factory
     websocket = FakeWebSocket()
-    ws_adapter = WsAdapter(chat_service=app.state.chat_service, db=None, auth_service=None)
-    ws_adapter._connections[username] = websocket
-    factory.set_ws_adapter(ws_adapter)
+    ws_notifications = WsNotifications(auth_service=None)
+    ws_notifications._connections[username] = websocket
+    factory.set_ws_notifications(ws_notifications)
     job_service = app.state.job_service
     job_service.start()
     try:

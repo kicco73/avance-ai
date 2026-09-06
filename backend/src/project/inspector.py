@@ -333,6 +333,10 @@ class ProjectInspector:
             # The exact revision this graph was actually built from — lets
             # the "Rev. X" badge stay accurate without a second fetch.
             "revision": revision,
+            # The builder's own non-fatal warnings for this exact build —
+            # never anything new computed here (see AutomatonBuilder._warn),
+            # shown under the design view's own error banner, in yellow.
+            "build_warnings": automaton.build_warnings,
         }
 
     def list_projects(self, username: str | None = None) -> dict:

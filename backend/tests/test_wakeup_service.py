@@ -11,7 +11,7 @@ import asyncio
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from chat.ws_adapter import WsAdapter
+from chat.ws_notifications import WsNotifications
 from events import StateChanged, publish
 from conftest import make_test_actuator_factory, make_test_job_service
 from project.project_service import ProjectService
@@ -158,12 +158,12 @@ class TestWsAdapterPush:
         observed_session = db.get_latest_chat_session(USERNAME, "observed")
         db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
 
-        ws_adapter = WsAdapter(chat_service=None, db=db, auth_service=None)
+        ws_notifications = WsNotifications(auth_service=None)
         websocket = _FakeWebSocket()
-        ws_adapter._connections[USERNAME] = websocket
+        ws_notifications._connections[USERNAME] = websocket
 
         ephemeral_jobs = make_test_job_service(db)
-        service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db), ws_adapter=ws_adapter)
+        service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db), ws_notifications=ws_notifications)
         asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
         assert len(websocket.sent) == 1
@@ -187,15 +187,15 @@ class TestWsAdapterPush:
         db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
         watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
 
-        ws_adapter = WsAdapter(chat_service=None, db=db, auth_service=None)
+        ws_notifications = WsNotifications(auth_service=None)
         websocket = _FakeWebSocket()
-        ws_adapter._connections[USERNAME] = websocket
+        ws_notifications._connections[USERNAME] = websocket
 
         ephemeral_jobs = make_test_job_service(db)
         tracking_service = _FakeTrackingService({watcher_session["id"]})
         service = WakeupService(
             db, project_service, ephemeral_jobs, _actuator_factory(db),
-            ws_adapter=ws_adapter, tracking_service=tracking_service,
+            ws_notifications=ws_notifications, tracking_service=tracking_service,
         )
         asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
@@ -210,17 +210,17 @@ class TestWsAdapterPush:
         db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
         watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
 
-        ws_adapter = WsAdapter(chat_service=None, db=db, auth_service=None)  # nobody registered for USERNAME
+        ws_notifications = WsNotifications(auth_service=None)  # nobody registered for USERNAME
 
         ephemeral_jobs = make_test_job_service(db)
-        service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db), ws_adapter=ws_adapter)
+        service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db), ws_notifications=ws_notifications)
         asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
         # The transition itself is still applied and persisted regardless
         # of whether anyone was there to push it to live.
         assert db.get_signals(watcher_session["id"])[-1]["new_state"] == "x"
 
-    def test_no_ws_adapter_at_all_is_unaffected_same_as_before_this_parameter_existed(self, db, project_service):
+    def test_no_ws_notifications_at_all_is_unaffected_same_as_before_this_parameter_existed(self, db, project_service):
         _publish_project(db, project_service, "observed", OBSERVED_YML)
         _publish_project(db, project_service, "watcher", WATCHER_YML)
         db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
@@ -230,7 +230,7 @@ class TestWsAdapterPush:
         watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
 
         ephemeral_jobs = make_test_job_service(db)
-        service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db))  # ws_adapter omitted entirely
+        service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db))  # ws_notifications omitted entirely
         asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
         assert db.get_signals(watcher_session["id"])[-1]["new_state"] == "x"
@@ -242,12 +242,12 @@ class TestWsAdapterPush:
         db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
         # No transition to state 'b' at all — the watcher's own trigger never matches.
 
-        ws_adapter = WsAdapter(chat_service=None, db=db, auth_service=None)
+        ws_notifications = WsNotifications(auth_service=None)
         websocket = _FakeWebSocket()
-        ws_adapter._connections[USERNAME] = websocket
+        ws_notifications._connections[USERNAME] = websocket
 
         ephemeral_jobs = make_test_job_service(db)
-        service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db), ws_adapter=ws_adapter)
+        service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db), ws_notifications=ws_notifications)
         asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
         assert websocket.sent == []

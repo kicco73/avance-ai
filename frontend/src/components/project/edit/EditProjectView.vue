@@ -424,6 +424,13 @@ const availableEnvKeys = ref([])
 // refreshValidStateKeys succeeds — e.g. right after a save that builds.
 const projectBroken = ref(false)
 
+// AutomatonBuilder's own non-fatal warnings for the draft's current
+// build (see project.inspector.get_project_graph's own build_warnings) —
+// never computed here, just surfaced. Empty whenever the draft is broken
+// (refreshValidStateKeys' own catch below): no Automaton was built, so
+// there's nothing to read warnings off.
+const buildWarnings = ref([])
+
 // The live chat's timeline (see ChatTimeline.vue's resolveStateLabel
 // prop) shows a transition's ui-label instead of its raw state key.
 // Falls back to the raw key for a state that's since been renamed/removed (see isStateGone).
@@ -442,12 +449,13 @@ function actionLabelFor(stateKey, actionName) {
 
 async function refreshValidStateKeys() {
   try {
-    const { nodes, edges } = await getProjectGraph(props.projectId)
+    const { nodes, edges, build_warnings } = await getProjectGraph(props.projectId)
     validStateKeys.value = new Set(nodes.map((n) => n.state.key))
     availableStates.value = nodes.map((n) => ({ key: n.state.key, uiLabel: n.state.ui_label }))
     actionLabelsByState.value = new Map(
       edges.map((e) => [`${e.source}::${e.action.name}`, e.action.ui_label])
     )
+    buildWarnings.value = build_warnings || []
     if (projectBroken.value) {
       projectBroken.value = false
       clearApiError()
@@ -455,6 +463,7 @@ async function refreshValidStateKeys() {
   } catch (err) {
     if (err?.code === 'project_broken') {
       projectBroken.value = true
+      buildWarnings.value = []
       setApiWarning(
         `Project '${props.projectId}' is broken — its stored index.yml no longer builds. Fix it below using the file editor.`,
         err.message
@@ -895,6 +904,10 @@ onBeforeUnmount(() => {
       </template>
     </AppHeader>
 
+    <div v-if="buildWarnings.length" class="build-warnings-banner">
+      <p v-for="(warning, index) in buildWarnings" :key="index" class="build-warnings-banner-line">{{ warning }}</p>
+    </div>
+
     <div class="edit-project-body">
       <div class="edit-project-panels">
         <ProjectDesignPanel
@@ -1099,6 +1112,27 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* Same amber palette as ErrorBanner.vue's own -warning variant — this is
+   the design view's own, always-inline (never fixed/dismissible) sibling
+   of that shared, fixed-position banner: build_warnings are a standing
+   property of the draft, not a one-off event to auto-dismiss. */
+.build-warnings-banner {
+  padding: 0.5rem 1rem;
+  background: #fff4e0;
+  border-bottom: 1px solid #f0d9a8;
+  flex: none;
+}
+
+.build-warnings-banner-line {
+  margin: 0;
+  color: #b06a00;
+  font-size: 0.85rem;
+}
+
+.build-warnings-banner-line + .build-warnings-banner-line {
+  margin-top: 0.25rem;
+}
+
 .edit-project-overlay {
   position: fixed;
   top: 0;

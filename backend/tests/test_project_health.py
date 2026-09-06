@@ -178,6 +178,40 @@ def test_get_runtime_status_reports_broken_published_and_draft_separately(db, pr
     assert rows["broken_draft"]["broken"]["draft"] is not None
 
 
+def test_get_runtime_status_reports_the_drafts_own_build_warnings(db, project_service):
+    warning_yml = """
+env:
+  pnr:
+    ai-access: readwrite
+    ai-definition: The record locator.
+sources:
+  env:
+    url: avance:env
+    ai-definition: The automaton's variables.
+init-action:
+  target: a
+states:
+  a:
+    ui-label: A
+    contextual-prompt: hi
+    ai-may-write-sources: [env]
+"""
+    _publish(db, project_service, "warns", warning_yml)
+
+    rows = {row["id"]: row for row in project_service.get_runtime_status()}
+
+    assert len(rows["warns"]["build_warnings"]) == 1
+    assert "never sees the current values" in rows["warns"]["build_warnings"][0]
+
+
+def test_get_runtime_status_reports_no_build_warnings_for_a_clean_project(db, project_service):
+    _publish(db, project_service, "clean", VALID_YML)
+
+    rows = {row["id"]: row for row in project_service.get_runtime_status()}
+
+    assert rows["clean"]["build_warnings"] == []
+
+
 def test_get_runtime_status_never_eats_a_real_transition(db, project_service):
     """A read-only runtime-status poll must never interfere with the
     transition detection recompute_availability relies on for its own
@@ -245,9 +279,9 @@ def test_broken_notification_job_warns_every_admin_and_pushes_to_connected_ones(
     _make_admin(db, "admin2")
     # "user" already exists (see conftest.py's own db fixture) with the
     # default non-admin role — must never get a warning.
-    ws_adapter = FakeWsAdapter()
+    ws_notifications = FakeWsAdapter()
 
-    job = ProjectHealthNotificationJob(db, ws_adapter, "broken", 3, "index.yml no longer builds — nope")
+    job = ProjectHealthNotificationJob(db, ws_notifications, "broken", 3, "index.yml no longer builds — nope")
     job.prepare()
     asyncio.run(job.run_next_step())
 
@@ -257,20 +291,20 @@ def test_broken_notification_job_warns_every_admin_and_pushes_to_connected_ones(
     assert len(warnings_admin1) == 1 and warnings_admin1[0]["kind"] == "project_broken"
     assert len(warnings_admin2) == 1
     assert warnings_user == []
-    pushed_usernames = {username for username, _ in ws_adapter.pushed}
+    pushed_usernames = {username for username, _ in ws_notifications.pushed}
     assert pushed_usernames == {"admin1", "admin2"}
 
 
 def test_recovery_notification_job_warns_nobody(db):
     _make_admin(db, "admin1")
-    ws_adapter = FakeWsAdapter()
+    ws_notifications = FakeWsAdapter()
 
-    job = ProjectHealthNotificationJob(db, ws_adapter, "flaky", 4, None)
+    job = ProjectHealthNotificationJob(db, ws_notifications, "flaky", 4, None)
     job.prepare()
     asyncio.run(job.run_next_step())
 
     assert db.get_system_warnings("admin1", "flaky") == []
-    assert ws_adapter.pushed == []
+    assert ws_notifications.pushed == []
 
 
 def test_project_health_notifications_submits_a_job_on_the_event(db):
@@ -430,8 +464,8 @@ def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_fiel
     before = db.get_archive("old_format", "index.yml", revision=revision)
 
     _make_admin(db, "admin1")
-    ws_adapter = FakeWsAdapter()
-    notifications = ProjectHealthNotifications(db, _SyncJobService(), ws_adapter)
+    ws_notifications = FakeWsAdapter()
+    notifications = ProjectHealthNotifications(db, _SyncJobService(), ws_notifications)
     notifications.register()
     project_service.register_availability_cascade()
 
@@ -448,7 +482,7 @@ def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_fiel
     assert len(warnings) == 1
     assert warnings[0]["kind"] == "project_broken"
     assert "'tools' is no longer a valid field" in warnings[0]["message"]
-    assert len(ws_adapter.pushed) == 1
+    assert len(ws_notifications.pushed) == 1
 
 
 class _SyncJobService:

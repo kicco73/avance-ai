@@ -28,15 +28,13 @@ class SseChatTurn(object):
         elif key == "text":
             await self._events.put(("text", {"content": value}))
         elif key == "tool":
-            # The frontend's own reader (chatClient.js) only forwards
-            # 'tool_call'/'tool_result' verbatim — the structured fields
-            # ride along unused today so a later frontend can pick them up
-            # with no backend change (see AiService's own tool-call loop
-            # and ToolSet.tool_event).
-            if value["phase"] == "start":
-                await self._events.put(("tool_call", {**value, "status_text": tool_status_text(value)}))
-            else:
-                await self._events.put(("tool_result", value))
+            # One SSE event, "tool", for both phases — the frontend's own
+            # reader (chatClient.js) tells them apart by data.phase.
+            # status_text is only ever meaningful on "start" (see
+            # tool_status_text's own docstring); "result" carries the
+            # payload verbatim.
+            payload = {**value, "status_text": tool_status_text(value)} if value["phase"] == "start" else value
+            await self._events.put(("tool", payload))
 
     def response(self) -> StreamingResponse:
         return StreamingResponse(self._stream(), media_type="text/event-stream")

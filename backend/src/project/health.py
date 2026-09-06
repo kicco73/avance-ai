@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from automaton.build_error import AutomatonBuildError
 from db import Db
@@ -12,6 +12,11 @@ from .archive.automaton_loader import AutomatonLoader
 class BuildOutcome:
     revision: int
     error: str | None
+    # The builder's own non-fatal warnings (Automaton.build_warnings) —
+    # only ever populated on a successful build (a failed one produced no
+    # Automaton to read them off); never new warnings of this checker's
+    # own, just surfacing what AutomatonBuilder already computes.
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,8 +63,8 @@ class ProjectHealthChecker:
 
     def _build_outcome(self, project_id: str, revision: int) -> BuildOutcome:
         try:
-            self._automaton_loader.load_at_revision(project_id, revision)
+            automaton = self._automaton_loader.load_at_revision(project_id, revision)
         except (ValueError, FileNotFoundError) as exc:
             message = exc.detail if isinstance(exc, AutomatonBuildError) and exc.detail else str(exc)
             return BuildOutcome(revision=revision, error=message)
-        return BuildOutcome(revision=revision, error=None)
+        return BuildOutcome(revision=revision, error=None, warnings=automaton.build_warnings)

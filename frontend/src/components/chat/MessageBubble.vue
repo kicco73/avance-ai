@@ -179,15 +179,17 @@ const {
         @pointerleave="onBubblePointerEnd"
         @click.capture="onBubbleClickCapture"
       >
-        <span v-if="isAwaitingReply && message.statusText" class="tool-status-text" aria-live="polite">
-          {{ message.statusText }}
-        </span>
-        <span v-else-if="isAwaitingReply" class="typing-dots" aria-label="Waiting for reply">
-          <span class="typing-dot"></span>
-          <span class="typing-dot"></span>
-          <span class="typing-dot"></span>
-        </span>
-        <span v-else v-html="renderMarkdown(getMessageText(message))" />
+        <Transition name="tool-status-fade" mode="out-in">
+          <span v-if="isAwaitingReply && message.statusText" key="status" class="tool-status-text" aria-live="polite">
+            {{ message.statusText }}
+          </span>
+          <span v-else-if="isAwaitingReply" key="dots" class="typing-dots" aria-label="Waiting for reply">
+            <span class="typing-dot"></span>
+            <span class="typing-dot"></span>
+            <span class="typing-dot"></span>
+          </span>
+          <span v-else key="content" v-html="renderMarkdown(getMessageText(message))" />
+        </Transition>
         <!-- A tool call mid-stream (text already arrived, more still to
              come) leaves no trace above once isAwaitingReply flips false —
              this is that same status line, just appended below the partial
@@ -195,13 +197,15 @@ const {
              the turn ends: submitMessage clears statusText the moment the
              turn's own result lands, so the at-rest render (a reload's
              toStoreMessage never sets statusText at all) is unaffected. -->
-        <span
-          v-if="!isAwaitingReply && message.role === 'assistant' && message.statusText"
-          class="tool-status-text tool-status-text-inline"
-          aria-live="polite"
-        >
-          {{ message.statusText }}
-        </span>
+        <Transition name="tool-status-fade">
+          <span
+            v-if="!isAwaitingReply && message.role === 'assistant' && message.statusText"
+            class="tool-status-text tool-status-text-inline"
+            aria-live="polite"
+          >
+            {{ message.statusText }}
+          </span>
+        </Transition>
         <!-- Permanent, compact trace of this message's own tool call(s)
              (see ChatService.get_messages' own tool_calls_by_message) —
              the transient "Searching …" line (tool-status-text above)
@@ -446,6 +450,16 @@ const {
 .tool-status-text-inline {
   display: block;
   margin-top: 0.3rem;
+}
+
+.tool-status-fade-enter-active,
+.tool-status-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.tool-status-fade-enter-from,
+.tool-status-fade-leave-to {
+  opacity: 0;
 }
 
 .typing-dots {

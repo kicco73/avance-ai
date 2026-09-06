@@ -1,21 +1,23 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
-  createTestEventsSource, deleteAllTestJobs, deleteTestJob, deleteTests, getAggregateResult, getTests,
+  deleteAllTestJobs, deleteTestJob, deleteTests, getAggregateResult, getTests, getTestStatus,
   postTest, postRootAggregation, postSessionsRun, postSignalTest, postSignalsAggregation,
   postStateTest, postStatesAggregation, postUserSessionsRun, postUsersAggregation,
 } from '../api.js'
+import { onTestUpdate } from '../chatClient.js'
 import { confirmDialog } from '../dialogStore.js'
 
 // ProjectTestPanel.vue's own execution tree: per-node job status/progress
-// (live over SSE, seeded once from a REST snapshot), which node is
-// selected, and dispatching a "run" click to the right endpoint for that
-// node's own kind. `strategy` is the shared batch/turn_by_turn control
-// (owned by the caller, read here); `sessions`/`projectSignals` are
-// reference data the caller already loads, consulted only for display
-// labels; `emit` is the component's own defineEmits('select').
+// (live over the shared /ws/notifications connection, seeded once from a
+// REST snapshot), which node is selected, and dispatching a "run" click
+// to the right endpoint for that node's own kind. `strategy` is the
+// shared batch/turn_by_turn control (owned by the caller, read here);
+// `sessions`/`projectSignals` are reference data the caller already
+// loads, consulted only for display labels; `emit` is the component's
+// own defineEmits('select').
 export function useTestExecutionTree(projectId, strategy, sessions, projectSignals, emit) {
   // Running total of AI tokens consumed so far — piggybacked onto every
-  // SSE test-event message by the backend's QueueProgressBroadcaster (see
+  // test-update message by the backend's QueueProgressBroadcaster (see
   // AiService.get_total_tokens), not fetched separately.
   const tokensBurntByStrategy = ref({})
   const tokensBurnt = computed(() => tokensBurntByStrategy.value[strategy.value] ?? 0)
@@ -36,7 +38,7 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
   const nodeEvents = ref({})
   // A node's own most recent aggregate result payload — fetched over REST
   // once its job completes, a genuinely different piece of data (and a
-  // different source) from the SSE status stream above, so it stays separate.
+  // different source) from the status stream above, so it stays separate.
   const nodeLastResult = ref({})
 
   const selectedNodeId = ref(null)
@@ -111,8 +113,8 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
   })
 
   // Writes one node's event as a single, complete replacement — used both
-  // for real SSE messages (job_status/queue_status straight from the
-  // backend, see JobQueue._broadcast_status) and for the optimistic
+  // for real test-update messages (job_status/queue_status straight from
+  // the backend, see JobQueue._broadcast_status) and for the optimistic
   // 'running'/'completed'/'failed' the activate*() functions below set on
   // click, before the first real one arrives — jobStatus here is simple
   // on purpose, so it's translated into the same two-field shape a real
@@ -441,23 +443,27 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     }
   }
 
-  let testEventSource = null
-
-  onMounted(() => {
+  onMounted(async () => {
     // selectedNodeId always starts null on a fresh mount (this tab isn't
     // kept alive while closed — see EditProjectView.vue's autoOpen v-if),
     // so there's never anything already selected to defer to here.
     onSelect('root')
-    // The connection's own first messages are a full snapshot of every
-    // node the backend currently knows about (see LastStatusBroadcaster/
-    // get_test_events) — handleTestEvent needs no special-casing for
-    // them, they're shaped exactly like a live update.
-    testEventSource = createTestEventsSource(projectId)
-    testEventSource.onmessage = (event) => handleTestEvent(JSON.parse(event.data))
+    // Live updates arrive over the shared /ws/notifications connection
+    // (see chatClient.js's onTestUpdate) regardless of which page is open;
+    // the snapshot fetched here just catches this node up on whatever
+    // happened before this component existed — handleTestEvent needs no
+    // special-casing for it, it's shaped exactly like a live update.
+    // Registered before the await, so a live update landing mid-fetch is
+    // never clobbered by the (now stale) snapshot value for that same key.
+    onTestUpdate(handleTestEvent)
+    const { events } = await getTestStatus(projectId)
+    events.forEach((message) => {
+      if (!(message.key in nodeEvents.value)) handleTestEvent(message)
+    })
   })
 
   onBeforeUnmount(() => {
-    testEventSource?.close()
+    onTestUpdate(null)
   })
 
   return {

@@ -14,7 +14,7 @@ from auth.auth_middleware import AuthMiddleware
 from auth.auth_service import AuthService
 from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
-from chat.ws_adapter import WsAdapter
+from chat.ws_notifications import WsNotifications
 from config import AppConfig
 from controller import AvanceController
 from db import Db
@@ -38,7 +38,7 @@ from talk.talk_service import TalkService
 from whatsapp.whatsapp_service import WhatsAppService
 from listen.listen_service import ListenService
 
-__version__ = "1.31.0"
+__version__ = "1.32.0"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -168,12 +168,13 @@ def create_app() -> FastAPI:
             tracking_service, metric_service, job_service, actuator_factory,
         )
 
-        # Single shared /ws/chat connection per user (see chat/ws_adapter.py) —
-        # built after chat_service/auth_service, which it depends on, and
-        # handed to whatever else needs to push onto an already-open
-        # connection (WakeupService, actuator_factory's own deferred calls).
-        ws_adapter = WsAdapter(chat_service, db, auth_service)
-        actuator_factory.set_ws_adapter(ws_adapter)
+        # Single shared /ws/notifications connection per user (see
+        # chat/ws_notifications.py) — a push-only channel, handed to whatever
+        # needs to push onto an already-open connection (WakeupService,
+        # actuator_factory's own deferred calls).
+        ws_notifications = WsNotifications(auth_service)
+        actuator_factory.set_ws_notifications(ws_notifications)
+        test_event_broadcaster.set_ws_notifications(ws_notifications)
 
         test_service = TestService(
             db, ai_test_service, tracking_service, test_job_queue, project_service, test_event_broadcaster,
@@ -188,7 +189,7 @@ def create_app() -> FastAPI:
         # healthy again (see project/health_notifications.py) — registered
         # before the boot-time sweep below, so a project already broken
         # when this process starts is logged/warned/pushed exactly once.
-        ProjectHealthNotifications(db, job_service, ws_adapter).register()
+        ProjectHealthNotifications(db, job_service, ws_notifications).register()
 
         # Every project's own build health (published/draft) is unknown
         # to this fresh process until checked — a framework change since
@@ -200,7 +201,7 @@ def create_app() -> FastAPI:
         # Cross-project wake-up (see tracking/wakeup_service.py) —
         # subscribes once for the process lifetime.
         WakeupService(
-            db, project_service, job_service, actuator_factory, ws_adapter=ws_adapter, tracking_service=tracking_service,
+            db, project_service, job_service, actuator_factory, ws_notifications=ws_notifications, tracking_service=tracking_service,
             ai_service=ai_live_service,
         ).register()
 
@@ -219,7 +220,7 @@ def create_app() -> FastAPI:
         controller = AvanceController(
             chat_service, project_service, talk_service, listen_service, db, tracking_service, test_service,
             auth_service, test_event_broadcaster, job_service, __version__, config.public_services_snapshot(),
-            whatsapp_service=whatsapp_service, ws_adapter=ws_adapter,
+            whatsapp_service=whatsapp_service, ws_notifications=ws_notifications,
         )
         app.include_router(controller.router)
 

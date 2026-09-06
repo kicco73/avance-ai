@@ -12,6 +12,7 @@ vi.mock('../src/api.js', () => ({
   getPendingStatus: vi.fn(),
 }))
 vi.mock('../src/chatClient.js', () => ({
+  connect: vi.fn(),
   disconnect: vi.fn(),
 }))
 vi.mock('../src/errorStore.js', () => ({
@@ -55,7 +56,7 @@ function mountComposable(setup) {
 
 describe('useAppBoot', () => {
   let unmount, currentUserProfile, currentUserRole, labelProjectName, liveChatProjectName,
-    pushedView, showProfile, navDirection
+    pushedView, chatOpen, showProfile, navDirection
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -65,6 +66,7 @@ describe('useAppBoot', () => {
     labelProjectName = ref(null)
     liveChatProjectName = ref(null)
     pushedView = ref('chat')
+    chatOpen = ref(false)
     showProfile = ref(true)
     navDirection = ref('back')
   })
@@ -77,7 +79,7 @@ describe('useAppBoot', () => {
   function mount() {
     const mounted = mountComposable(() => useAppBoot(
       currentUserProfile, currentUserRole, labelProjectName, liveChatProjectName,
-      pushedView, showProfile, navDirection
+      pushedView, chatOpen, showProfile, navDirection
     ))
     unmount = mounted.unmount
     return mounted.result
@@ -305,7 +307,11 @@ describe('useAppBoot', () => {
       s.startBootSequence()
       await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
 
-      expect(pushedView.value).toBe('chat')
+      // "Pushed straight into chat" is chatOpen, a separate flag from
+      // pushedView (App.vue's own string enum for the *other* pushed
+      // views — 'edit'/'label'/'manageUsers'/'appStore' — 'chat' was
+      // never one of its values).
+      expect(chatOpen.value).toBe(true)
       expect(liveChatProjectName.value).toBe('shared-project')
       expect(loadMessages).toHaveBeenCalled()
     })

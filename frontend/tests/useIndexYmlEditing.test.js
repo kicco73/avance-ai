@@ -232,7 +232,13 @@ describe('useIndexYmlEditing', () => {
     expect(selectedGraphElement.value).toEqual(selection)
   })
 
-  describe('handleReorderAction', () => {
+  // handleReorderAction no longer lives on this composable — action
+  // reordering (putActionOrder) moved into ActionsOrderDialog.vue, which
+  // owns selectedStateKey/props.stateName itself and calls the API
+  // directly (see its own template). Skipped rather than deleted so the
+  // missing coverage stays visible: no dedicated test file for
+  // ActionsOrderDialog.vue exists yet to have inherited these two cases.
+  describe.skip('handleReorderAction (moved to ActionsOrderDialog.vue)', () => {
     it('does nothing without a selected state', async () => {
       selectedStateKey.value = null
       await s.handleReorderAction({ actionName: 'go', position: 2 })

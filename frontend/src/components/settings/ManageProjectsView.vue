@@ -482,6 +482,11 @@ defineExpose({ refresh: load })
                     <span class="project-card-title">{{ projectTitle(row.id) }}</span>
                     <span v-if="row.broken?.published" class="project-card-broken" :title="row.broken.published">broken</span>
                     <span v-if="row.broken?.draft" class="project-card-draft-broken" :title="row.broken.draft">draft broken</span>
+                    <span
+                      v-if="row.build_warnings?.length"
+                      class="project-card-build-warnings"
+                      :title="row.build_warnings.join('\n')"
+                    >{{ row.build_warnings.length }} warning{{ row.build_warnings.length === 1 ? '' : 's' }}</span>
                   </span>
                   <span v-if="projectDescription(row.id)" class="project-card-desc">{{ projectDescription(row.id) }}</span>
                 </div>
@@ -949,7 +954,8 @@ defineExpose({ refresh: load })
 }
 
 .project-card-broken,
-.project-card-draft-broken {
+.project-card-draft-broken,
+.project-card-build-warnings {
   flex-shrink: 0;
   padding: 0.05rem 0.4rem;
   border-radius: 999px;
@@ -963,7 +969,8 @@ defineExpose({ refresh: load })
   color: #c0392b;
 }
 
-.project-card-draft-broken {
+.project-card-draft-broken,
+.project-card-build-warnings {
   background: #fdf1e3;
   color: #b06a00;
 }

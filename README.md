@@ -22,7 +22,8 @@ frontend/   Vue 3 SPA (Vite) — chat window, session panel, and an "Edit
 backend/
   src/      FastAPI app.
     main.py                 entrypoint: wires everything below, exposes
-                             the REST API (and an optional /ws/chat socket)
+                             the REST API and a shared /ws/notifications
+                             socket (chat turns still go over REST/SSE)
     controller.py            composition root — merges the 4 screen-scoped
                              controllers below onto one router
     controllers/             every REST route, one file per FE screen
@@ -119,12 +120,6 @@ secrets). Top-level sections:
   `drop` recreates every table from scratch, losing all data. Both
   `upgrade` and `drop` first save an automatic timestamped backup copy
   of the database file next to the original.
-- **`chat-service.transport`** — `"rest"` or `"websocket"`. REST
-  (`POST /api/chat/messages`) returns the full reply in one response;
-  `websocket` (`/ws/chat`, only registered when selected) streams it
-  chunk-by-chunk and pushes retry/backoff status frames live instead of
-  the client polling for them. Either way, the turn logic itself
-  (`ChatService.process_turn`) is identical.
 - **`chat-service.input-token-budget-per-turn`** — optional, defaults
   to `16000`. Caps how much of a session's own message history a turn's
   prompt can carry: walking backward from the latest message, as many
@@ -193,7 +188,7 @@ request-body field:
 | Project files | `GET /api/projects/{project_id}/files(/{file})`, `PUT/DELETE /api/projects/{project_id}/files/{file}` — the "Edit project" view's file explorer |
 | Settings | `GET/POST /api/settings/backup` (the whole database, every project and every user's sessions, as a single restorable `.sqlite` file), `GET /api/settings/projects/runtime-status` |
 | Status | `GET /api/state` |
-| Chat (optional) | `WS /ws/chat` — only when `chat-service.transport: websocket` |
+| Notifications | `WS /ws/notifications` — one shared, always-on push channel per logged-in user (on-enter notifications, test-run progress, project health, cross-project wake-ups); chat turns themselves still go over REST/SSE above |
 
 Every error response shares one shape, `{"error": {"message", "detail"}}`
 (see `error_handlers.py`).

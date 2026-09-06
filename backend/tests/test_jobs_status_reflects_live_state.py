@@ -1,18 +1,15 @@
 """Regression coverage for the "reconnecting to Test shows stale/idle
-state" problem: there is no separate REST snapshot endpoint any more (see
-LastStatusBroadcaster) — get_test_events sends the broadcaster's own
-recorded last-message-per-key snapshot as the connection's first events,
-then continues with the live stream. One broadcaster records state and
-forwards to the real SSE-facing one, instead of a second, separately
-re-derived computation (job.status()/the DB) that could disagree with it.
+state" problem: get_test_status serves LastStatusBroadcaster's own
+recorded last-message-per-key snapshot directly — one broadcaster records
+state and forwards to the /ws/notifications-facing one, instead of a
+second, separately re-derived computation (job.status()/the DB) that
+could disagree with it.
 """
 from __future__ import annotations
 
-import json
 import threading
 import time
 
-import httpx
 import pytest
 
 from jobs import CancelableJob
@@ -81,32 +78,18 @@ def test_last_status_broadcaster_clear_and_forget():
     assert broadcaster.snapshot() == []
 
 
-def test_get_test_events_sends_the_broadcaster_snapshot_before_live_updates(client, hello_project, live_server):
-    """A job that already finished before anyone connected must still be
-    visible the moment a new connection opens — the whole point of the
-    snapshot-then-live-stream shape. Needs `live_server` (a real socket),
-    not `client`: this endpoint only ends on client disconnect, which
-    Starlette's in-process TestClient can never observe (see
-    live_server's own docstring in conftest.py)."""
+def test_get_test_status_returns_the_broadcaster_snapshot(client, hello_project):
+    """A job that already finished before anyone asked must still be
+    visible in the very next snapshot read — the whole point of
+    LastStatusBroadcaster recording rather than only ever forwarding."""
     test_service = client.app.state.test_service
     test_service._status_broadcaster.push(
         "user", {"key": "batch:root", "job_status": "completed", "queue_status": "exited", "error": None},
     )
 
-    # The snapshot burst also carries hello_project's own "upload" job
-    # status (broadcast through this same test_event_broadcaster) ahead
-    # of "batch:root" — collect a few lines rather than stopping at the
-    # first, so a snapshot ordering this test doesn't control can't fail it.
-    messages = []
-    with httpx.Client(base_url=live_server, timeout=5.0) as real_client:
-        with real_client.stream("GET", f"/api/projects/{hello_project}/test-events") as resp:
-            for line in resp.iter_lines():
-                if line.startswith("data: "):
-                    messages.append(json.loads(line[len("data: "):]))
-                    if any(m.get("key") == "batch:root" for m in messages) or len(messages) >= 5:
-                        break
+    events = client.get(f"/api/projects/{hello_project}/test-status").json()["events"]
 
-    assert any(m.get("key") == "batch:root" and m.get("job_status") == "completed" for m in messages), messages
+    assert any(m.get("key") == "batch:root" and m.get("job_status") == "completed" for m in events), events
 
 
 class _BlockingCancelableJob(CancelableJob):

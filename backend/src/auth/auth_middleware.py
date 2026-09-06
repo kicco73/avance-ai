@@ -3,10 +3,11 @@ every HTTP route except the small allowlist below — no per-route
 Depends(), so every existing controller method stays untouched.
 
 Only covers HTTP: BaseHTTPMiddleware never sees a websocket handshake at
-all (Starlette dispatches those on a separate ASGI path). /ws/chat's own
-equivalent check lives in chat/ws_adapter.py's WsAdapter.chat_loop,
-before websocket.accept() — same AuthService.verify_token() call, same
-cookie, just triggered from a different entrypoint.
+all (Starlette dispatches those on a separate ASGI path). /ws/notifications's
+own equivalent check lives in chat/ws_notifications.py's
+WsNotifications.notification_loop, before websocket.accept() — same
+AuthService.verify_token() call, same cookie, just triggered from a
+different entrypoint.
 
 Reads the AuthService off `request.app.state.auth_service` rather than a
 constructor argument: add_middleware() runs synchronously in create_app(),

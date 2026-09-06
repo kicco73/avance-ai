@@ -1,9 +1,8 @@
-"""SseChatTurn.on_metadata — the metadata-key allowlist an SSE-driven
-turn (WhatsApp, test replay) forwards onto its own event queue as
-`event: <type>\\ndata: <json>\\n\\n` (see chat/sse_turn.py's own
-_stream). The WS-adapter equivalent (chat/ws_adapter.py) is off-limits
-to edit — this is the one transport this event vocabulary can actually
-be extended through today.
+"""SseChatTurn.on_metadata — the metadata-key allowlist a chat turn
+forwards onto its own event queue as `event: <type>\\ndata: <json>\\n\\n`
+(see chat/sse_turn.py's own _stream). SSE is chat's only transport now —
+ws_notifications.py is a push-only notification channel with no turn traffic
+of its own.
 """
 from __future__ import annotations
 
@@ -45,7 +44,7 @@ async def test_a_tool_start_event_forwards_the_structured_fields_plus_status_tex
     await turn.on_metadata("tool", payload)
 
     [(event, data)] = await _drain(turn)
-    assert event == "tool_call"
+    assert event == "tool"
     assert data == {**payload, "status_text": 'Searching Flights for "VY3003"…'}
 
 
@@ -55,4 +54,4 @@ async def test_a_tool_result_event_forwards_the_full_payload_with_no_status_text
 
     await turn.on_metadata("tool", payload)
 
-    assert await _drain(turn) == [("tool_result", payload)]
+    assert await _drain(turn) == [("tool", payload)]
