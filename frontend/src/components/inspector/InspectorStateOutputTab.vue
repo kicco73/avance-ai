@@ -51,11 +51,14 @@ async function deleteOutputKey(name) {
 
 watch(() => props.stateData, loadOutputKeys, { deep: true, immediate: true })
 
-watch(() => props.recentlyAddedKey, (key) => {
-  if (key?.startsWith('output-key:')) {
-    loadOutputKeys()
-  }
+watch(() => props.recentlyAddedKey, async (key) => {
+  if (!key?.startsWith('output-key:')) return
+  // Force a re-read of stateData after YAML changes
+  await new Promise(resolve => setTimeout(resolve, 100))
+  loadOutputKeys()
 })
+
+defineExpose({ loadOutputKeys })
 </script>
 
 <template>
