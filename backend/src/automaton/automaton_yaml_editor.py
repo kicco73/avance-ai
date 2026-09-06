@@ -548,6 +548,7 @@ class AutomatonYamlEditor:
         output = self._state(state_name).setdefault("output", CommentedMap())
         name = self._unique_signal_name("new_output_key", set(output.keys()))
         output[name] = CommentedMap()
+        output[name]["ai-definition"] = "The output field value."
         return self._output_key_payload(state_name, name)
 
     def set_output_key_field(self, state_name: str, name: str, field: str, value) -> OutputKeyPayload:
