@@ -2,11 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, ref } from 'vue'
 
 vi.mock('../src/api.js', () => ({
-  createTestEventsSource: vi.fn(),
+  deleteAllTestJobs: vi.fn(),
   deleteTestJob: vi.fn(),
   deleteTests: vi.fn(),
   getAggregateResult: vi.fn(),
   getTests: vi.fn(),
+  getTestStatus: vi.fn(),
   getJobsStatus: vi.fn(),
   postTest: vi.fn(),
   postRootAggregation: vi.fn(),
@@ -21,13 +22,17 @@ vi.mock('../src/api.js', () => ({
 vi.mock('../src/dialogStore.js', () => ({
   confirmDialog: vi.fn(),
 }))
+vi.mock('../src/chatClient.js', () => ({
+  onTestUpdate: vi.fn(),
+}))
 
 import {
-  createTestEventsSource, deleteTestJob, deleteTests, getAggregateResult, getTests, getJobsStatus,
+  deleteAllTestJobs, deleteTestJob, deleteTests, getAggregateResult, getTests, getTestStatus, getJobsStatus,
   postTest, postRootAggregation, postSessionsRun, postSignalTest, postSignalsAggregation,
   postStateTest, postStatesAggregation, postUserSessionsRun, postUsersAggregation,
 } from '../src/api.js'
 import { confirmDialog } from '../src/dialogStore.js'
+import { onTestUpdate } from '../src/chatClient.js'
 import { useTestExecutionTree } from '../src/composables/useTestExecutionTree.js'
 
 function mountComposable(setup) {
@@ -38,16 +43,12 @@ function mountComposable(setup) {
   return { result, unmount: () => app.unmount() }
 }
 
-function fakeEventSource() {
-  return { onmessage: null, close: vi.fn() }
-}
-
 describe('useTestExecutionTree', () => {
   let unmount, emit, strategy, sessions, projectSignals
 
   beforeEach(() => {
     vi.clearAllMocks()
-    createTestEventsSource.mockReturnValue(fakeEventSource())
+    getTestStatus.mockResolvedValue({ events: [] })
     getJobsStatus.mockResolvedValue({ sessions: [], aggregates: [] })
     emit = vi.fn()
     strategy = ref('batch')
@@ -66,31 +67,43 @@ describe('useTestExecutionTree', () => {
   }
 
   describe('onMounted wiring', () => {
-    it('selects root, hydrates job status, and connects the SSE source', () => {
+    it('selects root and subscribes to live test updates before reading the snapshot', () => {
       const s = mount()
 
       expect(s.selectedNodeId.value).toBe('root')
       expect(emit).toHaveBeenCalledWith('select', 'root')
-      expect(getJobsStatus).toHaveBeenCalledWith('proj', 'batch')
-      expect(createTestEventsSource).toHaveBeenCalledWith('proj')
+      expect(getTestStatus).toHaveBeenCalledWith('proj')
+      expect(onTestUpdate).toHaveBeenCalledWith(s.handleTestEvent)
     })
 
-    it('routes incoming SSE messages through handleTestEvent', () => {
-      const es = fakeEventSource()
-      createTestEventsSource.mockReturnValue(es)
+    it('seeds nodeEvents from the snapshot returned by getTestStatus', async () => {
+      getTestStatus.mockResolvedValue({
+        events: [{ key: 'batch:state:greeting', job_status: 'running', queue_status: 'running' }],
+      })
       const s = mount()
 
-      es.onmessage({ data: JSON.stringify({ key: 'batch:state:greeting', job_status: 'running', queue_status: 'running' }) })
-
-      expect(s.currentStrategyStatuses.value['state:greeting']).toBe('running')
+      await vi.waitFor(() => expect(s.currentStrategyStatuses.value['state:greeting']).toBe('running'))
     })
 
-    it('closes the event source on unmount', () => {
-      const es = fakeEventSource()
-      createTestEventsSource.mockReturnValue(es)
+    it('a live update landing while the snapshot is still in flight is not overwritten by the (now stale) snapshot value for that key', async () => {
+      let resolveSnapshot
+      getTestStatus.mockReturnValue(new Promise((resolve) => { resolveSnapshot = resolve }))
+      const s = mount()
+      const liveHandler = onTestUpdate.mock.calls[0][0]
+
+      liveHandler({ key: 'batch:state:greeting', job_status: 'completed', queue_status: 'exited' })
+      resolveSnapshot({
+        events: [{ key: 'batch:state:greeting', job_status: 'running', queue_status: 'running' }],
+      })
+      await vi.waitFor(() => expect(getTestStatus).toHaveBeenCalled())
+
+      expect(s.currentStrategyStatuses.value['state:greeting']).toBe('ok')
+    })
+
+    it('unsubscribes on unmount', () => {
       const mounted = mountComposable(() => useTestExecutionTree('proj', strategy, sessions, projectSignals, emit))
       mounted.unmount()
-      expect(es.close).toHaveBeenCalled()
+      expect(onTestUpdate).toHaveBeenLastCalledWith(null)
     })
   })
 
@@ -127,7 +140,14 @@ describe('useTestExecutionTree', () => {
     })
   })
 
-  describe('rootStatus / rootBusy / rootButtonState / showCancelRoot', () => {
+  // rootStatus/rootBusy/rootButtonState/showCancelRoot/isHoveringRoot are
+  // gone from the composable — hover-to-cancel on the root button was
+  // replaced by an unconditional "busy click cancels everything" (see
+  // onActivateRoot below), driven directly off the generic
+  // currentStrategyBusy the template already reads (ProjectTestPanel.vue's
+  // own .tests-panel-root-btn-busy/-idle classes). Skipped rather than
+  // deleted so the removed feature stays visible in the test file's own history.
+  describe.skip('rootStatus / rootBusy / rootButtonState / showCancelRoot (removed — see currentStrategyBusy)', () => {
     it('idle by default, busy while pending/ready/running/paused, "running" button state only while actually running', () => {
       const s = mount()
       expect(s.rootStatus.value).toBe('idle')
@@ -202,7 +222,12 @@ describe('useTestExecutionTree', () => {
     })
   })
 
-  describe('hydrateJobsStatus', () => {
+  // hydrateJobsStatus/getJobsStatus don't exist any more — replaced by
+  // getTestStatus's one-shot snapshot + chatClient.js's onTestUpdate live
+  // subscription (see the 'onMounted wiring' describe above, already
+  // covering the new mechanism). Skipped rather than deleted so the
+  // removed function stays visible in the test file's own history.
+  describe.skip('hydrateJobsStatus (removed — see onMounted wiring / getTestStatus)', () => {
     it('seeds completed sessions and aggregates, fetching results for the aggregates', async () => {
       getJobsStatus.mockResolvedValue({
         sessions: [{ session_id: 1, status: 'ok' }],
@@ -271,24 +296,16 @@ describe('useTestExecutionTree', () => {
       expect(deleteTestJob).toHaveBeenCalledWith('proj', 'batch:state:greeting')
     })
 
-    it('onActivateRoot cancels when hovering a busy root', () => {
-      const s = mount()
-      s.handleTestEvent({ key: 'batch:root', job_status: null, queue_status: 'running' })
-      s.isHoveringRoot.value = true
-
-      s.onActivateRoot()
-
-      expect(deleteTestJob).toHaveBeenCalledWith('proj', 'batch:root')
-      expect(postRootAggregation).not.toHaveBeenCalled()
-    })
-
-    it('onActivateRoot does nothing while busy and not hovering', () => {
+    it('onActivateRoot cancels every job when busy, no hover check any more', () => {
+      // Hover-to-cancel is gone (see the skipped rootStatus/... describe
+      // above) — a click while busy unconditionally cancels the whole
+      // batch via deleteAllTestJobs, never the single root job.
       const s = mount()
       s.handleTestEvent({ key: 'batch:root', job_status: null, queue_status: 'running' })
 
       s.onActivateRoot()
 
-      expect(deleteTestJob).not.toHaveBeenCalled()
+      expect(deleteAllTestJobs).toHaveBeenCalledWith('proj')
       expect(postRootAggregation).not.toHaveBeenCalled()
     })
 

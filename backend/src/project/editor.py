@@ -515,7 +515,8 @@ class ProjectEditor:
         return f"{SOURCES_DIR}/{source_name}.csv"
 
     async def add_source(
-        self, project_id: str, commit: CommitCallback, name_hint: str | None = None, content: bytes = b""
+        self, project_id: str, commit: CommitCallback, name_hint: str | None = None, content: bytes = b"",
+        driver: str = "avance",
     ) -> SourcePayload:
         """A source's own archive is created empty right alongside it —
         `url` is never left unconfigured (contrast env keys/signals, which
@@ -523,9 +524,19 @@ class ProjectEditor:
         `url`'s own archive to already exist, so the archive write happens
         first, inside the same index.yml edit `operation`, before
         serialize()/put_project_file below revalidates the whole project
-        against it."""
+        against it. `driver`: 'avance' (default) — a fresh `sources/<id>.csv`
+        archive, edited via SourceContentPanel.vue. 'env' — `url: avance:env`
+        instead, no archive at all (an avance:env source has no file of its
+        own — see tracking.sources.avance_env); the design view's own
+        Source card shows its exported env keys read-only instead of the
+        CSV editor. Declaring one with no exported env key yet is a real
+        build error the very next save surfaces (AutomatonBuilder.
+        _validate_env_sources) — same as any other not-yet-valid edit,
+        never specially prevented here."""
         def operation(editor: AutomatonYamlEditor) -> SourcePayload:
             payload = editor.add_source(name_hint)
+            if driver == "env":
+                return editor.set_source_field(payload["name"], "url", "avance:env")
             archive_name = self._source_archive(payload["name"])
             self._db.save_project_file(Session().user, project_id, archive_name, content, "text/csv")
             return editor.set_source_field(payload["name"], "url", f"avance:{archive_name}")

@@ -449,10 +449,12 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @post("/api/projects/{project_id}/sources", role="admin")
-    async def add_source(self, project_id: str, request: Request, file_name: str | None = None):
+    async def add_source(self, project_id: str, request: Request, file_name: str | None = None, driver: str = "avance"):
         content = await request.body()
         try:
-            return await self.project_service.add_source(project_id, self._activate_project, file_name, content)
+            return await self.project_service.add_source(
+                project_id, self._activate_project, file_name, content, driver=driver,
+            )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except AutomatonBuildError:

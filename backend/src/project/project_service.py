@@ -300,9 +300,10 @@ class ProjectService(object):
         await self._editor.delete_env_key(project_id, env_key_name, commit)
 
     async def add_source(
-        self, project_id: str, commit: CommitCallback, name_hint: str | None = None, content: bytes = b""
+        self, project_id: str, commit: CommitCallback, name_hint: str | None = None, content: bytes = b"",
+        driver: str = "avance",
     ) -> SourcePayload:
-        return await self._editor.add_source(project_id, commit, name_hint, content)
+        return await self._editor.add_source(project_id, commit, name_hint, content, driver=driver)
 
     async def set_source_field(
         self, project_id: str, source_name: str, field: str, value, commit: CommitCallback
