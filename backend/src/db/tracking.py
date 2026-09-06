@@ -267,20 +267,27 @@ class TrackingMixin:
         row = Tracking.create(session=session_id, action_env=json.dumps(action_env), origin=origin)
         return row.id
 
-    def link_tool_env_writes_to_message(self, session_id: int, message_id: int) -> None:
+    def link_tool_env_writes_to_message(self, session_id: int, message_id: int, since: datetime | None = None) -> None:
         """Binds every action_env row the model wrote this turn (origin
         'tool', see set_action_env) and not yet linked to any message to
         `message_id` — the turn's own assistant message, which doesn't
         exist yet when the write happens mid-generation. Same a-posteriori
-        shape record_tool_calls' own message link has."""
-        (
+        shape record_tool_calls' own message link has. `since` (the
+        turn's own user message timestamp): narrows the match to rows
+        created at or after it, so a tool write that somehow never got
+        linked in some earlier turn is never silently swept up into this
+        one's — 'not yet linked' alone identifies *a* stale row, not
+        necessarily *this turn's* row."""
+        query = (
             Tracking.update(message=message_id)
             .where(
                 (Tracking.session == session_id) & (Tracking.origin == 'tool')
                 & Tracking.action_env.is_null(False) & Tracking.message.is_null(True)
             )
-            .execute()
         )
+        if since is not None:
+            query = query.where(Tracking.timestamp >= since)
+        query.execute()
 
     def record_tool_calls(
         self, session_id: int, tool_calls: list[dict], message_id: int | None = None, timestamp: datetime | None = None,
