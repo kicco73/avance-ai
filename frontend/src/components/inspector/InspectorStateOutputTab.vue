@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { getProjectMetadata } from '../../api.js'
-import CardMenu from '../CardMenu.vue'
+import CardMenu from './CardMenu.vue'
 
 const props = defineProps({
   projectId: { type: String, required: true },
