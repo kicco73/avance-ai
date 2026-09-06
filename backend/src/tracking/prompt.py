@@ -223,6 +223,36 @@ class ReactionPrompt(Prompt):
 		return raw.strip() or None
 
 
+EMBED_OUTPUT_TAG_PROMPT = """
+Definition of output fields:
+	- a JSON object, formatted as valid JSON text (e.g. "{\\"rating\\": 4.5, \\"pnr\\": \\"ABC123\\"}").
+	- fill in each output field declared in this state with the structured value the model should produce.
+	- leave empty ({}) if no output fields apply to this turn.
+
+Always fill in the 'output' field of your structured response:
+"""
+
+
+class OutputPrompt(Prompt):
+	channel = "output"
+	definition = EMBED_OUTPUT_TAG_PROMPT
+	schema_description = "JSON object with output field values, rendered as text."
+
+	def __init__(self, output_definition: str | None) -> None:
+		super().__init__(output_definition or "")
+
+	def decode(self, raw: str) -> dict[str, Any]:
+		output: dict[str, Any] = {}
+		if not raw:
+			return output
+		try:
+			output = json.loads(raw) or {}
+			assert isinstance(output, dict)
+		except Exception as exc:
+			logger.error(f"{exc} -- raw output: {raw}")
+		return output
+
+
 EMBED_SIGNAL_TAG_PROMPT = """
 Definition of signals metadata:
 	- a string containing a JSON object, formatted as valid JSON text (e.g. "{\"mood\": 50.2}"),

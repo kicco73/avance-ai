@@ -16,9 +16,10 @@ class TriggerExpressionAnalyzer:
     # has no entry in _NAMESPACE_PATHS below since automaton.<project>.state/
     # env.<key> is a dynamic, per-project chain static-tuple matching can't
     # express — same reason `source.<name>.<method>` is never matched through
-    # here either (see source_refs, matched directly instead).
+    # here either (see source_refs, matched directly instead). `output` is a
+    # per-state namespace, validated separately (see AutomatonValidator.check_state).
     RESERVED_NAMESPACES = (
-        "signal", "env", "session", "user", "source", "actuator", "attachment", "metric", "automaton", "datetime",
+        "signal", "env", "output", "session", "user", "source", "actuator", "attachment", "metric", "automaton", "datetime",
     )
 
     # Dotted sub-namespaces nested one level under a reserved namespace above —

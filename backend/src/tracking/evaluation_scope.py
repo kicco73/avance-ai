@@ -65,10 +65,12 @@ class EvaluationScopeBuilder(object):
 
     def build(
         self, automaton: Automaton, state_key: str, raw_signal_values: dict[str, Any] | None,
-        session_id: int | None = None,
+        session_id: int | None = None, output_values: dict[str, Any] | None = None,
     ) -> EvaluationScope:
         """`raw_signal_values` is always re-coerced against every declared
-        signal, never assumed pre-validated. env/session/user/source/
+        signal, never assumed pre-validated. `output_values` is a transient,
+        per-turn structured output dict (consumed by trigger evaluation and
+        action.env expressions, then discarded). env/session/user/source/
         attachment/metric are cheap, lazy proxies included unconditionally
         (attachment.read is only ever reachable from on-enter — see
         IdentifierRegistry.TRIGGER_SCOPE_EXCLUDES — but nothing stops it
@@ -91,6 +93,7 @@ class EvaluationScopeBuilder(object):
         scope: dict[str, Any] = {
             "signal": signal_values,
             "env": self._env.action_set(),
+            "output": output_values or {},
             "session": self._session,
             "user": self._user.as_dict(),
             "source": source_namespace,

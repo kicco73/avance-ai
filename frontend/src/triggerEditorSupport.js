@@ -18,10 +18,11 @@ const AUTOMATON_EMPTY_HINT =
 
 // Fixed per-namespace colors — frontend-only, the identifier registry
 // never transports styling. "session.metric" gets its own distinct
-// color, not session's — it's its own registry key.
+// color, not session's — it's its own registry key. "output" is state-scoped.
 export const NAMESPACE_COLORS = {
   signal: '#1565c0',
   env: '#00838f',
+  output: '#004d40',
   session: '#6a1b9a',
   'session.metric': '#ad1457',
   user: '#d84315',
@@ -52,14 +53,14 @@ export function excludingNamespaces(registry, excluded) {
 }
 
 export function isProxyNamespace(namespace) {
-  return namespace !== 'signal' && namespace !== 'env' && namespace !== 'user' && namespace !== 'automaton' &&
-    namespace !== 'datetime.timezone' && !namespace.startsWith('automaton.')
+  return namespace !== 'signal' && namespace !== 'env' && namespace !== 'output' && namespace !== 'user' &&
+    namespace !== 'automaton' && namespace !== 'datetime.timezone' && !namespace.startsWith('automaton.')
 }
 
 // Matches a complete namespace reference (e.g. "signal.mood") anywhere
 // in the text — group 1 is the namespace path, used to look up its color
 // (NAMESPACE_COLORS). Always construct a fresh RegExp — /g carries state via lastIndex.
-export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|session(?:\\.metric)?|user|source|actuator|metric|automaton|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'
+export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|output|session(?:\\.metric)?|user|source|actuator|metric|automaton|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'
 
 export function namespaceOf(referenceText) {
   const match = new RegExp(`^${REFERENCE_PATTERN_SOURCE}`).exec(referenceText)

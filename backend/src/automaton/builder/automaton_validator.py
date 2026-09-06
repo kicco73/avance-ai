@@ -185,6 +185,16 @@ class AutomatonValidator:
     ) -> None:
         registry_without_actuator = IdentifierRegistry.for_triggers(registry)
         registry_without_session = IdentifierRegistry.for_actuators(registry)
+        # Augment registry with this state's output keys for validation of both
+        # trigger and env expressions in the state's actions.
+        registry_with_output = {
+            **registry_without_actuator,
+            "output": {k.name: k.ai_definition or "" for k in state.output_keys.values()}
+        }
+        registry_with_output_no_actuator_no_session = {
+            **registry_without_session,
+            "output": registry_with_output["output"]
+        }
         self._cursor.at(state.line, f"states.{key}")
         self.validate_state_sources(state, sources, env_keys)
         for action in state.actions:
@@ -197,7 +207,7 @@ class AutomatonValidator:
                 )
             if action.trigger:
                 self.validate_namespaced_expression(
-                    action.trigger, f"{action_context}: trigger", registry_without_actuator, sources,
+                    action.trigger, f"{action_context}: trigger", registry_with_output, sources,
                 )
                 self.validate_trigger_types(action.trigger, f"{action_context}: trigger")
                 referenced_projects = TriggerExpressionAnalyzer.automaton_project_refs(action.trigger)
@@ -220,11 +230,11 @@ class AutomatonValidator:
                         )
                     self.validate_namespaced_expression(
                         expression, f"{action_context}: env expression for '{env_key}'",
-                        registry_without_actuator, sources,
+                        registry_with_output, sources,
                     )
                     self.validate_env_key_type(env_keys[env_key], expression, action_context)
             if action.on_enter:
-                self.validate_on_enter(action.on_enter, action_context, registry_without_session, sources, all_archives)
+                self.validate_on_enter(action.on_enter, action_context, registry_with_output_no_actuator_no_session, sources, all_archives)
 
     def validate_state_sources(self, state: State, sources: dict[str, Source], env_keys: dict[str, EnvKey]) -> None:
         by_field = {

@@ -27,6 +27,7 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 			self.out.tracking_id = self._tracking_engine.apply_transition(
 				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
 				origin='trigger', username=Session().user, project_id=self.user.project_id,
+				output_values=self.metadata.output,
 			)
 
 		return self.out

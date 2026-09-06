@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 from .env import Env
 from .env_prompt_block import EnvPromptBlock
 from .evaluation_scope import EvaluationScopeBuilder
-from .prompt import AudioPrompt, MemoryPrompt, Prompt, ReactionPrompt, SignalsPrompt, TextPrompt, TranslatePrompt
+from .prompt import AudioPrompt, MemoryPrompt, OutputPrompt, Prompt, ReactionPrompt, SignalsPrompt, TextPrompt, TranslatePrompt
 from .priming import build_priming_messages
 from .sources import SourceNamespace, ToolSet
 from .tracking_engine import DbTrackingSink, TrackingEngine
@@ -47,6 +47,10 @@ class Metadata:
 	# tool, mid-generation (see tracking.sources.avance_env).
 	memory: dict[str, str]
 	signals: dict[str, float]
+	# The reply's own transient `output` field (state-scoped structured values) —
+	# available to trigger evaluation and action.env expressions in this same
+	# turn, then discarded (never persisted except where action.env copies it).
+	output: dict[str, Any] = field(default_factory=dict)
 	audio: str | None = None
 	chunk: str | None = None
 	# The bot's own reaction to the user's message this turn — unlike
@@ -247,9 +251,13 @@ class TrackingProcessor(object):
 		structurally can't emit a field outside the schema it was given,
 		so this branch is simply unreachable there, same reasoning
 		already relied on for 'reaction'/'memory'/'audio' being a strict
-		superset of what any one call actually requests."""
+		superset of what any one call actually requests. 'output' arrives
+		before 'signals' (see Prompt.chain ordering) and is stored for
+		trigger/env evaluation in _resolve_signals."""
 		rv = value
-		if key == 'signals':
+		if key == 'output':
+			rv = self.metadata.output = value or {}
+		elif key == 'signals':
 			rv = value
 			self._resolve_signals(value)
 		elif key == 'memory':
@@ -281,10 +289,14 @@ class TrackingProcessor(object):
 		whose triggers reference only metric.*/env.*/source.* is evaluated
 		every chat turn all the same, exactly as one with signal-backed
 		triggers; a signal-backed trigger evaluated against the empty set
-		simply short-circuits to false (see Automaton._eval_trigger)."""
+		simply short-circuits to false (see Automaton._eval_trigger). At this
+		point (when signals arrive in streaming), self.metadata.output is
+		already populated from the earlier 'output' field arrival (see
+		on_receiving_metadata's ordering)."""
 		self.metadata.signals = signal_values
 		self.out.action = self._tracking_engine.evaluate_triggered_action(
 			self.user.automaton, self.user.state, self.metadata.signals, session_id=self.user.session_id,
+			output_values=self.metadata.output,
 		)
 		if self.out.action:
 			self.out.state = self.user.automaton.get_state(self.out.action.target)
@@ -299,11 +311,11 @@ class TrackingProcessor(object):
 		return bool(self.metadata.signals) or self.out.action is not None
 
 	def generate_reply(self, state: State, on_metadata: MetadataCallback) -> AsyncIterator[str]:
-		base_prompt, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
-		prompt = self.build_turn_prompt(state, base_prompt, signal_definition, reaction_definition)
+		base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
+		prompt = self.build_turn_prompt(state, base_prompt, output_definition, signal_definition, reaction_definition)
 		env_block = EnvPromptBlock.for_state(self.env, self.user.automaton, state)
 		remaining_history_budget = self._enforce_input_budget(
-			base_prompt, signal_definition, reaction_definition, turn_attachments, prompt, env_block,
+			base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments, prompt, env_block,
 		)
 		chat_history = self._build_chat_history(turn_attachments, remaining_history_budget)
 
@@ -314,7 +326,7 @@ class TrackingProcessor(object):
 		)
 
 	def _enforce_input_budget(
-		self, base_prompt: str, signal_definition: str | None, reaction_definition: str | None,
+		self, base_prompt: str, output_definition: str | None, signal_definition: str | None, reaction_definition: str | None,
 		turn_attachments: list, prompt: Prompt | None = None,
 		env_block: "EnvPromptBlock | None" = None,
 	) -> int | None:
@@ -393,11 +405,11 @@ class TrackingProcessor(object):
 		`env_block` is handed back rather than recomputed by the caller —
 		EnvPromptBlock.for_state reads through self.env/automaton, no
 		reason to do that twice for one regeneration call."""
-		base_prompt, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
+		base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
 		prompt = self.build_regeneration_prompt(state, base_prompt)
 		env_block = EnvPromptBlock.for_state(self.env, self.user.automaton, state)
 		remaining_history_budget = self._enforce_input_budget(
-			base_prompt, signal_definition, reaction_definition, turn_attachments, prompt, env_block,
+			base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments, prompt, env_block,
 		)
 		return base_prompt, self._build_chat_history(turn_attachments, remaining_history_budget), env_block
 
@@ -409,7 +421,7 @@ class TrackingProcessor(object):
 		)
 
 	def build_turn_prompt(
-		self, state: State, base_prompt: str, signal_definition: str | None, reaction_definition: str | None,
+		self, state: State, base_prompt: str, output_definition: str | None, signal_definition: str | None, reaction_definition: str | None,
 	) -> Prompt:
 		"""The full, gated Prompt for a reply generated in `state` —
 		whichever state this turn's own reply is actually about to be
@@ -418,7 +430,8 @@ class TrackingProcessor(object):
 		(the turn's own pre-transition state); that one path must pass
 		its own self.out.state instead: the gating below is about what's
 		triggerable/translatable from THAT state, not the one the turn
-		started in."""
+		started in. OutputPrompt is always first, before signals (so output
+		values are available to triggers when signals arrive)."""
 		has_to_evaluate_signals_before_ai_reply = not self.user.automaton.autotracking_on_ai_message
 		talk_enabled = self.talk_enabled and self.user.automaton.talk_enabled
 		logger.info(
@@ -429,21 +442,23 @@ class TrackingProcessor(object):
 		)
 		reactions_enabled = self.user.automaton.reactions_enabled_for(self.user.state)
 
+		output = OutputPrompt(output_definition) if state.output_keys else None
 		signals = SignalsPrompt(signal_definition) if self._evaluate_signals_for(state) else None
 		reaction = ReactionPrompt(reaction_definition) if reactions_enabled else None
 		audio = AudioPrompt() if talk_enabled else None
 		text = TextPrompt(base_prompt)
 		memory = MemoryPrompt(self.env)
 
-		# 'before' -> signals, reaction, audio, text, memory; 'after' ->
-		# audio, text, signals, reaction, memory — exactly the ordering a
-		# turn has always used, now expressed as Prompt.chain's own
-		# left-to-right composition order (any of signals/reaction/audio
-		# may be None, meaning "not active this turn").
+		# 'before' -> output, signals, reaction, audio, text, memory; 'after' ->
+		# audio, text, output, signals, reaction, memory — output always first
+		# to guarantee its values are available when signals arrive and triggers
+		# are evaluated. The rest of the ordering is exactly what a turn has
+		# always used, now expressed as Prompt.chain's own left-to-right
+		# composition order (any of signals/reaction/audio/output may be None).
 		if has_to_evaluate_signals_before_ai_reply:
-			prompt = Prompt.chain(signals, reaction, audio, text, memory)
+			prompt = Prompt.chain(output, signals, reaction, audio, text, memory)
 		else:
-			prompt = Prompt.chain(audio, text, signals, reaction, memory)
+			prompt = Prompt.chain(audio, text, output, signals, reaction, memory)
 		return self._append_translate_prompt(prompt, state)
 
 	def _evaluate_signals_for(self, state: State) -> bool:
@@ -497,16 +512,17 @@ class TrackingProcessor(object):
 			if (a.trigger is None or not auto_tracking_enabled) and a.ui_button
 		}
 
-	def __build_turn_prompt_parts(self, automaton: Automaton, state: State) -> tuple[str, str | None, str | None, list]:
+	def __build_turn_prompt_parts(self, automaton: Automaton, state: State) -> tuple[str, str | None, str | None, str | None, list]:
 
 		if state.fixed_message:
 			logger.warning("Translating fixed_message for state '%s'.", state.key)
-			return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), None, None, []
+			return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), None, None, None, []
 
 		# which action fires from here.
 		# Pinned to THIS turn's own already-resolved automaton (never
 		# whatever project happens to be "active" right now, which need
 		# not be the same one this session actually belongs to).
+		output_definition = self._build_output_definition(state)
 		signals = Signals(FixedProjectContext(automaton), self.db)
 		signal_names = automaton.triggerable_signal_names(state.key)
 		signal_definition = signals.get_definition(signal_names)
@@ -516,8 +532,16 @@ class TrackingProcessor(object):
 		reaction_definition = self._build_reaction_definition(automaton) if automaton.reactions_enabled_for(state) else None
 		base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"
 		return (
-			base_prompt, signal_definition, reaction_definition,
+			base_prompt, output_definition, signal_definition, reaction_definition,
 			list(automaton.general_attachments.values()) + list(state.attachments.values()),
+		)
+
+	@staticmethod
+	def _build_output_definition(state: State) -> str | None:
+		if not state.output_keys:
+			return None
+		return "- Definition of output fields:\n" + "\n\n".join(
+			f'\t- Output "{k.name}":\n{k.ai_definition}' for k in state.output_keys.values()
 		)
 
 	@staticmethod
@@ -586,10 +610,12 @@ def estimate_state_prompt(ai_service: AiService, automaton: Automaton, state: St
 	own per-state input-token estimate."""
 	if state.fixed_message:
 		base_prompt = FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message)
+		output_definition = None
 		signal_definition = None
 		reaction_definition = None
 		turn_attachments: list = []
 	else:
+		output_definition = TrackingProcessor._build_output_definition(state)
 		signals = Signals(FixedProjectContext(automaton), None)
 		signal_definition = signals.get_definition(automaton.triggerable_signal_names(state.key))
 		reaction_definition = (
@@ -604,18 +630,19 @@ def estimate_state_prompt(ai_service: AiService, automaton: Automaton, state: St
 	# for EnvPromptBlock.for_state below.
 	env = Env(action_set={key.name: key.value for key in automaton.env_keys})
 	has_to_evaluate_signals_before_ai_reply = not automaton.autotracking_on_ai_message
-	# Signals always included, unlike the live build_turn_prompt — matches
+	# Output and signals always included, unlike the live build_turn_prompt — matches
 	# today's implicit evaluate_signals=True default for this
-	# no-live-session estimate.
+	# no-live-session estimate. Output comes first to match live ordering.
+	output_prompt = OutputPrompt(output_definition) if state.output_keys else None
 	signals_prompt = SignalsPrompt(signal_definition)
 	reaction_prompt = ReactionPrompt(reaction_definition) if automaton.reactions_enabled_for(state) else None
 	audio_prompt = AudioPrompt() if automaton.talk_enabled else None
 	text_prompt = TextPrompt(base_prompt)
 	memory_prompt = MemoryPrompt(env)
 	if has_to_evaluate_signals_before_ai_reply:
-		prompt = Prompt.chain(signals_prompt, reaction_prompt, audio_prompt, text_prompt, memory_prompt)
+		prompt = Prompt.chain(output_prompt, signals_prompt, reaction_prompt, audio_prompt, text_prompt, memory_prompt)
 	else:
-		prompt = Prompt.chain(audio_prompt, text_prompt, signals_prompt, reaction_prompt, memory_prompt)
+		prompt = Prompt.chain(audio_prompt, text_prompt, output_prompt, signals_prompt, reaction_prompt, memory_prompt)
 
 	# Worst-case assumption for this state's translatable-buttons size
 	# contribution: auto_tracking_enabled=False, the branch that counts

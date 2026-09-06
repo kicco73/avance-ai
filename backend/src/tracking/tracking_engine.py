@@ -118,15 +118,19 @@ class TrackingEngine:
 
     def evaluate_triggered_action(
         self, automaton: Automaton, state: State, signal_values: dict, session_id: int | None = None,
+        output_values: dict | None = None,
     ) -> Action | None:
         """None whenever auto-tracking is frozen or `state` has nothing
         triggerable. Only decides which action fires from already-computed
         signals — never whether they get computed at all. `session_id`:
-        see EvaluationScopeBuilder.build."""
+        see EvaluationScopeBuilder.build. `output_values`: structured output
+        dict from this turn's AI generation, available in trigger expressions."""
         if not self._auto_tracking_enabled or not state.has_triggerable_actions:
             return None
 
-        scope = self._scope_builder.build(automaton, state.key, signal_values, session_id=session_id)
+        scope = self._scope_builder.build(
+            automaton, state.key, signal_values, session_id=session_id, output_values=output_values,
+        )
         return automaton.evaluate_triggers_action(state.key, scope)
 
     def apply_transition(
@@ -141,13 +145,15 @@ class TrackingEngine:
         origin: str,
         username: str | None = None,
         project_id: str | None = None,
+        output_values: dict | None = None,
     ) -> int:
         """`username`/`project_id`: optional, defaulting to None meaning
         "don't publish" — a test replay has no real user/project of
         its own and must never trigger a StateChanged/EnvChanged a wake-up
         handler could act on. Returns the tracking row id. The fired
         action's own on-enter is scheduled as a task by apply_action_env,
-        never returned: it reaches the browser over the websocket."""
+        never returned: it reaches the browser over the websocket.
+        `output_values`: structured output dict from this turn's AI generation."""
         if action is None:
             # No transition fired — just the evaluation itself is worth
             # keeping (see db.get_latest_signal_snapshot, Tracking.values).
@@ -158,7 +164,8 @@ class TrackingEngine:
         # history_cutoff's own timestamp.
 
         self.apply_action_env(
-            automaton, action, signal_values, state.key, username=username, project_id=project_id, session_id=session_id,
+            automaton, action, signal_values, state.key, username=username, project_id=project_id,
+            session_id=session_id, output_values=output_values,
         )
         return self.record_transition(
             automaton, state, action, signal_values, session_id, message_id,
@@ -217,6 +224,7 @@ class TrackingEngine:
         username: str | None = None,
         project_id: str | None = None,
         session_id: int | None = None,
+        output_values: dict | None = None,
     ) -> None:
         """Applies `action`'s own `env:` updates to the current scope —
         shared by both the auto-tracking and manual-action paths (the
@@ -227,10 +235,14 @@ class TrackingEngine:
         is a model call, send_mail a network call, and the browser gets
         whatever they produce over the websocket (see
         tracking/actuators/on_enter_task.py). `session_id`: the firing
-        session, for the OnEnterTask itself."""
+        session, for the OnEnterTask itself. `output_values`: structured
+        output dict from this turn's AI generation, available in env
+        expressions and on-enter scripts."""
         if not action.env and not action.on_enter:
             return
-        scope = self._scope_builder.build(automaton, state_key, signal_values, session_id=session_id)
+        scope = self._scope_builder.build(
+            automaton, state_key, signal_values, session_id=session_id, output_values=output_values,
+        )
         if action.env:
             updates = automaton.eval_action_env(action, scope)
             if updates:

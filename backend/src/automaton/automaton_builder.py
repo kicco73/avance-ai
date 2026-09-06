@@ -1,5 +1,5 @@
 from automaton.automaton import (
-    AI_ACCESS_NONE, AI_ACCESS_VALUES, Action, EnvKey, MemoryArchive, Automaton, Reaction, Signal, Source, State,
+    AI_ACCESS_NONE, AI_ACCESS_VALUES, Action, EnvKey, OutputKey, MemoryArchive, Automaton, Reaction, Signal, Source, State,
 )
 from automaton.builder.archive_resolver import ArchiveResolver
 from automaton.builder.automaton_validator import AutomatonValidator, STATE_SOURCE_FIELDS
@@ -82,6 +82,22 @@ class AutomatonBuilder(object):
             value=value.strip(),
             ui_description=raw_description.strip() if raw_description else None,
             ai_access=ai_access,
+            ai_definition=ai_definition,
+        )
+
+    @staticmethod
+    def _build_output_key(name: str, raw_output_key: dict) -> OutputKey:
+        raw_output_key = raw_output_key or {}
+        raw_description = raw_output_key.get("ui-description")
+        raw_ai_definition = raw_output_key.get("ai-definition")
+        ai_definition = raw_ai_definition.strip() if isinstance(raw_ai_definition, str) and raw_ai_definition.strip() else None
+        if ai_definition is None:
+            raise ValueError(
+                f"output key '{name}': 'ai-definition' is required — the text the model reads to know what this output field means."
+            )
+        return OutputKey(
+            name=name,
+            ui_description=raw_description.strip() if raw_description else None,
             ai_definition=ai_definition,
         )
 
@@ -200,6 +216,10 @@ class AutomatonBuilder(object):
 
         raw_source_lists = self._build_state_source_lists(key, raw_state)
 
+        output_keys: dict[str, OutputKey] = {}
+        for output_name, raw_output_key in raw_state.get("output", {}).items():
+            output_keys[output_name] = self._build_output_key(output_name, raw_output_key)
+
         return State(
             key=key,
             ui_label=raw_state.get("ui-label", key),
@@ -216,6 +236,7 @@ class AutomatonBuilder(object):
             ai_may_read_sources=tuple(raw_source_lists["ai-may-read-sources"]),
             ai_must_read_sources=tuple(raw_source_lists["ai-must-read-sources"]),
             ai_may_write_sources=tuple(raw_source_lists["ai-may-write-sources"]),
+            output_keys=output_keys,
             line=line,
         )
 

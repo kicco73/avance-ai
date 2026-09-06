@@ -95,6 +95,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			self._tracking_engine.apply_action_env(
 				self.user.automaton, self.out.action, self.metadata.signals, self.user.state.key,
 				username=Session().user, project_id=self.user.project_id, session_id=self.user.session_id,
+				output_values=self.metadata.output,
 			)
 
 			# Signals are already known from the first call — asking again
@@ -127,6 +128,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 					self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
 					message_id=self.user.message_id if has_real_user_message else None,
 					origin='trigger', username=Session().user, project_id=self.user.project_id,
+					output_values=self.metadata.output,
 				)
 			self.out.tracking_linked_to_message = has_real_user_message
 
