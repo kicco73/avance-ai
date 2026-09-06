@@ -237,6 +237,12 @@ class ChatController(BaseController):
     def get_session_state(self, session_id: int):
         return self.chat_service.get_state_for_session(session_id)
 
+    @get("/api/chat/sessions/{session_id}/operator-state")
+    def get_operator_state(self, session_id: int):
+        """HumanOperatorChatView.vue's own state read — see ChatService.
+        get_state_for_operator."""
+        return self.chat_service.get_state_for_operator(session_id)
+
     @get("/api/chat/sessions/{session_id}/messages")
     async def get_messages(self, session_id: int):
         return await self.chat_service.get_messages(session_id)

@@ -36,6 +36,15 @@ class WsChatTurn(object):
             self._send("audio_text", {"content": value})
         elif key == "chunk":
             self._send("chunk", {"content": value})
+        elif key == "typing":
+            # A live "someone is composing a reply" signal — sent once,
+            # right before real generation starts for the model (see
+            # TrackingProcessor.process), or only once an operator's own
+            # human_typing frame arrives for a human-answered turn (see
+            # ChatService._process_human_turn, talker.human_talker.
+            # HumanTalker.chat). Never inferred client-side from an empty
+            # message any more (see MessageBubble.vue's own awaitingReply).
+            self._send("typing", {"session_id": self._session_id})
         elif key == "text":
             self._send("text", {"content": value})
         elif key == "tool":

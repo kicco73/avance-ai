@@ -8,10 +8,17 @@
 // humanPromptBus.js's own module-level subscribe pattern) —
 // HumanTakeoverToasts.vue imports it purely for this side effect.
 import { chatChannel } from './chatChannel.js'
-import { currentSessionId } from './chatStore.js'
+import { currentSessionId as liveSessionId } from './chatStore.js'
+import { currentSessionId as testSessionId } from './testChatStore.js'
 import { addHumanTakeover } from './humanTakeoverStore.js'
 
 chatChannel.subscribe('human_takeover', (frame) => {
-  if (currentSessionId.value === frame.session_id) return
+  // Already looking at this exact session — in the live chat, or in
+  // EditProjectView's embedded "Run" test chat (its own independent
+  // store, see testChatStore.js) — nothing to alert this tab about; the
+  // other case a self-targeted actuator.switch_to_human(user.email) hits
+  // while testing your own bot from a single tab.
+  if (liveSessionId.value === frame.session_id) return
+  if (testSessionId.value === frame.session_id) return
   addHumanTakeover(frame.session_id, frame.project_id)
 })

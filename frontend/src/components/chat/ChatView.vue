@@ -351,7 +351,7 @@ watch(
       v-else-if="!chatConnected"
       class="chat-ended-notice"
     >
-      Connessione alla chat non disponibile, riprovo…
+      Connection to chat not available, trying again…
     </p>
 
     <p

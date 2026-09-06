@@ -75,6 +75,14 @@ class TrackingService(object):
 		main.py wires this in once both are constructed."""
 		self._human_talker_factory = factory
 
+	def build_human_talker(self, operator: str, session_id: int, session_type: str, project_id: str) -> "BaseTalker":
+		"""ChatService._process_human_turn's own seam into the factory
+		set_human_talker_factory bound above — the only caller now that a
+		session with an operator never reaches _process below at all."""
+		if self._human_talker_factory is None:
+			raise RuntimeError("build_human_talker called before set_human_talker_factory was wired (see main.py).")
+		return self._human_talker_factory(operator, session_id, session_type, project_id)
+
 	def get_input_token_budget_per_turn(self) -> int | None:
 		return self._input_token_budget_per_turn
 
@@ -311,23 +319,16 @@ class TrackingService(object):
 			ai_service=ai_service,
 		)
 
-		# Who actuator.switch_to_human(user_id) last targeted for this
-		# session, if anyone — see ActuatorSetFactory.get_human_operator.
-		# A test/preview session with "Run actuators" off never gets one
-		# recorded in the first place (FakeActuatorSet.switch_to_human
-		# pages nobody), so no separate suppression check is needed here.
-		operator = self._actuator_factory.get_human_operator(session_id)
-		assistant_talker = None
-		if operator is not None and self._human_talker_factory is not None:
-			assistant_talker = self._human_talker_factory(operator, session_id, session["type"], project_id)
-
+		# A session with an operator (see ActuatorSetFactory.
+		# get_human_operator) never reaches here at all — ChatService.
+		# process_turn routes it to _process_human_turn before ever
+		# calling this method, so this is always the plain AiTalker path.
 		tracking_processor = TrackingProcessor(
 			ai_service, scope_builder,
 			env, self._db, user_vars,
 			auto_tracking_enabled=self.is_auto_tracking_enabled(session_id) if is_test_session else True,
 			talk_enabled=self._talk_enabled,
 			input_token_budget_per_turn=self._input_token_budget_per_turn,
-			assistant_talker=assistant_talker,
 		)
 
 		return await tracking_processor.process(text, on_metadata=on_metadata, user_message_ids=user_message_ids)

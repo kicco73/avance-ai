@@ -114,10 +114,20 @@ class WsNotifications(object):
         # first — see the class docstring for the cap.
         self._connections: dict[str, list[WsConnection]] = {}
         self._turn_tasks: set[asyncio.Task] = set()
-        # prompt_id -> the Future request_human_reply() is waiting on,
-        # resolved by whichever connection of the target user sends the
-        # matching human_reply frame first (see _handle_frame).
+        # prompt_id -> the Future await_human_reply() is waiting on, and
+        # the Event wait_for_typing() is waiting on — one pair per prompt,
+        # both resolved by session_id (see _current_prompt_for_session):
+        # the operator's own frame never needs to know the prompt_id
+        # itself, only which session it's answering.
         self._pending_human_replies: dict[str, asyncio.Future[str]] = {}
+        self._pending_typing_events: dict[str, asyncio.Event] = {}
+        # session_id -> the one prompt currently open for it (at most one
+        # at a time — HumanTalker.chat() awaits a reply before asking
+        # again) — what lets the operator's human_reply/human_typing
+        # frames carry session_id instead of a prompt_id they may never
+        # have seen (see send_human_prompt's own docstring).
+        self._current_prompt_for_session: dict[int, str] = {}
+        self._session_for_prompt: dict[str, int] = {}
 
     async def channel_loop(self, websocket: WebSocket) -> None:
         token = websocket.cookies.get(SESSION_COOKIE_NAME)
@@ -173,14 +183,27 @@ class WsNotifications(object):
         elif frame_type == "turn":
             self._start_turn(connection, frame)
         elif frame_type == "human_reply":
-            self._resolve_human_reply(str(frame.get("prompt_id", "")), str(frame.get("text", "")))
+            self._resolve_human_reply_for_session(frame.get("session_id"), str(frame.get("text", "")))
+        elif frame_type == "human_typing":
+            self._notify_typing_for_session(frame.get("session_id"))
         else:
             logger.debug(f"ignoring an unknown websocket frame type: {frame_type!r}")
 
-    def _resolve_human_reply(self, prompt_id: str, text: str) -> None:
+    def _resolve_human_reply_for_session(self, session_id, text: str) -> None:
+        prompt_id = self._current_prompt_for_session.get(session_id)
+        if prompt_id is None:
+            return
         future = self._pending_human_replies.get(prompt_id)
         if future is not None and not future.done():
             future.set_result(text)
+
+    def _notify_typing_for_session(self, session_id) -> None:
+        prompt_id = self._current_prompt_for_session.get(session_id)
+        if prompt_id is None:
+            return
+        event = self._pending_typing_events.get(prompt_id)
+        if event is not None:
+            event.set()
 
     def _start_turn(self, connection: WsConnection, frame: dict) -> None:
         if self._chat_service is None:
@@ -236,8 +259,9 @@ class WsNotifications(object):
         whichever tab answers, carried on the frame since answering
         doesn't require navigating there first (see chat.ws_human_relay).
         Returns the prompt_id — the caller must pass it straight to
-        await_human_reply(). Raises HumanNotConnectedError if `username`
-        has no *other* open connection — nobody could possibly answer."""
+        await_human_reply()/wait_for_typing(). Raises HumanNotConnectedError
+        if `username` has no *other* open connection — nobody could
+        possibly answer."""
         prompt_id = str(uuid.uuid4())
         sent = await self.push(
             username,
@@ -254,6 +278,9 @@ class WsNotifications(object):
         if not sent:
             raise HumanNotConnectedError(username)
         self._pending_human_replies[prompt_id] = asyncio.get_running_loop().create_future()
+        self._pending_typing_events[prompt_id] = asyncio.Event()
+        self._current_prompt_for_session[session_id] = prompt_id
+        self._session_for_prompt[prompt_id] = session_id
         return prompt_id
 
     async def send_human_takeover(self, username: str, session_id: int, project_id: str) -> None:
@@ -271,9 +298,11 @@ class WsNotifications(object):
 
     async def await_human_reply(self, prompt_id: str) -> str:
         """The WsHumanRelay.receive() primitive: waits for the
-        human_reply matching a prompt_id send_human_prompt() returned.
-        Raises HumanReplyTimeoutError if none arrives within
-        HUMAN_REPLY_TIMEOUT_SECONDS."""
+        human_reply matching a prompt_id send_human_prompt() returned —
+        the operator's own frame carries session_id, not this prompt_id
+        (see _resolve_human_reply_for_session), so this is purely an
+        internal correlation key. Raises HumanReplyTimeoutError if none
+        arrives within HUMAN_REPLY_TIMEOUT_SECONDS."""
         future = self._pending_human_replies[prompt_id]
         try:
             return await asyncio.wait_for(future, timeout=HUMAN_REPLY_TIMEOUT_SECONDS)
@@ -281,3 +310,17 @@ class WsNotifications(object):
             raise HumanReplyTimeoutError(f"No reply for prompt {prompt_id} within {HUMAN_REPLY_TIMEOUT_SECONDS}s.")
         finally:
             self._pending_human_replies.pop(prompt_id, None)
+            self._pending_typing_events.pop(prompt_id, None)
+            session_id = self._session_for_prompt.pop(prompt_id, None)
+            if session_id is not None and self._current_prompt_for_session.get(session_id) == prompt_id:
+                del self._current_prompt_for_session[session_id]
+
+    async def wait_for_typing(self, prompt_id: str) -> None:
+        """The WsHumanRelay.wait_for_typing() primitive: resolves the
+        instant the operator's own human_typing frame arrives for this
+        prompt's session (see _notify_typing_for_session) — HumanTalker.
+        chat() races this against await_human_reply() so a reply that
+        beats it to the operator's own keystroke never shows a typing
+        signal at all."""
+        event = self._pending_typing_events[prompt_id]
+        await event.wait()

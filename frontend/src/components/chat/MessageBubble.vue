@@ -128,9 +128,12 @@ function onBubbleClickCapture(event) {
 
 onBeforeUnmount(clearLongPressTimer)
 
-// True while an assistant bubble's content is still empty (before the
-// first streamed chunk lands) — shows animated dots instead of the reply.
-const isAwaitingReply = computed(() => props.message.role === 'assistant' && !getMessageText(props.message))
+// Driven by an explicit 'typing' frame (see chatStoreFactory.js's own
+// submitMessage), never inferred from empty content: a human-answered
+// message stays legitimately empty for however long the operator takes
+// to even start replying, and must show nothing at all until they
+// actually do (see chat/ws_turn.py's own "typing" key).
+const isAwaitingReply = computed(() => props.message.role === 'assistant' && props.message.awaitingReply === true)
 
 function getMessageText(msg) {
   // Prefer spoken text (audioText) over the normal streamed content when enabled and available.

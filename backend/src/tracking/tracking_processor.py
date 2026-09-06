@@ -19,9 +19,7 @@ if TYPE_CHECKING:
 from .env import Env
 from .env_prompt_block import EnvPromptBlock
 from .evaluation_scope import EvaluationScopeBuilder
-from .channels import (
-	AudioChannel, MemoryChannel, MetadataChannel, ReactionChannel, SignalsChannel, TextChannel, TranslateChannel,
-)
+from .prompt import AudioPrompt, MemoryPrompt, Prompt, ReactionPrompt, SignalsPrompt, TextPrompt, TranslatePrompt
 from .priming import build_priming_messages
 from .sources import SourceNamespace, ToolSet
 from .tracking_engine import DbTrackingSink, TrackingEngine
@@ -70,8 +68,8 @@ class Metadata:
 	# never actually called any.
 	tool_calls: list[dict] = field(default_factory=list)
 	# {action name: translated button label} for this turn's own resulting
-	# state — only ever non-empty when a TranslateChannel was actually
-	# appended to that turn's own channel list (see
+	# state — only ever non-empty when a TranslatePrompt was actually
+	# composed into that turn's own prompt (see
 	# TrackingProcessor._button_labels_to_translate), empty otherwise.
 	button_translations: dict[str, str] = field(default_factory=dict)
 
@@ -186,6 +184,11 @@ class TrackingProcessor(object):
 
 		self.metadata = Metadata(on_metadata or dummy_on_metadata, {}, {})
 
+		# Always sent before generation actually starts — the frontend's
+		# own typing-dots signal (see chat/ws_turn.py's own "typing" key,
+		# MessageBubble.vue's awaitingReply), never inferred from an
+		# empty message any more.
+		self.metadata.on_metadata("typing", None)
 		self.out = await self._get_ai_reply()
 
 		logger.info(

@@ -52,6 +52,9 @@ class WsHumanRelay:
     async def receive(self) -> str:
         return await self._ws_notifications.await_human_reply(self._prompt_id)
 
+    async def wait_for_typing(self) -> None:
+        await self._ws_notifications.wait_for_typing(self._prompt_id)
+
     async def recorded_audio(self, text: str) -> AsyncIterator[bytes] | None:
         # No original-recording store for this relay yet — a spoken human
         # reply always falls back to whatever the session's own TalkService

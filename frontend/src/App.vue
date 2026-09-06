@@ -16,10 +16,10 @@ import CustomerHome from './components/appStore/CustomerHome.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
 import ToastContainer from './components/ToastContainer.vue'
-import HumanPromptToasts from './components/HumanPromptToasts.vue'
 import HumanTakeoverToasts from './components/HumanTakeoverToasts.vue'
 import DialogHost from './components/DialogHost.vue'
 import { requestedOperatorSession, clearRequestedOperatorSession } from './humanTakeoverStore.js'
+import './humanPromptBus.js'
 import { disconnect as disconnectChat } from './chatClient.js'
 import { needsLogin } from './authStore.js'
 import { activeDialog } from './dialogStore.js'
@@ -36,7 +36,6 @@ const editProjectBuildError = ref(null)
 const labelProjectId = ref(null)
 const liveChatProjectId = ref(null)
 const operatorSessionId = ref(null)
-const operatorProjectId = ref(null)
 const currentUserProfile = ref(null)
 const currentUserRole = ref(null)
 const chatWindowRef = ref(null)
@@ -113,8 +112,14 @@ async function handleLabelProjectSwitch(projectId) {
 // since only App.vue holds pushView/the view stack.
 watch(requestedOperatorSession, (request) => {
   if (!request) return
+  // chatOpen and pushedView are independent refs (see useViewStack.js) —
+  // every existing pushView(x !== 'chat') caller only ever runs from a
+  // screen where chatOpen is already false, so this never mattered before.
+  // A takeover toast can fire from anywhere, including from inside the
+  // admin's own already-open live chat — without this, both would render
+  // at once.
+  chatOpen.value = false
   operatorSessionId.value = request.sessionId
-  operatorProjectId.value = request.projectId
   pushView('operatorChat')
   clearRequestedOperatorSession()
 })
@@ -185,7 +190,6 @@ onBeforeUnmount(() => {
   <div class="app-backdrop" aria-hidden="true"></div>
 
   <ToastContainer />
-  <HumanPromptToasts />
   <HumanTakeoverToasts />
   <DialogHost />
 
@@ -323,10 +327,7 @@ onBeforeUnmount(() => {
               v-else-if="pushedView === 'operatorChat'"
               :key="operatorSessionId"
               :session-id="operatorSessionId"
-              :project-id="operatorProjectId"
-              :profile="currentUserProfile"
               @close="popPushedView"
-              v-on="profileMenuListeners"
             />
           </Transition>
         </div>

@@ -12,8 +12,6 @@ import { playMessageChime, playMessageAudio, playReactionChime, unlockAudioPlayb
 import { clearApiError, setApiError } from './errorStore.js'
 import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
-import { chatChannel } from './chatChannel.js'
-import { getHumanPromptForSession, removeHumanPrompt } from './humanPromptStore.js'
 
 const SESSION_INACTIVE_CODES = ['session_closed', 'session_channel_mismatch', 'session_superseded']
 
@@ -770,49 +768,3 @@ export function createChatStore({
   }
 }
 
-// HumanOperatorChatView.vue's own store: reuses every bit of createChatStore
-// above (message loading, state fetch, reconnect sync) unchanged — a
-// session someone else is having is otherwise exactly what ChatView.vue
-// already renders. The one thing that's genuinely different is sending:
-// there's no automaton turn to submit here, only whichever human_prompt
-// (see humanPromptStore.js) this session's current turn is waiting on —
-// answering it is what actually resolves it (see chat/ws_human_relay.py).
-export function createOperatorChatStore(sessionId, projectId) {
-  const store = createChatStore({
-    kind: 'live',
-    getCurrentSession: async () => ({
-      id: sessionId,
-      active: true,
-      paused: false,
-      legal_terms_pending: false,
-      project_id: projectId,
-      state: await getSessionState(sessionId),
-    }),
-    getSessionsList: async () => [],
-    createSession: async () => ({ id: sessionId }),
-    confirmNewSession: false,
-  })
-
-  // A local counter, not createChatStore's own internal one (private to
-  // its closure) — only needs to be unique within this store's own
-  // messages.value for Vue's :key, same role either counter plays.
-  let nextOperatorMessageId = 0
-
-  async function handleSend(text) {
-    const pending = getHumanPromptForSession(sessionId)
-    if (!pending) return // Nothing waiting on a reply yet — see getHumanPromptForSession.
-    // Same frame humanPromptBus.js's own sendHumanReply sends — not
-    // reused directly so importing this file never also pulls in that
-    // module's own top-level chatChannel.subscribe('human_prompt', ...)
-    // side effect (see its own docstring), which every other chat store
-    // has no reason to register.
-    chatChannel.send({ type: 'human_reply', prompt_id: pending.promptId, text })
-    removeHumanPrompt(pending.promptId)
-    store.messages.value.push({
-      id: `operator-${++nextOperatorMessageId}`, role: 'assistant', content: text, failed: false,
-      timestamp: new Date().toISOString(),
-    })
-  }
-
-  return { ...store, handleSend }
-}

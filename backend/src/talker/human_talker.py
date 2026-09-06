@@ -13,6 +13,7 @@ ever synthesizing one.
 """
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, AsyncIterator, Protocol
 
 from ai import content_to_text
@@ -41,6 +42,14 @@ class HumanRelay(Protocol):
 		(a voice note is transcribed by the caller through listen(),
 		same as any other inbound audio — receive() only ever returns
 		the text)."""
+		...
+
+	async def wait_for_typing(self) -> None:
+		"""Resolves the moment the person starts composing a reply (their
+		own frontend's own signal — see chat/ws_notifications.py's
+		human_typing handling) — races against receive() in chat() below,
+		so a typing indicator only ever shows once someone is actually
+		there, never automatically from the instant they're asked."""
 		...
 
 	async def recorded_audio(self, text: str) -> AsyncIterator[bytes] | None:
@@ -83,13 +92,24 @@ class HumanTalker(BaseTalker):
 		produces (see AiTalker used a second time, as that filter — a
 		separate call this method doesn't make).
 
-		Not a real stream: one empty chunk the instant the person is
-		notified (so the bubble opens the same way a model's first empty
-		chunk would), then the whole reply once they send it."""
+		Not a real stream: an empty chunk only once the person actually
+		starts typing (never automatically the instant they're notified —
+		that would show a typing indicator for however long they take to
+		even open the page), then the whole reply once they send it. The
+		empty chunk is skipped entirely if the reply itself wins the race
+		(see wait_for_typing's own docstring) — a reply typed and sent
+		fast enough that no separate typing signal ever arrived first."""
 		prompt_text = content_to_text(chat_history[-1]["content"]) if chat_history else ""
 		await self._relay.notify(prompt_text)
+		typing = asyncio.ensure_future(self._relay.wait_for_typing())
+		reply = asyncio.ensure_future(self._relay.receive())
+		done, _ = await asyncio.wait({typing, reply}, return_when=asyncio.FIRST_COMPLETED)
+		if reply in done:
+			typing.cancel()
+			yield reply.result()
+			return
 		yield ""
-		yield await self._relay.receive()
+		yield await reply
 
 	async def listen(self, audio: bytes) -> str:
 		"""Speech-to-text for a voice note the person sent — same STT as

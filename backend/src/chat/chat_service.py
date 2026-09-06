@@ -405,6 +405,23 @@ class ChatService(object):
 		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 		return self._with_manual_actions(session_id, automaton.get_state_payload(state))
 
+	def get_state_for_operator(self, session_id: int) -> dict:
+		"""HumanOperatorChatView.vue's own state read: every action is
+		manually triggerable while an operator is attached — nothing
+		auto-fires from a customer's own message any more (see
+		_should_generate_opening_message) — regardless of this session's
+		own, unrelated is_auto_tracking_enabled flag (a test/dev-mode
+		toggle that never applies to a live session anyway). The
+		customer's own get_state_for_session is untouched: this is a
+		separate read, so their payload never gains buttons they
+		shouldn't see."""
+		self._ownership.require_own_session(session_id)
+		session = self._db.get_chat_session(session_id)
+		assert session is not None
+		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
+		state_payload = automaton.get_state_payload(state)
+		return {**state_payload, "manual_actions": manual_actions_for(state_payload["actions"], False)}
+
 	async def get_messages(self, session_id: int, last_n: int | None = None) -> list[dict]:
 		self._ownership.require_own_session(session_id)
 		init_message = await self.open_if_needed(session_id)
@@ -637,6 +654,12 @@ class ChatService(object):
 			await self._generate_opening_message_if_needed(session_id, automaton, state)
 
 	def _should_generate_opening_message(self, session_id: int, state: State) -> bool:
+		# A session with an operator (see ActuatorSetFactory.
+		# get_human_operator) never auto-generates anything — every
+		# message either side sees while in human mode is one a person
+		# actually wrote, never a model-generated opener.
+		if self._actuator_factory.get_human_operator(session_id) is not None:
+			return False
 		content_since = self._db.history_cutoff_for_session(session_id, state.history_cutoff)
 		chat_blocked = state.final or not state.chat
 		gate_since = self._db.get_last_transition_timestamp_for_session(session_id) if chat_blocked else content_since
@@ -732,8 +755,63 @@ class ChatService(object):
 		project_id = self._project_id_for_session(session_id)
 		if text is not None and user_message_id is None:
 			user_message_id = self.accept_user_message(session_id, text)
+		operator = self._actuator_factory.get_human_operator(session_id)
+		if operator is not None:
+			return await self._process_human_turn(session_id, operator, on_metadata, user_message_id)
 		async with self._session_scope(project_id, session_id):
 			return await self._process_turn_body(session_id, text, on_metadata, user_message_id)
+
+	async def _process_human_turn(
+		self, session_id: int, operator: str, on_metadata: OnMetadata | None, user_message_id: int | None,
+	) -> dict:
+		"""actuator.switch_to_human's own turn path — no automaton, no
+		lock: while a session has an operator (see ActuatorSetFactory.
+		get_human_operator) it isn't an automaton-driven conversation at
+		all, so none of TrackingEngine/_session_scope applies. The
+		operator's reply can take anywhere from seconds to minutes;
+		nothing else about this session (another customer message, a
+		manual action) should have to wait for it, which is exactly what
+		holding _session_scope's lock here would do."""
+		session = self._db.get_chat_session(session_id)
+		if session is None:
+			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
+		project_id = session["project_id"]
+		self._ensure_project_available(project_id)
+		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
+		fragments = self._db.unconsumed_user_fragments(session_id) if user_message_id is not None else []
+		if user_message_id is not None and not any(f["id"] == user_message_id for f in fragments):
+			return self._already_answered_response(session_id, automaton, state, user_message_id)
+		text = "\n".join(f["content"] for f in fragments)
+		assistant_talker = self._tracking_service.build_human_talker(operator, session_id, session["type"], project_id)
+		accumulated = ""
+		async for chunk in assistant_talker.chat([], [{"role": "user", "content": text}], on_metadata or (lambda key, value: None)):
+			if on_metadata is None:
+				continue
+			# An empty chunk from HumanTalker.chat() is its own typing
+			# signal (see its own docstring), never real content — same
+			# "typing" key the AI path sends before generation starts
+			# (see TrackingProcessor.process), so the frontend reacts to
+			# one signal regardless of which talker produced it.
+			if chunk:
+				on_metadata("chunk", chunk)
+				accumulated += chunk
+			else:
+				on_metadata("typing", None)
+		assistant_message_id = self._db.save_message("assistant", accumulated, session_id)
+		self._db.mark_messages_answered([f["id"] for f in fragments], assistant_message_id)
+		self._session_manager.touch_session(session_id, state.key)
+		return {
+			"reply": [self._db.get_message(assistant_message_id)],
+			"user_message_id": user_message_id,
+			"user_message_reaction": None,
+			"assistant_message_id": assistant_message_id,
+			"state": self._with_manual_actions(session_id, automaton.get_state_payload(state)),
+			"state_changed": False,
+			"new_state": None,
+			"triggered_action": None,
+			"ai_model": self.get_ai_models_info(),
+			"session_id": session_id,
+		}
 
 	async def _process_turn_body(
 		self,

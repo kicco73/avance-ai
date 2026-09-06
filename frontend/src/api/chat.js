@@ -56,6 +56,14 @@ export function getSessionState(sessionId) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/state`)
 }
 
+// HumanOperatorChatView.vue's own state read — see ChatService.
+// get_state_for_operator: every action is manually triggerable while an
+// operator is attached, regardless of this session's own is_auto_tracking_
+// enabled flag, and this is never sent to the customer's own chat.
+export function getOperatorState(sessionId) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/operator-state`)
+}
+
 export function createChatSocket() {
   return new WebSocket(WS_URL)
 }
