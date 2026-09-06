@@ -24,6 +24,16 @@ export function installFakeChatSocket(api) {
         ws.readyState = 3
         ws.onclose?.()
       },
+      // Simulates the server closing the connection with a specific close
+      // code (e.g. chatChannel.js's ALREADY_CONNECTED_CLOSE_CODE) — unlike
+      // close() above (the client's own explicit disconnect, which fires
+      // onclose with no event at all), this is what a real CloseEvent looks
+      // like.
+      closeWithCode(code) {
+        if (ws.readyState === 3) return
+        ws.readyState = 3
+        ws.onclose?.({ code })
+      },
       open() {
         ws.readyState = 1
         ws.onopen?.()

@@ -126,7 +126,7 @@ def _process(db: Db, websocket: _FakeWebSocket | None = None, *, start: bool = F
     factory = make_test_actuator_factory(db, job_service, project_service, ai_service)
     if websocket is not None:
         ws_notifications = WsNotifications(auth_service=None)
-        ws_notifications._connections[USERNAME] = websocket
+        ws_notifications._connections[USERNAME] = [websocket]
         factory.set_ws_notifications(ws_notifications)
     if start:
         job_service.start()

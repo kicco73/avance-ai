@@ -336,7 +336,7 @@ def run_on_enter_tasks(app: FastAPI, username: str = "user", timeout: float = 5.
     factory = app.state.actuator_factory
     websocket = FakeWebSocket()
     ws_notifications = WsNotifications(auth_service=None)
-    ws_notifications._connections[username] = websocket
+    ws_notifications._connections[username] = [websocket]
     factory.set_ws_notifications(ws_notifications)
     job_service = app.state.job_service
     job_service.start()

@@ -510,6 +510,14 @@ class ChatService(object):
 	def clear_auto_tracking_overrides(self) -> None:
 		self._tracking_service.clear_auto_tracking_overrides()
 
+	def is_human_talker_enabled(self, session_id: int) -> bool:
+		self._ownership.require_own_session(session_id)
+		return self._tracking_service.is_human_talker_enabled(session_id)
+
+	def set_human_talker_enabled(self, session_id: int, enabled: bool) -> None:
+		self._ownership.require_own_session(session_id)
+		self._tracking_service.set_human_talker_enabled(session_id, enabled)
+
 	def global_exclusive_access(self):
 		return self._global_lock
 

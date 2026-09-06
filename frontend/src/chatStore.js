@@ -21,6 +21,7 @@ export const liveStore = createChatStore({
   createSession: () => postCreateSession(),
   confirmNewSession: true,
   useAutoTracking: false,
+  useHumanTalkerToggle: true,
   subscribeToNotifications: true,
 })
 
@@ -29,6 +30,7 @@ export const {
   sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
   messages, historyLoaded, chatLoading, chatStatus, actionLoading,
   autoTrackingEnabled, autoTrackingLoading, draft, turnCount,
+  humanTalkerEnabled, humanTalkerLoading, toggleHumanTalker,
   handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
   selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking,
   toggleAudio, handleSend, handleVoiceMessage, handleResend, handleReact, handleAction,

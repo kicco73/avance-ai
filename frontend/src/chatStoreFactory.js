@@ -1,6 +1,7 @@
 import { computed, nextTick, ref } from 'vue'
 import {
   getMessages, getSessionState, postAction, getAutoTracking, postAutoTracking, getActuators, postActuators,
+  getTalker, postTalker,
   postTruncateSession, deleteSession, postCloseSession, putMessageReaction, postListenTranscribe, messageAudioUrl,
 } from './api.js'
 import { sendMessage as sendChatMessage, onConnectionState, getConnectionState } from './chatClient.js'
@@ -59,7 +60,8 @@ export function toggleSpokenText() {
 // about session resolution itself.
 export function createChatStore({
   kind, getCurrentSession, getSessionsList, createSession, resetSession = null,
-  confirmNewSession = true, useAutoTracking = false, useActuatorsToggle = false, subscribeToNotifications = false,
+  confirmNewSession = true, useAutoTracking = false, useActuatorsToggle = false, useHumanTalkerToggle = false,
+  subscribeToNotifications = false,
 }) {
   const state = ref(null)
   const currentSessionId = ref(null)
@@ -83,6 +85,12 @@ export function createChatStore({
   const autoTrackingLoading = ref(false)
   const actuatorsEnabled = ref(false)
   const actuatorsLoading = ref(false)
+  // Manual-testing toggle for HumanTalker (see talker.human_talker): the
+  // session's next turns get answered by a person (see humanPromptBus.js)
+  // instead of the model. Unlike autoTracking/actuators above this isn't
+  // test-session-only — see ChatView.vue's own toggle, live chat included.
+  const humanTalkerEnabled = ref(false)
+  const humanTalkerLoading = ref(false)
   const draft = ref('')
   const turnCount = ref(0)
   let nextMessageId = 0
@@ -149,6 +157,15 @@ export function createChatStore({
     }
   }
 
+  async function loadHumanTalker() {
+    try {
+      const res = await getTalker(currentSessionId.value)
+      humanTalkerEnabled.value = res.human
+    } catch {
+      // already surfaced via apiFetch
+    }
+  }
+
   async function ensureSession() {
     projectPaused.value = false
     const session = await getCurrentSession(currentSessionId.value)
@@ -164,6 +181,7 @@ export function createChatStore({
     state.value = session.state
     if (useAutoTracking) await loadAutoTracking()
     if (useActuatorsToggle) await loadActuators()
+    if (useHumanTalkerToggle) await loadHumanTalker()
     return session.id
   }
 
@@ -312,6 +330,18 @@ export function createChatStore({
       // already surfaced via apiFetch
     } finally {
       actuatorsLoading.value = false
+    }
+  }
+
+  async function toggleHumanTalker() {
+    humanTalkerLoading.value = true
+    try {
+      const res = await postTalker(currentSessionId.value, !humanTalkerEnabled.value)
+      humanTalkerEnabled.value = res.human
+    } catch {
+      // already surfaced via apiFetch
+    } finally {
+      humanTalkerLoading.value = false
     }
   }
 
@@ -678,6 +708,7 @@ export function createChatStore({
     chatStatus.value = ''
     autoTrackingEnabled.value = true
     actuatorsEnabled.value = false
+    humanTalkerEnabled.value = false
     // A project switch is exactly when "the current session" should be re-resolved.
     currentSessionId.value = null
     currentProjectId.value = null
@@ -760,6 +791,7 @@ export function createChatStore({
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
     messages, historyLoaded, chatLoading, chatStatus, actionLoading,
     autoTrackingEnabled, autoTrackingLoading, actuatorsEnabled, actuatorsLoading, draft, turnCount,
+    humanTalkerEnabled, humanTalkerLoading, toggleHumanTalker,
     handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
     selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking, toggleActuators,
     toggleAudio, handleSend, handleVoiceMessage, handleResend, handleReact, handleAction,

@@ -33,14 +33,16 @@ def test_the_uniform_read_schemas_become_objects_of_string_arrays_strings_and_en
     assert properties["values"].type == "ARRAY" and properties["values"].items.type == "STRING"
     assert declaration.parameters.required == ["values"]
 
-    column = _declaration(METHOD_SCHEMAS["select_rows_where_column"])
+    column = _declaration(METHOD_SCHEMAS["select_rows_where"])
     assert column.parameters.properties["column"].type == "STRING"
     assert list(column.parameters.properties["operator"].enum) == ["=", "!=", ">", ">=", "<", "<="]
     assert column.parameters.required == ["column", "operator", "value"]
+    assert column.parameters.properties["strings"].type == "ARRAY"
 
-    ranged = _declaration(METHOD_SCHEMAS["select_rows_where_column_in_range"])
+    ranged = _declaration(METHOD_SCHEMAS["select_rows_in_range"])
     assert ranged.parameters.properties["start"].type == "STRING"
     assert ranged.parameters.required == ["column", "start", "end"]
+    assert ranged.parameters.properties["strings"].type == "ARRAY"
 
 
 def test_a_narrowed_update_schema_keeps_enums_properties_and_descriptions_and_drops_the_unknown_keywords():

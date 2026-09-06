@@ -81,12 +81,12 @@ def test_select_rows_containing_returns_the_exported_keys_header_and_one_quoted_
 
 def test_the_column_filtered_reads_are_unsupported_on_the_env_driver_which_has_a_single_row():
     driver = _driver(Env())
-    assert "select_rows_where_column" not in AvanceEnvSource.SUPPORTED_METHODS
-    assert "select_rows_where_column_in_range" not in AvanceEnvSource.SUPPORTED_METHODS
-    with pytest.raises(ValueError, match="select_rows_where_column.*not supported"):
-        driver.select_rows_where_column("flight", "=", "VY3003")
-    with pytest.raises(ValueError, match="select_rows_where_column_in_range.*not supported"):
-        driver.select_rows_where_column_in_range("flight", "A", "Z")
+    assert "select_rows_where" not in AvanceEnvSource.SUPPORTED_METHODS
+    assert "select_rows_in_range" not in AvanceEnvSource.SUPPORTED_METHODS
+    with pytest.raises(ValueError, match="select_rows_where.*not supported"):
+        driver.select_rows_where("flight", "=", "VY3003")
+    with pytest.raises(ValueError, match="select_rows_in_range.*not supported"):
+        driver.select_rows_in_range("flight", "A", "Z")
 
 
 def test_value_returns_the_current_value_the_empty_string_when_unset_and_error_text_for_an_unexported_key():

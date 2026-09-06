@@ -163,7 +163,7 @@ class TestWsAdapterPush:
     def _connected(self):
         ws_notifications = WsNotifications(auth_service=None)
         websocket = _FakeWebSocket()
-        ws_notifications._connections[USERNAME] = websocket
+        ws_notifications._connections[USERNAME] = [websocket]
         return ws_notifications, websocket
 
     def test_a_fired_self_loop_pushes_the_state_and_project_name_but_never_its_on_enter(self, db, project_service):

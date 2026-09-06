@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from http import HTTPStatus
+from typing import TYPE_CHECKING, Callable
 
 from automaton.automaton import Automaton, SignalPayload
 from ai import AiService
@@ -25,6 +27,18 @@ from .session_export import SessionExportManager
 from .tracking_processor import UserVariables
 from .tracking_processor_ai import TrackingProcessorAfterAiMessage
 from .tracking_processor_user import TrackingProcessorAfterUserMessage
+
+if TYPE_CHECKING:
+	# TYPE_CHECKING-guarded: talker imports tracking.turn_protocol_using_schema,
+	# so an unconditional import here would risk a cycle (tracking -> talker
+	# -> tracking) — same reasoning as tracking_processor.py's own guard.
+	from talker import BaseTalker
+
+# Builds the BaseTalker to answer session_id's next turn as `username`, when
+# that session is toggled to a human (see set_human_talker_factory) — wired
+# in main.py to a closure over WsNotifications, since only chat/ knows how
+# to actually reach a person over a websocket.
+HumanTalkerFactory = Callable[[str, int, str, "int | None"], "BaseTalker"]
 
 
 class TrackingService(object):
@@ -54,6 +68,40 @@ class TrackingService(object):
 		# 'test' session, never global: a native/imported session is
 		# always auto-tracked. Absent = enabled.
 		self._disabled_test_sessions: set[int] = set()
+		# Manual-testing toggle for HumanTalker (see talker.human_talker):
+		# sessions in this set get their turns answered by a person instead
+		# of the model. Present = enabled; absent = the AiTalker default.
+		# Same "no restart survives this" caveat as _disabled_test_sessions.
+		self._human_sessions: set[int] = set()
+		self._human_talker_factory: HumanTalkerFactory | None = None
+
+	def set_human_talker_factory(self, factory: HumanTalkerFactory) -> None:
+		"""Late-bound the same way actuator_factory.set_ws_notifications is
+		— TrackingService is built before WsNotifications exists, so
+		main.py wires this in once both are constructed."""
+		self._human_talker_factory = factory
+
+	def is_human_talker_enabled(self, session_id: int) -> bool:
+		return session_id in self._human_sessions
+
+	def set_human_talker_enabled(self, session_id: int, enabled: bool) -> None:
+		if enabled:
+			self._human_sessions.add(session_id)
+		else:
+			self._human_sessions.discard(session_id)
+
+	async def _notify_human_contact_suppressed(self, username: str) -> None:
+		"""Same wire shape OnEnterTask._run_next_step uses to deliver a
+		FakeActuatorSet notify() to the browser — a 'notification' frame
+		carrying a rendered on-enter snippet — built directly here since
+		there is no on-enter script or scope involved, just a static
+		message."""
+		ws_notifications = self._actuator_factory.ws_notifications
+		if ws_notifications is None:
+			return
+		message = "human_talker(session) — Run actuators is off, no human was contacted; the AI answered instead."
+		on_enter = f"notify({json.dumps('Actuator (test)')}, {json.dumps(message)})"
+		await ws_notifications.push(username, {"type": "notification", "on-enter": on_enter})
 
 	def get_input_token_budget_per_turn(self) -> int | None:
 		return self._input_token_budget_per_turn
@@ -291,12 +339,28 @@ class TrackingService(object):
 			ai_service=ai_service,
 		)
 
+		assistant_talker = None
+		if session_id in self._human_sessions and self._human_talker_factory is not None:
+			# Contacting a human is exactly the kind of real-world side effect
+			# a test/preview session's own "Run actuators" toggle governs (see
+			# ActuatorSetFactory.for_session/FakeActuatorSet) — with it off, no
+			# person actually gets paged; the AI answers instead, same as any
+			# other suppressed actuator, and the tester is told why via the
+			# same notify() convention FakeActuatorSet itself uses.
+			if session["type"] in ("test", "preview") and not self._actuator_factory.is_enabled_for_test_session(session_id):
+				await self._notify_human_contact_suppressed(session["username"])
+			else:
+				assistant_talker = self._human_talker_factory(
+					session["username"], session_id, session["type"], project_id,
+				)
+
 		tracking_processor = TrackingProcessor(
 			ai_service, scope_builder,
 			env, self._db, user_vars,
 			auto_tracking_enabled=self.is_auto_tracking_enabled(session_id) if is_test_session else True,
 			talk_enabled=self._talk_enabled,
 			input_token_budget_per_turn=self._input_token_budget_per_turn,
+			assistant_talker=assistant_talker,
 		)
 
 		return await tracking_processor.process(text, on_metadata=on_metadata, user_message_ids=user_message_ids)

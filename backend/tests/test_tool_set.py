@@ -128,7 +128,7 @@ def test_description_is_the_method_blurb_plus_the_sources_own_ai_definition_neve
     ever reach a ToolSpec."""
     two = _two_sources(db)
     flights = _spec(SourceNamespace(db, two).tool_set(["flights"]), "source_flights_select_rows_containing")
-    assert "Rows containing ALL values" in flights.description
+    assert "Return rows containing ALL specified strings" in flights.description
     assert "Flight records." in flights.description
 
     tickets = _spec(SourceNamespace(db, two).tool_set(["tickets"]), "source_tickets_select_rows_containing")
@@ -150,13 +150,14 @@ def test_parameter_schemas_are_the_uniform_method_schemas_unless_the_driver_narr
     assert "minItems" not in containing["properties"]["values"]
     assert "keys" not in containing["properties"]
 
-    where_column = _spec(flights, "source_flights_select_rows_where_column").parameters
-    assert where_column is METHOD_SCHEMAS["select_rows_where_column"]
-    assert where_column["properties"]["operator"]["enum"] == ["=", "!=", ">", ">=", "<", "<="]
-    assert where_column["required"] == ["column", "operator", "value"]
-    assert _spec(flights, "source_flights_select_rows_where_column_in_range").parameters["required"] == [
-        "column", "start", "end",
-    ]
+    where = _spec(flights, "source_flights_select_rows_where").parameters
+    assert where is METHOD_SCHEMAS["select_rows_where"]
+    assert where["properties"]["operator"]["enum"] == ["=", "!=", ">", ">=", "<", "<="]
+    assert where["required"] == ["column", "operator", "value"]
+    assert "strings" in where["properties"]
+    in_range = _spec(flights, "source_flights_select_rows_in_range").parameters
+    assert in_range["required"] == ["column", "start", "end"]
+    assert "strings" in in_range["properties"]
 
     update = METHOD_SCHEMAS["update"]
     assert update["required"] == ["values", "fields"]
@@ -196,11 +197,33 @@ async def test_call_routes_to_the_named_sources_own_driver_passing_every_read_ar
     dated = SourceNamespace(file_db, _flights_automaton(file_db, b"code,date\nVY3003,2026-06-01\nVY3003,2026-06-02\n")).tool_set(["flights"])
     assert await dated.call("source_flights_select_rows_containing", {"values": ["VY3003", "2026-06-01"]}) == "code,date\nVY3003,2026-06-01\n"
     assert await dated.call(
-        "source_flights_select_rows_where_column", {"column": "date", "operator": ">", "value": "2026-06-01"},
+        "source_flights_select_rows_where", {"column": "date", "operator": ">", "value": "2026-06-01"},
     ) == "code,date\nVY3003,2026-06-02\n"
     assert await dated.call(
-        "source_flights_select_rows_where_column_in_range", {"column": "date", "start": "2026-06-01", "end": "2026-06-30"},
+        "source_flights_select_rows_in_range", {"column": "date", "start": "2026-06-01", "end": "2026-06-30"},
     ) == "code,date\nVY3003,2026-06-01\nVY3003,2026-06-02\n"
+
+
+async def test_call_passes_the_optional_strings_argument_positionally_after_the_columns_own_fixed_arguments(file_db):
+    dated = SourceNamespace(
+        file_db,
+        _flights_automaton(
+            file_db, b"code,date,city\nVY3003,2026-06-01,Barcelona\nVY3003,2026-06-02,Rome\n",
+        ),
+    ).tool_set(["flights"])
+
+    assert await dated.call(
+        "source_flights_select_rows_where",
+        {"column": "date", "operator": ">=", "value": "2026-06-01", "strings": ["Barcelona"]},
+    ) == "code,date,city\nVY3003,2026-06-01,Barcelona\n"
+    assert await dated.call(
+        "source_flights_select_rows_in_range",
+        {"column": "date", "start": "2026-06-01", "end": "2026-06-30", "strings": ["Rome"]},
+    ) == "code,date,city\nVY3003,2026-06-02,Rome\n"
+    # No strings at all behaves exactly like before.
+    assert await dated.call(
+        "source_flights_select_rows_where", {"column": "date", "operator": ">=", "value": "2026-06-01"},
+    ) == "code,date,city\nVY3003,2026-06-01,Barcelona\nVY3003,2026-06-02,Rome\n"
 
 
 async def test_call_routes_an_update_to_the_driver_writing_the_env_with_origin_tool_injected_never_from_the_model(file_db):

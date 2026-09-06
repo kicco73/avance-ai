@@ -20,6 +20,15 @@ const PING_INTERVAL_MS = 25000
 const PONG_TIMEOUT_MS = 10000
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000]
 
+// Mirrors backend chat/ws_notifications.py's ALREADY_CONNECTED_CLOSE_CODE:
+// this identity is already at its per-role connection cap. Unlike every
+// other close reason this must NOT trigger the reconnect loop below — the
+// cap won't lift by retrying, only by the other tab going away — so the
+// socket instead settles into the distinct 'rejected' connectionState (see
+// _setConnectionState) for the app to show its own "already connected
+// elsewhere" screen.
+export const ALREADY_CONNECTED_CLOSE_CODE = 4409
+
 class ChatChannel {
   constructor() {
     this._socket = null
@@ -213,10 +222,26 @@ class ChatChannel {
         // is the one that schedules the retry, so this only has to not throw.
       }
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         this._socket = null
         this._connectingPromise = null
         this._stopHeartbeat()
+        // A real CloseEvent always carries `code`; our own explicit
+        // ws.close() (see disconnect() above) fires onclose with no event
+        // at all — never itself the already-connected-elsewhere case.
+        if (event?.code === ALREADY_CONNECTED_CLOSE_CODE) {
+          // Retrying can't help — the cap only frees up when the other
+          // connection goes away — so this settles here instead of
+          // feeding the exponential-backoff loop below.
+          this._wanted = false
+          if (typeof window !== 'undefined') {
+            window.removeEventListener('online', this._onOnline)
+            document.removeEventListener('visibilitychange', this._onVisibility)
+          }
+          this._setConnectionState('rejected')
+          if (!opened) reject(new Error('Already connected elsewhere.'))
+          return
+        }
         this._setConnectionState('closed')
         if (!opened) reject(new Error('Unable to connect to the chat service.'))
         this._scheduleReconnect()

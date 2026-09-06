@@ -14,7 +14,7 @@ from fastapi import WebSocketDisconnect
 
 from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME
-from chat.ws_notifications import WsNotifications
+from chat.ws_notifications import ALREADY_CONNECTED_CLOSE_CODE, HumanNotConnectedError, WsNotifications
 from conftest import chat_socket, chat_turn_frames
 from session import Session
 from test_ws_turn_event_order import _automaton, chat_service_for  # noqa: F401 — a pytest fixture, used by name
@@ -52,7 +52,7 @@ class _FakeWebSocket:
     async def accept(self):
         pass
 
-    async def close(self, code: int = 1000):
+    async def close(self, code: int = 1000, reason: str | None = None):
         self.closed_with = code
 
     async def receive_text(self):
@@ -82,7 +82,7 @@ class TestPush:
     def test_sends_the_payload_and_returns_true_when_a_connection_exists(self):
         channel = WsNotifications(_FakeAuthService())
         connection = _RecordingConnection()
-        channel._connections[USERNAME] = connection
+        channel._connections[USERNAME] = [connection]
 
         payload = {"type": "notification", "project_name": "proj", "state": {"key": "x"}, "on-enter": "notify('hi')"}
         assert asyncio.run(channel.push(USERNAME, payload)) is True
@@ -91,10 +91,43 @@ class TestPush:
     def test_never_reaches_a_different_users_own_connection(self):
         channel = WsNotifications(_FakeAuthService())
         other = _RecordingConnection()
-        channel._connections["other-user"] = other
+        channel._connections["other-user"] = [other]
 
         assert asyncio.run(channel.push(USERNAME, {"type": "notification"})) is False
         assert other.sent == []
+
+    def test_broadcasts_to_every_one_of_the_users_own_connections(self):
+        channel = WsNotifications(_FakeAuthService())
+        first, second = _RecordingConnection(), _RecordingConnection()
+        first.id = "conn-1"
+        second.id = "conn-2"
+        channel._connections[USERNAME] = [first, second]
+
+        payload = {"type": "notification"}
+        assert asyncio.run(channel.push(USERNAME, payload)) is True
+        assert first.sent == [payload]
+        assert second.sent == [payload]
+
+    def test_exclude_connection_id_skips_only_that_connection(self):
+        channel = WsNotifications(_FakeAuthService())
+        first, second = _RecordingConnection(), _RecordingConnection()
+        first.id = "conn-1"
+        second.id = "conn-2"
+        channel._connections[USERNAME] = [first, second]
+
+        payload = {"type": "human_prompt"}
+        assert asyncio.run(channel.push(USERNAME, payload, exclude_connection_id="conn-1")) is True
+        assert first.sent == []
+        assert second.sent == [payload]
+
+    def test_exclude_connection_id_returns_false_when_it_was_the_only_connection(self):
+        channel = WsNotifications(_FakeAuthService())
+        only = _RecordingConnection()
+        only.id = "conn-1"
+        channel._connections[USERNAME] = [only]
+
+        assert asyncio.run(channel.push(USERNAME, {"type": "human_prompt"}, exclude_connection_id="conn-1")) is False
+        assert only.sent == []
 
 
 class TestChannelLoop:
@@ -134,11 +167,11 @@ class TestChannelLoop:
     def test_a_different_users_own_registration_is_left_alone(self):
         channel = WsNotifications(_FakeAuthService())
         other = _RecordingConnection()
-        channel._connections["other-user"] = other
+        channel._connections["other-user"] = [other]
 
         asyncio.run(channel.channel_loop(_FakeWebSocket()))
 
-        assert channel._connections == {"other-user": other}
+        assert channel._connections == {"other-user": [other]}
 
     def test_an_unauthenticated_socket_is_closed_with_4401_before_accept(self):
         class _Rejecting:
@@ -149,6 +182,95 @@ class TestChannelLoop:
         asyncio.run(WsNotifications(_Rejecting()).channel_loop(websocket))
 
         assert websocket.closed_with == 4401
+
+
+class _FakeAdminAuthService:
+    def verify_token(self, token):
+        return AuthenticatedUser(provider_user_id="fake", email=USERNAME, name="Fake Admin", picture_url=None, role="admin")
+
+
+class TestConnectionCap:
+    """Per-role cap (see MAX_CONNECTIONS_PER_USER/MAX_CONNECTIONS_PER_ADMIN):
+    a connection past it is refused outright with ALREADY_CONNECTED_CLOSE_CODE,
+    never silently swapped for an older one — the two-tabs-same-account setup
+    HumanTalker testing relies on (see talker.human_talker) is exactly what
+    the admin's higher cap makes room for."""
+
+    def test_a_second_connection_for_a_plain_user_is_rejected(self):
+        channel = WsNotifications(_FakeAuthService())
+        channel._connections[USERNAME] = [_RecordingConnection()]
+
+        websocket = _FakeWebSocket()
+        asyncio.run(channel.channel_loop(websocket))
+
+        assert websocket.closed_with == ALREADY_CONNECTED_CLOSE_CODE
+
+    def test_an_admin_may_open_a_second_connection(self):
+        channel = WsNotifications(_FakeAdminAuthService())
+        channel._connections[USERNAME] = [_RecordingConnection()]
+
+        websocket = _FakeWebSocket()
+        asyncio.run(channel.channel_loop(websocket))
+
+        assert websocket.closed_with is None
+
+    def test_a_third_connection_for_an_admin_is_rejected(self):
+        channel = WsNotifications(_FakeAdminAuthService())
+        channel._connections[USERNAME] = [_RecordingConnection(), _RecordingConnection()]
+
+        websocket = _FakeWebSocket()
+        asyncio.run(channel.channel_loop(websocket))
+
+        assert websocket.closed_with == ALREADY_CONNECTED_CLOSE_CODE
+
+
+class TestHumanPrompt:
+    """send_human_prompt/await_human_reply (see chat.ws_human_relay.
+    WsHumanRelay): the HumanTalker manual-testing seam."""
+
+    def test_raises_when_the_user_has_no_open_connection(self):
+        channel = WsNotifications(_FakeAuthService())
+
+        with pytest.raises(HumanNotConnectedError):
+            asyncio.run(channel.send_human_prompt(USERNAME, session_id=1, prompt_text="hi"))
+
+    def test_a_human_reply_resolves_await_human_reply_with_its_text(self):
+        channel = WsNotifications(_FakeAuthService())
+        connection = _RecordingConnection()
+        connection.id = "conn-1"
+        channel._connections[USERNAME] = [connection]
+
+        async def scenario():
+            prompt_id = await channel.send_human_prompt(USERNAME, session_id=1, prompt_text="what do I say?")
+            channel._handle_frame(connection, json.dumps({"type": "human_reply", "prompt_id": prompt_id, "text": "say hi"}))
+            return await channel.await_human_reply(prompt_id)
+
+        assert asyncio.run(scenario()) == "say hi"
+
+    def test_exclude_connection_id_keeps_the_sending_tab_from_seeing_its_own_prompt(self):
+        channel = WsNotifications(_FakeAuthService())
+        sender, other = _RecordingConnection(), _RecordingConnection()
+        sender.id, other.id = "conn-sender", "conn-other"
+        channel._connections[USERNAME] = [sender, other]
+
+        asyncio.run(channel.send_human_prompt(
+            USERNAME, session_id=1, prompt_text="hi", exclude_connection_id="conn-sender",
+        ))
+
+        assert sender.sent == []
+        assert len(other.sent) == 1
+        assert other.sent[0]["type"] == "human_prompt"
+
+    def test_raises_when_excluding_the_only_connection(self):
+        channel = WsNotifications(_FakeAuthService())
+        only = _RecordingConnection()
+        only.id = "conn-1"
+        channel._connections[USERNAME] = [only]
+
+        with pytest.raises(HumanNotConnectedError):
+            asyncio.run(channel.send_human_prompt(
+                USERNAME, session_id=1, prompt_text="hi", exclude_connection_id="conn-1",
+            ))
 
 
 class _GatedProvider:

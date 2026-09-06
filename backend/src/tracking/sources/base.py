@@ -80,7 +80,7 @@ class SourceDriver:
         what to narrow the query *by*."""
         if len(text) <= MAX_SOURCE_RESULT_CHARS:
             return text
-        message = "error: response too long — provide more specific filters, then try again."
+        message = "error: response too long — restrict range with search strings and/or a specific column below:"
         if header:
             return f"{message}\n{header.rstrip(chr(10))}"
         return message

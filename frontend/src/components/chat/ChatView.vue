@@ -75,7 +75,10 @@ const {
   toggleAudio,
   projectPaused,
   projectPausedReason,
-  reloadMessages
+  reloadMessages,
+  humanTalkerEnabled,
+  humanTalkerLoading,
+  toggleHumanTalker
 } = props.store
 
 const emit = defineEmits(['project-select', 'project-download', 'manage-projects', 'home', 'profile', 'logout'])
@@ -88,6 +91,12 @@ const projectsMenuRef = ref(null)
 // app, with no base to return to.
 const canBackToManageProjects = computed(() => props.role === 'admin' || props.role === 'customer')
 const backLabel = computed(() => props.role === 'customer' ? 'Back to App store' : 'Back to Manage projects')
+
+// Manual-testing toggle for HumanTalker (see talker.human_talker,
+// chatStoreFactory.js's own toggleHumanTalker) — admin-only (matches
+// MAX_CONNECTIONS_PER_ADMIN, the two-tab setup this is built to test) and
+// only once there's an actual session to toggle it on.
+const showHumanTalkerToggle = computed(() => props.role === 'admin' && currentSessionId.value != null)
 
 const scrollEl = ref(null)
 const chatInputRef = ref(null)
@@ -106,6 +115,12 @@ defineExpose({
 // it is back — the one and only reason it closes besides the session
 // itself being unusable.
 const chatConnected = computed(() => chatConnectionState.value === 'open')
+
+// 'rejected' (see chatChannel.js's ALREADY_CONNECTED_CLOSE_CODE handling):
+// this identity is already at its per-role connection cap on another tab —
+// unlike the generic disconnected state below, this one will never resolve
+// on its own by retrying, so it gets its own, non-"riprovo" message.
+const chatRejected = computed(() => chatConnectionState.value === 'rejected')
 
 const chatDisabled = computed(() => !state.value?.key || !state.value?.chat || !selectedSessionActive.value)
 
@@ -299,6 +314,20 @@ watch(
         >«</button>
       </template>
       <template #right>
+        <label
+          v-if="showHumanTalkerToggle"
+          class="talker-toggle"
+          :class="{ 'talker-toggle-active': humanTalkerEnabled, 'talker-toggle-disabled': humanTalkerLoading }"
+          title="Answer this session's next turns as a human instead of the AI (see chat/ws_human_relay.py)"
+        >
+          <input
+            type="checkbox"
+            :checked="humanTalkerEnabled"
+            :disabled="humanTalkerLoading"
+            @change="toggleHumanTalker"
+          />
+          Human
+        </label>
         <ProjectsMenu
           ref="projectsMenuRef"
           session-actions
@@ -335,7 +364,14 @@ watch(
     </div>
 
     <p
-      v-if="!chatConnected"
+      v-if="chatRejected"
+      class="chat-ended-notice"
+    >
+      Questo account è già connesso altrove. Chiudi l'altra scheda per usare la chat qui.
+    </p>
+
+    <p
+      v-else-if="!chatConnected"
       class="chat-ended-notice"
     >
       Connessione alla chat non disponibile, riprovo…
@@ -379,6 +415,22 @@ watch(
 </template>
 
 <style scoped>
+.talker-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: #666;
+  cursor: pointer;
+  user-select: none;
+  margin-right: 0.4rem;
+}
+.talker-toggle input { cursor: pointer; }
+/* Same amber used elsewhere (see RunChat.vue's own .dev-mode-toggle-active)
+   for "this changes normal behavior, pay attention". */
+.talker-toggle-active { color: #b06a00; font-weight: 600; }
+.talker-toggle-disabled { opacity: 0.6; cursor: not-allowed; }
+
 .chat-window-outer {
   display: flex;
   flex: 1;

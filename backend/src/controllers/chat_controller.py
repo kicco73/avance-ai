@@ -24,6 +24,7 @@ from schemas import (
     AutoTrackingRequest,
     ReactionRequest,
     SetEnvValueRequest,
+    TalkerRequest,
 )
 
 from .base_controller import BaseController, delete, get, post, put
@@ -268,6 +269,20 @@ class ChatController(BaseController):
     def post_actuators(self, session_id: int, req: ActuatorsRequest):
         self.chat_service.set_actuators_enabled(session_id, req.enabled)
         return {"enabled": self.chat_service.is_actuators_enabled(session_id)}
+
+    @get("/api/chat/sessions/{session_id}/talker")
+    def get_talker(self, session_id: int):
+        """Manual-testing toggle for HumanTalker (see talker.human_talker):
+        `human: true` means the session's next turns are answered by a
+        person over their own websocket (chat.ws_human_relay) instead of
+        the model. Never survives a restart, same as autotracking/
+        actuators above."""
+        return {"human": self.chat_service.is_human_talker_enabled(session_id)}
+
+    @post("/api/chat/sessions/{session_id}/talker")
+    def post_talker(self, session_id: int, req: TalkerRequest):
+        self.chat_service.set_human_talker_enabled(session_id, req.human)
+        return {"human": self.chat_service.is_human_talker_enabled(session_id)}
 
     @put("/api/chat/messages/{message_id}/reaction")
     def put_message_reaction(self, message_id: int, req: ReactionRequest):

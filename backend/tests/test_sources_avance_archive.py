@@ -135,59 +135,102 @@ def test_select_rows_containing_returns_whole_rows_and_takes_no_keys_argument(db
         driver.select_rows_containing("VY3003", keys=["data_partenza"])
 
 
-def test_select_rows_where_column_compares_numbers_iso_dates_and_text_returning_whole_rows(db):
+def test_select_rows_where_compares_numbers_iso_dates_and_text_returning_whole_rows(db):
     driver, _ = _seeded_driver(db, "flights.csv", FLIGHTS)
 
-    assert driver.select_rows_where_column("data_partenza", "=", "2026-08-17") == (
+    assert driver.select_rows_where("data_partenza", "=", "2026-08-17") == (
         "codice_volo,data_partenza,datetime_partenza_reale\nVY3003,2026-08-17,2026-08-17 07:05\n"
     )
-    assert driver.select_rows_where_column("data_partenza", ">", "2026-08-16") == (
+    assert driver.select_rows_where("data_partenza", ">", "2026-08-16") == (
         "codice_volo,data_partenza,datetime_partenza_reale\nVY3003,2026-08-17,2026-08-17 07:05\n"
     )
-    assert driver.select_rows_where_column("data_partenza", ">=", "2026-08-16").count("VY3003") == 2
-    assert driver.select_rows_where_column("data_partenza", "<", "2026-08-16") == ""
-    assert driver.select_rows_where_column("codice_volo", "!=", "VY3003") == ""
+    assert driver.select_rows_where("data_partenza", ">=", "2026-08-16").count("VY3003") == 2
+    assert driver.select_rows_where("data_partenza", "<", "2026-08-16") == ""
+    assert driver.select_rows_where("codice_volo", "!=", "VY3003") == ""
     # A datetime cell still compares against a plain ISO date.
-    assert driver.select_rows_where_column("datetime_partenza_reale", "<", "2026-08-17") == (
+    assert driver.select_rows_where("datetime_partenza_reale", "<", "2026-08-17") == (
         "codice_volo,data_partenza,datetime_partenza_reale\nVY3003,2026-08-16,2026-08-16 07:12\n"
     )
 
     numbers, _ = _seeded_driver(db, "seats.csv", "flight,free_seats\nVY1,12\nVY2,9\nVY3,100\n")
-    assert numbers.select_rows_where_column("free_seats", ">=", "12") == "flight,free_seats\nVY1,12\nVY3,100\n"
-    assert numbers.select_rows_where_column("flight", "=", "vy2") == "flight,free_seats\nVY2,9\n"
+    assert numbers.select_rows_where("free_seats", ">=", "12") == "flight,free_seats\nVY1,12\nVY3,100\n"
+    assert numbers.select_rows_where("flight", "=", "vy2") == "flight,free_seats\nVY2,9\n"
 
 
-def test_select_rows_where_column_reports_an_unknown_column_or_operator_as_text_never_an_exception(db):
+def test_select_rows_where_reports_an_unknown_column_or_operator_as_text_never_an_exception(db):
     driver, _ = _seeded_driver(db, "flights.csv", FLIGHTS)
 
-    unknown = driver.select_rows_where_column("nope", "=", "x")
+    unknown = driver.select_rows_where("nope", "=", "x")
     assert unknown.startswith("error: unknown column(s) 'nope'")
     assert "codice_volo, data_partenza, datetime_partenza_reale" in unknown
 
-    assert driver.select_rows_where_column("codice_volo", "==", "VY3003").startswith("error: unknown operator '=='")
+    assert driver.select_rows_where("codice_volo", "==", "VY3003").startswith("error: unknown operator '=='")
 
 
-def test_select_rows_where_column_in_range_includes_both_bounds_over_numbers_and_iso_dates(db):
+def test_select_rows_where_ands_additional_strings_with_the_column_condition(db):
+    # A column condition combined with the same AND'd substring filter as
+    # select_rows_containing — narrows a range/comparison query that would
+    # otherwise return too many rows.
+    driver, _ = _seeded_driver(
+        db, "flights.csv",
+        "codice_volo,data_partenza,city\nVY3003,2026-08-16,Barcelona\nVY4000,2026-08-16,Rome\nVY3003,2026-08-10,Barcelona\n",
+    )
+
+    assert driver.select_rows_where("data_partenza", "=", "2026-08-16", "Barcelona") == (
+        "codice_volo,data_partenza,city\nVY3003,2026-08-16,Barcelona\n"
+    )
+    # Several extra strings are AND'd together, same as select_rows_containing.
+    assert driver.select_rows_where("data_partenza", "=", "2026-08-16", "Barcelona", "VY3003") == (
+        "codice_volo,data_partenza,city\nVY3003,2026-08-16,Barcelona\n"
+    )
+    assert driver.select_rows_where("data_partenza", "=", "2026-08-16", "Tokyo") == ""
+    # The column condition is still applied — a matching string alone isn't enough.
+    assert driver.select_rows_where("data_partenza", "=", "2026-08-10", "Rome") == ""
+    # No extra strings behaves exactly like before.
+    assert driver.select_rows_where("data_partenza", "=", "2026-08-16") == (
+        "codice_volo,data_partenza,city\nVY3003,2026-08-16,Barcelona\nVY4000,2026-08-16,Rome\n"
+    )
+
+
+def test_select_rows_in_range_includes_both_bounds_over_numbers_and_iso_dates(db):
     driver, _ = _seeded_driver(db, "flights.csv", FLIGHTS)
 
-    assert driver.select_rows_where_column_in_range("data_partenza", "2026-08-16", "2026-08-17") == FLIGHTS
-    assert driver.select_rows_where_column_in_range("data_partenza", "2026-08-17", "2026-08-31") == (
+    assert driver.select_rows_in_range("data_partenza", "2026-08-16", "2026-08-17") == FLIGHTS
+    assert driver.select_rows_in_range("data_partenza", "2026-08-17", "2026-08-31") == (
         "codice_volo,data_partenza,datetime_partenza_reale\nVY3003,2026-08-17,2026-08-17 07:05\n"
     )
-    assert driver.select_rows_where_column_in_range("data_partenza", "2026-09-01", "2026-09-30") == ""
-    assert driver.select_rows_where_column_in_range("nope", "1", "2").startswith("error: unknown column(s) 'nope'")
+    assert driver.select_rows_in_range("data_partenza", "2026-09-01", "2026-09-30") == ""
+    assert driver.select_rows_in_range("nope", "1", "2").startswith("error: unknown column(s) 'nope'")
 
     numbers, _ = _seeded_driver(db, "seats.csv", "flight,free_seats\nVY1,12\nVY2,9\nVY3,100\n")
-    assert numbers.select_rows_where_column_in_range("free_seats", "9", "12") == "flight,free_seats\nVY1,12\nVY2,9\n"
+    assert numbers.select_rows_in_range("free_seats", "9", "12") == "flight,free_seats\nVY1,12\nVY2,9\n"
+
+
+def test_select_rows_in_range_ands_additional_strings_with_the_range_condition(db):
+    driver, _ = _seeded_driver(
+        db, "flights.csv",
+        "codice_volo,data_partenza,city\nVY3003,2026-08-16,Barcelona\nVY4000,2026-08-16,Rome\nVY3003,2026-08-10,Barcelona\n",
+    )
+
+    assert driver.select_rows_in_range("data_partenza", "2026-08-15", "2026-08-20", "Barcelona") == (
+        "codice_volo,data_partenza,city\nVY3003,2026-08-16,Barcelona\n"
+    )
+    assert driver.select_rows_in_range("data_partenza", "2026-08-15", "2026-08-20", "Tokyo") == ""
+    # The range condition is still applied — a matching string alone isn't enough.
+    assert driver.select_rows_in_range("data_partenza", "2026-08-15", "2026-08-20", "Barcelona", "2026-08-10") == ""
+    # No extra strings behaves exactly like before.
+    assert driver.select_rows_in_range("data_partenza", "2026-08-15", "2026-08-20") == (
+        "codice_volo,data_partenza,city\nVY3003,2026-08-16,Barcelona\nVY4000,2026-08-16,Rome\n"
+    )
 
 
 def test_the_column_filtered_reads_keep_the_files_own_delimiter_and_bound_their_result(db):
     semicolons, _ = _seeded_driver(db, "cities.csv", "code;city\nVY1;Paris\nVY2;Rome\n")
-    assert semicolons.select_rows_where_column("city", "=", "rome") == "code;city\nVY2;Rome\n"
+    assert semicolons.select_rows_where("city", "=", "rome") == "code;city\nVY2;Rome\n"
 
     rows = "\n".join(f"row-{i},1" for i in range(MAX_SOURCE_RESULT_CHARS))
     big, _ = _seeded_driver(db, "big.csv", f"name,n\n{rows}\n")
-    assert big.select_rows_where_column("n", "=", "1") == (
+    assert big.select_rows_where("n", "=", "1") == (
         "error: response too long — provide more specific filters, then try again.\nname,n"
     )
 

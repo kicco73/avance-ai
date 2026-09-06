@@ -14,7 +14,9 @@ from auth.auth_middleware import AuthMiddleware
 from auth.auth_service import AuthService
 from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
+from chat.ws_human_relay import WsHumanRelay
 from chat.ws_notifications import WsNotifications
+from talker import HumanTalker
 from config import AppConfig
 from controller import AvanceController
 from db import Db
@@ -176,6 +178,16 @@ def create_app() -> FastAPI:
         ws_notifications = WsNotifications(auth_service, chat_service)
         actuator_factory.set_ws_notifications(ws_notifications)
         test_event_broadcaster.set_ws_notifications(ws_notifications)
+
+        # Manual-testing seam for HumanTalker (see talker.human_talker and
+        # TrackingService.set_human_talker_factory): reaches the person
+        # through their own already-open /ws/notifications connection(s).
+        tracking_service.set_human_talker_factory(
+            lambda username, session_id, session_type, project_id: HumanTalker(
+                WsHumanRelay(ws_notifications, username, session_id, session_type=session_type, project_id=project_id),
+                listen_service=listen_service,
+            )
+        )
 
         test_service = TestService(
             db, ai_test_service, tracking_service, test_job_queue, project_service, test_event_broadcaster,

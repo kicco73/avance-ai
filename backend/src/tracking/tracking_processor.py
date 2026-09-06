@@ -2,7 +2,7 @@
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from http import HTTPStatus
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
 from chat.errors import ChatServiceError
 from db.db import Db
@@ -12,6 +12,9 @@ from automaton.automaton import Action, Automaton, State, StatePayload
 from logging_factory import LoggerFactory
 from session import Session
 from talker import AiTalker
+
+if TYPE_CHECKING:
+	from talker import BaseTalker
 
 from .env import Env
 from .env_prompt_block import EnvPromptBlock
@@ -117,9 +120,14 @@ class TrackingProcessor(object):
 			  auto_tracking_enabled: bool = True,
 			  talk_enabled: bool = True,
 			  input_token_budget_per_turn: int | None = 16000,
+			  assistant_talker: "BaseTalker | None" = None,
 		):
 		self.ai_service = ai_service
-		self.assistant_talker = AiTalker(ai_service=ai_service)
+		# Who actually answers this turn — the model by default; a caller
+		# that already built one (TrackingService, when the session is
+		# toggled to HumanTalker for testing — see TrackingService.
+		# set_human_talker_factory) passes it in instead.
+		self.assistant_talker = assistant_talker if assistant_talker is not None else AiTalker(ai_service=ai_service)
 
 		self.env = env
 		self.db = db

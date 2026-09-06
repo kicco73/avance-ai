@@ -15,6 +15,7 @@ import CustomerHome from './components/appStore/CustomerHome.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
 import ToastContainer from './components/ToastContainer.vue'
+import HumanPromptToasts from './components/HumanPromptToasts.vue'
 import DialogHost from './components/DialogHost.vue'
 import { disconnect as disconnectChat } from './chatClient.js'
 import { needsLogin } from './authStore.js'
@@ -168,6 +169,7 @@ onBeforeUnmount(() => {
   <div class="app-backdrop" aria-hidden="true"></div>
 
   <ToastContainer />
+  <HumanPromptToasts />
   <DialogHost />
 
   <LoginView v-if="needsLogin" @logged-in="handleLoggedIn" />

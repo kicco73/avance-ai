@@ -194,7 +194,7 @@ def test_source_namespace_lists_one_entry_per_declared_source(client):
     # (never a model tool — see tracking.sources.SourceDriver.value), so
     # it belongs in the design view's own autocomplete alongside the reads.
     assert set(body["source.pino"]) == {
-        "select_rows_containing", "select_rows_where_column", "select_rows_where_column_in_range", "value",
+        "select_rows_containing", "select_rows_where", "select_rows_in_range", "value",
     }
     # A source with no url yet (see AutomatonBuilder._build_source) is
     # still listed under its own name, just with nothing to call on it.
