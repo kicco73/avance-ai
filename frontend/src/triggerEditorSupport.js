@@ -52,6 +52,20 @@ export function excludingNamespaces(registry, excluded) {
   return Object.fromEntries(Object.entries(registry).filter(([ns]) => !isExcluded(ns)))
 }
 
+// output is state-scoped (unlike every other namespace, project-global) —
+// an action's trigger/env can only ever reference its own containing
+// state's output_keys, so this is never folded into identifierRegistry.js.
+// Derived from availableStates (useProjectCatalog's own outputKeys, off
+// already-loaded graph data — no extra fetch), falling back to the state
+// card's own selectedElement.data when editing a state directly.
+export function outputNamespaceFor(selectedElement, availableStates) {
+  if (!selectedElement) return {}
+  const stateKey = selectedElement.kind === 'state' ? selectedElement.data.id : selectedElement.data.matchStateKey
+  const fromCatalog = availableStates.find((s) => s.key === stateKey)?.outputKeys
+  const keys = fromCatalog ?? (selectedElement.kind === 'state' ? selectedElement.data.output_keys : null) ?? []
+  return Object.fromEntries(keys.map((k) => [k.name, k.ai_definition || '']))
+}
+
 export function isProxyNamespace(namespace) {
   return namespace !== 'signal' && namespace !== 'env' && namespace !== 'output' && namespace !== 'user' &&
     namespace !== 'automaton' && namespace !== 'datetime.timezone' && !namespace.startsWith('automaton.')

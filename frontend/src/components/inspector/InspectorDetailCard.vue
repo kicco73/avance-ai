@@ -12,6 +12,7 @@ import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 import { customDialog } from '../../dialogStore.js'
 import { useTokensBar } from '../../composables/useTokensBar.js'
 import { identifierRegistry } from '../../identifierRegistry.js'
+import { outputNamespaceFor } from '../../triggerEditorSupport.js'
 
 const props = defineProps({
   selectedElement: { type: Object, default: null }, // { kind: 'state' | 'action', data } | null
@@ -59,6 +60,7 @@ const props = defineProps({
 const emit = defineEmits(['select-attachment', 'jump-to-attachment', 'close', 'select', 'set-field', 'delete', 'update:open', 'open-actions-order'])
 
 const showEditForm = computed(() => props.editable && props.open)
+const outputNamespace = computed(() => outputNamespaceFor(props.selectedElement, props.availableStates))
 
 // stateTokens' own bar — see useTokensBar.js. The exact number stays
 // available on hover via the floating tooltip below.
@@ -489,7 +491,7 @@ function selectAttachment(fileName) {
                 <span class="inspector-py-field-icon" title="Python expression">PY</span>
                 Trigger
               </label>
-              <TriggerEditor v-model="editTrigger" :exclude-namespaces="['actuator']" @click.stop @blur="commitTrigger" />
+              <TriggerEditor v-model="editTrigger" :exclude-namespaces="['actuator']" :extra-namespaces="{ output: outputNamespace }" @click.stop @blur="commitTrigger" />
             </template>
             <p class="inspector-detail-field">
               <template v-if="!selectedElement.data.isInitEdge"><strong>{{ stateLabelFor(selectedElement.data.source) }}</strong> → </template>

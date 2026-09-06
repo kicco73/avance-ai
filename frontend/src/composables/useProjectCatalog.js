@@ -27,7 +27,7 @@ export function useProjectCatalog(projectId) {
     try {
       const { nodes, edges, build_warnings } = await getProjectGraph(projectId)
       validStateKeys.value = new Set(nodes.map((n) => n.state.key))
-      availableStates.value = nodes.map((n) => ({ key: n.state.key, uiLabel: n.state.ui_label }))
+      availableStates.value = nodes.map((n) => ({ key: n.state.key, uiLabel: n.state.ui_label, outputKeys: n.state.output_keys || [] }))
       actionLabelsByState.value = new Map(edges.map((e) => [`${e.source}::${e.action.name}`, e.action.ui_label]))
       buildWarnings.value = build_warnings || []
       if (projectBroken.value) {
