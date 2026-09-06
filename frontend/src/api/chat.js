@@ -107,23 +107,6 @@ export function postActuators(sessionId, enabled) {
   })
 }
 
-// Manual-testing toggle for HumanTalker: `human: true` routes the
-// session's next turns to whoever answers its human_prompt (see
-// humanPromptBus.js), instead of the model. Not test-session-only like
-// autotracking/actuators above — it works on the live chat too (see
-// ChatView.vue's own talker toggle).
-export function getTalker(sessionId) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/talker`)
-}
-
-export function postTalker(sessionId, human) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/talker`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ human })
-  })
-}
-
 export function messageAudioUrl(messageId) {
   return `${API_URL}/chat/messages/${messageId}/audio`
 }

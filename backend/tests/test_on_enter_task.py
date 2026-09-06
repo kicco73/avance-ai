@@ -260,6 +260,64 @@ def test_a_fake_actuator_sets_on_enter_still_runs_as_a_task_and_reports(file_db)
     assert frame["on-enter"].endswith("celebrate()")
 
 
+# --- switch_to_human / switch_to_ai -----------------------------------------
+
+def test_switch_to_human_hands_the_session_to_its_target_and_pages_them(file_db):
+    """actuator.switch_to_human(user_id) records the operator on the
+    factory (see ActuatorSetFactory.get_human_operator) and pages every
+    one of that operator's own websocket connections — never the
+    connection the on-enter's own firing session happens to be on."""
+    _, project_service, factory = _process(file_db, start=True)
+    admin_socket = _FakeWebSocket()
+    ws_notifications = WsNotifications(auth_service=None)
+    ws_notifications._connections["admin"] = [admin_socket]
+    factory.set_ws_notifications(ws_notifications)
+    _publish(file_db, project_service, _yml("actuator.switch_to_human('admin')"))
+    file_db.create_chat_session(username=USERNAME, project_id=PROJECT, revision=file_db.get_project_published_revision(PROJECT))
+    session_id = file_db.get_latest_chat_session(USERNAME, PROJECT)["id"]
+
+    _fire_go(file_db, factory, project_service, {"distress": 10}, session_id=session_id)
+
+    assert _wait_until(lambda: factory.get_human_operator(session_id) == "admin"), file_db.list_tasks()
+    assert _wait_until(lambda: admin_socket.sent)
+    assert admin_socket.sent == [{"type": "human_takeover", "session_id": session_id, "project_id": PROJECT}]
+
+
+def test_switch_to_ai_clears_a_previously_set_operator(file_db):
+    _, project_service, factory = _process(file_db, start=True)
+    _publish(file_db, project_service, _yml("actuator.switch_to_ai()"))
+    file_db.create_chat_session(username=USERNAME, project_id=PROJECT, revision=file_db.get_project_published_revision(PROJECT))
+    session_id = file_db.get_latest_chat_session(USERNAME, PROJECT)["id"]
+    factory.set_human_operator(session_id, "admin")
+
+    _fire_go(file_db, factory, project_service, {"distress": 10}, session_id=session_id)
+
+    assert _wait_until(lambda: factory.get_human_operator(session_id) is None), file_db.list_tasks()
+
+
+def test_a_fake_actuator_set_suppresses_switch_to_human(file_db):
+    """Test session with "Run actuators" off: nobody is actually paged —
+    same suppress-and-report shape as send_mail/whatsapp/defer above."""
+    websocket = _FakeWebSocket()
+    _, project_service, factory = _process(file_db, websocket, start=True)
+    _publish(file_db, project_service, _yml("actuator.switch_to_human('admin')"))
+    automaton = project_service.get_automaton(PROJECT, file_db.get_project_published_revision(PROJECT))
+    context = FixedProjectContext(automaton=automaton, project_id=PROJECT)
+    env = PersistedEnv(file_db, context, session_id=0)
+    builder = EvaluationScopeBuilder(
+        env, MetricService(file_db, context), SessionFacts(file_db, context), UserFacts(file_db), file_db, None,
+        factory.fake(project_id=PROJECT),
+    )
+    TrackingEngine(DbTrackingSink(file_db), env, builder).apply_action_env(
+        automaton, automaton.states["a"].actions[0], {}, "a",
+    )
+
+    assert _wait_until(lambda: websocket.sent), file_db.list_tasks()
+    (frame,) = websocket.sent
+    assert "Run actuators is off" in frame["on-enter"]
+    assert "no one was paged" in frame["on-enter"]
+
+
 def test_an_on_enter_survives_a_restart_and_runs_against_an_equivalent_environment(file_db):
     _, project_service, factory = _process(file_db)
     _publish(file_db, project_service, _yml("actuator.notify(user.name, 'high' if signal.distress > 50 else 'low')"))

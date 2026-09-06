@@ -1,6 +1,7 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import LiveChatWindow from './components/chat/LiveChatWindow.vue'
+import HumanOperatorChatView from './components/chat/HumanOperatorChatView.vue'
 import EditProjectView from './components/project/edit/EditProjectView.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
 import LoginView from './components/LoginView.vue'
@@ -16,7 +17,9 @@ import SplashScreen from './components/SplashScreen.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
 import ToastContainer from './components/ToastContainer.vue'
 import HumanPromptToasts from './components/HumanPromptToasts.vue'
+import HumanTakeoverToasts from './components/HumanTakeoverToasts.vue'
 import DialogHost from './components/DialogHost.vue'
+import { requestedOperatorSession, clearRequestedOperatorSession } from './humanTakeoverStore.js'
 import { disconnect as disconnectChat } from './chatClient.js'
 import { needsLogin } from './authStore.js'
 import { activeDialog } from './dialogStore.js'
@@ -32,6 +35,8 @@ const editProjectId = ref(null)
 const editProjectBuildError = ref(null)
 const labelProjectId = ref(null)
 const liveChatProjectId = ref(null)
+const operatorSessionId = ref(null)
+const operatorProjectId = ref(null)
 const currentUserProfile = ref(null)
 const currentUserRole = ref(null)
 const chatWindowRef = ref(null)
@@ -103,6 +108,17 @@ async function handleLabelProjectSwitch(projectId) {
   labelProjectId.value = projectId
 }
 
+// A human_takeover toast's own "Open" link (see humanTakeoverStore.js) —
+// requestedOperatorSession is the one thing that store hands upward,
+// since only App.vue holds pushView/the view stack.
+watch(requestedOperatorSession, (request) => {
+  if (!request) return
+  operatorSessionId.value = request.sessionId
+  operatorProjectId.value = request.projectId
+  pushView('operatorChat')
+  clearRequestedOperatorSession()
+})
+
 function openChatFromPreview(projectId) {
   closeHomePreview()
   handleManageProjectsChat(projectId)
@@ -170,6 +186,7 @@ onBeforeUnmount(() => {
 
   <ToastContainer />
   <HumanPromptToasts />
+  <HumanTakeoverToasts />
   <DialogHost />
 
   <LoginView v-if="needsLogin" @logged-in="handleLoggedIn" />
@@ -300,6 +317,15 @@ onBeforeUnmount(() => {
               :profile="currentUserProfile"
               @close="popPushedView"
               @open="handleManageProjectsChat"
+              v-on="profileMenuListeners"
+            />
+            <HumanOperatorChatView
+              v-else-if="pushedView === 'operatorChat'"
+              :key="operatorSessionId"
+              :session-id="operatorSessionId"
+              :project-id="operatorProjectId"
+              :profile="currentUserProfile"
+              @close="popPushedView"
               v-on="profileMenuListeners"
             />
           </Transition>

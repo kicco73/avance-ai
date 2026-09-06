@@ -317,6 +317,7 @@ class ChatService(object):
 		self._project_service.reset_test_sessions(project_id)
 		for reset_id in reset_session_ids:
 			EphemeralEnvRegistry().discard(reset_id)
+			self._db.delete_archives_with_prefix(project_id, f"{CACHE_DIR}/sessions/{reset_id}/")
 		automaton, state = self._project_service.get_automaton_and_state(project_id, type='test')
 		self._schedule_on_enter(automaton, automaton.init_action, None, project_id)
 		return automaton.get_state_payload(state)
@@ -509,14 +510,6 @@ class ChatService(object):
 
 	def clear_auto_tracking_overrides(self) -> None:
 		self._tracking_service.clear_auto_tracking_overrides()
-
-	def is_human_talker_enabled(self, session_id: int) -> bool:
-		self._ownership.require_own_session(session_id)
-		return self._tracking_service.is_human_talker_enabled(session_id)
-
-	def set_human_talker_enabled(self, session_id: int, enabled: bool) -> None:
-		self._ownership.require_own_session(session_id)
-		self._tracking_service.set_human_talker_enabled(session_id, enabled)
 
 	def global_exclusive_access(self):
 		return self._global_lock

@@ -9,7 +9,8 @@ import { snippetCompletion } from '@codemirror/autocomplete'
 const CALL_PARAMS = {
   'actuator.send_mail': ['to', 'body_md'],
   'actuator.notify': ['title', 'body_md'],
-  'actuator.show': ['body_md']
+  'actuator.show': ['body_md'],
+  'actuator.switch_to_human': ['user_id']
 }
 
 const AUTOMATON_EMPTY_HINT =

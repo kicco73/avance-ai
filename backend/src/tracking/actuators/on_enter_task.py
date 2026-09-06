@@ -255,6 +255,8 @@ class ScopeHydrator(object):
         else:
             actuator_set = self._actuator_factory.live(project_id=project_id)
         firing_session_id = payload.get("session_id")
+        if firing_session_id is not None:
+            actuator_set = actuator_set.with_session(firing_session_id)
         firing_session = self._db.get_chat_session(firing_session_id) if firing_session_id is not None else None
         # No real session to persist through (e.g. reset_test_sessions' own
         # project-wide reset, scheduled with session_id=None) — the same

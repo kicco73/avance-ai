@@ -256,6 +256,19 @@ class WsNotifications(object):
         self._pending_human_replies[prompt_id] = asyncio.get_running_loop().create_future()
         return prompt_id
 
+    async def send_human_takeover(self, username: str, session_id: int, project_id: str) -> None:
+        """actuator.switch_to_human(user_id)'s own push (see
+        tracking.actuators.actuator_set.LiveActuatorSet.switch_to_human):
+        tells every one of `username`'s open connections that session_id
+        needs a human now, carrying enough to open it (project_id) —
+        never `exclude_connection_id`, since both of the operator's own
+        connections are the ones being paged, not whatever
+        triggered the actuator. Best-effort like push(): a dormant/
+        offline operator just doesn't get it live, same as any other
+        push — get_human_operator(session_id) is queryable state, not a
+        one-shot event, so they still see it once they open the session."""
+        await self.push(username, {"type": "human_takeover", "session_id": session_id, "project_id": project_id})
+
     async def await_human_reply(self, prompt_id: str) -> str:
         """The WsHumanRelay.receive() primitive: waits for the
         human_reply matching a prompt_id send_human_prompt() returned.

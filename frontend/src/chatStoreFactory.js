@@ -1,7 +1,6 @@
 import { computed, nextTick, ref } from 'vue'
 import {
   getMessages, getSessionState, postAction, getAutoTracking, postAutoTracking, getActuators, postActuators,
-  getTalker, postTalker,
   postTruncateSession, deleteSession, postCloseSession, putMessageReaction, postListenTranscribe, messageAudioUrl,
 } from './api.js'
 import { sendMessage as sendChatMessage, onConnectionState, getConnectionState } from './chatClient.js'
@@ -13,6 +12,8 @@ import { playMessageChime, playMessageAudio, playReactionChime, unlockAudioPlayb
 import { clearApiError, setApiError } from './errorStore.js'
 import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
+import { chatChannel } from './chatChannel.js'
+import { getHumanPromptForSession, removeHumanPrompt } from './humanPromptStore.js'
 
 const SESSION_INACTIVE_CODES = ['session_closed', 'session_channel_mismatch', 'session_superseded']
 
@@ -60,7 +61,7 @@ export function toggleSpokenText() {
 // about session resolution itself.
 export function createChatStore({
   kind, getCurrentSession, getSessionsList, createSession, resetSession = null,
-  confirmNewSession = true, useAutoTracking = false, useActuatorsToggle = false, useHumanTalkerToggle = false,
+  confirmNewSession = true, useAutoTracking = false, useActuatorsToggle = false,
   subscribeToNotifications = false,
 }) {
   const state = ref(null)
@@ -85,12 +86,6 @@ export function createChatStore({
   const autoTrackingLoading = ref(false)
   const actuatorsEnabled = ref(false)
   const actuatorsLoading = ref(false)
-  // Manual-testing toggle for HumanTalker (see talker.human_talker): the
-  // session's next turns get answered by a person (see humanPromptBus.js)
-  // instead of the model. Unlike autoTracking/actuators above this isn't
-  // test-session-only — see ChatView.vue's own toggle, live chat included.
-  const humanTalkerEnabled = ref(false)
-  const humanTalkerLoading = ref(false)
   const draft = ref('')
   const turnCount = ref(0)
   let nextMessageId = 0
@@ -157,15 +152,6 @@ export function createChatStore({
     }
   }
 
-  async function loadHumanTalker() {
-    try {
-      const res = await getTalker(currentSessionId.value)
-      humanTalkerEnabled.value = res.human
-    } catch {
-      // already surfaced via apiFetch
-    }
-  }
-
   async function ensureSession() {
     projectPaused.value = false
     const session = await getCurrentSession(currentSessionId.value)
@@ -181,7 +167,6 @@ export function createChatStore({
     state.value = session.state
     if (useAutoTracking) await loadAutoTracking()
     if (useActuatorsToggle) await loadActuators()
-    if (useHumanTalkerToggle) await loadHumanTalker()
     return session.id
   }
 
@@ -330,18 +315,6 @@ export function createChatStore({
       // already surfaced via apiFetch
     } finally {
       actuatorsLoading.value = false
-    }
-  }
-
-  async function toggleHumanTalker() {
-    humanTalkerLoading.value = true
-    try {
-      const res = await postTalker(currentSessionId.value, !humanTalkerEnabled.value)
-      humanTalkerEnabled.value = res.human
-    } catch {
-      // already surfaced via apiFetch
-    } finally {
-      humanTalkerLoading.value = false
     }
   }
 
@@ -708,7 +681,6 @@ export function createChatStore({
     chatStatus.value = ''
     autoTrackingEnabled.value = true
     actuatorsEnabled.value = false
-    humanTalkerEnabled.value = false
     // A project switch is exactly when "the current session" should be re-resolved.
     currentSessionId.value = null
     currentProjectId.value = null
@@ -791,10 +763,56 @@ export function createChatStore({
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
     messages, historyLoaded, chatLoading, chatStatus, actionLoading,
     autoTrackingEnabled, autoTrackingLoading, actuatorsEnabled, actuatorsLoading, draft, turnCount,
-    humanTalkerEnabled, humanTalkerLoading, toggleHumanTalker,
     handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
     selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking, toggleActuators,
     toggleAudio, handleSend, handleVoiceMessage, handleResend, handleReact, handleAction,
     clearChatUi, handleReset: resetSession ? handleReset : null, handleNewSession, handleCloseSession,
   }
+}
+
+// HumanOperatorChatView.vue's own store: reuses every bit of createChatStore
+// above (message loading, state fetch, reconnect sync) unchanged — a
+// session someone else is having is otherwise exactly what ChatView.vue
+// already renders. The one thing that's genuinely different is sending:
+// there's no automaton turn to submit here, only whichever human_prompt
+// (see humanPromptStore.js) this session's current turn is waiting on —
+// answering it is what actually resolves it (see chat/ws_human_relay.py).
+export function createOperatorChatStore(sessionId, projectId) {
+  const store = createChatStore({
+    kind: 'live',
+    getCurrentSession: async () => ({
+      id: sessionId,
+      active: true,
+      paused: false,
+      legal_terms_pending: false,
+      project_id: projectId,
+      state: await getSessionState(sessionId),
+    }),
+    getSessionsList: async () => [],
+    createSession: async () => ({ id: sessionId }),
+    confirmNewSession: false,
+  })
+
+  // A local counter, not createChatStore's own internal one (private to
+  // its closure) — only needs to be unique within this store's own
+  // messages.value for Vue's :key, same role either counter plays.
+  let nextOperatorMessageId = 0
+
+  async function handleSend(text) {
+    const pending = getHumanPromptForSession(sessionId)
+    if (!pending) return // Nothing waiting on a reply yet — see getHumanPromptForSession.
+    // Same frame humanPromptBus.js's own sendHumanReply sends — not
+    // reused directly so importing this file never also pulls in that
+    // module's own top-level chatChannel.subscribe('human_prompt', ...)
+    // side effect (see its own docstring), which every other chat store
+    // has no reason to register.
+    chatChannel.send({ type: 'human_reply', prompt_id: pending.promptId, text })
+    removeHumanPrompt(pending.promptId)
+    store.messages.value.push({
+      id: `operator-${++nextOperatorMessageId}`, role: 'assistant', content: text, failed: false,
+      timestamp: new Date().toISOString(),
+    })
+  }
+
+  return { ...store, handleSend }
 }

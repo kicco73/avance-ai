@@ -35,6 +35,8 @@ class IdentifierRegistry:
         "show": "Shows a dialog in the frontend with body_md as its content — e.g. actuator.show('**Full** details here.'). `body_md` is markdown.",
         "defer": "Runs another actuator call later — e.g. actuator.defer(lambda: actuator.send_mail(user.email, 'Reminder'), datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=env.reminder_days)). The first argument must be a `lambda:` with no arguments; `when` must be built from datetime.datetime(...) or datetime.datetime.now(...), optionally ± datetime.timedelta(...). The call survives a server restart: it is stored as text with a snapshot of `user`/`signal`/`env` as they were when deferred, under the user and project (never a session — `session.*` is not available in on-enter).",
         "prompt": "Runs an extra, synchronous, fully isolated model call — no conversation history, no attachments, no signal/env context, nothing persisted, just `prompt` in and its text back — e.g. actuator.notify('Note', actuator.prompt('Summarize the last exchange in one sentence.')).",
+        "switch_to_human": "Hands the session to a person — e.g. actuator.switch_to_human(user.email). `user_id` is that person's username/email; they get pushed a notification with a link to take over this session's next turns as the human, in place of the AI.",
+        "switch_to_ai": "Hands a session back to the AI after switch_to_human — e.g. actuator.switch_to_ai().",
     }
 
     ATTACHMENT: dict[str, str] = {

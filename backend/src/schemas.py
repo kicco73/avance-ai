@@ -36,10 +36,6 @@ class ActuatorsRequest(BaseModel):
     enabled: bool
 
 
-class TalkerRequest(BaseModel):
-    human: bool
-
-
 class AiModelSelectionRequest(BaseModel):
     # None selects auto (the ai-service cascade's own fallback order); an
     # index into GET /api/ai/models' `models` pins generation to that

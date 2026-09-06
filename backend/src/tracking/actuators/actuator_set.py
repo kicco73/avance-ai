@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from whatsapp.whatsapp_service import WhatsAppService
 
     from ai import AiService
+    from tracking.actuators.factory import ActuatorSetFactory
     from tracking.sources import ToolSet
 
 
@@ -46,7 +47,9 @@ class ActuatorSet(ABC):
     a test session's "Run actuators" toggle. Only `send_mail`/`defer`
     (real side effects) are each subclass's own concern."""
 
-    def __init__(self, dispatcher: "OnEnterDispatcher | None" = None) -> None:
+    def __init__(
+        self, dispatcher: "OnEnterDispatcher | None" = None, factory: "ActuatorSetFactory | None" = None,
+    ) -> None:
         # Bound fresh per on-enter evaluation via with_ai_service —
         # never set any other way (see EvaluationScopeBuilder.build).
         self._ai_service: "AiService | None" = None
@@ -62,6 +65,17 @@ class ActuatorSet(ABC):
         # own FakeActuatorSet default): the script then runs inline and
         # its output is dropped, since no browser is listening anyway.
         self._dispatcher = dispatcher
+        # The factory that built this set — where switch_to_human/
+        # switch_to_ai actually record the operator (see
+        # ActuatorSetFactory.set_human_operator/clear_human_operator),
+        # same "ask the thing that made you" shape as _dispatcher above.
+        self._factory = factory
+        # Bound fresh per on-enter evaluation via with_session — never
+        # set any other way. None for a set built without a firing
+        # session (e.g. a deferred call, or a project-wide test reset)
+        # — switch_to_human/switch_to_ai are then no-ops, same as
+        # session.* being absent from an on-enter script's own scope.
+        self._session_id: int | None = None
 
     def schedule_on_enter(self, action: Action, scope: EvaluationScope, *, session_id: int | None) -> None:
         """Runs `action.on_enter` as an OnEnterTask due now (see
@@ -110,6 +124,24 @@ class ActuatorSet(ABC):
         bound._tool_set = tool_set
         return bound
 
+    def with_session(self, session_id: int) -> "ActuatorSet":
+        """A copy of this actuator set bound to the session whose
+        on-enter is actually running — see ScopeHydrator.build_scope,
+        the only place session_id is known at the moment a script's
+        actuator.* calls are evaluated. Same never-mutate-self shape as
+        with_ai_service above."""
+        bound = copy.copy(self)
+        bound._session_id = session_id
+        return bound
+
+    def switch_to_ai(self) -> None:
+        """Hands the session back to the AI after switch_to_human — no
+        real-world side effect to suppress (nobody is paged), so unlike
+        switch_to_human this is one concrete method, not a Live/Fake
+        pair. A no-op outside a session context (see _session_id)."""
+        if self._factory is not None and self._session_id is not None:
+            self._factory.clear_human_operator(self._session_id)
+
     @abstractmethod
     def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
         raise NotImplementedError
@@ -120,6 +152,10 @@ class ActuatorSet(ABC):
 
     @abstractmethod
     def defer(self, act: Callable[[], None], when: datetime) -> JsSnippet | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def switch_to_human(self, user_id: str) -> JsSnippet | None:
         raise NotImplementedError
 
 
@@ -170,9 +206,9 @@ class LiveActuatorSet(ActuatorSet):
 
     def __init__(
         self, notification_service: NotificationService, dispatcher: "OnEnterDispatcher",
-        whatsapp_service: "WhatsAppService | None" = None,
+        whatsapp_service: "WhatsAppService | None" = None, factory: "ActuatorSetFactory | None" = None,
     ) -> None:
-        super().__init__(dispatcher)
+        super().__init__(dispatcher, factory)
         self._notification_service = notification_service
         self._whatsapp_service = whatsapp_service
 
@@ -204,6 +240,16 @@ class LiveActuatorSet(ActuatorSet):
         self._dispatcher.schedule_later(act, when)
         return None
 
+    def switch_to_human(self, user_id: str) -> None:
+        if self._factory is None or self._session_id is None:
+            logger.warning("actuator.switch_to_human() called outside a session context — ignored.")
+            return None
+        self._factory.set_human_operator(self._session_id, user_id)
+        ws_notifications = self._factory.ws_notifications
+        if ws_notifications is not None:
+            _run_sync(ws_notifications.send_human_takeover(user_id, self._session_id, self._dispatcher.project_id))
+        return None
+
 
 class FakeActuatorSet(ActuatorSet):
     """Stands in for LiveActuatorSet while a test session's own "Run
@@ -223,5 +269,10 @@ class FakeActuatorSet(ActuatorSet):
 
     def defer(self, act: Callable[[], None], when: datetime) -> JsSnippet | None:
         message = f"defer(when={when.isoformat()!r}) — Run actuators is off, nothing was scheduled."
+        logger.info(message)
+        return self.notify("Actuator (test)", message)
+
+    def switch_to_human(self, user_id: str) -> JsSnippet | None:
+        message = f"switch_to_human(user_id={user_id!r}) — Run actuators is off, no one was paged; the AI answers instead."
         logger.info(message)
         return self.notify("Actuator (test)", message)

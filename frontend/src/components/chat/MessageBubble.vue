@@ -45,7 +45,19 @@ const props = defineProps({
   // {key, ui_label}[] — the active project's whole reaction vocabulary
   // (see chatStore.js's state.reactions). Empty disables long-press-to-react
   // entirely (see onBubblePointerDown's own guard below).
-  reactions: { type: Array, default: () => [] }
+  reactions: { type: Array, default: () => [] },
+  // HumanOperatorChatView.vue's own bubbles only: swaps which side a
+  // 'user'/'assistant' message renders on, so the customer's messages
+  // read as "incoming" and the operator's own replies as "outgoing" —
+  // purely which column a bubble sits in (see alignRole below), never
+  // message.role itself, so reactions/awaiting-reply/spoken-text stay
+  // exactly as every other caller (default false) already sees them.
+  invert: { type: Boolean, default: false }
+})
+
+const alignRole = computed(() => {
+  if (!props.invert) return props.message.role
+  return props.message.role === 'user' ? 'assistant' : 'user'
 })
 
 const emit = defineEmits(['resend', 'react'])
@@ -149,7 +161,7 @@ const {
 <template>
   <div
     class="message-row"
-    :class="message.role === 'user' ? 'message-row-user' : 'message-row-assistant'"
+    :class="alignRole === 'user' ? 'message-row-user' : 'message-row-assistant'"
   >
     <button
       v-if="message.role === 'user' && message.failed"
@@ -166,7 +178,7 @@ const {
         ref="bubbleRef"
         class="bubble"
         :class="[
-          message.role === 'user' ? 'bubble-user' : 'bubble-assistant',
+          alignRole === 'user' ? 'bubble-user' : 'bubble-assistant',
           message.failed ? 'bubble-failed' : '',
           {
             'bubble-bulging': longPressActive,
