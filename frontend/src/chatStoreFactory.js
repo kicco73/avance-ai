@@ -367,15 +367,22 @@ export function createChatStore({
     // stale reply to the wrong, now-open chat.
     const turnSessionId = currentSessionId.value
 
-    // Create the assistant bubble up front, to receive chunks as they stream in
+    // Pushed right away, same as always — a coalesced turn's own
+    // placeholder must occupy its slot in messages.value immediately
+    // (see chatStoreCoalescing.test.js), or a second send arriving before
+    // this turn's first frame would land its own bubble ahead of this
+    // one's, out of order. `pending` is what actually keeps it invisible
+    // in the meantime (see MessageBubble.vue's own isPending) — nothing
+    // renders it until a real signal (below) clears it.
     const assistantMsgId = ++nextMessageId
-    const assistantMsg = {
+    messages.value.push({
       id: assistantMsgId,
       role: 'assistant',
       content: '',
       audioText: null,
       messageId: null,
       timestamp: new Date().toISOString(),
+      pending: true,
       // Set only by an explicit 'typing' frame below — never assumed just
       // because content starts empty (see MessageBubble.vue's own
       // isAwaitingReply).
@@ -386,8 +393,7 @@ export function createChatStore({
       // matching tool_result event, no sooner than TOOL_STATUS_MIN_MS
       // after it was shown (see ToolStatusHold) — "done" never cuts it short.
       statusText: ''
-    }
-    messages.value.push(assistantMsg)
+    })
     const statusHold = new ToolStatusHold({
       setStatusText: (text) => {
         if (currentSessionId.value !== turnSessionId) return
@@ -405,11 +411,13 @@ export function createChatStore({
     // multi-subscriber support), not through chatClient.js's onChunk —
     // that file is off limits, and it only ever forwards non-empty
     // content anyway (see its own `if (turn && data.content)` guard).
+    // This is what actually reveals the bubble in the common case (see
+    // `pending` above) — nothing on screen shows it any sooner.
     const unsubscribeTyping = chatChannel.subscribe('typing', (frame) => {
       if (frame.session_id !== turnSessionId || currentSessionId.value !== turnSessionId) return
       const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
       if (idx === -1) return
-      messages.value[idx] = { ...messages.value[idx], awaitingReply: true }
+      messages.value[idx] = { ...messages.value[idx], pending: false, awaitingReply: true }
       clearAwaitingReplyTimer()
       awaitingReplyTimer = setTimeout(() => {
         const i = messages.value.findIndex((m) => m.id === assistantMsgId)
@@ -448,6 +456,12 @@ export function createChatStore({
             messages.value[idx] = {
               ...messages.value[idx],
               content: messages.value[idx].content + chunkText,
+              // Covers the one case 'typing' never fires: a human
+              // operator whose reply itself wins the race against their
+              // own typing signal (see talker/human_talker.py's own
+              // chat()) — the first thing this bubble ever shows is the
+              // real text.
+              pending: false,
               awaitingReply: false
             }
           }

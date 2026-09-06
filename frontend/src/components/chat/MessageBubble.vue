@@ -135,6 +135,13 @@ onBeforeUnmount(clearLongPressTimer)
 // actually do (see chat/ws_turn.py's own "typing" key).
 const isAwaitingReply = computed(() => props.message.role === 'assistant' && props.message.awaitingReply === true)
 
+// True from the moment a turn's own placeholder is created until its
+// first real signal (a 'typing' frame, or real content) arrives — see
+// chatStoreFactory.js's own submitMessage. The placeholder must occupy
+// its slot in messages.value immediately for a coalesced turn's own
+// ordering to hold, but nothing renders it on screen until then.
+const isPending = computed(() => props.message.role === 'assistant' && props.message.pending === true)
+
 function getMessageText(msg) {
   // Prefer spoken text (audioText) over the normal streamed content when enabled and available.
   if (props.spokenTextEnabled && msg.role === 'assistant' && msg.audioText) {
@@ -163,6 +170,7 @@ const {
 
 <template>
   <div
+    v-if="!isPending"
     class="message-row"
     :class="alignRole === 'user' ? 'message-row-user' : 'message-row-assistant'"
   >
