@@ -1,5 +1,11 @@
 <script setup>
-import { ref, watch } from 'vue'
+// stateData is the Graph's own selection object (EditProjectView's
+// selectedGraphElement.data) — see EditProjectView's own
+// resyncSelectedGraphElement docstring for why a plain computed off it is
+// enough: every project edit gets that object reassigned wholesale by the
+// parent once the graph reload lands, so there's nothing to watch/refetch
+// here beyond re-deriving from the current prop value.
+import { computed, ref, watch } from 'vue'
 import CardMenu from './CardMenu.vue'
 
 const props = defineProps({
@@ -11,16 +17,12 @@ const props = defineProps({
 
 const emit = defineEmits(['add-output-key', 'set-field', 'delete'])
 
-const outputKeys = ref([])
+const outputKeys = computed(() => props.stateData?.output_keys || [])
 const expandedName = ref(null)
 const editName = ref('')
 const editUiLabel = ref('')
 const editUiDescription = ref('')
 const editAiDefinition = ref('')
-
-function loadOutputKeys() {
-  outputKeys.value = props.stateData?.output_keys || []
-}
 
 function selectOutputKey(name) {
   if (expandedName.value === name) {
@@ -43,22 +45,18 @@ function commitField(field, currentValue, originalValue) {
   }
 }
 
-async function deleteOutputKey(name) {
+function deleteOutputKey(name) {
   emit('delete', name)
   expandedName.value = null
-  await loadOutputKeys()
 }
 
-watch(() => props.stateData, loadOutputKeys, { deep: true, immediate: true })
-
-watch(() => props.recentlyAddedKey, async (key) => {
+// Auto-expand the block a "+ Add output field" click just created, same
+// convention as InspectorEnvKeysTab's own recentlyAddedKey handling.
+watch(() => props.recentlyAddedKey, (key) => {
   if (!key?.startsWith('output-key:')) return
-  // Force a re-read of stateData after YAML changes
-  await new Promise(resolve => setTimeout(resolve, 100))
-  loadOutputKeys()
+  const name = key.split('/').pop()
+  if (outputKeys.value.some((k) => k.name === name)) selectOutputKey(name)
 })
-
-defineExpose({ loadOutputKeys })
 </script>
 
 <template>

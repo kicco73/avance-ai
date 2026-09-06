@@ -230,10 +230,30 @@ onBeforeUnmount(() => { activeChatMode.value = 'live' })
 
 const { width: explorerWidth, startDrag: startExplorerDrag } = useResizablePanel(220, { min: 160, max: 420 })
 
+// The graph reload above rebuilds graphNodes/graphEdges from scratch, but
+// InspectorGraph.vue never re-emits 'select' for a design-mode selection
+// (only for `highlightedStateKey`, which Run/Test mode drives — see its
+// own syncSelectionToSelection). Left alone, selectedGraphElement.value
+// keeps pointing at the pre-reload node/edge object, so anything watching
+// selectedGraphElement.data (e.g. InspectorStateOutputTab's output_keys)
+// never sees the edit that was just made. Re-resolve it here off the
+// freshly-loaded graph, by the same key, so it becomes a genuinely new object.
+function resyncSelectedGraphElement() {
+  const el = selectedGraphElement.value
+  if (!el) return
+  if (el.kind === 'state') {
+    selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(el.data.id) ?? null
+  } else if (el.kind === 'action') {
+    const actions = indexYmlEditorRef.value?.actionsForState(el.data.matchStateKey) ?? []
+    selectedGraphElement.value = actions.find((a) => a.data.actionName === el.data.actionName) ?? null
+  }
+}
+
 async function refreshAfterProjectEdit() {
   await indexYmlEditorRef.value?.refresh(false)
   await indexYmlEditorRef.value?.reloadCode()
   if (inspecting.value) await inspectorRef.value?.refresh()
+  resyncSelectedGraphElement()
   refreshCatalog()
   refreshProjectRevision()
   refreshStateTabTokens()
