@@ -1,7 +1,7 @@
 """Tests how signal (and other) metadata is extracted as a side effect of
 TurnProtocolUsingSchema.generate_reply's on_metadata callback — a direct
 on_metadata callback from AiService.generate_stream_with_metadata, with
-each field's raw value already decoded through its own MetadataChannel.
+each field's raw value already decoded through its own Prompt channel.
 """
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
-from tracking.channels import AudioChannel, MemoryChannel, SignalsChannel, TextChannel
+from tracking.prompt import AudioPrompt, MemoryPrompt, Prompt, SignalsPrompt, TextPrompt
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 
 USERNAME = "user"
@@ -18,11 +18,11 @@ PROJECT_ID = "proj"
 pytestmark = pytest.mark.contract
 
 
-def _channels(db) -> list:
+def _prompt(db) -> Prompt:
     env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id=0)
-    return [
-        SignalsChannel("- Definition of signals: ..."), AudioChannel(), TextChannel("base prompt"), MemoryChannel(env),
-    ]
+    return Prompt.chain(
+        SignalsPrompt("- Definition of signals: ..."), AudioPrompt(), TextPrompt("base prompt"), MemoryPrompt(env),
+    )
 
 
 class FakeAiServiceV2:
@@ -49,7 +49,7 @@ async def _collect(protocol, db):
         metadata[key] = value
 
     chunks = []
-    async for chunk in protocol.generate_reply(_channels(db), [], on_metadata):
+    async for chunk in protocol.generate_reply(_prompt(db), [], on_metadata):
         chunks.append(chunk)
     return "".join(chunks), metadata
 

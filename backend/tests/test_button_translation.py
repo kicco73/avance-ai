@@ -1,8 +1,8 @@
 """End-to-end: a turn's own resulting state's manual actions get their
-ui_button translated via the TranslateChannel appended as the turn's last
+ui_button translated via the TranslatePrompt composed as the turn's last
 channel, and the translation reaches the final state payload the caller
 gets back — see TrackingProcessor._button_labels_to_translate/
-_append_translate_channel/_current_state_payload.
+_append_translate_prompt/_current_state_payload.
 """
 from __future__ import annotations
 

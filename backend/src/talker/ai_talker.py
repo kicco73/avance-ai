@@ -26,7 +26,7 @@ from .base_talker import BaseTalker
 
 if TYPE_CHECKING:
 	from ai import AiService, MetadataCallback
-	from tracking.channels import MetadataChannel
+	from tracking.prompt import Prompt
 	from tracking.sources import ToolSet
 
 
@@ -43,7 +43,7 @@ class AiTalker(BaseTalker):
 
 	def chat(
 		self,
-		channels: list["MetadataChannel"],
+		prompt: "Prompt",
 		chat_history: list[dict],
 		on_metadata: "MetadataCallback",
 		tool_set: "ToolSet | None" = None,
@@ -56,7 +56,7 @@ class AiTalker(BaseTalker):
 		this object instead of built inline at the call site."""
 		assert self._ai_service is not None, "AiTalker built without an ai_service can't chat()"
 		return TurnProtocolUsingSchema(self._ai_service).generate_reply(
-			channels, chat_history, on_metadata,
+			prompt, chat_history, on_metadata,
 			tool_set=tool_set, force_required_tools=force_required_tools, env_block=env_block,
 		)
 

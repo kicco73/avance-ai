@@ -4,6 +4,7 @@ import {
   postTruncateSession, deleteSession, postCloseSession, putMessageReaction, postListenTranscribe, messageAudioUrl,
 } from './api.js'
 import { sendMessage as sendChatMessage, onConnectionState, getConnectionState } from './chatClient.js'
+import { chatChannel } from './chatChannel.js'
 import { ChatReconnectSync } from './chatReconnectSync.js'
 import { applyAiModelInfo } from './aiModelStore.js'
 import { ToolStatusHold } from './toolStatusHold.js'
@@ -14,6 +15,13 @@ import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
 
 const SESSION_INACTIVE_CODES = ['session_closed', 'session_channel_mismatch', 'session_superseded']
+
+// A 'typing' frame (see chat/ws_turn.py) turns the dots on; if nothing
+// real follows within this long, they turn back off on their own rather
+// than sitting there forever (e.g. an operator who started typing then
+// walked away) — the turn itself keeps waiting regardless, this only
+// governs the dots.
+const AWAITING_REPLY_TIMEOUT_MS = 15000
 
 // The chat's one transport, as the UI sees it: 'connecting' | 'open' |
 // 'closed' (see chatClient.js). Module-level, not per-store — there is
@@ -368,6 +376,10 @@ export function createChatStore({
       audioText: null,
       messageId: null,
       timestamp: new Date().toISOString(),
+      // Set only by an explicit 'typing' frame below — never assumed just
+      // because content starts empty (see MessageBubble.vue's own
+      // isAwaitingReply).
+      awaitingReply: false,
       // Backend-composed line (e.g. "Searching Flights…") shown in place
       // of the typing dots while a tool call is in flight — see
       // MessageBubble.vue's own isAwaitingReply branch. Cleared by the
@@ -382,6 +394,27 @@ export function createChatStore({
         const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
         if (idx !== -1) messages.value[idx] = { ...messages.value[idx], statusText: text }
       }
+    })
+
+    let awaitingReplyTimer = null
+    function clearAwaitingReplyTimer() {
+      clearTimeout(awaitingReplyTimer)
+      awaitingReplyTimer = null
+    }
+    // A 'typing' frame is routed here directly (see chatChannel.js's own
+    // multi-subscriber support), not through chatClient.js's onChunk —
+    // that file is off limits, and it only ever forwards non-empty
+    // content anyway (see its own `if (turn && data.content)` guard).
+    const unsubscribeTyping = chatChannel.subscribe('typing', (frame) => {
+      if (frame.session_id !== turnSessionId || currentSessionId.value !== turnSessionId) return
+      const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
+      if (idx === -1) return
+      messages.value[idx] = { ...messages.value[idx], awaitingReply: true }
+      clearAwaitingReplyTimer()
+      awaitingReplyTimer = setTimeout(() => {
+        const i = messages.value.findIndex((m) => m.id === assistantMsgId)
+        if (i !== -1) messages.value[i] = { ...messages.value[i], awaitingReply: false }
+      }, AWAITING_REPLY_TIMEOUT_MS)
     })
 
     // Set the moment onStatus first fires with a non-empty status_text
@@ -408,12 +441,14 @@ export function createChatStore({
         onChunk: (chunkText) => {
           if (currentSessionId.value !== turnSessionId) return
           hasChunk = true
+          clearAwaitingReplyTimer()
           // Replace with a new object (not mutate in place) to trigger Vue reactivity
           const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
           if (idx !== -1) {
             messages.value[idx] = {
               ...messages.value[idx],
-              content: messages.value[idx].content + chunkText
+              content: messages.value[idx].content + chunkText,
+              awaitingReply: false
             }
           }
         }
@@ -571,6 +606,8 @@ export function createChatStore({
       // turn nothing is ever going to finish.
       turnsInFlight.value--
       chatStatus.value = ''
+      unsubscribeTyping()
+      clearAwaitingReplyTimer()
     }
   }
 

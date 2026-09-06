@@ -32,11 +32,11 @@ def estimate_turn_request(
     env: Env, attachments: list[MemoryArchive], schema_overhead: str = "",
     env_block: EnvPromptBlock | None = None,
 ) -> TurnSizeEstimate:
-    """`schema_overhead`: TurnProtocolUsingSchema.schema_overhead_text()
-    — the fixed tag preambles and SCHEMA_ORDER_PROMPT text the protocol
-    itself adds on top of base_prompt/signal_definition/reaction_definition
-    once it actually builds a request, which none of those three account
-    for on their own. `env_block`: the automaton's env as this turn's
+    """`schema_overhead`: Prompt.schema_overhead_text() — the fixed
+    channel definitions and SCHEMA_ORDER_PROMPT text the protocol itself
+    adds on top of base_prompt/signal_definition/reaction_definition once
+    it actually builds a request, which none of those three account for
+    on their own. `env_block`: the automaton's env as this turn's
     prompt actually shows it (see tracking.env_prompt_block) — None when
     this state gets no env block at all, so nothing is counted for it."""
     prompt_text = base_prompt + (signal_definition or "") + (reaction_definition or "") + schema_overhead

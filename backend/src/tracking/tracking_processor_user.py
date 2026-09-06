@@ -60,7 +60,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			# Safety net — covers two cases, not just the one this used to
 			# guard against (the model never producing a 'signals' tag at
 			# all): in "after" tracking order (signals evaluated on the
-			# model's own reply — see TrackingProcessor._order_channels),
+			# model's own reply — see TrackingProcessor.build_turn_prompt),
 			# 'signals' is schema-ordered *after* 'text', so it only ever
 			# resolves once every 'text' chunk has already been produced —
 			# there is no chunk left afterwards for the per-iteration check
@@ -101,9 +101,9 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			# would be wasted and must not trigger a second trigger
 			# evaluation, so this regeneration only ever requests audio/text/memory.
 			base_prompt, chat_history, env_block = self._build_base_prompt_and_history(self.out.state)
-			channels = self.build_regeneration_channels(self.out.state, base_prompt)
+			prompt = self.build_regeneration_prompt(self.out.state, base_prompt)
 			async for chunk in self.assistant_talker.chat(
-				channels, chat_history, on_metadata=self.on_receiving_metadata,
+				prompt, chat_history, on_metadata=self.on_receiving_metadata,
 				tool_set=self.build_tool_set(self.out.state),
 				force_required_tools=self.force_required_tools_for(self.out.state),
 				env_block=env_block.text() if env_block else None,

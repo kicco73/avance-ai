@@ -235,6 +235,8 @@ class TestHumanPrompt:
             asyncio.run(channel.send_human_prompt(USERNAME, session_id=1, prompt_text="hi"))
 
     def test_a_human_reply_resolves_await_human_reply_with_its_text(self):
+        """The operator's own frame carries session_id, never a prompt_id
+        it may never have seen — see _current_prompt_for_session."""
         channel = WsNotifications(_FakeAuthService())
         connection = _RecordingConnection()
         connection.id = "conn-1"
@@ -242,10 +244,40 @@ class TestHumanPrompt:
 
         async def scenario():
             prompt_id = await channel.send_human_prompt(USERNAME, session_id=1, prompt_text="what do I say?")
-            channel._handle_frame(connection, json.dumps({"type": "human_reply", "prompt_id": prompt_id, "text": "say hi"}))
+            channel._handle_frame(connection, json.dumps({"type": "human_reply", "session_id": 1, "text": "say hi"}))
             return await channel.await_human_reply(prompt_id)
 
         assert asyncio.run(scenario()) == "say hi"
+
+    def test_a_human_typing_frame_resolves_wait_for_typing(self):
+        channel = WsNotifications(_FakeAuthService())
+        connection = _RecordingConnection()
+        connection.id = "conn-1"
+        channel._connections[USERNAME] = [connection]
+
+        async def scenario():
+            prompt_id = await channel.send_human_prompt(USERNAME, session_id=1, prompt_text="what do I say?")
+            channel._handle_frame(connection, json.dumps({"type": "human_typing", "session_id": 1}))
+            await asyncio.wait_for(channel.wait_for_typing(prompt_id), timeout=1.0)
+
+        asyncio.run(scenario())
+
+    def test_await_human_reply_clears_the_sessions_current_prompt(self):
+        channel = WsNotifications(_FakeAuthService())
+        connection = _RecordingConnection()
+        connection.id = "conn-1"
+        channel._connections[USERNAME] = [connection]
+
+        async def scenario():
+            prompt_id = await channel.send_human_prompt(USERNAME, session_id=1, prompt_text="hi")
+            channel._handle_frame(connection, json.dumps({"type": "human_reply", "session_id": 1, "text": "ok"}))
+            await channel.await_human_reply(prompt_id)
+            # A second, unrelated reply for the same session must not
+            # resolve a prompt that's already done.
+            channel._handle_frame(connection, json.dumps({"type": "human_reply", "session_id": 1, "text": "late"}))
+            return channel._current_prompt_for_session.get(1)
+
+        assert asyncio.run(scenario()) is None
 
     def test_exclude_connection_id_keeps_the_sending_tab_from_seeing_its_own_prompt(self):
         channel = WsNotifications(_FakeAuthService())
@@ -375,11 +407,14 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     assert [m["role"] for m in persisted] == ["user", "user", "assistant", "assistant"]
     assert [m["content"] for m in persisted if m["role"] == "user"] == ["I have a problem", "with flight VY3003"]
 
-    # Each frame's own turn reported under its own turn_id, chunks first.
+    # Each frame's own turn reported under its own turn_id: a "typing"
+    # frame first (see tracking_processor.py's own process()), chunks,
+    # then done.
     for turn_id in ("first", "second"):
         own = _frames_of(websocket.sent, turn_id)
         assert own[-1]["type"] == "done", own
-        assert set(f["type"] for f in own[:-1]) == {"chunk"}
+        assert own[0]["type"] == "typing", own
+        assert set(f["type"] for f in own[1:-1]) == {"chunk"}
 
 
 @pytest.mark.regression
@@ -405,8 +440,11 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
     await asyncio.wait_for(asyncio.gather(*turns), 5)
 
     assert [m["role"] for m in db.get_messages(session["id"])] == ["user", "assistant"]
-    # Nothing was written to the socket the browser had already left.
-    assert [f["type"] for f in websocket.sent] == []
+    # The only frame queued before the browser actually left is the
+    # "typing" one process() always sends first (see tracking_processor.
+    # py) — nothing from the reply itself made it, since generation was
+    # still gated behind provider.release at the moment of disconnect.
+    assert [f["type"] for f in websocket.sent] == ["typing"]
 
 
 @pytest.mark.regression
@@ -417,8 +455,12 @@ def test_every_outgoing_frame_of_a_turn_carries_its_turn_id_and_chunks_precede_d
 
     assert {f["turn_id"] for f in frames} == {"abc-123"}
     assert frames[-1]["type"] == "done"
-    assert [f["type"] for f in frames[:-1]] and set(f["type"] for f in frames[:-1]) == {"chunk"}
-    assert frames[-1]["reply"][0]["content"] == "".join(f["content"] for f in frames[:-1])
+    # "typing" always precedes generation (see tracking_processor.py's
+    # own process()), then every chunk, then done.
+    assert frames[0]["type"] == "typing"
+    chunks = frames[1:-1]
+    assert chunks and set(f["type"] for f in chunks) == {"chunk"}
+    assert frames[-1]["reply"][0]["content"] == "".join(f["content"] for f in chunks)
 
 
 @pytest.mark.contract

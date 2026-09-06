@@ -135,9 +135,12 @@ async def test_with_declared_sources_every_chunk_of_the_replayed_final_round_pre
     events = await _streamed_events(chat_service, "where's my flight?")
 
     kinds = _kinds(events)
-    assert kinds[:2] == ["tool(start)", "tool(result)"]
+    # "typing" always precedes generation (see tracking_processor.py's
+    # own process()), before even the first tool call.
+    assert kinds[0] == "typing"
+    assert kinds[1:3] == ["tool(start)", "tool(result)"]
     assert kinds[-1] == "done"
-    chunk_kinds = kinds[2:-1]
+    chunk_kinds = kinds[3:-1]
     assert chunk_kinds and set(chunk_kinds) == {"chunk"}
     assert _streamed_text(events) == "Your flight is on time."
     assert events[-1][1]["reply"][0]["content"] == "Your flight is on time."
@@ -152,7 +155,8 @@ async def test_without_sources_and_tracking_after_the_user_message_every_chunk_p
 
     kinds = _kinds(events)
     assert kinds[-1] == "done"
-    assert kinds[:-1] and set(kinds[:-1]) == {"chunk"}
+    assert kinds[0] == "typing"
+    assert kinds[1:-1] and set(kinds[1:-1]) == {"chunk"}
     assert _streamed_text(events) == "Your flight is on time."
 
 
@@ -165,5 +169,6 @@ async def test_with_declared_sources_but_no_tool_call_the_answer_streams_then_do
 
     kinds = _kinds(events)
     assert kinds[-1] == "done"
-    assert kinds[:-1] and set(kinds[:-1]) == {"chunk"}
+    assert kinds[0] == "typing"
+    assert kinds[1:-1] and set(kinds[1:-1]) == {"chunk"}
     assert _streamed_text(events) == "Your flight is on time."

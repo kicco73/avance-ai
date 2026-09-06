@@ -1,12 +1,12 @@
-"""Tests for MemoryChannel/SignalsChannel's [memory]/[signals]/[audio]
+"""Tests for MemoryPrompt/SignalsPrompt's [memory]/[signals]/[audio]
 decoding, and for how those values, together with a signal definition,
 get rendered into a turn's prompt.
 
 Two separate algorithms live side by side here, deliberately not unified:
-SignalsChannel/MemoryChannel's single-turn decode (a single live turn, or
+SignalsPrompt/MemoryPrompt's single-turn decode (a single live turn, or
 TurnByTurnSignalSource's one-call-per-turn replay — a forgiving
 "key: value"-per-line format for memory, plain JSON for signals, no turn
-concept at all) and SignalsBatchChannel/MemoryBatchChannel's decode
+concept at all) and SignalsBatchPrompt/MemoryBatchPrompt's decode
 (BatchSignalSource, covering several turns in one call — CSV rows /
 "<turn>:" headers followed by "key=value" lines, each ending in a final
 "[eof]" line/row so truncation is provable rather than inferred from turn
@@ -26,10 +26,9 @@ import pytest
 
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import Env, PersistedEnv
-from tracking.channels import (
-	MemoryBatchChannel, MemoryChannel, MetadataTurnMismatch, SignalsBatchChannel, SignalsChannel, TextChannel,
+from tracking.prompt import (
+	MemoryBatchPrompt, MemoryPrompt, MetadataTurnMismatch, Prompt, SignalsBatchPrompt, SignalsPrompt, TextPrompt,
 )
-from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 
 pytestmark = pytest.mark.contract
 
@@ -37,12 +36,12 @@ USERNAME = "user"
 PROJECT_ID = "proj"
 
 
-def _memory_channel() -> MemoryChannel:
-	return MemoryChannel(Env())
+def _memory_channel() -> MemoryPrompt:
+	return MemoryPrompt(Env())
 
 
-def _signals_channel() -> SignalsChannel:
-	return SignalsChannel(None)
+def _signals_channel() -> SignalsPrompt:
+	return SignalsPrompt(None)
 
 
 def test_memory_decode_reads_forgiving_key_value_lines_ignoring_bullets_blanks_noise_and_empty_content():
@@ -56,8 +55,8 @@ def test_memory_decode_reads_forgiving_key_value_lines_ignoring_bullets_blanks_n
 
 def test_memory_batch_decode_reads_one_entry_per_turn_in_order_with_a_single_turn_at_index_zero():
 	raw = "1:\nfavorite_color=blue\n2:\n3:\nmood=happy\n[eof]"
-	assert MemoryBatchChannel(expected_turns=3).decode(raw) == [{"favorite_color": "blue"}, {}, {"mood": "happy"}]
-	assert MemoryBatchChannel(expected_turns=1).decode("1:\nnext_meeting=14:30\n[eof]")[0] == {"next_meeting": "14:30"}
+	assert MemoryBatchPrompt(expected_turns=3).decode(raw) == [{"favorite_color": "blue"}, {}, {"mood": "happy"}]
+	assert MemoryBatchPrompt(expected_turns=1).decode("1:\nnext_meeting=14:30\n[eof]")[0] == {"next_meeting": "14:30"}
 
 
 @pytest.mark.parametrize(("raw", "expected_turns", "mentions"), [
@@ -79,7 +78,7 @@ def test_memory_batch_decode_raises_on_the_spot_for_anything_that_is_not_a_compl
 	never accepting more turns than the N the model was told to cover —
 	the exact bug this check exists for."""
 	with pytest.raises(MetadataTurnMismatch) as excinfo:
-		MemoryBatchChannel(expected_turns=expected_turns).decode(raw)
+		MemoryBatchPrompt(expected_turns=expected_turns).decode(raw)
 	if mentions is not None:
 		assert mentions in str(excinfo.value)
 
@@ -92,7 +91,7 @@ def test_signals_decode_reads_a_flat_json_object_or_an_empty_dict_for_empty_cont
 
 def test_signals_batch_decode_reads_one_row_per_turn_in_order():
 	raw = "mood,engagement\n1,50.2,70\n2,52,68\n[eof]"
-	assert SignalsBatchChannel(None, expected_turns=2).decode(raw) == [{"mood": 50.2, "engagement": 70.0}, {"mood": 52.0, "engagement": 68.0}]
+	assert SignalsBatchPrompt(None, expected_turns=2).decode(raw) == [{"mood": 50.2, "engagement": 70.0}, {"mood": 52.0, "engagement": 68.0}]
 
 
 @pytest.mark.parametrize(("raw", "expected_turns", "mentions"), [
@@ -102,14 +101,14 @@ def test_signals_batch_decode_reads_one_row_per_turn_in_order():
 ], ids=["missing-row", "non-numeric-row", "no-eof"])
 def test_signals_batch_decode_is_as_strict_as_the_memory_one(raw, expected_turns, mentions):
 	with pytest.raises(MetadataTurnMismatch) as excinfo:
-		SignalsBatchChannel(None, expected_turns=expected_turns).decode(raw)
+		SignalsBatchPrompt(None, expected_turns=expected_turns).decode(raw)
 	if mentions is not None:
 		assert mentions in str(excinfo.value)
 
 
 def test_the_final_prompt_renders_stored_env_values_only_and_the_given_signal_definition_verbatim(db):
 	"""System/session facts live in the `system`/`session` evaluation-scope
-	namespaces, never rendered into the prompt; build_final_prompt takes
+	namespaces, never rendered into the prompt; Prompt.render_text takes
 	the already-rendered definition text directly — it has no opinion of
 	its own on which signals it describes."""
 	db.ensure_project(PROJECT_ID)
@@ -122,12 +121,12 @@ def test_the_final_prompt_renders_stored_env_values_only_and_the_given_signal_de
 	)
 	db.set_env(session_id, {"favorite_color": "blue"})
 	env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
-	channels = [
-		SignalsChannel('- Definition of signals:\n\t- Signal "mood":\nmood definition'),
-		TextChannel("base prompt"), MemoryChannel(env),
-	]
+	composed = Prompt.chain(
+		SignalsPrompt('- Definition of signals:\n\t- Signal "mood":\nmood definition'),
+		TextPrompt("base prompt"), MemoryPrompt(env),
+	)
 
-	prompt = TurnProtocolUsingSchema(ai_service=None).build_final_prompt(channels)
+	prompt = composed.render_text()
 
 	assert "favorite_color: blue" in prompt
 	assert "mood definition" in prompt

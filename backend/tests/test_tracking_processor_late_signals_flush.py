@@ -4,7 +4,7 @@ resolves, so a transition decided by this same turn's signals can still
 discard it. The per-chunk check that flushes the buffer once resolved
 (`elif self.user.state == self.out.state: ...`) only ever runs on a chunk
 *after* signals_resolved flips True — but 'signals' is schema-requested
-*before* 'text' for this processor (see TrackingProcessor._order_channels'
+*before* 'text' for this processor (see TrackingProcessor.build_turn_prompt's
 own "before" ordering), so a provider that (correctly per schema, or not)
 emits every text chunk before ever reporting 'signals' leaves nothing left
 for that per-chunk check to ever catch: the buffered reply sat unflushed

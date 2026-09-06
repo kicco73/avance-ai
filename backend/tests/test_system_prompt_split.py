@@ -1,9 +1,9 @@
 """TurnProtocolUsingSchema.generate_reply's own SystemPrompt split (see
 ai.llm_provider.SystemPrompt): `stable` depends only on state/automaton —
-every channel's own preamble/content (MemoryChannel's data header
+every channel's own definition/content (MemoryPrompt's data header
 excepted), plus SCHEMA_ORDER_PROMPT's field-order instructions — and must
 be byte-identical across two turns in the same state; `volatile` is
-whatever depends on the session/turn instead — MemoryChannel's own
+whatever depends on the session/turn instead — MemoryPrompt's own
 "Current memory:" header/content, and the env block — and must change
 when either does. No wording changes versus the old single concatenated
 prompt: stable + volatile carries the exact same blocks, only reordered.
@@ -13,8 +13,8 @@ from __future__ import annotations
 import pytest
 
 from ai import SystemPrompt
-from tracking.channels import AudioChannel, MemoryChannel, SignalsChannel, TextChannel
-from tracking.turn_protocol_using_schema import SCHEMA_ORDER_PROMPT, TurnProtocolUsingSchema
+from tracking.prompt import AudioPrompt, MemoryPrompt, Prompt, SCHEMA_ORDER_PROMPT, SignalsPrompt, TextPrompt
+from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 
 pytestmark = pytest.mark.contract
 
@@ -41,16 +41,16 @@ class _CapturingAiService:
         yield  # pragma: no cover - never reached, makes this an async generator
 
 
-def _channels(memory_text: str) -> list:
-    return [
-        SignalsChannel(SIGNAL_DEFINITION), AudioChannel(), TextChannel(BASE_PROMPT), MemoryChannel(_StubEnv(memory_text)),
-    ]
+def _prompt(memory_text: str) -> Prompt:
+    return Prompt.chain(
+        SignalsPrompt(SIGNAL_DEFINITION), AudioPrompt(), TextPrompt(BASE_PROMPT), MemoryPrompt(_StubEnv(memory_text)),
+    )
 
 
 async def _generate(memory_text: str, env_block: str | None = None):
     ai_service = _CapturingAiService()
     protocol = TurnProtocolUsingSchema(ai_service)
-    async for _ in protocol.generate_reply(_channels(memory_text), HISTORY, lambda k, v: None, env_block=env_block):
+    async for _ in protocol.generate_reply(_prompt(memory_text), HISTORY, lambda k, v: None, env_block=env_block):
         pass
     return ai_service.captured
 

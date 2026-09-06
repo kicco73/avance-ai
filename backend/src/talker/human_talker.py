@@ -23,7 +23,7 @@ from .base_talker import BaseTalker
 
 if TYPE_CHECKING:
 	from ai import MetadataCallback
-	from tracking.channels import MetadataChannel
+	from tracking.prompt import Prompt
 	from tracking.sources import ToolSet
 
 
@@ -75,14 +75,14 @@ class HumanTalker(BaseTalker):
 
 	async def chat(
 		self,
-		channels: list["MetadataChannel"],
+		prompt: "Prompt",
 		chat_history: list[dict],
 		on_metadata: "MetadataCallback",
 		tool_set: "ToolSet | None" = None,
 		force_required_tools: bool = False,
 		env_block: str | None = None,
 	) -> AsyncIterator[str]:
-		"""Same signature as AiTalker.chat(), read differently: `channels`/
+		"""Same signature as AiTalker.chat(), read differently: `prompt`/
 		`tool_set`/`force_required_tools`/`env_block` are the model's own
 		prompt-construction concerns and go unused here — the person sees
 		the conversation itself, not the schema built to ask a model about

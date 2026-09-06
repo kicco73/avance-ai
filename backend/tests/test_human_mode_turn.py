@@ -125,9 +125,11 @@ async def test_a_human_operators_reply_arrives_as_the_turns_own_done_frame(chat_
     events = await _run_turn(chat_service, session["id"], "turn-1", "hello, is anyone there?")
 
     kinds = [event for event, _ in events]
-    # HumanTalker.chat() yields one empty chunk first (opens the bubble the
-    # same way a model's first chunk would), then the whole reply.
-    assert kinds == ["chunk", "chunk", "done"]
+    # _FakeHumanTalker always yields an empty string first (standing in
+    # for HumanTalker's own typing-race first yield) — _process_human_turn
+    # dispatches an empty chunk as "typing", never "chunk" (see chat/
+    # ws_turn.py's own on_metadata).
+    assert kinds == ["typing", "chunk", "done"]
     assert events[-1][1]["reply"][0]["content"] == "sure, let me check"
     assert events[-1][1]["state_changed"] is False
     assert events[-1][1]["new_state"] is None

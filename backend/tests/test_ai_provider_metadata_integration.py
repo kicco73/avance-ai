@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from ai import AiService
-from tracking.channels import AudioChannel, MemoryChannel, SignalsChannel, TextChannel
+from tracking.prompt import AudioPrompt, MemoryPrompt, Prompt, SignalsPrompt, TextPrompt
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 from config import AppConfig, ConfigError
 
@@ -32,7 +32,7 @@ PROMPT = (
 )
 
 class _StubEnv:
-    """A throwaway Env-shaped object — MemoryChannel only reads
+    """A throwaway Env-shaped object — MemoryPrompt only reads
     memory_as_text() off whatever it's given, sparing this test a real
     Db/session-backed Env."""
 
@@ -56,7 +56,7 @@ def _protocol() -> TurnProtocolUsingSchema:
 
 async def _run():
     protocol = _protocol()
-    channels = [SignalsChannel(SIGNAL_DEFINITION), AudioChannel(), TextChannel(BASE_PROMPT), MemoryChannel(_StubEnv())]
+    prompt = Prompt.chain(SignalsPrompt(SIGNAL_DEFINITION), AudioPrompt(), TextPrompt(BASE_PROMPT), MemoryPrompt(_StubEnv()))
     chunks: list[str] = []
     live_metadata: dict[str, object] = {}
 
@@ -64,7 +64,7 @@ async def _run():
         # Called sync, fire-and-forget — never awaited by a provider.
         live_metadata[key] = value
 
-    async for chunk in protocol.generate_reply(channels, _history(), on_metadata):
+    async for chunk in protocol.generate_reply(prompt, _history(), on_metadata):
         chunks.append(chunk)
 
     return "".join(chunks), chunks, live_metadata
@@ -80,7 +80,7 @@ def _assert_extracted_metadata(reply, live_metadata) -> None:
     assert isinstance(live_metadata.get("audio"), str) and live_metadata["audio"]
 
     # "signals" arrives through on_metadata already decoded (see
-    # SignalsChannel.decode, invoked centrally by TurnProtocolUsingSchema.
+    # SignalsPrompt.decode, invoked centrally by TurnProtocolUsingSchema.
     # generate_reply) — a dict, never the raw JSON string the model itself wrote.
     assert isinstance(live_metadata.get("signals"), dict)
     assert "mood" in live_metadata["signals"]

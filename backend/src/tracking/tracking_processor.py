@@ -23,7 +23,6 @@ from .prompt import AudioPrompt, MemoryPrompt, Prompt, ReactionPrompt, SignalsPr
 from .priming import build_priming_messages
 from .sources import SourceNamespace, ToolSet
 from .tracking_engine import DbTrackingSink, TrackingEngine
-from .turn_protocol_using_schema import TurnProtocolUsingSchema
 from .turn_size_estimate import TurnSizeEstimate, estimate_turn_request
 from .definitions import Signals
 from .errors import TrackingServiceError
@@ -237,18 +236,18 @@ class TrackingProcessor(object):
 	def on_receiving_metadata(self, key: str, value: Any) -> None:
 		"""Shared by every generate call this processor (or a subclass)
 		makes — values arrive here already decoded through their own
-		MetadataChannel (see TurnProtocolUsingSchema.generate_reply), so
-		this only ever stores them or drives a real side effect, never
-		parses raw model output itself. 'signals' is the one branch with
-		a genuine side effect (a fresh signals value may trigger an
-		automaton transition) — safe to fire unconditionally even on a
-		call whose own channel list never includes SignalsChannel (the
-		regeneration call in TrackingProcessorAfterUserMessage): a
-		schema-constrained provider structurally can't emit a field
-		outside the schema it was given, so this branch is simply
-		unreachable there, same reasoning already relied on for
-		'reaction'/'memory'/'audio' being a strict superset of what any one
-		call actually requests."""
+		channel of the composed Prompt (see TurnProtocolUsingSchema.
+		generate_reply), so this only ever stores them or drives a real
+		side effect, never parses raw model output itself. 'signals' is
+		the one branch with a genuine side effect (a fresh signals value
+		may trigger an automaton transition) — safe to fire
+		unconditionally even on a call whose own composed prompt never
+		includes SignalsPrompt (the regeneration call in
+		TrackingProcessorAfterUserMessage): a schema-constrained provider
+		structurally can't emit a field outside the schema it was given,
+		so this branch is simply unreachable there, same reasoning
+		already relied on for 'reaction'/'memory'/'audio' being a strict
+		superset of what any one call actually requests."""
 		rv = value
 		if key == 'signals':
 			rv = value
@@ -301,32 +300,32 @@ class TrackingProcessor(object):
 
 	def generate_reply(self, state: State, on_metadata: MetadataCallback) -> AsyncIterator[str]:
 		base_prompt, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
-		channels = self.build_turn_channels(state, base_prompt, signal_definition, reaction_definition)
+		prompt = self.build_turn_prompt(state, base_prompt, signal_definition, reaction_definition)
 		env_block = EnvPromptBlock.for_state(self.env, self.user.automaton, state)
 		remaining_history_budget = self._enforce_input_budget(
-			base_prompt, signal_definition, reaction_definition, turn_attachments, channels, env_block,
+			base_prompt, signal_definition, reaction_definition, turn_attachments, prompt, env_block,
 		)
 		chat_history = self._build_chat_history(turn_attachments, remaining_history_budget)
 
 		return self.assistant_talker.chat(
-			channels, chat_history, on_metadata,
+			prompt, chat_history, on_metadata,
 			tool_set=self.build_tool_set(state), force_required_tools=self.force_required_tools_for(state),
 			env_block=env_block.text() if env_block else None,
 		)
 
 	def _enforce_input_budget(
 		self, base_prompt: str, signal_definition: str | None, reaction_definition: str | None,
-		turn_attachments: list, channels: list[MetadataChannel] | None = None,
+		turn_attachments: list, prompt: Prompt | None = None,
 		env_block: "EnvPromptBlock | None" = None,
 	) -> int | None:
 		budget = self.input_token_budget_per_turn
 		if budget is None:
 			return None
-		# Every channel's own fixed preamble + SCHEMA_ORDER_PROMPT are real
-		# prompt bytes the model actually sees, on top of base_prompt/
+		# Every channel's own fixed definition + SCHEMA_ORDER_PROMPT are
+		# real prompt bytes the model actually sees, on top of base_prompt/
 		# signal_definition/reaction_definition — omitted here, the
 		# estimate used to under-count every request by that much.
-		schema_overhead = TurnProtocolUsingSchema.schema_overhead_text(channels) if channels is not None else ""
+		schema_overhead = prompt.schema_overhead_text() if prompt is not None else ""
 		estimate = estimate_turn_request(
 			base_prompt, signal_definition, reaction_definition, self.env, turn_attachments,
 			schema_overhead=schema_overhead, env_block=env_block,
@@ -389,16 +388,16 @@ class TrackingProcessor(object):
 		sends for `state` — exposed single-underscore (rather than
 		name-mangled) so that caller can get those pieces on their own,
 		sized against the same (audio, text, memory, [translations])
-		channel set build_regeneration_channels itself builds for the
-		real call, not the full gated set generate_reply would use.
+		prompt build_regeneration_prompt itself builds, not the full gated
+		one generate_reply would use.
 		`env_block` is handed back rather than recomputed by the caller —
 		EnvPromptBlock.for_state reads through self.env/automaton, no
 		reason to do that twice for one regeneration call."""
 		base_prompt, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
-		channels = self.build_regeneration_channels(state, base_prompt)
+		prompt = self.build_regeneration_prompt(state, base_prompt)
 		env_block = EnvPromptBlock.for_state(self.env, self.user.automaton, state)
 		remaining_history_budget = self._enforce_input_budget(
-			base_prompt, signal_definition, reaction_definition, turn_attachments, channels, env_block,
+			base_prompt, signal_definition, reaction_definition, turn_attachments, prompt, env_block,
 		)
 		return base_prompt, self._build_chat_history(turn_attachments, remaining_history_budget), env_block
 
@@ -409,10 +408,10 @@ class TrackingProcessor(object):
 			self.db.get_turn_history(self.user.session_id, since, token_budget)
 		)
 
-	def build_turn_channels(
+	def build_turn_prompt(
 		self, state: State, base_prompt: str, signal_definition: str | None, reaction_definition: str | None,
-	) -> list[MetadataChannel]:
-		"""The full, gated channel list for a reply generated in `state` —
+	) -> Prompt:
+		"""The full, gated Prompt for a reply generated in `state` —
 		whichever state this turn's own reply is actually about to be
 		generated in. Every caller except the regenerate-after-transition
 		path (TrackingProcessorAfterUserMessage) passes self.user.state
@@ -423,27 +422,33 @@ class TrackingProcessor(object):
 		has_to_evaluate_signals_before_ai_reply = not self.user.automaton.autotracking_on_ai_message
 		talk_enabled = self.talk_enabled and self.user.automaton.talk_enabled
 		logger.info(
-			"build_turn_channels talk_enabled: project=%r revision=%s session=%s system_talk_enabled=%s "
+			"build_turn_prompt talk_enabled: project=%r revision=%s session=%s system_talk_enabled=%s "
 			"automaton_talk_enabled=%s -> %s",
 			self.user.project_id, self.user.automaton.revision, self.user.session_id, self.talk_enabled,
 			self.user.automaton.talk_enabled, talk_enabled,
 		)
 		reactions_enabled = self.user.automaton.reactions_enabled_for(self.user.state)
 
-		channels = self._order_channels(
-			has_to_evaluate_signals_before_ai_reply,
-			signals=SignalsChannel(signal_definition) if self._evaluate_signals_for(state) else None,
-			reaction=ReactionChannel(reaction_definition) if reactions_enabled else None,
-			audio=AudioChannel() if talk_enabled else None,
-			text=TextChannel(base_prompt),
-			memory=MemoryChannel(self.env),
-		)
-		self._append_translate_channel(channels, state)
-		return channels
+		signals = SignalsPrompt(signal_definition) if self._evaluate_signals_for(state) else None
+		reaction = ReactionPrompt(reaction_definition) if reactions_enabled else None
+		audio = AudioPrompt() if talk_enabled else None
+		text = TextPrompt(base_prompt)
+		memory = MemoryPrompt(self.env)
+
+		# 'before' -> signals, reaction, audio, text, memory; 'after' ->
+		# audio, text, signals, reaction, memory — exactly the ordering a
+		# turn has always used, now expressed as Prompt.chain's own
+		# left-to-right composition order (any of signals/reaction/audio
+		# may be None, meaning "not active this turn").
+		if has_to_evaluate_signals_before_ai_reply:
+			prompt = Prompt.chain(signals, reaction, audio, text, memory)
+		else:
+			prompt = Prompt.chain(audio, text, signals, reaction, memory)
+		return self._append_translate_prompt(prompt, state)
 
 	def _evaluate_signals_for(self, state: State) -> bool:
 		"""Whether a reply generated in `state` should even ask the model
-		for 'signals' — see build_turn_channels' own docstring on the
+		for 'signals' — see build_turn_prompt' own docstring on the
 		"before"/"after" strategies; pointless when nothing in `state`
 		could trigger from them (no definition in the prompt, no
 		'signals' field in the schema). This gates the *request* only,
@@ -455,30 +460,30 @@ class TrackingProcessor(object):
 		started_conversation branch), which skips that evaluation outright
 		rather than let the automaton's own AI-generated opener alone fire
 		a transition nothing in the conversation asked for. Exposed on
-		its own (not just inlined in build_turn_channels) so a caller can
-		know this upfront without building the full channel list — see
+		its own (not just inlined in build_turn_prompt) so a caller can
+		know this upfront without building the full prompt — see
 		TrackingProcessorAfterUserMessage's own upfront resolution."""
 		has_to_evaluate_signals_before_ai_reply = not self.user.automaton.autotracking_on_ai_message
 		return (
 			not (has_to_evaluate_signals_before_ai_reply and self.user.has_ai_started_conversation)
 		) and bool(self.user.automaton.triggerable_signal_names(state.key))
 
-	def build_regeneration_channels(self, state: State, base_prompt: str) -> list[MetadataChannel]:
-		"""The fixed (audio, text, memory) set the transition-regeneration
-		call has always sent — signals are already known from the first
-		call and must not be re-requested; talk_enabled/reaction gating
-		never applied here either (pre-existing behavior, preserved
+	def build_regeneration_prompt(self, state: State, base_prompt: str) -> Prompt:
+		"""The fixed (audio, text, memory) Prompt the transition-
+		regeneration call has always sent — signals are already known from
+		the first call and must not be re-requested; talk_enabled/reaction
+		gating never applied here either (pre-existing behavior, preserved
 		as-is). `state` is the real post-transition state — the one call
 		site that actually knows it at prompt-build time — so this is
 		where button translation is genuinely correct after a transition."""
-		channels: list[MetadataChannel] = [AudioChannel(), TextChannel(base_prompt), MemoryChannel(self.env)]
-		self._append_translate_channel(channels, state)
-		return channels
+		prompt = Prompt.chain(AudioPrompt(), TextPrompt(base_prompt), MemoryPrompt(self.env))
+		return self._append_translate_prompt(prompt, state)
 
-	def _append_translate_channel(self, channels: list[MetadataChannel], state: State) -> None:
+	def _append_translate_prompt(self, prompt: Prompt, state: State) -> Prompt:
 		originals = self._button_labels_to_translate(state, self.auto_tracking_enabled)
 		if originals:
-			channels.append(TranslateChannel(originals))
+			return prompt.compose(TranslatePrompt(originals))
+		return prompt
 
 	@staticmethod
 	def _button_labels_to_translate(state: State, auto_tracking_enabled: bool) -> dict[str, str]:
@@ -491,24 +496,6 @@ class TrackingProcessor(object):
 			a.name: a.ui_button for a in state.actions
 			if (a.trigger is None or not auto_tracking_enabled) and a.ui_button
 		}
-
-	@staticmethod
-	def _order_channels(
-		evaluate_signals_first: bool, *,
-		signals: MetadataChannel | None, reaction: MetadataChannel | None,
-		audio: MetadataChannel | None, text: MetadataChannel, memory: MetadataChannel,
-	) -> list[MetadataChannel]:
-		"""'before' -> signals, reaction, audio, text, memory; 'after' ->
-		audio, text, signals, reaction, memory — exactly the ordering a
-		turn has always used, now over channel objects (any of
-		signals/reaction/audio may be None, meaning "not active this
-		turn")."""
-		signal_channels = [signals] if signals is not None else []
-		reaction_channels = [reaction] if reaction is not None else []
-		audio_channels = [audio] if audio is not None else []
-		if evaluate_signals_first:
-			return [*signal_channels, *reaction_channels, *audio_channels, text, memory]
-		return [*audio_channels, text, *signal_channels, *reaction_channels, memory]
 
 	def __build_turn_prompt_parts(self, automaton: Automaton, state: State) -> tuple[str, str | None, str | None, list]:
 
@@ -617,17 +604,19 @@ def estimate_state_prompt(ai_service: AiService, automaton: Automaton, state: St
 	# for EnvPromptBlock.for_state below.
 	env = Env(action_set={key.name: key.value for key in automaton.env_keys})
 	has_to_evaluate_signals_before_ai_reply = not automaton.autotracking_on_ai_message
-	channels = TrackingProcessor._order_channels(
-		has_to_evaluate_signals_before_ai_reply,
-		# Always included, unlike the live build_turn_channels — matches
-		# today's implicit evaluate_signals=True default for this
-		# no-live-session estimate.
-		signals=SignalsChannel(signal_definition),
-		reaction=ReactionChannel(reaction_definition) if automaton.reactions_enabled_for(state) else None,
-		audio=AudioChannel() if automaton.talk_enabled else None,
-		text=TextChannel(base_prompt),
-		memory=MemoryChannel(env),
-	)
+	# Signals always included, unlike the live build_turn_prompt — matches
+	# today's implicit evaluate_signals=True default for this
+	# no-live-session estimate.
+	signals_prompt = SignalsPrompt(signal_definition)
+	reaction_prompt = ReactionPrompt(reaction_definition) if automaton.reactions_enabled_for(state) else None
+	audio_prompt = AudioPrompt() if automaton.talk_enabled else None
+	text_prompt = TextPrompt(base_prompt)
+	memory_prompt = MemoryPrompt(env)
+	if has_to_evaluate_signals_before_ai_reply:
+		prompt = Prompt.chain(signals_prompt, reaction_prompt, audio_prompt, text_prompt, memory_prompt)
+	else:
+		prompt = Prompt.chain(audio_prompt, text_prompt, signals_prompt, reaction_prompt, memory_prompt)
+
 	# Worst-case assumption for this state's translatable-buttons size
 	# contribution: auto_tracking_enabled=False, the branch that counts
 	# every action with a ui_button rather than just the untriggered
@@ -635,9 +624,9 @@ def estimate_state_prompt(ai_service: AiService, automaton: Automaton, state: St
 	# of trigger (see automaton.manual_actions_for).
 	originals = TrackingProcessor._button_labels_to_translate(state, auto_tracking_enabled=False)
 	if originals:
-		channels.append(TranslateChannel(originals))
+		prompt = prompt.compose(TranslatePrompt(originals))
 
-	system_prompt = TurnProtocolUsingSchema(ai_service).build_final_prompt(channels)
+	system_prompt = prompt.render_text()
 	env_block = EnvPromptBlock.for_state(env, automaton, state)
 	if env_block is not None:
 		system_prompt = f"{system_prompt}\n\n{env_block.text()}"

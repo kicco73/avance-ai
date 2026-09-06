@@ -12,7 +12,7 @@ from automaton.automaton import Automaton
 from tracking.definitions import Signals
 from tracking.env import Env
 from tracking.fixed_project_context import FixedProjectContext
-from tracking.channels import MemoryBatchChannel, MemoryChannel, SignalsBatchChannel, SignalsChannel, TextChannel
+from tracking.prompt import MemoryBatchPrompt, MemoryPrompt, Prompt, SignalsBatchPrompt, SignalsPrompt, TextPrompt
 from tracking.tracking_service import TrackingService
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 from testing.replay_messages import next_assistant_message_id
@@ -64,11 +64,11 @@ class TurnByTurnSignalSource:
         chat_history = self._build_chat_history(message_id)
 
         # signal_definition is already folded into base_prompt above, so
-        # SignalsChannel carries no content of its own here — TextChannel
+        # SignalsPrompt carries no content of its own here — TextPrompt
         # goes last, reproducing the old generate_reply_with_schema
-        # convention of appending base_prompt after every tag's own
-        # preamble/content.
-        channels = [SignalsChannel(None), MemoryChannel(Env()), TextChannel(base_prompt)]
+        # convention of appending base_prompt after every channel's own
+        # definition/content.
+        prompt = Prompt.chain(SignalsPrompt(None), MemoryPrompt(Env()), TextPrompt(base_prompt))
         signal_values: dict = {}
         stored_memory: dict = {}
 
@@ -78,7 +78,7 @@ class TurnByTurnSignalSource:
             elif tag == 'memory':
                 stored_memory.update(value)
 
-        async for _ in protocol.generate_reply(channels, chat_history, on_metadata):
+        async for _ in protocol.generate_reply(prompt, chat_history, on_metadata):
             pass
         self.calls_made += 1
 
@@ -188,18 +188,18 @@ class BatchSignalSource(object):
 
         # signal_definition/seed_memory are already folded into base_prompt
         # above, so both channels carry no content of their own here —
-        # TextChannel goes last, same convention as TurnByTurnSignalSource's.
-        # Index i = turn i+1 (see SignalsBatchChannel/MemoryBatchChannel's
+        # TextPrompt goes last, same convention as TurnByTurnSignalSource's.
+        # Index i = turn i+1 (see SignalsBatchPrompt/MemoryBatchPrompt's
         # own decode) — empty until on_metadata actually fires for that
         # tag, which never happens if the response was truncated before
         # reaching it (see AIServiceProviderOutputTruncatedError) — every
         # turn then falls back to {} below, same as a turn a mismatch
         # check would have rejected.
-        channels = [
-            SignalsBatchChannel(None, expected_turns=len(turn_ids)),
-            MemoryBatchChannel(expected_turns=len(turn_ids)),
-            TextChannel(base_prompt),
-        ]
+        prompt = Prompt.chain(
+            SignalsBatchPrompt(None, expected_turns=len(turn_ids)),
+            MemoryBatchPrompt(expected_turns=len(turn_ids)),
+            TextPrompt(base_prompt),
+        )
         signals_by_turn: list[dict] = []
         memory_by_turn: list[dict] = []
 
@@ -210,7 +210,7 @@ class BatchSignalSource(object):
             elif tag == 'memory':
                 memory_by_turn = value
 
-        async for _ in protocol.generate_reply(channels, chat_history, on_metadata):
+        async for _ in protocol.generate_reply(prompt, chat_history, on_metadata):
             pass
         self.calls_made += 1
 

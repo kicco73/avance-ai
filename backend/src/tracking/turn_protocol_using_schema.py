@@ -4,7 +4,7 @@ from typing import AsyncIterator
 
 from ai import MetadataCallback, SystemPrompt
 from logging_factory import LoggerFactory
-from tracking.prompt import SCHEMA_ORDER_PROMPT, Prompt
+from tracking.prompt import Prompt
 from tracking.sources import ToolSet
 
 logger = LoggerFactory.get_logger(__name__)

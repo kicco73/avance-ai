@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, AsyncIterator
 
 if TYPE_CHECKING:
 	from ai import MetadataCallback
-	from tracking.channels import MetadataChannel
+	from tracking.prompt import Prompt
 	from tracking.sources import ToolSet
 
 
@@ -20,7 +20,7 @@ class BaseTalker(ABC):
 	@abstractmethod
 	def chat(
 		self,
-		channels: list["MetadataChannel"],
+		prompt: "Prompt",
 		chat_history: list[dict],
 		on_metadata: "MetadataCallback",
 		tool_set: "ToolSet | None" = None,
