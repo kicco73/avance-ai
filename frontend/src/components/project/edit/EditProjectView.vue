@@ -188,7 +188,7 @@ const inspectorTabs = computed(() => {
       { id: 'states', label: 'Info' },
       { id: 'signals', label: 'Signals' },
       { id: 'metrics', label: 'Metrics' },
-      { id: 'env', label: 'Env' }
+      { id: 'env', label: 'I/O' }
     ]
   }
   if (mode.value === 'test') {
