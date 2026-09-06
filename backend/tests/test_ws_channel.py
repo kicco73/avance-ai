@@ -7,6 +7,7 @@ stopping a turn, and the push-only registry keyed by username.
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 from fastapi import WebSocketDisconnect
@@ -16,6 +17,7 @@ from auth.auth_service import SESSION_COOKIE_NAME
 from chat.ws_notifications import WsNotifications
 from conftest import chat_socket, chat_turn_frames
 from session import Session
+from test_ws_turn_event_order import _automaton, chat_service_for  # noqa: F401 — a pytest fixture, used by name
 
 pytestmark = pytest.mark.contract
 
@@ -149,43 +151,65 @@ class TestChannelLoop:
         assert websocket.closed_with == 4401
 
 
-class _SlowFirstTurnAiService:
-    """The first turn waits until released; every later one answers at
-    once — so the second user message is read while the first turn is
-    still generating."""
+class _GatedProvider:
+    """A real provider's own interface, with the first round held until
+    released — so a second `turn` frame is read (and its user message
+    persisted) while the first turn is still generating."""
 
     def __init__(self) -> None:
-        self.first_turn_started = asyncio.Event()
-        self.release_first_turn = asyncio.Event()
-        self.turns = 0
+        self.first_round_started = asyncio.Event()
+        self.release = asyncio.Event()
+        self.rounds = 0
 
-    def get_models_info(self):
-        return {"auto": True, "current_index": 0, "models": []}
+    async def generate_stream_with_schema(
+        self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
+    ):
+        self.rounds += 1
+        if self.rounds == 1:
+            self.first_round_started.set()
+            await self.release.wait()
+        yield '{"text": "answer %d"}' % self.rounds
 
-    def select_model(self, index):
-        pass
-
-    def get_total_tokens(self):
+    def get_total_tokens(self) -> int:
         return 0
 
-    def get_max_output_tokens(self):
+    def get_input_tokens(self, prompt: str) -> int:
+        return 0
+
+    def get_max_output_tokens(self) -> int:
         return 4096
 
-    def get_input_tokens(self, prompt):
-        return 0
 
-    def is_provider_with_schema(self):
-        return True
+class _ScriptedWebSocket(_FakeWebSocket):
+    """Replays `frames`, then holds the connection open until either
+    `disconnect_now` is set or `stop_after_finished` turns have finished —
+    so a test can watch what the server does while turns are still in
+    flight, instead of the socket vanishing the moment the script ends."""
 
-    def supports_metadata(self):
-        return False
+    def __init__(self, frames: list[str], stop_after_finished: int | None = None) -> None:
+        super().__init__(frames)
+        self._stop_after_finished = stop_after_finished
+        self.disconnect_now = asyncio.Event()
 
-    async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
-        self.turns += 1
-        if self.turns == 1:
-            self.first_turn_started.set()
-            await self.release_first_turn.wait()
-        yield f"reply {self.turns}"
+    async def receive_text(self):
+        if self._frames:
+            await asyncio.sleep(0)
+            return self._frames.pop(0)
+        await self.disconnect_now.wait()
+        raise WebSocketDisconnect()
+
+    async def send_json(self, payload: dict):
+        self.sent.append(payload)
+        finished = len([f for f in self.sent if f.get("type") in ("done", "error")])
+        if self._stop_after_finished is not None and finished >= self._stop_after_finished:
+            self.disconnect_now.set()
+
+
+async def _wait_for(predicate, timeout: float = 5.0) -> None:
+    deadline = asyncio.get_running_loop().time() + timeout
+    while not predicate():
+        assert asyncio.get_running_loop().time() < deadline, "condition never held"
+        await asyncio.sleep(0.005)
 
 
 def _frames_of(frames: list[dict], turn_id: str) -> list[dict]:
@@ -193,33 +217,72 @@ def _frames_of(frames: list[dict], turn_id: str) -> list[dict]:
 
 
 @pytest.mark.regression
-def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_order_even_if_the_first_turn_is_slower(client, hello_project, app_db):
-    session = client.get("/api/chat/session").json()
-    slow = _SlowFirstTurnAiService()
-    chat_service = client.app.state.chat_service
-    chat_service._ai_service = slow
-    chat_service._tracking_service  # the same TrackingService the app fixture wired; ai_service is passed per turn
+async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_order_even_when_the_first_turn_is_slower(
+    chat_service_for,
+):
+    """The ordering guarantee itself: both user messages are on disk, in
+    the order their frames arrived, before the first turn has produced
+    any reply at all — so it is the socket's own read order that fixes
+    the conversation, never how long a turn happens to take."""
+    provider = _GatedProvider()
+    chat_service = chat_service_for(
+        _automaton(with_sources=False, autotracking_on_ai_message=False), provider,
+    )
+    db = chat_service_for.db
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    channel = WsNotifications(_FakeAuthService(), chat_service)
+    websocket = _ScriptedWebSocket(
+        [
+            json.dumps({"type": "turn", "turn_id": "first", "session_id": session["id"], "text": "I have a problem"}),
+            json.dumps({"type": "turn", "turn_id": "second", "session_id": session["id"], "text": "with flight VY3003"}),
+        ],
+        stop_after_finished=2,
+    )
 
-    with chat_socket(client) as ws:
-        ws.send_json({"type": "turn", "turn_id": "first", "session_id": session["id"], "text": "I have a problem"})
-        ws.send_json({"type": "turn", "turn_id": "second", "session_id": session["id"], "text": "with flight VY3003"})
-        frames = []
-        while len([f for f in frames if f["type"] in ("done", "error")]) < 2:
-            frame = ws.receive_json()
-            frames.append(frame)
-            if frame["type"] == "chunk" and frame["turn_id"] == "first" and not slow.release_first_turn.is_set():
-                pass
-            if not slow.release_first_turn.is_set() and slow.first_turn_started.is_set():
-                slow.release_first_turn.set()
+    loop_task = asyncio.create_task(channel.channel_loop(websocket))
+    await _wait_for(lambda: len([m for m in db.get_messages(session["id"]) if m["role"] == "user"]) == 2)
 
-    user_texts = [m["content"] for m in app_db.get_messages(session["id"]) if m["role"] == "user"]
-    assert user_texts == ["I have a problem", "with flight VY3003"]
+    # Both are persisted while the first turn is still inside the provider:
+    # nothing of the first reply exists yet.
+    assert provider.first_round_started.is_set()
+    assert [m["role"] for m in db.get_messages(session["id"])] == ["user", "user"]
+    provider.release.set()
+    await asyncio.wait_for(loop_task, 5)
+
+    persisted = db.get_messages(session["id"])
+    assert [m["role"] for m in persisted] == ["user", "user", "assistant", "assistant"]
+    assert [m["content"] for m in persisted if m["role"] == "user"] == ["I have a problem", "with flight VY3003"]
     for turn_id in ("first", "second"):
-        own = _frames_of(frames, turn_id)
+        own = _frames_of(websocket.sent, turn_id)
         assert own[-1]["type"] == "done", own
-        assert all(f["type"] == "chunk" for f in own[:-1])
-    first_done = next(i for i, f in enumerate(frames) if f["type"] == "done" and f["turn_id"] == "first")
-    assert all(f["turn_id"] == "first" for f in frames[:first_done] if f["type"] == "chunk")
+        assert set(f["type"] for f in own[:-1]) == {"chunk"}
+
+
+@pytest.mark.regression
+async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(chat_service_for):
+    provider = _GatedProvider()
+    chat_service = chat_service_for(
+        _automaton(with_sources=False, autotracking_on_ai_message=False), provider,
+    )
+    db = chat_service_for.db
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    channel = WsNotifications(_FakeAuthService(), chat_service)
+    websocket = _ScriptedWebSocket(
+        [json.dumps({"type": "turn", "turn_id": "dropped", "session_id": session["id"], "text": "hello?"})],
+    )
+
+    loop_task = asyncio.create_task(channel.channel_loop(websocket))
+    await _wait_for(provider.first_round_started.is_set)
+    # The browser goes away mid-generation.
+    websocket.disconnect_now.set()
+    await asyncio.wait_for(loop_task, 5)
+    turns = list(channel._turn_tasks)
+    provider.release.set()
+    await asyncio.wait_for(asyncio.gather(*turns), 5)
+
+    assert [m["role"] for m in db.get_messages(session["id"])] == ["user", "assistant"]
+    # Nothing was written to the socket the browser had already left.
+    assert [f["type"] for f in websocket.sent] == []
 
 
 @pytest.mark.regression
@@ -232,32 +295,6 @@ def test_every_outgoing_frame_of_a_turn_carries_its_turn_id_and_chunks_precede_d
     assert frames[-1]["type"] == "done"
     assert [f["type"] for f in frames[:-1]] and set(f["type"] for f in frames[:-1]) == {"chunk"}
     assert frames[-1]["reply"][0]["content"] == "".join(f["content"] for f in frames[:-1])
-
-
-@pytest.mark.regression
-def test_a_socket_closed_mid_turn_lets_the_turn_complete_and_persist(client, hello_project, app_db):
-    session = client.get("/api/chat/session").json()
-    slow = _SlowFirstTurnAiService()
-    chat_service = client.app.state.chat_service
-    chat_service._ai_service = slow
-
-    with chat_socket(client) as ws:
-        ws.send_json({"type": "turn", "turn_id": "dropped", "session_id": session["id"], "text": "hello?"})
-        # Leave before the reply exists: the connection closes here.
-
-    async def _release_and_wait():
-        await asyncio.wait_for(slow.first_turn_started.wait(), 5)
-        slow.release_first_turn.set()
-
-    slow.release_first_turn.set()
-    deadline = 50
-    while deadline and not any(m["role"] == "assistant" for m in app_db.get_messages(session["id"])):
-        import time
-        time.sleep(0.1)
-        deadline -= 1
-
-    roles = [m["role"] for m in app_db.get_messages(session["id"])]
-    assert roles == ["user", "assistant"]
 
 
 @pytest.mark.contract

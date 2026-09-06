@@ -1,72 +1,57 @@
 // Regression for chatClient.js's own normalizeResult: it explicitly
-// whitelists which fields survive from the backend's turn response (both
-// the websocket 'done' frame and the REST fallback) into what chatStore.js
-// consumes — a field added to the backend response but never added here
-// gets silently dropped before chatStore.js ever sees it, exactly what
-// happened to user_message_reaction.
+// whitelists which fields survive from the backend's turn response (the
+// websocket `done` frame) into what chatStore.js consumes — a field added
+// to the backend response but never added here gets silently dropped
+// before chatStore.js ever sees it, exactly what happened to
+// user_message_reaction.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installFakeChatSocket, turnIdOf } from './fakeChatSocket.js'
 
-vi.mock('../src/api.js', () => ({
-  createChatSocket: vi.fn(),
-  postChatMessage: vi.fn()
-}))
+vi.mock('../src/api.js', () => ({ createChatSocket: vi.fn() }))
 vi.mock('../src/errorStore.js', () => ({ setApiError: vi.fn() }))
 
-// postChatMessage now resolves to a fetch Response streaming the turn as
-// SSE (see sse_turn.py's own event: done\ndata: {...} framing) rather than
-// a plain parsed JSON body — this builds a minimal Response-shaped stub
-// whose one chunk is that single "done" event.
-function fakeSseResponse(turnData) {
-  const chunk = new TextEncoder().encode(`event: done\ndata: ${JSON.stringify(turnData)}\n\n`)
-  let sent = false
-  return {
-    body: {
-      getReader: () => ({
-        read: async () => {
-          if (sent) return { done: true, value: undefined }
-          sent = true
-          return { done: false, value: chunk }
-        }
-      })
-    }
-  }
-}
-
-describe('sendMessage (REST fallback) normalizes the full turn response', () => {
+describe('sendMessage normalizes the full turn response', () => {
   let chatClient
-  let api
+  let sockets
 
   beforeEach(async () => {
     vi.resetModules()
     chatClient = await import('../src/chatClient.js')
-    api = await import('../src/api.js')
-
-    // Force the REST fallback: a socket whose connection attempt fails
-    // immediately, same as sendMessage's own WebSocketUnavailableError path.
-    api.createChatSocket.mockImplementation(() => {
-      const ws = { onopen: null, onmessage: null, onerror: null, onclose: null }
-      queueMicrotask(() => ws.onclose?.())
-      return ws
-    })
+    sockets = installFakeChatSocket(await import('../src/api.js'))
+    chatClient.connect()
+    sockets[0].open()
   })
 
   afterEach(() => {
+    chatClient.disconnect()
     vi.clearAllMocks()
   })
 
-  it('carries user_message_reaction through from the backend response', async () => {
-    api.postChatMessage.mockResolvedValue(fakeSseResponse({
-      reply: [],
+  it('carries every whitelisted field through from the backend response', async () => {
+    const pending = chatClient.sendMessage('hi', 1)
+
+    sockets[0].emit({
+      type: 'done',
+      turn_id: turnIdOf(sockets[0]),
+      reply: [{ id: 5, content: 'Hello.', timestamp: 't' }],
       user_message_id: 42,
       user_message_reaction: 'listening',
       assistant_message_id: 5,
       state: { key: 'a', ui_label: 'A', actions: [] },
+      state_changed: true,
+      new_state: 'a',
+      triggered_action: 'advance',
       'on-enter': null,
-      session_id: 1
-    }))
+      ai_model: { auto: true, current_index: 0, models: [] },
+      session_id: 1,
+    })
 
-    const result = await chatClient.sendMessage('hi', 1)
-
+    const result = await pending
     expect(result.user_message_reaction).toBe('listening')
+    expect(result.state_changed).toBe(true)
+    expect(result.new_state).toBe('a')
+    expect(result.triggered_action).toBe('advance')
+    expect(result.ai_model).toEqual({ auto: true, current_index: 0, models: [] })
+    expect(result.reply).toEqual([{ id: 5, content: 'Hello.', timestamp: 't' }])
   })
 })

@@ -73,12 +73,12 @@ def _automaton(*, with_sources: bool, autotracking_on_ai_message: bool) -> Autom
 
 @pytest.fixture
 def chat_service_for(tmp_path):
-    db = Db(f"sqlite:///{tmp_path / 'sse_order.db'}")
+    db = Db(f"sqlite:///{tmp_path / 'ws_turn_order.db'}")
     db.ensure_project(PROJECT_ID)
     db.save_project_files(PROJECT_ID, {"flights.csv": b"city,country\nParis,France\n"}, {"flights.csv": "text/csv"})
     db.publish_project(PROJECT_ID)
 
-    def make(automaton: Automaton, provider: _FakeProvider) -> ChatService:
+    def make(automaton: Automaton, provider) -> ChatService:
         automaton.set_storage_location(db.get_project_revision(PROJECT_ID))
         ai_service = AiService(provider)
         project_service = FakeProjectService(automaton)
@@ -92,6 +92,9 @@ def chat_service_for(tmp_path):
             metric_service=metric_service, job_service=job_service, actuator_factory=actuator_factory,
         )
 
+    # The very database those services write to — what a test asserts the
+    # persisted order of messages against.
+    make.db = db
     return make
 
 

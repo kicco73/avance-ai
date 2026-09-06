@@ -14,7 +14,7 @@ vi.mock('../src/api.js', () => ({
   getMessages: vi.fn(),
   getSessionState: vi.fn(),
 }))
-vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn() }))
+vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 
 const DONE = {
   reply: [{ id: 51, content: 'Found it.', timestamp: 't' }], user_message_id: 40, assistant_message_id: 51,

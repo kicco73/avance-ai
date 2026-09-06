@@ -303,6 +303,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     )
     fastapi_app.include_router(controller.router)
     fastapi_app.state.test_service = test_service
+    fastapi_app.state.project_service = project_service
     fastapi_app.state.chat_service = chat_service
     fastapi_app.state.db = app_db
     fastapi_app.state.auth_service = auth_service

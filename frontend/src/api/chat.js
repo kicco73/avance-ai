@@ -64,14 +64,6 @@ export function getTestStatus(projectId) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/test-status`)
 }
 
-export function postChatMessage(text, sessionId) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/messages`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: text })
-  }, { parse: 'response' })
-}
-
 export function postListenTranscribe(audioBlob) {
   const formData = new FormData()
   formData.append('file', audioBlob, 'recording.webm')

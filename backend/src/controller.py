@@ -61,7 +61,7 @@ class AvanceController(object):
         self.version = version
 
         self.chat = ChatController(chat_service, project_service, talk_service, listen_service)
-        self.edit_project = EditProjectController(chat_service, project_service)
+        self.edit_project = EditProjectController(chat_service, project_service, job_service)
         self.label_project = LabelProjectController(
             chat_service, project_service, tracking_service, test_service, test_event_broadcaster, job_service,
         )

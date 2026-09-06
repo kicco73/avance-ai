@@ -9,6 +9,23 @@ validated.
 A project is one YAML file, `index.yml`, plus zero or more attachment
 files it references by name (§6).
 
+## 0. Chat transport
+
+**The WebSocket is the one and only transport for chat, and every future
+chat feature is built on it.** There is no HTTP or SSE fallback, and no
+alternative endpoint: a user message travels as a `turn` frame on the
+single `/ws/notifications` connection a page holds, and that turn's own
+`chunk`, `tool`, `done` and `error` frames come back on the same socket,
+each carrying the `turn_id` the client minted — the only correlation
+there is. Everything else (manual actions, session bootstrap, history,
+project management) stays plain HTTP.
+
+The order of a conversation is the order of the frames on that socket:
+the server reads them one at a time and persists each user message right
+there, in reading order, before any processing starts. Parallel HTTP
+requests could never guarantee that, which is why the chat moved onto the
+socket.
+
 ## 1. Top-level fields
 
 | Field | Required | Type | Default | Meaning |
@@ -138,7 +155,7 @@ states:
 | `history-cutoff` | no | boolean | `false` | `true`: excludes every message from before the most recent transition into this state, both from the model's view and from auto-tracking. Combines (doesn't replace) the server-wide token-budget cutoff in `.config.yml`. |
 | `transition-log-level` | no | `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL` | `"WARNING"` | Log level when a transition **lands on** this state (property of the destination). Operational only. |
 | `attachments` | no | list of filenames | `[]` | Sent with every normal reply this state is "current" for. Not sent for `fixed-message`, nor to an `actuator.prompt(...)` call (§5.4), which is fully isolated. |
-| `ai-may-read-sources` | no | list of source names | `[]` | Sources whose `select` the model may call, at its own discretion, while replying in this state — §4.2. |
+| `ai-may-read-sources` | no | list of source names | `[]` | Sources whose `select_rows_*` reads the model may call, at its own discretion, while replying in this state — §4.2. |
 | `ai-must-read-sources` | no | list of source names | `[]` | Same, but the read is forced once per entry into this state — §4.2. A source name can appear in at most one of the two read fields. |
 | `ai-may-write-sources` | no | list of source names | `[]` | Sources whose `update` the model may call here — §4.2. Only a source whose driver implements `update` (today: `avance:env`, §5.2) may be listed; there is no `must-write`: a write is never forced. |
 
@@ -153,15 +170,17 @@ unused for that call.
 `ai-may-write-sources` each list names from this project's own top-level
 `sources:` (§5.2) the model may use, mid-turn, as native tools while
 replying in this state — one tool per (source, method): a source named
-`flight_records` in a read field becomes the callable
-`source_flight_records_select`, one named `env` in the write field becomes
-`source_env_update`. Reading and writing are independent grants; the two
+`flight_records` in a read field becomes one callable per read method its
+driver supports (`source_flight_records_select_rows_containing`,
+`source_flight_records_select_rows_where_column`,
+`source_flight_records_select_rows_where_column_in_range`), one named
+`env` in the write field becomes `source_env_update`. Reading and writing are independent grants; the two
 read fields differ only in how much the model is trusted to decide for itself:
 
-- **`ai-may-read-sources`** — the model sees the source's `select` and
-  decides for itself whether/when to call it, same as any other
+- **`ai-may-read-sources`** — the model sees the source's reads and
+  decides for itself whether/when to call one, same as any other
   tool-calling setup.
-- **`ai-must-read-sources`** — same `select`, but **forced once per entry
+- **`ai-must-read-sources`** — the same reads, but **forced once per entry
   into this state**: on the very first tool-call round of the first turn
   generated since this state was last entered (including the project's
   own bootstrap into its initial state, and a self-loop action re-entering
@@ -201,13 +220,16 @@ also documents *where* the model is allowed to look and write, not just
 that it's allowed to — a state with none of the three fields sends the
 exact same request a turn always did, before tool-calling existed at all.
 
-Every tool takes the same arguments, whatever the driver: `select` takes
-`values` (an array of strings — the row filter, possibly empty) and an
-optional `keys` (the columns to return, in that order); `update` takes
-`values` and `fields` (column → new value, at least one). A driver may
-*narrow* one of those schemas for the model — `avance:env` restricts
-`keys` to the exported variable names and `fields` to the writable ones,
-each described by its own `ai-definition` — but never changes their shape.
+Every tool takes the same arguments, whatever the driver:
+`select_rows_containing` takes `values` (an array of strings — the row
+filter, possibly empty); `select_rows_where_column` takes `column`,
+`operator` (`=`, `!=`, `>`, `>=`, `<`, `<=`) and `value`;
+`select_rows_where_column_in_range` takes `column`, `start` and `end`;
+`update` takes `values` and `fields` (column → new value, at least one).
+Every read returns whole rows — there is no column projection in the
+model's own interface. A driver may *narrow* one of those schemas for the
+model — `avance:env` restricts `fields` to the writable variables, each
+described by its own `ai-definition` — but never changes their shape.
 
 ## 5. `actions:` (nested under a state)
 
@@ -270,7 +292,7 @@ user.role == "admin"
 | `env.<name>` | A key declared in top-level `env:` (§5.3) — never a model-reported free-form value | attribute |
 | `session.<name>` | Engine fact about the current user+project session (`current_session_duration_in_minutes`, `last_user_session_datetime`, `number_of_user_sessions`, `state_duration_in_minutes`) | **call**, e.g. `session.number_of_user_sessions()` |
 | `user.<name>` | Current user's account field (`email`, `name`, `picture_url`, `provider`, `provider_user_id`, `created_at`, `last_login`, `active_project`, `role`) | attribute |
-| `source.<name>.<method>(...)` | A source declared in top-level `sources:` — below | method call, e.g. `.select(...)`/`.update(...)` |
+| `source.<name>.<method>(...)` | A source declared in top-level `sources:` — below | method call, e.g. `.select_rows_containing(...)`/`.update(...)` |
 | `automaton.<id>` | A different project's live state/env — below | `.state`, or `.env.<key>` |
 | `datetime.<name>` | Python's `datetime`/`timedelta`/`timezone` only, mainly for `actuator.defer`'s `when` | call, e.g. `datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc)` |
 
@@ -319,7 +341,7 @@ well (e.g. "search by flight code *and* date, or you'll get every date
 that flight ever flew") — write it with the model as the reader, not a
 human skimming the Inspector.
 
-Every source — whatever its driver — implements the same two-method
+Every source — whatever its driver — implements the same uniform
 interface, and is bounded by construction: a result over
 `MAX_SOURCE_RESULT_CHARS` is refused outright with an `error: response too
 long — try again by providing more specific filterso.` — never silently
@@ -331,29 +353,42 @@ state's tool fields — is rejected at build time the same way an
 undeclared source is. There is no hierarchy of source kinds: method
 support is the whole compatibility story.
 
-- `select(*values, keys=None)` — grep-like lookup: the header row plus
-  every row containing **every** given value (case-insensitive substring
-  match, AND'd), then — when `keys` is given — projected onto just those
-  columns, in the order asked for (the header included whenever at least
-  one row matched). No row at all satisfying the filter returns `""` —
-  not even the header — so `source.<name>.select(...) != ''` is a real
-  existence check ("the model proposes, the script verifies," below). An
-  unknown column comes back as an error *text*, never an exception.
-  `source.pino.select('VY3003', '2026-08-16')` finds the one row for that
-  flight on that date; `source.pino.select('VY3003', '2026-08-16',
-  keys=['data_partenza'])` returns two lines with a single column.
+- `select_rows_containing(*values)` — grep-like lookup: the header row
+  plus every **whole** row containing **every** given value
+  (case-insensitive substring match, AND'd). No row at all satisfying the
+  filter returns `""` — not even the header — so
+  `source.<name>.select_rows_containing(...) != ''` is a real existence
+  check ("the model proposes, the script verifies," below).
+  `source.pino.select_rows_containing('VY3003', '2026-08-16')` finds the
+  one row for that flight on that date.
+- `select_rows_where_column(column, operator, value)` — the header row
+  plus every whole row whose `column` satisfies the comparison.
+  Operators: `=`, `!=`, `>`, `>=`, `<`, `<=`. Both sides are compared as
+  numbers when both parse as numbers, as moments in time when both parse
+  as ISO dates/datetimes (`YYYY-MM-DD`, `YYYY-MM-DD HH:MM`), and
+  case-insensitively as text otherwise — so
+  `source.pino.select_rows_where_column('data_partenza', '>=', '2026-08-16')`
+  reads as a date comparison, not a string one.
+- `select_rows_where_column_in_range(column, start, end)` — the same
+  whole rows, for a `column` between `start` and `end`, **both included**
+  (numbers and ISO dates alike):
+  `source.pino.select_rows_where_column_in_range('data_partenza', '2026-08-01', '2026-08-31')`.
 - `value(*values, key)` — the `key` cell of the *first* row satisfying
-  the same filter as `select`, as a single scalar string; `""` if no row
-  matches, an error *text* if `key` isn't a real column. Scripts and
-  trigger/env: expressions only — never exposed to the model, which reads
-  through `select` instead. `source.pino.value('VY3003', key='flight')`
-  reads one field without parsing a table.
+  the same filter as `select_rows_containing`, as a single scalar string;
+  `""` if no row matches, an error *text* if `key` isn't a real column.
+  Scripts and trigger/env: expressions only — never exposed to the model,
+  which reads through the `select_rows_*` tools instead.
+  `source.pino.value('VY3003', key='flight')` reads one field without
+  parsing a table.
 - `update(*values, fields={...})` — assigns `fields` (column → new value)
   to every row containing every value; returns how many rows it touched
   (`"1 row updated"`). Unsupported by a driver that can't write.
 
-Every driver implements `select`; `value` and `update` only where it
-makes sense for that driver (its own `SUPPORTED_METHODS`).
+Every read returns whole rows: there is no column projection, and an
+unknown column or operator comes back as an error *text*, never an
+exception. Every driver implements `select_rows_containing`; the
+column-filtered reads, `value` and `update` only where they make sense
+for that driver (its own `SUPPORTED_METHODS`).
 
 Two drivers exist today, both under the scheme `avance`:
 
@@ -363,7 +398,8 @@ basename under `behaviour/`, resolved directly from storage at the
 conversation's own pinned automaton revision, never "whatever's published
 now" — not the `attachments:` mechanism, nothing is eagerly loaded).
 Assumes a normalized CSV (header + one row per record; the separator is
-detected). Implements `select` and `value` — never `update`, read-only. A
+detected). Implements every `select_rows_*` read and `value` — never
+`update`, read-only. A
 whole-file read is `attachment.read(name)`'s job (on-enter only), not a
 `source.*` capability.
 
@@ -371,19 +407,20 @@ whole-file read is `attachment.read(name)`'s job (on-enter only), not a
 columns are the env keys with `ai-access` other than `none` (§5.3) — the
 model's *only* channel for reading and, for a `readwrite` key, writing an
 automaton variable. `url: avance:env`, no other parameter; `ui-label`/
-`ai-definition` as for any source. `select()` returns the header and the
-row (`select(keys=[...])` just the named variables); `update(fields={...})`
+`ai-definition` as for any source. `select_rows_containing()` returns the
+header and the row (the column-filtered reads make no sense for a single
+row and aren't implemented); `update(fields={...})`
 writes the `readwrite` keys into the session's own env exactly as an
 action's `env:` script would (persisted for a live session, ephemeral for
 a test one), and refuses a `readonly` or unexported key as error text,
 writing nothing. `value(key=...)` reads one exported key's value as a
-scalar, script/trigger-only like every other source's `value`. Its tool
-schemas are narrowed for the model: `keys` to the exported names, `fields`
-to the writable ones, each described by its own `ai-definition`.
+scalar, script/trigger-only like every other source's `value`. Its
+`update` schema is narrowed for the model: `fields` to the writable
+variables, each described by its own `ai-definition`.
 Declaring an `avance:env` source when no key has `ai-access` other than
 `none` is a build error (an empty table); exported keys without an
 `avance:env` source are fine (the key still serves scripts). A script may
-call it too (`source.env.select(keys=['pnr'])`, `source.env.value(key='pnr')`),
+call it too (`source.env.select_rows_containing()`, `source.env.value(key='pnr')`),
 and is subject to the same `readwrite` check on `update`.
 
 New drivers are a code change, not something a project author adds.
@@ -432,7 +469,7 @@ env:
 | --- | --- | --- | --- | --- |
 | `value` | no | string (expression) | `""` | The default, applied once (top-to-bottom order) the first time a session opens — a later default may reference an earlier key. |
 | `ui-description` | no | string | `None` | Shown in the frontend — never sent to the model. |
-| `ai-access` | no | `none`/`readonly`/`readwrite` | `none` | What the *model* may do with this key, in absolute terms — through an `avance:env` source (§5.2) and only in a state that lists that source (§4.2). `none`: the model never sees it. `readonly`: it appears in the prompt's env block and in `select`. `readwrite`: it may also be written with `update`. Scripts are never subject to this: an action's `env:` writes any key. |
+| `ai-access` | no | `none`/`readonly`/`readwrite` | `none` | What the *model* may do with this key, in absolute terms — through an `avance:env` source (§5.2) and only in a state that lists that source (§4.2). `none`: the model never sees it. `readonly`: it appears in the prompt's env block and in `select_rows_containing`. `readwrite`: it may also be written with `update`. Scripts are never subject to this: an action's `env:` writes any key. |
 | `ai-definition` | conditionally | string | `None` | Written *for the model*: what this variable means. **Required** (build error) whenever `ai-access` isn't `none` — same requirement a source exposed to the model gets; optional otherwise. Becomes the field's own description in the `update` tool's schema. |
 
 An action's `env:` can only update a key declared here, never invent one
@@ -445,7 +482,7 @@ state whose `ai-may-read-sources`/`ai-must-read-sources` lists an
 `avance:env` source; there, the system prompt ends with a "Current
 environment" block — one `key: value` line per key with `ai-access` other
 than `none`, every value cut to 200 characters with a
-`[response too long — provide more specific filters via select]` pointer,
+`[response too long — provide more specific filters via a select_rows_* read]` pointer,
 placed last so its per-turn changes never invalidate the cacheable prefix. Anywhere else the
 block does not exist, not even empty. The memory block is a separate
 block with its own heading, and the model is told to change variables
@@ -464,7 +501,7 @@ make the transition a **trigger** that checks those values against the
 project's own data —
 
 ```yaml
-trigger: "source.tickets_sold.select(user.email, env.flight) != '' and env.pnr != ''"
+trigger: "source.tickets_sold.select_rows_containing(user.email, env.flight) != '' and env.pnr != ''"
 ```
 
 — rather than a signal about whether the model *believes* it collected
@@ -701,7 +738,7 @@ of how you're likely to hit them:
 - Every `sources:` entry's own `url`, if set, has a recognized driver scheme, and (for `avance:<path>`) its path names a file actually present alongside `index.yml`.
 - Every `env:` key's `ai-access`, if given, is `none`/`readonly`/`readwrite`, and one that isn't `none` declares its own `ai-definition`.
 - An `avance:env` source (§5.2) is only declared when at least one env key has `ai-access` other than `none`.
-- Every name in a state's own `ai-may-read-sources`/`ai-must-read-sources`/`ai-may-write-sources` (§4.2) names a source actually declared in `sources:`, that source declares its own `ai-definition`, its driver implements the method the field exposes (`select`/`update`), and no name appears in both read fields for the same state. The old names `tools`, `ai-may-query-sources`, `ai-must-query-sources` are rejected with a message naming their replacement.
+- Every name in a state's own `ai-may-read-sources`/`ai-must-read-sources`/`ai-may-write-sources` (§4.2) names a source actually declared in `sources:`, that source declares its own `ai-definition`, its driver implements the method the field exposes (`select_rows_containing`/`update`), and no name appears in both read fields for the same state. The old names `tools`, `ai-may-query-sources`, `ai-must-query-sources` are rejected with a message naming their replacement.
 
 A stored revision that fails this checklist because the format moved on
 underneath it (a removed field, a removed method) is never rewritten

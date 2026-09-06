@@ -13,8 +13,7 @@ vi.mock('../src/api.js', () => ({
 }))
 vi.mock('../src/chatClient.js', () => ({
   connect: vi.fn(),
-  disconnect: vi.fn(),
-}))
+  disconnect: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 vi.mock('../src/errorStore.js', () => ({
   clearApiError: vi.fn(),
 }))
@@ -85,142 +84,95 @@ describe('useAppBoot', () => {
     return mounted.result
   }
 
-  describe('getActiveProjectId', () => {
-    it('prefers the reported active project', async () => {
-      getProjects.mockResolvedValue({ active: 'proj-a', projects: [{ name: 'proj-b' }] })
-      const s = mount()
-      expect(await s.getActiveProjectId()).toBe('proj-a')
-    })
+  async function bootAs(role, state = {}) {
+    getState.mockResolvedValue(state)
+    getMe.mockResolvedValue({ role })
+    const s = mount()
+    s.startBootSequence()
+    await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+    return s
+  }
 
-    it('falls back to the first project when none is active', async () => {
-      getProjects.mockResolvedValue({ active: null, projects: [{ name: 'proj-b' }] })
-      const s = mount()
-      expect(await s.getActiveProjectId()).toBe('proj-b')
-    })
+  function sharedInvite(projectId = 'shared-project') {
+    consumeInviteCode.mockReturnValueOnce('shared-id')
+    postRedeemInviteCode.mockResolvedValue({ project_id: projectId })
+    activateProject.mockResolvedValue({})
+  }
 
-    it('resolves null on a totally empty install or a fetch failure', async () => {
-      getProjects.mockResolvedValue({ active: null, projects: [] })
-      const s = mount()
-      expect(await s.getActiveProjectId()).toBeNull()
+  async function bootPending(pendingStatus) {
+    getState.mockRejectedValue({ status: 403 })
+    if (pendingStatus instanceof Error) getPendingStatus.mockRejectedValue(pendingStatus)
+    else getPendingStatus.mockResolvedValue(pendingStatus)
+    const s = mount()
+    s.startBootSequence()
+    await vi.waitFor(() => expect(s.needsTerms.value).toBe(true))
+    return s
+  }
 
-      getProjects.mockRejectedValue(new Error('boom'))
-      expect(await s.getActiveProjectId()).toBeNull()
-    })
+  it('getActiveProjectId prefers the reported active project, falls back to the first, and resolves null on an empty install or a failure', async () => {
+    getProjects.mockResolvedValue({ active: 'proj-a', projects: [{ name: 'proj-b' }] })
+    const s = mount()
+    expect(await s.getActiveProjectId()).toBe('proj-a')
+
+    getProjects.mockResolvedValue({ active: null, projects: [{ name: 'proj-b' }] })
+    expect(await s.getActiveProjectId()).toBe('proj-b')
+
+    getProjects.mockResolvedValue({ active: null, projects: [] })
+    expect(await s.getActiveProjectId()).toBeNull()
+
+    getProjects.mockRejectedValue(new Error('boom'))
+    expect(await s.getActiveProjectId()).toBeNull()
   })
 
   describe('startBootSequence -> runPingAttempt', () => {
-    it('a ready backend resolves the landing view and flips bootStatus to ready', async () => {
-      getState.mockResolvedValue({ talk_enabled: true, listen_enabled: true })
-      getMe.mockResolvedValue({ role: 'user' })
-      const s = mount()
-
-      s.startBootSequence()
-      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+    it('a ready backend publishes the reported capabilities and budgets, then lands a user in chat', async () => {
+      await bootAs('user', {
+        talk_enabled: true, listen_enabled: true, input_token_budget_per_turn: 8000, total_token_budget_per_session: 200000,
+      })
 
       expect(setCapabilities).toHaveBeenCalledWith({ talkAvailable: true, micAvailable: true })
-      expect(setInputTokenBudgetPerTurn).toHaveBeenCalledWith(null)
-      expect(setTotalTokenBudgetPerSession).toHaveBeenCalledWith(null)
+      expect(setInputTokenBudgetPerTurn).toHaveBeenCalledWith(8000)
+      expect(setTotalTokenBudgetPerSession).toHaveBeenCalledWith(200000)
       expect(handleStateChange).toHaveBeenCalled()
       expect(clearApiError).toHaveBeenCalled()
-      expect(loadMessages).toHaveBeenCalled() // role === 'user'
+      expect(loadMessages).toHaveBeenCalled()
       expect(loadAiModels).toHaveBeenCalled()
     })
 
-    it('passes the backend-reported input token budget through, when present', async () => {
-      getState.mockResolvedValue({ talk_enabled: true, listen_enabled: true, input_token_budget_per_turn: 8000 })
-      getMe.mockResolvedValue({ role: 'user' })
-      const s = mount()
+    it('an absent budget is published as null, and the navigation stack is reset before resolving where an admin lands', async () => {
+      const s = await bootAs('admin', { talk_enabled: true, listen_enabled: true })
 
-      s.startBootSequence()
-      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
-
-      expect(setInputTokenBudgetPerTurn).toHaveBeenCalledWith(8000)
-    })
-
-    it('passes the backend-reported total token budget through, when present', async () => {
-      getState.mockResolvedValue({ talk_enabled: true, listen_enabled: true, total_token_budget_per_session: 200000 })
-      getMe.mockResolvedValue({ role: 'user' })
-      const s = mount()
-
-      s.startBootSequence()
-      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
-
-      expect(setTotalTokenBudgetPerSession).toHaveBeenCalledWith(200000)
-    })
-
-    it('resets the navigation stack before resolving who is landing where', async () => {
-      getState.mockResolvedValue({})
-      getMe.mockResolvedValue({ role: 'admin' })
-      const s = mount()
-
-      s.startBootSequence()
-      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
-
+      expect(setInputTokenBudgetPerTurn).toHaveBeenCalledWith(null)
+      expect(setTotalTokenBudgetPerSession).toHaveBeenCalledWith(null)
       expect(pushedView.value).toBeNull()
       expect(showProfile.value).toBe(false)
       expect(navDirection.value).toBe('forward')
       expect(loadMessages).not.toHaveBeenCalled() // admin, not user
+      expect(s.bootStatus.value).toBe('ready')
     })
 
     it("a supervisor's landing view resolves their active project into labelProjectName", async () => {
-      getState.mockResolvedValue({})
-      getMe.mockResolvedValue({ role: 'supervisor' })
       getProjects.mockResolvedValue({ active: 'proj-x', projects: [] })
-      const s = mount()
 
-      s.startBootSequence()
-      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+      await bootAs('supervisor')
 
       expect(labelProjectName.value).toBe('proj-x')
       expect(liveChatProjectName.value).toBeNull()
     })
 
-    it('a 403 (pending registration) sets needsTerms instead of proceeding', async () => {
-      getState.mockRejectedValue({ status: 403 })
-      const s = mount()
-
-      s.startBootSequence()
-      await vi.waitFor(() => expect(s.needsTerms.value).toBe(true))
-
-      expect(s.bootStatus.value).toBe('checking') // never touched
+    it('a 403 sets needsTerms without booting, reporting invite exemption only when the pending-status check says so', async () => {
+      const pending = await bootPending({ invite_exempt: true })
+      expect(pending.bootStatus.value).toBe('checking') // never touched
       expect(getMe).not.toHaveBeenCalled()
-    })
-
-    it('a pending pre-wired admin (no share link, no User row) resolves as invite-exempt', async () => {
       // Regression: an admin who erased their own data, then just logs
       // back in normally (no ?invite= link, see shareLink.js) — App.vue's
-      // gate must still be able to route them to TermsView, not
-      // InviteRequiredView's dead end. See AuthService.is_invite_exempt.
-      getState.mockRejectedValue({ status: 403 })
-      getPendingStatus.mockResolvedValue({ invite_exempt: true })
-      const s = mount()
+      // gate must still route them to TermsView, not InviteRequiredView's
+      // dead end. See AuthService.is_invite_exempt.
+      expect(pending.inviteExempt.value).toBe(true)
 
-      s.startBootSequence()
-      await vi.waitFor(() => expect(s.needsTerms.value).toBe(true))
-
-      expect(s.inviteExempt.value).toBe(true)
-    })
-
-    it('a pending regular identity with no share link is not invite-exempt', async () => {
-      getState.mockRejectedValue({ status: 403 })
-      getPendingStatus.mockResolvedValue({ invite_exempt: false })
-      const s = mount()
-
-      s.startBootSequence()
-      await vi.waitFor(() => expect(s.needsTerms.value).toBe(true))
-
-      expect(s.inviteExempt.value).toBe(false)
-    })
-
-    it('fails closed (not exempt) if the pending-status check itself fails', async () => {
-      getState.mockRejectedValue({ status: 403 })
-      getPendingStatus.mockRejectedValue(new Error('boom'))
-      const s = mount()
-
-      s.startBootSequence()
-      await vi.waitFor(() => expect(s.needsTerms.value).toBe(true))
-
-      expect(s.inviteExempt.value).toBe(false)
+      expect((await bootPending({ invite_exempt: false })).inviteExempt.value).toBe(false)
+      // Fails closed if the check itself fails.
+      expect((await bootPending(new Error('boom'))).inviteExempt.value).toBe(false)
     })
 
     it('a 401 just stops — apiFetch already triggered the login screen', async () => {
@@ -233,7 +185,7 @@ describe('useAppBoot', () => {
       expect(s.bootStatus.value).toBe('checking')
     })
 
-    it('a transient failure retries on an interval, then flips ready once the backend comes up', async () => {
+    it('a transient failure retries on an interval until the backend comes up, giving up once the budget is exhausted', async () => {
       getState.mockRejectedValueOnce({}).mockRejectedValueOnce({}).mockResolvedValue({})
       getMe.mockResolvedValue({ role: 'admin' })
       const s = mount()
@@ -245,16 +197,13 @@ describe('useAppBoot', () => {
       await vi.advanceTimersByTimeAsync(800)
       await vi.advanceTimersByTimeAsync(800)
       expect(s.bootStatus.value).toBe('ready')
-    })
+      s.unmount?.()
 
-    it('gives up after the retry budget is exhausted', async () => {
       getState.mockRejectedValue({})
-      const s = mount()
-
-      s.startBootSequence()
+      const failing = mount()
+      failing.startBootSequence()
       await vi.advanceTimersByTimeAsync(800 * 31)
-
-      expect(s.bootStatus.value).toBe('failed')
+      expect(failing.bootStatus.value).toBe('failed')
     })
 
     it('calling startBootSequence again supersedes a still-pending retry loop', async () => {
@@ -279,33 +228,25 @@ describe('useAppBoot', () => {
   })
 
   describe('shared project landing (share-link QR flow)', () => {
-    it('lands a plain user directly on the shared project instead of their previously active one', async () => {
-      getState.mockResolvedValue({})
-      getMe.mockResolvedValue({ role: 'user' })
-      consumeInviteCode.mockReturnValueOnce('shared-id')
-      postRedeemInviteCode.mockResolvedValue({ project_id: 'shared-project' })
-      activateProject.mockResolvedValue({})
-      const s = mount()
-
-      s.startBootSequence()
-      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
-
+    it('lands every role on the shared project instead of their previously active one, never falling back to getActiveProjectId', async () => {
+      sharedInvite()
+      await bootAs('user')
       expect(postRedeemInviteCode).toHaveBeenCalledWith('shared-id')
       expect(activateProject).toHaveBeenCalledWith('shared-project')
       expect(liveChatProjectName.value).toBe('shared-project')
-      expect(getProjects).not.toHaveBeenCalled() // never fell back to getActiveProjectId
+      expect(getProjects).not.toHaveBeenCalled()
+      unmount?.()
+
+      sharedInvite()
+      await bootAs('supervisor')
+      expect(labelProjectName.value).toBe('shared-project')
+      expect(getProjects).not.toHaveBeenCalled()
     })
 
-    it('pushes an admin straight into chat, on the shared project, and loads its messages', async () => {
-      getState.mockResolvedValue({})
-      getMe.mockResolvedValue({ role: 'admin' })
-      consumeInviteCode.mockReturnValueOnce('shared-id')
-      postRedeemInviteCode.mockResolvedValue({ project_id: 'shared-project' })
-      activateProject.mockResolvedValue({})
-      const s = mount()
+    it('pushes an admin straight into chat on the shared project and loads its messages', async () => {
+      sharedInvite()
 
-      s.startBootSequence()
-      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+      await bootAs('admin')
 
       // "Pushed straight into chat" is chatOpen, a separate flag from
       // pushedView (App.vue's own string enum for the *other* pushed
@@ -316,59 +257,28 @@ describe('useAppBoot', () => {
       expect(loadMessages).toHaveBeenCalled()
     })
 
-    it("lands a supervisor's Label sessions view on the shared project", async () => {
-      getState.mockResolvedValue({})
-      getMe.mockResolvedValue({ role: 'supervisor' })
-      consumeInviteCode.mockReturnValueOnce('shared-id')
-      postRedeemInviteCode.mockResolvedValue({ project_id: 'shared-project' })
-      activateProject.mockResolvedValue({})
-      const s = mount()
-
-      s.startBootSequence()
-      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
-
-      expect(labelProjectName.value).toBe('shared-project')
-      expect(getProjects).not.toHaveBeenCalled()
-    })
-
-    it('an admin with no shared id lands on Manage projects as usual (no push, no activation)', async () => {
-      getState.mockResolvedValue({})
-      getMe.mockResolvedValue({ role: 'admin' })
-      const s = mount()
-
-      s.startBootSequence()
-      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+    it('an admin with no shared id lands on Manage projects as usual, with no push and no activation', async () => {
+      await bootAs('admin')
 
       expect(activateProject).not.toHaveBeenCalled()
       expect(pushedView.value).toBeNull()
     })
 
-    it('falls back to the normal landing when the shared id no longer resolves to a project', async () => {
-      getState.mockResolvedValue({})
-      getMe.mockResolvedValue({ role: 'user' })
+    it('falls back to the normal landing when the shared id no longer resolves or resolving it fails', async () => {
       getProjects.mockResolvedValue({ active: 'proj-fallback', projects: [] })
       consumeInviteCode.mockReturnValueOnce('stale-id')
       postRedeemInviteCode.mockResolvedValue({ project_id: null })
-      const s = mount()
 
-      s.startBootSequence()
-      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
-
+      await bootAs('user')
       expect(activateProject).not.toHaveBeenCalled()
       expect(liveChatProjectName.value).toBe('proj-fallback')
-    })
+      unmount?.()
 
-    it('falls back to the normal landing when resolving the shared id fails', async () => {
-      getState.mockResolvedValue({})
-      getMe.mockResolvedValue({ role: 'user' })
-      getProjects.mockResolvedValue({ active: 'proj-fallback', projects: [] })
+      liveChatProjectName.value = null
       consumeInviteCode.mockReturnValueOnce('stale-id')
       postRedeemInviteCode.mockRejectedValue(new Error('boom'))
-      const s = mount()
 
-      s.startBootSequence()
-      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
-
+      await bootAs('user')
       expect(liveChatProjectName.value).toBe('proj-fallback')
     })
   })
@@ -382,16 +292,14 @@ describe('useAppBoot', () => {
     expect(currentUserRole.value).toBeNull()
   })
 
-  describe('handleLoggedIn', () => {
-    it('restarts the boot sequence', async () => {
-      getState.mockResolvedValue({})
-      getMe.mockResolvedValue({ role: 'admin' })
-      const s = mount()
+  it('handleLoggedIn restarts the boot sequence', async () => {
+    getState.mockResolvedValue({})
+    getMe.mockResolvedValue({ role: 'admin' })
+    const s = mount()
 
-      s.handleLoggedIn()
+    s.handleLoggedIn()
 
-      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
-    })
+    await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
   })
 
   describe('handleTermsAccept', () => {
@@ -408,43 +316,6 @@ describe('useAppBoot', () => {
       expect(s.needsTerms.value).toBe(false)
     })
 
-    it('stays on the terms screen if accepting fails', async () => {
-      postAcceptTerms.mockRejectedValue(new Error('boom'))
-      const s = mount()
-      s.needsTerms.value = true
-
-      await s.handleTermsAccept()
-
-      expect(s.needsTerms.value).toBe(true)
-    })
-
-    it('surfaces the backend-reported reason (e.g. an expired/maxed invite) in termsError', async () => {
-      const err = new Error('This invite link has expired.')
-      err.detail = ''
-      postAcceptTerms.mockRejectedValue(err)
-      const s = mount()
-      s.needsTerms.value = true
-
-      await s.handleTermsAccept()
-
-      expect(s.termsError.value).toBe('This invite link has expired.')
-      expect(s.needsTerms.value).toBe(true)
-    })
-
-    it('clears any previous termsError at the start of a fresh attempt', async () => {
-      postAcceptTerms.mockRejectedValueOnce(new Error('nope')).mockResolvedValueOnce()
-      getState.mockResolvedValue({})
-      getMe.mockResolvedValue({ role: 'admin' })
-      const s = mount()
-      s.needsTerms.value = true
-
-      await s.handleTermsAccept()
-      expect(s.termsError.value).toBe('nope')
-
-      await s.handleTermsAccept()
-      expect(s.termsError.value).toBe('')
-    })
-
     it('sends the peeked (not consumed) shared project id — registration is invite-only', async () => {
       postAcceptTerms.mockResolvedValue()
       peekInviteCode.mockReturnValueOnce('invite-id')
@@ -454,55 +325,57 @@ describe('useAppBoot', () => {
       await s.handleTermsAccept()
 
       expect(postAcceptTerms).toHaveBeenCalledWith('invite-id')
-      expect(consumeInviteCode).not.toHaveBeenCalled() // still there for the later landing resolution
+      // Still there for the later landing resolution.
+      expect(consumeInviteCode).not.toHaveBeenCalled()
     })
-  })
 
-  describe('handleTermsReject', () => {
-    it('logs out cleanly without ever having registered', async () => {
-      postLogout.mockResolvedValue()
+    it('stays on the terms screen when accepting fails, surfacing the backend reason and clearing it on the next attempt', async () => {
+      const expired = new Error('This invite link has expired.')
+      expired.detail = ''
+      postAcceptTerms.mockRejectedValue(expired)
       const s = mount()
       s.needsTerms.value = true
 
-      await s.handleTermsReject()
+      await s.handleTermsAccept()
 
-      expect(disconnectChat).toHaveBeenCalled()
-      expect(s.needsTerms.value).toBe(false)
-      expect(requireLogin).toHaveBeenCalled()
-    })
+      expect(s.needsTerms.value).toBe(true)
+      expect(s.termsError.value).toBe('This invite link has expired.')
 
-    it('clears inviteExempt so a later identity in the same tab never inherits it', async () => {
-      postLogout.mockResolvedValue()
-      const s = mount()
-      s.needsTerms.value = true
-      s.inviteExempt.value = true
-
-      await s.handleTermsReject()
-
-      expect(s.inviteExempt.value).toBe(false)
+      postAcceptTerms.mockResolvedValueOnce()
+      getState.mockResolvedValue({})
+      getMe.mockResolvedValue({ role: 'admin' })
+      await s.handleTermsAccept()
+      expect(s.termsError.value).toBe('')
     })
   })
 
-  describe('handleLogout', () => {
-    it('does nothing without confirmation', async () => {
-      confirmDialog.mockResolvedValue(false)
-      const s = mount()
+  it('handleTermsReject logs out cleanly without ever having registered, clearing inviteExempt with it', async () => {
+    postLogout.mockResolvedValue()
+    const s = mount()
+    s.needsTerms.value = true
+    s.inviteExempt.value = true
 
-      await s.handleLogout()
+    await s.handleTermsReject()
 
-      expect(postLogout).not.toHaveBeenCalled()
-      expect(requireLogin).not.toHaveBeenCalled()
-    })
+    expect(disconnectChat).toHaveBeenCalled()
+    expect(s.needsTerms.value).toBe(false)
+    expect(s.inviteExempt.value).toBe(false)
+    expect(requireLogin).toHaveBeenCalled()
+  })
 
-    it('logs out on confirmation, even if the server call fails', async () => {
-      confirmDialog.mockResolvedValue(true)
-      postLogout.mockRejectedValue(new Error('boom'))
-      const s = mount()
+  it('handleLogout does nothing without confirmation, and logs out on confirmation even if the server call fails', async () => {
+    confirmDialog.mockResolvedValue(false)
+    const s = mount()
 
-      await s.handleLogout()
+    await s.handleLogout()
+    expect(postLogout).not.toHaveBeenCalled()
+    expect(requireLogin).not.toHaveBeenCalled()
 
-      expect(disconnectChat).toHaveBeenCalled()
-      expect(requireLogin).toHaveBeenCalled()
-    })
+    confirmDialog.mockResolvedValue(true)
+    postLogout.mockRejectedValue(new Error('boom'))
+
+    await s.handleLogout()
+    expect(disconnectChat).toHaveBeenCalled()
+    expect(requireLogin).toHaveBeenCalled()
   })
 })

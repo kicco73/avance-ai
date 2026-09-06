@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
 vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
-vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn() }))
+vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn() }))
 vi.mock('../src/api.js', () => ({
   getCurrentSession: vi.fn(),
@@ -36,6 +36,10 @@ function currentSkinStyleTags() {
   return Array.from(document.head.querySelectorAll('style'))
 }
 
+function css(color) {
+  return `body { color: ${color}; }`
+}
+
 describe("chatSkin.js's shared index.css skin loader, driven by the live store", () => {
   let chatStore
   let chatSkin
@@ -55,15 +59,19 @@ describe("chatSkin.js's shared index.css skin loader, driven by the live store",
     document.head.innerHTML = ''
   })
 
-  it('does nothing at boot — no project/session yet', async () => {
+  async function loadRed() {
+    fetchMock.mockResolvedValue({ ok: true, text: async () => css('red') })
+    chatStore.currentProjectId.value = 'proj'
+    chatStore.currentSessionId.value = 1
+    await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
+  }
+
+  it('does nothing until a project+session are set, then fetches and applies the skin', async () => {
     await nextTick()
     expect(fetchMock).not.toHaveBeenCalled()
     expect(currentSkinStyleTags()).toHaveLength(0)
-  })
 
-  it('fetches and applies the skin once a project+session are set', async () => {
     fetchMock.mockResolvedValue({ ok: true, text: async () => '.chat-window-shell { color: red; }' })
-
     chatStore.currentProjectId.value = 'proj'
     chatStore.currentSessionId.value = 1
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
@@ -76,71 +84,47 @@ describe("chatSkin.js's shared index.css skin loader, driven by the live store",
     expect(currentSkinStyleTags()[0].textContent).toBe('.chat-window-shell { color: red; }')
   })
 
-  it('re-fetches on every skinVersion bump, replacing the same tag rather than adding a second one', async () => {
-    fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: red; }' })
-    chatStore.currentProjectId.value = 'proj'
-    chatStore.currentSessionId.value = 1
-    await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
+  it('a skinVersion bump re-fetches into the same tag, and a non-ok response clears it rather than leaving a stale one', async () => {
+    await loadRed()
 
-    fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: blue; }' })
+    fetchMock.mockResolvedValue({ ok: true, text: async () => css('blue') })
     chatSkin.invalidateSkin()
-    await vi.waitFor(() => expect(currentSkinStyleTags()[0]?.textContent).toBe('body { color: blue; }'))
-
+    await vi.waitFor(() => expect(currentSkinStyleTags()[0]?.textContent).toBe(css('blue')))
     expect(currentSkinStyleTags()).toHaveLength(1)
     expect(fetchMock).toHaveBeenCalledTimes(2)
-  })
-
-  it('applyAspect turned off skips the fetch entirely and removes any applied skin', async () => {
-    fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: red; }' })
-    chatStore.currentProjectId.value = 'proj'
-    chatStore.currentSessionId.value = 1
-    await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
-
-    chatSkin.applyAspect.value = false
-    await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(0))
-    expect(fetchMock).toHaveBeenCalledTimes(1) // no second call — applyAspect off short-circuits before fetch
-  })
-
-  it('turning applyAspect back on resumes loading — the exact toggle RunChat.vue exposes', async () => {
-    fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: green; }' })
-    chatStore.currentProjectId.value = 'proj'
-    chatStore.currentSessionId.value = 1
-    chatSkin.applyAspect.value = false
-    await nextTick()
-    expect(currentSkinStyleTags()).toHaveLength(0)
-
-    chatSkin.applyAspect.value = true
-    await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
-    expect(currentSkinStyleTags()[0].textContent).toBe('body { color: green; }')
-  })
-
-  it('a non-ok response (e.g. no index.css yet) clears the skin instead of leaving a stale tag', async () => {
-    fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: red; }' })
-    chatStore.currentProjectId.value = 'proj'
-    chatStore.currentSessionId.value = 1
-    await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
 
     fetchMock.mockResolvedValue({ ok: false })
     chatSkin.invalidateSkin()
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(0))
   })
 
-  it('switching project+session (e.g. leaving then re-entering Test) fetches the new one', async () => {
-    fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: red; }' })
-    chatStore.currentProjectId.value = 'proj-a'
-    chatStore.currentSessionId.value = 1
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+  it('applyAspect off removes the skin and short-circuits before the fetch; turning it back on resumes loading', async () => {
+    await loadRed()
 
-    fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: purple; }' })
+    chatSkin.applyAspect.value = false
+    await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(0))
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    fetchMock.mockResolvedValue({ ok: true, text: async () => css('green') })
+    chatSkin.applyAspect.value = true
+    await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
+    expect(currentSkinStyleTags()[0].textContent).toBe(css('green'))
+  })
+
+  it('switching project+session (e.g. leaving then re-entering Test) fetches the new one', async () => {
+    await loadRed()
+
+    fetchMock.mockResolvedValue({ ok: true, text: async () => css('purple') })
     chatStore.currentProjectId.value = 'proj-b'
     chatStore.currentSessionId.value = 2
+
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     expect(fetchMock).toHaveBeenLastCalledWith(
       '/api/projects/proj-b/files/index.css/content?session_id=2',
       expect.anything()
     )
     expect(currentSkinStyleTags()).toHaveLength(1)
-    expect(currentSkinStyleTags()[0].textContent).toBe('body { color: purple; }')
+    expect(currentSkinStyleTags()[0].textContent).toBe(css('purple'))
   })
 })
 
@@ -166,34 +150,33 @@ describe('chatSkin.js only ever applies the currently active store — live vs t
     document.head.innerHTML = ''
   })
 
-  it('a project/session change on the inactive store is ignored until it becomes active', async () => {
-    fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: red; }' })
+  it('a project/session change on the inactive store is ignored until switching modes makes it active', async () => {
+    fetchMock.mockResolvedValue({ ok: true, text: async () => css('red') })
     chatStore.currentProjectId.value = 'proj'
     chatStore.currentSessionId.value = 1
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
 
     // Test mode's own store resolves in the background (e.g. RunChat.vue
     // mounted once) — must not touch the live skin while 'live' is active.
-    fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: draft; }' })
+    fetchMock.mockResolvedValue({ ok: true, text: async () => css('draft') })
     testChatStore.currentProjectId.value = 'draft-project'
     testChatStore.currentSessionId.value = 99
     await nextTick()
     await nextTick()
-    expect(currentSkinStyleTags()[0].textContent).toBe('body { color: red; }')
+    expect(currentSkinStyleTags()[0].textContent).toBe(css('red'))
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
     // Switching modes (EditProjectView's setMode('run')) immediately
     // swaps to the test store's own already-resolved project/session.
     chatSkin.activeChatMode.value = 'test'
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    await vi.waitFor(() => expect(currentSkinStyleTags()[0].textContent).toBe('body { color: draft; }'))
+    await vi.waitFor(() => expect(currentSkinStyleTags()[0].textContent).toBe(css('draft')))
 
     // Leaving 'run' mode swaps straight back — the live store's project/
-    // session never had to be touched or reloaded to make this happen
-    // (re-fetching index.css itself is a separate, expected side effect).
-    fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: red; }' })
+    // session never had to be touched or reloaded to make this happen.
+    fetchMock.mockResolvedValue({ ok: true, text: async () => css('red') })
     chatSkin.activeChatMode.value = 'live'
-    await vi.waitFor(() => expect(currentSkinStyleTags()[0].textContent).toBe('body { color: red; }'))
+    await vi.waitFor(() => expect(currentSkinStyleTags()[0].textContent).toBe(css('red')))
   })
 })
 

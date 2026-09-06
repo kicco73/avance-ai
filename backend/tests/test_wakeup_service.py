@@ -7,6 +7,7 @@ the self-loop, recording a new transition.
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 
@@ -79,48 +80,6 @@ def project_service(db) -> ProjectService:
 _actuator_factory = make_test_actuator_factory
 
 
-def test_reverse_index_is_populated_when_watcher_is_built(db, project_service):
-    _publish_project(db, project_service, "observed", OBSERVED_YML)
-    _publish_project(db, project_service, "watcher", WATCHER_YML)
-
-    assert db.get_observers("observed") == ["watcher"]
-    assert db.get_observed_projects("watcher") == ["observed"]
-
-
-def test_reverse_index_is_cleared_when_the_reference_is_removed(db, project_service):
-    _publish_project(db, project_service, "observed", OBSERVED_YML)
-    _publish_project(db, project_service, "watcher", WATCHER_YML)
-    assert db.get_observers("observed") == ["watcher"]
-
-    _publish_project(db, project_service, "watcher", OBSERVED_YML)  # no longer references automaton.observed at all
-
-    assert db.get_observers("observed") == []
-
-
-def test_reevaluate_and_apply_fires_the_self_loop_when_the_observed_state_now_matches(db, project_service):
-    _publish_project(db, project_service, "observed", OBSERVED_YML)
-    _publish_project(db, project_service, "watcher", WATCHER_YML)
-    db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
-    watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
-    before = len(db.get_signals(watcher_session["id"]))
-
-    # "observed" moves to state 'b' — the state the watcher's own
-    # self-loop trigger is actually watching for.
-    db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
-    observed_session = db.get_latest_chat_session(USERNAME, "observed")
-    db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
-
-    job_service = make_test_job_service(db)
-    service = WakeupService(db, project_service, job_service, _actuator_factory(db))
-    asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
-
-    after = db.get_signals(watcher_session["id"])
-    assert len(after) == before + 1
-    assert after[-1]["old_state"] == "x"
-    assert after[-1]["new_state"] == "x"  # self-loop — the state itself never changes
-    assert after[-1]["origin"] == "system"
-
-
 class _FakeTrackingService:
     def __init__(self, disabled_session_ids):
         self._disabled = disabled_session_ids
@@ -141,6 +100,57 @@ class _FakeWebSocket:
         self.sent.append(payload)
 
 
+def _both_projects(db, project_service, *, observed_moved: bool = True) -> dict:
+    """Publishes both projects, opens a session in each, and (by default)
+    moves "observed" to state 'b' — the state the watcher's own self-loop
+    trigger is actually watching for."""
+    _publish_project(db, project_service, "observed", OBSERVED_YML)
+    _publish_project(db, project_service, "watcher", WATCHER_YML)
+    db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
+    db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
+    watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
+    if observed_moved:
+        observed_session = db.get_latest_chat_session(USERNAME, "observed")
+        db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
+    return watcher_session
+
+
+def _wake(db, project_service, **kwargs) -> None:
+    service = WakeupService(db, project_service, make_test_job_service(db), _actuator_factory(db), **kwargs)
+    asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
+
+
+def test_the_reverse_index_records_the_reference_and_is_cleared_once_it_is_removed(db, project_service):
+    _publish_project(db, project_service, "observed", OBSERVED_YML)
+    _publish_project(db, project_service, "watcher", WATCHER_YML)
+
+    assert db.get_observers("observed") == ["watcher"]
+    assert db.get_observed_projects("watcher") == ["observed"]
+
+    _publish_project(db, project_service, "watcher", OBSERVED_YML)  # no longer references automaton.observed at all
+
+    assert db.get_observers("observed") == []
+
+
+def test_reevaluating_fires_the_self_loop_only_once_the_observed_state_actually_matches(db, project_service):
+    quiet_session = _both_projects(db, project_service, observed_moved=False)
+    before = len(db.get_signals(quiet_session["id"]))
+
+    _wake(db, project_service)
+    assert len(db.get_signals(quiet_session["id"])) == before
+
+    observed_session = db.get_latest_chat_session(USERNAME, "observed")
+    db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
+
+    _wake(db, project_service)
+
+    after = db.get_signals(quiet_session["id"])
+    assert len(after) == before + 1
+    assert after[-1]["old_state"] == "x"
+    assert after[-1]["new_state"] == "x"  # self-loop — the state itself never changes
+    assert after[-1]["origin"] == "system"
+
+
 class TestWsAdapterPush:
     """A fired self-loop wake-up pushes a "notification" frame (state/
     project_name) to whichever connection is registered for
@@ -150,21 +160,17 @@ class TestWsAdapterPush:
     parses this exact WS message shape by that literal key name — see
     WakeupService._reevaluate_and_apply's own comment."""
 
-    def test_pushes_state_on_enter_and_project_name_when_the_self_loop_fires_and_a_connection_exists(self, db, project_service):
-        _publish_project(db, project_service, "observed", OBSERVED_YML)
-        _publish_project(db, project_service, "watcher", WATCHER_YML)
-        db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
-        db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
-        observed_session = db.get_latest_chat_session(USERNAME, "observed")
-        db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
-
+    def _connected(self):
         ws_notifications = WsNotifications(auth_service=None)
         websocket = _FakeWebSocket()
         ws_notifications._connections[USERNAME] = websocket
+        return ws_notifications, websocket
 
-        ephemeral_jobs = make_test_job_service(db)
-        service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db), ws_notifications=ws_notifications)
-        asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
+    def test_a_fired_self_loop_pushes_the_state_and_project_name_but_never_its_on_enter(self, db, project_service):
+        _both_projects(db, project_service)
+        ws_notifications, websocket = self._connected()
+
+        _wake(db, project_service, ws_notifications=ws_notifications)
 
         assert len(websocket.sent) == 1
         assert websocket.sent[0]["type"] == "notification"
@@ -179,111 +185,43 @@ class TestWsAdapterPush:
         assert websocket.sent[0]["state"]["manual_actions"] == []
 
     def test_manual_actions_includes_the_triggered_action_when_auto_tracking_is_disabled(self, db, project_service):
-        _publish_project(db, project_service, "observed", OBSERVED_YML)
-        _publish_project(db, project_service, "watcher", WATCHER_YML)
-        db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
-        db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
-        observed_session = db.get_latest_chat_session(USERNAME, "observed")
-        db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
-        watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
+        watcher_session = _both_projects(db, project_service)
+        ws_notifications, websocket = self._connected()
 
-        ws_notifications = WsNotifications(auth_service=None)
-        websocket = _FakeWebSocket()
-        ws_notifications._connections[USERNAME] = websocket
-
-        ephemeral_jobs = make_test_job_service(db)
-        tracking_service = _FakeTrackingService({watcher_session["id"]})
-        service = WakeupService(
-            db, project_service, ephemeral_jobs, _actuator_factory(db),
-            ws_notifications=ws_notifications, tracking_service=tracking_service,
+        _wake(
+            db, project_service, ws_notifications=ws_notifications,
+            tracking_service=_FakeTrackingService({watcher_session["id"]}),
         )
-        asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
         assert [a["name"] for a in websocket.sent[0]["state"]["manual_actions"]] == ["notice"]
 
-    def test_no_connection_registered_is_a_silent_no_op_not_an_error(self, db, project_service):
-        _publish_project(db, project_service, "observed", OBSERVED_YML)
-        _publish_project(db, project_service, "watcher", WATCHER_YML)
-        db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
-        db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
-        observed_session = db.get_latest_chat_session(USERNAME, "observed")
-        db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
-        watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
+    def test_nothing_is_pushed_when_the_self_loop_does_not_fire(self, db, project_service):
+        _both_projects(db, project_service, observed_moved=False)
+        ws_notifications, websocket = self._connected()
 
-        ws_notifications = WsNotifications(auth_service=None)  # nobody registered for USERNAME
-
-        ephemeral_jobs = make_test_job_service(db)
-        service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db), ws_notifications=ws_notifications)
-        asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
-
-        # The transition itself is still applied and persisted regardless
-        # of whether anyone was there to push it to live.
-        assert db.get_signals(watcher_session["id"])[-1]["new_state"] == "x"
-
-    def test_no_ws_notifications_at_all_is_unaffected_same_as_before_this_parameter_existed(self, db, project_service):
-        _publish_project(db, project_service, "observed", OBSERVED_YML)
-        _publish_project(db, project_service, "watcher", WATCHER_YML)
-        db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
-        db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
-        observed_session = db.get_latest_chat_session(USERNAME, "observed")
-        db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
-        watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
-
-        ephemeral_jobs = make_test_job_service(db)
-        service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db))  # ws_notifications omitted entirely
-        asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
-
-        assert db.get_signals(watcher_session["id"])[-1]["new_state"] == "x"
-
-    def test_push_is_never_called_when_the_self_loop_does_not_fire(self, db, project_service):
-        _publish_project(db, project_service, "observed", OBSERVED_YML)
-        _publish_project(db, project_service, "watcher", WATCHER_YML)
-        db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
-        db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
-        # No transition to state 'b' at all — the watcher's own trigger never matches.
-
-        ws_notifications = WsNotifications(auth_service=None)
-        websocket = _FakeWebSocket()
-        ws_notifications._connections[USERNAME] = websocket
-
-        ephemeral_jobs = make_test_job_service(db)
-        service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db), ws_notifications=ws_notifications)
-        asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
+        _wake(db, project_service, ws_notifications=ws_notifications)
 
         assert websocket.sent == []
 
+    def test_the_transition_is_applied_regardless_of_whether_anyone_is_connected_or_ws_is_wired_at_all(self, db, project_service):
+        unconnected_session = _both_projects(db, project_service)
+        _wake(db, project_service, ws_notifications=WsNotifications(auth_service=None))
+        assert db.get_signals(unconnected_session["id"])[-1]["new_state"] == "x"
 
-def test_reevaluate_and_apply_does_nothing_when_the_observed_state_does_not_match(db, project_service):
-    _publish_project(db, project_service, "observed", OBSERVED_YML)
-    _publish_project(db, project_service, "watcher", WATCHER_YML)
-    db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
-    db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
-    watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
-    before = len(db.get_signals(watcher_session["id"]))
-
-    ephemeral_jobs = make_test_job_service(db)
-    service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db))
-    asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
-
-    assert len(db.get_signals(watcher_session["id"])) == before
+        # ws_notifications omitted entirely — same as before the parameter existed.
+        _wake(db, project_service)
+        assert db.get_signals(unconnected_session["id"])[-1]["new_state"] == "x"
 
 
-def test_publishing_state_changed_wakes_up_every_observer_with_a_session(app_db):
+def test_publishing_state_changed_wakes_up_every_observer_that_has_a_session(app_db):
     # File-backed, not the plain `db` fixture — JobQueue runs `work` on a
     # separate thread, and a second thread opening its own connection to a
     # ":memory:" database would get a distinct, empty one.
     db = app_db
     project_service = ProjectService(db)
-    _publish_project(db, project_service, "observed", OBSERVED_YML)
-    _publish_project(db, project_service, "watcher", WATCHER_YML)
-    db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
-    watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
-    db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
-    observed_session = db.get_latest_chat_session(USERNAME, "observed")
-    db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
+    watcher_session = _both_projects(db, project_service)
 
-    ephemeral_jobs = make_test_job_service(db)
-    service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db))
+    service = WakeupService(db, project_service, make_test_job_service(db), _actuator_factory(db))
     service.register()
 
     publish(StateChanged(username=USERNAME, project_id="observed", from_state="a", to_state="b"))
@@ -291,7 +229,7 @@ def test_publishing_state_changed_wakes_up_every_observer_with_a_session(app_db)
     for _ in range(200):
         if len(db.get_signals(watcher_session["id"])) > 0:
             break
-        __import__("time").sleep(0.01)
+        time.sleep(0.01)
 
     rows = db.get_signals(watcher_session["id"])
     assert len(rows) == 1
@@ -307,13 +245,10 @@ def test_a_user_with_no_session_in_the_observer_project_is_never_woken(app_db):
     # No chat session created in "watcher" at all for this user.
     db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
 
-    ephemeral_jobs = make_test_job_service(db)
-    service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db))
+    service = WakeupService(db, project_service, make_test_job_service(db), _actuator_factory(db))
     service.register()
 
     publish(StateChanged(username=USERNAME, project_id="observed", from_state="a", to_state="b"))
-
-    import time
     time.sleep(0.1)
 
     # The real assertion is that this doesn't raise/log an exception;

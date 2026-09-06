@@ -80,7 +80,7 @@ class _FakeWebSocket:
     def __init__(self):
         self.sent: list[dict] = []
 
-    async def send_json(self, payload: dict):
+    def send(self, payload: dict):
         self.sent.append(payload)
 
 

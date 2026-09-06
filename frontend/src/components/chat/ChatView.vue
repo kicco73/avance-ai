@@ -26,7 +26,6 @@ import ProfileMenu from '../ProfileMenu.vue'
 import AppHeader from '../AppHeader.vue'
 import SplashScreen from '../SplashScreen.vue'
 import { setApiError } from '../../errorStore.js'
-import { connect as connectChat, disconnect as disconnectChat } from '../../chatClient.js'
 import { startRecording, stopRecording } from '../../mic.js'
 import { unlockAudioPlayback } from '../../audio.js'
 import { liveStore } from '../../chatStore.js'
@@ -36,6 +35,7 @@ import {
   micAvailable,
   spokenTextEnabled,
   toggleSpokenText,
+  chatConnectionState,
 } from '../../chatStoreFactory.js'
 import { applyAspect, manualApplyAspectPreference } from '../../chatSkin.js'
 
@@ -101,6 +101,12 @@ defineExpose({
 // selectedSessionActive reflects the backend's "active" verdict for the
 // displayed session, never recomputed here from a timestamp — only the
 // most recently started open session per project is ever active.
+// The websocket is the chat's only transport (see chatClient.js): with no
+// connection there is nowhere to send a message, so the input closes until
+// it is back — the one and only reason it closes besides the session
+// itself being unusable.
+const chatConnected = computed(() => chatConnectionState.value === 'open')
+
 const chatDisabled = computed(() => !state.value?.key || !state.value?.chat || !selectedSessionActive.value)
 
 // Mirrors chatDisabled's own conditions, in the same order. A state with
@@ -118,20 +124,14 @@ const chatDisabledReason = computed(() => {
 })
 
 // Mobile backgrounds the page constantly (app switch, screen lock) — iOS
-// suspends the webview and drops the socket within seconds of that, and
-// nothing was listening for the return trip before this. connect()/
-// disconnect() are chatClient.js's own public API (that file itself is
-// off-limits to edit) — reconnecting is a plain close-then-reopen, same
-// as boot's own connect does. This can't repair one specific case: a
-// transient failure sets chatClient.js's own websocketUnavailable latch,
-// which has no exposed reset, so connect() silently no-ops for the rest
-// of the page's life after that — fixing that needs a small change
-// inside chatClient.js, which needs sign-off first rather than a
-// workaround built around it from out here.
+// suspends the webview and drops the socket within seconds of that.
+// Reopening the socket is not this view's business: chatClient.js watches
+// visibility itself and reconnects, in one place, for the whole app (and
+// resynchronizes this session when it does). All that is left here is the
+// plain history refresh for a tab that was away while nothing was in
+// flight.
 function onVisibilityChange() {
   if (document.visibilityState !== 'visible') return
-  disconnectChat()
-  connectChat()
   // A reload mid-turn would replace `messages` out from under the
   // in-flight assistant bubble submitMessage is still streaming into —
   // it reconciles that bubble itself once the turn's own `done` arrives
@@ -332,7 +332,14 @@ watch(
     </div>
 
     <p
-      v-if="chatDisabledReason"
+      v-if="!chatConnected"
+      class="chat-ended-notice"
+    >
+      Connessione alla chat non disponibile, riprovo…
+    </p>
+
+    <p
+      v-else-if="chatDisabledReason"
       class="chat-ended-notice"
     >
       {{ chatDisabledReason }}
@@ -349,7 +356,7 @@ watch(
       <ChatInput
         ref="chatInputRef"
         v-model="draft"
-        :disabled="chatLoading || chatDisabled"
+        :disabled="chatLoading || chatDisabled || !chatConnected"
         :recording="recording"
         :mic-available="micAvailable"
         :talk-available="talkAvailable"

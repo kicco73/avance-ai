@@ -184,6 +184,10 @@ class AiEditRequest(BaseModel):
     instruction: str
 
 
+class WebImportRequest(BaseModel):
+    query: str
+
+
 class ReorderActionRequest(BaseModel):
     # 0-based index the action should end up at, in its own state's
     # actions list — see ProjectService.reorder_actions/

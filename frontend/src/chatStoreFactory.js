@@ -2,9 +2,10 @@ import { nextTick, ref } from 'vue'
 import {
   getMessages, getSessionState, postAction, getAutoTracking, postAutoTracking, getActuators, postActuators,
   postTruncateSession, deleteSession, postCloseSession, putMessageReaction, postListenTranscribe, messageAudioUrl,
-  getAiModels, postAiModelSelection
 } from './api.js'
-import { sendMessage as sendChatMessage } from './chatClient.js'
+import { sendMessage as sendChatMessage, onConnectionState, getConnectionState } from './chatClient.js'
+import { ChatReconnectSync } from './chatReconnectSync.js'
+import { applyAiModelInfo } from './aiModelStore.js'
 import { ToolStatusHold } from './toolStatusHold.js'
 import { subscribeToStateNotifications } from './notificationBus.js'
 import { playMessageChime, playMessageAudio, playReactionChime, unlockAudioPlayback } from './audio.js'
@@ -13,6 +14,12 @@ import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
 
 const SESSION_INACTIVE_CODES = ['session_closed', 'session_channel_mismatch', 'session_superseded']
+
+// The chat's one transport, as the UI sees it: 'connecting' | 'open' |
+// 'closed' (see chatClient.js). Module-level, not per-store — there is
+// exactly one socket per page, whichever chats are open on it.
+export const chatConnectionState = ref(getConnectionState())
+onConnectionState((next) => { chatConnectionState.value = next })
 
 // App-wide user preferences — genuinely not "which chat" state, so a
 // single shared instance regardless of how many chat stores exist (see
@@ -27,62 +34,6 @@ export const spokenTextEnabled = ref(false)
 export const inputTokenBudgetPerTurn = ref(null)
 // Same null-until-boot shape as inputTokenBudgetPerTurn above.
 export const totalTokenBudgetPerSession = ref(null)
-
-export const aiModels = ref([])
-export const aiModelAuto = ref(true)
-export const aiModelCurrentIndex = ref(0)
-export const aiModelSelectionLoading = ref(false)
-
-export function setCapabilities({ talkAvailable: talk, micAvailable: mic }) {
-  talkAvailable.value = talk
-  micAvailable.value = mic
-}
-
-export function setInputTokenBudgetPerTurn(value) {
-  inputTokenBudgetPerTurn.value = value
-}
-
-export function setTotalTokenBudgetPerSession(value) {
-  totalTokenBudgetPerSession.value = value
-}
-
-function applyAiModelInfo(info) {
-  aiModels.value = info.models
-  aiModelAuto.value = info.auto
-  aiModelCurrentIndex.value = info.current_index
-}
-
-export async function loadAiModels() {
-  try {
-    applyAiModelInfo(await getAiModels())
-  } catch {
-    // already surfaced via apiFetch
-  }
-}
-
-export async function selectAiModel(index) {
-  aiModelSelectionLoading.value = true
-  try {
-    applyAiModelInfo(await postAiModelSelection(index))
-  } catch {
-    // already surfaced via apiFetch
-  } finally {
-    aiModelSelectionLoading.value = false
-  }
-}
-
-// Bundles the live-chat model state + its own select() into one object —
-// ModelMenu.vue's default `modelStore` prop. testChatStore.js's
-// testChatModelStore exposes the same shape for ai_test_service, so the
-// component itself never needs to know which context it's in.
-export const liveModelStore = {
-  models: aiModels,
-  auto: aiModelAuto,
-  currentIndex: aiModelCurrentIndex,
-  selectionLoading: aiModelSelectionLoading,
-  select: selectAiModel,
-  autoLabel: 'Auto-live',
-}
 
 export function toggleSpokenText() {
   spokenTextEnabled.value = !spokenTextEnabled.value
@@ -131,6 +82,8 @@ export function createChatStore({
   function handleStateChange(newState) {
     state.value = newState
   }
+
+  new ChatReconnectSync({ currentSessionId, messages, state, toStoreMessage }).register()
 
   if (subscribeToNotifications) {
     // A server-pushed cross-project wake-up — can land for a project

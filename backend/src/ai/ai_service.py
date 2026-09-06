@@ -627,7 +627,7 @@ class AiService(object):
 			# A schema with 'text' is always a live chat turn — the user's
 			# own reply may be the very field that got cut short, so this
 			# must surface as a visible error rather than end the stream
-			# quietly (see chat/sse_turn.py's SseChatTurn._run).
+			# quietly (see chat/ws_turn.py's WsChatTurn.run).
 			raise
 
 		logger.info(f"generate_stream_with_metadata: stream ended normally, provider={provider_label} accumulated_json_length={len(accumulated_json)}")

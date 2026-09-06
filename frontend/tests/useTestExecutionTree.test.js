@@ -22,8 +22,7 @@ vi.mock('../src/dialogStore.js', () => ({
   confirmDialog: vi.fn(),
 }))
 vi.mock('../src/chatClient.js', () => ({
-  onTestUpdate: vi.fn(),
-}))
+  onTestUpdate: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 
 import {
   deleteAllTestJobs, deleteTestJob, deleteTests, getAggregateResult, getTests, getTestStatus,

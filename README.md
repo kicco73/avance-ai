@@ -179,7 +179,7 @@ request-body field:
 
 | Area | Examples |
 | --- | --- |
-| Chat | `GET/POST /api/chat/session(s)`, `DELETE /api/chat/sessions/{id}`, `GET/POST /api/chat/sessions/{id}/messages`, `POST /api/chat/sessions/{id}/action`, `POST /api/chat/reset` |
+| Chat | `GET/POST /api/chat/session(s)`, `DELETE /api/chat/sessions/{id}`, `GET /api/chat/sessions/{id}/messages`, `POST /api/chat/sessions/{id}/action`, `POST /api/chat/reset`. Sending a message is **not** an endpoint: a turn travels as a `turn` frame on the `/ws/notifications` websocket, the chat's only transport (see `backend/src/docs/PROJECT_SPECS.md` §0) |
 | Auto-tracking | `GET/POST /api/chat/sessions/{id}/autotracking` — "Dev mode: freeze automatic state transitions", scoped to one 'test' session (EditProjectView.vue's own embedded "Test" chat); a native/imported session is always auto-tracked |
 | Live analytics | `GET /api/chat/signals` (last computed signal values, active project), `GET /api/projects/{project_id}/metrics` (metrics_framework, computed on demand), `POST /api/triggers/preview` |
 | AI model | `GET /api/ai/models`, `POST /api/ai/models/selection` |

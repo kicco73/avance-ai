@@ -15,7 +15,7 @@ vi.mock('../src/api.js', () => ({
   getMessages: vi.fn(),
   getSessionState: vi.fn(),
 }))
-vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn() }))
+vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 
 function deferred() {
   let resolve

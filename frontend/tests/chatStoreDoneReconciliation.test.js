@@ -18,7 +18,7 @@ vi.mock('../src/api.js', () => ({
   getAiModels: vi.fn(),
   getMessages: vi.fn(),
 }))
-vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn() }))
+vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 
 describe('submitMessage reconciles the streaming bubble against done.reply', () => {
   let chatStore
