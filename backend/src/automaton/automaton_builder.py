@@ -442,14 +442,25 @@ class AutomatonBuilder(object):
             valid = registry.get(namespace, {}).keys()
             unknown |= {f"{namespace}.{n}" for n in refs - valid}
         unknown |= bare_names - metric_names() - known_locals
+        read_on_a_source = False
         for source_name, methods in source_refs.items():
             source = sources.get(source_name)
             if source is None:
                 unknown.add(f"source.{source_name}")
                 continue
-            unknown |= {f"source.{source_name}.{m}" for m in methods - AutomatonBuilder._supported_methods(source)}
+            unsupported = methods - AutomatonBuilder._supported_methods(source)
+            unknown |= {f"source.{source_name}.{m}" for m in unsupported}
+            read_on_a_source = read_on_a_source or "read" in unsupported
         if unknown:
-            raise ValueError(f"{context} references undefined name(s): {', '.join(sorted(unknown))}")
+            message = f"{context} references undefined name(s): {', '.join(sorted(unknown))}"
+            if read_on_a_source:
+                # SourceDriver has no `read` at all, by design (see its own
+                # docstring) — a whole-file read is attachment.read(name)'s
+                # job (on-enter only), never a source.* capability, so this
+                # points there instead of leaving it as just another
+                # "undefined name."
+                message += " — a whole-file read is attachment.read(name)'s job (on-enter only), not source.*."
+            raise ValueError(message)
 
     @staticmethod
     def _supported_methods(source: Source) -> frozenset[str]:

@@ -84,7 +84,15 @@ class AvanceEnvSource(SourceDriver):
             return f"error: unknown variable(s) {key!r} — available: {', '.join(current)}"
         return current[key]
 
-    def update(self, *values: str, fields: dict[str, str]) -> str:
+    def update(self, *values: str, fields: dict[str, str], origin: str | None = None) -> str:
+        """`origin`: the caller's own to set — ToolSet.call passes 'tool'
+        when the model itself calls `update` through the tool-calling
+        loop; a script/trigger calling this same method directly
+        (source.<name>.update(fields=...)) leaves it at the default None,
+        indistinguishable from an action's own `env:` write
+        (TrackingEngine.apply_action_env writes with no origin either).
+        Only ever load-bearing for binding a model-made write to the
+        turn's own assistant message (see Db.link_tool_env_writes_to_message)."""
         if not fields:
             return "error: nothing to update — `fields` must name at least one variable."
         writable = {env_key.name for env_key in self._exported_keys() if env_key.writable}
@@ -99,7 +107,7 @@ class AvanceEnvSource(SourceDriver):
                 f"error: {reasons} — nothing was written. Writable variable(s): "
                 f"{', '.join(sorted(writable)) or 'none'}."
             )
-        self._env.update_action_set({key: self._as_text(value) for key, value in fields.items()}, origin="tool")
+        self._env.update_action_set({key: self._as_text(value) for key, value in fields.items()}, origin=origin)
         return "1 row updated"
 
     def parameter_schema(self, method: str) -> dict | None:

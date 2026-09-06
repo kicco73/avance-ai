@@ -412,7 +412,15 @@ class GeminiProvider(LLMProvider):
 						if part.function_call is not None:
 							function_call = part.function_call
 						replay_parts.append(_copy_model_part(part))
-					continue
+					# `tools` being non-empty means a call was *possible*,
+					# never that this response actually made one — a model
+					# offered tools is free to just answer directly, and
+					# when it does that text must still reach the caller
+					# the same as the tools=[] path below, or a turn that
+					# never calls anything streams nothing and the final
+					# JSON parse below chokes on an empty string.
+					if function_call is not None:
+						continue
 				if not chunk.text:
 					continue
 				yield chunk.text

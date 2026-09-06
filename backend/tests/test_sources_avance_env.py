@@ -153,20 +153,35 @@ class TestUpdate:
         assert _driver(env).update(fields={}).startswith("error:")
 
     def test_a_live_session_write_lands_in_a_tracking_row_with_origin_tool_and_no_message_yet(self, db):
+        # origin="tool" is what ToolSet.call() itself injects for a real
+        # model-made call (see tracking.sources.ToolSet.call) — never the
+        # driver's own default, so this simulates that call site exactly.
+        session_id = _live_session(db)
+        env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
+
+        assert _driver(env).update(fields={"pnr": "ABC123"}, origin="tool") == "1 row updated"
+
+        row = Tracking.get(Tracking.action_env.is_null(False))
+        assert row.origin == "tool" and row.message_id is None
+
+    def test_a_direct_call_with_no_origin_behaves_like_an_action_s_own_env_write(self, db):
+        # A script/trigger calling source.env.update(...) directly (not
+        # through ToolSet) never claims to be the model — origin stays
+        # None, indistinguishable from an action's own `env:` write.
         session_id = _live_session(db)
         env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
 
         assert _driver(env).update(fields={"pnr": "ABC123"}) == "1 row updated"
 
         row = Tracking.get(Tracking.action_env.is_null(False))
-        assert row.origin == "tool" and row.message_id is None
+        assert row.origin is None
         assert db.get_action_env(PROJECT_ID, USERNAME) == {"pnr": "ABC123"}
 
     def test_link_tool_env_writes_to_message_binds_the_turn_s_writes_to_the_assistant_message(self, db):
         session_id = _live_session(db)
         env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
         env.update_action_set({"flight": "VY1"})  # an action's own env: write — never a tool write
-        _driver(env).update(fields={"pnr": "ABC123"})
+        _driver(env).update(fields={"pnr": "ABC123"}, origin="tool")
         assistant_id = db.save_message("assistant", "Noted.", session_id)
 
         db.link_tool_env_writes_to_message(session_id, assistant_id)

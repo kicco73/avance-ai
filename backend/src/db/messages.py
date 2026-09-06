@@ -37,8 +37,8 @@ class MessageMixin:
         Message.update(reaction=reaction).where(Message.id == message_id).execute()
         return self.get_message(message_id)
 
-    def set_message_tokens(self, message_id: int, tokens: int) -> None:
-        Message.update(tokens=tokens).where(Message.id == message_id).execute()
+    def set_message_tokens(self, message_id: int, tokens: int, cache_read_tokens: int = 0) -> None:
+        Message.update(tokens=tokens, cache_read_tokens=cache_read_tokens).where(Message.id == message_id).execute()
 
     def delete_message(self, message_id: int) ->  None:
         logger.warning(f"deleting message id {message_id}")
@@ -48,7 +48,11 @@ class MessageMixin:
         message = Message.get_or_none(Message.id == message_id)
         if message is None:
             return None
-        return {'id': message.id, 'role': message.role, 'content': message.content, 'audio_text': message.audio_text, 'reaction': message.reaction, 'tokens': message.tokens, 'timestamp': _utc_iso(message.timestamp), 'session_id': message.session.id}
+        return {
+            'id': message.id, 'role': message.role, 'content': message.content, 'audio_text': message.audio_text,
+            'reaction': message.reaction, 'tokens': message.tokens, 'cache_read_tokens': message.cache_read_tokens,
+            'timestamp': _utc_iso(message.timestamp), 'session_id': message.session.id,
+        }
 
     def get_messages(self, session_id: int, last_n: int | None=None, since: datetime | None=None) -> list[dict]:
         # id, not timestamp: always present (never null, unlike an
@@ -61,7 +65,14 @@ class MessageMixin:
             query = query.limit(last_n)
         rows = list(query)
         rows.reverse()
-        return [{'id': m.id, 'role': m.role, 'content': m.content, 'audio_text': m.audio_text, 'reaction': m.reaction, 'tokens': m.tokens, 'timestamp': _utc_iso(m.timestamp), 'session_id': session_id} for m in rows]
+        return [
+            {
+                'id': m.id, 'role': m.role, 'content': m.content, 'audio_text': m.audio_text, 'reaction': m.reaction,
+                'tokens': m.tokens, 'cache_read_tokens': m.cache_read_tokens, 'timestamp': _utc_iso(m.timestamp),
+                'session_id': session_id,
+            }
+            for m in rows
+        ]
 
     def get_turn_history(self, session_id: int, since: datetime | None, token_budget: int | None) -> list[dict]:
         # FIXME: COALESCE is load-bearing — SUM() over an all-NULL window

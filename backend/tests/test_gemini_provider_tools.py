@@ -206,6 +206,19 @@ async def test_a_real_tool_call_raises_ToolCallsRequested():
     assert config.tool_config.function_calling_config.mode == types.FunctionCallingConfigMode.ANY
 
 
+async def test_a_plain_text_answer_still_streams_even_when_tools_are_offered():
+    # `tools` non-empty only means a call was *possible* — a model offered
+    # tools is free to just answer directly instead, and that text must
+    # still reach the caller (previously silently dropped: `if tools:`
+    # unconditionally suppressed chunk.text, so this streamed nothing and
+    # the caller's own JSON parse choked on an empty string).
+    provider, _ = _provider([_text_response('{"text": "no lookup needed"}')])
+
+    result = await _drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}, tools=[_SELECT_SPEC]))
+
+    assert result == '{"text": "no lookup needed"}'
+
+
 async def test_a_real_tool_call_with_no_id_gets_one_generated():
     provider, _ = _provider([_function_call_response("source_flights_select", {"value": "paris"}, call_id=None)])
 

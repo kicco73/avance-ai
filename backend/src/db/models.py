@@ -148,6 +148,16 @@ class Message(BaseModel):
     # user message (see automaton.Reaction/State.reactions_enabled).
     reaction = TextField(null=True)
     tokens = IntegerField(null=True)
+    # Of `tokens` (the call's total input, cache included — same
+    # convention as AiTokenUsage.input_tokens above), how many were served
+    # from cache — for the Inspector's own "input (N from cache)" display,
+    # never a separate total of its own. Nullable like `tokens` itself
+    # (peewee's own `default=` is Python-side only, never a SQL-level
+    # DEFAULT, so a NOT NULL column here would reject any raw INSERT that
+    # omits it — see db/migration.py's own schema-diffing migrator, which
+    # issues exactly such a raw ALTER TABLE/INSERT when adding this column
+    # to an existing database); every reader treats None as 0.
+    cache_read_tokens = IntegerField(null=True)
     session = ForeignKeyField(ChatSession, null=False, backref='messages', on_delete='CASCADE')
 
     class Meta:

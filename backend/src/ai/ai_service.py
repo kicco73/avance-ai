@@ -41,8 +41,12 @@ logger = LoggerFactory.get_logger(__name__)
 # -> model is called again with the results) per turn — well past any
 # legitimate lookup chain; beyond this the model is almost certainly
 # looping, so AiService gives up with a clear error rather than running
-# away with API calls.
-MAX_TOOL_ROUNDS = 2
+# away with API calls. 3, not 2: a state with two ai-must-read-sources
+# forces both into round 1's own tool_choice, but nothing forces the
+# model to call them together in one round — one call each is common,
+# which already spends rounds 1 and 2 on the forced reads alone, leaving
+# none for the model's actual final reply under a 2-round cap.
+MAX_TOOL_ROUNDS = 3
 
 # Appended only to turn_history's own copy of an "error:" tool result
 # (model-facing) — never to the copy tapped_on_metadata persists/the chat
@@ -76,8 +80,7 @@ def estimate_history_tokens(turn_history: list[dict[str, Any]]) -> int:
 				pieces.append(content)
 			pieces.extend(json.dumps(call.arguments) for call in message["tool_calls"])
 		elif message.get("role") == "tool":
-			assert isinstance(content, str)
-			pieces.append(content)
+			pieces.append(content if isinstance(content, str) else str(content))
 		else:
 			pieces.append(content_to_text(content))
 	return estimate_tokens("\n".join(pieces))
@@ -473,6 +476,8 @@ class AiService(object):
 		# never re-derived from _tap_token_usage's own AiTokenUsage writes,
 		# which reset per round by design (see its own docstring).
 		input_tokens_by_round: list[int] = []
+		cache_read_tokens_by_round: list[int] = []
+		cache_creation_tokens_by_round: list[int] = []
 		# One {name, arguments, result} entry per call across every round so
 		# far — for _enforce_input_budget's own SystemWarning, naming the
 		# heaviest accumulated results if a later round goes over budget.
@@ -481,6 +486,10 @@ class AiService(object):
 		def _tally_input_tokens(name: str, value: Any) -> None:
 			if name == "input_tokens":
 				input_tokens_by_round.append(value)
+			elif name == "cache_read_tokens":
+				cache_read_tokens_by_round.append(value)
+			elif name == "cache_creation_tokens":
+				cache_creation_tokens_by_round.append(value)
 			tapped_on_metadata(name, value)
 
 		for round_number in range(1, MAX_TOOL_ROUNDS + 1):
@@ -534,7 +543,8 @@ class AiService(object):
 
 			logger.info(
 				f"generate_stream_with_metadata: turn done, provider={provider_label} rounds={round_number} "
-				f"total_input_tokens={sum(input_tokens_by_round)}"
+				f"total_input_tokens={sum(input_tokens_by_round)} cache_read_tokens={sum(cache_read_tokens_by_round)} "
+				f"cache_creation_tokens={sum(cache_creation_tokens_by_round)}"
 			)
 			# The stream ended with no further tool request — the model's
 			# real final answer, already fully collected above; replay it

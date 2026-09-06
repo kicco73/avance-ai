@@ -127,3 +127,16 @@ def test_a_trigger_calling_an_unsupported_method_on_a_declared_source_is_rejecte
             trigger="source.pino.create('k', 'v') == None",
             contents={"flights.csv": "a,b\n1,2\n"},
         )
+
+
+def test_a_trigger_calling_read_on_a_source_points_to_attachment_read_instead():
+    # SourceDriver has no `read` at all, by design — a whole-file read is
+    # attachment.read(name)'s job (on-enter only), never a source.*
+    # capability, so this gets a more useful message than a bare
+    # "undefined name."
+    with pytest.raises(ValueError, match="attachment.read\\(name\\)'s job"):
+        _build(
+            "sources:\n  pino:\n    url: avance:flights.csv\n",
+            trigger="source.pino.read() == ''",
+            contents={"flights.csv": "a,b\n1,2\n"},
+        )

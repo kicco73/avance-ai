@@ -261,7 +261,8 @@ class AnthropicProvider(LLMProvider):
 	) -> list[TextBlockParam]:
 		"""One cache breakpoint, on the stable prefix alone — the `tools`
 		block precedes `system` in Anthropic's own cache order and is
-		already stable for a given state (specs sorted by name), so this
+		already stable for a given state (specs in the state's own YAML
+		declaration order, never re-sorted), so this
 		one breakpoint covers it too; never a second one on `volatile` or
 		on the message history (a future prompt, once measured). A
 		volatile tail is appended as its own, uncached text block —

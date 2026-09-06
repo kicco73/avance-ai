@@ -103,3 +103,37 @@ def test_reset_project_for_user_also_wipes_their_action_env(db):
     db.reset_project_for_user("alice", "proj", type="live")
 
     assert db.get_action_env("proj", "alice") == {}
+
+
+class TestLinkToolEnvWritesToMessage:
+    def test_binds_an_unlinked_tool_row_at_or_after_since(self, db):
+        session_id = _session(db)
+        row_id = db.set_action_env(session_id, {"pnr": "ABC"}, origin="tool")
+        since = Tracking.get_by_id(row_id).timestamp
+        message_id = db.save_message("assistant", "Noted.", session_id)
+
+        db.link_tool_env_writes_to_message(session_id, message_id, since=since)
+
+        assert Tracking.get_by_id(row_id).message_id == message_id
+
+    def test_never_sweeps_up_a_stale_unlinked_row_from_before_since(self, db):
+        # An orphan tool write from some earlier turn (never linked, for
+        # whatever reason) must not be silently attributed to a later
+        # turn's own assistant message just because it's still unlinked.
+        session_id = _session(db)
+        stale_row_id = db.set_action_env(session_id, {"old": "value"}, origin="tool")
+        since = datetime(2027, 1, 1)  # after the stale row, before nothing else
+        message_id = db.save_message("assistant", "Noted.", session_id)
+
+        db.link_tool_env_writes_to_message(session_id, message_id, since=since)
+
+        assert Tracking.get_by_id(stale_row_id).message_id is None
+
+    def test_with_no_since_behaves_as_before_binding_every_unlinked_row(self, db):
+        session_id = _session(db)
+        row_id = db.set_action_env(session_id, {"pnr": "ABC"}, origin="tool")
+        message_id = db.save_message("assistant", "Noted.", session_id)
+
+        db.link_tool_env_writes_to_message(session_id, message_id)
+
+        assert Tracking.get_by_id(row_id).message_id == message_id
