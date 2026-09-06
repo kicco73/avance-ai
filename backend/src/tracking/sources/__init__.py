@@ -102,6 +102,8 @@ class ToolSet:
         self._namespace = namespace
         # tool name ("source_<name>_<method>") -> (source name, method name)
         self._resolved: dict[str, tuple[str, str]] = {}
+        # tool name -> its own source, for tool_event() below.
+        self._sources: dict[str, Source] = {}
         self._specs: list[ToolSpec] = []
         # Every ai-must-read-sources `select` tool name — the subset
         # AiService forces tool_choice down to on the first round after
@@ -132,6 +134,7 @@ class ToolSet:
             description = f"{description}\n\n{source.ai_definition}" if description else source.ai_definition
         parameters = driver.parameter_schema(method) or METHOD_SCHEMAS[method]
         self._resolved[tool_name] = (source.name, method)
+        self._sources[tool_name] = source
         self._specs.append(ToolSpec(name=tool_name, description=description, parameters=parameters))
         if required:
             self._required_names.add(tool_name)
@@ -160,6 +163,41 @@ class ToolSet:
         force_required_tools_for). Empty when this state declares no
         ai-must-read-sources at all; never contains an `update`."""
         return [spec for spec in self._specs if spec.name in self._required_names]
+
+    def tool_event(self, name: str, arguments: dict, phase: str, **result_fields) -> dict:
+        """The one place source/method/label/description are folded onto a
+        tool call for `on_metadata("tool", ...)` — AiService's own loop
+        composes nothing, it just forwards `round` (and, on phase
+        "result", `result`/`duration_ms`) through `result_fields` and
+        passes this straight to on_metadata. `rows`/`error` are derived
+        here from `result` on phase "result" only — 0 rows on an empty or
+        refused ("error:"-prefixed) result, every line after the header
+        otherwise; a driver's own tabular-text convention, not a hard
+        contract. Falls back to `name` for label and to no description on
+        an unresolved tool name (defensive only: every name AiService's
+        loop passes here came straight out of specs())."""
+        source_name, method = self._resolved.get(name, (name, None))
+        source = self._sources.get(name)
+        payload = {
+            "phase": phase,
+            "name": name,
+            "source": source_name,
+            "method": method,
+            "label": source.ui_label if source else name,
+            "description": source.ui_description if source else None,
+            "arguments": arguments,
+            "round": result_fields.get("round"),
+        }
+        if phase == "result":
+            result = result_fields.get("result", "")
+            error = result.startswith("error:")
+            payload.update({
+                "result": result,
+                "rows": 0 if error else max(0, len(result.splitlines()) - 1),
+                "error": error,
+                "duration_ms": result_fields.get("duration_ms"),
+            })
+        return payload
 
     async def call(self, name: str, arguments: dict) -> str:
         """Never raises — an unknown tool name, a bad argument, or the

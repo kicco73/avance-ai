@@ -9,6 +9,7 @@ from db import Db
 from service_error import ServiceError
 from session import Session
 from .chat_service import ChatService
+from .tool_status_text import tool_status_text
 
 # INSTRUCTIONS FOR CLAUDE CODE: NEVER TOUCH THIS FILE.
 
@@ -79,6 +80,13 @@ class WsAdapter(object):
                             "type": "text",
                             "content": value,
                         })
+                    elif key == "tool":
+                        if value["phase"] == "start":
+                            await websocket.send_json({
+                                "type": "tool_call", **value, "status_text": tool_status_text(value),
+                            })
+                        else:
+                            await websocket.send_json({"type": "tool_result", **value})
 
                 try:
 

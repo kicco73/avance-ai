@@ -510,14 +510,23 @@ class AiService(object):
 					# Sequential, never parallel — ToolSet.call's own
 					# contract; each result must land in the history
 					# before the next call runs, matching what a real
-					# multi-step lookup actually depends on.
+					# multi-step lookup actually depends on. 'tool' fires
+					# twice per call — phase "start" right before it runs,
+					# phase "result" right after — both composed by
+					# ToolSet.tool_event, the only place that knows this
+					# tool's own source/method/label/description.
+					tapped_on_metadata("tool", tool_set.tool_event(call.name, call.arguments, "start", round=round_number))
 					call_started = time.monotonic()
 					result = await tool_set.call(call.name, call.arguments)
 					elapsed_ms = round((time.monotonic() - call_started) * 1000)
-					logger.info(
-						f"tool call: session={tool_set.session_id} round={round_number} name={call.name} "
-						f"arguments={call.arguments} result_chars={len(result)} duration_ms={elapsed_ms}"
+					event = tool_set.tool_event(
+						call.name, call.arguments, "result", round=round_number, result=result, duration_ms=elapsed_ms,
 					)
+					logger.info(
+						f"tool call: session={tool_set.session_id} round={event['round']} name={event['name']} "
+						f"arguments={event['arguments']} result_chars={len(event['result'])} duration_ms={event['duration_ms']}"
+					)
+					tapped_on_metadata("tool", event)
 					model_facing_result = result + _TOOL_ERROR_DIRECTIVE if result.startswith("error:") else result
 					turn_history.append({"role": "tool", "tool_call_id": call.id, "content": model_facing_result})
 					tool_call_records.append({"name": call.name, "arguments": call.arguments, "result": result})

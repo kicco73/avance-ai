@@ -130,6 +130,20 @@ class _FakeToolSet:
     def required_specs(self) -> list[ToolSpec]:
         return self._required_specs
 
+    def tool_event(self, name: str, arguments: dict, phase: str, **result_fields) -> dict:
+        payload = {
+            "phase": phase, "name": name, "source": name, "method": None,
+            "label": name, "description": None, "arguments": arguments, "round": result_fields.get("round"),
+        }
+        if phase == "result":
+            result = result_fields.get("result", "")
+            error = result.startswith("error:")
+            payload.update({
+                "result": result, "rows": 0 if error else max(0, len(result.splitlines()) - 1),
+                "error": error, "duration_ms": result_fields.get("duration_ms"),
+            })
+        return payload
+
     async def call(self, name: str, arguments: dict) -> str:
         self.calls.append((name, arguments))
         return self._results.pop(0)

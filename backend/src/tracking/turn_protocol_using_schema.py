@@ -76,8 +76,8 @@ class TurnProtocolUsingSchema:
 		calling on_metadata for each non-"text" field as it completes —
 		with its raw value already decoded through the matching channel
 		(see `channels`), or passed through unchanged for a key with no
-		matching channel (input_tokens/output_tokens — internal AiService
-		plumbing, never a real schema field).
+		matching channel (input_tokens/output_tokens/tool — internal
+		AiService plumbing, never a real schema field).
 
 		The system prompt handed to AiService is a SystemPrompt, split so
 		a provider that caches a prefix (see AnthropicProvider._build_system)

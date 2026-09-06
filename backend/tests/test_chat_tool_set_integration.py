@@ -45,12 +45,15 @@ class FakeToolAwareAiService:
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
         if self._tool_call is not None and tool_set is not None and self.call_count == 0:
             name, arguments = self._tool_call
+            # Real AiService emits both phases unconditionally, not gated
+            # by schema (see its own tool-call loop), composed entirely by
+            # ToolSet.tool_event — TrackingProcessor's own on_metadata
+            # handler is what persists the "result" phase to
+            # Tracking.tool_calls.
+            on_metadata("tool", tool_set.tool_event(name, arguments, "start", round=1))
             result = await tool_set.call(name, arguments)
             self.tool_results.append(result)
-            # Real AiService emits this unconditionally, not gated by
-            # schema (see its own tool-call loop) — TrackingProcessor's
-            # own on_metadata handler is what persists it to Tracking.tool_calls.
-            on_metadata("tool_result", {"name": name, "arguments": arguments, "result": result})
+            on_metadata("tool", tool_set.tool_event(name, arguments, "result", round=1, result=result, duration_ms=5))
         index = min(self.call_count, len(self._metadata_per_call) - 1)
         metadata = self._metadata_per_call[index]
         self.call_count += 1
@@ -165,19 +168,40 @@ async def test_a_real_chat_turn_resolves_a_tool_call_against_the_state_s_own_dec
 
 
 @pytest.mark.regression
-async def test_get_messages_surfaces_the_persistent_tool_call_summary_on_reload(chat_service_for, file_db):
-    """The permanent "Searched … · N rows" line a real AiService's own
-    tool-call loop folds into 'tool_result' as summary_text (see
-    ToolSet.summary_text) rides along in Tracking.tool_calls with no
-    separate storage of its own — ChatService.get_messages must surface
-    it again on every reload, keyed to the right message."""
+async def test_a_real_chat_turn_persists_its_own_tool_calls_onto_the_assistant_message(chat_service_for, file_db):
+    ai_service = FakeToolAwareAiService(
+        [{"memory": "stage: greeted"}], tool_call=("source_flights_select", {"values": ["paris"]}),
+    )
+    chat_service = chat_service_for(_automaton_with_a_tool(), ai_service=ai_service)
+    session_id = await _bootstrap_session(chat_service)
+
+    result = await chat_service.process_turn(session_id, "where's my flight to Paris?")
+
+    tool_calls_by_message = file_db.get_tool_calls_by_message(session_id)
+    assert tool_calls_by_message[result["assistant_message_id"]] == [
+        {
+            "name": "source_flights_select", "arguments": {"values": ["paris"]},
+            "result": "city,country\nParis,France\n", "label": "Flights", "rows": 1, "error": False,
+            "duration_ms": 5,
+        },
+    ]
+
+
+@pytest.mark.regression
+async def test_get_messages_surfaces_the_persistent_tool_call_record_on_reload(chat_service_for, file_db):
+    """A tool call's own persisted {name, arguments, result, label, rows,
+    error, duration_ms} record (see ToolSet.tool_event and
+    TrackingProcessor.on_receiving_metadata's own 'tool' branch) rides
+    along in Tracking.tool_calls with no separate storage of its own —
+    ChatService.get_messages must surface it again on every reload, keyed
+    to the right message."""
     ai_service = FakeToolAwareAiService([{"memory": "stage: greeted"}])
     chat_service = chat_service_for(_automaton_with_a_tool(), ai_service=ai_service)
     session_id = await _bootstrap_session(chat_service)
     assistant_message_id = file_db.save_message("assistant", "Paris it is.", session_id)
     tool_call_entry = {
         "name": "source_flights_select", "arguments": {"values": ["paris"]},
-        "result": "city,country\nParis,France\n", "summary_text": 'Searched Flights for "paris" · 1 row',
+        "result": "city,country\nParis,France\n", "label": "Flights", "rows": 1, "error": False, "duration_ms": 5,
     }
     file_db.record_tool_calls(session_id, [tool_call_entry], message_id=assistant_message_id)
 

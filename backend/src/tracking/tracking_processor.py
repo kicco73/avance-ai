@@ -58,6 +58,13 @@ class Metadata:
 	# rounds exactly like input_tokens itself (see on_receiving_metadata),
 	# never a separate total (see Message.cache_read_tokens's own docstring).
 	cache_read_tokens: int | None = None
+	# One {name, arguments, result, label, rows, error, duration_ms} entry
+	# per tool call this turn's own AI generation made (see AiService's own
+	# tool-call loop and on_receiving_metadata's own 'tool' branch below),
+	# in the order they ran — empty for a turn with neither
+	# ai-may-query-sources nor ai-must-query-sources declared, or one that
+	# never actually called any.
+	tool_calls: list[dict] = field(default_factory=list)
 	# {action name: translated button label} for this turn's own resulting
 	# state — only ever non-empty when a TranslateChannel was actually
 	# appended to that turn's own channel list (see
@@ -135,9 +142,6 @@ class TrackingProcessor(object):
 		self.user = replace(self.user, message_id=message_id, has_ai_started_conversation=not text)
 
 	async def process(self, text: str | None, on_metadata: MetadataCallback | None = None) -> dict:
-		"""Tool calls this turn's own AI generation makes are not recorded
-		in Tracking.tool_calls as of this commit — that lands again once
-		the tool loop reports a structured event to persist."""
 		state = self.user.state
 
 		if not state.chat and text not in (None, "", "..."):
@@ -167,6 +171,8 @@ class TrackingProcessor(object):
 		# self.out.tracking_id, which may already be linked to an earlier message.
 		self.env.update(self.metadata.memory, message_id=assistant_id, declared_keys=self.user.automaton.declared_env_key_names())
 
+		if self.metadata.tool_calls:
+			self.db.record_tool_calls(self.user.session_id, self.metadata.tool_calls, message_id=assistant_id)
 		# Binds any avance:env `update` tool call this turn made to the
 		# assistant's own message, same reasoning as record_tool_calls
 		# above — a no-op when nothing wrote through that tool this turn.
@@ -225,6 +231,12 @@ class TrackingProcessor(object):
 			rv = self.metadata.output_tokens = value
 		elif key == 'cache_read_tokens':
 			rv = self.metadata.cache_read_tokens = (self.metadata.cache_read_tokens or 0) + value
+		elif key == 'tool' and value.get('phase') == 'result':
+			self.metadata.tool_calls.append({
+				"name": value["name"], "arguments": value["arguments"], "result": value["result"],
+				"label": value["label"], "rows": value["rows"], "error": value["error"],
+				"duration_ms": value["duration_ms"],
+			})
 		self.metadata.on_metadata(key, rv)
 
 	def _resolve_signals(self, signal_values: dict[str, float]) -> None:

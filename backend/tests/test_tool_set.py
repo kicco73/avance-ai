@@ -327,3 +327,65 @@ async def test_call_never_blocks_the_event_loop(file_db):
     assert result == "city,country\nParis,France\n"
 
 
+def test_tool_event_start_carries_source_method_label_description_and_round(db):
+    automaton = _automaton(PROJECT_ID, _seed(db, {}, {}), [Source(
+        name="flights", url="avance:flights.csv", ui_label="Flights", ui_description="Shown in the Inspector.",
+    )])
+    tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
+
+    event = tool_set.tool_event("source_flights_select", {"values": ["VY3003"]}, "start", round=1)
+
+    assert event == {
+        "phase": "start", "name": "source_flights_select", "source": "flights", "method": "select",
+        "label": "Flights", "description": "Shown in the Inspector.", "arguments": {"values": ["VY3003"]}, "round": 1,
+    }
+
+
+def test_tool_event_falls_back_to_the_raw_name_and_no_description_when_the_source_has_neither(db):
+    automaton = _two_sources(db)
+    tool_set = SourceNamespace(db, automaton).tool_set(["tickets"])
+
+    event = tool_set.tool_event("source_tickets_select", {"values": []}, "start", round=1)
+
+    assert event["label"] == "Tickets"
+    assert event["description"] is None
+
+
+def test_tool_event_result_adds_result_rows_error_and_duration(db):
+    automaton = _two_sources(db)
+    tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
+
+    event = tool_set.tool_event(
+        "source_flights_select", {"values": ["VY3003"]}, "result",
+        round=1, result="city,country\nParis,France\nOrly,France\n", duration_ms=12,
+    )
+
+    assert event["result"] == "city,country\nParis,France\nOrly,France\n"
+    assert event["rows"] == 2
+    assert event["error"] is False
+    assert event["duration_ms"] == 12
+
+
+def test_tool_event_result_reports_zero_rows_for_an_empty_result(db):
+    automaton = _two_sources(db)
+    tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
+
+    event = tool_set.tool_event("source_flights_select", {"values": ["x"]}, "result", round=1, result="", duration_ms=1)
+
+    assert event["rows"] == 0
+    assert event["error"] is False
+
+
+def test_tool_event_result_reports_the_error_flag_and_zero_rows_on_a_refused_call(db):
+    automaton = _two_sources(db)
+    tool_set = SourceNamespace(db, automaton).tool_set(["flights"])
+
+    event = tool_set.tool_event(
+        "source_flights_select", {"values": ["x"]}, "result",
+        round=1, result="error: response too long.", duration_ms=1,
+    )
+
+    assert event["error"] is True
+    assert event["rows"] == 0
+
+

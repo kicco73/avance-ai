@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from logging_factory import LoggerFactory
 from service_error import ServiceError
 from .chat_service import ChatService
+from .tool_status_text import tool_status_text
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -26,6 +27,16 @@ class SseChatTurn(object):
             await self._events.put(("chunk", {"content": value}))
         elif key == "text":
             await self._events.put(("text", {"content": value}))
+        elif key == "tool":
+            # The frontend's own reader (chatClient.js) only forwards
+            # 'tool_call'/'tool_result' verbatim — the structured fields
+            # ride along unused today so a later frontend can pick them up
+            # with no backend change (see AiService's own tool-call loop
+            # and ToolSet.tool_event).
+            if value["phase"] == "start":
+                await self._events.put(("tool_call", {**value, "status_text": tool_status_text(value)}))
+            else:
+                await self._events.put(("tool_result", value))
 
     def response(self) -> StreamingResponse:
         return StreamingResponse(self._stream(), media_type="text/event-stream")
