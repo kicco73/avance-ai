@@ -50,6 +50,12 @@ async function deleteOutputKey(name) {
 }
 
 watch(() => props.stateData, loadOutputKeys, { deep: true, immediate: true })
+
+watch(() => props.recentlyAddedKey, (key) => {
+  if (key?.startsWith('output-key:')) {
+    loadOutputKeys()
+  }
+})
 </script>
 
 <template>
