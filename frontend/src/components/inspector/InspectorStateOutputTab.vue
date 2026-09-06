@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { getProjectMetadata } from '../../api.js'
+import { getProjectStates } from '../../api.js'
 import CardMenu from './CardMenu.vue'
 
 const props = defineProps({
@@ -20,8 +20,8 @@ const editAiDefinition = ref('')
 
 async function loadOutputKeys() {
   try {
-    const { project } = await getProjectMetadata(props.projectId)
-    const state = Object.values(project.states || {}).find(s => s.id === props.stateKey)
+    const states = await getProjectStates(props.projectId)
+    const state = states.find(s => s.id === props.stateKey)
     outputKeys.value = state?.output_keys || []
   } catch (e) {
     console.error('Failed to load output keys:', e)
@@ -58,10 +58,8 @@ async function deleteOutputKey(name) {
 onMounted(loadOutputKeys)
 
 watch(() => props.stateKey, loadOutputKeys)
-watch(() => props.recentlyAddedKey, () => {
-  if (props.recentlyAddedKey?.startsWith('output-key:')) {
-    loadOutputKeys()
-  }
+watch(() => props.recentlyAddedKey, (newKey) => {
+  if (newKey?.startsWith('output-key:')) loadOutputKeys()
 })
 </script>
 
