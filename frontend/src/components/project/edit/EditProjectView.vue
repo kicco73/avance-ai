@@ -604,6 +604,7 @@ onBeforeUnmount(() => {
             <template #tab-output="{ registerTab }">
               <InspectorStateOutputTab
                 v-if="selectedStateKey"
+                :key="`output-${selectedStateKey}-${recentlyAddedKey}`"
                 :ref="registerTab('output')"
                 :project-id="projectId"
                 :state-key="selectedStateKey"
