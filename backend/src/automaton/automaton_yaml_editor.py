@@ -552,6 +552,14 @@ class AutomatonYamlEditor:
         return self._output_key_payload(state_name, name)
 
     def set_output_key_field(self, state_name: str, name: str, field: str, value) -> OutputKeyPayload:
+        # Same "editing this field renames the entry" convention as
+        # set_env_key_field's 'name' case — output has no separate ui-label
+        # driving its id the way a signal's does.
+        if field == "name":
+            derived_name = self.to_snake_case(value)
+            if derived_name and derived_name != name:
+                return self.rename_output_key(state_name, name, derived_name)
+            return self._output_key_payload(state_name, name)
         raw_output_key = self._output_key(state_name, name)
         yaml_field = field.replace("_", "-")
         if value is None or value == "":
@@ -560,10 +568,76 @@ class AutomatonYamlEditor:
             raw_output_key[yaml_field] = value
         return self._output_key_payload(state_name, name)
 
+    def rename_output_key(self, state_name: str, old_name: str, new_name: str) -> OutputKeyPayload:
+        output = self._state(state_name).setdefault("output", CommentedMap())
+        if old_name not in output:
+            raise ValueError(f"Output key '{old_name}' not found in state '{state_name}'.")
+        existing_names = set(output.keys()) - {old_name}
+        unique_new_name = self._unique_signal_name(new_name, existing_names)
+
+        self._rename_key_preserving_comments(output, old_name, unique_new_name)
+        self._rename_output_ref_in_state_actions(state_name, old_name, unique_new_name)
+
+        return self._output_key_payload(state_name, unique_new_name)
+
     def delete_output_key(self, state_name: str, name: str) -> None:
         output = self._state(state_name).get("output", {})
         if name in output:
             del output[name]
+        self._strip_output_ref_from_state_actions(state_name, name)
+
+    def _state_action_fields_referencing_output(self, state_name: str, name: str):
+        """Yields (raw_action, field_name, expression) for every `trigger`
+        string and every `env` dict-value expression, of every action of
+        `state_name`, that references `output.<name>` — output is
+        state-scoped (unlike signal/env), so this only ever walks that
+        one state's own actions, never the whole automaton."""
+        raw_state = self._state(state_name)
+        for raw_action in raw_state.get("actions") or []:
+            trigger = raw_action.get("trigger")
+            if trigger:
+                tree = ast.parse(trigger, mode="eval").body
+                if name in TriggerExpressionAnalyzer.namespace_attrs(tree, "output"):
+                    yield raw_action, "trigger", trigger
+            env = raw_action.get("env") or {}
+            for env_key, expression in env.items():
+                if not isinstance(expression, str):
+                    continue
+                tree = ast.parse(expression, mode="eval").body
+                if name in TriggerExpressionAnalyzer.namespace_attrs(tree, "output"):
+                    yield raw_action, f"env:{env_key}", expression
+
+    def _rename_output_ref_in_state_actions(self, state_name: str, old_name: str, new_name: str) -> None:
+        def transform(tree: ast.AST) -> ast.AST:
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+                    and node.value.id == "output" and node.attr == old_name
+                ):
+                    node.attr = new_name
+            return tree
+
+        for raw_action, field, expression in list(self._state_action_fields_referencing_output(state_name, old_name)):
+            tree = ast.parse(expression, mode="eval").body
+            new_node = transform(tree)
+            new_expression = ast.unparse(new_node)
+            if field == "trigger":
+                raw_action["trigger"] = new_expression
+            else:
+                raw_action["env"][field.removeprefix("env:")] = new_expression
+
+    def _strip_output_ref_from_state_actions(self, state_name: str, name: str) -> None:
+        for raw_action, field, expression in list(self._state_action_fields_referencing_output(state_name, name)):
+            tree = ast.parse(expression, mode="eval").body
+            if field == "trigger":
+                new_node = self._strip_namespaced_ref_from_trigger(tree, "output", name)
+                if new_node is None:
+                    del raw_action["trigger"]
+                else:
+                    raw_action["trigger"] = ast.unparse(new_node)
+            else:
+                env_key = field.removeprefix("env:")
+                del raw_action["env"][env_key]
 
     def delete_source(self, name: str) -> None:
         sources = self._sources()
