@@ -698,6 +698,43 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
 
+    @post("/api/projects/{project_id}/states/{state_key}/output", role="admin")
+    async def add_output_key(self, project_id: str, state_key: str):
+        try:
+            return await self.project_service.add_output_key(project_id, state_key, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @put("/api/projects/{project_id}/states/{state_key}/output/{output_key_name}/{field}", role="admin")
+    async def put_output_key_field(self, project_id: str, state_key: str, output_key_name: str, field: str, req: SetProjectFieldRequest):
+        self.project_service.ensure_project_not_broken(project_id)
+        try:
+            return await self.project_service.set_output_key_field(
+                project_id, state_key, output_key_name, field, req.value, self._activate_project
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @delete("/api/projects/{project_id}/states/{state_key}/output/{output_key_name}", role="admin")
+    async def delete_output_key(self, project_id: str, state_key: str, output_key_name: str):
+        try:
+            await self.project_service.delete_output_key(project_id, state_key, output_key_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return Response(status_code=HTTPStatus.NO_CONTENT)
+
     @delete("/api/projects/{project_id}/sources/{source_name}", role="admin")
     async def delete_source(self, project_id: str, source_name: str):
         try:
