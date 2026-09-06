@@ -49,7 +49,7 @@ async function deleteOutputKey(name) {
   await loadOutputKeys()
 }
 
-watch(() => props.stateData?.output_keys, loadOutputKeys, { deep: true, immediate: true })
+watch(() => props.stateData, loadOutputKeys, { deep: true, immediate: true })
 </script>
 
 <template>
