@@ -49,6 +49,15 @@ _VALUES_PARAMETER = {
     ),
 }
 
+_STRINGS_PARAMETER = {
+    "type": "array", "items": {"type": "string"},
+    "description": (
+        "Additional row filter, same semantics as select_rows_containing: only rows containing every one "
+        "of these strings (case-insensitive substring match) are returned. Optional — omit or leave empty "
+        "for no additional filter."
+    ),
+}
+
 # The uniform JSON Schema of each SourceDriver method's own arguments —
 # the same for every driver, since every driver implements the very same
 # signature (see SourceDriver). A driver may *narrow* one of these
@@ -60,7 +69,7 @@ METHOD_SCHEMAS: dict[str, dict] = {
         "properties": {"values": _VALUES_PARAMETER},
         "required": ["values"],
     },
-    "select_rows_where_column": {
+    "select_rows_where": {
         "type": "object",
         "properties": {
             "column": {"type": "string", "description": "The column the comparison applies to."},
@@ -75,15 +84,17 @@ METHOD_SCHEMAS: dict[str, dict] = {
                     "holds one, plain text otherwise."
                 ),
             },
+            "strings": _STRINGS_PARAMETER,
         },
         "required": ["column", "operator", "value"],
     },
-    "select_rows_where_column_in_range": {
+    "select_rows_in_range": {
         "type": "object",
         "properties": {
             "column": {"type": "string", "description": "The column the range applies to."},
             "start": {"type": "string", "description": "Lower bound, included — a number or an ISO date (YYYY-MM-DD)."},
             "end": {"type": "string", "description": "Upper bound, included — a number or an ISO date (YYYY-MM-DD)."},
+            "strings": _STRINGS_PARAMETER,
         },
         "required": ["column", "start", "end"],
     },
@@ -104,9 +115,19 @@ METHOD_SCHEMAS: dict[str, dict] = {
 # — a read field exposes every one of READ_METHODS the driver supports
 # (READ_METHOD, the plain row search, is the one every readable driver
 # implements, and so what a read field is validated against).
-READ_METHODS = ("select_rows_containing", "select_rows_where_column", "select_rows_where_column_in_range")
+READ_METHODS = ("select_rows_containing", "select_rows_where", "select_rows_in_range")
 READ_METHOD = READ_METHODS[0]
 WRITE_METHOD = "update"
+
+# method -> its own named arguments that precede that method's trailing
+# `*strings` variadic (see SourceDriver.select_rows_where/
+# select_rows_in_range) — every other method's variadic (`values`) comes
+# first in its own signature, with no fixed arguments ahead of it (see
+# ToolSet.call).
+_FIXED_PARAMS: dict[str, tuple[str, ...]] = {
+    "select_rows_where": ("column", "operator", "value"),
+    "select_rows_in_range": ("column", "start", "end"),
+}
 
 
 class ToolSet:
@@ -244,9 +265,14 @@ class ToolSet:
         decorated with anything meant for the model alone (see AiService's
         own tool-call loop for that). The driver call itself is
         synchronous (disk/DB I/O) — always off the event loop via
-        asyncio.to_thread, never blocking it. `values` is every method's
-        own variadic parameter (see SourceDriver), unpacked positionally;
-        every other argument is passed through by keyword. A write
+        asyncio.to_thread, never blocking it. `values`/`strings` are every
+        method's own variadic parameter (see SourceDriver), unpacked
+        positionally, after any of _FIXED_PARAMS' own named arguments that
+        precede it in the driver's own signature (select_rows_where/
+        select_rows_in_range's `column`/`operator`/`value`/`start`/`end`) —
+        those must be passed positionally too, since Python rejects a
+        keyword argument for a parameter a positional *args also reaches.
+        Every other argument is passed through by keyword. A write
         (`method == WRITE_METHOD`) also gets `origin="tool"` injected here,
         in Python, never through `arguments` — origin is never part of any
         tool's own JSON schema, so the model can neither see nor spoof it
@@ -258,11 +284,16 @@ class ToolSet:
         try:
             driver = getattr(self._namespace, source_name)
             bound_method = getattr(driver, method)
-            values = arguments.get("values") or []
-            keywords = {key: value for key, value in arguments.items() if key != "values"}
+            fixed = _FIXED_PARAMS.get(method, ())
+            positional = [arguments[key] for key in fixed]
+            variadic_name = "strings" if fixed else "values"
+            variadic = arguments.get(variadic_name) or []
+            keywords = {
+                key: value for key, value in arguments.items() if key not in fixed and key != variadic_name
+            }
             if method == WRITE_METHOD:
                 keywords["origin"] = "tool"
-            return await asyncio.to_thread(bound_method, *values, **keywords)
+            return await asyncio.to_thread(bound_method, *positional, *variadic, **keywords)
         except Exception as exc:
             return f"error: {exc}"
 

@@ -12,11 +12,11 @@ from pathlib import Path
 from fastapi import HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
-from ai.ai_talker import AiTalker
 from chat.chat_service import ChatService
 from listen.listen_service import ListenService, ListenServiceError, ListenServiceNotAvailableError
 from project.project_service import ProjectService
 from talk.talk_service import TalkService, TalkServiceNotAvailableError
+from talker import AiTalker
 from schemas import (
     ActionRequest,
     ActuatorsRequest,

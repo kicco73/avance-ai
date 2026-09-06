@@ -97,11 +97,11 @@ class SourceDriver:
         select_rows_containing())."""
         raise self._unsupported("select_rows_containing")
 
-    def select_rows_where_column(self, column: str, operator: str, value: str) -> str:
-        raise self._unsupported("select_rows_where_column")
+    def select_rows_where(self, column: str, operator: str, value: str, *strings: str) -> str:
+        raise self._unsupported("select_rows_where")
 
-    def select_rows_where_column_in_range(self, column: str, start: str, end: str) -> str:
-        raise self._unsupported("select_rows_where_column_in_range")
+    def select_rows_in_range(self, column: str, start: str, end: str, *strings: str) -> str:
+        raise self._unsupported("select_rows_in_range")
 
     def value(self, *values: str, key: str) -> str:
         """The `key` cell of the *first* row containing every value

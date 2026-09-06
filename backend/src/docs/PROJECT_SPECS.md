@@ -206,8 +206,8 @@ unused for that call.
 replying in this state — one tool per (source, method): a source named
 `flight_records` in a read field becomes one callable per read method its
 driver supports (`source_flight_records_select_rows_containing`,
-`source_flight_records_select_rows_where_column`,
-`source_flight_records_select_rows_where_column_in_range`), one named
+`source_flight_records_select_rows_where`,
+`source_flight_records_select_rows_in_range`), one named
 `env` in the write field becomes `source_env_update`. Reading and writing are independent grants; the two
 read fields differ only in how much the model is trusted to decide for itself:
 
@@ -256,9 +256,11 @@ exact same request a turn always did, before tool-calling existed at all.
 
 Every tool takes the same arguments, whatever the driver:
 `select_rows_containing` takes `values` (an array of strings — the row
-filter, possibly empty); `select_rows_where_column` takes `column`,
-`operator` (`=`, `!=`, `>`, `>=`, `<`, `<=`) and `value`;
-`select_rows_where_column_in_range` takes `column`, `start` and `end`;
+filter, possibly empty); `select_rows_where` takes `column`,
+`operator` (`=`, `!=`, `>`, `>=`, `<`, `<=`), `value`, and optionally
+`strings` (an array of strings, same semantics as `select_rows_containing`'s
+own `values`, further narrowing the match); `select_rows_in_range` takes
+`column`, `start`, `end`, and the same optional `strings`;
 `update` takes `values` and `fields` (column → new value, at least one).
 Every read returns whole rows — there is no column projection in the
 model's own interface. A driver may *narrow* one of those schemas for the
@@ -395,18 +397,21 @@ support is the whole compatibility story.
   check ("the model proposes, the script verifies," below).
   `source.pino.select_rows_containing('VY3003', '2026-08-16')` finds the
   one row for that flight on that date.
-- `select_rows_where_column(column, operator, value)` — the header row
-  plus every whole row whose `column` satisfies the comparison.
+- `select_rows_where(column, operator, value, *strings)` — the header row
+  plus every whole row whose `column` satisfies the comparison, further
+  narrowed by `*strings` with the very same AND'd, case-insensitive
+  substring semantics as `select_rows_containing`.
   Operators: `=`, `!=`, `>`, `>=`, `<`, `<=`. Both sides are compared as
   numbers when both parse as numbers, as moments in time when both parse
   as ISO dates/datetimes (`YYYY-MM-DD`, `YYYY-MM-DD HH:MM`), and
   case-insensitively as text otherwise — so
-  `source.pino.select_rows_where_column('data_partenza', '>=', '2026-08-16')`
-  reads as a date comparison, not a string one.
-- `select_rows_where_column_in_range(column, start, end)` — the same
+  `source.pino.select_rows_where('data_partenza', '>=', '2026-08-16', 'Barcelona')`
+  reads as a date comparison AND'd with a row-text filter, not a string one.
+- `select_rows_in_range(column, start, end, *strings)` — the same
   whole rows, for a `column` between `start` and `end`, **both included**
-  (numbers and ISO dates alike):
-  `source.pino.select_rows_where_column_in_range('data_partenza', '2026-08-01', '2026-08-31')`.
+  (numbers and ISO dates alike), further narrowed by `*strings` the same
+  way:
+  `source.pino.select_rows_in_range('data_partenza', '2026-08-01', '2026-08-31', 'Barcelona')`.
 - `value(*values, key)` — the `key` cell of the *first* row satisfying
   the same filter as `select_rows_containing`, as a single scalar string;
   `""` if no row matches, an error *text* if `key` isn't a real column.

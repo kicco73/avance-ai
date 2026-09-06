@@ -6,8 +6,8 @@ Reads straight from Db at the automaton's own (project_name, revision)
 in-memory copy, so every test here seeds real Archive rows instead of
 building a MemoryArchive.
 
-select_rows_containing()/select_rows_where_column()/
-select_rows_where_column_in_range()/value() are the only methods this
+select_rows_containing()/select_rows_where()/
+select_rows_in_range()/value() are the only methods this
 driver implements (see SourceDriver's own docstring on why a whole-file
 read isn't a source.* capability at all — and `update`, part of the
 uniform interface, stays unsupported here).

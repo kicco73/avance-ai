@@ -5,10 +5,12 @@ own stored archive files, addressed by a `sources:` entry's own
 containing *every* value (case-insensitive, AND'd — one value narrows
 down to a single row, several narrow further; no values at all means
 every row), bounded (see SourceDriver._bounded) regardless of how big a
-match set it finds. `select_rows_where_column(column, operator, value)`
-and `select_rows_where_column_in_range(column, start, end)`: the same
+match set it finds. `select_rows_where(column, operator, value, *strings)`
+and `select_rows_in_range(column, start, end, *strings)`: the same
 whole rows, picked by a comparison on one column instead (numbers and
-ISO dates included, see tracking.sources.comparison). No row at all
+ISO dates included, see tracking.sources.comparison), further narrowed by
+`*strings` with the very same AND'd substring semantics as
+`select_rows_containing`. No row at all
 matching the filter returns "" — not even the header — so
 `select_rows_containing(...) != ''` is a real existence check.
 `value(*values, key=...)`: the `key` cell of the first matching row, as a scalar string, for
@@ -39,22 +41,24 @@ _DELIMITERS = ",;\t|"
 
 class AvanceArchiveSource(SourceDriver):
     SUPPORTED_METHODS = frozenset({
-        "select_rows_containing", "select_rows_where_column", "select_rows_where_column_in_range", "value",
+        "select_rows_containing", "select_rows_where", "select_rows_in_range", "value",
     })
     METHOD_DESCRIPTIONS = {
         "select_rows_containing": (
-            "Rows containing ALL values anywhere in the row. Case-insensitive substring matching. "
-            "The header row (naming the columns) comes first; omit `values` for every row; \"\" means no row "
-            "matched at all — e.g. source.<name>.select_rows_containing('Paris')."
+            "Return rows containing ALL specified strings anywhere in the row. Case-insensitive substring "
+            "matching. The header row (naming the columns) comes first; omit `values` for every row; \"\" "
+            "means no row matched at all — e.g. source.<name>.select_rows_containing('Paris')."
         ),
-        "select_rows_where_column": (
-            "Rows where a column satisfies a comparison. Operators: =, !=, >, >=, <, <=. Supports numeric "
-            "values and ISO dates (YYYY-MM-DD) — e.g. "
-            "source.<name>.select_rows_where_column('data_partenza', '>=', '2026-08-16')."
+        "select_rows_where": (
+            "Return rows where a column satisfies a comparison. Operators: =, !=, >, >=, <, <=. Supports "
+            "numeric values and ISO dates (YYYY-MM-DD). Additional strings, if provided, must also occur "
+            "anywhere in the row — e.g. "
+            "source.<name>.select_rows_where('data_partenza', '>=', '2026-08-16', 'Barcelona')."
         ),
-        "select_rows_where_column_in_range": (
-            "Rows where a numeric or ISO date (YYYY-MM-DD) column is between `start` and `end`, inclusive — "
-            "e.g. source.<name>.select_rows_where_column_in_range('data_partenza', '2026-08-01', '2026-08-31')."
+        "select_rows_in_range": (
+            "Return rows where a numeric or ISO date (YYYY-MM-DD) column is between `start` and `end`, "
+            "inclusive. Additional strings, if provided, must also occur anywhere in the row — e.g. "
+            "source.<name>.select_rows_in_range('data_partenza', '2026-08-01', '2026-08-31', 'Barcelona')."
         ),
         "value": (
             "The `key` column of the first row matching *every* given value, case-insensitive, as a "
@@ -173,16 +177,18 @@ class AvanceArchiveSource(SourceDriver):
             return ""
         return self._bounded(header[0] + "".join(matches), header=header[0])
 
-    def select_rows_where_column(self, column: str, operator: str, value: str) -> str:
+    def select_rows_where(self, column: str, operator: str, value: str, *strings: str) -> str:
         if operator not in OPERATORS:
             return f"error: unknown operator {operator!r} — available: {', '.join(OPERATORS)}"
-        return self._rows_where_column(column, ColumnComparison(operator, value))
+        return self._rows_where_column(column, ColumnComparison(operator, value), strings)
 
-    def select_rows_where_column_in_range(self, column: str, start: str, end: str) -> str:
-        return self._rows_where_column(column, ColumnRange(start, end))
+    def select_rows_in_range(self, column: str, start: str, end: str, *strings: str) -> str:
+        return self._rows_where_column(column, ColumnRange(start, end), strings)
 
-    def _rows_where_column(self, column: str, condition: ColumnComparison | ColumnRange) -> str:
-        found = self._matches(())
+    def _rows_where_column(
+        self, column: str, condition: ColumnComparison | ColumnRange, strings: tuple[str, ...] = (),
+    ) -> str:
+        found = self._matches(strings)
         if found is None:
             return ""
         header, rows = found

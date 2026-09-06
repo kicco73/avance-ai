@@ -8,10 +8,10 @@ from chat.errors import ChatServiceError
 from db.db import Db
 from ai import AiService
 from ai import MetadataCallback, content_to_text
-from ai.ai_talker import AiTalker
 from automaton.automaton import Action, Automaton, State, StatePayload
 from logging_factory import LoggerFactory
 from session import Session
+from talker import AiTalker
 
 from .env import Env
 from .env_prompt_block import EnvPromptBlock

@@ -47,7 +47,6 @@ from typing import TYPE_CHECKING
 
 import httpx
 
-from ai.ai_talker import AiTalker
 from auth.auth_service import AuthService
 from chat.channels import WHATSAPP_CHAT
 from chat.chat_service import ChatService
@@ -56,6 +55,7 @@ from db import Db
 from logging_factory import LoggerFactory
 from service_error import ServiceError
 from session import Session
+from talker import AiTalker
 from whatsapp.cloud_api_client import WhatsAppCloudApiClient
 
 if TYPE_CHECKING:

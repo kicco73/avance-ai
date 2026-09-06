@@ -22,14 +22,15 @@ from listen.listen_service import ListenService, ListenServiceNotAvailableError
 from talk.talk_service import TalkService, TalkServiceNotAvailableError
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 
+from .base_talker import BaseTalker
+
 if TYPE_CHECKING:
-	from ai import MetadataCallback
-	from ai.ai_service import AiService
+	from ai import AiService, MetadataCallback
 	from tracking.channels import MetadataChannel
 	from tracking.sources import ToolSet
 
 
-class AiTalker:
+class AiTalker(BaseTalker):
 	def __init__(
 		self,
 		ai_service: "AiService | None" = None,
