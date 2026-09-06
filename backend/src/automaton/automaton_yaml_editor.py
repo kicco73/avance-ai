@@ -552,10 +552,11 @@ class AutomatonYamlEditor:
 
     def set_output_key_field(self, state_name: str, name: str, field: str, value) -> OutputKeyPayload:
         raw_output_key = self._output_key(state_name, name)
+        yaml_field = field.replace("_", "-")
         if value is None or value == "":
-            raw_output_key.pop(field, None)
+            raw_output_key.pop(yaml_field, None)
         else:
-            raw_output_key[field] = value
+            raw_output_key[yaml_field] = value
         return self._output_key_payload(state_name, name)
 
     def delete_output_key(self, state_name: str, name: str) -> None:
