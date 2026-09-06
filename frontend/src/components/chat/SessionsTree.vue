@@ -1,8 +1,10 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
+import { useSessionSelection } from '../../composables/useSessionSelection.js'
+import { useSessionDragAndDrop } from '../../composables/useSessionDragAndDrop.js'
 import DocInfoButton from '../DocInfoButton.vue'
-import ProgressSpinner from '../ProgressSpinner.vue'
+import SessionsTreeHeader from './SessionsTreeHeader.vue'
 
 const props = defineProps({
   sessions: { type: Array, required: true },
@@ -11,8 +13,6 @@ const props = defineProps({
   selectedNodeId: { type: String, default: null },
   allowImport: { type: Boolean, default: false },
   importing: { type: Boolean, default: false },
-  // 0-100, or null before the first progress chunk has arrived — shows
-  // a filling ring instead of the indeterminate spinner once known.
   importProgress: { type: Number, default: null },
   allowDownloadAll: { type: Boolean, default: false },
   downloadingAll: { type: Boolean, default: false },
@@ -37,31 +37,12 @@ function testUserSeqOf(username) {
   return Number(username.slice(TEST_USER_PREFIX.length))
 }
 
-const importInput = ref(null)
-
-function triggerImport() {
-  importInput.value?.click()
-}
-
-function onImportFileChosen(event) {
-  const files = Array.from(event.target.files ?? [])
-  if (files.length) emit('import', files)
-  event.target.value = ''
-}
-
 const hasImportedSessions = computed(() => props.sessions.some((s) => s.type === 'imported'))
 
-// Live | Imported — the tree only ever shows one type at a time. Delete
-// (imported-only, destructive) is hidden on Live; Download all narrows to
-// whichever type is active (see the 'download-all' emit below).
 const activeTab = ref('live')
 const filteredSessions = computed(() => props.sessions.filter((s) => s.type === activeTab.value))
 
-// Drag-and-drop reassignment (see onSessionDragStart/isValidDropTarget
-// below) is imported-only backend-side (a live session's username is its
-// owner's real identity, not just a label) — every branch/session shown
-// here is already narrowed to activeTab's own type, so this alone is
-// enough to gate it for all of them, not just "Test user N" branches.
+// Reassignment is imported-only backend-side: a live session's username is its owner's identity.
 const canDragAndDrop = computed(() => activeTab.value === 'imported')
 
 function formatSessionTimestamp(iso) {
@@ -120,111 +101,12 @@ function onUserClick(username) {
   emit('select', `user:${username}`)
 }
 
-const selectedSessionIds = ref(new Set())
-const selectionAnchor = ref(null)
+const selection = useSessionSelection(canDragAndDrop, emit)
+const { selectedSessionIds, onSessionRowClick } = selection
+const {
+  isDragOver, onSessionDragStart, onSessionDragEnd, onBranchDragEnter, onBranchDragLeave, onBranchDragOver, onBranchDrop
+} = useSessionDragAndDrop(canDragAndDrop, selection, emit)
 
-function onSessionRowClick(session, user, event) {
-  if (!canDragAndDrop.value) {
-    emit('select', `session:${session.id}`)
-    return
-  }
-  if (event.shiftKey && selectionAnchor.value != null) {
-    const ids = user.sessions.map((s) => s.id)
-    const anchorIndex = ids.indexOf(selectionAnchor.value)
-    const clickedIndex = ids.indexOf(session.id)
-    if (anchorIndex !== -1 && clickedIndex !== -1) {
-      const [start, end] = anchorIndex < clickedIndex ? [anchorIndex, clickedIndex] : [clickedIndex, anchorIndex]
-      selectedSessionIds.value = new Set(ids.slice(start, end + 1))
-    }
-    return
-  }
-  if (event.ctrlKey || event.metaKey) {
-    const next = new Set(selectedSessionIds.value)
-    if (next.has(session.id)) next.delete(session.id)
-    else next.add(session.id)
-    selectedSessionIds.value = next
-    selectionAnchor.value = session.id
-    return
-  }
-  selectedSessionIds.value = new Set([session.id])
-  selectionAnchor.value = session.id
-  emit('select', `session:${session.id}`)
-}
-
-const draggingFromUsername = ref(null)
-const dragOverCounts = ref(new Map())
-
-function isDragOver(username) {
-  return (dragOverCounts.value.get(username) || 0) > 0
-}
-
-function incDragOver(username) {
-  const next = new Map(dragOverCounts.value)
-  next.set(username, (next.get(username) || 0) + 1)
-  dragOverCounts.value = next
-}
-
-function decDragOver(username) {
-  const next = new Map(dragOverCounts.value)
-  const count = (next.get(username) || 0) - 1
-  if (count <= 0) next.delete(username)
-  else next.set(username, count)
-  dragOverCounts.value = next
-}
-
-function onSessionDragStart(session, user, event) {
-  draggingFromUsername.value = user.username
-  const ids = selectedSessionIds.value.has(session.id) ? [...selectedSessionIds.value] : [session.id]
-  event.dataTransfer.effectAllowed = 'move'
-  event.dataTransfer.setData('application/json', JSON.stringify({ sessionIds: ids, fromUsername: user.username }))
-}
-
-function onSessionDragEnd() {
-  draggingFromUsername.value = null
-  dragOverCounts.value = new Map()
-}
-
-function isValidDropTarget(username) {
-  return canDragAndDrop.value && username !== draggingFromUsername.value
-}
-
-function onBranchDragEnter(user, event) {
-  if (!isValidDropTarget(user.username)) return
-  event.preventDefault()
-  incDragOver(user.username)
-}
-
-function onBranchDragLeave(user) {
-  if (!isValidDropTarget(user.username)) return
-  decDragOver(user.username)
-}
-
-function onBranchDragOver(user, event) {
-  if (!isValidDropTarget(user.username)) return
-  event.preventDefault()
-  event.dataTransfer.dropEffect = 'move'
-}
-
-function onBranchDrop(user, event) {
-  if (!isValidDropTarget(user.username)) return
-  event.preventDefault()
-  const raw = event.dataTransfer.getData('application/json')
-  dragOverCounts.value = new Map()
-  draggingFromUsername.value = null
-  if (!raw) return
-  let payload
-  try {
-    payload = JSON.parse(raw)
-  } catch {
-    return
-  }
-  if (!payload?.sessionIds?.length || payload.fromUsername === user.username) return
-  emit('move-sessions', { sessionIds: payload.sessionIds, username: user.username })
-  selectedSessionIds.value = new Set()
-}
-
-// Any branch with no live session in it is deletable via the branch's ×
-// button — a "Test user N" branch or an arbitrary imported username alike.
 function isDeletableBranch(user) {
   return user.sessions.every((s) => s.type !== 'live')
 }
@@ -244,11 +126,6 @@ watch(
       const id = Number(nodeId.slice('session:'.length))
       const session = props.sessions.find((s) => s.id === id)
       username = session?.username ?? null
-      // Keeps the Live/Imported tab in sync with whatever's actually
-      // selected — without this, a selection driven from outside (the
-      // central panel/Inspector, or the initial one on mount) can land on
-      // a session that's simply invisible under whichever tab activeTab
-      // defaulted to, looking like the explorer fell out of sync.
       if (session) activeTab.value = session.type
     }
     if (username != null && !expanded.value.has(username)) {
@@ -269,48 +146,19 @@ const {
 </script>
 
 <template>
-  <div class="sessions-tree-header">
-    <span v-if="!collapsed" class="sessions-tree-title">Sessions</span>
-    <div style="display: flex">
-      <div v-if="!collapsed && (allowImport || allowDeleteAllImported)" class="sessions-tree-header-actions">
-        <button
-          v-if="allowImport"
-          type="button"
-          class="sessions-tree-icon-btn"
-          :class="{ 'sessions-tree-icon-btn-busy': importing }"
-          :disabled="importing"
-          :title="importing ? (importProgress != null ? `Importing… ${Math.round(importProgress)}%` : 'Importing…') : `Import transcript(s) — .txt or a 'Download all' .json export`"
-          @click="triggerImport"
-        >
-          <svg v-if="!importing" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-            <path d="M12 3l4 4h-3v6h-2V7H8l4-4zM5 19v-6h2v6h10v-6h2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z" />
-          </svg>
-          <ProgressSpinner v-else :progress="importProgress" />
-        </button>
-        <input v-if="allowImport" ref="importInput" type="file" accept=".txt,text/plain,.json,application/json" multiple class="sessions-tree-import-input" @change="onImportFileChosen" />
-        <button
-          v-if="allowDeleteAllImported && activeTab === 'imported'"
-          type="button"
-          class="sessions-tree-icon-btn sessions-tree-icon-btn-danger"
-          :class="{ 'sessions-tree-icon-btn-busy': deletingAllImported }"
-          :disabled="!hasImportedSessions || deletingAllImported"
-          :title="deletingAllImported ? 'Deleting…' : 'Delete all imported sessions'"
-          @click="emit('delete-all-imported')"
-        >
-          <svg v-if="!deletingAllImported" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-            <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm-3 6h12l-1 12H7L6 9zm3 2v8h2v-8H9zm4 0v8h2v-8h-2z" />
-          </svg>
-          <ProgressSpinner v-else />
-        </button>
-      </div>
-      <button
-        v-if="!hideCollapseToggle"
-        class="collapse-toggle-btn"
-        :title="collapsed ? 'Expand sessions' : 'Collapse sessions'"
-        @click="emit('update:collapsed', !collapsed)"
-      >{{ collapsed ? '▸' : '◂' }}</button>
-    </div>
-  </div>
+  <SessionsTreeHeader
+    :collapsed="collapsed"
+    :hide-collapse-toggle="hideCollapseToggle"
+    :allow-import="allowImport"
+    :importing="importing"
+    :import-progress="importProgress"
+    :show-delete-all-imported="allowDeleteAllImported && activeTab === 'imported'"
+    :delete-all-disabled="!hasImportedSessions"
+    :deleting-all-imported="deletingAllImported"
+    @import="emit('import', $event)"
+    @delete-all-imported="emit('delete-all-imported')"
+    @update:collapsed="emit('update:collapsed', $event)"
+  />
 
   <template v-if="!collapsed">
     <div class="sessions-tree-tabs">
@@ -440,91 +288,6 @@ const {
 </template>
 
 <style scoped>
-.sessions-tree-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.6rem 0.9rem;
-  border-bottom: 1px solid #ddd;
-}
-
-.sessions-tree-title {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #555;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.sessions-tree-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.sessions-tree-icon-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.6rem;
-  height: 1.6rem;
-  border-radius: 6px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
-  cursor: pointer;
-  padding: 0;
-}
-
-.sessions-tree-icon-btn:hover {
-  background: #4a6fa5;
-  color: white;
-}
-
-.sessions-tree-icon-btn-busy,
-.sessions-tree-icon-btn-busy:hover {
-  cursor: default;
-  background: white;
-  color: #4a6fa5;
-}
-
-.sessions-tree-icon-btn-danger {
-  border-color: #c62828;
-  color: #c62828;
-}
-
-.sessions-tree-icon-btn-danger:hover:not(:disabled) {
-  background: #c62828;
-  color: white;
-}
-
-.sessions-tree-icon-btn-danger:disabled {
-  border-color: #ccc;
-  color: #ccc;
-  cursor: not-allowed;
-}
-
-.collapse-toggle-btn {
-  flex-shrink: 0;
-  width: 1.4rem;
-  height: 1.4rem;
-  line-height: 1;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: #666;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-
-.collapse-toggle-btn:hover {
-  background: #eee;
-}
-
-.sessions-tree-import-input {
-  display: none;
-}
-
 .sessions-tree-status {
   margin: 0;
   padding: 0.75rem 0.9rem;
@@ -532,10 +295,6 @@ const {
   color: #666;
 }
 
-/* Matches Inspector.vue's own .inspector-tabs/.inspector-tab-btn exactly
-   (flat underline style, same colors) — flex:1 + centered text is this
-   tree's own adaptation, for a fixed two-option toggle spanning the
-   panel's width instead of Inspector's own left-aligned, variable-count row. */
 .sessions-tree-tabs {
   display: flex;
   gap: 0.25rem;
@@ -783,9 +542,6 @@ const {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  /* margin-top: auto anchors this to the panel's bottom edge regardless
-     of what's above it (a short tree, or the "No sessions yet." status
-     text, neither of which fill the panel's height on their own). */
   margin: auto 0.9rem 0.9rem;
 }
 

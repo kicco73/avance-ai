@@ -5,9 +5,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from automaton.automaton import (
-    ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload,
+    ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload,
 )
-from automaton.automaton_builder import AutomatonBuilder, EXTENSION_TO_MEDIA_TYPE
+from automaton.archive_resolver import EXTENSION_TO_MEDIA_TYPE
+from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
 from db import ContentRestored, Db, FileRenamed

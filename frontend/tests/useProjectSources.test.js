@@ -66,8 +66,20 @@ describe('useProjectSources', () => {
     // waiting on a fixed number of microtask ticks would be fragile, so
     // this polls instead.
     await vi.waitFor(() => expect(s.currentSourceName.value).toBe('behaviour'))
-    expect(postAddSource).toHaveBeenCalledWith('proj')
+    expect(postAddSource).toHaveBeenCalledWith('proj', 'avance')
     expect(flashRecentlyAdded).toHaveBeenCalledWith('source:behaviour')
+  })
+
+  it('handleAddSource passes an explicit driver through, e.g. for an avance:env source', async () => {
+    postAddSource.mockResolvedValue({ name: 'env' })
+    getProjectSources.mockResolvedValueOnce({ sources: [] }).mockResolvedValueOnce({
+      sources: [{ source: { name: 'env', ui_label: 'env', ui_description: null, url: 'avance:env' } }],
+    })
+
+    s.handleAddSource('env')
+
+    await vi.waitFor(() => expect(s.currentSourceName.value).toBe('env'))
+    expect(postAddSource).toHaveBeenCalledWith('proj', 'env')
   })
 
   it('handleSetSourceField does nothing without a selected source', async () => {

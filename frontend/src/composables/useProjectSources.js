@@ -53,10 +53,10 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
     sourcesRootSelected.value = true
   }
 
-  function handleAddSource() {
+  function handleAddSource(driver = 'avance') {
     guardedAction('add a new source', async () => {
       try {
-        const source = await postAddSource(projectId)
+        const source = await postAddSource(projectId, driver)
         await loadSources()
         sourcesRootSelected.value = false
         currentSourceName.value = source.name

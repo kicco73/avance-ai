@@ -430,6 +430,27 @@ class TestAddSource:
         assert second["url"] == "avance:sources/behaviour1.csv"
         assert _archive_content(client, hello_project, "sources/behaviour1.csv")["content"] == ""
 
+    def test_driver_env_creates_an_avance_env_source_with_no_archive(self, client, hello_project):
+        # An avance:env source with nothing exported is a build error (see
+        # AutomatonBuilder._validate_env_sources) — an exported key has to
+        # exist first, same ordering any other "declare the dependency,
+        # then reference it" field in this app already requires.
+        env_key = client.post(f"/api/projects/{hello_project}/env-keys").json()
+        client.put(
+            f"/api/projects/{hello_project}/env-keys/{env_key['name']}/ai-definition",
+            json={"value": "A test variable."},
+        )
+        client.put(
+            f"/api/projects/{hello_project}/env-keys/{env_key['name']}/ai-access", json={"value": "readonly"}
+        )
+
+        response = client.post(f"/api/projects/{hello_project}/sources?driver=env")
+        assert response.status_code == 200
+        payload = response.json()
+
+        assert payload["url"] == "avance:env"
+        assert client.get(f"/api/projects/{hello_project}/files/sources/{payload['name']}.csv").status_code == 404
+
 
 class TestPutSourceField:
     def test_ui_label_and_ui_description_are_plain_edits(self, client, hello_project):

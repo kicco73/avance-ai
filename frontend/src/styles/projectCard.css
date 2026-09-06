@@ -1,0 +1,54 @@
+.project-card {
+  box-sizing: border-box;
+  display: flex;
+  align-items: stretch;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 320px;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.project-card-icon {
+  flex-shrink: 0;
+  width: 65px;
+  height: 65px;
+  border-radius: 15px;
+  object-fit: cover;
+}
+
+.project-card-fallback-logo {
+  flex-shrink: 0;
+  width: 65px;
+  height: 65px;
+  object-fit: contain;
+  opacity: 0.25;
+}
+
+.project-card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.1rem;
+}
+
+.project-card-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.project-card-title {
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

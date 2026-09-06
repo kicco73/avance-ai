@@ -3,12 +3,14 @@
 // (see FileExplorer.vue's own "Sources" branch) — same badge/title/edit-form
 // convention as InspectorProjectCard.vue, but always showing its edit form
 // (a source has nothing worth a read-only view): a renameable id, ui-label
-// (the title), ui-description, and a driver dropdown (today, only "Avance
-// Archive"). Unlike an ordinary attachment, there's no file to pick here —
-// every source gets its own sources/<id>.csv archive automatically (see
-// ProjectEditor.add_source), edited via the design panel's own
-// SourceContentPanel.vue when this source is selected, not from this card.
-import { ref, watch } from 'vue'
+// (the title), ui-description, and a (display-only) driver indicator. What
+// "selecting this source" opens in the design panel depends on that driver
+// — a fresh sources/<id>.csv archive (ProjectEditor.add_source), edited via
+// SourceContentPanel.vue, for "Avance Embedded"; the automaton's own
+// exported env keys, read-only, via AutomatonVariablesPanel.vue, for
+// "Automaton variables" (`url: avance:env`, no archive of its own) — never
+// from this card either way.
+import { computed, ref, watch } from 'vue'
 import { vAutosize } from './textareaAutosize.js'
 import { handleEnterNext } from './enterToNextField.js'
 import CardMenu from './CardMenu.vue'
@@ -21,9 +23,20 @@ const props = defineProps({
 
 const emit = defineEmits(['set-field', 'delete'])
 
-// Only one driver exists today — "avance", url's own scheme — so this is
-// a single-option dropdown by design, not a stand-in for a missing feature.
-const DRIVER_OPTIONS = [{ value: 'avance', label: 'Avance Embedded' }]
+// Two drivers exist today, both under the "avance" url scheme (see
+// tracking.sources.SOURCE_DRIVERS): a plain archive file ("Avance
+// Embedded") or the automaton's own declared env keys ("Automaton
+// variables", url: avance:env — see AutomatonVariablesPanel.vue, which
+// this card's own driver never determines: the source's stored `url` is
+// what a project author picks once, at creation, from the sources panel's
+// own "+" menu). This select is display-only — there's no supported flow
+// for changing an existing source's driver after creation.
+const DRIVER_OPTIONS = [
+  { value: 'avance', label: 'Avance Embedded' },
+  { value: 'env', label: 'Automaton variables' },
+]
+
+const currentDriver = computed(() => (props.source?.url === 'avance:env' ? 'env' : 'avance'))
 
 const editUiLabel = ref('')
 const editUiDescription = ref('')
@@ -130,7 +143,7 @@ function handleDelete() {
         ></textarea>
 
         <label class="inspector-detail-form-label">Driver</label>
-        <select class="inspector-source-select" :value="'avance'">
+        <select class="inspector-source-select" :value="currentDriver" disabled title="Set once, at creation — pick it from the sources panel's own &quot;+&quot; menu.">
           <option v-for="option in DRIVER_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
         </select>
       </div>

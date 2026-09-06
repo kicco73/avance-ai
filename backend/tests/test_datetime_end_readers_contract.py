@@ -12,6 +12,7 @@ ALLOWED_DATETIME_END_READERS = {
     "chat/session_manager.py",
     "chat/session_type_strategy.py",
     "chat/chat_service.py",
+    "chat/session_insights.py",
     "schemas.py",
     "tracking/session_export.py",
     "tracking/session_import.py",

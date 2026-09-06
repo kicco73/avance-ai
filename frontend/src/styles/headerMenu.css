@@ -1,0 +1,46 @@
+.header-menu {
+  position: relative;
+}
+
+.header-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  cursor: pointer;
+}
+
+.header-menu-btn:hover {
+  background: #4a6fa5;
+  color: white;
+}
+
+.header-menu-panel {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  min-width: 12rem;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  overflow: hidden;
+  transform-origin: top left;
+}
+
+.header-menu-panel-enter-active,
+.header-menu-panel-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.header-menu-panel-enter-from,
+.header-menu-panel-leave-to {
+  opacity: 0;
+}

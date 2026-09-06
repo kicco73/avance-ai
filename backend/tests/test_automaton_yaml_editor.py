@@ -1,4 +1,4 @@
-"""AutomatonYamlEditor — every add/edit/delete/reorder operation against a
+"""AutomatonYamlEditor — state/signal/action/init-action edits against a
 project's index.yml, working directly on a ruamel.yaml round-trip tree.
 These tests check the structural edit itself, not end-to-end validity.
 """
@@ -6,52 +6,10 @@ from __future__ import annotations
 
 import pytest
 
-from automaton.automaton_builder import AutomatonBuilder
 from automaton.automaton_yaml_editor import AutomatonYamlEditor, InitActionTargetError
+from automaton_yaml_editor_helpers import BASE_YAML, SOURCE_ARCHIVES, SOURCE_BASE_YAML, builds, make_editor
 
 pytestmark = pytest.mark.contract
-
-
-BASE_YAML = """\
-project:
-  id: proj
-init-action:
-  target: a
-signals:
-  foo:
-    ui-label: Foo signal
-    definition: foo definition
-  bar:
-    ui-label: Bar signal
-    definition: bar definition
-states:
-  a:
-    ui-label: State A
-    contextual-prompt: hi
-    actions:
-      - name: go-b
-        ui-label: Go to B
-        target: b
-        trigger: signal.foo >= 50
-      - name: go-c
-        ui-label: Go to C
-        target: c
-        trigger: signal.foo >= 50 and signal.bar >= 50
-  b:
-    ui-label: State B
-    contextual-prompt: there
-  c:
-    ui-label: State C
-    contextual-prompt: elsewhere
-"""
-
-
-def _editor(text: str = BASE_YAML) -> AutomatonYamlEditor:
-    return AutomatonYamlEditor(text)
-
-
-def _builds(text: str, archives: dict[str, str] | None = None):
-    return AutomatonBuilder().build({"index.yml": text, **(archives or {})})
 
 
 class TestToSnakeCase:
@@ -67,7 +25,7 @@ class TestToSnakeCase:
 
 class TestAddState:
     def test_generates_a_numbered_name_and_placeholder_label(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.add_state()
 
         assert payload["key"] == "state-0"
@@ -78,28 +36,28 @@ class TestAddState:
         assert payload["actions"] == []
 
     def test_numbering_continues_from_the_highest_existing_state_n(self):
-        editor = _editor(BASE_YAML + "  state-0:\n    ui-label: Pre-existing\n    contextual-prompt: x\n")
+        editor = make_editor(BASE_YAML + "  state-0:\n    ui-label: Pre-existing\n    contextual-prompt: x\n")
         payload = editor.add_state()
         assert payload["key"] == "state-1"
 
     def test_ui_label_collision_gets_a_numeric_suffix(self):
-        editor = _editor()
+        editor = make_editor()
         editor.add_state()  # "New State"
         second = editor.add_state()
         assert second["ui_label"] == "New State 2"
 
     def test_result_still_builds_and_is_reachable(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.add_state()
         text = editor.serialize()
 
-        automaton = _builds(text)
+        automaton = builds(text)
         assert payload["key"] in automaton.states
 
 
 class TestAddSignal:
     def test_name_is_derived_from_the_generated_ui_label(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.add_signal()
 
         assert payload["ui_label"] == "New Signal"
@@ -109,22 +67,22 @@ class TestAddSignal:
         assert payload["error"] is None
 
     def test_ui_label_and_name_collisions_both_get_suffixed(self):
-        editor = _editor()
+        editor = make_editor()
         editor.add_signal()  # "New Signal" / new_signal
         second = editor.add_signal()
         assert second["ui_label"] == "New Signal 2"
         assert second["name"] == "new_signal_2"
 
-    def test_result_still_builds(self):
-        editor = _editor()
+    def test_result_stillbuilds(self):
+        editor = make_editor()
         payload = editor.add_signal()
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         assert any(s.name == payload["name"] for s in automaton.signals)
 
 
 class TestAddAction:
     def test_generates_a_numbered_name_scoped_to_the_state(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.add_action("b")
 
         assert payload["name"] == "action-0"
@@ -136,76 +94,76 @@ class TestAddAction:
         assert payload["on-enter"] is None
 
     def test_numbering_is_scoped_to_the_state_not_the_project(self):
-        editor = _editor()
+        editor = make_editor()
         editor.add_action("a")  # state "a" already has go-b/go-c, no action-N yet -> action-0
         first_b = editor.add_action("b")
         assert first_b["name"] == "action-0"  # state "b" has its own independent counter
 
     def test_same_ui_label_allowed_in_a_different_state(self):
-        editor = _editor()
+        editor = make_editor()
         editor.add_action("b")  # "New Action"
         other_state = editor.add_action("c")
         assert other_state["ui_label"] == "New Action"  # no suffix — different state's own scope
 
     def test_ui_label_collision_within_the_same_state_gets_suffixed(self):
-        editor = _editor()
+        editor = make_editor()
         editor.add_action("b")
         second = editor.add_action("b")
         assert second["ui_label"] == "New Action 2"
 
-    def test_result_still_builds(self):
-        editor = _editor()
+    def test_result_stillbuilds(self):
+        editor = make_editor()
         payload = editor.add_action("b")
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         assert any(a.name == payload["name"] for a in automaton.states["b"].actions)
 
 
 class TestSetStateField:
     def test_ui_label_edit_never_touches_the_key(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.set_state_field("a", "ui-label", "Renamed A")
 
         assert payload["key"] == "a"
         assert payload["ui_label"] == "Renamed A"
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         assert "a" in automaton.states
         assert automaton.states["a"].ui_label == "Renamed A"
 
     def test_history_cutoff_edit(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.set_state_field("a", "history-cutoff", True)
-        assert _builds(editor.serialize()).states["a"].history_cutoff is True
+        assert builds(editor.serialize()).states["a"].history_cutoff is True
         # StatePayload doesn't carry history_cutoff — only confirm no error and a real State result.
         assert payload["key"] == "a"
 
     def test_contextual_prompt_edit(self):
-        editor = _editor()
+        editor = make_editor()
         editor.set_state_field("a", "contextual-prompt", "brand new prompt")
-        assert _builds(editor.serialize()).states["a"].contextual_prompt == "brand new prompt"
+        assert builds(editor.serialize()).states["a"].contextual_prompt == "brand new prompt"
 
     def test_ai_may_read_sources_edit(self):
-        editor = _editor(SOURCE_BASE_YAML)
+        editor = make_editor(SOURCE_BASE_YAML)
         editor.set_source_field("pino", "ai-definition", "One row per flight.")
         payload = editor.set_state_field("a", "ai-may-read-sources", ["pino"])
 
         assert payload["ai_may_read_sources"] == ["pino"]
         assert payload["ai_must_read_sources"] == []
         assert payload["ai_may_write_sources"] == []
-        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
+        automaton = builds(editor.serialize(), SOURCE_ARCHIVES)
         assert automaton.states["a"].ai_may_read_sources == ("pino",)
         assert automaton.states["a"].ai_must_read_sources == ()
 
     def test_ai_must_read_sources_edit(self):
-        editor = _editor(SOURCE_BASE_YAML)
+        editor = make_editor(SOURCE_BASE_YAML)
         editor.set_source_field("pino", "ai-definition", "One row per flight.")
         payload = editor.set_state_field("a", "ai-must-read-sources", ["pino"])
 
         assert payload["ai_must_read_sources"] == ["pino"]
-        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
+        automaton = builds(editor.serialize(), SOURCE_ARCHIVES)
         assert automaton.states["a"].ai_must_read_sources == ("pino",)
 
     def test_ai_may_write_sources_edit_round_trips_through_the_payload(self):
-        editor = _editor(SOURCE_BASE_YAML)
+        editor = make_editor(SOURCE_BASE_YAML)
         payload = editor.set_state_field("a", "ai-may-write-sources", ["pino"])
 
         assert payload["ai_may_write_sources"] == ["pino"]
@@ -214,63 +172,63 @@ class TestSetStateField:
 
 class TestSetActionField:
     def test_ui_label_edit_never_touches_the_name(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.set_action_field("a", "go-b", "ui-label", "Renamed")
 
         assert payload["name"] == "go-b"
         assert payload["ui_label"] == "Renamed"
 
     def test_target_edit(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.set_action_field("a", "go-b", "target", "c")
         assert payload["target"] == "c"
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         action = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         assert action.target == "c"
 
     def test_on_enter_edit(self):
-        editor = _editor()
+        editor = make_editor()
         editor.set_action_field("a", "go-b", "on-enter", "actuator.celebrate()")
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         action = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         assert action.on_enter == "actuator.celebrate()"
 
     def test_ui_description_edit(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.set_action_field("a", "go-b", "ui-description", "Goes to B.")
         assert payload["ui_description"] == "Goes to B."
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         action = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         assert action.ui_description == "Goes to B."
 
     def test_trigger_edit(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.set_action_field("a", "go-c", "trigger", "signal.foo < 10")
         assert payload["has_trigger"] is True
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         action = next(a for a in automaton.states["a"].actions if a.name == "go-c")
         assert action.trigger == "signal.foo < 10"
 
     def test_clearing_trigger_removes_the_key_instead_of_storing_an_empty_string(self):
-        editor = _editor()  # go-b already has "trigger: signal.foo >= 50"
+        editor = make_editor()  # go-b already has "trigger: signal.foo >= 50"
         payload = editor.set_action_field("a", "go-b", "trigger", "")
         assert payload["has_trigger"] is False
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         action = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         assert action.trigger is None
 
     def test_env_edit(self):
-        editor = _editor(BASE_YAML + "env:\n  counter: {}\n")
+        editor = make_editor(BASE_YAML + "env:\n  counter: {}\n")
         editor.set_action_field("a", "go-b", "env", {"counter": "1"})
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         action = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         assert action.env == {"counter": "1"}
 
     def test_clearing_env_removes_the_key_instead_of_storing_an_empty_mapping(self):
-        editor = _editor(BASE_YAML + "env:\n  counter: {}\n")
+        editor = make_editor(BASE_YAML + "env:\n  counter: {}\n")
         editor.set_action_field("a", "go-b", "env", {"counter": "1"})
         editor.set_action_field("a", "go-b", "env", {})
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         action = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         assert action.env is None
 
@@ -280,15 +238,15 @@ class TestSetInitActionField:
     as TestSetActionField above, built off the same _action_payload_from_raw."""
 
     def test_ui_description_edit(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.set_init_action_field("ui-description", "Where every session begins.")
         assert payload["name"] == "init-action"
         assert payload["ui_description"] == "Where every session begins."
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         assert automaton.init_action.ui_description == "Where every session begins."
 
     def test_ui_button_falls_back_to_ui_label_like_a_real_action_does(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.set_init_action_field("ui-label", "Begin")
         assert payload["ui_button"] == "Begin"
 
@@ -297,66 +255,66 @@ class TestSetInitActionField:
         'trigger' for the init-action — a stray key left in the YAML
         (however it got there) must never make has_trigger lie about that."""
         stray_trigger_yaml = BASE_YAML.replace("init-action:\n  target: a\n", "init-action:\n  target: a\n  trigger: 'True'\n")
-        editor = _editor(stray_trigger_yaml)
+        editor = make_editor(stray_trigger_yaml)
         payload = editor.set_init_action_field("ui-label", "Begin")
         assert payload["has_trigger"] is False
 
 
 class TestSetSignalField:
     def test_non_ui_label_field_is_a_plain_edit(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.set_signal_field("foo", "definition", "new definition")
         assert payload["name"] == "foo"
         assert payload["definition"] == "new definition"
 
     def test_ui_label_edit_that_does_not_change_the_derived_name_stays_in_place(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.set_signal_field("foo", "ui-label", "FOO")  # snake_case("FOO") == "foo"
         assert payload["name"] == "foo"
         assert payload["ui_label"] == "FOO"
 
     def test_ui_label_edit_that_changes_the_derived_name_renames_the_signal(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.set_signal_field("foo", "ui-label", "Risk Level")
         assert payload["name"] == "risk_level"
         assert payload["ui_label"] == "Risk Level"
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         assert "risk_level" in {s.name for s in automaton.signals}
         assert "foo" not in {s.name for s in automaton.signals}
 
 
 class TestRenameSignal:
     def test_renames_the_key_and_returns_the_updated_payload(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.rename_signal("foo", "danger")
         assert payload["name"] == "danger"
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         assert {s.name for s in automaton.signals} == {"danger", "bar"}
 
     def test_collision_with_an_existing_signal_name_gets_suffixed(self):
-        editor = _editor()
+        editor = make_editor()
         payload = editor.rename_signal("foo", "bar")
         assert payload["name"] == "bar_2"
 
     def test_preserves_the_other_signals_own_order(self):
-        editor = _editor()
+        editor = make_editor()
         editor.rename_signal("foo", "danger")
         names = list(editor._raw["signals"].keys())
         assert names == ["danger", "bar"]
 
     def test_rewrites_every_trigger_referencing_the_old_name_via_ast_not_text(self):
-        editor = _editor()
+        editor = make_editor()
         editor.rename_signal("foo", "danger")
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
         assert go_b.trigger == "signal.danger >= 50"
         assert go_c.trigger == "signal.danger >= 50 and signal.bar >= 50"
 
     def test_a_trigger_not_referencing_the_signal_is_left_untouched(self):
-        editor = _editor()
+        editor = make_editor()
         editor.rename_signal("foo", "danger")
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         # go-c's own "signal.bar >= 50" clause survives unchanged (bar was never renamed).
         go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
         assert "signal.bar >= 50" in go_c.trigger
@@ -364,14 +322,14 @@ class TestRenameSignal:
 
 class TestDeleteState:
     def test_removes_the_state(self):
-        editor = _editor()
+        editor = make_editor()
         editor.delete_state("c")
         assert "c" not in editor._raw["states"]
 
     def test_removes_incoming_actions_from_other_states(self):
-        editor = _editor()
+        editor = make_editor()
         editor.delete_state("c")
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         action_names = {a.name for a in automaton.states["a"].actions}
         assert "go-c" not in action_names
         assert "go-b" in action_names
@@ -379,7 +337,7 @@ class TestDeleteState:
     def test_outgoing_actions_vanish_along_with_the_state_itself(self):
         # State "a" owns go-b/go-c — deleting "a" removes them implicitly,
         # not via any special-cased cascade of its own.
-        editor = _editor("""\
+        editor = make_editor("""\
 project:
   id: proj
 init-action:
@@ -396,11 +354,11 @@ states:
     contextual-prompt: there
 """)
         editor.delete_state("a")
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         assert "a" not in automaton.states
 
     def test_refuses_to_delete_the_init_actions_own_target(self):
-        editor = _editor()
+        editor = make_editor()
         with pytest.raises(InitActionTargetError):
             editor.delete_state("a")
         # Left untouched.
@@ -409,9 +367,9 @@ states:
 
 class TestDeleteAction:
     def test_removes_only_that_action_no_cascade(self):
-        editor = _editor()
+        editor = make_editor()
         editor.delete_action("a", "go-b")
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         action_names = {a.name for a in automaton.states["a"].actions}
         assert action_names == {"go-c"}
         assert "b" in automaton.states  # state "b" itself untouched
@@ -419,27 +377,27 @@ class TestDeleteAction:
 
 class TestDeleteSignal:
     def test_removes_the_signal_itself(self):
-        editor = _editor()
+        editor = make_editor()
         editor.delete_signal("bar")
         assert "bar" not in editor._raw["signals"]
 
     def test_bool_op_drops_just_the_referencing_operand_when_others_survive(self):
-        editor = _editor()
+        editor = make_editor()
         editor.delete_signal("bar")
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
         # "signal.foo >= 50 and signal.bar >= 50" loses only its own "signal.bar >= 50" operand.
         assert go_c.trigger == "signal.foo >= 50"
 
     def test_a_lone_non_bool_op_trigger_is_removed_entirely_when_it_references_the_signal(self):
-        editor = _editor()
+        editor = make_editor()
         editor.delete_signal("foo")
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         assert go_b.trigger is None  # action survives, now manual-only
 
     def test_a_trigger_not_referencing_the_deleted_signal_is_untouched(self):
-        editor = _editor("""\
+        editor = make_editor("""\
 project:
   id: proj
 init-action:
@@ -464,12 +422,12 @@ states:
     contextual-prompt: there
 """)
         editor.delete_signal("foo")
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         assert go_b.trigger == "signal.bar >= 50"
 
     def test_all_operands_referencing_the_signal_empties_the_trigger_field(self):
-        editor = _editor("""\
+        editor = make_editor("""\
 project:
   id: proj
 init-action:
@@ -491,7 +449,7 @@ states:
     contextual-prompt: there
 """)
         editor.delete_signal("foo")
-        automaton = _builds(editor.serialize())
+        automaton = builds(editor.serialize())
         go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         assert go_b.trigger is None
 
@@ -525,307 +483,3 @@ states:
     ui-label: State C
     contextual-prompt: elsewhere
 """
-
-
-class TestAddEnvKey:
-    def test_generates_a_unique_valid_identifier_name(self):
-        editor = _editor()
-        payload = editor.add_env_key()
-
-        assert payload["name"] == "new_env_key"
-        assert payload["ui_description"] is None
-        assert payload["value"] == ""
-
-    def test_name_collisions_get_suffixed(self):
-        editor = _editor()
-        editor.add_env_key()  # new_env_key
-        second = editor.add_env_key()
-        assert second["name"] == "new_env_key_2"
-
-    def test_result_still_builds(self):
-        editor = _editor()
-        payload = editor.add_env_key()
-        automaton = _builds(editor.serialize())
-        assert any(e.name == payload["name"] for e in automaton.env_keys)
-
-
-class TestSetEnvKeyField:
-    def test_non_name_field_is_a_plain_edit(self):
-        editor = _editor(ENV_BASE_YAML)
-        payload = editor.set_env_key_field("visits", "ui-description", "Updated description")
-        assert payload["name"] == "visits"
-        assert payload["ui_description"] == "Updated description"
-
-    def test_value_field_is_a_plain_edit(self):
-        editor = _editor(ENV_BASE_YAML)
-        payload = editor.set_env_key_field("score", "value", "0")
-        assert payload["value"] == "0"
-
-    def test_name_edit_that_does_not_change_the_sanitized_name_stays_in_place(self):
-        editor = _editor(ENV_BASE_YAML)
-        payload = editor.set_env_key_field("visits", "name", "visits")  # to_snake_case("visits") == "visits"
-        assert payload["name"] == "visits"
-
-    def test_name_edit_that_changes_the_sanitized_name_renames_the_key(self):
-        editor = _editor(ENV_BASE_YAML)
-        payload = editor.set_env_key_field("visits", "name", "Visit Count")
-        assert payload["name"] == "visit_count"
-        automaton = _builds(editor.serialize())
-        assert "visit_count" in {e.name for e in automaton.env_keys}
-        assert "visits" not in {e.name for e in automaton.env_keys}
-
-
-class TestRenameEnvKey:
-    def test_renames_the_key_and_returns_the_updated_payload(self):
-        editor = _editor(ENV_BASE_YAML)
-        payload = editor.rename_env_key("visits", "visit_count")
-        assert payload["name"] == "visit_count"
-        automaton = _builds(editor.serialize())
-        assert {e.name for e in automaton.env_keys} == {"visit_count", "score"}
-
-    def test_collision_with_an_existing_env_key_name_gets_suffixed(self):
-        editor = _editor(ENV_BASE_YAML)
-        payload = editor.rename_env_key("visits", "score")
-        assert payload["name"] == "score_2"
-
-    def test_preserves_the_other_env_keys_own_order(self):
-        editor = _editor(ENV_BASE_YAML)
-        editor.rename_env_key("visits", "visit_count")
-        names = list(editor._raw["env"].keys())
-        assert names == ["visit_count", "score"]
-
-    def test_rewrites_every_trigger_referencing_the_old_name_via_ast_not_text(self):
-        editor = _editor(ENV_BASE_YAML)
-        editor.rename_env_key("visits", "visit_count")
-        automaton = _builds(editor.serialize())
-        go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
-        go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
-        assert go_b.trigger == "env.visit_count >= 1"
-        assert go_c.trigger == "env.visit_count >= 1 and env.score >= 50"
-
-    def test_a_trigger_not_referencing_the_env_key_is_left_untouched(self):
-        editor = _editor(ENV_BASE_YAML)
-        editor.rename_env_key("visits", "visit_count")
-        automaton = _builds(editor.serialize())
-        go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
-        assert "env.score >= 50" in go_c.trigger
-
-
-class TestDeleteEnvKey:
-    def test_removes_the_env_key_itself(self):
-        editor = _editor(ENV_BASE_YAML)
-        editor.delete_env_key("score")
-        assert "score" not in editor._raw["env"]
-
-    def test_bool_op_drops_just_the_referencing_operand_when_others_survive(self):
-        editor = _editor(ENV_BASE_YAML)
-        editor.delete_env_key("score")
-        automaton = _builds(editor.serialize())
-        go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
-        assert go_c.trigger == "env.visits >= 1"
-
-    def test_a_lone_non_bool_op_trigger_is_removed_entirely_when_it_references_the_env_key(self):
-        editor = _editor(ENV_BASE_YAML)
-        editor.delete_env_key("visits")
-        automaton = _builds(editor.serialize())
-        go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
-        assert go_b.trigger is None  # action survives, now manual-only
-
-
-SOURCE_BASE_YAML = """\
-project:
-  id: proj
-init-action:
-  target: a
-sources:
-  pino:
-    ui-label: Flights
-    url: avance:flights.csv
-  cities:
-    ui-label: Cities
-    url: avance:cities.csv
-states:
-  a:
-    ui-label: State A
-    contextual-prompt: hi
-    actions:
-      - name: go-b
-        ui-label: Go to B
-        target: b
-        trigger: source.pino.select('x') != 'nope'
-      - name: go-c
-        ui-label: Go to C
-        target: c
-        trigger: source.pino.select('x') != 'nope' and source.cities.select('x') != 'nope'
-  b:
-    ui-label: State B
-    contextual-prompt: there
-  c:
-    ui-label: State C
-    contextual-prompt: elsewhere
-"""
-
-SOURCE_ARCHIVES = {"flights.csv": "a,b\n1,2\n", "cities.csv": "city\nParis\n"}
-
-
-class TestAddSource:
-    def test_generates_a_unique_valid_identifier_name(self):
-        editor = _editor()
-        payload = editor.add_source()
-
-        assert payload["name"] == "behaviour"
-        assert payload["ui_label"] == "behaviour"
-        assert payload["ui_description"] is None
-        assert payload["url"] == ""
-
-    def test_name_collisions_get_suffixed(self):
-        editor = _editor()
-        editor.add_source()  # behaviour
-        second = editor.add_source()
-        assert second["name"] == "behaviour1"
-        third = editor.add_source()
-        assert third["name"] == "behaviour2"
-
-    def test_result_still_builds(self):
-        editor = _editor()
-        payload = editor.add_source()
-        automaton = _builds(editor.serialize())
-        assert any(s.name == payload["name"] for s in automaton.sources)
-
-
-class TestSetSourceField:
-    def test_non_name_field_is_a_plain_edit(self):
-        editor = _editor(SOURCE_BASE_YAML)
-        payload = editor.set_source_field("pino", "ui-description", "Updated description")
-        assert payload["name"] == "pino"
-        assert payload["ui_description"] == "Updated description"
-
-    def test_url_field_is_a_plain_edit(self):
-        editor = _editor(SOURCE_BASE_YAML)
-        payload = editor.set_source_field("cities", "url", "avance:flights.csv")
-        assert payload["url"] == "avance:flights.csv"
-
-    def test_ai_definition_field_is_a_plain_edit(self):
-        editor = _editor(SOURCE_BASE_YAML)
-        payload = editor.set_source_field("pino", "ai-definition", "One row per flight.")
-        assert payload["ai_definition"] == "One row per flight."
-        assert payload["ui_description"] is None
-        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
-        assert next(s for s in automaton.sources if s.name == "pino").ai_definition == "One row per flight."
-
-    def test_name_edit_that_does_not_change_the_sanitized_name_stays_in_place(self):
-        editor = _editor(SOURCE_BASE_YAML)
-        payload = editor.set_source_field("pino", "name", "pino")
-        assert payload["name"] == "pino"
-
-    def test_name_edit_that_changes_the_sanitized_name_renames_the_source(self):
-        editor = _editor(SOURCE_BASE_YAML)
-        payload = editor.set_source_field("pino", "name", "Flight Records")
-        assert payload["name"] == "flight_records"
-        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
-        assert "flight_records" in {s.name for s in automaton.sources}
-        assert "pino" not in {s.name for s in automaton.sources}
-
-
-class TestRenameSource:
-    def test_renames_the_source_and_returns_the_updated_payload(self):
-        editor = _editor(SOURCE_BASE_YAML)
-        payload = editor.rename_source("pino", "flight_records")
-        assert payload["name"] == "flight_records"
-        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
-        assert {s.name for s in automaton.sources} == {"flight_records", "cities"}
-
-    def test_collision_with_an_existing_source_name_gets_suffixed(self):
-        editor = _editor(SOURCE_BASE_YAML)
-        payload = editor.rename_source("pino", "cities")
-        assert payload["name"] == "cities_2"
-
-    def test_preserves_the_other_sources_own_order(self):
-        editor = _editor(SOURCE_BASE_YAML)
-        editor.rename_source("pino", "flight_records")
-        names = list(editor._raw["sources"].keys())
-        assert names == ["flight_records", "cities"]
-
-    def test_rewrites_every_trigger_referencing_the_old_name_via_ast_not_text(self):
-        editor = _editor(SOURCE_BASE_YAML)
-        editor.rename_source("pino", "flight_records")
-        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
-        go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
-        go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
-        assert go_b.trigger == "source.flight_records.select('x') != 'nope'"
-        assert go_c.trigger == "source.flight_records.select('x') != 'nope' and source.cities.select('x') != 'nope'"
-
-    def test_a_trigger_not_referencing_the_source_is_left_untouched(self):
-        editor = _editor(SOURCE_BASE_YAML)
-        editor.rename_source("pino", "flight_records")
-        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
-        go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
-        assert "source.cities.select('x') != 'nope'" in go_c.trigger
-
-
-class TestDeleteSource:
-    def test_removes_the_source_itself(self):
-        editor = _editor(SOURCE_BASE_YAML)
-        editor.delete_source("cities")
-        assert "cities" not in editor._raw["sources"]
-
-    def test_bool_op_drops_just_the_referencing_operand_when_others_survive(self):
-        editor = _editor(SOURCE_BASE_YAML)
-        editor.delete_source("cities")
-        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
-        go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
-        assert go_c.trigger == "source.pino.select('x') != 'nope'"
-
-    def test_a_lone_non_bool_op_trigger_is_removed_entirely_when_it_references_the_source(self):
-        editor = _editor(SOURCE_BASE_YAML)
-        editor.delete_source("pino")
-        automaton = _builds(editor.serialize(), SOURCE_ARCHIVES)
-        go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
-        assert go_b.trigger is None  # action survives, now manual-only
-
-
-class TestReorderActions:
-    def test_moves_the_action_to_the_given_position(self):
-        editor = _editor()
-        payload = editor.reorder_actions("a", "go-c", 0)
-        assert [a["name"] for a in payload] == ["go-c", "go-b"]
-
-    def test_result_reflects_in_the_serialized_yaml(self):
-        editor = _editor()
-        editor.reorder_actions("a", "go-c", 0)
-        automaton = _builds(editor.serialize())
-        assert [a.name for a in automaton.states["a"].actions] == ["go-c", "go-b"]
-
-    def test_moving_to_its_own_current_position_is_a_noop(self):
-        editor = _editor()
-        payload = editor.reorder_actions("a", "go-b", 0)
-        assert [a["name"] for a in payload] == ["go-b", "go-c"]
-
-    def test_unknown_action_name_raises(self):
-        editor = _editor()
-        with pytest.raises(ValueError):
-            editor.reorder_actions("a", "does-not-exist", 0)
-
-    def test_out_of_range_position_raises(self):
-        editor = _editor()
-        with pytest.raises(ValueError):
-            editor.reorder_actions("a", "go-b", 5)
-        with pytest.raises(ValueError):
-            editor.reorder_actions("a", "go-b", -1)
-
-
-class TestSerializeRoundTrip:
-    def test_untouched_document_serializes_back_unchanged(self):
-        editor = _editor()
-        assert editor.serialize() == BASE_YAML
-
-    def test_a_single_field_edit_leaves_everything_else_byte_identical(self):
-        editor = _editor()
-        editor.set_state_field("b", "ui-label", "Renamed B")
-        result = editor.serialize()
-        # Every other line survives untouched — only "State B" -> "Renamed B" differs.
-        before_lines = BASE_YAML.splitlines()
-        after_lines = result.splitlines()
-        assert len(before_lines) == len(after_lines)
-        diffs = [i for i, (a, b) in enumerate(zip(before_lines, after_lines)) if a != b]
-        assert diffs == [before_lines.index("  b:") + 1]

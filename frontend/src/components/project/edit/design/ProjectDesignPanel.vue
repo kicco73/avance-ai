@@ -9,6 +9,7 @@ import IndexYmlEditorPanel from './IndexYmlEditorPanel.vue'
 import IndexCssEditorPanel from './IndexCssEditorPanel.vue'
 import MdEditorPanel from './MdEditorPanel.vue'
 import SourceContentPanel from './SourceContentPanel.vue'
+import AutomatonVariablesPanel from './AutomatonVariablesPanel.vue'
 import { projectFileContentUrl } from '../../../../api.js'
 
 const IMAGE_PATTERN = /\.(png|jpe?g|gif|webp|svg)$/i
@@ -58,14 +59,22 @@ const currentSourceArchiveName = computed(() => (
   props.currentSourceName ? `sources/${props.currentSourceName}.csv` : null
 ))
 
+// An avance:env source has no archive of its own (see
+// AutomatonVariablesPanel.vue's own docstring) — SourceContentPanel's CSV
+// editor makes no sense for it, so this picks that panel instead.
+const currentSourceIsEnv = computed(() => {
+  const entry = props.sources.find((s) => s.source.name === props.currentSourceName)
+  return entry?.source.url === 'avance:env'
+})
+
 // Gates every "real file" view below — true only when neither a source
 // nor the Sources root itself is the current selection.
 const noSourceSelection = computed(() => !props.currentSourceName && !props.sourcesRootSelected)
 
 const emit = defineEmits([
-  'start-explorer-drag', 'new-attachment', 'new-aspect', 'new-legal', 'new-source',
+  'start-explorer-drag', 'new-attachment', 'new-aspect', 'new-legal', 'new-source', 'new-env-source',
   'select-file', 'select-source', 'select-sources-root', 'upload-file',
-  'jump-to-definition', 'select', 'saved', 'renamed'
+  'jump-to-definition', 'select', 'saved', 'renamed', 'switch-to-env-keys'
 ])
 
 // The Behavior branch's own attachments — index.yml's code segment offers
@@ -106,6 +115,7 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
       @new-aspect="emit('new-aspect')"
       @new-legal="emit('new-legal')"
       @new-source="emit('new-source')"
+      @new-env-source="emit('new-env-source')"
       @select-file="emit('select-file', $event)"
       @select-source="emit('select-source', $event)"
       @select-sources-root="emit('select-sources-root')"
@@ -123,8 +133,14 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
           </span>
           <p>Select a source, or add one.</p>
         </div>
+        <AutomatonVariablesPanel
+          v-if="currentSourceName && currentSourceIsEnv"
+          :key="currentSourceName"
+          :project-id="projectId"
+          @switch-to-env-keys="emit('switch-to-env-keys')"
+        />
         <SourceContentPanel
-          v-if="currentSourceName"
+          v-else-if="currentSourceName"
           :key="currentSourceName"
           ref="sourceContentPanelRef"
           :project-id="projectId"

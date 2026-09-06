@@ -8,7 +8,6 @@ vi.mock('../src/api.js', () => ({
   getAggregateResult: vi.fn(),
   getTests: vi.fn(),
   getTestStatus: vi.fn(),
-  getJobsStatus: vi.fn(),
   postTest: vi.fn(),
   postRootAggregation: vi.fn(),
   postSessionsRun: vi.fn(),
@@ -27,7 +26,7 @@ vi.mock('../src/chatClient.js', () => ({
 }))
 
 import {
-  deleteAllTestJobs, deleteTestJob, deleteTests, getAggregateResult, getTests, getTestStatus, getJobsStatus,
+  deleteAllTestJobs, deleteTestJob, deleteTests, getAggregateResult, getTests, getTestStatus,
   postTest, postRootAggregation, postSessionsRun, postSignalTest, postSignalsAggregation,
   postStateTest, postStatesAggregation, postUserSessionsRun, postUsersAggregation,
 } from '../src/api.js'
@@ -49,7 +48,6 @@ describe('useTestExecutionTree', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getTestStatus.mockResolvedValue({ events: [] })
-    getJobsStatus.mockResolvedValue({ sessions: [], aggregates: [] })
     emit = vi.fn()
     strategy = ref('batch')
     sessions = ref([{ id: 1, title: 'My session' }])
@@ -58,6 +56,7 @@ describe('useTestExecutionTree', () => {
 
   afterEach(() => {
     unmount?.()
+    unmount = null
   })
 
   function mount() {
@@ -67,22 +66,21 @@ describe('useTestExecutionTree', () => {
   }
 
   describe('onMounted wiring', () => {
-    it('selects root and subscribes to live test updates before reading the snapshot', () => {
+    it('selects root, subscribes to live updates, seeds nodeEvents from the snapshot, unsubscribes on unmount', async () => {
+      getTestStatus.mockResolvedValue({
+        events: [{ key: 'batch:state:greeting', job_status: 'running', queue_status: 'running' }],
+      })
       const s = mount()
 
       expect(s.selectedNodeId.value).toBe('root')
       expect(emit).toHaveBeenCalledWith('select', 'root')
       expect(getTestStatus).toHaveBeenCalledWith('proj')
       expect(onTestUpdate).toHaveBeenCalledWith(s.handleTestEvent)
-    })
-
-    it('seeds nodeEvents from the snapshot returned by getTestStatus', async () => {
-      getTestStatus.mockResolvedValue({
-        events: [{ key: 'batch:state:greeting', job_status: 'running', queue_status: 'running' }],
-      })
-      const s = mount()
-
       await vi.waitFor(() => expect(s.currentStrategyStatuses.value['state:greeting']).toBe('running'))
+
+      unmount()
+      unmount = null
+      expect(onTestUpdate).toHaveBeenLastCalledWith(null)
     })
 
     it('a live update landing while the snapshot is still in flight is not overwritten by the (now stale) snapshot value for that key', async () => {
@@ -99,109 +97,44 @@ describe('useTestExecutionTree', () => {
 
       expect(s.currentStrategyStatuses.value['state:greeting']).toBe('ok')
     })
-
-    it('unsubscribes on unmount', () => {
-      const mounted = mountComposable(() => useTestExecutionTree('proj', strategy, sessions, projectSignals, emit))
-      mounted.unmount()
-      expect(onTestUpdate).toHaveBeenLastCalledWith(null)
-    })
   })
 
-  describe('currentStrategyStatuses / currentStrategyProgress', () => {
-    it('only surfaces events for the active strategy, keyed by bare nodeId', () => {
+  describe('currentStrategyStatuses / currentStrategyProgress / anyTestExecuted', () => {
+    it('surfaces only the active strategy, keyed by bare nodeId, mapping every job/queue status combination', () => {
       const s = mount()
+      expect(s.anyTestExecuted.value).toBe(false)
+
       s.handleTestEvent({ key: 'batch:state:a', job_status: 'running', queue_status: 'running', percentage: 40 })
       s.handleTestEvent({ key: 'turn_by_turn:state:a', job_status: 'completed', queue_status: 'exited' })
+      s.handleTestEvent({ key: 'batch:state:b', job_status: 'completed', queue_status: 'exited', error: 'partial' })
+      s.handleTestEvent({ key: 'batch:state:c', job_status: 'failed', queue_status: 'exited' })
+      s.handleTestEvent({ key: 'batch:state:d', job_status: 'aborted', queue_status: 'exited' })
+      s.handleTestEvent({ key: 'batch:state:e', job_status: 'pending', queue_status: 'ready' })
+      expect(s.currentStrategyStatuses.value['state:e']).toBe('pending')
+      s.handleTestEvent({ key: 'batch:state:e', job_status: 'requeued', queue_status: 'ready' })
 
-      // 'root' isn't in the map at all until a real event names it — its
-      // 'idle' default comes from rootStatus's own ?? fallback, not this map.
-      expect(s.currentStrategyStatuses.value).toEqual({ 'state:a': 'running' })
+      expect(s.currentStrategyStatuses.value).toEqual({
+        'state:a': 'running',
+        'state:b': 'warning',
+        'state:c': 'fail',
+        'state:d': 'aborted',
+        'state:e': 'requeued',
+      })
       expect(s.currentStrategyProgress.value).toEqual({ 'state:a': 40 })
-    })
-
-    it('an exited+failed job with an error message maps to "warning" only when completed, "fail" when failed', () => {
-      const s = mount()
-      s.handleTestEvent({ key: 'batch:state:a', job_status: 'completed', queue_status: 'exited', error: 'partial' })
-      s.handleTestEvent({ key: 'batch:state:b', job_status: 'failed', queue_status: 'exited' })
-      s.handleTestEvent({ key: 'batch:state:c', job_status: 'aborted', queue_status: 'exited' })
-
-      expect(s.currentStrategyStatuses.value['state:a']).toBe('warning')
-      expect(s.currentStrategyStatuses.value['state:b']).toBe('fail')
-      expect(s.currentStrategyStatuses.value['state:c']).toBe('aborted')
-    })
-
-    it('a pending/requeued job status is surfaced verbatim ahead of queue_status', () => {
-      const s = mount()
-      s.handleTestEvent({ key: 'batch:state:a', job_status: 'pending', queue_status: 'ready' })
-      expect(s.currentStrategyStatuses.value['state:a']).toBe('pending')
-
-      s.handleTestEvent({ key: 'batch:state:a', job_status: 'requeued', queue_status: 'ready' })
-      expect(s.currentStrategyStatuses.value['state:a']).toBe('requeued')
-    })
-  })
-
-  // rootStatus/rootBusy/rootButtonState/showCancelRoot/isHoveringRoot are
-  // gone from the composable — hover-to-cancel on the root button was
-  // replaced by an unconditional "busy click cancels everything" (see
-  // onActivateRoot below), driven directly off the generic
-  // currentStrategyBusy the template already reads (ProjectTestPanel.vue's
-  // own .tests-panel-root-btn-busy/-idle classes). Skipped rather than
-  // deleted so the removed feature stays visible in the test file's own history.
-  describe.skip('rootStatus / rootBusy / rootButtonState / showCancelRoot (removed — see currentStrategyBusy)', () => {
-    it('idle by default, busy while pending/ready/running/paused, "running" button state only while actually running', () => {
-      const s = mount()
-      expect(s.rootStatus.value).toBe('idle')
-
-      s.handleTestEvent({ key: 'batch:root', job_status: null, queue_status: 'ready' })
-      expect(s.rootBusy.value).toBe(true)
-      expect(s.rootButtonState.value).toBe('ready')
-
-      s.handleTestEvent({ key: 'batch:root', job_status: null, queue_status: 'running' })
-      expect(s.rootButtonState.value).toBe('running')
-    })
-
-    it('shows cancel only while hovering AND busy', () => {
-      const s = mount()
-      s.isHoveringRoot.value = true
-      expect(s.showCancelRoot.value).toBe(false) // idle, not busy
-
-      s.handleTestEvent({ key: 'batch:root', job_status: null, queue_status: 'running' })
-      expect(s.showCancelRoot.value).toBe(true)
-
-      s.isHoveringRoot.value = false
-      expect(s.showCancelRoot.value).toBe(false)
+      expect(s.anyTestExecuted.value).toBe(true)
     })
   })
 
   describe('handleTestEvent', () => {
-    it('tracks the running token total off any message that carries one', () => {
-      const s = mount()
-      s.handleTestEvent({ key: 'batch:root', job_status: 'running', queue_status: 'running', tokens: 1234 })
-      expect(s.tokensBurnt.value).toBe(1234)
-    })
-
-    it('a completed session event reloads the run only if that session is currently selected under the same strategy', async () => {
-      getTests.mockResolvedValue([{ strategy: 'batch', status: 'completed' }])
-      const s = mount()
-      await s.onSelect('session:1')
-      getTests.mockClear()
-
-      s.handleTestEvent({ key: 'batch:session:1', job_status: 'completed', queue_status: 'exited' })
-      await vi.waitFor(() => expect(getTests).toHaveBeenCalled())
-    })
-
-    it('a completed session event for a different strategy does not reload', () => {
-      const s = mount()
-      s.selectedNodeId.value = 'session:1' // strategy stays 'batch'
-
-      s.handleTestEvent({ key: 'turn_by_turn:session:1', job_status: 'completed', queue_status: 'exited' })
-
-      expect(getTests).not.toHaveBeenCalled()
-    })
-
-    it('a completed non-session, non-root event fetches its aggregate result', async () => {
+    it('tracks tokens off any message, and fetches an aggregate result only for completed non-root, non-session nodes', async () => {
       getAggregateResult.mockResolvedValue({ name: 'state_accuracy', value: 0.9 })
       const s = mount()
+
+      s.handleTestEvent({ key: 'batch:root', job_status: 'running', queue_status: 'running', tokens: 1234 })
+      expect(s.tokensBurnt.value).toBe(1234)
+      s.handleTestEvent({ key: 'batch:root', job_status: 'completed', queue_status: 'exited' })
+      s.handleTestEvent({ key: 'batch:state:greeting', job_status: 'running', queue_status: 'running' })
+      expect(getAggregateResult).not.toHaveBeenCalled()
 
       s.handleTestEvent({ key: 'batch:state:greeting', job_status: 'completed', queue_status: 'exited' })
 
@@ -209,37 +142,17 @@ describe('useTestExecutionTree', () => {
       expect(s.nodeLastResult.value['batch:state:greeting']).toEqual({ name: 'state_accuracy', value: 0.9 })
     })
 
-    it('root never fetches an aggregate result of its own', () => {
+    it('a completed session event reloads the run only if that session is selected under the same strategy', async () => {
+      getTests.mockResolvedValue([{ strategy: 'batch', status: 'completed' }])
       const s = mount()
-      s.handleTestEvent({ key: 'batch:root', job_status: 'completed', queue_status: 'exited' })
-      expect(getAggregateResult).not.toHaveBeenCalled()
-    })
+      await s.onSelect('session:1')
+      getTests.mockClear()
 
-    it('a still-running event never fetches a result', () => {
-      const s = mount()
-      s.handleTestEvent({ key: 'batch:state:greeting', job_status: 'running', queue_status: 'running' })
-      expect(getAggregateResult).not.toHaveBeenCalled()
-    })
-  })
+      s.handleTestEvent({ key: 'turn_by_turn:session:1', job_status: 'completed', queue_status: 'exited' })
+      expect(getTests).not.toHaveBeenCalled()
 
-  // hydrateJobsStatus/getJobsStatus don't exist any more — replaced by
-  // getTestStatus's one-shot snapshot + chatClient.js's onTestUpdate live
-  // subscription (see the 'onMounted wiring' describe above, already
-  // covering the new mechanism). Skipped rather than deleted so the
-  // removed function stays visible in the test file's own history.
-  describe.skip('hydrateJobsStatus (removed — see onMounted wiring / getTestStatus)', () => {
-    it('seeds completed sessions and aggregates, fetching results for the aggregates', async () => {
-      getJobsStatus.mockResolvedValue({
-        sessions: [{ session_id: 1, status: 'ok' }],
-        aggregates: [{ kind: 'state', target: 'greeting', status: 'ok' }, { kind: 'signal', target: 'mood', status: 'failed' }],
-      })
-      getAggregateResult.mockResolvedValue({ name: 'state_accuracy', value: 1 })
-      const s = mount()
-
-      await vi.waitFor(() => expect(s.currentStrategyStatuses.value['session:1']).toBe('ok'))
-      expect(s.currentStrategyStatuses.value['state:greeting']).toBe('ok')
-      expect(s.currentStrategyStatuses.value['signal:mood']).toBeUndefined() // only 'ok' aggregates are seeded
-      expect(getAggregateResult).toHaveBeenCalledWith('proj', 'state', 'greeting', 'batch')
+      s.handleTestEvent({ key: 'batch:session:1', job_status: 'completed', queue_status: 'exited' })
+      await vi.waitFor(() => expect(getTests).toHaveBeenCalled())
     })
   })
 
@@ -266,125 +179,97 @@ describe('useTestExecutionTree', () => {
       assertion()
     })
 
-    it('marks the node failed if the activation call rejects', async () => {
-      postStateTest.mockRejectedValue(new Error('boom'))
-      const s = mount()
-
-      await s.onActivate('state:greeting')
-
-      expect(s.currentStrategyStatuses.value['state:greeting']).toBe('fail')
-    })
-
-    it('every activation is pinned to the strategy active at launch time, even if it changes mid-flight', async () => {
+    it('pins each activation to the strategy active at launch time, and marks the node failed if the call rejects', async () => {
       let resolvePost
       postStateTest.mockReturnValue(new Promise((resolve) => { resolvePost = resolve }))
       const s = mount()
 
       const activation = s.onActivate('state:greeting')
-      strategy.value = 'turn_by_turn' // changes before the call resolves
+      strategy.value = 'turn_by_turn'
       resolvePost({})
       await activation
 
       expect(postStateTest).toHaveBeenCalledWith('proj', 'greeting', 'batch')
-      expect(s.currentStrategyStatuses.value['state:greeting']).toBeUndefined() // seeded under 'batch', we're reading 'turn_by_turn' now
+      expect(s.currentStrategyStatuses.value['state:greeting']).toBeUndefined()
+
+      postStateTest.mockRejectedValue(new Error('boom'))
+      await s.onActivate('state:greeting')
+
+      expect(postStateTest).toHaveBeenLastCalledWith('proj', 'greeting', 'turn_by_turn')
+      expect(s.currentStrategyStatuses.value['state:greeting']).toBe('fail')
     })
   })
 
   describe('onAbort / onActivateRoot', () => {
-    it('onAbort deletes the job under the node\'s own strategy-scoped key', async () => {
-      await mount().onAbort('state:greeting')
-      expect(deleteTestJob).toHaveBeenCalledWith('proj', 'batch:state:greeting')
-    })
-
-    it('onActivateRoot cancels every job when busy, no hover check any more', () => {
-      // Hover-to-cancel is gone (see the skipped rootStatus/... describe
-      // above) — a click while busy unconditionally cancels the whole
-      // batch via deleteAllTestJobs, never the single root job.
-      const s = mount()
-      s.handleTestEvent({ key: 'batch:root', job_status: null, queue_status: 'running' })
-
-      s.onActivateRoot()
-
-      expect(deleteAllTestJobs).toHaveBeenCalledWith('proj')
-      expect(postRootAggregation).not.toHaveBeenCalled()
-    })
-
-    it('onActivateRoot activates when idle', () => {
+    it('onActivateRoot activates when idle and cancels every job when busy; onAbort deletes the strategy-scoped job', async () => {
       postRootAggregation.mockResolvedValue({})
       const s = mount()
 
       s.onActivateRoot()
-
       expect(postRootAggregation).toHaveBeenCalledWith('proj', 'batch')
+
+      s.handleTestEvent({ key: 'batch:root', job_status: null, queue_status: 'running' })
+      s.onActivateRoot()
+      expect(deleteAllTestJobs).toHaveBeenCalledWith('proj')
+      expect(postRootAggregation).toHaveBeenCalledTimes(1)
+
+      await s.onAbort('state:greeting')
+      expect(deleteTestJob).toHaveBeenCalledWith('proj', 'batch:state:greeting')
     })
   })
 
   describe('onSelect / loadSelectedRun', () => {
-    it('a non-session node just selects and emits, without fetching a run', async () => {
-      const s = mount()
-      await s.onSelect('state:greeting')
-
-      expect(s.selectedNodeId.value).toBe('state:greeting')
-      expect(emit).toHaveBeenCalledWith('select', 'state:greeting')
-      expect(getTests).not.toHaveBeenCalled()
-    })
-
-    it('a session node fetches its runs, keeping only the active strategy\'s own', async () => {
+    it('only session nodes fetch runs, keeping the active strategy\'s own, and a strategy switch reloads them', async () => {
       getTests.mockResolvedValue([
         { strategy: 'turn_by_turn', status: 'completed' },
         { strategy: 'batch', status: 'completed', error: null },
       ])
       const s = mount()
 
-      await s.onSelect('session:1')
+      await s.onSelect('state:greeting')
+      expect(s.selectedNodeId.value).toBe('state:greeting')
+      expect(emit).toHaveBeenCalledWith('select', 'state:greeting')
+      expect(getTests).not.toHaveBeenCalled()
 
+      await s.onSelect('session:1')
       expect(s.selectedRun.value).toEqual({ strategy: 'batch', status: 'completed', error: null })
       expect(s.currentStrategyStatuses.value['session:1']).toBe('ok')
+
+      getTests.mockClear()
+      strategy.value = 'turn_by_turn'
+      await vi.waitFor(() => expect(getTests).toHaveBeenCalled())
     })
 
-    it('a pending/running run is not written into nodeEvents (SSE owns that)', async () => {
+    it('a pending/running run is not written into nodeEvents, and a failed fetch clears the selected run', async () => {
       getTests.mockResolvedValue([{ strategy: 'batch', status: 'running' }])
       const s = mount()
 
       await s.onSelect('session:1')
-
       expect(s.currentStrategyStatuses.value['session:1']).toBeUndefined()
-    })
 
-    it('a failed run fetch clears the selected run instead of throwing', async () => {
       getTests.mockRejectedValue(new Error('boom'))
-      const s = mount()
-
       await s.onSelect('session:1')
 
       expect(s.selectedRun.value).toBeNull()
       expect(s.selectedRunLoading.value).toBe(false)
     })
-
-    it('switching strategy reloads the currently-selected session run', async () => {
-      getTests.mockResolvedValue([{ strategy: 'batch', status: 'completed' }])
-      const s = mount()
-      await s.onSelect('session:1')
-      getTests.mockClear()
-      getTests.mockResolvedValue([{ strategy: 'turn_by_turn', status: 'completed' }])
-
-      strategy.value = 'turn_by_turn'
-
-      await vi.waitFor(() => expect(getTests).toHaveBeenCalled())
-    })
   })
 
   describe('onResetCache', () => {
-    it('batch strategy resets immediately, no confirmation needed', async () => {
+    it('batch strategy resets immediately and reloads the selected session run', async () => {
+      getTests.mockResolvedValue([{ strategy: 'batch', status: 'completed' }])
       deleteTests.mockResolvedValue()
       const s = mount()
+      await s.onSelect('session:1')
       s.handleTestEvent({ key: 'batch:root', job_status: 'completed', queue_status: 'exited' })
+      getTests.mockClear()
 
       await s.onResetCache()
 
       expect(confirmDialog).not.toHaveBeenCalled()
       expect(deleteTests).toHaveBeenCalledWith('proj')
-      expect(s.nodeEvents.value).toEqual({})
+      expect(getTests).toHaveBeenCalled()
+      expect(Object.keys(s.nodeEvents.value)).toEqual(['batch:session:1'])
       expect(s.nodeLastResult.value).toEqual({})
     })
 
@@ -396,18 +281,6 @@ describe('useTestExecutionTree', () => {
       await s.onResetCache()
 
       expect(deleteTests).not.toHaveBeenCalled()
-    })
-
-    it('reloads the selected run afterwards if a session is selected', async () => {
-      getTests.mockResolvedValue([{ strategy: 'batch', status: 'completed' }])
-      deleteTests.mockResolvedValue()
-      const s = mount()
-      await s.onSelect('session:1')
-      getTests.mockClear()
-
-      await s.onResetCache()
-
-      expect(getTests).toHaveBeenCalled()
     })
   })
 
@@ -432,12 +305,5 @@ describe('useTestExecutionTree', () => {
       s.selectedNodeId.value = 'signal:unknown'
       expect(s.selectedNodeLabel.value).toBe('unknown')
     })
-  })
-
-  it('anyTestExecuted reflects whether any node has ever produced an event', () => {
-    const s = mount()
-    expect(s.anyTestExecuted.value).toBe(false)
-    s.handleTestEvent({ key: 'batch:state:a', job_status: 'running', queue_status: 'running' })
-    expect(s.anyTestExecuted.value).toBe(true)
   })
 })
