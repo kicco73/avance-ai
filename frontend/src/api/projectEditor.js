@@ -312,6 +312,30 @@ export function deleteProjectEnvKey(projectId, envKeyName) {
   })
 }
 
+export function postAddOutputKey(projectId, stateKey) {
+  return projectFetch(
+    projectId,
+    `${API_URL}/projects/${encodeURIComponent(projectId)}/states/${encodeURIComponent(stateKey)}/output`,
+    { method: 'POST' }
+  )
+}
+
+export function putSetOutputKeyField(projectId, stateKey, outputKeyName, field, value) {
+  return projectFetch(
+    projectId,
+    `${API_URL}/projects/${encodeURIComponent(projectId)}/states/${encodeURIComponent(stateKey)}/output/${encodeURIComponent(outputKeyName)}/${encodeURIComponent(field)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
+  )
+}
+
+export function deleteOutputKey(projectId, stateKey, outputKeyName) {
+  return projectFetch(
+    projectId,
+    `${API_URL}/projects/${encodeURIComponent(projectId)}/states/${encodeURIComponent(stateKey)}/output/${encodeURIComponent(outputKeyName)}`,
+    { method: 'DELETE' }
+  )
+}
+
 export function deleteProjectSource(projectId, sourceName) {
   return projectFetch(projectId, `${API_URL}/projects/${encodeURIComponent(projectId)}/sources/${encodeURIComponent(sourceName)}`, {
     method: 'DELETE'

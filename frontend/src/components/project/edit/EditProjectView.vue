@@ -255,6 +255,7 @@ const {
   handleAddState, handleAddSignal, handleAddEnvKey, handleAddAction,
   handleSetStateField, handleSetProjectField, handleSetActionField, handleSetSignalField, handleSetEnvKeyField,
   handleDeleteState, handleDeleteAction, handleDeleteSignal, handleDeleteEnvKey,
+  handleAddOutputKey, handleSetOutputKeyField, handleDeleteOutputKey,
 } = useIndexYmlEditing(
   props.projectId, guardedAction, indexYmlEditorRef, jumpToDefinition, selectedGraphElement, selectedStateKey, flashRecentlyAdded
 )
@@ -607,9 +608,9 @@ onBeforeUnmount(() => {
                 :project-id="projectId"
                 :state-key="selectedStateKey"
                 :recently-added-key="recentlyAddedKey"
-                @set-field="handleSetSelectedElementField"
-                @add-output-key="handleAddOutputKey"
-                @delete="(name) => handleSetSelectedElementField('output', Object.fromEntries(selectedGraphElement.data.output_keys.filter(k => k.name !== name).map(k => [k.name, k])))"
+                @set-field="(name, field, value) => handleSetOutputKeyField(selectedStateKey, name, field, value)"
+                @add-output-key="() => handleAddOutputKey(selectedStateKey)"
+                @delete="(name) => handleDeleteOutputKey(selectedStateKey, name)"
               />
             </template>
             <template #tab-env-keys="{ registerTab }">

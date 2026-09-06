@@ -2,6 +2,7 @@ import {
   postAddState, postAddSignal, postAddEnvKey, postAddAction, putStateField, putProjectField,
   putActionField, putInitActionField, putSignalField, putEnvKeyField,
   deleteState, deleteProjectAction, deleteProjectSignal, deleteProjectEnvKey,
+  postAddOutputKey, putSetOutputKeyField, deleteOutputKey,
 } from '../api.js'
 
 // index.yml's own structural editing — add/edit/delete states, actions,
@@ -188,9 +189,41 @@ export function useIndexYmlEditing(
     })
   }
 
+  function handleAddOutputKey(stateKey) {
+    guardedAction('add a new output field', async () => {
+      try {
+        const outputKey = await postAddOutputKey(projectId, stateKey)
+        flashRecentlyAdded(`output-key:${stateKey}/${outputKey.name}`)
+      } catch {
+        // already surfaced via apiFetch
+      }
+    })
+  }
+
+  function handleSetOutputKeyField(stateKey, outputKeyName, field, value) {
+    guardedAction(`edit "${field}"`, async () => {
+      try {
+        await putSetOutputKeyField(projectId, stateKey, outputKeyName, field, value)
+      } catch {
+        // already surfaced via apiFetch
+      }
+    })
+  }
+
+  function handleDeleteOutputKey(stateKey, outputKeyName) {
+    guardedAction('delete this output field', async () => {
+      try {
+        await deleteOutputKey(projectId, stateKey, outputKeyName)
+      } catch {
+        // already surfaced via apiFetch
+      }
+    })
+  }
+
   return {
     handleAddState, handleAddSignal, handleAddEnvKey, handleAddAction,
     handleSetStateField, handleSetProjectField, handleSetActionField, handleSetSignalField, handleSetEnvKeyField,
     handleDeleteState, handleDeleteAction, handleDeleteSignal, handleDeleteEnvKey,
+    handleAddOutputKey, handleSetOutputKeyField, handleDeleteOutputKey,
   }
 }
