@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { renderMarkdown as renderMarkdownBase } from '../../markdown.js'
 import { toolTraceLine } from '../../toolTraceLine.js'
+import { csvToMarkdownTable } from '../../toolResultTable.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 import MessageReactionButton from './MessageReactionButton.vue'
 
@@ -215,7 +216,13 @@ const {
         <div v-if="message.role === 'assistant' && message.toolCalls?.length" class="tool-call-trace">
           <details v-for="(call, idx) in message.toolCalls" :key="idx" class="tool-call-entry">
             <summary>{{ toolTraceLine(call) }}</summary>
-            <pre class="tool-call-raw">{{ JSON.stringify({ arguments: call.arguments, result: call.result }, null, 2) }}</pre>
+            <pre class="tool-call-raw">{{ JSON.stringify({ arguments: call.arguments }, null, 2) }}</pre>
+            <div
+              v-if="csvToMarkdownTable(call.result)"
+              class="tool-call-result-table"
+              v-html="renderMarkdown(csvToMarkdownTable(call.result))"
+            ></div>
+            <pre v-else-if="call.result" class="tool-call-raw">{{ call.result }}</pre>
           </details>
         </div>
         <span
@@ -439,6 +446,20 @@ const {
   font-size: 0.68rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.tool-call-result-table {
+  margin-top: 0.3rem;
+  font-size: 0.68rem;
+}
+
+.tool-call-result-table :deep(.md-table-wrap) {
+  margin: 0;
+}
+
+.tool-call-result-table :deep(th),
+.tool-call-result-table :deep(td) {
+  padding: 0.2rem 0.35rem;
 }
 
 .tool-status-text {

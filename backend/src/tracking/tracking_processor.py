@@ -8,6 +8,7 @@ from chat.errors import ChatServiceError
 from db.db import Db
 from ai import AiService
 from ai import MetadataCallback, content_to_text
+from ai.ai_talker import AiTalker
 from automaton.automaton import Action, Automaton, State, StatePayload
 from logging_factory import LoggerFactory
 from session import Session
@@ -118,6 +119,7 @@ class TrackingProcessor(object):
 			  input_token_budget_per_turn: int | None = 16000,
 		):
 		self.ai_service = ai_service
+		self.assistant_talker = AiTalker(ai_service=ai_service)
 
 		self.env = env
 		self.db = db
@@ -295,7 +297,7 @@ class TrackingProcessor(object):
 		)
 		chat_history = self._build_chat_history(turn_attachments, remaining_history_budget)
 
-		return TurnProtocolUsingSchema(self.ai_service).generate_reply(
+		return self.assistant_talker.chat(
 			channels, chat_history, on_metadata,
 			tool_set=self.build_tool_set(state), force_required_tools=self.force_required_tools_for(state),
 			env_block=env_block.text() if env_block else None,

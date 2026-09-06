@@ -4,7 +4,6 @@ from automaton.automaton import State
 from logging_factory import LoggerFactory
 from session import Session
 from tracking.tracking_processor import OutVariables, TrackingProcessor
-from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 
 
 logger = LoggerFactory.get_logger(__name__)
@@ -103,7 +102,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			# evaluation, so this regeneration only ever requests audio/text/memory.
 			base_prompt, chat_history, env_block = self._build_base_prompt_and_history(self.out.state)
 			channels = self.build_regeneration_channels(self.out.state, base_prompt)
-			async for chunk in TurnProtocolUsingSchema(self.ai_service).generate_reply(
+			async for chunk in self.assistant_talker.chat(
 				channels, chat_history, on_metadata=self.on_receiving_metadata,
 				tool_set=self.build_tool_set(self.out.state),
 				force_required_tools=self.force_required_tools_for(self.out.state),

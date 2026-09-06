@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from ai.ai_talker import AiTalker
 from auth.auth_service import AuthService
 from chat.channels import WHATSAPP_CHAT
 from chat.chat_service import ChatService
@@ -140,12 +141,13 @@ class WhatsAppService(object):
         self._auth_service = auth_service
         self._talk_service = talk_service
         self._listen_service = listen_service
+        self._assistant_talker = AiTalker(talk_service=talk_service, listen_service=listen_service)
         self._client = client or WhatsAppCloudApiClient(
             config.access_token, config.phone_number_id, config.graph_version
         )
         self._seen = _SeenMessages()
         self._sender_locks: dict[str, asyncio.Lock] = {}
-        self._voice_notes = VoiceNoteSynthesizer(talk_service) if talk_service is not None else None
+        self._voice_notes = VoiceNoteSynthesizer(self._assistant_talker) if talk_service is not None else None
 
     async def close(self) -> None:
         if self._voice_notes is not None:
@@ -243,7 +245,7 @@ class WhatsAppService(object):
                 if self._listen_service is None:
                     logger.info(f"WhatsApp [{message.id}]: voice note from {message.sender} but no listen-service.")
                     return _notice(REPLY_UNSUPPORTED_AUDIO)
-                text = await self._transcribe(message, message.audio_id, self._listen_service)
+                text = await self._transcribe(message, message.audio_id)
                 if text is None:
                     return _notice(REPLY_AUDIO_NOT_UNDERSTOOD)
                 return (*await self._run_turn(text, spoken=True), True)
@@ -252,7 +254,7 @@ class WhatsAppService(object):
                 return _notice(REPLY_UNSUPPORTED)
             return (*await self._run_turn(text), False)
 
-    async def _transcribe(self, message: IncomingMessage, audio_id: str, listen_service: "ListenService") -> str | None:
+    async def _transcribe(self, message: IncomingMessage, audio_id: str) -> str | None:
         """Transcript of the voice note, or None when it couldn't be
         fetched/understood — the caller turns that into a notice, never
         a turn with an empty user message."""
@@ -260,7 +262,7 @@ class WhatsAppService(object):
 
         try:
             audio, mime_type = await self._client.download_media(audio_id)
-            transcript = (await listen_service.transcribe(audio)).strip()
+            transcript = (await self._assistant_talker.listen(audio)).strip()
         except httpx.HTTPError as exc:
             logger.warning(f"WhatsApp [{message.id}]: media download failed: {exc}")
             return None
@@ -605,12 +607,12 @@ class VoiceNoteSynthesizer(object):
     ahead of the reply's own text, signals and env — so by the time the
     turn is over and the note is actually wanted, it's already encoded
     (or well on its way). The synthesis and the encoding are one pass:
-    every WAV piece TalkService yields goes straight into the encoder."""
+    every WAV piece the AiTalker's talk() yields goes straight into the encoder."""
 
     _MAX_PENDING = 16
 
-    def __init__(self, talk_service: "TalkService") -> None:
-        self._talk_service = talk_service
+    def __init__(self, ai_talker: AiTalker) -> None:
+        self._ai_talker = ai_talker
         self._pending: dict[str, asyncio.Task[bytes]] = {}
 
     def on_metadata(self, key: str, value) -> None:
@@ -637,7 +639,7 @@ class VoiceNoteSynthesizer(object):
         from whatsapp.audio import Mp3Encoder
 
         encoder = Mp3Encoder()
-        async for wav_piece in self._talk_service.generate(text):
+        async for wav_piece in self._ai_talker.talk(text):
             await asyncio.to_thread(encoder.push, wav_piece)
         return await asyncio.to_thread(encoder.finish)
 

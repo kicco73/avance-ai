@@ -12,6 +12,7 @@ from pathlib import Path
 from fastapi import HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
+from ai.ai_talker import AiTalker
 from chat.chat_service import ChatService
 from listen.listen_service import ListenService, ListenServiceError, ListenServiceNotAvailableError
 from project.project_service import ProjectService
@@ -54,6 +55,7 @@ class ChatController(BaseController):
         self.project_service = project_service
         self.talk_service = talk_service
         self.listen_service = listen_service
+        self.assistant_talker = AiTalker(talk_service=talk_service, listen_service=listen_service)
 
     @get("/api/docs/{name}")
     def get_doc(self, name: str):
@@ -297,7 +299,7 @@ class ChatController(BaseController):
         if self.talk_service is None:
             raise TalkServiceNotAvailableError("Talk service is not available")
 
-        generation = self.talk_service.generate(audio_text)
+        generation = self.assistant_talker.talk(audio_text)
         try:
             async for chunk in generation:
                 if await request.is_disconnected():
@@ -318,7 +320,7 @@ class ChatController(BaseController):
             )
         audio_bytes = await file.read()
         try:
-            text = await self.listen_service.transcribe(audio_bytes)
+            text = await self.assistant_talker.listen(audio_bytes)
         except ListenServiceError as exc:
             raise HTTPException(status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(exc)) from exc
         return {"text": text}
