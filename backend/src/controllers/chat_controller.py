@@ -81,6 +81,13 @@ class ChatController(BaseController):
         section each value belongs in (only "stored" is editable)."""
         return self.chat_service.get_env(session_id, message_id)
 
+    @get("/api/chat/sessions/{session_id}/output")
+    def get_output(self, session_id: int, message_id: int | None = None):
+        """{"output": {...}} — the transient State.output_keys values
+        produced by the turn linked to message_id (or, with none given,
+        the session's latest), for the Run Inspector's own Output card."""
+        return self.chat_service.get_output(session_id, message_id)
+
     @delete("/api/chat/sessions/{session_id}/env")
     def clear_env(self, session_id: int):
         """Wipes every stored and action-set env key at once for

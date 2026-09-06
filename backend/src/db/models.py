@@ -186,6 +186,12 @@ class Tracking(BaseModel):
     values = TextField(null=True)
     env = TextField(null=True)
     action_env = TextField(null=True)
+    # This turn's transient State.output_keys values (see automaton's own
+    # `output:` field) — kept here purely for observability (the Run
+    # Inspector's Output card, keyed off a selected chat message), never
+    # read back into a later turn's evaluation scope the way `values`
+    # (the signal snapshot) is.
+    output = TextField(null=True)
     # JSON list of {name, arguments, result} — one entry per tool call
     # the model made this turn (see ai.ai_service.AiService's own
     # tool-call loop), in the order they ran. Written as its own row,

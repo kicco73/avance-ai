@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
-import { clearEnv, deleteEnvValue, getEnv, putEnvValue } from '../../api.js'
+import { clearEnv, deleteEnvValue, getEnv, getOutput, putEnvValue } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 
 const props = defineProps({
@@ -20,6 +20,28 @@ const memory = ref({})
 const actionSet = ref({})
 const aiAccess = ref({})
 const isLive = computed(() => props.editable)
+
+// Output is a single turn's own transient snapshot (see Tracking.output),
+// unlike env which is cumulative — so it's keyed off the exact selected
+// chat line (untilMessageId), never merged with the env fetch above.
+const outputLoading = ref(false)
+const output = ref({})
+const outputEntries = computed(() => Object.entries(output.value))
+
+async function loadOutput() {
+  if (props.sessionId == null) {
+    output.value = {}
+    return
+  }
+  outputLoading.value = true
+  try {
+    output.value = (await getOutput(props.sessionId, props.untilMessageId ?? undefined)).output
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    outputLoading.value = false
+  }
+}
 
 // Memory entries are the model's own free-form notes — editable; env
 // (action-set) entries are the automaton's declared keys, written by an
@@ -117,7 +139,7 @@ async function clearAll() {
 // Always reloads regardless of whether this tab is active — cheap, and
 // values can change while this tab isn't the one showing.
 async function refresh() {
-  await loadEnv()
+  await Promise.all([loadEnv(), loadOutput()])
 }
 
 defineExpose({ loadEnv, refresh })
@@ -127,6 +149,21 @@ defineExpose({ loadEnv, refresh })
   <div class="inspector-env-section">
     <p v-if="envLoading" class="signals-status">Loading…</p>
     <template v-else>
+      <div class="inspector-signal-block">
+        <div class="inspector-signal-header">
+          <span class="inspector-detail-badge inspector-detail-badge-output">Output</span>
+          <span class="inspector-signal-name">Output</span>
+        </div>
+        <p v-if="outputLoading" class="inspector-env-empty">Loading…</p>
+        <p v-else-if="!outputEntries.length" class="inspector-env-empty">
+          {{ untilMessageId ? 'This turn produced no output.' : 'No output yet — select a chat line to inspect its turn.' }}
+        </p>
+        <div v-for="[key, value] in outputEntries" :key="key" class="inspector-env-row">
+          <strong class="inspector-env-key">{{ key }}:</strong>
+          <span class="inspector-env-value">{{ value === null ? '—' : value }}</span>
+        </div>
+      </div>
+
       <div class="inspector-signal-block">
         <div class="inspector-signal-header">
           <span class="inspector-detail-badge inspector-detail-badge-env-action">ENV</span>
@@ -203,6 +240,7 @@ defineExpose({ loadEnv, refresh })
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
 .inspector-detail-badge-env { background: #8a5a44; }
 .inspector-detail-badge-env-action { background: #3d6b52; }
+.inspector-detail-badge-output { background: #004d40; }
 .inspector-signal-name { font-weight: 600; font-size: 0.85rem; color: #333; }
 .inspector-detail-field { margin: 0 0 0.3rem; line-height: 1.4; font-size: 0.8rem; color: #444; word-break: break-word; }
 .inspector-env-empty { margin: 0; font-size: 0.8rem; color: #888; font-style: italic; }

@@ -25,6 +25,15 @@ export function getEnv(sessionId, messageId) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/env${query}`)
 }
 
+// This turn's transient State.output_keys values — {output: {...}}. Unlike
+// getEnv (cumulative across the whole session), output is a single turn's
+// own snapshot: `messageId` picks the one turn linked to that chat line;
+// omitted, the session's latest. Read-only — output is never edited here.
+export function getOutput(sessionId, messageId) {
+  const query = messageId != null ? `?message_id=${encodeURIComponent(messageId)}` : ''
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/output${query}`)
+}
+
 // Edits (or adds) one memory key — always current, there's no editing
 // history. Returns the same {memory, action_set, ai_access} shape as getEnv.
 export function putEnvValue(sessionId, key, value) {

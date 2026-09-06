@@ -16,8 +16,13 @@ logger = LoggerFactory.get_logger(__name__)
 
 class TrackingMixin:
 
-    def save_signal_snapshot(self, values: dict, session_id: int, message_id: int | None=None) -> int:
-        row = Tracking.create(session=session_id, values=json.dumps(values), message=message_id)
+    def save_signal_snapshot(
+        self, values: dict, session_id: int, message_id: int | None=None, output_values: dict | None = None,
+    ) -> int:
+        row = Tracking.create(
+            session=session_id, values=json.dumps(values), message=message_id,
+            output=json.dumps(output_values) if output_values else None,
+        )
         return row.id
 
     def get_latest_signal_snapshot(self, project_id: str) -> dict | None:
@@ -28,7 +33,7 @@ class TrackingMixin:
 
     def get_signals(self, session_id: int) -> list[dict]:
         rows = Tracking.select().where((Tracking.session == session_id) & Tracking.env.is_null(True) & Tracking.action_env.is_null(True) & Tracking.tool_calls.is_null(True)).order_by(Tracking.timestamp.asc(), Tracking.id.asc())
-        return [{'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id, 'origin': row.origin} for row in rows]
+        return [{'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'output': row.output, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id, 'origin': row.origin} for row in rows]
 
     def get_timeline(self, project_id: str, username: str) -> dict:
         rows = (
@@ -90,11 +95,15 @@ class TrackingMixin:
     def save_transition(
         self, old_state: str | None, action: str | None, new_state: str | None, session_id: int,
         transition_log_level: str, signal_values: dict | None=None, message_id: int | None=None,
-        origin: str | None=None,
+        origin: str | None=None, output_values: dict | None = None,
     ) -> int:
         if origin is not None and origin not in TRACKING_ORIGINS:
             raise ValueError(f"Unknown origin '{origin}' — expected one of {TRACKING_ORIGINS}.")
-        row = Tracking.create(session=session_id, old_state=old_state, action=action, new_state=new_state, values=json.dumps(signal_values) if signal_values is not None else None, message=message_id, origin=origin)
+        row = Tracking.create(
+            session=session_id, old_state=old_state, action=action, new_state=new_state,
+            values=json.dumps(signal_values) if signal_values is not None else None, message=message_id,
+            origin=origin, output=json.dumps(output_values) if output_values else None,
+        )
         trigger_type = 'auto' if signal_values is not None else 'manual'
         level = getattr(logging, transition_log_level)
         message = f'State transition: {old_state} -> {new_state} (action={action}, trigger={trigger_type})'
@@ -117,7 +126,7 @@ class TrackingMixin:
         )
         if row is None:
             return None
-        return {'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id, 'origin': row.origin}
+        return {'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'output': row.output, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id, 'origin': row.origin}
 
     def get_session_ids_with_expected_state(self, project_id: str, state_key: str) -> set[int]:
         rows = (

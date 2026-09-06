@@ -19,7 +19,9 @@ class TrackingSink(Protocol):
     transition — production writes to the real Db (see DbTrackingSink),
     while a test-replay sink can satisfy this independently."""
 
-    def save_signal_snapshot(self, values: dict, session_id: int, message_id: int | None = None) -> int:
+    def save_signal_snapshot(
+        self, values: dict, session_id: int, message_id: int | None = None, output_values: dict | None = None,
+    ) -> int:
         ...
 
     def save_transition(
@@ -32,6 +34,7 @@ class TrackingSink(Protocol):
         signal_values: dict | None = None,
         message_id: int | None = None,
         origin: str | None = None,
+        output_values: dict | None = None,
     ) -> int:
         ...
 
@@ -42,8 +45,10 @@ class DbTrackingSink:
     def __init__(self, db: Db) -> None:
         self._db = db
 
-    def save_signal_snapshot(self, values: dict, session_id: int, message_id: int | None = None) -> int:
-        return self._db.save_signal_snapshot(values, session_id, message_id)
+    def save_signal_snapshot(
+        self, values: dict, session_id: int, message_id: int | None = None, output_values: dict | None = None,
+    ) -> int:
+        return self._db.save_signal_snapshot(values, session_id, message_id, output_values=output_values)
 
     def save_transition(
         self,
@@ -55,6 +60,7 @@ class DbTrackingSink:
         signal_values: dict | None = None,
         message_id: int | None = None,
         origin: str | None = None,
+        output_values: dict | None = None,
     ) -> int:
         return self._db.save_transition(
             old_state, action, new_state, session_id,
@@ -62,6 +68,7 @@ class DbTrackingSink:
             signal_values=signal_values,
             message_id=message_id,
             origin=origin,
+            output_values=output_values,
         )
 
 
@@ -73,7 +80,12 @@ class TestObservationSink:
     def __init__(self, run_id: int) -> None:
         self._run_id = run_id
 
-    def save_signal_snapshot(self, values: dict, session_id: int, message_id: int | None = None) -> int:
+    def save_signal_snapshot(
+        self, values: dict, session_id: int, message_id: int | None = None, output_values: dict | None = None,
+    ) -> int:
+        # output_values: accepted only to satisfy TrackingSink's shared
+        # shape — TestObservation has no output column, a replay's own
+        # per-turn output is never worth keeping for observability.
         row = TestObservation.create(
             run=self._run_id, session=session_id, message=message_id, values=json.dumps(values),
         )
@@ -89,9 +101,11 @@ class TestObservationSink:
         signal_values: dict | None = None,
         message_id: int | None = None,
         origin: str | None = None,
+        output_values: dict | None = None,
     ) -> int:
-        # transition_log_level: received only to satisfy TrackingSink's
-        # shared shape — there's no production log to write for a replay.
+        # transition_log_level/output_values: received only to satisfy
+        # TrackingSink's shared shape — there's no production log to write
+        # for a replay, and TestObservation has no output column.
         row = TestObservation.create(
             run=self._run_id, session=session_id, message=message_id,
             old_state=old_state, action=action, new_state=new_state,
@@ -157,7 +171,7 @@ class TrackingEngine:
         if action is None:
             # No transition fired — just the evaluation itself is worth
             # keeping (see db.get_latest_signal_snapshot, Tracking.values).
-            return self._sink.save_signal_snapshot(signal_values, session_id, message_id)
+            return self._sink.save_signal_snapshot(signal_values, session_id, message_id, output_values=output_values)
 
         # Always saved, self-loop or not — a fired trigger is a real event
         # worth a history entry either way; a self-loop just never bumps
@@ -169,7 +183,7 @@ class TrackingEngine:
         )
         return self.record_transition(
             automaton, state, action, signal_values, session_id, message_id,
-            origin=origin, username=username, project_id=project_id,
+            origin=origin, username=username, project_id=project_id, output_values=output_values,
         )
 
     def record_transition(
@@ -184,6 +198,7 @@ class TrackingEngine:
         origin: str,
         username: str | None = None,
         project_id: str | None = None,
+        output_values: dict | None = None,
     ) -> int:
         # FIXME: caller must have already applied action's own env: (via
         # apply_action_env) itself — calling apply_transition too for the
@@ -197,6 +212,7 @@ class TrackingEngine:
             signal_values=signal_values,
             message_id=message_id,
             origin=origin,
+            output_values=output_values,
         )
         self.notify_transition(username, project_id, state.key, action.target)
         return tracking_id

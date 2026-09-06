@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 from contextlib import asynccontextmanager
 from dataclasses import replace
@@ -445,6 +446,22 @@ class ChatService(object):
 			"action_set": env.action_set(until),
 			"ai_access": {env_key.name: env_key.ai_access for env_key in automaton.env_keys},
 		}
+
+	def get_output(self, session_id: int, message_id: int | None = None) -> dict:
+		"""This turn's transient State.output_keys values (see Tracking.
+		output) — kept purely for observability by the Run Inspector's
+		Output card. message_id ties it to one specific chat line, same
+		row get_env's own "until" reconstruction can't reuse: unlike env
+		(cumulative across the whole session), output is a single turn's
+		own snapshot, so there's nothing to replay — just the one linked
+		row (or, with no message selected, the session's latest)."""
+		self._ownership.require_own_session(session_id)
+		if message_id is not None:
+			row = self._db.get_signal_row_by_message(message_id)
+		else:
+			rows = [r for r in self._db.get_signals(session_id) if r.get("output")]
+			row = rows[-1] if rows else None
+		return {"output": json.loads(row["output"]) if row and row.get("output") else {}}
 
 	def set_env_value(self, session_id: int, key: str, value: str) -> dict:
 		self._ownership.require_own_session(session_id)
