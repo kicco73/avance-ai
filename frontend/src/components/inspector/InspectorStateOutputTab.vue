@@ -40,6 +40,7 @@ function selectOutputKey(name) {
 }
 
 function commitField(field, currentValue, originalValue) {
+  console.log('[commitField]', { field, currentValue, originalValue, changed: currentValue !== originalValue, expandedName: expandedName.value })
   if (currentValue !== originalValue) {
     emit('set-field', expandedName.value, field, currentValue)
   }
@@ -108,9 +109,9 @@ watch(() => props.recentlyAddedKey, (key) => {
           />
         </div>
         <div class="block-footer">
-          <CardMenu
-            @delete="deleteOutputKey(key.name)"
-          />
+          <CardMenu>
+            <button type="button" class="card-menu-item-danger" @click="deleteOutputKey(key.name)">Delete</button>
+          </CardMenu>
         </div>
       </div>
     </div>
