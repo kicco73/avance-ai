@@ -10,6 +10,13 @@ vi.mock('../src/api.js', () => ({
 import { getProjectSources, postAddSource, putSourceField, deleteProjectSource } from '../src/api.js'
 import { useProjectSources } from '../src/composables/useProjectSources.js'
 
+const PINO = { name: 'pino', ui_label: 'Flights', ui_description: null, url: 'avance:behaviour/flights.csv' }
+const CITIES = { name: 'cities', ui_label: 'Cities', ui_description: null, url: 'avance:behaviour/cities.csv' }
+
+function sourceList(...sources) {
+  return { sources: sources.map((source) => ({ source })) }
+}
+
 describe('useProjectSources', () => {
   let flashRecentlyAdded, guardedAction, s
 
@@ -19,44 +26,31 @@ describe('useProjectSources', () => {
     // Simulates a never-dirty editor: guardedAction just runs immediately,
     // matching useIndexYmlEditing.test.js's own identical stand-in.
     guardedAction = vi.fn((label, run) => run())
-    getProjectSources.mockResolvedValue({
-      sources: [
-        { source: { name: 'pino', ui_label: 'Flights', ui_description: null, url: 'avance:behaviour/flights.csv' } },
-      ],
-    })
+    getProjectSources.mockResolvedValue(sourceList(PINO))
     s = useProjectSources('proj', guardedAction, flashRecentlyAdded)
   })
 
-  it('loadSources fetches and exposes the declared sources', async () => {
+  it('loadSources exposes the declared sources, which selectSource then resolves by name (null for none or an unknown one)', async () => {
     await s.loadSources()
 
     expect(getProjectSources).toHaveBeenCalledWith('proj')
     expect(s.sources.value).toHaveLength(1)
     expect(s.sourcesLoading.value).toBe(false)
-  })
-
-  it('selectSource sets currentSourceName, and selectedSource resolves it off the loaded list', async () => {
-    await s.loadSources()
+    expect(s.selectedSource.value).toBeNull()
 
     s.selectSource('pino')
-
     expect(s.currentSourceName.value).toBe('pino')
-    expect(s.selectedSource.value).toEqual({ name: 'pino', ui_label: 'Flights', ui_description: null, url: 'avance:behaviour/flights.csv' })
-  })
-
-  it('selectedSource is null while nothing (or an unknown name) is selected', async () => {
-    await s.loadSources()
-    expect(s.selectedSource.value).toBeNull()
+    expect(s.selectedSource.value).toEqual(PINO)
 
     s.selectSource('does-not-exist')
     expect(s.selectedSource.value).toBeNull()
   })
 
-  it('handleAddSource creates a source, reloads, selects it, and flashes it', async () => {
+  it('handleAddSource creates through the given driver, reloads, selects and flashes the new source', async () => {
     postAddSource.mockResolvedValue({ name: 'behaviour' })
-    getProjectSources.mockResolvedValueOnce({ sources: [] }).mockResolvedValueOnce({
-      sources: [{ source: { name: 'behaviour', ui_label: 'behaviour', ui_description: null, url: '' } }],
-    })
+    getProjectSources.mockResolvedValueOnce(sourceList()).mockResolvedValueOnce(
+      sourceList({ name: 'behaviour', ui_label: 'behaviour', ui_description: null, url: '' })
+    )
 
     s.handleAddSource()
 
@@ -68,13 +62,11 @@ describe('useProjectSources', () => {
     await vi.waitFor(() => expect(s.currentSourceName.value).toBe('behaviour'))
     expect(postAddSource).toHaveBeenCalledWith('proj', 'avance')
     expect(flashRecentlyAdded).toHaveBeenCalledWith('source:behaviour')
-  })
 
-  it('handleAddSource passes an explicit driver through, e.g. for an avance:env source', async () => {
     postAddSource.mockResolvedValue({ name: 'env' })
-    getProjectSources.mockResolvedValueOnce({ sources: [] }).mockResolvedValueOnce({
-      sources: [{ source: { name: 'env', ui_label: 'env', ui_description: null, url: 'avance:env' } }],
-    })
+    getProjectSources.mockResolvedValueOnce(sourceList()).mockResolvedValueOnce(
+      sourceList({ name: 'env', ui_label: 'env', ui_description: null, url: 'avance:env' })
+    )
 
     s.handleAddSource('env')
 
@@ -82,18 +74,14 @@ describe('useProjectSources', () => {
     expect(postAddSource).toHaveBeenCalledWith('proj', 'env')
   })
 
-  it('handleSetSourceField does nothing without a selected source', async () => {
+  it('handleSetSourceField needs a selected source, then edits it and follows a rename', async () => {
     await s.handleSetSourceField('ui-label', 'New label')
     expect(putSourceField).not.toHaveBeenCalled()
-  })
 
-  it('handleSetSourceField edits the selected source and follows a rename', async () => {
     await s.loadSources()
     s.selectSource('pino')
     putSourceField.mockResolvedValue({ name: 'flight_records' })
-    getProjectSources.mockResolvedValueOnce({
-      sources: [{ source: { name: 'flight_records', ui_label: 'Flights', ui_description: null, url: 'avance:behaviour/flights.csv' } }],
-    })
+    getProjectSources.mockResolvedValueOnce(sourceList({ ...PINO, name: 'flight_records' }))
 
     s.handleSetSourceField('name', 'Flight Records')
 
@@ -101,25 +89,8 @@ describe('useProjectSources', () => {
     expect(putSourceField).toHaveBeenCalledWith('proj', 'pino', 'name', 'Flight Records')
   })
 
-  it('handleDeleteSource deletes, reloads, and clears the selection if it was the deleted source', async () => {
-    await s.loadSources()
-    s.selectSource('pino')
-    getProjectSources.mockResolvedValueOnce({ sources: [] })
-
-    s.handleDeleteSource('pino')
-
-    await vi.waitFor(() => expect(s.currentSourceName.value).toBeNull())
-    expect(deleteProjectSource).toHaveBeenCalledWith('proj', 'pino')
-    expect(s.deletingSource.value).toBeNull()
-  })
-
-  it('handleDeleteSource leaves an unrelated selection alone', async () => {
-    getProjectSources.mockResolvedValue({
-      sources: [
-        { source: { name: 'pino', ui_label: 'Flights', ui_description: null, url: 'avance:behaviour/flights.csv' } },
-        { source: { name: 'cities', ui_label: 'Cities', ui_description: null, url: 'avance:behaviour/cities.csv' } },
-      ],
-    })
+  it('handleDeleteSource clears the selection only when the deleted source was the selected one', async () => {
+    getProjectSources.mockResolvedValue(sourceList(PINO, CITIES))
     await s.loadSources()
     s.selectSource('pino')
 
@@ -127,5 +98,12 @@ describe('useProjectSources', () => {
 
     await vi.waitFor(() => expect(deleteProjectSource).toHaveBeenCalledWith('proj', 'cities'))
     expect(s.currentSourceName.value).toBe('pino')
+
+    getProjectSources.mockResolvedValueOnce(sourceList())
+    s.handleDeleteSource('pino')
+
+    await vi.waitFor(() => expect(s.currentSourceName.value).toBeNull())
+    expect(deleteProjectSource).toHaveBeenCalledWith('proj', 'pino')
+    expect(s.deletingSource.value).toBeNull()
   })
 })

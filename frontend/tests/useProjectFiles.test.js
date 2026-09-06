@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, ref } from 'vue'
+import { createApp } from 'vue'
 
 vi.mock('../src/api.js', () => ({
   getProjectFiles: vi.fn(),
@@ -61,7 +61,11 @@ describe('useProjectFiles', () => {
     s.designPanelRef.value = { indexYmlEditorRef: { isDirty, save, discard } }
   }
 
-  it('loadFiles() fetches and stores the file list', async () => {
+  function uploadEvent(files) {
+    return { target: { files, value: 'x' } }
+  }
+
+  it('loadFiles() fetches and stores the file list, reporting progress while in flight', async () => {
     getProjectFiles.mockResolvedValue({ files: ['index.yml', 'index.css'] })
     const s = mount()
 
@@ -73,62 +77,40 @@ describe('useProjectFiles', () => {
     expect(s.filesLoading.value).toBe(false)
   })
 
-  describe('activeEditor()/activeEditorIsDirty dispatch by open file type', () => {
-    it('dispatches to indexYmlEditorRef for index.yml', () => {
-      const s = mount()
-      s.currentFileName.value = 'index.yml'
-      setEditor(s, { isDirty: true })
-      expect(s.activeEditor()).toBe(s.designPanelRef.value.indexYmlEditorRef)
+  it('activeEditor()/activeEditorIsDirty dispatch by open file type, with an image never dirty and editorless', () => {
+    const s = mount()
+
+    s.currentFileName.value = 'index.yml'
+    setEditor(s, { isDirty: true })
+    expect(s.activeEditor()).toBe(s.designPanelRef.value.indexYmlEditorRef)
+    expect(s.activeEditorIsDirty.value).toBe(true)
+
+    for (const [fileName, refName] of [
+      ['index.css', 'indexCssEditorRef'],
+      ['behaviour/notes.md', 'mdEditorRef'],
+      ['behaviour/script.csv', 'codeEditorRef'],
+    ]) {
+      s.currentFileName.value = fileName
+      s.designPanelRef.value = { [refName]: { isDirty: true } }
+      expect(s.activeEditor()).toBe(s.designPanelRef.value[refName])
       expect(s.activeEditorIsDirty.value).toBe(true)
-    })
+    }
 
-    it('dispatches to indexCssEditorRef for index.css', () => {
-      const s = mount()
-      s.currentFileName.value = 'index.css'
-      s.designPanelRef.value = { indexCssEditorRef: { isDirty: true } }
-      expect(s.activeEditor()).toBe(s.designPanelRef.value.indexCssEditorRef)
-      expect(s.activeEditorIsDirty.value).toBe(true)
-    })
-
-    it('an image is never dirty and has no editor', () => {
-      const s = mount()
-      s.currentFileName.value = 'aspect/logo.png'
-      expect(s.activeEditor()).toBeNull()
-      expect(s.activeEditorIsDirty.value).toBe(false)
-    })
-
-    it('dispatches to mdEditorRef for a .md/.txt attachment', () => {
-      const s = mount()
-      s.currentFileName.value = 'behaviour/notes.md'
-      s.designPanelRef.value = { mdEditorRef: { isDirty: true } }
-      expect(s.activeEditor()).toBe(s.designPanelRef.value.mdEditorRef)
-      expect(s.activeEditorIsDirty.value).toBe(true)
-    })
-
-    it('falls back to codeEditorRef for anything else', () => {
-      const s = mount()
-      s.currentFileName.value = 'behaviour/script.csv'
-      s.designPanelRef.value = { codeEditorRef: { isDirty: false } }
-      expect(s.activeEditor()).toBe(s.designPanelRef.value.codeEditorRef)
-      expect(s.activeEditorIsDirty.value).toBe(false)
-    })
+    s.currentFileName.value = 'aspect/logo.png'
+    expect(s.activeEditor()).toBeNull()
+    expect(s.activeEditorIsDirty.value).toBe(false)
   })
 
   describe('selectFile', () => {
-    it('is a no-op when the file is already open', async () => {
+    it('switches with no dialog when the file is already open or the active editor is clean', async () => {
       const s = mount()
       s.currentFileName.value = 'index.yml'
+
       await s.selectFile('index.yml')
       expect(chooseDialog).not.toHaveBeenCalled()
-    })
 
-    it('switches immediately when the active editor is not dirty', async () => {
-      const s = mount()
-      s.currentFileName.value = 'index.yml'
       setEditor(s, { isDirty: false })
-
       await s.selectFile('index.css')
-
       expect(s.currentFileName.value).toBe('index.css')
       expect(chooseDialog).not.toHaveBeenCalled()
     })
@@ -138,120 +120,85 @@ describe('useProjectFiles', () => {
     // only guarantees chooseDialog's own promise settled, not whatever
     // runs after a second `await` inside its branches. vi.waitFor polls
     // instead of assuming a fixed number of microtask ticks.
-    it('when dirty and the user picks Save, saves then switches', async () => {
-      const s = mount()
-      s.currentFileName.value = 'index.yml'
+    it('when dirty, Save and Discard both switch while a failed save or a cancel stays put', async () => {
+      const saved = mount()
+      saved.currentFileName.value = 'index.yml'
       const save = vi.fn().mockResolvedValue(true)
-      setEditor(s, { isDirty: true, save })
+      setEditor(saved, { isDirty: true, save })
       chooseDialog.mockResolvedValue('save')
-
-      s.selectFile('index.css')
-
-      await vi.waitFor(() => expect(s.currentFileName.value).toBe('index.css'))
+      saved.selectFile('index.css')
+      await vi.waitFor(() => expect(saved.currentFileName.value).toBe('index.css'))
       expect(save).toHaveBeenCalled()
-    })
+      saved.unmount?.()
 
-    it('when Save fails (returns falsy), does not switch', async () => {
-      const s = mount()
-      s.currentFileName.value = 'index.yml'
-      const save = vi.fn().mockResolvedValue(false)
-      setEditor(s, { isDirty: true, save })
-      chooseDialog.mockResolvedValue('save')
-
-      s.selectFile('index.css')
-
-      await vi.waitFor(() => expect(save).toHaveBeenCalled())
-      expect(s.currentFileName.value).toBe('index.yml')
-    })
-
-    it('when dirty and the user picks Discard, discards then switches', async () => {
-      const s = mount()
-      s.currentFileName.value = 'index.yml'
+      const discarded = mount()
+      discarded.currentFileName.value = 'index.yml'
       const discard = vi.fn()
-      setEditor(s, { isDirty: true, discard })
+      setEditor(discarded, { isDirty: true, discard })
       chooseDialog.mockResolvedValue('discard')
-
-      s.selectFile('index.css')
-
-      await vi.waitFor(() => expect(s.currentFileName.value).toBe('index.css'))
+      discarded.selectFile('index.css')
+      await vi.waitFor(() => expect(discarded.currentFileName.value).toBe('index.css'))
       expect(discard).toHaveBeenCalled()
-    })
 
-    it('when dirty and the user cancels, stays on the current file', async () => {
-      const s = mount()
-      s.currentFileName.value = 'index.yml'
-      setEditor(s, { isDirty: true })
+      const failed = mount()
+      failed.currentFileName.value = 'index.yml'
+      const failingSave = vi.fn().mockResolvedValue(false)
+      setEditor(failed, { isDirty: true, save: failingSave })
+      chooseDialog.mockResolvedValue('save')
+      failed.selectFile('index.css')
+      await vi.waitFor(() => expect(failingSave).toHaveBeenCalled())
+      expect(failed.currentFileName.value).toBe('index.yml')
+
+      const cancelled = mount()
+      cancelled.currentFileName.value = 'index.yml'
+      setEditor(cancelled, { isDirty: true })
       chooseDialog.mockResolvedValue(null)
-
-      await s.selectFile('index.css')
-
-      expect(s.currentFileName.value).toBe('index.yml')
+      await cancelled.selectFile('index.css')
+      expect(cancelled.currentFileName.value).toBe('index.yml')
     })
   })
 
   describe('handleUploadFile', () => {
-    function event(files) {
-      return { target: { files, value: 'x' } }
-    }
-
-    it('rejects an unsupported extension without uploading anything', async () => {
+    it('rejects an unsupported extension or an oversized image without uploading anything', async () => {
       const s = mount()
-      await s.handleUploadFile(event([fakeFile('virus.exe')]))
 
+      await s.handleUploadFile(uploadEvent([fakeFile('virus.exe')]))
       expect(setApiError).toHaveBeenCalled()
       expect(putProjectFile).not.toHaveBeenCalled()
-    })
 
-    it('rejects an oversized image without uploading anything', async () => {
-      const s = mount()
-      await s.handleUploadFile(event([fakeFile('big.png', { size: 6 * 1024 * 1024 })]))
-
-      expect(setApiError).toHaveBeenCalled()
+      await s.handleUploadFile(uploadEvent([fakeFile('big.png', { size: 6 * 1024 * 1024 })]))
       expect(putProjectFileBinary).not.toHaveBeenCalled()
     })
 
-    it('uploads a text file under behaviour/, reloads, and selects it', async () => {
+    it('routes a text file to behaviour/ and an image to aspect/ as binary, then reloads, selects it and resets the input', async () => {
       const s = mount()
       s.currentFileName.value = 'index.yml' // clean, so selectFile switches immediately
       getProjectFiles.mockResolvedValue({ files: ['index.yml', 'behaviour/notes.md'] })
 
-      await s.handleUploadFile(event([fakeFile('notes.md')]))
+      const textEvent = uploadEvent([fakeFile('notes.md')])
+      await s.handleUploadFile(textEvent)
 
       expect(putProjectFile).toHaveBeenCalledWith('proj', 'behaviour/notes.md', 'hello')
       expect(s.currentFileName.value).toBe('behaviour/notes.md')
       expect(clearApiError).toHaveBeenCalled()
-    })
+      // Reset so re-selecting the same file re-fires change.
+      expect(textEvent.target.value).toBe('')
 
-    it('uploads an image under aspect/ as binary', async () => {
-      const s = mount()
-      const file = fakeFile('logo.png')
-      await s.handleUploadFile(event([file]))
-
-      expect(putProjectFileBinary).toHaveBeenCalledWith('proj', 'aspect/logo.png', file)
-    })
-
-    it('resets the input value so re-selecting the same file re-fires change', async () => {
-      const s = mount()
-      const evt = event([fakeFile('notes.md')])
-      await s.handleUploadFile(evt)
-      expect(evt.target.value).toBe('')
+      const image = fakeFile('logo.png')
+      await s.handleUploadFile(uploadEvent([image]))
+      expect(putProjectFileBinary).toHaveBeenCalledWith('proj', 'aspect/logo.png', image)
     })
   })
 
   describe('handleNewAttachment', () => {
-    it('cancelling the prompt creates nothing', async () => {
+    it('creates behaviour/<name>.md from the prompted name, creating nothing when cancelled', async () => {
       promptDialog.mockResolvedValue(null)
       const s = mount()
       await s.handleNewAttachment()
       expect(putProjectFile).not.toHaveBeenCalled()
-    })
 
-    it('creates behaviour/<name>.md from the prompted name', async () => {
       promptDialog.mockResolvedValue('my notes')
-      const s = mount()
-
       await s.handleNewAttachment()
-
       expect(putProjectFile).toHaveBeenCalledWith('proj', 'behaviour/my notes.md', '')
     })
 
@@ -268,100 +215,68 @@ describe('useProjectFiles', () => {
     })
   })
 
-  describe('handleNewAspect', () => {
-    it('is a no-op if index.css already exists', async () => {
-      getProjectFiles.mockResolvedValue({ files: ['index.yml', 'index.css'] })
-      const s = mount()
-      await s.loadFiles()
+  it('handleNewAspect and handleNewLegal each create their file once, then select it, and are a no-op if it already exists', async () => {
+    const existing = mount()
+    getProjectFiles.mockResolvedValue({ files: ['index.yml', 'index.css', 'legal/terms.md'] })
+    await existing.loadFiles()
 
-      await s.handleNewAspect()
+    await existing.handleNewAspect()
+    await existing.handleNewLegal()
+    expect(putProjectFile).not.toHaveBeenCalled()
+    expect(postAddLegalTerms).not.toHaveBeenCalled()
 
-      expect(putProjectFile).not.toHaveBeenCalled()
-    })
+    getProjectFiles.mockResolvedValue({ files: ['index.yml'] })
+    const fresh = mount()
+    await fresh.loadFiles()
+    fresh.currentFileName.value = 'index.yml'
+    await fresh.handleNewAspect()
+    expect(putProjectFile).toHaveBeenCalledWith('proj', 'index.css', expect.stringContaining('.chat-header'))
 
-    it('creates index.css with the skeleton otherwise', async () => {
-      const s = mount()
-      await s.handleNewAspect()
-      expect(putProjectFile).toHaveBeenCalledWith('proj', 'index.css', expect.stringContaining('.chat-header'))
-    })
-  })
-
-  describe('handleNewLegal', () => {
-    it('is a no-op if legal/terms.md already exists', async () => {
-      getProjectFiles.mockResolvedValue({ files: ['index.yml', 'legal/terms.md'] })
-      const s = mount()
-      await s.loadFiles()
-
-      await s.handleNewLegal()
-
-      expect(postAddLegalTerms).not.toHaveBeenCalled()
-    })
-
-    it('creates it via postAddLegalTerms, reloads, and selects it otherwise', async () => {
-      const s = mount()
-      s.currentFileName.value = 'index.yml'
-      getProjectFiles.mockResolvedValue({ files: ['index.yml', 'legal/terms.md'] })
-
-      await s.handleNewLegal()
-
-      expect(postAddLegalTerms).toHaveBeenCalledWith('proj')
-      expect(s.currentFileName.value).toBe('legal/terms.md')
-    })
+    getProjectFiles.mockResolvedValue({ files: ['index.yml', 'legal/terms.md'] })
+    await fresh.handleNewLegal()
+    expect(postAddLegalTerms).toHaveBeenCalledWith('proj')
+    expect(fresh.currentFileName.value).toBe('legal/terms.md')
   })
 
   describe('handleDeleteFile', () => {
-    it('refuses to delete index.yml without even confirming', async () => {
+    it('never deletes index.yml, skips the confirm for an image, and honours a declined confirm', async () => {
       const s = mount()
+
       await s.handleDeleteFile('index.yml')
       expect(confirmDialog).not.toHaveBeenCalled()
       expect(deleteProjectFile).not.toHaveBeenCalled()
-    })
 
-    it('does nothing if the confirm is declined', async () => {
-      confirmDialog.mockResolvedValue(false)
-      const s = mount()
-      await s.handleDeleteFile('behaviour/notes.md')
-      expect(deleteProjectFile).not.toHaveBeenCalled()
-    })
-
-    it('an image skips the confirm dialog entirely', async () => {
-      const s = mount()
       await s.handleDeleteFile('aspect/logo.png')
       expect(confirmDialog).not.toHaveBeenCalled()
       expect(deleteProjectFile).toHaveBeenCalledWith('proj', 'aspect/logo.png')
+
+      confirmDialog.mockResolvedValue(false)
+      await s.handleDeleteFile('behaviour/notes.md')
+      expect(deleteProjectFile).not.toHaveBeenCalledWith('proj', 'behaviour/notes.md')
     })
 
-    it('deletes, reloads, and switches to index.yml if the deleted file was open', async () => {
+    it('switches back to index.yml only when the open file went away, cascaded theme assets included', async () => {
       confirmDialog.mockResolvedValue(true)
-      const s = mount()
-      s.currentFileName.value = 'behaviour/notes.md'
 
-      await s.handleDeleteFile('behaviour/notes.md')
-
+      const other = mount()
+      other.currentFileName.value = 'behaviour/other.md'
+      await other.handleDeleteFile('behaviour/notes.md')
       expect(deleteProjectFile).toHaveBeenCalledWith('proj', 'behaviour/notes.md')
-      expect(s.currentFileName.value).toBe('index.yml')
-    })
+      expect(other.currentFileName.value).toBe('behaviour/other.md')
+      other.unmount?.()
 
-    it('leaves the open file alone when a different file is deleted', async () => {
-      confirmDialog.mockResolvedValue(true)
-      const s = mount()
-      s.currentFileName.value = 'behaviour/other.md'
+      const open = mount()
+      open.currentFileName.value = 'behaviour/notes.md'
+      await open.handleDeleteFile('behaviour/notes.md')
+      expect(open.currentFileName.value).toBe('index.yml')
+      open.unmount?.()
 
-      await s.handleDeleteFile('behaviour/notes.md')
-
-      expect(s.currentFileName.value).toBe('behaviour/other.md')
-    })
-
-    it('deleting index.css also switches away if a cascaded theme asset was open', async () => {
       getProjectFiles.mockResolvedValue({ files: ['index.yml', 'index.css', 'aspect/logo.png'] })
-      confirmDialog.mockResolvedValue(true)
-      const s = mount()
-      await s.loadFiles()
-      s.currentFileName.value = 'aspect/logo.png'
-
-      await s.handleDeleteFile('index.css')
-
-      expect(s.currentFileName.value).toBe('index.yml')
+      const cascaded = mount()
+      await cascaded.loadFiles()
+      cascaded.currentFileName.value = 'aspect/logo.png'
+      await cascaded.handleDeleteFile('index.css')
+      expect(cascaded.currentFileName.value).toBe('index.yml')
     })
   })
 
@@ -374,7 +289,7 @@ describe('useProjectFiles', () => {
   describe('jumpToDefinition', () => {
     const indexYml = 'states:\n  greeting:\n    contextual-prompt: hi\n'
 
-    it('switches to index.yml first if another file is open, then jumps', async () => {
+    it('switches to index.yml first when another file is open, unless asked to stay silent', async () => {
       const s = mount()
       s.currentFileName.value = 'index.css'
       setEditor(s, { isDirty: false })
@@ -385,35 +300,23 @@ describe('useProjectFiles', () => {
 
       expect(s.currentFileName.value).toBe('index.yml')
       expect(s.designPanelRef.value.indexYmlEditorRef.jumpToLine).toHaveBeenCalledWith(1)
-    })
 
-    it('silent mode never switches away from a non-index.yml file', async () => {
-      const s = mount()
       s.currentFileName.value = 'index.css'
-
       await s.jumpToDefinition({ kind: 'state', stateKey: 'greeting' }, { silent: true })
-
       expect(s.currentFileName.value).toBe('index.css')
     })
 
-    it('jumps directly when index.yml is already open', async () => {
-      const s = mount()
-      s.currentFileName.value = 'index.yml'
-      s.designPanelRef.value = { indexYmlEditorRef: { content: indexYml, jumpToLine: vi.fn(), isDirty: false } }
-
-      await s.jumpToDefinition({ kind: 'state', stateKey: 'greeting' })
-
-      expect(s.designPanelRef.value.indexYmlEditorRef.jumpToLine).toHaveBeenCalledWith(1)
-    })
-
-    it('does nothing (no throw) when the target cannot be located', async () => {
+    it('jumps directly when index.yml is already open, and does nothing when the target cannot be located', async () => {
       const s = mount()
       s.currentFileName.value = 'index.yml'
       const jumpToLine = vi.fn()
       s.designPanelRef.value = { indexYmlEditorRef: { content: indexYml, jumpToLine, isDirty: false } }
 
-      await s.jumpToDefinition({ kind: 'state', stateKey: 'nope' })
+      await s.jumpToDefinition({ kind: 'state', stateKey: 'greeting' })
+      expect(jumpToLine).toHaveBeenCalledWith(1)
 
+      jumpToLine.mockClear()
+      await s.jumpToDefinition({ kind: 'state', stateKey: 'nope' })
       expect(jumpToLine).not.toHaveBeenCalled()
     })
   })

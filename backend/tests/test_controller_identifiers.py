@@ -192,8 +192,10 @@ def test_source_namespace_lists_one_entry_per_declared_source(client):
     body = response.json()
     # value(*values, key=...) is a real method for scripts/triggers too
     # (never a model tool — see tracking.sources.SourceDriver.value), so
-    # it belongs in the design view's own autocomplete alongside select.
-    assert set(body["source.pino"]) == {"select", "value"}
+    # it belongs in the design view's own autocomplete alongside the reads.
+    assert set(body["source.pino"]) == {
+        "select_rows_containing", "select_rows_where_column", "select_rows_where_column_in_range", "value",
+    }
     # A source with no url yet (see AutomatonBuilder._build_source) is
     # still listed under its own name, just with nothing to call on it.
     assert body["source.unconfigured"] == {}

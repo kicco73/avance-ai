@@ -18,7 +18,8 @@ vi.mock('../src/api.js', () => ({
   getAiModels: vi.fn(),
   getMessages: vi.fn()
 }))
-vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
+vi.mock('../src/chatChannel.js', () => ({ chatChannel: { subscribe: vi.fn(() => () => {}) } }))
+vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 
 describe('handleAction (manual test action) never runs an on-enter script off the response', () => {
   let chatStore
@@ -53,13 +54,13 @@ describe('handleAction (manual test action) never runs an on-enter script off th
 
 describe('the notification bus runs a pushed on-enter script once, globally', () => {
   let onEnterActions
-  let chatClient
+  let chatChannel
   let bus
 
   beforeEach(async () => {
     vi.resetModules()
     onEnterActions = await import('../src/onEnterActions.js')
-    chatClient = await import('../src/chatClient.js')
+    ;({ chatChannel } = await import('../src/chatChannel.js'))
     bus = await import('../src/notificationBus.js')
   })
 
@@ -68,10 +69,11 @@ describe('the notification bus runs a pushed on-enter script once, globally', ()
   })
 
   function pushedFrame() {
-    // What chatClient's single handler received: the bus registers it
-    // the first time anyone subscribes.
-    expect(chatClient.onNotification).toHaveBeenCalledTimes(1)
-    return chatClient.onNotification.mock.calls[0][0]
+    // What the channel handed the bus: it subscribes the first time
+    // anyone subscribes to it.
+    expect(chatChannel.subscribe).toHaveBeenCalledTimes(1)
+    expect(chatChannel.subscribe.mock.calls[0][0]).toBe('notification')
+    return chatChannel.subscribe.mock.calls[0][1]
   }
 
   it('runs the script of a frame carrying only "on-enter" (an OnEnterTask that ran server-side)', () => {

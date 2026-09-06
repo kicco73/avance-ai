@@ -110,6 +110,15 @@ export function renameProjectFile(projectId, fileName, newName) {
   })
 }
 
+export function postSourceWebImport(projectId, sourceName, query, onProgress) {
+  return projectFetch(
+    projectId,
+    `${API_URL}/projects/${encodeURIComponent(projectId)}/sources/${encodeURIComponent(sourceName)}/web-import`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query }) },
+    { parse: 'sse', onProgress }
+  )
+}
+
 // Image attachments: same PUT route as putProjectFile, but the raw File
 // as body with its own Content-Type — the backend validates an image
 // save against the request header, unlike a text save.

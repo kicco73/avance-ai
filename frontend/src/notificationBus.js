@@ -8,7 +8,7 @@
 // a toast, confetti, a dialog — so it runs exactly once here, whichever
 // chat stores happen to exist; only the state part is fanned out, to
 // every store that asked, each deciding whether it is about its project.
-import { onNotification } from './chatClient.js'
+import { chatChannel } from './chatChannel.js'
 import { runOnEnterScript } from './onEnterActions.js'
 
 const stateSubscribers = new Set()
@@ -17,7 +17,7 @@ let registered = false
 function ensureRegistered() {
   if (registered) return
   registered = true
-  onNotification(({ project_name, state, 'on-enter': onEnter }) => {
+  chatChannel.subscribe('notification', ({ project_name, state, 'on-enter': onEnter }) => {
     if (onEnter) runOnEnterScript(onEnter)
     if (state) {
       for (const subscriber of stateSubscribers) subscriber({ project_name, state })
@@ -33,7 +33,7 @@ export function subscribeToStateNotifications(handler) {
   return () => stateSubscribers.delete(handler)
 }
 
-// Test seam: what ensureRegistered handed chatClient, so a test can feed
+// Test seam: what ensureRegistered handed the channel, so a test can feed
 // frames in without a socket.
 export function _resetNotificationBusForTests() {
   stateSubscribers.clear()

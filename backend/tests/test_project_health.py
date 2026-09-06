@@ -300,7 +300,7 @@ def test_broken_notification_job_warns_every_admin_and_pushes_to_connected_ones(
     assert all(payload["file"] == "index.yml" and payload["line"] == 7 for _, payload in ws_notifications.pushed)
 
 
-def test_recovery_notification_job_warns_nobody_and_clears_the_projects_own_warnings(db):
+def test_recovery_notification_job_clears_the_projects_own_warnings_and_tells_every_admin(db):
     _make_admin(db, "admin1")
     _make_admin(db, "admin2")
     db.save_system_warning("admin1", "flaky", "project_broken", "nope")
@@ -315,7 +315,11 @@ def test_recovery_notification_job_warns_nobody_and_clears_the_projects_own_warn
     assert db.get_system_warnings("admin1", "flaky") == []
     assert db.get_system_warnings("admin2", "flaky") == []
     assert len(db.get_system_warnings("admin1", "other")) == 1
-    assert ws_notifications.pushed == []
+    assert {username for username, _ in ws_notifications.pushed} == {"admin1", "admin2"}
+    assert all(
+        payload == {"type": "system_warning", "kind": "project_fixed", "project_id": "flaky"}
+        for _, payload in ws_notifications.pushed
+    )
 
 
 def test_a_broken_published_revision_reports_where_it_broke(db, project_service):

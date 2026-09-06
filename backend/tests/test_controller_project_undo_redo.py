@@ -20,10 +20,16 @@ def _zip_of(files: dict[str, str]) -> bytes:
     return buffer.getvalue()
 
 
-MINIMAL_YML = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+def _yml(prompt: str = "hi") -> str:
+    return f"project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: {prompt}\n"
 
 
-def _upload(client, project_id: str, files: dict[str, str] | None = None):
+MINIMAL_YML = _yml()
+V1_YML = _yml("v1")
+V2_YML = _yml("v2")
+
+
+def _upload(client, project_id: str = "proj", files: dict[str, str] | None = None):
     files = files or {"index.yml": MINIMAL_YML, "notes.txt": "hello attachment"}
     response = client.post(
         "/api/projects/upload", content=_zip_of(files), headers={"Content-Type": "application/zip"}
@@ -33,166 +39,103 @@ def _upload(client, project_id: str, files: dict[str, str] | None = None):
     return files
 
 
-@pytest.mark.contract
-def test_uploading_a_project_saves_index_yml_with_no_undo_or_redo_yet(client):
-    _upload(client, "proj")
+def _index(client) -> dict:
+    return client.get("/api/projects/proj/files/index.yml").json()
 
-    response = client.get("/api/projects/proj/files/index.yml")
 
-    assert response.status_code == 200
-    body = response.json()
+def _save(client, content: str):
+    return client.put("/api/projects/proj/files/index.yml", content=content.encode())
+
+
+def _undo(client, showing: str):
+    return client.post("/api/projects/proj/files/index.yml/undo", content=showing.encode())
+
+
+def _redo(client, showing: str):
+    return client.post("/api/projects/proj/files/index.yml/redo", content=showing.encode())
+
+
+@pytest.mark.regression
+def test_an_upload_starts_with_no_history_and_only_a_real_content_change_enables_undo_per_file(client):
+    """Editing index.yml alone must not enable undo for notes.txt, which
+    was never itself re-saved; re-saving identical content is a no-op."""
+    _upload(client)
+
+    body = _index(client)
     assert body["content"] == MINIMAL_YML
     assert body["can_undo"] is False
     assert body["can_redo"] is False
 
-
-@pytest.mark.regression
-def test_editing_a_file_enables_undo(client):
-    _upload(client, "proj")
-
-    new_yml = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi again\n"
-    response = client.put("/api/projects/proj/files/index.yml", content=new_yml.encode())
-
+    response = _save(client, V1_YML)
     assert response.status_code == 200
     body = response.json()
-    assert body["content"] == new_yml
+    assert body["content"] == V1_YML
     assert body["can_undo"] is True
     assert body["can_redo"] is False
-
-
-@pytest.mark.regression
-def test_editing_one_file_does_not_touch_a_siblings_undo_state(client):
-    """Editing index.yml alone must not enable undo for notes.txt, which
-    was never itself re-saved."""
-    _upload(client, "proj")
-
-    new_yml = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi again\n"
-    client.put("/api/projects/proj/files/index.yml", content=new_yml.encode())
 
     notes = client.get("/api/projects/proj/files/notes.txt").json()
     assert notes["content"] == "hello attachment"
     assert notes["can_undo"] is False
+    assert client.put("/api/projects/proj/files/notes.txt", content=b"hello attachment").json()["can_undo"] is False
 
 
 @pytest.mark.regression
-def test_saving_a_file_with_unchanged_content_is_a_no_op(client):
-    _upload(client, "proj")
+def test_undo_and_redo_preview_without_saving_and_a_fresh_edit_clears_redo(client):
+    _upload(client)
+    assert _undo(client, MINIMAL_YML).status_code == 400
+    assert _redo(client, MINIMAL_YML).status_code == 400
 
-    response = client.put("/api/projects/proj/files/notes.txt", content=b"hello attachment")
+    _save(client, V1_YML)
 
-    assert response.status_code == 200
-    assert response.json()["can_undo"] is False
-
-
-@pytest.mark.regression
-def test_undo_previews_the_previous_content_without_saving_it(client):
-    _upload(client, "proj")
-    v1_yml = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v1\n"
-    client.put("/api/projects/proj/files/index.yml", content=v1_yml.encode())
-
-    response = client.post("/api/projects/proj/files/index.yml/undo", content=v1_yml.encode())
-
+    response = _undo(client, V1_YML)
     assert response.status_code == 200
     body = response.json()
     assert body["content"] == MINIMAL_YML
     assert body["can_undo"] is False
     assert body["can_redo"] is True
     # Undo never touches Archive — GET still reflects the last real save.
-    assert client.get("/api/projects/proj/files/index.yml").json()["content"] == v1_yml
+    assert _index(client)["content"] == V1_YML
 
-
-@pytest.mark.contract
-def test_undo_with_nothing_to_undo_is_a_400(client):
-    _upload(client, "proj")
-
-    response = client.post("/api/projects/proj/files/index.yml/undo", content=MINIMAL_YML.encode())
-
-    assert response.status_code == 400
-
-
-@pytest.mark.regression
-def test_redo_previews_the_undone_content_without_saving_it(client):
-    _upload(client, "proj")
-    v1_yml = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v1\n"
-    client.put("/api/projects/proj/files/index.yml", content=v1_yml.encode())
-    client.post("/api/projects/proj/files/index.yml/undo", content=v1_yml.encode())
-
-    response = client.post("/api/projects/proj/files/index.yml/redo", content=MINIMAL_YML.encode())
-
+    response = _redo(client, MINIMAL_YML)
     assert response.status_code == 200
     body = response.json()
-    assert body["content"] == v1_yml
+    assert body["content"] == V1_YML
     assert body["can_undo"] is True
     assert body["can_redo"] is False
-    # Redo never touches Archive either — GET still reflects the last real save.
-    assert client.get("/api/projects/proj/files/index.yml").json()["content"] == v1_yml
+    assert _index(client)["content"] == V1_YML
 
-
-@pytest.mark.contract
-def test_redo_with_nothing_to_redo_is_a_400(client):
-    _upload(client, "proj")
-
-    response = client.post("/api/projects/proj/files/index.yml/redo", content=MINIMAL_YML.encode())
-
-    assert response.status_code == 400
+    _undo(client, V1_YML)
+    assert _save(client, V2_YML).json()["can_redo"] is False
+    assert _redo(client, MINIMAL_YML).status_code == 400
 
 
 @pytest.mark.regression
-def test_a_fresh_edit_after_undo_clears_redo(client):
-    _upload(client, "proj")
-    v1_yml = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v1\n"
-    client.put("/api/projects/proj/files/index.yml", content=v1_yml.encode())
-    client.post("/api/projects/proj/files/index.yml/undo", content=v1_yml.encode())
-
-    v2_yml = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v2\n"
-    response = client.put("/api/projects/proj/files/index.yml", content=v2_yml.encode())
-
-    assert response.json()["can_redo"] is False
-    assert client.post("/api/projects/proj/files/index.yml/redo", content=MINIMAL_YML.encode()).status_code == 400
-
-
-@pytest.mark.contract
-def test_undo_for_an_unknown_project_is_404(client):
-    response = client.post("/api/projects/does-not-exist/files/index.yml/undo")
-    assert response.status_code == 404
-
-
-@pytest.mark.regression
-def test_clear_history_disables_undo_and_redo_but_keeps_current_content(client):
-    _upload(client, "proj")
-    v1_yml = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v1\n"
-    client.put("/api/projects/proj/files/index.yml", content=v1_yml.encode())
-
-    response = client.delete("/api/projects/proj/history")
-
-    assert response.status_code == 200
-    assert response.json() == {"success": True}
-    body = client.get("/api/projects/proj/files/index.yml").json()
-    assert body["content"] == v1_yml
-    assert body["can_undo"] is False
-    assert client.post("/api/projects/proj/files/index.yml/undo", content=v1_yml.encode()).status_code == 400
-
-
-@pytest.mark.contract
-def test_clear_history_for_an_unknown_project_is_404(client):
-    response = client.delete("/api/projects/does-not-exist/history")
-    assert response.status_code == 404
-
-
-@pytest.mark.regression
-def test_deleting_a_project_file_removes_its_undo_history_too(client):
-    _upload(client, "proj")
+def test_clearing_history_or_deleting_a_file_drops_its_undo_trail_keeping_current_content(client):
+    _upload(client)
+    _save(client, V1_YML)
     client.put("/api/projects/proj/files/notes.txt", content=b"v1")
 
-    response = client.delete("/api/projects/proj/files/notes.txt")
-
+    response = client.delete("/api/projects/proj/history")
     assert response.status_code == 200
+    assert response.json() == {"success": True}
+    body = _index(client)
+    assert body["content"] == V1_YML
+    assert body["can_undo"] is False
+    assert _undo(client, V1_YML).status_code == 400
+
+    assert client.delete("/api/projects/proj/files/notes.txt").status_code == 200
     assert client.get("/api/projects/proj/files/notes.txt").status_code == 404
+
+
+@pytest.mark.contract
+def test_undo_and_clear_history_are_404_for_an_unknown_project(client):
+    assert client.post("/api/projects/does-not-exist/files/index.yml/undo").status_code == 404
+    assert client.delete("/api/projects/does-not-exist/history").status_code == 404
 
 
 @pytest.mark.regression
 def test_reuploading_an_identical_zip_is_a_no_op(client):
-    files = _upload(client, "proj")
+    files = _upload(client)
 
     response = client.post(
         "/api/projects/upload", content=_zip_of(files), headers={"Content-Type": "application/zip"}
@@ -200,7 +143,7 @@ def test_reuploading_an_identical_zip_is_a_no_op(client):
     assert response.status_code == 200, response.text
     assert parse_sse_result(response)["project_id"] == "proj"
 
-    assert client.get("/api/projects/proj/files/index.yml").json()["can_undo"] is False
+    assert _index(client)["can_undo"] is False
 
 
 TWO_STATE_YML = (

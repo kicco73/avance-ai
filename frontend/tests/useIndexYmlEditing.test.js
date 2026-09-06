@@ -21,7 +21,7 @@ vi.mock('../src/api.js', () => ({
 
 import {
   postAddState, postAddSignal, postAddEnvKey, postAddAction, putStateField, putProjectField,
-  putActionField, putInitActionField, putSignalField, putEnvKeyField, putActionOrder,
+  putActionField, putInitActionField, putSignalField, putEnvKeyField,
   deleteState, deleteProjectAction, deleteProjectSignal, deleteProjectEnvKey,
 } from '../src/api.js'
 import { useIndexYmlEditing } from '../src/composables/useIndexYmlEditing.js'
@@ -47,84 +47,62 @@ describe('useIndexYmlEditing', () => {
     )
   })
 
-  it('handleAddState selects the new state and flashes it', async () => {
+  it('every add flashes what it created, selecting only the new state or action, never a signal or env key', async () => {
     postAddState.mockResolvedValue({ key: 'newState' })
-
     await s.handleAddState()
-
     expect(postAddState).toHaveBeenCalledWith('proj')
     expect(selectedGraphElement.value).toEqual({ kind: 'state', data: { id: 'newState' } })
     expect(flashRecentlyAdded).toHaveBeenCalledWith('state:newState')
-  })
 
-  it('handleAddSignal flashes the new signal without touching selection', async () => {
+    selectedGraphElement.value = null
     postAddSignal.mockResolvedValue({ name: 'newSignal' })
-
     await s.handleAddSignal()
-
     expect(flashRecentlyAdded).toHaveBeenCalledWith('signal:newSignal')
+    expect(selectedGraphElement.value).toBeNull()
+
+    postAddEnvKey.mockResolvedValue({ name: 'newKey' })
+    await s.handleAddEnvKey()
+    expect(flashRecentlyAdded).toHaveBeenCalledWith('env-key:newKey')
     expect(selectedGraphElement.value).toBeNull()
   })
 
-  it('handleAddEnvKey flashes the new env key', async () => {
-    postAddEnvKey.mockResolvedValue({ name: 'newKey' })
+  it('handleAddAction needs a selected state, then selects the new action itself rather than its containing state', async () => {
+    await s.handleAddAction()
+    expect(postAddAction).not.toHaveBeenCalled()
 
-    await s.handleAddEnvKey()
+    selectedStateKey.value = 'greeting'
+    postAddAction.mockResolvedValue({ name: 'go' })
+    const actionEl = { kind: 'action', data: { actionName: 'go' } }
+    indexYmlEditorRef.value.actionsForState.mockReturnValue([{ kind: 'action', data: { actionName: 'other' } }, actionEl])
 
-    expect(flashRecentlyAdded).toHaveBeenCalledWith('env-key:newKey')
+    await s.handleAddAction()
+
+    expect(postAddAction).toHaveBeenCalledWith('proj', 'greeting')
+    expect(selectedGraphElement.value).toEqual(actionEl)
+    expect(flashRecentlyAdded).toHaveBeenCalledWith('action:greeting/go')
   })
 
-  describe('handleAddAction', () => {
-    it('does nothing without a selected state', async () => {
-      selectedStateKey.value = null
-      await s.handleAddAction()
-      expect(postAddAction).not.toHaveBeenCalled()
-    })
-
-    it('selects the new action (not its containing state) and flashes it', async () => {
-      selectedStateKey.value = 'greeting'
-      postAddAction.mockResolvedValue({ name: 'go' })
-      const actionEl = { kind: 'action', data: { actionName: 'go' } }
-      indexYmlEditorRef.value.actionsForState.mockReturnValue([{ kind: 'action', data: { actionName: 'other' } }, actionEl])
-
-      await s.handleAddAction()
-
-      expect(postAddAction).toHaveBeenCalledWith('proj', 'greeting')
-      expect(selectedGraphElement.value).toEqual(actionEl)
-      expect(flashRecentlyAdded).toHaveBeenCalledWith('action:greeting/go')
-    })
-  })
-
-  it('handleSetStateField writes the field and re-resolves the graph selection', async () => {
+  it('handleSetStateField re-resolves the graph selection while handleSetProjectField has no selection side effect', async () => {
     await s.handleSetStateField('greeting', 'ui-label', 'Hi there')
-
     expect(putStateField).toHaveBeenCalledWith('proj', 'greeting', 'ui-label', 'Hi there')
     expect(selectedGraphElement.value).toEqual({ kind: 'state', data: { id: 'greeting' } })
-  })
 
-  it('handleSetProjectField just writes the field, no selection side effect', async () => {
+    selectedGraphElement.value = null
     await s.handleSetProjectField('id', 'my-project')
-
     expect(putProjectField).toHaveBeenCalledWith('proj', 'id', 'my-project')
     expect(selectedGraphElement.value).toBeNull()
   })
 
   describe('handleSetActionField', () => {
-    it('routes the init-action (stateName "") through putInitActionField instead of putActionField', async () => {
-      indexYmlEditorRef.value.actionsForState.mockReturnValue([{ kind: 'action', data: { actionName: 'start' } }])
-
-      await s.handleSetActionField('', 'start', 'target', 'greeting')
-
-      expect(putInitActionField).toHaveBeenCalledWith('proj', 'target', 'greeting')
-      expect(putActionField).not.toHaveBeenCalled()
-    })
-
-    it('routes a normal action through putActionField and re-resolves its element', async () => {
+    it('routes the init-action (stateName "") through putInitActionField, any other action through putActionField', async () => {
       const actionEl = { kind: 'action', data: { actionName: 'go' } }
       indexYmlEditorRef.value.actionsForState.mockReturnValue([actionEl])
 
-      await s.handleSetActionField('greeting', 'go', 'target', 'farewell')
+      await s.handleSetActionField('', 'start', 'target', 'greeting')
+      expect(putInitActionField).toHaveBeenCalledWith('proj', 'target', 'greeting')
+      expect(putActionField).not.toHaveBeenCalled()
 
+      await s.handleSetActionField('greeting', 'go', 'target', 'farewell')
       expect(putActionField).toHaveBeenCalledWith('proj', 'greeting', 'go', 'target', 'farewell')
       expect(selectedGraphElement.value).toEqual(actionEl)
     })
@@ -132,125 +110,63 @@ describe('useIndexYmlEditing', () => {
     // OnEnterDialog.vue's own OK button awaits exactly this return value
     // (through EditProjectView.vue's handleSetSelectedElementField) to
     // decide whether to close — it must never resolve true for a write
-    // that never actually landed.
-    it('resolves true once the write succeeds', async () => {
+    // that never actually landed, and never throw.
+    it('resolves true once the write succeeds and false when it is rejected', async () => {
       putActionField.mockResolvedValue({})
-
       await expect(s.handleSetActionField('greeting', 'go', 'on-enter', 'actuator.celebrate()')).resolves.toBe(true)
-    })
 
-    it('resolves false (never throws) when the write is rejected — e.g. a malformed on-enter script', async () => {
       putActionField.mockRejectedValue(new Error('invalid on-enter'))
-
       await expect(s.handleSetActionField('greeting', 'go', 'on-enter', 'not.a.real.call()')).resolves.toBe(false)
     })
   })
 
-  describe('handleSetSignalField', () => {
-    it('jumps to the (possibly renamed) definition only on a ui-label edit', async () => {
-      putSignalField.mockResolvedValue({ name: 'renamedSignal' })
+  it('a signal ui-label or an env key name edit jumps to the possibly-renamed definition, no other field does', async () => {
+    putSignalField.mockResolvedValue({ name: 'renamedSignal' })
+    await s.handleSetSignalField('oldName', 'ui-label', 'renamedSignal')
+    expect(jumpToDefinition).toHaveBeenCalledWith({ kind: 'signal', signalName: 'renamedSignal' }, { silent: true })
 
-      await s.handleSetSignalField('oldName', 'ui-label', 'renamedSignal')
+    putEnvKeyField.mockResolvedValue({ name: 'renamedKey' })
+    await s.handleSetEnvKeyField('oldKey', 'name', 'renamedKey')
+    expect(jumpToDefinition).toHaveBeenCalledWith({ kind: 'env-key', envKeyName: 'renamedKey' }, { silent: true })
 
-      expect(jumpToDefinition).toHaveBeenCalledWith({ kind: 'signal', signalName: 'renamedSignal' }, { silent: true })
-    })
-
-    it('does not jump for any other field', async () => {
-      putSignalField.mockResolvedValue({ name: 'sig' })
-
-      await s.handleSetSignalField('sig', 'definition', 'signal.mood >= 50')
-
-      expect(jumpToDefinition).not.toHaveBeenCalled()
-    })
+    jumpToDefinition.mockClear()
+    putSignalField.mockResolvedValue({ name: 'sig' })
+    await s.handleSetSignalField('sig', 'definition', 'signal.mood >= 50')
+    putEnvKeyField.mockResolvedValue({ name: 'key' })
+    await s.handleSetEnvKeyField('key', 'value', '42')
+    expect(jumpToDefinition).not.toHaveBeenCalled()
   })
 
-  describe('handleSetEnvKeyField', () => {
-    it('jumps to the (possibly renamed) definition only on a name edit', async () => {
-      putEnvKeyField.mockResolvedValue({ name: 'renamedKey' })
-
-      await s.handleSetEnvKeyField('oldKey', 'name', 'renamedKey')
-
-      expect(jumpToDefinition).toHaveBeenCalledWith({ kind: 'env-key', envKeyName: 'renamedKey' }, { silent: true })
-    })
-
-    it('does not jump for any other field', async () => {
-      putEnvKeyField.mockResolvedValue({ name: 'key' })
-
-      await s.handleSetEnvKeyField('key', 'value', '42')
-
-      expect(jumpToDefinition).not.toHaveBeenCalled()
-    })
-  })
-
-  it('handleDeleteState deletes and clears the graph selection unconditionally', async () => {
+  it('deleting a state clears the selection outright, while deleting a signal or env key never touches it', async () => {
     selectedGraphElement.value = { kind: 'action', data: { actionName: 'go' } }
 
     await s.handleDeleteState('greeting')
-
     expect(deleteState).toHaveBeenCalledWith('proj', 'greeting')
     expect(selectedGraphElement.value).toBeNull()
-  })
 
-  describe('handleDeleteAction', () => {
-    it('falls back to the containing state when the deleted action was the exact selection', async () => {
-      selectedGraphElement.value = { kind: 'action', data: { actionName: 'go' } }
-
-      await s.handleDeleteAction('greeting', 'go')
-
-      expect(deleteProjectAction).toHaveBeenCalledWith('proj', 'greeting', 'go')
-      expect(selectedGraphElement.value).toEqual({ kind: 'state', data: { id: 'greeting' } })
-    })
-
-    it('leaves an unrelated selection alone', async () => {
-      const stateSelection = { kind: 'state', data: { id: 'greeting' } }
-      selectedGraphElement.value = stateSelection
-
-      await s.handleDeleteAction('greeting', 'go')
-
-      expect(selectedGraphElement.value).toEqual(stateSelection)
-    })
-
-    it('leaves a different action selection alone', async () => {
-      const otherAction = { kind: 'action', data: { actionName: 'other' } }
-      selectedGraphElement.value = otherAction
-
-      await s.handleDeleteAction('greeting', 'go')
-
-      expect(selectedGraphElement.value).toEqual(otherAction)
-    })
-  })
-
-  it('handleDeleteSignal/handleDeleteEnvKey call through without touching selection', async () => {
     const selection = { kind: 'state', data: { id: 'x' } }
     selectedGraphElement.value = selection
-
     await s.handleDeleteSignal('sig')
     await s.handleDeleteEnvKey('key')
-
     expect(deleteProjectSignal).toHaveBeenCalledWith('proj', 'sig')
     expect(deleteProjectEnvKey).toHaveBeenCalledWith('proj', 'key')
     expect(selectedGraphElement.value).toEqual(selection)
   })
 
-  // handleReorderAction no longer lives on this composable — action
-  // reordering (putActionOrder) moved into ActionsOrderDialog.vue, which
-  // owns selectedStateKey/props.stateName itself and calls the API
-  // directly (see its own template). Skipped rather than deleted so the
-  // missing coverage stays visible: no dedicated test file for
-  // ActionsOrderDialog.vue exists yet to have inherited these two cases.
-  describe.skip('handleReorderAction (moved to ActionsOrderDialog.vue)', () => {
-    it('does nothing without a selected state', async () => {
-      selectedStateKey.value = null
-      await s.handleReorderAction({ actionName: 'go', position: 2 })
-      expect(putActionOrder).not.toHaveBeenCalled()
-    })
+  it('deleting an action falls back to its containing state only when that exact action was selected', async () => {
+    selectedGraphElement.value = { kind: 'action', data: { actionName: 'go' } }
+    await s.handleDeleteAction('greeting', 'go')
+    expect(deleteProjectAction).toHaveBeenCalledWith('proj', 'greeting', 'go')
+    expect(selectedGraphElement.value).toEqual({ kind: 'state', data: { id: 'greeting' } })
 
-    it('reorders within the currently selected state', async () => {
-      selectedStateKey.value = 'greeting'
+    const stateSelection = { kind: 'state', data: { id: 'greeting' } }
+    selectedGraphElement.value = stateSelection
+    await s.handleDeleteAction('greeting', 'go')
+    expect(selectedGraphElement.value).toEqual(stateSelection)
 
-      await s.handleReorderAction({ actionName: 'go', position: 2 })
-
-      expect(putActionOrder).toHaveBeenCalledWith('proj', 'greeting', 'go', 2)
-    })
+    const otherAction = { kind: 'action', data: { actionName: 'other' } }
+    selectedGraphElement.value = otherAction
+    await s.handleDeleteAction('greeting', 'go')
+    expect(selectedGraphElement.value).toEqual(otherAction)
   })
 })

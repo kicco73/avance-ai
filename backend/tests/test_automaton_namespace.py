@@ -55,95 +55,56 @@ states:
 """
 
 
-def _namespace(db):
-    return AutomatonNamespace(db, ProjectService(db)).scoped_to(FAMILY)
+def _namespace(db, family=FAMILY):
+    return AutomatonNamespace(db, ProjectService(db)).scoped_to(family)
 
 
-def test_state_resolves_to_none_and_warns_when_the_project_does_not_exist(db):
-    namespace = _namespace(db)
-
-    assert namespace.nonexistent_project.state is None
-
-    warnings = db.get_system_warnings(USERNAME, "nonexistent_project")
-    assert len(warnings) == 1
-    assert warnings[0]["kind"] == "project_not_found"
+def _session(db, project_id="observed") -> int:
+    return db.create_chat_session(
+        username=USERNAME, project_id=project_id, revision=db.get_project_published_revision(project_id)
+    )
 
 
-def test_state_resolves_to_none_and_warns_when_the_caller_has_no_family(db):
-    """A caller with no family at all can't observe anything, even a
-    project that does exist and declares a family of its own — reported
-    identically to a truly nonexistent project (see _ProjectProxy._resolve)."""
+def _warning_kinds(db, project_id="observed") -> list[str]:
+    return [w["kind"] for w in db.get_system_warnings(USERNAME, project_id)]
+
+
+def test_a_project_that_is_unknown_unfamilied_or_of_another_family_is_indistinguishable_and_warns_project_not_found(db):
+    """A caller with no family at all can't observe anything, and another
+    family is never distinguishable from "doesn't exist" (see
+    _ProjectProxy._resolve). A session must exist first for the family
+    check itself to be the step that fails."""
+    assert _namespace(db).nonexistent_project.state is None
+    assert _warning_kinds(db, "nonexistent_project") == ["project_not_found"]
+
     _publish(db, "observed", BASIC_YML)
-    namespace = AutomatonNamespace(db, ProjectService(db)).scoped_to(None)
+    _session(db)
 
-    assert namespace.observed.state is None
-
-    warnings = db.get_system_warnings(USERNAME, "observed")
-    assert len(warnings) == 1
-    assert warnings[0]["kind"] == "project_not_found"
+    assert _namespace(db, family=None).observed.state is None
+    assert _namespace(db, family="some_other_family").observed.state is None
+    assert _warning_kinds(db) == ["project_not_found", "project_not_found"]
 
 
-def test_state_resolves_to_none_and_warns_when_the_family_does_not_match(db):
-    """A caller declaring a *different* family than the target's own is
-    reported the same "project_not_found" way as an unknown project —
-    another family is never distinguishable from "doesn't exist". A
-    session must exist first, or resolution would fail one step earlier
-    with "no_session" instead — this test is only about the family check."""
+def test_state_needs_a_session_of_its_own_warning_no_session_otherwise(db):
     _publish(db, "observed", BASIC_YML)
-    db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
-    namespace = AutomatonNamespace(db, ProjectService(db)).scoped_to("some_other_family")
 
-    assert namespace.observed.state is None
+    assert _namespace(db).observed.state is None
+    assert _warning_kinds(db) == ["no_session"]
 
-    warnings = db.get_system_warnings(USERNAME, "observed")
-    assert len(warnings) == 1
-    assert warnings[0]["kind"] == "project_not_found"
+    _session(db)
+    assert _namespace(db).observed.state == "a"
 
 
-def test_state_resolves_to_none_and_warns_when_the_user_has_no_session(db):
-    _publish(db, "observed", BASIC_YML)
-    namespace = _namespace(db)
-
-    assert namespace.observed.state is None
-
-    warnings = db.get_system_warnings(USERNAME, "observed")
-    assert len(warnings) == 1
-    assert warnings[0]["kind"] == "no_session"
-
-
-def test_state_resolves_to_the_current_state_when_a_session_exists(db):
-    _publish(db, "observed", BASIC_YML)
-    db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
-    namespace = _namespace(db)
-
-    assert namespace.observed.state == "a"
-
-
-def test_env_key_resolves_to_none_and_warns_when_not_declared(db):
+def test_an_env_key_resolves_to_its_action_set_value_or_to_none_warning_only_when_it_was_never_declared(db):
     _publish(db, "observed", WITH_ENV_YML)
-    db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
-    namespace = _namespace(db)
+    session_id = _session(db)
 
-    assert namespace.observed.env.never_declared is None
+    assert _namespace(db).observed.env.never_declared is None
+    assert _warning_kinds(db) == ["env_key_not_declared"]
 
-    warnings = db.get_system_warnings(USERNAME, "observed")
-    assert len(warnings) == 1
-    assert warnings[0]["kind"] == "env_key_not_declared"
+    # Declared but never set: None, and no warning of its own.
+    assert _namespace(db).observed.env.visits is None
 
-
-def test_env_key_resolves_to_its_action_set_value_when_declared(db):
-    _publish(db, "observed", WITH_ENV_YML)
-    session_id = db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
     db.set_action_env(session_id, {"visits": 3})
-    namespace = _namespace(db)
-
-    assert namespace.observed.env.visits == 3
-
-
-def test_env_key_resolves_to_none_with_no_warning_when_declared_but_never_set(db):
-    _publish(db, "observed", WITH_ENV_YML)
-    db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
-    namespace = _namespace(db)
-
-    assert namespace.observed.env.visits is None
-    assert db.get_system_warnings(USERNAME, "observed") == []
+    assert _namespace(db).observed.env.visits == 3
+    assert _warning_kinds(db) == ["env_key_not_declared"]  # still just the one from above

@@ -21,43 +21,23 @@ def _models(service: AiService) -> list[str]:
     return [m["model"] for m in service.get_models_info()["models"]]
 
 
-class TestForLive:
-    def test_includes_only_entries_whose_modes_contain_live(self):
-        configs = [_config("both"), _config("live-only", modes=("live",)), _config("test-only", modes=("test",))]
+@pytest.mark.parametrize("mode", ["live", "test"])
+def test_each_cascade_keeps_only_the_entries_declaring_its_own_mode_in_their_original_order(mode):
+    """A lone entirely-excluded entry would leave the cascade with zero
+    providers, which ProviderCascade itself refuses to build at all (a
+    real misconfiguration AppConfig._parse_ai_services also rejects at
+    load time) — a sibling keeps this exercising the *filtering*."""
+    build = AiService.for_live if mode == "live" else AiService.for_test
+    other = "test" if mode == "live" else "live"
 
-        assert _models(AiService.for_live(configs)) == ["both", "live-only"]
+    configs = [_config("both"), _config(f"{mode}-only", modes=(mode,)), _config(f"{other}-only", modes=(other,))]
+    assert _models(build(configs)) == ["both", f"{mode}-only"]
 
-    def test_defaults_to_including_an_entry_with_no_explicit_modes(self):
-        assert _models(AiService.for_live([_config("default")])) == ["default"]
+    assert _models(build([_config("default")])) == ["default"]
+    assert _models(build([_config("hidden", modes=()), _config("visible")])) == ["visible"]
 
-    def test_excludes_an_entry_with_an_empty_modes_tuple(self):
-        # A lone entirely-excluded entry would leave the cascade with zero
-        # providers, which ProviderCascade itself refuses to build at all
-        # (a real misconfiguration AppConfig._parse_ai_services also
-        # rejects at load time) — a sibling entry keeps this test's own
-        # cascade non-empty so it's exercising the *filtering*, not that
-        # unrelated guard.
-        configs = [_config("hidden", modes=()), _config("visible")]
-        assert _models(AiService.for_live(configs)) == ["visible"]
-
-    def test_preserves_the_relative_order_of_the_surviving_entries(self):
-        configs = [_config("a"), _config("skip", modes=("test",)), _config("b"), _config("c")]
-
-        assert _models(AiService.for_live(configs)) == ["a", "b", "c"]
-
-
-class TestForTest:
-    def test_includes_only_entries_whose_modes_contain_test(self):
-        configs = [_config("both"), _config("live-only", modes=("live",)), _config("test-only", modes=("test",))]
-
-        assert _models(AiService.for_test(configs)) == ["both", "test-only"]
-
-    def test_defaults_to_including_an_entry_with_no_explicit_modes(self):
-        assert _models(AiService.for_test([_config("default")])) == ["default"]
-
-    def test_excludes_an_entry_with_an_empty_modes_tuple(self):
-        configs = [_config("hidden", modes=()), _config("visible")]
-        assert _models(AiService.for_test(configs)) == ["visible"]
+    ordered = [_config("a"), _config("skip", modes=(other,)), _config("b"), _config("c")]
+    assert _models(build(ordered)) == ["a", "b", "c"]
 
 
 class TestLiveAndTestAreFullyIndependent:
@@ -65,7 +45,10 @@ class TestLiveAndTestAreFullyIndependent:
     here would mean picking a live model quietly affects the test panel,
     or vice versa."""
 
-    def test_selecting_a_model_on_one_never_affects_the_other(self):
+    def test_selecting_a_model_on_one_never_affects_the_other_and_each_builds_its_own_provider_objects(self):
+        """for_live/for_test each call _build_labeled_providers
+        independently — even a shared config entry gets its own provider
+        instance per cascade, never a reused/shared one."""
         configs = [_config("a"), _config("b")]
         live = AiService.for_live(configs)
         test = AiService.for_test(configs)
@@ -76,15 +59,6 @@ class TestLiveAndTestAreFullyIndependent:
         assert live.get_models_info()["current_index"] == 1
         assert test.get_models_info()["auto"] is True
         assert test.get_models_info()["current_index"] == 0
-
-    def test_a_provider_present_in_both_modes_is_still_two_distinct_provider_objects(self):
-        """for_live/for_test each call _build_labeled_providers
-        independently — even a shared config entry gets its own provider
-        instance per cascade, never a reused/shared one."""
-        configs = [_config("shared")]
-        live = AiService.for_live(configs)
-        test = AiService.for_test(configs)
-
         assert live._selectable_providers[0] is not test._selectable_providers[0]
 
     def test_filtering_never_mutates_the_shared_input_list(self):
@@ -102,26 +76,19 @@ class TestNoAutoMode:
     in that mode's own manual selection list, but never chosen or
     failed over into by that mode's *auto* cascade."""
 
-    def test_a_no_auto_entry_still_appears_in_the_manual_list(self):
-        configs = [_config("normal", modes=("live",)), _config("manual-only", modes=("live", "no-auto"))]
+    @pytest.mark.parametrize("mode", ["live", "test"])
+    def test_a_no_auto_entry_is_listed_and_manually_selectable_but_auto_never_starts_on_it(self, mode):
+        build = AiService.for_live if mode == "live" else AiService.for_test
+        configs = [_config("manual-only", modes=(mode, "no-auto")), _config("normal", modes=(mode,))]
 
-        assert _models(AiService.for_live(configs)) == ["normal", "manual-only"]
-
-    def test_auto_never_starts_on_a_no_auto_entry_even_when_it_is_first_in_the_list(self):
-        configs = [_config("manual-only", modes=("live", "no-auto")), _config("normal", modes=("live",))]
-
-        service = AiService.for_live(configs)
+        service = build(configs)
         info = service.get_models_info()
 
+        assert _models(service) == ["manual-only", "normal"]
         assert info["auto"] is True
         assert info["models"][info["current_index"]]["model"] == "normal"
 
-    def test_a_no_auto_entry_is_still_manually_selectable(self):
-        configs = [_config("normal", modes=("live",)), _config("manual-only", modes=("live", "no-auto"))]
-        service = AiService.for_live(configs)
-
-        service.select_model(1)
-
+        service.select_model(0)
         info = service.get_models_info()
         assert info["auto"] is False
         assert info["models"][info["current_index"]]["model"] == "manual-only"
@@ -143,11 +110,3 @@ class TestNoAutoMode:
 
         info = service.get_models_info()
         assert info["models"][info["current_index"]]["model"] == "fallback"
-
-    def test_test_mode_honors_no_auto_the_same_way_as_live(self):
-        configs = [_config("normal", modes=("test",)), _config("manual-only", modes=("test", "no-auto"))]
-
-        service = AiService.for_test(configs)
-        info = service.get_models_info()
-
-        assert info["models"][info["current_index"]]["model"] == "normal"

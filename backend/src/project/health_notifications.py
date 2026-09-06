@@ -45,22 +45,33 @@ class ProjectHealthNotificationJob(CancelableJob):
         return None
 
     async def _run_next_step(self) -> None:
+        admin_ids = [user["id"] for user in self._db.list_users() if role_satisfies(user["role"], "admin")]
         if self._error is None:
-            logger.info("Project '%s' revision %s builds again.", self._project_id, self._revision)
-            self._db.delete_project_system_warnings(self._project_id, "project_broken")
-            return
+            await self._report_recovered(admin_ids)
+        else:
+            await self._report_broken(admin_ids)
+
+    async def _report_recovered(self, admin_ids: list[str]) -> None:
+        logger.info("Project '%s' revision %s builds again.", self._project_id, self._revision)
+        self._db.delete_project_system_warnings(self._project_id, "project_broken")
+        await self._push_to_admins(
+            admin_ids, {"type": "system_warning", "kind": "project_fixed", "project_id": self._project_id},
+        )
+
+    async def _report_broken(self, admin_ids: list[str]) -> None:
         logger.error(
             "Project '%s' revision %s no longer builds — %s", self._project_id, self._revision, self._error,
         )
-        admin_ids = [user["id"] for user in self._db.list_users() if role_satisfies(user["role"], "admin")]
         for admin_id in admin_ids:
             self._db.save_system_warning(
                 admin_id, self._project_id, "project_broken", self._error, file=self._file, line=self._line,
             )
-        payload = {
+        await self._push_to_admins(admin_ids, {
             "type": "system_warning", "kind": "project_broken",
             "project_id": self._project_id, "message": self._error, "file": self._file, "line": self._line,
-        }
+        })
+
+    async def _push_to_admins(self, admin_ids: list[str], payload: dict) -> None:
         for admin_id in admin_ids:
             await self._ws_notifications.push(admin_id, payload)
 

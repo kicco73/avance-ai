@@ -26,39 +26,21 @@ USERNAME = "user"
 PROJECT_ID = "proj"
 
 
-# --- TrackingProcessor._button_labels_to_translate: pure filter logic ---
-
-def test_excludes_an_action_with_an_empty_ui_button():
-	action = Action(name="skip", ui_label="Skip", ui_button="", target="a")
-	state = State(key="a", ui_label="A", final=False, actions=[action])
-	assert TrackingProcessor._button_labels_to_translate(state, auto_tracking_enabled=True) == {}
+def _state_with(action: Action) -> State:
+	return State(key="a", ui_label="A", final=False, actions=[action])
 
 
-def test_excludes_a_triggerable_action_when_auto_tracking_is_on():
-	action = Action(
-		name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="signal.mood >= 50",
-	)
-	state = State(key="a", ui_label="A", final=False, actions=[action])
-	assert TrackingProcessor._button_labels_to_translate(state, auto_tracking_enabled=True) == {}
-
-
-def test_includes_a_triggerable_action_when_auto_tracking_is_off():
+@pytest.mark.parametrize(("action", "auto_tracking_enabled", "expected"), [
+	(Action(name="skip", ui_label="Skip", ui_button="", target="a"), True, {}),
+	(Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="signal.mood >= 50"), True, {}),
+	(Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="signal.mood >= 50"), False, {"advance": "Advance"}),
+	(Action(name="advance", ui_label="Advance", ui_button="Advance", target="b"), True, {"advance": "Advance"}),
+], ids=["no-ui-button", "triggerable-auto-on", "triggerable-auto-off", "untriggered"])
+def test_only_the_buttons_a_state_actually_shows_are_queued_for_translation(action, auto_tracking_enabled, expected):
 	"""A test/manual session shows every action as a button regardless of
 	trigger (see automaton.manual_actions_for) — translation must follow."""
-	action = Action(
-		name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="signal.mood >= 50",
-	)
-	state = State(key="a", ui_label="A", final=False, actions=[action])
-	assert TrackingProcessor._button_labels_to_translate(state, auto_tracking_enabled=False) == {"advance": "Advance"}
+	assert TrackingProcessor._button_labels_to_translate(_state_with(action), auto_tracking_enabled=auto_tracking_enabled) == expected
 
-
-def test_includes_an_untriggered_action_regardless_of_auto_tracking():
-	action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b")
-	state = State(key="a", ui_label="A", final=False, actions=[action])
-	assert TrackingProcessor._button_labels_to_translate(state, auto_tracking_enabled=True) == {"advance": "Advance"}
-
-
-# --- End-to-end through a real turn ---
 
 def _automaton() -> Automaton:
 	manual_action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b")
@@ -116,30 +98,16 @@ def _processor(db, ai_service) -> TrackingProcessorAfterUserMessage:
 	return TrackingProcessorAfterUserMessage(ai_service, scope_builder, env, db, user_variables)
 
 
-async def test_a_state_with_a_manual_action_requests_translations(db):
-	ai_service = RecordingSchemaAiService(translations_json=None)
+@pytest.mark.parametrize(("translations_json", "expected_button"), [
+	('{"advance": "Avanti"}', "Avanti"),
+	("not json", "Advance"),
+], ids=["translated", "malformed-falls-back"])
+async def test_a_state_with_a_manual_action_requests_translations_and_the_result_reaches_the_final_state_payload(db, translations_json, expected_button):
+	ai_service = RecordingSchemaAiService(translations_json=translations_json)
 	processor = _processor(db, ai_service)
 
-	await processor.process("hello")
+	result = await processor.process("hello")
 
 	assert "translations" in ai_service.calls[0]
-
-
-async def test_the_translated_button_label_reaches_the_final_state_payload(db):
-	ai_service = RecordingSchemaAiService(translations_json='{"advance": "Avanti"}')
-	processor = _processor(db, ai_service)
-
-	result = await processor.process("hello")
-
 	action = next(a for a in result["state"]["actions"] if a["name"] == "advance")
-	assert action["ui_button"] == "Avanti"
-
-
-async def test_a_malformed_translations_response_falls_back_to_the_original_label(db):
-	ai_service = RecordingSchemaAiService(translations_json="not json")
-	processor = _processor(db, ai_service)
-
-	result = await processor.process("hello")
-
-	action = next(a for a in result["state"]["actions"] if a["name"] == "advance")
-	assert action["ui_button"] == "Advance"
+	assert action["ui_button"] == expected_button

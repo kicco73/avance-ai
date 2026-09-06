@@ -22,7 +22,9 @@ vi.mock('../src/dialogStore.js', () => ({
   confirmDialog: vi.fn(),
 }))
 vi.mock('../src/chatClient.js', () => ({
-  onTestUpdate: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
+  getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
+const { unsubscribeTestUpdates } = vi.hoisted(() => ({ unsubscribeTestUpdates: vi.fn() }))
+vi.mock('../src/chatChannel.js', () => ({ chatChannel: { subscribe: vi.fn(() => unsubscribeTestUpdates) } }))
 
 import {
   deleteAllTestJobs, deleteTestJob, deleteTests, getAggregateResult, getTests, getTestStatus,
@@ -30,7 +32,7 @@ import {
   postStateTest, postStatesAggregation, postUserSessionsRun, postUsersAggregation,
 } from '../src/api.js'
 import { confirmDialog } from '../src/dialogStore.js'
-import { onTestUpdate } from '../src/chatClient.js'
+import { chatChannel } from '../src/chatChannel.js'
 import { useTestExecutionTree } from '../src/composables/useTestExecutionTree.js'
 
 function mountComposable(setup) {
@@ -74,19 +76,19 @@ describe('useTestExecutionTree', () => {
       expect(s.selectedNodeId.value).toBe('root')
       expect(emit).toHaveBeenCalledWith('select', 'root')
       expect(getTestStatus).toHaveBeenCalledWith('proj')
-      expect(onTestUpdate).toHaveBeenCalledWith(s.handleTestEvent)
+      expect(chatChannel.subscribe).toHaveBeenCalledWith('test_update', s.handleTestEvent)
       await vi.waitFor(() => expect(s.currentStrategyStatuses.value['state:greeting']).toBe('running'))
 
       unmount()
       unmount = null
-      expect(onTestUpdate).toHaveBeenLastCalledWith(null)
+      expect(unsubscribeTestUpdates).toHaveBeenCalled()
     })
 
     it('a live update landing while the snapshot is still in flight is not overwritten by the (now stale) snapshot value for that key', async () => {
       let resolveSnapshot
       getTestStatus.mockReturnValue(new Promise((resolve) => { resolveSnapshot = resolve }))
       const s = mount()
-      const liveHandler = onTestUpdate.mock.calls[0][0]
+      const liveHandler = chatChannel.subscribe.mock.calls[0][1]
 
       liveHandler({ key: 'batch:state:greeting', job_status: 'completed', queue_status: 'exited' })
       resolveSnapshot({

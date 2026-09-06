@@ -35,60 +35,32 @@ def _session(db, username=USERNAME, project_id=PROJECT_ID, start=None):
     )
 
 
-@pytest.mark.regression
-def test_get_reads_a_stored_value(db):
-    session_id = _session(db)
-    db.set_env(session_id, {"favorite_color": "blue"})
-
-    assert _env(db).get("favorite_color") == "blue"
+def _live_env(db) -> PersistedEnv:
+    return _env(db, _session(db))
 
 
 @pytest.mark.regression
-def test_get_falls_back_to_default_for_an_unknown_key(db):
-    db.ensure_project(PROJECT_ID)
-    db.publish_project(PROJECT_ID)
-    db.set_active_project_id(PROJECT_ID, USERNAME)
-    assert _env(db).get("nope", "fallback") == "fallback"
+def test_update_merges_onto_stored_memory_overwriting_a_matching_key_and_ignoring_an_empty_write(db):
+    env = _live_env(db)
 
-
-@pytest.mark.regression
-def test_update_merges_onto_existing_stored_values(db):
-    env = _env(db, _session(db))
     env.update({"a": "1"})
-
     env.update({"b": "2"})
-
-    assert db.get_env(PROJECT_ID, USERNAME) == {"a": "1", "b": "2"}
-
-
-@pytest.mark.regression
-def test_update_overwrites_a_matching_key(db):
-    env = _env(db, _session(db))
-    env.update({"a": "1"})
-
     env.update({"a": "2"})
-
-    assert db.get_env(PROJECT_ID, USERNAME) == {"a": "2"}
-
-
-@pytest.mark.regression
-def test_update_with_empty_values_is_a_noop(db):
-    env = _env(db, _session(db))
-    env.update({"a": "1"})
-
     env.update({})
     env.update(None)
 
-    assert db.get_env(PROJECT_ID, USERNAME) == {"a": "1"}
+    assert db.get_env(PROJECT_ID, USERNAME) == {"a": "2", "b": "2"}
+    assert env.get("a") == "2"
+    assert env.get("nope", "fallback") == "fallback"
 
 
 @pytest.mark.contract
-def test_update_drops_a_declared_key_the_automaton_owns(db):
+def test_update_drops_a_declared_key_the_automaton_owns_even_when_that_leaves_nothing_to_write(db):
     """A model echoing back a key the automaton declares must not
     duplicate into memory() on top of action_set() — whether or not an
     action's own `env:` field has actually set it yet (see Env.update's
     own declared_keys parameter)."""
-    env = _env(db, _session(db))
+    env = _live_env(db)
     env.update_action_set({"WRONG_ANSWERS_ON_CURRENT_STEP": 2})
 
     env.update(
@@ -99,81 +71,31 @@ def test_update_drops_a_declared_key_the_automaton_owns(db):
     assert db.get_env(PROJECT_ID, USERNAME) == {"favorite_color": "blue"}
     assert env.action_set() == {"WRONG_ANSWERS_ON_CURRENT_STEP": 2}
 
-
-@pytest.mark.regression
-def test_update_is_a_noop_when_every_key_is_filtered_out(db):
-    env = _env(db, _session(db))
-
-    env.update({"a": "1"}, declared_keys={"a"})
-
-    assert db.get_env(PROJECT_ID, USERNAME) == {}
-
-
-@pytest.mark.regression
-def test_action_set_reads_a_value_set_via_update_action_set(db):
-    env = _env(db, _session(db))
-    env.update_action_set({"number_of_steps": 3})
-
-    assert env.action_set() == {"number_of_steps": 3}
-    assert env.memory() == {}
+    env.update({"favorite_color": "red"}, declared_keys={"favorite_color"})
+    assert db.get_env(PROJECT_ID, USERNAME) == {"favorite_color": "blue"}
 
 
 @pytest.mark.contract
-def test_action_set_and_memory_are_independent_stores(db):
-    env = _env(db, _session(db))
+def test_action_set_and_memory_are_independent_stores_both_readable_through_get(db):
+    env = _live_env(db)
+
     env.update({"favorite_color": "blue"})
+    env.update_action_set({"a": 1})
     env.update_action_set({"number_of_steps": 3})
-
-    assert env.memory() == {"favorite_color": "blue"}
-    assert env.action_set() == {"number_of_steps": 3}
-
-
-@pytest.mark.regression
-def test_update_action_set_merges_onto_existing_action_set_values(db):
-    env = _env(db, _session(db))
-    env.update_action_set({"a": 1})
-
-    env.update_action_set({"b": 2})
-
-    assert env.action_set() == {"a": 1, "b": 2}
-
-
-@pytest.mark.regression
-def test_update_action_set_with_empty_values_is_a_noop(db):
-    env = _env(db, _session(db))
-    env.update_action_set({"a": 1})
-
     env.update_action_set({})
     env.update_action_set(None)
 
-    assert env.action_set() == {"a": 1}
-
-
-@pytest.mark.contract
-def test_get_reads_an_action_set_value_too(db):
-    env = _env(db, _session(db))
-    env.update_action_set({"number_of_steps": 3})
-
+    assert env.memory() == {"favorite_color": "blue"}
+    assert env.action_set() == {"a": 1, "number_of_steps": 3}
     assert env.get("number_of_steps") == 3
+    # memory_as_text renders memory only, never the action set.
+    assert env.memory_as_text() == "favorite_color: blue"
 
 
 @pytest.mark.contract
-def test_memory_as_text_renders_memory_only(db):
-    env = _env(db, _session(db))
-    env.update({"favorite_color": "blue"})
-    env.update_action_set({"number_of_steps": 3})
+def test_update_action_set_returns_the_tracking_row_id_for_a_persisted_env_and_none_in_memory_or_for_an_empty_write(db):
+    env = _live_env(db)
 
-    result = env.memory_as_text()
-
-    assert result == "favorite_color: blue"
-
-
-@pytest.mark.contract
-def test_update_action_set_returns_the_tracking_row_id_for_a_persisted_env_and_none_in_memory(db):
-    env = _env(db, _session(db))
-
-    row_id = env.update_action_set({"a": 1})
-
-    assert isinstance(row_id, int)
-    assert Env().update_action_set({"a": 1}) is None
+    assert isinstance(env.update_action_set({"a": 1}), int)
     assert env.update_action_set({}) is None
+    assert Env().update_action_set({"a": 1}) is None

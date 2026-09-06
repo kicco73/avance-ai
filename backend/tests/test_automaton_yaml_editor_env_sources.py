@@ -118,8 +118,8 @@ class TestRenameSource:
         editor = make_editor(SOURCE_BASE_YAML)
         editor.rename_source("pino", "flight_records")
         automaton = builds(editor.serialize(), SOURCE_ARCHIVES)
-        assert _action(automaton, "a", "go-b").trigger == "source.flight_records.select('x') != 'nope'"
-        assert _action(automaton, "a", "go-c").trigger == "source.flight_records.select('x') != 'nope' and source.cities.select('x') != 'nope'"
+        assert _action(automaton, "a", "go-b").trigger == "source.flight_records.select_rows_containing('x') != 'nope'"
+        assert _action(automaton, "a", "go-c").trigger == "source.flight_records.select_rows_containing('x') != 'nope' and source.cities.select_rows_containing('x') != 'nope'"
 
 
 class TestDeleteSource:
@@ -127,7 +127,7 @@ class TestDeleteSource:
         editor = make_editor(SOURCE_BASE_YAML)
         editor.delete_source("cities")
         assert "cities" not in editor._raw["sources"]
-        assert _action(builds(editor.serialize(), SOURCE_ARCHIVES), "a", "go-c").trigger == "source.pino.select('x') != 'nope'"
+        assert _action(builds(editor.serialize(), SOURCE_ARCHIVES), "a", "go-c").trigger == "source.pino.select_rows_containing('x') != 'nope'"
 
         editor.delete_source("pino")
         assert _action(builds(editor.serialize(), SOURCE_ARCHIVES), "a", "go-b").trigger is None

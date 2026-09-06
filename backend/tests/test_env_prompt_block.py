@@ -24,6 +24,11 @@ ENV_KEYS = [
     EnvKey(name="_flight_record"),
 ]
 
+READING = State(key="a", ui_label="A", final=True, contextual_prompt="hi", ai_may_read_sources=("env",))
+MUST_READING = State(key="a", ui_label="A", final=True, contextual_prompt="hi", ai_must_read_sources=("env", "flights"))
+WRITING_ONLY = State(key="b", ui_label="B", final=True, contextual_prompt="hi", ai_may_write_sources=("env",))
+OTHER = State(key="b", ui_label="B", final=True, contextual_prompt="hi", ai_may_read_sources=("flights",))
+
 
 def _automaton(reading: State, other: State) -> Automaton:
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target=reading.key)
@@ -35,72 +40,37 @@ def _automaton(reading: State, other: State) -> Automaton:
     )
 
 
-READING = State(key="a", ui_label="A", final=True, contextual_prompt="hi", ai_may_read_sources=("env",))
-MUST_READING = State(key="a", ui_label="A", final=True, contextual_prompt="hi", ai_must_read_sources=("env", "flights"))
-WRITING_ONLY = State(key="b", ui_label="B", final=True, contextual_prompt="hi", ai_may_write_sources=("env",))
-OTHER = State(key="b", ui_label="B", final=True, contextual_prompt="hi", ai_may_read_sources=("flights",))
-
-
-def test_a_state_reading_the_env_source_gets_a_block_with_only_the_exported_keys():
+def test_only_a_state_that_actually_reads_the_env_source_gets_a_block_and_it_carries_only_the_exported_keys():
     env = Env(memory={"note": "x"}, action_set={"flight": "VY3003", "_flight_record": "secret"})
-    automaton = _automaton(READING, OTHER)
 
-    block = EnvPromptBlock.for_state(env, automaton, READING)
-
+    block = EnvPromptBlock.for_state(env, _automaton(READING, OTHER), READING)
     assert block is not None
     assert block.text() == f"{ENV_BLOCK_HEADER}\nflight: VY3003\ncustomer_email: "
     assert "secret" not in block.text() and "note" not in block.text()
 
-
-def test_a_must_read_of_the_env_source_gets_the_block_too():
-    automaton = _automaton(MUST_READING, OTHER)
-
-    assert EnvPromptBlock.for_state(Env(), automaton, MUST_READING) is not None
+    assert EnvPromptBlock.for_state(Env(), _automaton(MUST_READING, OTHER), MUST_READING) is not None
+    assert EnvPromptBlock.for_state(env, _automaton(READING, OTHER), OTHER) is None
+    assert EnvPromptBlock.for_state(env, _automaton(READING, WRITING_ONLY), WRITING_ONLY) is None
 
 
-def test_a_state_not_reading_the_env_source_gets_no_block_at_all():
-    env = Env(action_set={"flight": "VY3003"})
+def test_a_value_beyond_the_cap_is_cut_with_a_pointer_at_the_column_reads_while_one_exactly_at_it_is_left_alone():
     automaton = _automaton(READING, OTHER)
 
-    assert EnvPromptBlock.for_state(env, automaton, OTHER) is None
-
-
-def test_a_state_only_writing_the_env_source_gets_no_block_either():
-    automaton = _automaton(READING, WRITING_ONLY)
-
-    assert EnvPromptBlock.for_state(Env(action_set={"flight": "VY3003"}), automaton, WRITING_ONLY) is None
-
-
-def test_a_value_beyond_the_cap_is_cut_with_a_pointer_at_select():
-    long_value = "x" * (MAX_ENV_VALUE_CHARS + 37)
-    env = Env(action_set={"flight": long_value})
-    automaton = _automaton(READING, OTHER)
-
-    lines = EnvPromptBlock.for_state(env, automaton, READING).lines()
-
-    assert lines["flight"] == (
-        "x" * MAX_ENV_VALUE_CHARS + "[response too long — provide more specific filters via select]"
+    long_value = Env(action_set={"flight": "x" * (MAX_ENV_VALUE_CHARS + 37)})
+    assert EnvPromptBlock.for_state(long_value, automaton, READING).lines()["flight"] == (
+        "x" * MAX_ENV_VALUE_CHARS + "[response too long — provide more specific filters via a select_rows_* read]"
     )
 
-
-def test_a_value_exactly_at_the_cap_is_left_alone():
-    env = Env(action_set={"flight": "x" * MAX_ENV_VALUE_CHARS})
-    automaton = _automaton(READING, OTHER)
-
-    assert EnvPromptBlock.for_state(env, automaton, READING).lines()["flight"] == "x" * MAX_ENV_VALUE_CHARS
+    exact = Env(action_set={"flight": "x" * MAX_ENV_VALUE_CHARS})
+    assert EnvPromptBlock.for_state(exact, automaton, READING).lines()["flight"] == "x" * MAX_ENV_VALUE_CHARS
 
 
-def test_memory_as_text_renders_memory_only_never_the_env():
-    env = Env(memory={"goal": "quit"}, action_set={"flight": "VY3003"})
-
+def test_the_turn_size_estimate_counts_memory_and_the_blocks_own_lines_separately_and_nothing_at_all_without_a_block():
+    env = Env(memory={"goal": "quit"}, action_set={"flight": "VY3003", "_flight_record": "x" * 5000})
+    # memory_as_text renders memory only, never the env.
     assert env.memory_as_text() == "goal: quit"
 
-
-def test_the_turn_size_estimate_counts_memory_and_the_block_s_own_lines_separately():
-    env = Env(memory={"goal": "quit"}, action_set={"flight": "VY3003", "_flight_record": "x" * 5000})
-    automaton = _automaton(READING, OTHER)
-    block = EnvPromptBlock.for_state(env, automaton, READING)
-
+    block = EnvPromptBlock.for_state(env, _automaton(READING, OTHER), READING)
     estimate = estimate_turn_request("prompt", None, None, env, [], env_block=block)
 
     kinds = {(entry.kind, entry.label) for entry in estimate.entries}
@@ -108,13 +78,8 @@ def test_the_turn_size_estimate_counts_memory_and_the_block_s_own_lines_separate
     assert ("env", "flight") in kinds and ("env", "customer_email") in kinds
     assert not any(label == "_flight_record" for _, label in kinds)
 
-
-def test_with_no_block_the_estimate_counts_nothing_for_the_env():
-    env = Env(action_set={"flight": "x" * 5000})
-
-    estimate = estimate_turn_request("prompt", None, None, env, [])
-
-    assert {entry.kind for entry in estimate.entries} == {"prompt"}
+    without_block = estimate_turn_request("prompt", None, None, Env(action_set={"flight": "x" * 5000}), [])
+    assert {entry.kind for entry in without_block.entries} == {"prompt"}
 
 
 def test_hello_world_declares_no_tools_and_gets_no_block():

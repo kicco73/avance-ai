@@ -1,7 +1,7 @@
 """End-to-end: a state's own `ai-may-read-sources:` (see automaton.
 State.ai_may_read_sources) produces a real, working ToolSet, threaded all the way from
 TrackingProcessor down to AiService — proven with a fake AiService that
-actually drives it mid-turn, resolving a real source.<name>.select()
+actually drives it mid-turn, resolving a real source.<name>.select_rows_containing()
 call against a real (file-backed) archive.
 """
 from __future__ import annotations
@@ -153,7 +153,7 @@ async def _bootstrap_session(chat_service: ChatService) -> int:
 @pytest.mark.regression
 async def test_a_real_chat_turn_resolves_a_tool_call_against_the_state_s_own_declared_source(chat_service_for):
     ai_service = FakeToolAwareAiService(
-        [{"memory": "stage: greeted"}], tool_call=("source_flights_select", {"values": ["paris"]}),
+        [{"memory": "stage: greeted"}], tool_call=("source_flights_select_rows_containing", {"values": ["paris"]}),
     )
     chat_service = chat_service_for(_automaton_with_a_tool(), ai_service=ai_service)
     session_id = await _bootstrap_session(chat_service)
@@ -170,7 +170,7 @@ async def test_a_real_chat_turn_resolves_a_tool_call_against_the_state_s_own_dec
 @pytest.mark.regression
 async def test_a_real_chat_turn_persists_its_own_tool_calls_onto_the_assistant_message(chat_service_for, file_db):
     ai_service = FakeToolAwareAiService(
-        [{"memory": "stage: greeted"}], tool_call=("source_flights_select", {"values": ["paris"]}),
+        [{"memory": "stage: greeted"}], tool_call=("source_flights_select_rows_containing", {"values": ["paris"]}),
     )
     chat_service = chat_service_for(_automaton_with_a_tool(), ai_service=ai_service)
     session_id = await _bootstrap_session(chat_service)
@@ -180,7 +180,7 @@ async def test_a_real_chat_turn_persists_its_own_tool_calls_onto_the_assistant_m
     tool_calls_by_message = file_db.get_tool_calls_by_message(session_id)
     assert tool_calls_by_message[result["assistant_message_id"]] == [
         {
-            "name": "source_flights_select", "arguments": {"values": ["paris"]},
+            "name": "source_flights_select_rows_containing", "arguments": {"values": ["paris"]},
             "result": "city,country\nParis,France\n", "label": "Flights", "rows": 1, "error": False,
             "duration_ms": 5,
         },
@@ -200,7 +200,7 @@ async def test_get_messages_surfaces_the_persistent_tool_call_record_on_reload(c
     session_id = await _bootstrap_session(chat_service)
     assistant_message_id = file_db.save_message("assistant", "Paris it is.", session_id)
     tool_call_entry = {
-        "name": "source_flights_select", "arguments": {"values": ["paris"]},
+        "name": "source_flights_select_rows_containing", "arguments": {"values": ["paris"]},
         "result": "city,country\nParis,France\n", "label": "Flights", "rows": 1, "error": False, "duration_ms": 5,
     }
     file_db.record_tool_calls(session_id, [tool_call_entry], message_id=assistant_message_id)

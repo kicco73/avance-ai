@@ -37,7 +37,14 @@ def _link(job: DependentJob, parent: DependentJob | None = None) -> None:
         _link(child, parent=job)
 
 
-def test_children_and_parents_reflect_the_prepared_topology():
+def _prepared_pair() -> tuple[_Node, _Node]:
+    b = _Node("b")
+    a = _Node("a", [b])
+    a.prepare()
+    return a, b
+
+
+def test_preparing_records_the_topology_both_ways_and_a_job_with_no_dependencies_is_registered_at_once():
     b = _Node("b")
     a = _Node("a", [b])
     _link(a)
@@ -45,110 +52,54 @@ def test_children_and_parents_reflect_the_prepared_topology():
     assert a.children == (b,)
     assert b.parents == (a,)
 
-
-def test_children_registered_is_true_immediately_for_a_job_with_no_dependencies():
-    a = _Node("a")
-    a.prepare()
-
-    assert a._children_registered()
+    standalone = _Node("standalone")
+    standalone.prepare()
+    assert standalone._children_registered()
 
 
-def test_children_registered_is_false_while_a_dependency_is_still_outstanding():
-    b = _Node("b")
-    a = _Node("a", [b])
-    a.prepare()
-
-    assert not a._children_registered()
-
-
-def test_dependency_resolved_before_children_registered_defers_readiness_to_registration():
+def test_readiness_needs_both_registration_and_resolution_whichever_arrives_last_and_only_once_per_dependency():
     """Mirrors a dependency finishing faster than submit()'s own recursive
-    registration loop: the removal happens immediately, but readiness
-    must wait for _children_registered() to confirm no more are coming."""
-    b = _Node("b")
-    a = _Node("a", [b])
-    a.prepare()
+    registration loop: the removal happens immediately, but readiness must
+    wait for _children_registered() to confirm no more are coming."""
+    resolved_first, b = _prepared_pair()
+    assert not resolved_first._dependency_resolved(b)
+    assert resolved_first._children_registered()
 
-    assert not a._dependency_resolved(b)
-    assert a._children_registered()
+    registered_first, b2 = _prepared_pair()
+    assert not registered_first._children_registered()
+    assert registered_first._dependency_resolved(b2)
+    # A one-shot signal — the same dependency never reports ready twice.
+    assert not registered_first._dependency_resolved(b2)
 
-
-def test_children_registered_before_dependency_resolved_defers_readiness_to_resolution():
-    b = _Node("b")
-    a = _Node("a", [b])
-    a.prepare()
-
-    assert not a._children_registered()
-    assert a._dependency_resolved(b)
+    standalone = _Node("a")
+    standalone.prepare()
+    assert not standalone._dependency_resolved(_Node("stranger"))
 
 
-def test_dependency_resolved_is_a_one_shot_signal_for_the_same_dependency():
-    b = _Node("b")
-    a = _Node("a", [b])
-    a.prepare()
-    a._children_registered()
+async def test_add_parent_job_reports_whether_the_dependency_had_already_finished():
+    done = _Node("b")
+    done.prepare()
+    await done.run_next_step()
+    assert done.is_done()
+    assert done._add_parent_job(_Node("late"))
 
-    assert a._dependency_resolved(b)
-    assert not a._dependency_resolved(b)
-
-
-def test_dependency_resolved_is_false_for_a_dependency_it_never_had():
-    a = _Node("a")
-    stranger = _Node("stranger")
-    a.prepare()
-
-    assert not a._dependency_resolved(stranger)
+    pending = _Node("b")
+    pending.prepare()
+    assert not pending._add_parent_job(_Node("late"))
 
 
-async def test_add_parent_job_reports_true_when_the_dependency_is_already_terminal():
-    b = _Node("b")
-    b.prepare()
-    await b.run_next_step()
-    assert b.is_done()
-
-    late_parent = _Node("late")
-    assert b._add_parent_job(late_parent)
-
-
-def test_add_parent_job_reports_false_while_the_dependency_is_still_pending():
-    b = _Node("b")
-    b.prepare()
-
-    late_parent = _Node("late")
-    assert not b._add_parent_job(late_parent)
-
-
-def test_fail_cascades_to_every_parent():
-    b = _Node("b")
-    a = _Node("a", [b])
-    _link(a)
-
-    b._fail("boom")
-
-    assert b.is_failed()
-    assert b.error() == "boom"
-    assert a.is_failed()
-    assert a.error() == "dependency b failed"
-
-
-def test_fail_is_idempotent():
-    b = _Node("b")
-    _link(b)
-
-    assert b._fail("boom")
-    assert not b._fail("boom again")
-    assert b.error() == "boom"
-
-
-def test_a_failed_shared_dependency_fails_every_root_that_needs_it():
+def test_failing_cascades_to_every_parent_that_needs_it_and_is_idempotent():
     b = _Node("b")
     a = _Node("a", [b])
     c = _Node("c", [b])
     _link(a)
     _link(c)
 
-    b._fail("out of credits")
+    assert b._fail("boom")
+    assert not b._fail("boom again")
 
     assert b.is_failed()
+    assert b.error() == "boom"
     assert a.is_failed()
+    assert a.error() == "dependency b failed"
     assert c.is_failed()

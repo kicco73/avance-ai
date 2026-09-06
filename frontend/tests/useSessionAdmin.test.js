@@ -67,27 +67,12 @@ describe('useSessionAdmin', () => {
   }
 
   describe('handleImportSession', () => {
-    it('tracks importingSessions/importProgress and clears them when done', async () => {
+    it('tracks progress while importing, then refreshes the list and selects the newly-imported session', async () => {
       let progressCb
       postImportSessions.mockImplementation((_project, _files, onProgress) => {
         progressCb = onProgress
-        return Promise.resolve({ last_session_id: null, results: [] })
+        return Promise.resolve({ last_session_id: 99, results: [] })
       })
-      summarizeImportFailures.mockReturnValue(null)
-      const s = mount()
-
-      const p = s.handleImportSession(['file1'])
-      expect(s.importingSessions.value).toBe(true)
-      progressCb?.({ percentage: 50 })
-      expect(s.importProgress.value).toBe(50)
-      await p
-
-      expect(s.importingSessions.value).toBe(false)
-      expect(s.importProgress.value).toBeNull()
-    })
-
-    it('on a new session id, refreshes the list then selects the newly-imported session', async () => {
-      postImportSessions.mockResolvedValue({ last_session_id: 99, results: [] })
       summarizeImportFailures.mockReturnValue(null)
       const importedSession = { id: 99 }
       refreshSessionsQuietly.mockImplementation(() => {
@@ -97,31 +82,36 @@ describe('useSessionAdmin', () => {
       const selectSession = vi.fn()
       const s = mount({ selectSession })
 
-      await s.handleImportSession(['file1'])
+      const p = s.handleImportSession(['file1'])
+      expect(s.importingSessions.value).toBe(true)
+      progressCb?.({ percentage: 50 })
+      expect(s.importProgress.value).toBe(50)
+      await p
 
+      expect(s.importingSessions.value).toBe(false)
+      expect(s.importProgress.value).toBeNull()
       expect(refreshSessionsQuietly).toHaveBeenCalledWith(true, 'proj')
       expect(selectSession).toHaveBeenCalledWith(importedSession)
     })
 
-    it('surfaces a failure summary via setApiError, or clears it when there is none', async () => {
+    it('surfaces a failure summary via setApiError, and a request failure leaves the session list untouched', async () => {
       postImportSessions.mockResolvedValue({ last_session_id: null, results: ['x'] })
       summarizeImportFailures.mockReturnValue({ message: 'oops', detail: 'd' })
       const s = mount()
 
       await s.handleImportSession(['file1'])
-
       expect(setApiError).toHaveBeenCalledWith('oops', 'd')
       expect(clearApiError).not.toHaveBeenCalled()
-    })
+      s.unmount?.()
 
-    it('a request failure leaves importingSessions/importProgress cleared without touching the session list', async () => {
       postImportSessions.mockRejectedValue(new Error('network'))
-      const s = mount()
+      refreshSessionsQuietly.mockClear()
+      const failing = mount()
 
-      await s.handleImportSession(['file1'])
+      await failing.handleImportSession(['file1'])
 
-      expect(s.importingSessions.value).toBe(false)
-      expect(s.importProgress.value).toBeNull()
+      expect(failing.importingSessions.value).toBe(false)
+      expect(failing.importProgress.value).toBeNull()
       expect(refreshSessionsQuietly).not.toHaveBeenCalled()
     })
   })
@@ -134,103 +124,69 @@ describe('useSessionAdmin', () => {
     expect(refreshSessionsQuietly).toHaveBeenCalledWith(true, 'proj')
   })
 
-  describe('onDeleteTestUser', () => {
-    it('does nothing without confirmation', async () => {
-      confirmDialog.mockResolvedValue(false)
-      const s = mount()
-      await s.onDeleteTestUser({ testUserSeq: 3 })
-      expect(deleteTestUser).not.toHaveBeenCalled()
-    })
+  it('every destructive action needs confirmation first', async () => {
+    confirmDialog.mockResolvedValue(false)
+    const s = mount({ sessionId: 5 })
 
-    it('deletes, clears the active session only if it belonged to that test user, and refreshes', async () => {
-      confirmDialog.mockResolvedValue(true)
-      const s = mount({ sessionId: 5, session: { username: 'Test user 3' } })
+    await s.onDeleteTestUser({ testUserSeq: 3 })
+    await s.handleDeleteAllImported()
+    await s.handleDeleteSession({ id: 5, title: 'x' })
 
-      await s.onDeleteTestUser({ testUserSeq: 3 })
-
-      expect(deleteTestUser).toHaveBeenCalledWith('proj', 3)
-      expect(s.currentSessionId.value).toBeNull()
-      expect(refreshSessionsQuietly).toHaveBeenCalledWith(true, 'proj')
-    })
-
-    it('leaves an unrelated active session alone', async () => {
-      confirmDialog.mockResolvedValue(true)
-      const s = mount({ sessionId: 5, session: { username: 'someone else' } })
-
-      await s.onDeleteTestUser({ testUserSeq: 3 })
-
-      expect(s.currentSessionId.value).toBe(5)
-    })
+    expect(deleteTestUser).not.toHaveBeenCalled()
+    expect(deleteImportedSessions).not.toHaveBeenCalled()
+    expect(deleteSession).not.toHaveBeenCalled()
+    expect(s.currentSessionId.value).toBe(5)
   })
 
-  describe('onDeleteUserSessions', () => {
-    it('deletes and clears the active session only if it belonged to that username', async () => {
-      confirmDialog.mockResolvedValue(true)
-      const s = mount({ sessionId: 5, session: { username: 'alice' } })
+  it('deleting a test user or a username clears the active session only when it belonged to them', async () => {
+    confirmDialog.mockResolvedValue(true)
 
-      await s.onDeleteUserSessions({ username: 'alice' })
+    const unrelated = mount({ sessionId: 5, session: { username: 'someone else' } })
+    await unrelated.onDeleteTestUser({ testUserSeq: 3 })
+    expect(deleteTestUser).toHaveBeenCalledWith('proj', 3)
+    expect(unrelated.currentSessionId.value).toBe(5)
+    unrelated.unmount?.()
 
-      expect(deleteUserSessions).toHaveBeenCalledWith('proj', 'alice')
-      expect(s.currentSessionId.value).toBeNull()
-    })
+    const theirs = mount({ sessionId: 5, session: { username: 'Test user 3' } })
+    await theirs.onDeleteTestUser({ testUserSeq: 3 })
+    expect(theirs.currentSessionId.value).toBeNull()
+    expect(refreshSessionsQuietly).toHaveBeenCalledWith(true, 'proj')
+    theirs.unmount?.()
+
+    const alice = mount({ sessionId: 5, session: { username: 'alice' } })
+    await alice.onDeleteUserSessions({ username: 'alice' })
+    expect(deleteUserSessions).toHaveBeenCalledWith('proj', 'alice')
+    expect(alice.currentSessionId.value).toBeNull()
   })
 
-  describe('handleDeleteAllImported', () => {
-    it('does nothing without confirmation', async () => {
-      confirmDialog.mockResolvedValue(false)
-      const s = mount()
-      await s.handleDeleteAllImported()
-      expect(deleteImportedSessions).not.toHaveBeenCalled()
-    })
+  it('deleting all imported sessions clears the active one only if it was itself imported', async () => {
+    confirmDialog.mockResolvedValue(true)
 
-    it('clears the active session only if it was imported, then refreshes, leaving deletingAllImported false once settled', async () => {
-      confirmDialog.mockResolvedValue(true)
-      const s = mount({ sessionId: 5, isImported: true })
+    const live = mount({ sessionId: 5, isImported: false })
+    await live.handleDeleteAllImported()
+    expect(deleteImportedSessions).toHaveBeenCalledWith('proj')
+    expect(live.currentSessionId.value).toBe(5)
+    live.unmount?.()
 
-      await s.handleDeleteAllImported()
-
-      expect(deleteImportedSessions).toHaveBeenCalledWith('proj')
-      expect(s.currentSessionId.value).toBeNull()
-      expect(s.deletingAllImported.value).toBe(false)
-    })
-
-    it('leaves a live (non-imported) active session alone', async () => {
-      confirmDialog.mockResolvedValue(true)
-      const s = mount({ sessionId: 5, isImported: false })
-
-      await s.handleDeleteAllImported()
-
-      expect(s.currentSessionId.value).toBe(5)
-    })
+    const imported = mount({ sessionId: 5, isImported: true })
+    await imported.handleDeleteAllImported()
+    expect(imported.currentSessionId.value).toBeNull()
+    expect(imported.deletingAllImported.value).toBe(false)
   })
 
-  describe('handleDeleteSession', () => {
-    it('does nothing without confirmation', async () => {
-      confirmDialog.mockResolvedValue(false)
-      const s = mount()
-      await s.handleDeleteSession({ id: 5, title: 'x' })
-      expect(deleteSession).not.toHaveBeenCalled()
-    })
+  it('deleting one session clears the active one only if it is the very session deleted', async () => {
+    confirmDialog.mockResolvedValue(true)
 
-    it('clears the active session only if it is the one deleted, then refreshes, leaving deletingSessionId null once settled', async () => {
-      confirmDialog.mockResolvedValue(true)
-      const s = mount({ sessionId: 5 })
+    const other = mount({ sessionId: 5 })
+    await other.handleDeleteSession({ id: 9, title: 'x' })
+    expect(other.currentSessionId.value).toBe(5)
+    other.unmount?.()
 
-      await s.handleDeleteSession({ id: 5, title: 'x' })
-
-      expect(deleteSession).toHaveBeenCalledWith(5)
-      expect(s.currentSessionId.value).toBeNull()
-      expect(s.deletingSessionId.value).toBeNull()
-    })
-
-    it('leaves the active session alone when a different session is deleted', async () => {
-      confirmDialog.mockResolvedValue(true)
-      const s = mount({ sessionId: 5 })
-
-      await s.handleDeleteSession({ id: 9, title: 'x' })
-
-      expect(s.currentSessionId.value).toBe(5)
-    })
+    const same = mount({ sessionId: 5 })
+    await same.handleDeleteSession({ id: 5, title: 'x' })
+    expect(deleteSession).toHaveBeenCalledWith(5)
+    expect(same.currentSessionId.value).toBeNull()
+    expect(same.deletingSessionId.value).toBeNull()
   })
 
   it('handleDownloadSessions fetches the export blob and tracks downloadingSessions', async () => {

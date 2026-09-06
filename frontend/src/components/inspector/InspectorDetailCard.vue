@@ -349,8 +349,8 @@ function selectAttachment(fileName) {
                 toolState(name) === 'must'
                   ? `Forced: the model must read source.${name} once per entry into this state — click to turn off`
                   : toolState(name) === 'may'
-                    ? `The model may read source.${name} (select) — click to force it (ai-must-read-sources)`
-                    : `Click to let the model read source.${name} (select) while replying in this state`
+                    ? `The model may read source.${name} — click to force it (ai-must-read-sources)`
+                    : `Click to let the model read source.${name} while replying in this state`
               "
               @click.stop="cycleTool(name)"
             >{{ name }}</span>

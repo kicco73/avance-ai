@@ -39,70 +39,37 @@ def _metrics(db) -> MetricService:
     return MetricService(db, FixedProjectContext(project_id="proj"))
 
 
-def test_calculate_values_returns_a_flat_name_to_value_mapping(db):
-    values = _metrics(db).calculate_values()
+def test_calculate_values_is_a_flat_name_to_value_mapping_matching_calculate_all(db):
+    metrics = _metrics(db)
+
+    values = metrics.calculate_values()
 
     assert set(values) == SESSION_SCOPED_METRIC_NAMES
     for value in values.values():
         assert 0.0 <= value <= 100.0
+    assert values == {m["name"]: m["value"] for m in metrics.calculate_all()}
 
 
-def test_calculate_values_matches_calculate_all(db):
-    metrics = _metrics(db)
-
-    values = metrics.calculate_values()
-    all_metrics = {m["name"]: m["value"] for m in metrics.calculate_all()}
-
-    assert values == all_metrics
-
-
-def test_merge_if_referenced_leaves_names_untouched_when_no_trigger_mentions_a_metric(db):
-    automaton = _automaton_with_trigger("mySignal >= 50")
+def test_merge_if_referenced_computes_metrics_only_when_a_trigger_mentions_one_never_mutating_the_input(db):
     names = {"mySignal": 60}
 
-    result = _metrics(db).merge_if_referenced(automaton, "a", names)
+    untouched = _metrics(db).merge_if_referenced(_automaton_with_trigger("mySignal >= 50"), "a", names)
+    assert untouched is names  # unchanged — metrics were never even computed
 
-    assert result is names  # unchanged — metrics were never even computed
-
-
-def test_merge_if_referenced_adds_metric_values_when_a_trigger_mentions_one(db):
-    automaton = _automaton_with_trigger("engagement >= 50")
-    names = {"mySignal": 60}
-
-    result = _metrics(db).merge_if_referenced(automaton, "a", names)
-
-    assert result["mySignal"] == 60
-    assert set(result) == {"mySignal"} | SESSION_SCOPED_METRIC_NAMES
-
-
-def test_merge_if_referenced_does_not_mutate_the_original_names_dict(db):
-    automaton = _automaton_with_trigger("engagement >= 50")
-    names = {"mySignal": 60}
-
-    _metrics(db).merge_if_referenced(automaton, "a", names)
-
+    merged = _metrics(db).merge_if_referenced(_automaton_with_trigger("engagement >= 50"), "a", names)
+    assert merged["mySignal"] == 60
+    assert set(merged) == {"mySignal"} | SESSION_SCOPED_METRIC_NAMES
     assert names == {"mySignal": 60}
 
 
-def test_for_turn_exposes_only_the_all_sessions_per_user_metrics(db):
-    namespace = _metrics(db).for_turn()
+def test_for_turn_returns_a_fresh_namespace_of_the_all_sessions_metrics_reusing_one_calculator_within_it(db):
+    metrics = _metrics(db)
+    namespace = metrics.for_turn()
 
     assert namespace.retention() is not None
+    calculator_after_first_call = namespace._calculator
     assert namespace.activity_consistency() is not None
+    assert namespace._calculator is calculator_after_first_call
     assert not hasattr(namespace, "engagement")
 
-
-def test_for_turn_reuses_the_same_calculator_across_metrics(db):
-    namespace = _metrics(db).for_turn()
-
-    namespace.retention()
-    calculator_after_first_call = namespace._calculator
-    namespace.activity_consistency()
-
-    assert namespace._calculator is calculator_after_first_call
-
-
-def test_for_turn_returns_a_fresh_namespace_every_call(db):
-    metrics = _metrics(db)
-
-    assert metrics.for_turn() is not metrics.for_turn()
+    assert metrics.for_turn() is not namespace

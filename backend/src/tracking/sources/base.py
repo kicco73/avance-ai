@@ -8,8 +8,8 @@ METHOD_DESCRIPTIONS per class are the whole compatibility mechanism, and
 parameter_schema() only ever *narrows* a method's uniform argument schema
 (see tracking.sources.METHOD_SCHEMAS) — never changes its signature.
 
-Bounded by construction: `select` (and any future result-returning
-method a driver adds) must return a result at most MAX_SOURCE_RESULT_CHARS
+Bounded by construction: every `select_rows_*` (and any future
+result-returning method a driver adds) must return a result at most MAX_SOURCE_RESULT_CHARS
 long — refused outright here, once, for every caller alike (a trigger/env:
 expression, or the model itself via ToolSet.call), never left to each
 driver to remember."""
@@ -85,28 +85,32 @@ class SourceDriver:
             return f"{message}\n{header.rstrip(chr(10))}"
         return message
 
-    def select(self, *values: str, keys: list[str] | None = None) -> str:
+    def select_rows_containing(self, *values: str) -> str:
         """Header row plus every row containing *every* value (case-
-        insensitive substring, AND'd), then projected onto `keys` — the
-        header always included, columns in the order asked for; None
-        means every column. No values at all means every row, exactly as
-        tracking.sources._VALUES_PARAMETER's own schema promises the
-        model. An unknown column comes back as an error *text* (the model
-        reads it and retries), never an exception. No row at all satisfying
-        the filter (rather than one column of it) is the one case where
-        even the header is dropped — "" means "not found," full stop, so
-        `source.x.select(...) != ''` is a real existence check (see
-        tracking.sources.avance_archive/avance_env's own select())."""
-        raise self._unsupported("select")
+        insensitive substring, AND'd), the whole row each time. No values
+        at all means every row, exactly as tracking.sources.
+        _VALUES_PARAMETER's own schema promises the model. No row at all
+        satisfying the filter is the one case where even the header is
+        dropped — "" means "not found," full stop, so
+        `source.x.select_rows_containing(...) != ''` is a real existence
+        check (see tracking.sources.avance_archive/avance_env's own
+        select_rows_containing())."""
+        raise self._unsupported("select_rows_containing")
+
+    def select_rows_where_column(self, column: str, operator: str, value: str) -> str:
+        raise self._unsupported("select_rows_where_column")
+
+    def select_rows_where_column_in_range(self, column: str, start: str, end: str) -> str:
+        raise self._unsupported("select_rows_where_column_in_range")
 
     def value(self, *values: str, key: str) -> str:
         """The `key` cell of the *first* row containing every value
-        (same filter as select), as a string — "" if no row satisfies it,
+        (same filter as select_rows_containing), as a string — "" if no row satisfies it,
         an error *text* if `key` isn't a real column. Never a ToolSet
-        tool (ToolSet only ever wires up select/update, see its own
+        tool (ToolSet only ever wires up the select_rows_*/update methods, see its own
         _add_tool) — scripts and trigger/env: expressions only, where a
-        single scalar reads better than parsing select()'s own table
-        text."""
+        single scalar reads better than parsing a select_rows_* table's
+        own text."""
         raise self._unsupported("value")
 
     def update(self, *values: str, fields: dict[str, str]) -> str:

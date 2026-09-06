@@ -5,8 +5,8 @@ that lists an `avance:env` source in ai-may-read-sources/
 ai-must-read-sources (see Automaton.reads_env_source), holds only the
 keys with `ai-access` other than none (Automaton.exported_env_keys), and
 truncates every value to MAX_ENV_VALUE_CHARS with a pointer at the
-`select` tool for the rest. Anywhere else the block simply doesn't exist
-— not even empty. The model's own memory is a separate block with its
+source's own read tool for the rest. Anywhere else the block simply
+doesn't exist — not even empty. The model's own memory is a separate block with its
 own heading (see TurnProtocol), never merged with this one."""
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ class EnvPromptBlock:
         source and the project exports at least one key (AutomatonBuilder
         already guarantees the latter whenever an avance:env source is
         declared). A key never set yet renders with an empty value, the
-        same row `select` would return."""
+        same row a read would return."""
         if not automaton.reads_env_source(state):
             return None
         exported = automaton.exported_env_keys()
@@ -47,7 +47,7 @@ class EnvPromptBlock:
         text = "" if value is None else str(value)
         if len(text) <= MAX_ENV_VALUE_CHARS:
             return text
-        return f"{text[:MAX_ENV_VALUE_CHARS]}[response too long — provide more specific filters via select]"
+        return f"{text[:MAX_ENV_VALUE_CHARS]}[response too long — provide more specific filters via a select_rows_* read]"
 
     def lines(self) -> dict[str, str]:
         """key -> rendered (already truncated) value, in declaration order

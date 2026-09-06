@@ -38,293 +38,191 @@ const REGISTRY_WITH_SOURCE = {
   }
 }
 
+const TOP_LEVEL = new Set(['signal', 'env', 'system', 'session', 'metric'])
+
 function contextAt(text, explicit = false) {
   const state = EditorState.create({ doc: text })
   return new CompletionContext(state, text.length, explicit)
 }
 
-describe('completeIdentifiers', () => {
-  it('suggests every top-level namespace for a bare partial word, unfiltered — CodeMirror\'s own autocomplete does the actual text matching downstream (see @codemirror/autocomplete\'s own CompletionResult.options docs)', () => {
-    const result = completeIdentifiers(contextAt('sig'), REGISTRY)
+function optionsAt(text, registry = REGISTRY, explicit = false) {
+  return completeIdentifiers(contextAt(text, explicit), registry).options
+}
 
-    expect(new Set(result.options.map((o) => o.label))).toEqual(
-      new Set(['signal', 'env', 'system', 'session', 'metric'])
-    )
-    const signalOption = result.options.find((o) => o.label === 'signal')
+function labelsAt(text, registry = REGISTRY, explicit = false) {
+  return new Set(optionsAt(text, registry, explicit).map((o) => o.label))
+}
+
+function optionAt(text, label, registry = REGISTRY) {
+  return optionsAt(text, registry).find((o) => o.label === label)
+}
+
+describe('completeIdentifiers', () => {
+  it('suggests every top-level namespace unfiltered for a bare word or an explicit empty request, and nothing at all on an implicit empty one', () => {
+    // CodeMirror's own autocomplete does the actual text matching
+    // downstream (see @codemirror/autocomplete's CompletionResult.options).
+    expect(labelsAt('sig')).toEqual(TOP_LEVEL)
+    expect(labelsAt('', REGISTRY, true)).toEqual(TOP_LEVEL)
+    // "session.metric" is a dotted registry key, never itself a bare
+    // namespace word a user would type directly.
+    expect(labelsAt('', REGISTRY, true).has('session.metric')).toBe(false)
+    expect(completeIdentifiers(contextAt(''), REGISTRY)).toBeNull()
+
+    const signalOption = optionAt('sig', 'signal')
     expect(signalOption.type).toBe('namespace')
     // No trailing "." — completing a namespace name shouldn't force the
     // user into typing on that field before they can look elsewhere.
     expect(signalOption.apply).toBe('signal')
   })
 
-  it('suggests every top-level namespace on an explicit empty request', () => {
-    const result = completeIdentifiers(contextAt('', true), REGISTRY)
+  it('suggests a namespace\'s own identifiers after its dot — plain for signal/env, call-style for a proxy — with the description in info, never detail', () => {
+    // A completion's own `detail` is rendered inline in the list and gets
+    // clipped past the list's width, which is what cut a longer
+    // ui-description off; the full text lives in `info` instead.
+    const [mood] = optionsAt('signal.')
+    expect(mood.label).toBe('mood')
+    expect(mood.type).toBe('variable')
+    expect(mood.apply).toBe('mood')
+    expect(mood.detail).toBeUndefined()
+    expect(typeof mood.info).toBe('function')
 
-    expect(new Set(result.options.map((o) => o.label))).toEqual(
-      new Set(['signal', 'env', 'system', 'session', 'metric'])
-    )
-    // "session.metric" is a dotted registry key, never itself a bare
-    // namespace word a user would type directly.
-    expect(result.options.some((o) => o.label === 'session.metric')).toBe(false)
-  })
-
-  it('returns null for an empty non-explicit request (avoids popping up on every keystroke)', () => {
-    expect(completeIdentifiers(contextAt(''), REGISTRY)).toBeNull()
-  })
-
-  it('suggests a namespace\'s own identifiers right after its dot, as variables when the namespace is signal/env', () => {
-    const result = completeIdentifiers(contextAt('signal.'), REGISTRY)
-
-    expect(result.options).toHaveLength(1)
-    const [option] = result.options
-    expect(option.label).toBe('mood')
-    expect(option.type).toBe('variable')
-    expect(option.apply).toBe('mood')
-    // The full description lives in `info` (see completionInfo's own
-    // tests below), never in `detail` — a completion's own `detail` is
-    // rendered inline in the list and gets clipped with an ellipsis past
-    // the list's own width, which is exactly what was cutting a longer
-    // ui-description off.
-    expect(option.detail).toBeUndefined()
-    expect(typeof option.info).toBe('function')
-  })
-
-  it('suggests a proxy namespace\'s own identifiers as functions, appending ()', () => {
-    const result = completeIdentifiers(contextAt('system.'), REGISTRY)
-
-    expect(result.options.map((o) => ({ label: o.label, type: o.type, apply: o.apply }))).toEqual([
+    const system = optionsAt('system.')
+    expect(system.map((o) => ({ label: o.label, type: o.type, apply: o.apply }))).toEqual([
       { label: 'today', type: 'function', apply: 'today()' },
       { label: 'time', type: 'function', apply: 'time()' }
     ])
-    expect(result.options.every((o) => typeof o.info === 'function')).toBe(true)
+    expect(system.every((o) => typeof o.info === 'function')).toBe(true)
   })
 
-  it('returns every identifier of the resolved namespace unfiltered, regardless of the partial word already typed after the dot', () => {
-    const result = completeIdentifiers(contextAt('metric.ret'), REGISTRY)
-
-    expect(new Set(result.options.map((o) => o.label))).toEqual(new Set(['retention', 'activity_consistency']))
-  })
-
-  it('resolves the nested session.metric namespace from a three-segment dotted path', () => {
-    const result = completeIdentifiers(contextAt('session.metric.eng'), REGISTRY)
-
-    expect(new Set(result.options.map((o) => o.label))).toEqual(new Set(['engagement', 'state_stability']))
-    const engagementOption = result.options.find((o) => o.label === 'engagement')
-    expect(engagementOption.apply).toBe('engagement()')
+  it('returns every identifier of the resolved namespace unfiltered, resolving a nested one from its full dotted path', () => {
+    expect(labelsAt('metric.ret')).toEqual(new Set(['retention', 'activity_consistency']))
+    expect(labelsAt('session.metric.eng')).toEqual(new Set(['engagement', 'state_stability']))
+    expect(optionAt('session.metric.eng', 'engagement').apply).toBe('engagement()')
   })
 
   it('always offers "metric" itself right after session\'s own dot, alongside its real identifiers', () => {
-    const result = completeIdentifiers(contextAt('session.'), REGISTRY)
-
-    const labels = result.options.map((o) => o.label)
-    expect(labels).toContain('number_of_user_sessions')
-    expect(labels).toContain('metric')
-    const metricOption = result.options.find((o) => o.label === 'metric')
+    expect(labelsAt('session.')).toContain('number_of_user_sessions')
+    const metricOption = optionAt('session.', 'metric')
     expect(metricOption.type).toBe('namespace')
     expect(metricOption.apply).toBe('metric')
   })
 
-  it('returns null when the dotted namespace is not a real one in the registry', () => {
+  it('returns null for an unknown dotted namespace and otherwise replaces only the word being typed', () => {
     expect(completeIdentifiers(contextAt('bogus.'), REGISTRY)).toBeNull()
-  })
 
-  it('positions the completion range right after the dot, not the whole dotted expression', () => {
-    const result = completeIdentifiers(contextAt('signal.mo'), REGISTRY)
-    // "signal.mo" is 9 characters; the replaceable range should start
-    // right after the dot (index 7), not at the very start of "signal".
-    expect(result.from).toBe(7)
-  })
+    // "signal.mo" is 9 characters; the replaceable range starts right
+    // after the dot (index 7), not at the very start of "signal".
+    expect(completeIdentifiers(contextAt('signal.mo'), REGISTRY).from).toBe(7)
 
-  it('works in the middle of a larger expression, not just at the very start', () => {
     const text = 'signal.mood >= 40 and sess'
     const result = completeIdentifiers(contextAt(text), REGISTRY)
-
     expect(result.options.map((o) => o.label)).toContain('session')
-    // The replaceable range is just "sess" (the word actually being
-    // typed), not the whole preceding expression.
     expect(result.from).toBe(text.length - 'sess'.length)
   })
 
-  it('offers "automaton" as a top-level namespace when the registry has one', () => {
-    const result = completeIdentifiers(contextAt('auto'), REGISTRY_WITH_AUTOMATON)
-    expect(result.options.map((o) => o.label)).toContain('automaton')
-  })
+  it('descends automaton.<project>.env one namespace at a time, offering state and every declared env key as plain identifiers', () => {
+    expect(labelsAt('auto', REGISTRY_WITH_AUTOMATON)).toContain('automaton')
 
-  it('offers every other project as a child namespace right after "automaton."', () => {
-    const result = completeIdentifiers(contextAt('automaton.'), REGISTRY_WITH_AUTOMATON)
-
-    expect(result.options).toHaveLength(1)
-    const [option] = result.options
-    expect(option.label).toBe('other_project')
-    expect(option.type).toBe('namespace')
+    const [project] = optionsAt('automaton.', REGISTRY_WITH_AUTOMATON)
+    expect(project.label).toBe('other_project')
+    expect(project.type).toBe('namespace')
     // No trailing "()" — automaton.<project> is a namespace to descend
     // into, never itself called.
-    expect(option.apply).toBe('other_project')
-  })
+    expect(project.apply).toBe('other_project')
 
-  it('offers "state" as a plain (unparenthesized) identifier and "env" as a child namespace under automaton.<project>', () => {
-    const result = completeIdentifiers(contextAt('automaton.other_project.'), REGISTRY_WITH_AUTOMATON)
-
-    const stateOption = result.options.find((o) => o.label === 'state')
+    const stateOption = optionAt('automaton.other_project.', 'state', REGISTRY_WITH_AUTOMATON)
     expect(stateOption.type).toBe('variable')
     expect(stateOption.apply).toBe('state')
-    const envOption = result.options.find((o) => o.label === 'env')
+    const envOption = optionAt('automaton.other_project.', 'env', REGISTRY_WITH_AUTOMATON)
     expect(envOption.type).toBe('namespace')
     expect(envOption.apply).toBe('env')
+
+    const [budget] = optionsAt('automaton.other_project.env.', REGISTRY_WITH_AUTOMATON)
+    expect(budget.label).toBe('budget')
+    expect(budget.type).toBe('variable')
+    expect(budget.apply).toBe('budget')
   })
 
-  it('offers that project\'s own declared env keys as plain identifiers under automaton.<project>.env', () => {
-    const result = completeIdentifiers(contextAt('automaton.other_project.env.'), REGISTRY_WITH_AUTOMATON)
+  it('offers every declared source as a child namespace, then that source\'s own methods call-style', () => {
+    const [pino] = optionsAt('source.', REGISTRY_WITH_SOURCE)
+    expect(pino.label).toBe('pino')
+    expect(pino.type).toBe('namespace')
+    expect(pino.apply).toBe('pino')
 
-    expect(result.options).toHaveLength(1)
-    const [option] = result.options
-    expect(option.label).toBe('budget')
-    expect(option.type).toBe('variable')
-    expect(option.apply).toBe('budget')
-  })
-})
-
-describe('completeIdentifiers — declared sources (source.<name>.<method>)', () => {
-  it('offers every declared source as a child namespace right after "source."', () => {
-    const result = completeIdentifiers(contextAt('source.'), REGISTRY_WITH_SOURCE)
-
-    expect(result.options).toHaveLength(1)
-    const [option] = result.options
-    expect(option.label).toBe('pino')
-    expect(option.type).toBe('namespace')
-    // No trailing "()" — source.<name> is a namespace to descend into,
-    // never itself called.
-    expect(option.apply).toBe('pino')
-  })
-
-  it('offers that source\'s own methods, call-style, right after "source.<name>."', () => {
-    const result = completeIdentifiers(contextAt('source.pino.'), REGISTRY_WITH_SOURCE)
-
-    expect(result.options.map((o) => o.label).sort()).toEqual(['read', 'select'])
-    const readOption = result.options.find((o) => o.label === 'read')
+    const methods = optionsAt('source.pino.', REGISTRY_WITH_SOURCE)
+    expect(methods.map((o) => o.label).sort()).toEqual(['read', 'select'])
+    const readOption = methods.find((o) => o.label === 'read')
     expect(readOption.type).toBe('function')
     expect(readOption.apply).toBe('read()')
   })
 })
 
 describe('completionInfo', () => {
-  it('renders a symbol tag, then the identifier bolded, then its full description', () => {
+  it('renders a type symbol, the bolded identifier and its full untruncated description, omitting the block when empty', () => {
     const node = completionInfo('mood', 'How positive the user sounds.', 'variable')
+    expect(node.querySelector('.cm-trigger-completion-info-symbol').textContent).toBe('[var]')
+    expect(node.querySelector('strong').textContent).toBe('mood')
+    expect(node.querySelector('.cm-trigger-completion-info-description').textContent).toBe('How positive the user sounds.')
 
-    const symbol = node.querySelector('.cm-trigger-completion-info-symbol')
-    const label = node.querySelector('strong')
-    const description = node.querySelector('.cm-trigger-completion-info-description')
-    expect(symbol.textContent).toBe('[var]')
-    expect(label.textContent).toBe('mood')
-    expect(description.textContent).toBe('How positive the user sounds.')
-  })
+    expect(completionInfo('today', "Today's date.", 'function')
+      .querySelector('.cm-trigger-completion-info-symbol').textContent).toBe('[fn]')
 
-  it('uses a distinct symbol for a proxy (function-typed) identifier', () => {
-    const node = completionInfo('today', "Today's date.", 'function')
-    expect(node.querySelector('.cm-trigger-completion-info-symbol').textContent).toBe('[fn]')
-  })
-
-  it('never truncates a long, multi-line description', () => {
     const long = 'Line one of the description.\nLine two, still fully present.\n' + 'x'.repeat(500)
-    const node = completionInfo('engagement', long, 'function')
+    expect(completionInfo('engagement', long, 'function')
+      .querySelector('.cm-trigger-completion-info-description').textContent).toBe(long)
 
-    expect(node.querySelector('.cm-trigger-completion-info-description').textContent).toBe(long)
-  })
-
-  it('omits the description block entirely when there is none', () => {
-    const node = completionInfo('visits', '', 'variable')
-    expect(node.querySelector('.cm-trigger-completion-info-description')).toBeNull()
+    expect(completionInfo('visits', '', 'variable').querySelector('.cm-trigger-completion-info-description')).toBeNull()
   })
 })
 
 describe('isProxyNamespace', () => {
-  it('is false for the plain variable namespaces (signal/env/user resolve straight off an already-fetched dict)', () => {
-    expect(isProxyNamespace('signal')).toBe(false)
-    expect(isProxyNamespace('env')).toBe(false)
-    expect(isProxyNamespace('user')).toBe(false)
-  })
-
-  it('is true for every proxy namespace', () => {
-    expect(isProxyNamespace('session')).toBe(true)
-    expect(isProxyNamespace('session.metric')).toBe(true)
-    expect(isProxyNamespace('source')).toBe(true)
-    expect(isProxyNamespace('metric')).toBe(true)
-    expect(isProxyNamespace('datetime')).toBe(true)
-  })
-
-  it('is false for automaton and every automaton.<project> sub-namespace — real attribute access, never called', () => {
-    expect(isProxyNamespace('automaton')).toBe(false)
-    expect(isProxyNamespace('automaton.other_project')).toBe(false)
-    expect(isProxyNamespace('automaton.other_project.env')).toBe(false)
-  })
-
-  it('is false for datetime.timezone — its only member (utc) is a plain attribute, not callable', () => {
-    expect(isProxyNamespace('datetime.timezone')).toBe(false)
+  it('is true only for the namespaces whose members are actually called', () => {
+    // signal/env/user resolve straight off an already-fetched dict;
+    // automaton.* is real attribute access; datetime.timezone's only
+    // member (utc) is a plain attribute.
+    for (const namespace of ['session', 'session.metric', 'source', 'metric', 'datetime']) {
+      expect(isProxyNamespace(namespace)).toBe(true)
+    }
+    for (const namespace of [
+      'signal', 'env', 'user', 'automaton', 'automaton.other_project', 'automaton.other_project.env', 'datetime.timezone'
+    ]) {
+      expect(isProxyNamespace(namespace)).toBe(false)
+    }
   })
 })
 
 describe('namespaceOf (the coloring regex\'s own namespace extraction)', () => {
-  it('extracts a plain single-segment namespace', () => {
+  it('extracts the longest namespace it recognizes, nested ones included, and every one it can extract has a fixed color', () => {
     expect(namespaceOf('signal.mood')).toBe('signal')
     expect(namespaceOf('metric.retention')).toBe('metric')
-  })
-
-  it('extracts the nested session.metric namespace, not just session', () => {
-    expect(namespaceOf('session.metric.engagement')).toBe('session.metric')
-  })
-
-  it('extracts plain session when not followed by .metric', () => {
-    expect(namespaceOf('session.number_of_user_sessions')).toBe('session')
-  })
-
-  it('extracts the user namespace', () => {
     expect(namespaceOf('user.email')).toBe('user')
-  })
-
-  it('extracts the source namespace', () => {
     expect(namespaceOf("source.attachment('notes.txt')")).toBe('source')
-  })
+    expect(namespaceOf('session.metric.engagement')).toBe('session.metric')
+    expect(namespaceOf('session.number_of_user_sessions')).toBe('session')
+    expect(namespaceOf('datetime.timezone.utc')).toBe('datetime.timezone')
+    expect(namespaceOf('datetime.datetime')).toBe('datetime')
+    expect(namespaceOf('datetime.timedelta')).toBe('datetime')
+    // .state/.env.<key> stay uncolored past automaton itself.
+    expect(namespaceOf('automaton.other_project.state')).toBe('automaton')
+    expect(namespaceOf('automaton.other_project.env.budget')).toBe('automaton')
 
-  it('every namespace it can extract has a fixed color', () => {
     for (const namespace of ['signal', 'env', 'session', 'session.metric', 'user', 'source', 'metric', 'automaton', 'datetime', 'datetime.timezone']) {
       expect(NAMESPACE_COLORS[namespace]).toMatch(/^#[0-9a-f]{6}$/)
     }
   })
-
-  it('extracts automaton.<project> as its own namespace, leaving .state/.env.<key> uncolored past it', () => {
-    expect(namespaceOf('automaton.other_project.state')).toBe('automaton')
-    expect(namespaceOf('automaton.other_project.env.budget')).toBe('automaton')
-  })
-
-  it('extracts the nested datetime.timezone namespace, not just datetime', () => {
-    expect(namespaceOf('datetime.timezone.utc')).toBe('datetime.timezone')
-  })
-
-  it('extracts plain datetime when not followed by .timezone', () => {
-    expect(namespaceOf('datetime.datetime')).toBe('datetime')
-    expect(namespaceOf('datetime.timedelta')).toBe('datetime')
-  })
 })
 
 describe('excludingNamespaces', () => {
-  it('drops a namespace and everything nested under it, by prefix', () => {
-    const filtered = excludingNamespaces(REGISTRY, ['session'])
-    expect(Object.keys(filtered)).toEqual(['signal', 'env', 'system', 'metric'])
-  })
-
-  it('never matches on a mere string prefix without the dot', () => {
-    const registry = { ...REGISTRY, sessionish: { x: '' } }
-    expect(Object.keys(excludingNamespaces(registry, ['session']))).toContain('sessionish')
-  })
-
-  it('returns the registry untouched with nothing to exclude', () => {
+  it('drops a namespace and everything nested under it by dotted prefix, returning the registry untouched with nothing to exclude', () => {
+    expect(Object.keys(excludingNamespaces(REGISTRY, ['session']))).toEqual(['signal', 'env', 'system', 'metric'])
     expect(excludingNamespaces(REGISTRY, [])).toBe(REGISTRY)
     expect(excludingNamespaces(REGISTRY, undefined)).toBe(REGISTRY)
-  })
 
-  it('is what the on-enter editor sees: session gone, session.metric gone with it, actuator kept', () => {
-    const registry = { ...REGISTRY, actuator: { notify: '' } }
+    const registry = { ...REGISTRY, sessionish: { x: '' }, actuator: { notify: '' } }
     const filtered = excludingNamespaces(registry, ['session'])
+    // What the on-enter editor sees: session gone, session.metric gone
+    // with it, actuator kept — and never a mere string-prefix match.
+    expect(Object.keys(filtered)).toContain('sessionish')
     expect(filtered.actuator).toBeDefined()
     expect(filtered.session).toBeUndefined()
     expect(filtered['session.metric']).toBeUndefined()

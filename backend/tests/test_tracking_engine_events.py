@@ -62,8 +62,7 @@ def _automaton(action_target: str, action_env: dict | None = None) -> tuple[Auto
 def _engine() -> tuple[TrackingEngine, FakeSink, FakeEnv]:
     sink = FakeSink()
     env = FakeEnv()
-    engine = TrackingEngine(sink, env, FakeScopeBuilder())
-    return engine, sink, env
+    return TrackingEngine(sink, env, FakeScopeBuilder()), sink, env
 
 
 def _collect(event_type):
@@ -72,36 +71,25 @@ def _collect(event_type):
     return received
 
 
-def test_apply_transition_publishes_state_changed_for_a_real_transition():
-    automaton, state, action = _automaton(action_target="b")
-    engine, sink, _ = _engine()
+def test_apply_transition_publishes_state_changed_only_for_a_real_transition_carrying_an_identity():
     received = _collect(StateChanged)
 
-    engine.apply_transition(automaton, state, action, {}, session_id=1, origin='trigger', username=USERNAME, project_id=PROJECT_ID)
-
+    real_automaton, real_state, real_action = _automaton(action_target="b")
+    engine, sink, _ = _engine()
+    engine.apply_transition(real_automaton, real_state, real_action, {}, session_id=1, origin='trigger', username=USERNAME, project_id=PROJECT_ID)
     assert received == [StateChanged(username=USERNAME, project_id=PROJECT_ID, from_state="a", to_state="b")]
 
+    # A self-loop is still saved (see apply_transition's own docstring) but never published.
+    loop_automaton, loop_state, loop_action = _automaton(action_target="a")
+    loop_engine, loop_sink, _ = _engine()
+    loop_engine.apply_transition(loop_automaton, loop_state, loop_action, {}, session_id=1, origin='trigger', username=USERNAME, project_id=PROJECT_ID)
+    assert loop_sink.transitions == [("a", "go", "a")]
 
-def test_apply_transition_does_not_publish_for_a_self_loop():
-    automaton, state, action = _automaton(action_target="a")
-    engine, sink, _ = _engine()
-    received = _collect(StateChanged)
+    anonymous_engine, anonymous_sink, _ = _engine()
+    anonymous_engine.apply_transition(real_automaton, real_state, real_action, {}, session_id=1, origin='trigger')
+    assert anonymous_sink.transitions == [("a", "go", "b")]
 
-    engine.apply_transition(automaton, state, action, {}, session_id=1, origin='trigger', username=USERNAME, project_id=PROJECT_ID)
-
-    assert sink.transitions == [("a", "go", "a")]  # still saved — see apply_transition's own docstring
-    assert received == []
-
-
-def test_apply_transition_publishes_nothing_when_no_identity_is_given():
-    automaton, state, action = _automaton(action_target="b")
-    engine, sink, _ = _engine()
-    received = _collect(StateChanged)
-
-    engine.apply_transition(automaton, state, action, {}, session_id=1, origin='trigger')  # no username/project_id
-
-    assert sink.transitions == [("a", "go", "b")]
-    assert received == []
+    assert len(received) == 1
 
 
 def test_apply_transition_requires_an_origin():
@@ -112,27 +100,22 @@ def test_apply_transition_requires_an_origin():
         engine.apply_transition(automaton, state, action, {}, session_id=1)
 
 
-def test_apply_action_env_publishes_env_changed_per_written_key():
-    automaton, state, action = _automaton(action_target="a", action_env={"counter": "1", "flag": "True"})
-    engine, sink, env = _engine()
+def test_apply_action_env_publishes_env_changed_per_written_key_only_when_an_identity_is_given():
     received = _collect(EnvChanged)
 
+    automaton, state, action = _automaton(action_target="a", action_env={"counter": "1", "flag": "True"})
+    engine, _sink, env = _engine()
     engine.apply_action_env(automaton, action, {}, state.key, username=USERNAME, project_id=PROJECT_ID)
 
     assert env.updates == [{"counter": 1, "flag": True}]
     assert {(e.key, e.value) for e in received} == {("counter", 1), ("flag", True)}
     assert all(e.username == USERNAME and e.project_id == PROJECT_ID for e in received)
 
+    anonymous_engine, _sink, anonymous_env = _engine()
+    anonymous_engine.apply_action_env(automaton, action, {}, state.key)  # no username/project_id
 
-def test_apply_action_env_publishes_nothing_when_no_identity_is_given():
-    automaton, state, action = _automaton(action_target="a", action_env={"counter": "1"})
-    engine, sink, env = _engine()
-    received = _collect(EnvChanged)
-
-    engine.apply_action_env(automaton, action, {}, state.key)  # no username/project_id
-
-    assert env.updates == [{"counter": 1}]  # still applied locally
-    assert received == []
+    assert anonymous_env.updates == [{"counter": 1, "flag": True}]  # still applied locally
+    assert len(received) == 2
 
 
 def test_notify_transition_is_also_reachable_as_a_bare_staticmethod():

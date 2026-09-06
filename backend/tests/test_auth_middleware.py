@@ -77,55 +77,38 @@ def client(identity, fake_db) -> TestClient:
     return TestClient(app)
 
 
-class TestAllowlist:
-    def test_the_login_path_is_reachable_without_a_cookie(self, client):
-        response = client.get("/api/auth/login")
-        assert response.status_code == 200
+def test_an_allowlisted_path_needs_no_cookie_while_a_protected_one_accepts_only_a_verifiable_token(client, identity):
+    assert client.get("/api/auth/login").status_code == 200
+
+    no_cookie = client.get("/api/protected")
+    assert no_cookie.status_code == 401
+    assert no_cookie.json()["error"]["message"]
+
+    client.cookies.set(SESSION_COOKIE_NAME, "garbage")
+    assert client.get("/api/protected").status_code == 401
+
+    client.cookies.set(SESSION_COOKIE_NAME, "good-token")
+    response = client.get("/api/protected")
+    assert response.status_code == 200
+    assert response.json()["user"] == identity.email
 
 
-class TestProtectedRoute:
-    def test_no_cookie_is_rejected_with_401(self, client):
-        response = client.get("/api/protected")
-        assert response.status_code == 401
-        assert response.json()["error"]["message"]
+def test_a_project_scoped_route_is_gated_on_access_for_a_plain_user_and_open_to_every_other_role(client, identity, fake_db):
+    """A plain 'user' (identity's own default role) only ever reaches a
+    {project_id}-scoped route for a project Db.user_has_project_access
+    says they belong to — checked once here for every such route at once,
+    rather than in each controller method (see
+    ProjectService.resolve_invite_link for how access is granted)."""
+    client.cookies.set(SESSION_COOKIE_NAME, "good-token")
+    assert client.get("/api/projects/proj-a/protected").status_code == 403
 
-    def test_a_cookie_verify_token_rejects_is_401(self, client):
-        client.cookies.set(SESSION_COOKIE_NAME, "garbage")
-        response = client.get("/api/protected")
-        assert response.status_code == 401
+    fake_db.grant(identity.email, "proj-a")
+    response = client.get("/api/projects/proj-a/protected")
+    assert response.status_code == 200
+    assert response.json()["project_id"] == "proj-a"
 
-    def test_a_valid_cookie_is_accepted_and_sets_session_user(self, client, identity):
-        client.cookies.set(SESSION_COOKIE_NAME, "good-token")
-        response = client.get("/api/protected")
-        assert response.status_code == 200
-        assert response.json()["user"] == identity.email
+    admin = AuthenticatedUser(provider_user_id="sub-2", email="admin@example.com", name="Admin", picture_url=None, role="admin")
+    client.app.state.auth_service = _FakeAuthService({"admin-token": admin})
+    client.cookies.set(SESSION_COOKIE_NAME, "admin-token")
 
-
-class TestProjectOwnershipGate:
-    """A plain 'user' (identity's own default role — see the identity
-    fixture) only ever reaches a {project_id}-scoped route for a
-    project Db.user_has_project_access says they belong to — checked
-    once here for every such route at once, rather than in each
-    controller method (see ProjectService.resolve_invite_link for how a
-    project is granted in the first place)."""
-
-    def test_a_user_without_access_is_forbidden(self, client):
-        client.cookies.set(SESSION_COOKIE_NAME, "good-token")
-        response = client.get("/api/projects/proj-a/protected")
-        assert response.status_code == 403
-
-    def test_a_user_with_access_is_allowed(self, client, identity, fake_db):
-        fake_db.grant(identity.email, "proj-a")
-        client.cookies.set(SESSION_COOKIE_NAME, "good-token")
-        response = client.get("/api/projects/proj-a/protected")
-        assert response.status_code == 200
-        assert response.json()["project_id"] == "proj-a"
-
-    def test_a_non_user_role_bypasses_the_check_entirely(self, client, fake_db):
-        admin = AuthenticatedUser(provider_user_id="sub-2", email="admin@example.com", name="Admin", picture_url=None, role="admin")
-        client.app.state.auth_service = _FakeAuthService({"admin-token": admin})
-        client.cookies.set(SESSION_COOKIE_NAME, "admin-token")
-
-        response = client.get("/api/projects/proj-a/protected")
-
-        assert response.status_code == 200
+    assert client.get("/api/projects/proj-b/protected").status_code == 200

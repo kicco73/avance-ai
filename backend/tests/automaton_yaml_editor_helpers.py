@@ -97,11 +97,11 @@ states:
       - name: go-b
         ui-label: Go to B
         target: b
-        trigger: source.pino.select('x') != 'nope'
+        trigger: source.pino.select_rows_containing('x') != 'nope'
       - name: go-c
         ui-label: Go to C
         target: c
-        trigger: source.pino.select('x') != 'nope' and source.cities.select('x') != 'nope'
+        trigger: source.pino.select_rows_containing('x') != 'nope' and source.cities.select_rows_containing('x') != 'nope'
   b:
     ui-label: State B
     contextual-prompt: there

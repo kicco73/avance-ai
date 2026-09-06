@@ -1,14 +1,17 @@
 """The `avance` source driver — read-only access to one of a project's
 own stored archive files, addressed by a `sources:` entry's own
 `url: avance:<archive path>` (e.g. `avance:sources/flights.csv`).
-`select(*values, keys=...)`: the header row plus every row containing
-*every* value (case-insensitive, AND'd — one value narrows down to a
-single row, several narrow further; no values at all means every row),
-optionally projected onto the columns named in `keys`, bounded (see
-SourceDriver._bounded) regardless of how big a match set it finds. No
-row at all matching the filter returns "" — not even the header — so
-`select(...) != ''` is a real existence check. `value(*values, key=...)`:
-the `key` cell of the first matching row, as a scalar string, for
+`select_rows_containing(*values)`: the header row plus every whole row
+containing *every* value (case-insensitive, AND'd — one value narrows
+down to a single row, several narrow further; no values at all means
+every row), bounded (see SourceDriver._bounded) regardless of how big a
+match set it finds. `select_rows_where_column(column, operator, value)`
+and `select_rows_where_column_in_range(column, start, end)`: the same
+whole rows, picked by a comparison on one column instead (numbers and
+ISO dates included, see tracking.sources.comparison). No row at all
+matching the filter returns "" — not even the header — so
+`select_rows_containing(...) != ''` is a real existence check.
+`value(*values, key=...)`: the `key` cell of the first matching row, as a scalar string, for
 scripts/triggers that want one value rather than a table to parse —
 never a model tool. A whole-file read is
 `attachment.read(name)`'s job (on-enter only, see
@@ -27,6 +30,7 @@ import io
 from project.archive.layout import CACHE_DIR
 
 from .base import SourceContext, SourceDriver
+from .comparison import OPERATORS, ColumnComparison, ColumnRange
 
 SCHEME = "avance"
 
@@ -34,18 +38,28 @@ _DELIMITERS = ",;\t|"
 
 
 class AvanceArchiveSource(SourceDriver):
-    SUPPORTED_METHODS = frozenset({"select", "value"})
+    SUPPORTED_METHODS = frozenset({
+        "select_rows_containing", "select_rows_where_column", "select_rows_where_column_in_range", "value",
+    })
     METHOD_DESCRIPTIONS = {
-        "select": (
-            "Grep over this source's own archive file: the header row (names the keys) plus every "
-            "row matching *every* given value, case-insensitive — e.g. source.<name>.select('Paris'). "
-            "Omit `values` for every row. `keys` (optional) picks which columns to return, e.g. "
-            "keys=['status']. \"\" (no header either) means no row matched at all."
+        "select_rows_containing": (
+            "Rows containing ALL values anywhere in the row. Case-insensitive substring matching. "
+            "The header row (naming the columns) comes first; omit `values` for every row; \"\" means no row "
+            "matched at all — e.g. source.<name>.select_rows_containing('Paris')."
+        ),
+        "select_rows_where_column": (
+            "Rows where a column satisfies a comparison. Operators: =, !=, >, >=, <, <=. Supports numeric "
+            "values and ISO dates (YYYY-MM-DD) — e.g. "
+            "source.<name>.select_rows_where_column('data_partenza', '>=', '2026-08-16')."
+        ),
+        "select_rows_where_column_in_range": (
+            "Rows where a numeric or ISO date (YYYY-MM-DD) column is between `start` and `end`, inclusive — "
+            "e.g. source.<name>.select_rows_where_column_in_range('data_partenza', '2026-08-01', '2026-08-31')."
         ),
         "value": (
             "The `key` column of the first row matching *every* given value, case-insensitive, as a "
             "single scalar — e.g. source.<name>.value('VY3003', key='data_partenza'). \"\" if no row "
-            "matches. Scripts/triggers only, never a model tool — the model reads with `select`."
+            "matches. Scripts/triggers only, never a model tool — the model reads with the select_rows_* tools."
         ),
     }
 
@@ -142,7 +156,7 @@ class AvanceArchiveSource(SourceDriver):
 
     def _matches(self, values: tuple[str, ...]) -> tuple[list[str], list[str]] | None:
         """(header line, matching data lines) for `values`' own filter, or
-        None for an empty file — the one piece select()/value() share."""
+        None for an empty file — the one piece every read here shares."""
         lines = self._read_text().splitlines(keepends=True)
         if not lines:
             return None
@@ -150,20 +164,41 @@ class AvanceArchiveSource(SourceDriver):
         matches = [line for line in lines[1:] if all(needle in line.lower() for needle in needles)]
         return [lines[0]], matches
 
-    def select(self, *values: str, keys: list[str] | None = None) -> str:
+    def select_rows_containing(self, *values: str) -> str:
         found = self._matches(values)
         if found is None:
             return ""
         header, matches = found
-        if keys is None:
-            result = header[0] + "".join(matches)
-        else:
-            result = self._project([header[0], *matches], list(keys))
-        if result.startswith("error:"):
-            return self._bounded(result)
         if not matches:
             return ""
-        return self._bounded(result, header=header[0])
+        return self._bounded(header[0] + "".join(matches), header=header[0])
+
+    def select_rows_where_column(self, column: str, operator: str, value: str) -> str:
+        if operator not in OPERATORS:
+            return f"error: unknown operator {operator!r} — available: {', '.join(OPERATORS)}"
+        return self._rows_where_column(column, ColumnComparison(operator, value))
+
+    def select_rows_where_column_in_range(self, column: str, start: str, end: str) -> str:
+        return self._rows_where_column(column, ColumnRange(start, end))
+
+    def _rows_where_column(self, column: str, condition: ColumnComparison | ColumnRange) -> str:
+        found = self._matches(())
+        if found is None:
+            return ""
+        header, rows = found
+        delimiter = self._delimiter(header[0])
+        names = [name.strip() for name in next(csv.reader(header, delimiter=delimiter))]
+        if column not in names:
+            return f"error: unknown column(s) {column!r} — available: {', '.join(names)}"
+        index = names.index(column)
+        matches = []
+        for line in rows:
+            cells = next(csv.reader([line], delimiter=delimiter), [])
+            if index < len(cells) and condition.matches(cells[index]):
+                matches.append(line)
+        if not matches:
+            return ""
+        return self._bounded(header[0] + "".join(matches), header=header[0])
 
     def value(self, *values: str, key: str) -> str:
         found = self._matches(values)

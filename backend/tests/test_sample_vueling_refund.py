@@ -101,7 +101,7 @@ def test_the_exit_trigger_is_a_real_existence_check_against_env_and_the_source(d
     assert automaton.evaluate_triggers("locate_booking", locate_scope) != "go_to_verify_entitlement"
 
     # Once the model reports (or the customer gives) a pnr, the trigger's
-    # own source.tickets_sold.select(...) half is what actually verifies
+    # own source.tickets_sold.select_rows_containing(...) half is what actually verifies
     # the flight — never just "the model said so."
     persisted_env.update_action_set({"pnr": "ABC123"})
     locate_scope = _scope(db, automaton, "locate_booking", CUSTOMER_EMAIL, env=persisted_env)

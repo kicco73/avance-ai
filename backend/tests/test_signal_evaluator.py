@@ -11,73 +11,41 @@ from tracking.evaluator import SignalEvaluator
 pytestmark = pytest.mark.contract
 
 
-def _automaton(signals=None) -> Automaton:
+def _automaton(*names: str) -> Automaton:
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     state_a = State(key="a", ui_label="A", final=True, contextual_prompt="hi")
     return Automaton(
         init_action=init_action,
         states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
         general_prompt="",
-        signals=signals or [],
+        signals=[Signal(name=name, ui_label=name.upper(), definition="d") for name in names],
         attachments={},
         general_attachments={},
         autotracking_on_ai_message=False,
     )
 
 
-def _evaluator() -> SignalEvaluator:
-    return SignalEvaluator()
+def _validate(automaton, raw, **kwargs):
+    return SignalEvaluator().validate(automaton, raw, **kwargs)
 
 
-def test_validate_coerces_a_valid_numeric_value():
-    automaton = _automaton([Signal(name="mood", ui_label="Mood", definition="d")])
-    result = _evaluator().validate(automaton, {"mood": 42})
-    assert result == {"mood": 42}
-
-
-def test_validate_turns_a_non_numeric_value_into_none():
-    automaton = _automaton([Signal(name="mood", ui_label="Mood", definition="d")])
-    result = _evaluator().validate(automaton, {"mood": "high"})
-    assert result == {"mood": None}
-
-
-def test_validate_turns_a_boolean_into_none():
+@pytest.mark.parametrize(("raw", "expected"), [
+    ({"mood": 42}, {"mood": 42}),
+    ({"mood": "high"}, {"mood": None}),
+    ({"mood": True}, {"mood": None}),
+    ({}, {"mood": None}),
+    (None, {"mood": None}),
+    ({"mood": 1, "somethingElse": 99}, {"mood": 1}),
+], ids=["numeric", "non-numeric", "bool", "missing", "none", "undeclared-dropped"])
+def test_validate_keeps_only_declared_signals_coercing_anything_but_a_real_number_to_none(raw, expected):
     """bool is a subclass of int in Python — explicitly excluded."""
-    automaton = _automaton([Signal(name="mood", ui_label="Mood", definition="d")])
-    result = _evaluator().validate(automaton, {"mood": True})
-    assert result == {"mood": None}
+    assert _validate(_automaton("mood"), raw) == expected
 
 
-def test_validate_fills_in_none_for_a_missing_declared_signal():
-    automaton = _automaton([Signal(name="mood", ui_label="Mood", definition="d")])
-    result = _evaluator().validate(automaton, {})
-    assert result == {"mood": None}
-
-
-def test_validate_drops_anything_not_a_declared_signal():
-    automaton = _automaton([Signal(name="mood", ui_label="Mood", definition="d")])
-    result = _evaluator().validate(automaton, {"mood": 1, "somethingElse": 99})
-    assert result == {"mood": 1}
-
-
-def test_validate_of_none_raw_values_fills_every_declared_signal_with_none():
-    automaton = _automaton([Signal(name="a", ui_label="A", definition="d"), Signal(name="b", ui_label="B", definition="d")])
-    assert _evaluator().validate(automaton, None) == {"a": None, "b": None}
-
-
-def test_validate_with_names_restricts_the_result_to_that_subset():
-    automaton = _automaton([Signal(name="a", ui_label="A", definition="d"), Signal(name="b", ui_label="B", definition="d")])
-    result = _evaluator().validate(automaton, {"a": 1, "b": 2}, names={"a"})
-    assert result == {"a": 1}
-
-
-def test_validate_with_names_still_fills_none_for_a_missing_needed_signal():
-    automaton = _automaton([Signal(name="a", ui_label="A", definition="d"), Signal(name="b", ui_label="B", definition="d")])
-    result = _evaluator().validate(automaton, {}, names={"a"})
-    assert result == {"a": None}
-
-
-def test_validate_with_an_empty_names_set_returns_nothing():
-    automaton = _automaton([Signal(name="a", ui_label="A", definition="d")])
-    result = _evaluator().validate(automaton, {"a": 1}, names=set())
-    assert result == {}
+@pytest.mark.parametrize(("raw", "names", "expected"), [
+    ({"a": 1, "b": 2}, {"a"}, {"a": 1}),
+    ({}, {"a"}, {"a": None}),
+    ({"a": 1}, set(), {}),
+], ids=["subset", "missing-still-filled", "empty-set"])
+def test_names_restricts_the_result_to_that_subset_still_filling_none_for_a_missing_one(raw, names, expected):
+    assert _validate(_automaton("a", "b"), raw, names=names) == expected

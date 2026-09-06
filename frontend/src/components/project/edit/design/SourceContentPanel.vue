@@ -3,11 +3,13 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import Papa from 'papaparse'
 import { TabulatorFull as Tabulator } from 'tabulator-tables'
 import 'tabulator-tables/dist/css/tabulator.min.css'
-import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile } from '../../../../api.js'
+import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile, postSourceWebImport } from '../../../../api.js'
+import { promptDialog } from '../../../../dialogStore.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },
-  fileName: { type: String, required: true }
+  fileName: { type: String, required: true },
+  sourceName: { type: String, required: true }
 })
 
 const emit = defineEmits(['saved'])
@@ -15,6 +17,8 @@ const emit = defineEmits(['saved'])
 const loading = ref(true)
 const saving = ref(false)
 const uploading = ref(false)
+const webImporting = ref(false)
+const webImportProgress = ref(null)
 const canUndo = ref(false)
 const canRedo = ref(false)
 const tableHost = ref(null)
@@ -23,6 +27,7 @@ const fileInputRef = ref(null)
 const content = ref('')
 const originalContent = ref('')
 const isDirty = computed(() => content.value !== originalContent.value)
+const webImportLabel = computed(() => `${Math.round(webImportProgress.value ?? 0)}%`)
 
 let table = null
 let requestToken = 0
@@ -138,6 +143,29 @@ async function addRow() {
   content.value = serializeTable()
 }
 
+async function webImport() {
+  const query = await promptDialog({
+    title: 'AI Web Import',
+    body: 'Search the web and import what it finds into this source.',
+    placeholder: 'e.g. well-reviewed dentists in Barcelona',
+    okLabel: 'Search'
+  })
+  if (!query?.trim()) return
+  webImporting.value = true
+  webImportProgress.value = 0
+  try {
+    await postSourceWebImport(props.projectId, props.sourceName, query.trim(), (message) => {
+      webImportProgress.value = message.percentage
+    })
+    await load()
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    webImporting.value = false
+    webImportProgress.value = null
+  }
+}
+
 function triggerUpload() {
   fileInputRef.value?.click()
 }
@@ -182,6 +210,18 @@ onBeforeUnmount(() => {
   <div class="source-content-panel">
     <div class="source-content-toolbar">
       <div class="source-content-toolbar-actions">
+        <button
+          class="source-content-ai-btn"
+          :class="{ 'source-content-ai-btn-running': webImporting }"
+          :disabled="webImporting || loading || saving || uploading"
+          :title="webImporting ? `Importing from the web — ${webImportLabel}` : 'AI Web Import'"
+          @click="webImport"
+        >
+          <span v-if="webImporting" class="source-content-ai-progress">{{ webImportLabel }}</span>
+          <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z" />
+          </svg>
+        </button>
         <button
           class="undo-redo-btn"
           title="Undo"
@@ -229,6 +269,11 @@ onBeforeUnmount(() => {
 .add-row-btn:hover:not(:disabled), .source-content-download-btn:hover:not(:disabled), .source-content-upload-btn:hover:not(:disabled) { background: #eef2f9; }
 .add-row-btn:disabled, .source-content-download-btn:disabled, .source-content-upload-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .source-content-upload-input { display: none; }
+.source-content-ai-btn { display: flex; align-items: center; justify-content: center; min-width: 1.8rem; height: 1.8rem; padding: 0 0.4rem; border-radius: 6px; border: 1px solid #ccc; background: white; color: #8b5cf6; cursor: pointer; }
+.source-content-ai-btn:hover:not(:disabled) { background: #f5f0fe; border-color: #8b5cf6; }
+.source-content-ai-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.source-content-ai-btn-running { border-color: #8b5cf6; background: #f5f0fe; opacity: 1; }
+.source-content-ai-progress { font-size: 0.75rem; font-variant-numeric: tabular-nums; }
 .save-btn { padding: 0.4rem 1rem; border-radius: 6px; border: 1px solid #2e7d32; background: #2e7d32; color: white; cursor: pointer; }
 .save-btn:hover:not(:disabled) { background: #256428; }
 .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }

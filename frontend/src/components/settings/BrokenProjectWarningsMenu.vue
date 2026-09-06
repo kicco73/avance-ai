@@ -1,7 +1,8 @@
 <script setup>
-import { ref } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
 import '../../styles/headerMenu.css'
 import { deleteProjectBrokenWarning, getProjectBrokenWarnings } from '../../api.js'
+import { chatChannel } from '../../chatChannel.js'
 import { useOutsideClickClose } from '../../composables/useOutsideClickClose.js'
 
 const props = defineProps({
@@ -22,6 +23,21 @@ async function load() {
     // already surfaced via apiFetch
   }
 }
+
+// A project breaking or being fixed reaches every admin as a pushed
+// system_warning frame, so the counter moves without waiting for the
+// next refresh of this view. The broken frame carries no id of its own —
+// one row per admin was written server-side, and reloading is what picks
+// up this admin's row.
+const unsubscribe = chatChannel.subscribe('system_warning', (frame) => {
+  if (frame.kind === 'project_fixed') {
+    warnings.value = warnings.value.filter((row) => row.project_id !== frame.project_id)
+    return
+  }
+  load()
+})
+
+onBeforeUnmount(unsubscribe)
 
 function toggleMenu() {
   toggle()

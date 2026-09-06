@@ -45,146 +45,104 @@ describe('useProjectPublishing', () => {
     return { ...mounted.result, currentFileName, selectedGraphElement, reload }
   }
 
-  it('refreshProjectRevision fetches and stores the revision info', async () => {
-    getProjectRevision.mockResolvedValue({ revision: 3, published_revision: 2 })
-    const s = mount()
-
+  async function mountAt(revision, published_revision, options = {}) {
+    getProjectRevision.mockResolvedValue({ revision, published_revision })
+    const s = mount(options)
     await s.refreshProjectRevision()
+    return s
+  }
 
-    expect(s.projectRevision.value).toEqual({ revision: 3, published_revision: 2 })
-  })
+  it('refreshProjectRevision stores the revision info, from which publishUpToDate and canRevert follow', async () => {
+    const upToDate = await mountAt(2, 2)
+    expect(upToDate.projectRevision.value).toEqual({ revision: 2, published_revision: 2 })
+    expect(upToDate.publishUpToDate.value).toBe(true)
+    expect(upToDate.canRevert.value).toBe(false)
+    upToDate.unmount?.()
 
-  describe('publishUpToDate / canRevert', () => {
-    it('is true only once revision === published_revision', async () => {
-      getProjectRevision.mockResolvedValue({ revision: 2, published_revision: 2 })
-      const s = mount()
-      await s.refreshProjectRevision()
-      expect(s.publishUpToDate.value).toBe(true)
-      expect(s.canRevert.value).toBe(false)
-    })
+    // canRevert requires a draft ahead AND a real prior publication.
+    const ahead = await mountAt(3, 2)
+    expect(ahead.publishUpToDate.value).toBe(false)
+    expect(ahead.canRevert.value).toBe(true)
 
-    it('canRevert requires a draft ahead AND a real prior publication', async () => {
-      getProjectRevision.mockResolvedValue({ revision: 3, published_revision: 2 })
-      const s = mount()
-      await s.refreshProjectRevision()
-      expect(s.canRevert.value).toBe(true)
-
-      getProjectRevision.mockResolvedValue({ revision: 1, published_revision: null })
-      await s.refreshProjectRevision()
-      expect(s.canRevert.value).toBe(false)
-    })
+    getProjectRevision.mockResolvedValue({ revision: 1, published_revision: null })
+    await ahead.refreshProjectRevision()
+    expect(ahead.canRevert.value).toBe(false)
   })
 
   describe('handlePublish', () => {
-    it('is a no-op when already up to date', async () => {
-      getProjectRevision.mockResolvedValue({ revision: 2, published_revision: 2 })
-      const s = mount()
-      await s.refreshProjectRevision()
-
-      await s.handlePublish()
-
+    it('does nothing when already up to date, when a remap is needed, or when an active-session confirm is declined', async () => {
+      const upToDate = await mountAt(2, 2)
+      await upToDate.handlePublish()
       expect(getPublishPreview).not.toHaveBeenCalled()
-    })
+      upToDate.unmount?.()
 
-    it('needs_remap opens the remap prompt instead of publishing', async () => {
-      getProjectRevision.mockResolvedValue({ revision: 3, published_revision: 2 })
       getPublishPreview.mockResolvedValue({ needs_remap: true, missing_state: 'gone', available_states: ['a', 'b'] })
-      const s = mount()
-      await s.refreshProjectRevision()
-
-      await s.handlePublish()
-
-      expect(s.publishRemapPrompt.value).toMatchObject({ missing_state: 'gone' })
+      const remap = await mountAt(3, 2)
+      await remap.handlePublish()
+      expect(remap.publishRemapPrompt.value).toMatchObject({ missing_state: 'gone' })
       expect(postPublishProject).not.toHaveBeenCalled()
-    })
+      remap.unmount?.()
 
-    it('an active session asks for confirmation first; declining aborts the publish', async () => {
-      getProjectRevision.mockResolvedValue({ revision: 3, published_revision: 2 })
       getPublishPreview.mockResolvedValue({ needs_remap: false, has_active_sessions: true })
       confirmDialog.mockResolvedValue(false)
-      const s = mount()
-      await s.refreshProjectRevision()
-
-      await s.handlePublish()
-
+      const active = await mountAt(3, 2)
+      await active.handlePublish()
       expect(postPublishProject).not.toHaveBeenCalled()
     })
 
-    it('publishes, refreshes the active editor history (for a non-index.yml file), and updates the revision', async () => {
-      getProjectRevision.mockResolvedValue({ revision: 3, published_revision: 2 })
-      const reload = vi.fn()
-      const s = mount({ fileName: 'index.css', reload })
-      await s.refreshProjectRevision()
+    it('publishes, updates the revision, and reloads the active editor only for a file other than index.yml', async () => {
+      const css = await mountAt(3, 2, { fileName: 'index.css' })
 
-      await s.handlePublish()
+      await css.handlePublish()
 
       expect(postPublishProject).toHaveBeenCalledWith('proj')
-      expect(s.projectRevision.value).toEqual({ revision: 2, published_revision: 2 })
-      expect(reload).toHaveBeenCalled()
+      expect(css.projectRevision.value).toEqual({ revision: 2, published_revision: 2 })
+      expect(css.reload).toHaveBeenCalled()
+      css.unmount?.()
+
+      // refreshAfterProjectEdit already covers index.yml itself.
+      const yml = await mountAt(3, 2, { fileName: 'index.yml' })
+      await yml.handlePublish()
+      expect(yml.reload).not.toHaveBeenCalled()
     })
 
-    it('never reloads the editor when index.yml itself is open (refreshAfterProjectEdit already covers it)', async () => {
-      getProjectRevision.mockResolvedValue({ revision: 3, published_revision: 2 })
-      const reload = vi.fn()
-      const s = mount({ fileName: 'index.yml', reload })
-      await s.refreshProjectRevision()
-
-      await s.handlePublish()
-
-      expect(reload).not.toHaveBeenCalled()
-    })
-
-    it('runs the pending leave action on success', async () => {
-      getProjectRevision.mockResolvedValue({ revision: 3, published_revision: 2 })
-      const s = mount()
-      await s.refreshProjectRevision()
+    it('runs the pending leave action on success and clears it without running it on failure', async () => {
+      const ok = await mountAt(3, 2)
       const onLeave = vi.fn()
-      s.pendingLeaveAction.value = onLeave
+      ok.pendingLeaveAction.value = onLeave
 
-      await s.handlePublish()
-
+      await ok.handlePublish()
       expect(onLeave).toHaveBeenCalled()
-      expect(s.pendingLeaveAction.value).toBeNull()
-    })
+      expect(ok.pendingLeaveAction.value).toBeNull()
+      ok.unmount?.()
 
-    it('clears the pending leave action without running it if the publish fails', async () => {
-      getProjectRevision.mockResolvedValue({ revision: 3, published_revision: 2 })
       postPublishProject.mockRejectedValue(new Error('boom'))
-      const s = mount()
-      await s.refreshProjectRevision()
-      const onLeave = vi.fn()
-      s.pendingLeaveAction.value = onLeave
+      const failing = await mountAt(3, 2)
+      const notRun = vi.fn()
+      failing.pendingLeaveAction.value = notRun
 
-      await s.handlePublish()
-
-      expect(onLeave).not.toHaveBeenCalled()
-      expect(s.pendingLeaveAction.value).toBeNull()
+      await failing.handlePublish()
+      expect(notRun).not.toHaveBeenCalled()
+      expect(failing.pendingLeaveAction.value).toBeNull()
     })
   })
 
-  describe('confirmPublishRemap', () => {
-    it('publishes with the chosen remap target, closes the prompt, and runs the pending leave action', async () => {
-      const s = mount()
-      s.publishRemapPrompt.value = { missing_state: 'gone', available_states: ['a'] }
-      const onLeave = vi.fn()
-      s.pendingLeaveAction.value = onLeave
+  it('confirmPublishRemap publishes with the chosen target and closes the prompt, leaving it open on failure', async () => {
+    const s = mount()
+    s.publishRemapPrompt.value = { missing_state: 'gone', available_states: ['a'] }
+    const onLeave = vi.fn()
+    s.pendingLeaveAction.value = onLeave
 
-      await s.confirmPublishRemap('a')
+    await s.confirmPublishRemap('a')
 
-      expect(postPublishProject).toHaveBeenCalledWith('proj', 'a')
-      expect(s.publishRemapPrompt.value).toBeNull()
-      expect(onLeave).toHaveBeenCalled()
-    })
+    expect(postPublishProject).toHaveBeenCalledWith('proj', 'a')
+    expect(s.publishRemapPrompt.value).toBeNull()
+    expect(onLeave).toHaveBeenCalled()
 
-    it('leaves the prompt open on failure so the user can retry or cancel', async () => {
-      postPublishProject.mockRejectedValue(new Error('boom'))
-      const s = mount()
-      s.publishRemapPrompt.value = { missing_state: 'gone', available_states: ['a'] }
-
-      await s.confirmPublishRemap('a')
-
-      expect(s.publishRemapPrompt.value).not.toBeNull()
-    })
+    postPublishProject.mockRejectedValue(new Error('boom'))
+    s.publishRemapPrompt.value = { missing_state: 'gone', available_states: ['a'] }
+    await s.confirmPublishRemap('a')
+    expect(s.publishRemapPrompt.value).not.toBeNull()
   })
 
   it('cancelPublishRemap closes the prompt and clears the pending leave action', () => {
@@ -200,39 +158,27 @@ describe('useProjectPublishing', () => {
   })
 
   describe('handleRevert', () => {
-    it('does nothing when canRevert is false', async () => {
-      getProjectRevision.mockResolvedValue({ revision: 1, published_revision: null })
-      const s = mount()
-      await s.refreshProjectRevision()
-
-      await s.handleRevert()
-
+    it('does nothing when canRevert is false or the confirm is declined', async () => {
+      const nothingToRevert = await mountAt(1, null)
+      await nothingToRevert.handleRevert()
       expect(confirmDialog).not.toHaveBeenCalled()
-    })
+      nothingToRevert.unmount?.()
 
-    it('does nothing without confirmation', async () => {
-      getProjectRevision.mockResolvedValue({ revision: 3, published_revision: 2 })
       confirmDialog.mockResolvedValue(false)
-      const s = mount()
-      await s.refreshProjectRevision()
-
-      await s.handleRevert()
-
+      const declined = await mountAt(3, 2)
+      await declined.handleRevert()
       expect(postRevertProject).not.toHaveBeenCalled()
     })
 
     it('reverts, clears the graph selection, and refreshes the active editor', async () => {
-      getProjectRevision.mockResolvedValue({ revision: 3, published_revision: 2 })
       confirmDialog.mockResolvedValue(true)
-      const reload = vi.fn()
-      const s = mount({ fileName: 'index.css', reload })
-      await s.refreshProjectRevision()
+      const s = await mountAt(3, 2, { fileName: 'index.css' })
 
       await s.handleRevert()
 
       expect(postRevertProject).toHaveBeenCalledWith('proj')
       expect(s.selectedGraphElement.value).toBeNull()
-      expect(reload).toHaveBeenCalled()
+      expect(s.reload).toHaveBeenCalled()
       expect(s.publishing.value).toBe(false)
     })
   })

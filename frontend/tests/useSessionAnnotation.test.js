@@ -73,21 +73,23 @@ describe('useSessionAnnotation', () => {
     return { ...mounted.result, currentSessionId, currentSessionIsImported }
   }
 
-  it('loadTimeline() with no session clears state and never calls the API', async () => {
-    const s = mount(null)
+  async function loaded(sessionId = 7, isImported = false) {
+    const s = mount(sessionId, isImported)
     await s.loadTimeline()
+    return s
+  }
 
-    expect(s.loading.value).toBe(false)
-    expect(s.rawMessages.value).toEqual([])
-    expect(s.signalsLog.value).toEqual([])
-    expect(s.sessionStartState.value).toBeNull()
+  it('loadTimeline() loads messages, signals and the start state, refreshing the Inspector, and clears everything with no session', async () => {
+    const empty = mount(null)
+    await empty.loadTimeline()
+    expect(empty.loading.value).toBe(false)
+    expect(empty.rawMessages.value).toEqual([])
+    expect(empty.signalsLog.value).toEqual([])
+    expect(empty.sessionStartState.value).toBeNull()
     expect(getMessages).not.toHaveBeenCalled()
-  })
+    empty.unmount?.()
 
-  it('loadTimeline() with a session loads messages/signals/start-state and refreshes the Inspector', async () => {
-    const s = mount(7)
-    await s.loadTimeline()
-
+    const s = await loaded()
     expect(getMessages).toHaveBeenCalledWith(7)
     expect(getSessionSignals).toHaveBeenCalledWith(7)
     expect(s.rawMessages.value).toEqual([MESSAGE_1, MESSAGE_2])
@@ -95,122 +97,81 @@ describe('useSessionAnnotation', () => {
     expect(s.sessionStartState.value).toBe('a')
     expect(s.loading.value).toBe(false)
     expect(inspectorRef.value.refresh).toHaveBeenCalled()
-  })
 
-  it('switching currentSessionId triggers loadTimeline on its own (the watch)', async () => {
-    const s = mount(7)
-    await s.loadTimeline()
     getMessages.mockClear()
-
     s.currentSessionId.value = 42
     await vi.waitFor(() => expect(getMessages).toHaveBeenCalledWith(42))
   })
 
-  it('selectMessage/selectTransition set `selected` to the right shape', () => {
-    const s = mount(7)
+  it('selectMessage/selectTransition set `selected` to the right shape and resolve the row backing it', async () => {
+    const s = await loaded()
+
     s.selectMessage(MESSAGE_1)
     expect(s.selected.value).toEqual({ kind: 'message', message: MESSAGE_1 })
-
-    const transition = { message_id: 1, old_state: 'a', new_state: 'b' }
-    s.selectTransition(transition)
-    expect(s.selected.value).toEqual({ kind: 'transition', transition })
-  })
-
-  it('annotatableSignalsRow finds the row backing a selected message', async () => {
-    const s = mount(7)
-    await s.loadTimeline()
-    s.selectMessage(MESSAGE_1)
-
     expect(s.annotatableSignalsRow.value).toEqual(signalsRow())
     expect(s.annotatableMessageId.value).toBe(1)
-  })
 
-  it('annotatableSignalsRow is null for a live message with no evaluation row', async () => {
-    getSessionSignals.mockResolvedValue([])
-    const s = mount(7, false)
-    await s.loadTimeline()
-    s.selectMessage(MESSAGE_2)
-
-    expect(s.annotatableSignalsRow.value).toBeNull()
-    expect(s.annotatableMessageId.value).toBeNull()
-  })
-
-  it('annotatableSignalsRow falls back to a virtual placeholder for an imported session', async () => {
-    getSessionSignals.mockResolvedValue([])
-    const s = mount(7, true)
-    await s.loadTimeline()
-    s.selectMessage(MESSAGE_2)
-
-    expect(s.annotatableSignalsRow.value).toMatchObject({ id: null, message_id: 2 })
-    expect(s.annotatableMessageId.value).toBe(2)
-  })
-
-  it('a transition selection resolves annotatableMessageId off the transition row itself', async () => {
-    const s = mount(7)
-    await s.loadTimeline()
-    s.selectTransition(signalsRow({ message_id: 5 }))
-
+    const transition = signalsRow({ message_id: 5 })
+    s.selectTransition(transition)
+    expect(s.selected.value).toEqual({ kind: 'transition', transition })
     expect(s.annotatableMessageId.value).toBe(5)
   })
 
-  it('expectedState/expectedValues read off annotatableSignalsRow, parsing expected_values JSON', async () => {
+  it('a message with no evaluation row is unannotatable in a live session but gets a virtual placeholder in an imported one', async () => {
+    getSessionSignals.mockResolvedValue([])
+
+    const live = await loaded(7, false)
+    live.selectMessage(MESSAGE_2)
+    expect(live.annotatableSignalsRow.value).toBeNull()
+    expect(live.annotatableMessageId.value).toBeNull()
+    live.unmount?.()
+
+    const imported = await loaded(7, true)
+    imported.selectMessage(MESSAGE_2)
+    expect(imported.annotatableSignalsRow.value).toMatchObject({ id: null, message_id: 2 })
+    expect(imported.annotatableMessageId.value).toBe(2)
+  })
+
+  it('expectedState/expectedValues read off the backing row, and only the synthetic init row refuses expected signals', async () => {
     getSessionSignals.mockResolvedValue([signalsRow({ expected_state: 'c', expected_values: '{"mood":80}' })])
-    const s = mount(7)
-    await s.loadTimeline()
-    s.selectMessage(MESSAGE_1)
+    const annotated = await loaded()
+    annotated.selectMessage(MESSAGE_1)
+    expect(annotated.expectedState.value).toBe('c')
+    expect(annotated.expectedValues.value).toEqual({ mood: 80 })
+    expect(annotated.annotatableExpectedSignals.value).toBe(true)
+    annotated.unmount?.()
 
-    expect(s.expectedState.value).toBe('c')
-    expect(s.expectedValues.value).toEqual({ mood: 80 })
-  })
-
-  it("annotatableExpectedSignals is false only for the synthetic init row (old_state === '')", async () => {
     getSessionSignals.mockResolvedValue([signalsRow({ old_state: '' })])
-    const s = mount(7)
-    await s.loadTimeline()
-    s.selectMessage(MESSAGE_1)
-
-    expect(s.annotatableExpectedSignals.value).toBe(false)
+    const init = await loaded()
+    init.selectMessage(MESSAGE_1)
+    expect(init.annotatableExpectedSignals.value).toBe(false)
   })
 
-  it('onUpdateExpectedState writes, reloads signals, and refreshes the Inspector', async () => {
-    const s = mount(7)
-    await s.loadTimeline()
+  it('onUpdateExpectedState/Signals write, reload the signals log and refresh the Inspector, doing nothing without a resolvable message id', async () => {
+    const nothingSelected = await loaded()
+    await nothingSelected.onUpdateExpectedState('z')
+    await nothingSelected.onUpdateExpectedSignals({ a: 1 })
+    expect(putMessageExpectedState).not.toHaveBeenCalled()
+    expect(putMessageExpectedSignals).not.toHaveBeenCalled()
+    nothingSelected.unmount?.()
+
+    const s = await loaded()
     s.selectMessage(MESSAGE_1)
     inspectorRef.value.refresh.mockClear()
     getSessionSignals.mockResolvedValue([signalsRow({ expected_state: 'z' })])
 
     await s.onUpdateExpectedState('z')
-
     expect(putMessageExpectedState).toHaveBeenCalledWith(1, 'z')
     expect(s.signalsLog.value).toEqual([signalsRow({ expected_state: 'z' })])
     expect(inspectorRef.value.refresh).toHaveBeenCalled()
     expect(refreshSessionsQuietly).toHaveBeenCalledWith(true, 'proj')
-  })
-
-  it('onUpdateExpectedSignals writes, reloads signals, and refreshes the Inspector', async () => {
-    const s = mount(7)
-    await s.loadTimeline()
-    s.selectMessage(MESSAGE_1)
 
     await s.onUpdateExpectedSignals({ mood: 10 })
-
     expect(putMessageExpectedSignals).toHaveBeenCalledWith(1, { mood: 10 })
   })
 
-  it('onUpdateExpectedState/Signals do nothing without a resolvable message id', async () => {
-    const s = mount(7)
-    await s.loadTimeline() // nothing selected
-
-    await s.onUpdateExpectedState('z')
-    await s.onUpdateExpectedSignals({ a: 1 })
-
-    expect(putMessageExpectedState).not.toHaveBeenCalled()
-    expect(putMessageExpectedSignals).not.toHaveBeenCalled()
-  })
-
-  it('onSaveComment writes and reloads signals, but does not touch the Inspector', async () => {
-    const s = mount(7)
-    await s.loadTimeline()
+  it('onSaveComment writes and reloads the signals log, but never touches the Inspector', async () => {
+    const s = await loaded()
     inspectorRef.value.refresh.mockClear()
 
     await s.onSaveComment(1, 'a note')
@@ -225,8 +186,7 @@ describe('useSessionAnnotation', () => {
     // session-start entry — tied to the *first* message's id — never
     // collides with this transition's own message_id.
     getSessionSignals.mockResolvedValueOnce([signalsRow({ message_id: 2, action: 'old' })])
-    const s = mount(7)
-    await s.loadTimeline()
+    const s = await loaded()
     s.selectTransition(s.signalsLog.value[0])
 
     getSessionSignals.mockResolvedValueOnce([signalsRow({ message_id: 2, action: 'new' })])
@@ -238,49 +198,31 @@ describe('useSessionAnnotation', () => {
     expect(s.selected.value).toBeNull()
   })
 
-  it('hasAnyAnnotations is true iff some row has an expected_state or expected_values', async () => {
-    getSessionSignals.mockResolvedValue([signalsRow()])
-    const s = mount(7)
-    await s.loadTimeline()
-    expect(s.hasAnyAnnotations.value).toBe(false)
-
-    getSessionSignals.mockResolvedValue([signalsRow({ expected_state: 'c' })])
-    await s.loadTimeline()
-    expect(s.hasAnyAnnotations.value).toBe(true)
-  })
-
-  it('onUnlabelAll is a no-op without a session or without anything to unlabel', async () => {
-    const s = mount(null)
-    await s.onUnlabelAll()
+  it('onUnlabelAll is a no-op with no session or nothing to unlabel, and otherwise confirms before deleting', async () => {
+    const noSession = mount(null)
+    await noSession.onUnlabelAll()
     expect(confirmDialog).not.toHaveBeenCalled()
+    noSession.unmount?.()
 
-    const s2 = mount(7)
-    await s2.loadTimeline() // signalsRow() has no annotations
-    await s2.onUnlabelAll()
+    const unannotated = await loaded() // signalsRow() has no annotations
+    expect(unannotated.hasAnyAnnotations.value).toBe(false)
+    await unannotated.onUnlabelAll()
     expect(confirmDialog).not.toHaveBeenCalled()
-  })
+    unannotated.unmount?.()
 
-  it('onUnlabelAll confirms, deletes, reloads, and leaves unlabelingAll false once settled', async () => {
-    getSessionSignals.mockResolvedValue([signalsRow({ expected_state: 'c' })])
-    confirmDialog.mockResolvedValue(true)
-    const s = mount(7)
-    await s.loadTimeline()
-
-    await s.onUnlabelAll()
-
-    expect(confirmDialog).toHaveBeenCalled()
-    expect(deleteSessionAnnotations).toHaveBeenCalledWith(7)
-    expect(s.unlabelingAll.value).toBe(false)
-  })
-
-  it('onUnlabelAll does nothing if the confirm dialog is declined', async () => {
     getSessionSignals.mockResolvedValue([signalsRow({ expected_state: 'c' })])
     confirmDialog.mockResolvedValue(false)
-    const s = mount(7)
-    await s.loadTimeline()
-
-    await s.onUnlabelAll()
-
+    const declined = await loaded()
+    expect(declined.hasAnyAnnotations.value).toBe(true)
+    await declined.onUnlabelAll()
+    expect(confirmDialog).toHaveBeenCalled()
     expect(deleteSessionAnnotations).not.toHaveBeenCalled()
+    declined.unmount?.()
+
+    confirmDialog.mockResolvedValue(true)
+    const s = await loaded()
+    await s.onUnlabelAll()
+    expect(deleteSessionAnnotations).toHaveBeenCalledWith(7)
+    expect(s.unlabelingAll.value).toBe(false)
   })
 })

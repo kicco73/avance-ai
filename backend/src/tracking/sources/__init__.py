@@ -2,7 +2,7 @@
 "data sources" a project's own `sources:` section declares by name, each
 bound (via its own `url:` field, see tracking.sources.url) to a driver
 whose every method is bounded by construction (tracking.sources.base.
-SourceDriver — `select` and `update` today). `source.<name>` is resolved
+SourceDriver — the `select_rows_*` reads and `update` today). `source.<name>` is resolved
 dynamically, per project, against that declaration — nothing is
 registered ahead of time. Adding a driver means adding a module plus one
 entry in driver_class_for below, never touching
@@ -20,6 +20,7 @@ from tracking.env import Env
 from .avance_archive import SCHEME as AVANCE_SCHEME, AvanceArchiveSource
 from .avance_env import PATH as AVANCE_ENV_PATH, AvanceEnvSource
 from .base import SourceContext, SourceDriver
+from .comparison import OPERATORS
 from .url import parse_source_url
 
 # scheme -> the driver that serves it, except where a scheme's own path
@@ -54,16 +55,37 @@ _VALUES_PARAMETER = {
 # through parameter_schema() (an enum of real column names, the exact
 # writable fields), never change its shape.
 METHOD_SCHEMAS: dict[str, dict] = {
-    "select": {
+    "select_rows_containing": {
+        "type": "object",
+        "properties": {"values": _VALUES_PARAMETER},
+        "required": ["values"],
+    },
+    "select_rows_where_column": {
         "type": "object",
         "properties": {
-            "values": _VALUES_PARAMETER,
-            "keys": {
-                "type": "array", "items": {"type": "string"},
-                "description": "The columns to return, in this order; omit to return every column.",
+            "column": {"type": "string", "description": "The column the comparison applies to."},
+            "operator": {
+                "type": "string", "enum": list(OPERATORS),
+                "description": "How the column's value is compared to `value`.",
+            },
+            "value": {
+                "type": "string",
+                "description": (
+                    "The value to compare against — a number or an ISO date (YYYY-MM-DD) where the column "
+                    "holds one, plain text otherwise."
+                ),
             },
         },
-        "required": ["values"],
+        "required": ["column", "operator", "value"],
+    },
+    "select_rows_where_column_in_range": {
+        "type": "object",
+        "properties": {
+            "column": {"type": "string", "description": "The column the range applies to."},
+            "start": {"type": "string", "description": "Lower bound, included — a number or an ISO date (YYYY-MM-DD)."},
+            "end": {"type": "string", "description": "Upper bound, included — a number or an ISO date (YYYY-MM-DD)."},
+        },
+        "required": ["column", "start", "end"],
     },
     "update": {
         "type": "object",
@@ -78,14 +100,19 @@ METHOD_SCHEMAS: dict[str, dict] = {
     },
 }
 
-# Which SourceDriver method each of a state's three source fields exposes.
-READ_METHOD = "select"
+# Which SourceDriver method each of a state's three source fields exposes
+# — a read field exposes every one of READ_METHODS the driver supports
+# (READ_METHOD, the plain row search, is the one every readable driver
+# implements, and so what a read field is validated against).
+READ_METHODS = ("select_rows_containing", "select_rows_where_column", "select_rows_where_column_in_range")
+READ_METHOD = READ_METHODS[0]
 WRITE_METHOD = "update"
 
 
 class ToolSet:
-    """The model's own callable catalog for one turn — `select` for every
-    source a state names in ai-may-read-sources/ai-must-read-sources,
+    """The model's own callable catalog for one turn — one tool per
+    READ_METHODS method its driver supports for every source a state
+    names in ai-may-read-sources/ai-must-read-sources,
     `update` for every one in ai-may-write-sources (see automaton.State),
     resolved through the same SourceNamespace instance (and so the same
     per-session read cache and the same Env) a source.<name>.<method>()
@@ -105,7 +132,7 @@ class ToolSet:
         # tool name -> its own source, for tool_event() below.
         self._sources: dict[str, Source] = {}
         self._specs: list[ToolSpec] = []
-        # Every ai-must-read-sources `select` tool name — the subset
+        # Every ai-must-read-sources read tool name — the subset
         # AiService forces tool_choice down to on the first round after
         # entering this state (see required_specs() below). Disjoint from
         # every ai-may-read-sources tool name by construction:
@@ -114,16 +141,24 @@ class ToolSet:
         # never forced.
         self._required_names: set[str] = set()
         for source in may_read:
-            self._add_tool(source, READ_METHOD, required=False)
+            self._add_read_tools(source, required=False)
         for source in must_read:
-            self._add_tool(source, READ_METHOD, required=True)
+            self._add_read_tools(source, required=True)
         for source in may_write or []:
-            self._add_tool(source, WRITE_METHOD, required=False)
+            driver = self._namespace.driver_for(source)
+            if WRITE_METHOD not in driver.SUPPORTED_METHODS:
+                raise ValueError(f"source.{source.name}.{WRITE_METHOD}(...): not supported by this source.")
+            self._add_tool(source, driver, WRITE_METHOD, required=False)
 
-    def _add_tool(self, source: Source, method: str, *, required: bool) -> None:
+    def _add_read_tools(self, source: Source, *, required: bool) -> None:
         driver = self._namespace.driver_for(source)
-        if method not in driver.SUPPORTED_METHODS:
-            raise ValueError(f"source.{source.name}.{method}(...): not supported by this source.")
+        supported = [method for method in READ_METHODS if method in driver.SUPPORTED_METHODS]
+        if not supported:
+            raise ValueError(f"source.{source.name}.{READ_METHOD}(...): not supported by this source.")
+        for method in supported:
+            self._add_tool(source, driver, method, required=required)
+
+    def _add_tool(self, source: Source, driver: SourceDriver, method: str, *, required: bool) -> None:
         tool_name = f"source_{source.name}_{method}"
         description = driver.METHOD_DESCRIPTIONS.get(method, "")
         # ai-definition is where the project author explains — *to the
@@ -157,7 +192,7 @@ class ToolSet:
         return list(self._specs)
 
     def required_specs(self) -> list[ToolSpec]:
-        """The ai-must-read-sources `select` subset of specs() — what
+        """The ai-must-read-sources read subset of specs() — what
         AiService restricts tool_choice to on the first tool-call round
         after this state was entered (see TrackingProcessor.
         force_required_tools_for). Empty when this state declares no

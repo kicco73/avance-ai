@@ -59,7 +59,7 @@ def test_a_declared_source_is_parsed_with_ui_label_defaulting_to_its_name_and_an
     ("sources:\n  - not\n  - a\n  - mapping\n", None, "'sources' must be a mapping"),
     ("sources:\n  pino:\n    url: flights.csv\n", None, "not a valid source url"),
     ("sources:\n  pino:\n    url: s3:flights.csv\n", None, "url scheme 's3' must be one of"),
-    ("sources:\n  pino:\n    ui-label: Flights\n", "source.pino.select('x') != 'x'", r"undefined name\(s\).*source.pino.select"),
+    ("sources:\n  pino:\n    ui-label: Flights\n", "source.pino.select_rows_containing('x') != 'x'", r"undefined name\(s\).*source.pino.select"),
 ], ids=["not-a-mapping", "no-scheme", "unknown-scheme", "referenced-without-url"])
 def test_build_rejects_a_malformed_sources_section_a_bad_url_or_a_reference_to_a_source_with_no_url_yet(sources_yaml, trigger, match):
     with pytest.raises(ValueError, match=match):
@@ -70,15 +70,15 @@ def test_an_avance_url_is_provisioned_empty_when_never_seen_and_a_trigger_may_ca
     """'avance' is the project's own embedded default driver — a source
     naming an archive it hasn't seen yet still builds, backed by an
     empty archive, instead of failing the whole project."""
-    provisioned = _build(_PINO_FLIGHTS, trigger="source.pino.select('x') == 'x'")
+    provisioned = _build(_PINO_FLIGHTS, trigger="source.pino.select_rows_containing('x') == 'x'")
     assert provisioned.sources[0].url == "avance:flights.csv"
 
-    seeded = _build(_PINO_FLIGHTS, trigger="source.pino.select('x') != 'nope'", contents=_FLIGHTS)
+    seeded = _build(_PINO_FLIGHTS, trigger="source.pino.select_rows_containing('x') != 'nope'", contents=_FLIGHTS)
     assert seeded.sources[0].name == "pino"
 
 
 @pytest.mark.parametrize(("sources_yaml", "trigger", "match"), [
-    ("", "source.pino.select('x') == 'x'", r"undefined name\(s\).*source.pino"),
+    ("", "source.pino.select_rows_containing('x') == 'x'", r"undefined name\(s\).*source.pino"),
     (_PINO_FLIGHTS, "source.pino.create('k', 'v') == None", r"undefined name\(s\).*source.pino.create"),
     (_PINO_FLIGHTS, "source.pino.read() == ''", r"attachment.read\(name\)'s job"),
 ], ids=["undeclared-source", "unsupported-method", "read-points-to-attachment-read"])

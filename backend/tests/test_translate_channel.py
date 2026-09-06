@@ -13,38 +13,17 @@ from tracking.channels import TranslateChannel
 
 pytestmark = pytest.mark.contract
 
-
-def test_decode_applies_every_translated_value():
-    channel = TranslateChannel({"advance": "Advance", "cancel": "Cancel"})
-    result = channel.decode('{"advance": "Avanti", "cancel": "Annulla"}')
-    assert result == {"advance": "Avanti", "cancel": "Annulla"}
+LABELS = {"advance": "Advance", "cancel": "Cancel"}
 
 
-def test_decode_falls_back_to_the_original_for_a_name_the_model_omitted():
-    channel = TranslateChannel({"advance": "Advance", "cancel": "Cancel"})
-    result = channel.decode('{"advance": "Avanti"}')
-    assert result == {"advance": "Avanti", "cancel": "Cancel"}
+def test_decode_applies_every_translated_value_falling_back_per_name_the_model_skipped_or_mistranslated():
+    channel = TranslateChannel(LABELS)
+
+    assert channel.decode('{"advance": "Avanti", "cancel": "Annulla"}') == {"advance": "Avanti", "cancel": "Annulla"}
+    assert channel.decode('{"advance": "Avanti"}') == {"advance": "Avanti", "cancel": "Cancel"}
+    assert channel.decode('{"advance": 123}') == LABELS
 
 
-def test_decode_falls_back_to_the_original_for_a_non_string_value():
-    channel = TranslateChannel({"advance": "Advance"})
-    result = channel.decode('{"advance": 123}')
-    assert result == {"advance": "Advance"}
-
-
-def test_decode_of_malformed_json_falls_back_to_every_original():
-    channel = TranslateChannel({"advance": "Advance", "cancel": "Cancel"})
-    result = channel.decode("not json at all")
-    assert result == {"advance": "Advance", "cancel": "Cancel"}
-
-
-def test_decode_of_empty_content_falls_back_to_every_original():
-    channel = TranslateChannel({"advance": "Advance"})
-    assert channel.decode("") == {"advance": "Advance"}
-    assert channel.decode(None) == {"advance": "Advance"}
-
-
-def test_decode_never_raises():
-    channel = TranslateChannel({"advance": "Advance"})
-    # A JSON array, not an object — structurally wrong, still no raise.
-    assert channel.decode("[1, 2, 3]") == {"advance": "Advance"}
+@pytest.mark.parametrize("content", ["not json at all", "[1, 2, 3]", "", None], ids=["malformed", "wrong-shape", "empty", "none"])
+def test_decode_never_raises_falling_back_to_every_original_label(content):
+    assert TranslateChannel(LABELS).decode(content) == LABELS

@@ -6,6 +6,7 @@ external caller (chat/, tracking/, controllers/) needs to know which
 collaborator actually does the work."""
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import TYPE_CHECKING
 
@@ -16,6 +17,7 @@ from chat.session_manager import ChatSessionManager
 from db import Db
 from tracking.session_export import SessionExportManager
 from tracking.session_import import SessionImportManager
+from tracking.sources.url import parse_source_url
 
 from .editor import ProjectEditor
 from .inspector import ProjectInspector
@@ -24,6 +26,8 @@ from .manager import ProjectManager
 from .archive.automaton_loader import AutomatonLoader
 from .project_import_bundle_job import ProjectImportBundleJob
 from .types import CommitCallback
+from .web_import_crawler import WebCrawler
+from .web_import_job import WebImportJob
 
 if TYPE_CHECKING:
     from ai import AiService
@@ -41,6 +45,8 @@ class ProjectService(object):
         session_manager: ChatSessionManager | None = None,
     ) -> None:
         self._db = db
+        self._ai_service = ai_service
+        self._web_crawler = WebCrawler()
         if session_manager is None:
             session_manager = ChatSessionManager(db)
         session_export_manager = SessionExportManager(db)
@@ -312,6 +318,30 @@ class ProjectService(object):
 
     async def delete_source(self, project_id: str, source_name: str, commit: CommitCallback) -> None:
         await self._editor.delete_source(project_id, source_name, commit)
+
+    def build_web_import_job(
+        self, project_id: str, source_name: str, query: str, commit: CommitCallback,
+    ) -> WebImportJob:
+        query = (query or "").strip()
+        if not query:
+            raise ValueError("A search query is required.")
+        if self._ai_service is None:
+            raise ValueError("No AI service is configured — an AI web import needs one.")
+        return WebImportJob(
+            self._editor, self._ai_service, self._web_crawler, asyncio.get_running_loop(),
+            project_id, source_name, self._source_archive_name(project_id, source_name), query, commit,
+        )
+
+    def _source_archive_name(self, project_id: str, source_name: str) -> str:
+        for entry in self.get_project_sources(project_id):
+            source = entry["source"]
+            if source["name"] != source_name:
+                continue
+            scheme, path = parse_source_url(source["url"])
+            if scheme != "avance" or path == "env":
+                raise ValueError(f"Source '{source_name}' has no CSV archive to import into.")
+            return path
+        raise FileNotFoundError(f"Source '{source_name}' does not exist in project '{project_id}'.")
 
     async def reorder_actions(
         self, project_id: str, state_name: str, action_name: str, position: int, commit: CommitCallback

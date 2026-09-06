@@ -205,12 +205,12 @@ states:
     actions:
       - name: advance
         target: a
-        trigger: "source.env.select(keys=['pnr']) != ''"
+        trigger: "source.env.select_rows_containing() != ''"
         on-enter: |
           source.env.update(fields={'pnr': 'X'})
 """
         automaton = AutomatonBuilder().build({"index.yml": env_script})
-        assert automaton.states["a"].actions[0].trigger == "source.env.select(keys=['pnr']) != ''"
+        assert automaton.states["a"].actions[0].trigger == "source.env.select_rows_containing() != ''"
 
         archive_script = """
 project:

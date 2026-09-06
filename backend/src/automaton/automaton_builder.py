@@ -146,7 +146,7 @@ class AutomatonBuilder(object):
             if legacy_field in raw_state:
                 raise ValueError(
                     f"State '{key}': '{legacy_field}' is no longer a valid field — use '{replacement}' instead "
-                    "('ai-may-read-sources': the model decides whether to call a source's select; "
+                    "('ai-may-read-sources': the model decides whether to call a source's reads; "
                     "'ai-must-read-sources': forced once per entry into this state; "
                     "'ai-may-write-sources': the model may call a source's update)."
                 )

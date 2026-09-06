@@ -39,85 +39,39 @@ states:
 """
 
 
-def test_attachment_read_of_a_declared_text_archive_builds_fine():
-    content = {"index.yml": _project_with_on_enter("attachment.read('policy.txt')"), "policy.txt": "be kind"}
-    automaton = AutomatonBuilder().build(content)
-    assert automaton.states["a"].actions[0].on_enter.strip() == "attachment.read('policy.txt')"
+def _build_on_enter(call: str, archives: dict | None = None):
+    return AutomatonBuilder().build({"index.yml": _project_with_on_enter(call), **(archives or {})})
 
 
-def test_attachment_read_resolves_by_unique_basename_under_a_subdirectory():
-    content = {
-        "index.yml": _project_with_on_enter("attachment.read('policy.txt')"),
-        "behaviour/policy.txt": "be kind",
-    }
-    automaton = AutomatonBuilder().build(content)
-    assert automaton.states["a"].actions[0].on_enter.strip() == "attachment.read('policy.txt')"
+def test_attachment_read_resolves_an_exact_path_or_a_unique_basename_under_a_subdirectory():
+    for archives in ({"policy.txt": "be kind"}, {"behaviour/policy.txt": "be kind"}):
+        automaton = _build_on_enter("attachment.read('policy.txt')", archives)
+        assert automaton.states["a"].actions[0].on_enter.strip() == "attachment.read('policy.txt')"
 
 
-@pytest.mark.parametrize("call", [
-    "attachment.read()",
-    "attachment.read('a', 'b')",
-    "attachment.read(name='policy.txt')",
-    "attachment.read(env.reminder_days)",
+@pytest.mark.parametrize(("call", "archives", "match"), [
+    ("attachment.read()", {"policy.txt": "be kind"}, "one string literal argument"),
+    ("attachment.read('a', 'b')", {"policy.txt": "be kind"}, "one string literal argument"),
+    ("attachment.read(name='policy.txt')", {"policy.txt": "be kind"}, "one string literal argument"),
+    ("attachment.read(env.reminder_days)", {"policy.txt": "be kind"}, "one string literal argument"),
+    ("attachment.read('missing.txt')", None, "not found"),
+    ("attachment.read('policy.txt')", {"a/policy.txt": "be kind", "b/policy.txt": "also be kind"}, "ambiguous"),
+    ("attachment.read('logo.png')", {"logo.png": b"\x89PNG"}, "binary file"),
+    ("attachment.read('big.txt')", {"big.txt": "x" * (MAX_ATTACHMENT_READ_BYTES + 1)}, f"over the {MAX_ATTACHMENT_READ_BYTES}-byte limit"),
+], ids=[
+    "no-argument", "two-arguments", "keyword-argument", "non-literal",
+    "undeclared", "ambiguous-basename", "binary", "oversized",
 ])
-def test_attachment_read_rejects_anything_but_a_single_string_literal_argument(call):
-    content = {"index.yml": _project_with_on_enter(call), "policy.txt": "be kind"}
-    with pytest.raises(ValueError, match="one string literal argument"):
-        AutomatonBuilder().build(content)
+def test_attachment_read_rejects_anything_but_a_string_literal_naming_one_readable_text_archive(call, archives, match):
+    with pytest.raises(ValueError, match=match):
+        _build_on_enter(call, archives)
 
 
-def test_attachment_read_of_an_undeclared_archive_is_rejected():
-    content = {"index.yml": _project_with_on_enter("attachment.read('missing.txt')")}
-    with pytest.raises(ValueError, match="not found"):
-        AutomatonBuilder().build(content)
-
-
-def test_attachment_read_of_an_ambiguous_basename_is_rejected():
-    content = {
-        "index.yml": _project_with_on_enter("attachment.read('policy.txt')"),
-        "a/policy.txt": "be kind",
-        "b/policy.txt": "also be kind",
-    }
-    with pytest.raises(ValueError, match="ambiguous"):
-        AutomatonBuilder().build(content)
-
-
-def test_attachment_read_of_a_binary_archive_is_rejected_at_build_time():
-    content = {"index.yml": _project_with_on_enter("attachment.read('logo.png')"), "logo.png": b"\x89PNG"}
-    with pytest.raises(ValueError, match="binary file"):
-        AutomatonBuilder().build(content)
-
-
-def test_attachment_read_of_an_oversized_archive_is_rejected_at_build_time():
-    content = {
-        "index.yml": _project_with_on_enter("attachment.read('big.txt')"),
-        "big.txt": "x" * (MAX_ATTACHMENT_READ_BYTES + 1),
-    }
-    with pytest.raises(ValueError, match=f"over the {MAX_ATTACHMENT_READ_BYTES}-byte limit"):
-        AutomatonBuilder().build(content)
-
-
-def test_attachment_may_not_be_referenced_in_a_trigger():
-    content = f"""
-project:
-  id: p
-init-action:
-  target: a
-states:
-  a:
-    contextual-prompt: hi
-    actions:
-      - name: go
-        target: b
-        trigger: "attachment.read('policy.txt') != ''"
-  b:
-    contextual-prompt: there
-"""
-    with pytest.raises(ValueError, match="undefined name\\(s\\).*attachment.read"):
-        AutomatonBuilder().build({"index.yml": content, "policy.txt": "be kind"})
-
-
-def test_attachment_may_not_be_referenced_in_an_env_expression():
+@pytest.mark.parametrize("field_yaml", [
+    '        trigger: "attachment.read(\'policy.txt\') != \'\'"',
+    "        env:\n          notes: attachment.read('policy.txt')",
+], ids=["trigger", "env-expression"])
+def test_attachment_may_only_be_referenced_from_on_enter(field_yaml):
     content = f"""
 project:
   id: p
@@ -132,10 +86,9 @@ states:
     actions:
       - name: go
         target: b
-        env:
-          notes: attachment.read('policy.txt')
+{field_yaml}
   b:
     contextual-prompt: there
 """
-    with pytest.raises(ValueError, match="undefined name\\(s\\).*attachment.read"):
+    with pytest.raises(ValueError, match=r"undefined name\(s\).*attachment.read"):
         AutomatonBuilder().build({"index.yml": content, "policy.txt": "be kind"})

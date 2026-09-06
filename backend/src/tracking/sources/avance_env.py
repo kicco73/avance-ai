@@ -3,8 +3,8 @@ exposed to the model as a single-row table whose columns are exactly the
 keys with `ai-access` other than none (see automaton.EnvKey). Declared
 like any other source (`url: avance:env`, no other parameter; ui-label/
 ai-definition as usual) and listed per state like any other: a state
-that puts it in ai-may/must-read-sources gets `select` (and the prompt's
-own env block, see tracking.env_prompt_block), one that puts it in
+that puts it in ai-may/must-read-sources gets `select_rows_containing`
+(and the prompt's own env block, see tracking.env_prompt_block), one that puts it in
 ai-may-write-sources gets `update`. `value(key=...)` — one variable as a
 scalar string — is never a tool: scripts/triggers only. This is the model's *only* channel
 for writing an automaton variable: `update(fields=...)` writes the
@@ -28,12 +28,12 @@ PATH = "env"
 
 
 class AvanceEnvSource(SourceDriver):
-    SUPPORTED_METHODS = frozenset({"select", "update", "value"})
+    SUPPORTED_METHODS = frozenset({"select_rows_containing", "update", "value"})
     METHOD_DESCRIPTIONS = {
-        "select": (
+        "select_rows_containing": (
             "The automaton's own variables as a one-row table: the header row names every variable "
-            "you may see, the second row holds their current values. `keys` (optional) picks just some "
-            "columns — e.g. source.<name>.select(keys=['pnr']). `values` is ignored: there is only one row."
+            "you may see, the second row holds their current values. `values` is ignored: there is only "
+            "one row — e.g. source.<name>.select_rows_containing()."
         ),
         "update": (
             "Sets one or more of the automaton's own variables — `fields` maps a variable name to its new "
@@ -63,19 +63,12 @@ class AvanceEnvSource(SourceDriver):
     def _as_text(value: object) -> str:
         return "" if value is None else str(value)
 
-    def select(self, *values: str, keys: list[str] | None = None) -> str:
+    def select_rows_containing(self, *values: str) -> str:
         current = self._current_values()
-        columns = list(current) if keys is None else list(keys)
-        unknown = [key for key in columns if key not in current]
-        if unknown:
-            return (
-                f"error: unknown variable(s) {', '.join(repr(key) for key in unknown)} — "
-                f"available: {', '.join(current)}"
-            )
         out = io.StringIO()
         writer = csv.writer(out, lineterminator="\n")
-        writer.writerow(columns)
-        writer.writerow([current[column] for column in columns])
+        writer.writerow(list(current))
+        writer.writerow(list(current.values()))
         return self._bounded(out.getvalue())
 
     def value(self, *values: str, key: str) -> str:
@@ -112,22 +105,6 @@ class AvanceEnvSource(SourceDriver):
 
     def parameter_schema(self, method: str) -> dict | None:
         exported = self._exported_keys()
-        if method == "select":
-            return {
-                "type": "object",
-                "properties": {
-                    "values": {
-                        "type": "array", "items": {"type": "string"},
-                        "description": "Ignored — this source has a single row. Pass an empty list.",
-                    },
-                    "keys": {
-                        "type": "array",
-                        "items": {"type": "string", "enum": [env_key.name for env_key in exported]},
-                        "description": "The variables to read, in this order; omit to read them all.",
-                    },
-                },
-                "required": ["values"],
-            }
         if method == "update":
             return {
                 "type": "object",

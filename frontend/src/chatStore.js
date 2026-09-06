@@ -3,10 +3,11 @@ import { createChatStore } from './chatStoreFactory.js'
 
 export {
   audioEnabled, talkAvailable, micAvailable, spokenTextEnabled, inputTokenBudgetPerTurn, totalTokenBudgetPerSession,
-  aiModels, aiModelAuto, aiModelCurrentIndex, aiModelSelectionLoading,
-  setCapabilities, setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, loadAiModels, selectAiModel, toggleSpokenText,
-  liveModelStore,
+  setCapabilities, setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, toggleSpokenText,
 } from './chatStoreFactory.js'
+export {
+  aiModels, aiModelAuto, aiModelCurrentIndex, aiModelSelectionLoading, loadAiModels, selectAiModel, liveModelStore,
+} from './aiModelStore.js'
 export { applyAspect, invalidateSkin, setSkinCss } from './chatSkin.js'
 
 // The app's one live chat — App.vue's own always-mounted widget. Never

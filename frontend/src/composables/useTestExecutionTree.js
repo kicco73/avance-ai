@@ -4,7 +4,7 @@ import {
   postTest, postRootAggregation, postSessionsRun, postSignalTest, postSignalsAggregation,
   postStateTest, postStatesAggregation, postUserSessionsRun, postUsersAggregation,
 } from '../api.js'
-import { onTestUpdate } from '../chatClient.js'
+import { chatChannel } from '../chatChannel.js'
 import { confirmDialog } from '../dialogStore.js'
 
 // ProjectTestPanel.vue's own execution tree: per-node job status/progress
@@ -16,6 +16,8 @@ import { confirmDialog } from '../dialogStore.js'
 // loads, consulted only for display labels; `emit` is the component's
 // own defineEmits('select').
 export function useTestExecutionTree(projectId, strategy, sessions, projectSignals, emit) {
+  let unsubscribeTestUpdates = null
+
   // Running total of AI tokens consumed so far — piggybacked onto every
   // test-update message by the backend's QueueProgressBroadcaster (see
   // AiService.get_total_tokens), not fetched separately.
@@ -449,13 +451,13 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     // so there's never anything already selected to defer to here.
     onSelect('root')
     // Live updates arrive over the shared /ws/notifications connection
-    // (see chatClient.js's onTestUpdate) regardless of which page is open;
+    // (see chatChannel.js's test_update frames) regardless of which page is open;
     // the snapshot fetched here just catches this node up on whatever
     // happened before this component existed — handleTestEvent needs no
     // special-casing for it, it's shaped exactly like a live update.
     // Registered before the await, so a live update landing mid-fetch is
     // never clobbered by the (now stale) snapshot value for that same key.
-    onTestUpdate(handleTestEvent)
+    unsubscribeTestUpdates = chatChannel.subscribe('test_update', handleTestEvent)
     const { events } = await getTestStatus(projectId)
     events.forEach((message) => {
       if (!(message.key in nodeEvents.value)) handleTestEvent(message)
@@ -463,7 +465,8 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
   })
 
   onBeforeUnmount(() => {
-    onTestUpdate(null)
+    unsubscribeTestUpdates?.()
+    unsubscribeTestUpdates = null
   })
 
   return {

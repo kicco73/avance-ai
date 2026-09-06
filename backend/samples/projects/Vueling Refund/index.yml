@@ -14,7 +14,7 @@ states:
         target: locate_booking
         trigger: "signal.intent_refund > 70"
         env:
-          customer_record: source.tickets_sold.select(user.email)
+          customer_record: source.tickets_sold.select_rows_containing(user.email)
           flight: source.tickets_sold.value(user.email, key='codice_volo')
           flight_date: source.tickets_sold.value(user.email, key='datetime_volo')
           pnr: "''"
@@ -39,9 +39,9 @@ states:
         ui-label: "Booking found"
         ui-button: "Verify booking"
         target: verify_entitlement
-        trigger: "source.tickets_sold.select(user.email, env.flight) != '' and env.pnr != ''"
+        trigger: "source.tickets_sold.select_rows_containing(user.email, env.flight) != '' and env.pnr != ''"
         env:
-          _flight_record: source.flight_records.select(env.flight, env.flight_date[:10])
+          _flight_record: source.flight_records.select_rows_containing(env.flight, env.flight_date[:10])
       - name: go_to_booking_not_found
         ui-label: "Booking not found"
         target: booking_not_found
@@ -259,7 +259,7 @@ sources:
       datetime_volo (the flight's own departure date and time),
       email_acquirente (buyer's email), costo_euro (price paid),
       datetime_acquisto (when it was bought). Search by the customer's own
-      email (source.tickets_sold.select(user.email)) to find every ticket
+      email (source.tickets_sold.select_rows_containing(user.email)) to find every ticket
       they've bought — a customer with more than one booking gets more
       than one row back, so cross-check the flight code and travel date
       the user gives you against the right one.
@@ -274,9 +274,9 @@ sources:
       arrival). Whether it counts as delayed is for you to judge by
       comparing the scheduled date against the actual times — there's no
       separate delay/cancellation flag. Searching by flight code alone
-      (source.flight_records.select('VY3003')) returns every date that
+      (source.flight_records.select_rows_containing('VY3003')) returns every date that
       flight has ever flown — always add the ticket's own travel date as a
-      second value (source.flight_records.select('VY3003', '2026-08-16'))
+      second value (source.flight_records.select_rows_containing('VY3003', '2026-08-16'))
       to get the single row that actually matches this customer's booking.
     url: avance:behaviour/flight_records.csv
 general-prompt: |

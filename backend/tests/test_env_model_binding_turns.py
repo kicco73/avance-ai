@@ -40,6 +40,9 @@ ENV_KEYS = [
     EnvKey(name="_flight_record"),
 ]
 
+READS_ENV = State(key="a", ui_label="A", final=True, contextual_prompt="You are in A.", ai_may_read_sources=("env",))
+NO_TOOLS = State(key="a", ui_label="A", final=True, contextual_prompt="You are in A.")
+
 
 def _automaton(state_a: State, state_b: State | None = None, *, with_env: bool = True, after_ai: bool = False) -> Automaton:
     mood = Signal(name="mood", ui_label="Mood", definition="0-100 mood score.")
@@ -78,8 +81,7 @@ class RecordingAiService:
         self.forced.append(force_required_tools)
         if self._tool_call is not None and tool_set is not None and call_index == 0:
             name, arguments = self._tool_call
-            result = await tool_set.call(name, arguments)
-            self.tool_results.append(result)
+            self.tool_results.append(await tool_set.call(name, arguments))
         metadata = self._metadata_per_call[min(call_index, len(self._metadata_per_call) - 1)]
         for key, value in metadata.items():
             on_metadata(key, value)
@@ -114,11 +116,7 @@ def _processor(db, automaton: Automaton, ai_service, session_id: int, processor_
     return processor_cls(ai_service, scope_builder, env, db, user), env
 
 
-READS_ENV = State(key="a", ui_label="A", final=True, contextual_prompt="You are in A.", ai_may_read_sources=("env",))
-NO_TOOLS = State(key="a", ui_label="A", final=True, contextual_prompt="You are in A.")
-
-
-async def test_a_memory_field_in_the_reply_is_stored_and_an_env_field_is_ignored(db):
+async def test_a_memory_field_in_the_reply_is_stored_while_an_env_field_is_ignored_and_a_toolless_state_sends_no_tools(db):
     session_id = _session(db)
     ai_service = RecordingAiService([{"memory": "goal: quit", "env": "goal: forged\npnr: forged"}])
     processor, env = _processor(db, _automaton(NO_TOOLS, with_env=False), ai_service, session_id)
@@ -127,55 +125,43 @@ async def test_a_memory_field_in_the_reply_is_stored_and_an_env_field_is_ignored
 
     assert env.memory() == {"goal": "quit"}
     assert env.action_set() == {}
+    assert ai_service.tool_sets == [None]
+    assert ENV_BLOCK_HEADER not in ai_service.prompts[0].full_text()
+    assert "Current memory:" in ai_service.prompts[0].full_text()
 
 
-async def test_the_prompt_of_a_state_reading_the_env_source_ends_with_the_env_block_and_keeps_memory_separate(db):
-    session_id = _session(db)
-    ai_service = RecordingAiService()
-    processor, env = _processor(db, _automaton(READS_ENV), ai_service, session_id)
-    env.update({"goal": "quit"})
-    env.update_action_set({"flight": "VY3003", "_flight_record": "secret", "customer_email": "a@b.c"})
+async def test_only_a_state_reading_the_env_source_gets_the_env_block_which_always_trails_the_memory(db):
+    reading_session = _session(db)
+    reading_ai = RecordingAiService()
+    reading, reading_env = _processor(db, _automaton(READS_ENV), reading_ai, reading_session)
+    reading_env.update({"goal": "quit"})
+    reading_env.update_action_set({"flight": "VY3003", "_flight_record": "secret", "customer_email": "a@b.c"})
 
-    await processor.process("hello")
+    await reading.process("hello")
 
-    prompt = ai_service.prompts[0].full_text()
-    block = prompt[prompt.index(ENV_BLOCK_HEADER):]
-    assert block == f"{ENV_BLOCK_HEADER}\nflight: VY3003\npnr: \ncustomer_email: a@b.c"
+    prompt = reading_ai.prompts[0].full_text()
+    assert prompt[prompt.index(ENV_BLOCK_HEADER):] == f"{ENV_BLOCK_HEADER}\nflight: VY3003\npnr: \ncustomer_email: a@b.c"
     assert "secret" not in prompt
     assert "Current memory:" in prompt and "goal: quit" in prompt
     # Memory/env are the volatile tail now (see SystemPrompt) — both land
     # after the stable prefix's own schema-order instructions.
     assert prompt.index("filling in its fields") < prompt.index("goal: quit") < prompt.index(ENV_BLOCK_HEADER)
 
+    quiet_session = _session(db)
+    quiet_ai = RecordingAiService()
+    quiet, quiet_env = _processor(db, _automaton(NO_TOOLS), quiet_ai, quiet_session)
+    quiet_env.update({"goal": "quit"})
+    quiet_env.update_action_set({"flight": "VY3003"})
 
-async def test_a_state_not_reading_the_env_source_gets_no_env_block_but_still_its_memory(db):
-    session_id = _session(db)
-    ai_service = RecordingAiService()
-    processor, env = _processor(db, _automaton(NO_TOOLS), ai_service, session_id)
-    env.update({"goal": "quit"})
-    env.update_action_set({"flight": "VY3003"})
+    await quiet.process("hello")
 
-    await processor.process("hello")
-
-    prompt = ai_service.prompts[0].full_text()
-    assert ENV_BLOCK_HEADER not in prompt and "VY3003" not in prompt
-    assert "goal: quit" in prompt
-    assert ai_service.tool_sets == [None]
+    quiet_prompt = quiet_ai.prompts[0].full_text()
+    assert ENV_BLOCK_HEADER not in quiet_prompt and "VY3003" not in quiet_prompt
+    assert "goal: quit" in quiet_prompt
+    assert quiet_ai.tool_sets == [None]
 
 
-async def test_hello_world_sends_no_tools_and_no_env_block(db):
-    session_id = _session(db)
-    ai_service = RecordingAiService()
-    processor, _ = _processor(db, _automaton(NO_TOOLS, with_env=False), ai_service, session_id)
-
-    await processor.process("hello")
-
-    assert ai_service.tool_sets == [None]
-    assert ENV_BLOCK_HEADER not in ai_service.prompts[0].full_text()
-    assert "Current memory:" in ai_service.prompts[0].full_text()
-
-
-async def test_a_must_read_on_the_env_source_forces_its_select_and_never_its_update(db):
+async def test_a_must_read_on_the_env_source_forces_its_read_and_never_its_update(db):
     session_id = _session(db)
     state = State(
         key="a", ui_label="A", final=True, contextual_prompt="You are in A.",
@@ -188,8 +174,8 @@ async def test_a_must_read_on_the_env_source_forces_its_select_and_never_its_upd
 
     tool_set = ai_service.tool_sets[0]
     assert ai_service.forced == [True]
-    assert {spec.name for spec in tool_set.specs()} == {"source_env_select", "source_env_update"}
-    assert {spec.name for spec in tool_set.required_specs()} == {"source_env_select"}
+    assert {spec.name for spec in tool_set.specs()} == {"source_env_select_rows_containing", "source_env_update"}
+    assert {spec.name for spec in tool_set.required_specs()} == {"source_env_select_rows_containing"}
 
 
 async def test_an_env_update_during_the_discarded_optimistic_reply_survives_into_the_regeneration(file_db):

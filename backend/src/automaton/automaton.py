@@ -82,7 +82,7 @@ class State:
     # from the project's whole `reactions` dict — never a per-state subset
     # (see TurnProtocol's own conditional inclusion of the 'reaction' tag).
     reactions_enabled: bool = False
-    # Names of this project's own `sources:` whose `select` the model may
+    # Names of this project's own `sources:` whose reads the model may
     # call as a native tool while replying in this state (see
     # tracking.sources.ToolSet) — every name already validated at build
     # time against `sources:` (AutomatonBuilder's own sanity check), and
@@ -93,7 +93,7 @@ class State:
     # Same validation as ai_may_read_sources, but forced once per entry
     # into this state (see TrackingProcessor.force_required_tools_for):
     # the first tool-call round after a transition lands here restricts
-    # the model to calling one of *these* `select`s — never both read
+    # the model to calling one of *these* reads — never both read
     # fields at once for the same source name (AutomatonBuilder rejects
     # that overlap).
     ai_must_read_sources: tuple[str, ...] = ()

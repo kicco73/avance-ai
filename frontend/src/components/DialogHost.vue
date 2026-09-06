@@ -186,7 +186,7 @@ function chooseOption(id) {
 
         <template v-else-if="TEXT_INPUT_KINDS.includes(activeDialog.kind)">
           <button class="dialog-btn dialog-btn-cancel" @click="closeWith(null)">Cancel</button>
-          <button class="dialog-btn dialog-btn-primary" :disabled="!!promptError" @click="submitPrompt">OK</button>
+          <button class="dialog-btn dialog-btn-primary" :disabled="!!promptError" @click="submitPrompt">{{ activeDialog.okLabel ?? 'OK' }}</button>
         </template>
 
         <template v-else-if="activeDialog.kind === 'choose'">

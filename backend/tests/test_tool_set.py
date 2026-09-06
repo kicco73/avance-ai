@@ -1,10 +1,10 @@
 """ToolSet — the model's own callable catalog for a state's declared
 `ai-may-read-sources:`/`ai-must-read-sources:`/`ai-may-write-sources:` (see
 automaton.State), built by SourceNamespace.tool_set(may_read, must_read,
-may_write): one `select` ToolSpec per read source, one `update` per write
-source, and call() resolving through the same SourceNamespace (and so the
-same per-session read cache and Env) a source.<name>.<method>() expression
-already uses.
+may_write): one ToolSpec per read method the source's own driver supports
+(tracking.sources.READ_METHODS), one `update` per write source, and call()
+resolving through the same SourceNamespace (and so the same per-session
+read cache and Env) a source.<name>.<method>() expression already uses.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from db.db import Db
 from db.models import Tracking
 from tracking.env import Env, PersistedEnv
 from tracking.fixed_project_context import FixedProjectContext
-from tracking.sources import METHOD_SCHEMAS, SourceNamespace
+from tracking.sources import METHOD_SCHEMAS, READ_METHODS, SourceNamespace
 
 pytestmark = pytest.mark.contract
 
@@ -88,15 +88,26 @@ def _names(tool_set) -> set[str]:
     return {spec.name for spec in tool_set.specs()}
 
 
-def test_specs_cover_only_the_named_sources_with_select_and_update_but_never_value(db):
+def _read_names(source_name: str) -> list[str]:
+    return [f"source_{source_name}_{method}" for method in READ_METHODS]
+
+
+def _spec(tool_set, name: str):
+    return next(spec for spec in tool_set.specs() if spec.name == name)
+
+
+def test_specs_cover_only_the_named_sources_with_every_supported_read_and_update_but_never_value(db):
     two = _two_sources(db)
-    assert _names(SourceNamespace(db, two).tool_set(["flights", "tickets"])) == {"source_flights_select", "source_tickets_select"}
-    assert _names(SourceNamespace(db, two).tool_set(["flights"])) == {"source_flights_select"}
+    assert _names(SourceNamespace(db, two).tool_set(["flights", "tickets"])) == {
+        *_read_names("flights"), *_read_names("tickets"),
+    }
+    assert _names(SourceNamespace(db, two).tool_set(["flights"])) == set(_read_names("flights"))
 
     # AvanceEnvSource.SUPPORTED_METHODS includes "value" (scripts/triggers
-    # only) — ToolSet must still only ever wire up select/update.
+    # only) and neither column-filtered read (a single row) — ToolSet
+    # wires up exactly what the driver supports, and never `value`.
     env_names = _names(SourceNamespace(db, _env_automaton(db), env=Env()).tool_set(["env"], may_write_names=["env"]))
-    assert env_names == {"source_env_select", "source_env_update"}
+    assert env_names == {"source_env_select_rows_containing", "source_env_update"}
     assert not any(name.endswith("_value") for name in env_names)
 
 
@@ -116,27 +127,36 @@ def test_description_is_the_method_blurb_plus_the_sources_own_ai_definition_neve
     view); ai-definition is written for the model. Only the latter may
     ever reach a ToolSpec."""
     two = _two_sources(db)
-    flights = next(spec for spec in SourceNamespace(db, two).tool_set(["flights"]).specs())
-    assert "Grep over this source" in flights.description
+    flights = _spec(SourceNamespace(db, two).tool_set(["flights"]), "source_flights_select_rows_containing")
+    assert "Rows containing ALL values" in flights.description
     assert "Flight records." in flights.description
 
-    tickets = next(spec for spec in SourceNamespace(db, two).tool_set(["tickets"]).specs())
+    tickets = _spec(SourceNamespace(db, two).tool_set(["tickets"]), "source_tickets_select_rows_containing")
     assert tickets.description == tickets.description.strip()
     assert "\n\n" not in tickets.description
 
     both = _flights_automaton(db, b"a,b\n1,2\n", ui_description="Shown in the Inspector only.", ai_definition="Read by the model only.")
-    spec = next(spec for spec in SourceNamespace(db, both).tool_set(["flights"]).specs())
+    spec = _spec(SourceNamespace(db, both).tool_set(["flights"]), "source_flights_select_rows_containing")
     assert "Read by the model only." in spec.description
     assert "Shown in the Inspector only." not in spec.description
 
 
 def test_parameter_schemas_are_the_uniform_method_schemas_unless_the_driver_narrows_them(db):
-    select = next(spec for spec in SourceNamespace(db, _two_sources(db)).tool_set(["flights"]).specs()).parameters
-    assert select is METHOD_SCHEMAS["select"]
-    assert select["required"] == ["values"]
-    assert select["properties"]["values"]["type"] == "array"
-    assert "minItems" not in select["properties"]["values"]
-    assert select["properties"]["keys"]["items"] == {"type": "string"}
+    flights = SourceNamespace(db, _two_sources(db)).tool_set(["flights"])
+    containing = _spec(flights, "source_flights_select_rows_containing").parameters
+    assert containing is METHOD_SCHEMAS["select_rows_containing"]
+    assert containing["required"] == ["values"]
+    assert containing["properties"]["values"]["type"] == "array"
+    assert "minItems" not in containing["properties"]["values"]
+    assert "keys" not in containing["properties"]
+
+    where_column = _spec(flights, "source_flights_select_rows_where_column").parameters
+    assert where_column is METHOD_SCHEMAS["select_rows_where_column"]
+    assert where_column["properties"]["operator"]["enum"] == ["=", "!=", ">", ">=", "<", "<="]
+    assert where_column["required"] == ["column", "operator", "value"]
+    assert _spec(flights, "source_flights_select_rows_where_column_in_range").parameters["required"] == [
+        "column", "start", "end",
+    ]
 
     update = METHOD_SCHEMAS["update"]
     assert update["required"] == ["values", "fields"]
@@ -145,8 +165,7 @@ def test_parameter_schemas_are_the_uniform_method_schemas_unless_the_driver_narr
     assert update["properties"]["fields"]["minProperties"] == 1
 
     specs = {spec.name: spec for spec in SourceNamespace(db, _env_automaton(db), env=Env()).tool_set(["env"], [], ["env"]).specs()}
-    narrowed_select = specs["source_env_select"].parameters
-    assert narrowed_select["properties"]["keys"]["items"]["enum"] == ["pnr", "customer_email"]
+    assert specs["source_env_select_rows_containing"].parameters is METHOD_SCHEMAS["select_rows_containing"]
     narrowed_update = specs["source_env_update"].parameters
     assert set(narrowed_update["properties"]["fields"]["properties"]) == {"pnr"}
     assert narrowed_update["properties"]["fields"]["properties"]["pnr"]["description"] == "The record locator."
@@ -155,30 +174,33 @@ def test_parameter_schemas_are_the_uniform_method_schemas_unless_the_driver_narr
     assert narrowed_update["required"] == ["values", "fields"]
 
 
-def test_required_specs_cover_only_the_must_sources_and_only_ever_their_select(db):
+def test_required_specs_cover_only_the_must_sources_and_only_ever_their_reads(db):
     """`must` forces a read only — a write is never forced."""
     two = _two_sources(db)
     assert SourceNamespace(db, two).tool_set(["flights", "tickets"]).required_specs() == []
 
     mixed = SourceNamespace(db, two).tool_set(["flights"], ["tickets"])
-    assert _names(mixed) == {"source_flights_select", "source_tickets_select"}
-    assert {spec.name for spec in mixed.required_specs()} == {"source_tickets_select"}
+    assert _names(mixed) == {*_read_names("flights"), *_read_names("tickets")}
+    assert {spec.name for spec in mixed.required_specs()} == set(_read_names("tickets"))
 
     env = SourceNamespace(db, _env_automaton(db), env=Env()).tool_set([], ["env"], ["env"])
-    assert _names(env) == {"source_env_select", "source_env_update"}
-    assert {spec.name for spec in env.required_specs()} == {"source_env_select"}
+    assert _names(env) == {"source_env_select_rows_containing", "source_env_update"}
+    assert {spec.name for spec in env.required_specs()} == {"source_env_select_rows_containing"}
 
 
-async def test_call_routes_to_the_named_sources_own_driver_passing_keys_by_keyword_and_narrowing_on_every_value(file_db):
+async def test_call_routes_to_the_named_sources_own_driver_passing_every_read_argument_by_keyword(file_db):
     two = SourceNamespace(file_db, _two_sources(file_db)).tool_set(["flights", "tickets"])
-    assert await two.call("source_flights_select", {"values": ["paris"]}) == "city,country\nParis,France\n"
-    assert await two.call("source_tickets_select", {"values": ["12A"]}) == "id,seat\n1,12A\n"
+    assert await two.call("source_flights_select_rows_containing", {"values": ["paris"]}) == "city,country\nParis,France\n"
+    assert await two.call("source_tickets_select_rows_containing", {"values": ["12A"]}) == "id,seat\n1,12A\n"
 
-    keyed = SourceNamespace(file_db, _flights_automaton(file_db, b"code,date,city\nVY3003,2026-06-01,Paris\n")).tool_set(["flights"])
-    assert await keyed.call("source_flights_select", {"values": ["VY3003"], "keys": ["city", "code"]}) == "city,code\nParis,VY3003\n"
-
-    narrowed = SourceNamespace(file_db, _flights_automaton(file_db, b"code,date\nVY3003,2026-06-01\nVY3003,2026-06-02\n")).tool_set(["flights"])
-    assert await narrowed.call("source_flights_select", {"values": ["VY3003", "2026-06-01"]}) == "code,date\nVY3003,2026-06-01\n"
+    dated = SourceNamespace(file_db, _flights_automaton(file_db, b"code,date\nVY3003,2026-06-01\nVY3003,2026-06-02\n")).tool_set(["flights"])
+    assert await dated.call("source_flights_select_rows_containing", {"values": ["VY3003", "2026-06-01"]}) == "code,date\nVY3003,2026-06-01\n"
+    assert await dated.call(
+        "source_flights_select_rows_where_column", {"column": "date", "operator": ">", "value": "2026-06-01"},
+    ) == "code,date\nVY3003,2026-06-02\n"
+    assert await dated.call(
+        "source_flights_select_rows_where_column_in_range", {"column": "date", "start": "2026-06-01", "end": "2026-06-30"},
+    ) == "code,date\nVY3003,2026-06-01\nVY3003,2026-06-02\n"
 
 
 async def test_call_routes_an_update_to_the_driver_writing_the_env_with_origin_tool_injected_never_from_the_model(file_db):
@@ -205,27 +227,32 @@ async def test_call_routes_an_update_to_the_driver_writing_the_env_with_origin_t
 
 async def test_call_turns_an_unknown_tool_or_a_driver_exception_into_an_error_string_never_an_exception(file_db):
     tool_set = SourceNamespace(file_db, _two_sources(file_db)).tool_set(["flights"])
-    result = await tool_set.call("source_nope_select", {"values": ["x"]})
-    assert result.startswith("error: unknown tool 'source_nope_select'.")
+    result = await tool_set.call("source_nope_select_rows_containing", {"values": ["x"]})
+    assert result.startswith("error: unknown tool 'source_nope_select_rows_containing'.")
 
-    # ghost's own archive file was never seeded — select() raises inside
+    # ghost's own archive file was never seeded — the read raises inside
     # the driver call, which call() must turn into a string, never propagate.
     revision = _seed(file_db, {"flights.csv": b"city,country\nParis,France\n"}, {"flights.csv": "text/csv"})
     ghost = SourceNamespace(file_db, _automaton(PROJECT_ID, revision, [Source(name="ghost", url="avance:missing.csv", ui_label="Ghost")])).tool_set(["ghost"])
-    assert (await ghost.call("source_ghost_select", {"values": ["x"]})).startswith("error:")
+    assert (await ghost.call("source_ghost_select_rows_containing", {"values": ["x"]})).startswith("error:")
 
 
 def test_tool_event_start_carries_the_sources_own_label_and_description_falling_back_to_ui_label_and_none(db):
     described = _automaton(PROJECT_ID, _seed(db, {}, {}), [Source(
         name="flights", url="avance:flights.csv", ui_label="Flights", ui_description="Shown in the Inspector.",
     )])
-    event = SourceNamespace(db, described).tool_set(["flights"]).tool_event("source_flights_select", {"values": ["VY3003"]}, "start", round=1)
+    event = SourceNamespace(db, described).tool_set(["flights"]).tool_event(
+        "source_flights_select_rows_containing", {"values": ["VY3003"]}, "start", round=1,
+    )
     assert event == {
-        "phase": "start", "name": "source_flights_select", "source": "flights", "method": "select",
+        "phase": "start", "name": "source_flights_select_rows_containing", "source": "flights",
+        "method": "select_rows_containing",
         "label": "Flights", "description": "Shown in the Inspector.", "arguments": {"values": ["VY3003"]}, "round": 1,
     }
 
-    bare = SourceNamespace(db, _two_sources(db)).tool_set(["tickets"]).tool_event("source_tickets_select", {"values": []}, "start", round=1)
+    bare = SourceNamespace(db, _two_sources(db)).tool_set(["tickets"]).tool_event(
+        "source_tickets_select_rows_containing", {"values": []}, "start", round=1,
+    )
     assert bare["label"] == "Tickets"
     assert bare["description"] is None
 
@@ -234,7 +261,7 @@ def test_tool_event_result_adds_result_rows_error_and_duration_with_zero_rows_wh
     tool_set = SourceNamespace(db, _two_sources(db)).tool_set(["flights"])
 
     event = tool_set.tool_event(
-        "source_flights_select", {"values": ["VY3003"]}, "result",
+        "source_flights_select_rows_containing", {"values": ["VY3003"]}, "result",
         round=1, result="city,country\nParis,France\nOrly,France\n", duration_ms=12,
     )
     assert event["result"] == "city,country\nParis,France\nOrly,France\n"
@@ -242,10 +269,10 @@ def test_tool_event_result_adds_result_rows_error_and_duration_with_zero_rows_wh
     assert event["error"] is False
     assert event["duration_ms"] == 12
 
-    empty = tool_set.tool_event("source_flights_select", {"values": ["x"]}, "result", round=1, result="", duration_ms=1)
+    empty = tool_set.tool_event("source_flights_select_rows_containing", {"values": ["x"]}, "result", round=1, result="", duration_ms=1)
     assert empty["rows"] == 0
     assert empty["error"] is False
 
-    refused = tool_set.tool_event("source_flights_select", {"values": ["x"]}, "result", round=1, result="error: response too long.", duration_ms=1)
+    refused = tool_set.tool_event("source_flights_select_rows_containing", {"values": ["x"]}, "result", round=1, result="error: response too long.", duration_ms=1)
     assert refused["error"] is True
     assert refused["rows"] == 0

@@ -1,7 +1,7 @@
 """tracking.sources.avance_env.AvanceEnvSource — the `avance:env` driver:
 the project's declared env keys with `ai-access` other than none, exposed
-to the model as a one-row table. `select()` reads them (header + row,
-optionally projected onto `keys`); `update(fields=...)` writes the
+to the model as a one-row table. `select_rows_containing()` reads them
+(header + row); `update(fields=...)` writes the
 readwrite ones through Env.update_action_set — PersistedEnv for a live
 session (a Tracking row, later bound to the turn's assistant message),
 the ephemeral in-memory Env for a test session — and refuses a readonly
@@ -69,20 +69,24 @@ def test_avance_env_resolves_to_the_env_driver_and_any_other_avance_path_to_the_
     assert isinstance(SourceNamespace(db, _automaton(), env=Env()).env, AvanceEnvSource)
 
 
-def test_select_returns_the_exported_keys_header_and_one_quoted_row_projected_onto_keys_in_order_ignoring_values():
+def test_select_rows_containing_returns_the_exported_keys_header_and_one_quoted_row_ignoring_values():
     env = Env(action_set={"flight": "VY3003", "customer_email": "a@b.c", "_flight_record": "secret"})
-    assert _driver(env).select() == "flight,pnr,customer_email\nVY3003,,a@b.c\n"
-    assert _driver(env).select("nothing-like-this") == _driver(env).select()
-
-    ordered = Env(action_set={"flight": "VY3003", "pnr": "ABC123"})
-    assert _driver(ordered).select(keys=["pnr", "flight"]) == "pnr,flight\nABC123,VY3003\n"
+    assert _driver(env).select_rows_containing() == "flight,pnr,customer_email\nVY3003,,a@b.c\n"
+    assert _driver(env).select_rows_containing("nothing-like-this") == _driver(env).select_rows_containing()
+    assert "secret" not in _driver(env).select_rows_containing()
 
     quoted = Env(action_set={"flight": "VY3003, VY3004"})
-    assert _driver(quoted).select(keys=["flight"]) == 'flight\n"VY3003, VY3004"\n'
+    assert _driver(quoted).select_rows_containing() == 'flight,pnr,customer_email\n"VY3003, VY3004",,\n'
 
-    unexported = _driver(env).select(keys=["_flight_record"])
-    assert unexported.startswith("error: unknown variable(s) '_flight_record'")
-    assert "secret" not in unexported
+
+def test_the_column_filtered_reads_are_unsupported_on_the_env_driver_which_has_a_single_row():
+    driver = _driver(Env())
+    assert "select_rows_where_column" not in AvanceEnvSource.SUPPORTED_METHODS
+    assert "select_rows_where_column_in_range" not in AvanceEnvSource.SUPPORTED_METHODS
+    with pytest.raises(ValueError, match="select_rows_where_column.*not supported"):
+        driver.select_rows_where_column("flight", "=", "VY3003")
+    with pytest.raises(ValueError, match="select_rows_where_column_in_range.*not supported"):
+        driver.select_rows_where_column_in_range("flight", "A", "Z")
 
 
 def test_value_returns_the_current_value_the_empty_string_when_unset_and_error_text_for_an_unexported_key():
@@ -143,10 +147,8 @@ def test_link_tool_env_writes_to_message_binds_only_the_turns_tool_writes_to_the
     assert db.get_signal_row_by_message(assistant_id) is None
 
 
-def test_parameter_schemas_narrow_select_keys_to_the_exported_ones_and_update_fields_to_the_readwrite_ones():
-    select = _driver(Env()).parameter_schema("select")
-    assert select["properties"]["keys"]["items"]["enum"] == ["flight", "pnr", "customer_email"]
-    assert select["required"] == ["values"]
+def test_parameter_schemas_leave_the_read_uniform_and_narrow_update_fields_to_the_readwrite_ones():
+    assert _driver(Env()).parameter_schema("select_rows_containing") is None
 
     update = _driver(Env()).parameter_schema("update")
     fields = update["properties"]["fields"]
@@ -157,5 +159,3 @@ def test_parameter_schemas_narrow_select_keys_to_the_exported_ones_and_update_fi
     assert fields["additionalProperties"] is False
     assert fields["minProperties"] == 1
     assert "values" in update["properties"]
-
-    assert _driver(Env()).parameter_schema("nope") is None

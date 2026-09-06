@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { createApp, nextTick } from 'vue'
+import { createApp } from 'vue'
 import { useFloatingMenu } from '../src/composables/useFloatingMenu.js'
 
 // onBeforeUnmount needs an active component instance, so the composable is
@@ -23,126 +23,75 @@ describe('useFloatingMenu', () => {
     unmount?.()
   })
 
-  it('starts closed', () => {
+  function menu({ withPanel = false } = {}) {
     const mounted = mountComposable(() => useFloatingMenu())
     unmount = mounted.unmount
-    expect(mounted.result.open.value).toBe(false)
-  })
+    const result = mounted.result
+    result.triggerRef.value = document.createElement('button')
+    document.body.appendChild(result.triggerRef.value)
+    if (withPanel) {
+      result.panelRef.value = document.createElement('div')
+      document.body.appendChild(result.panelRef.value)
+    }
+    return { ...result, unmount: mounted.unmount }
+  }
 
-  it('toggle() opens it and positions the panel against triggerRef', async () => {
-    const mounted = mountComposable(() => useFloatingMenu())
-    unmount = mounted.unmount
-    const { open, triggerRef, toggle, style } = mounted.result
-    triggerRef.value = document.createElement('button')
-    document.body.appendChild(triggerRef.value)
+  it('starts closed, and toggle() opens it positioned against triggerRef then closes it again', async () => {
+    const { open, toggle, style } = menu()
+    expect(open.value).toBe(false)
 
     await toggle()
-
     expect(open.value).toBe(true)
     expect(style.value.left).toMatch(/px$/)
     expect(style.value.top).toMatch(/px$/)
-  })
-
-  it('toggle() again closes it', async () => {
-    const mounted = mountComposable(() => useFloatingMenu())
-    unmount = mounted.unmount
-    const { open, triggerRef, toggle } = mounted.result
-    triggerRef.value = document.createElement('button')
 
     await toggle()
-    await toggle()
-
     expect(open.value).toBe(false)
   })
 
-  it('a click outside both trigger and panel closes it', async () => {
-    const mounted = mountComposable(() => useFloatingMenu())
-    unmount = mounted.unmount
-    const { open, triggerRef, panelRef, toggle } = mounted.result
-    triggerRef.value = document.createElement('button')
-    panelRef.value = document.createElement('div')
-    document.body.append(triggerRef.value, panelRef.value)
-
-    await toggle()
-    expect(open.value).toBe(true)
-
-    click(document.body)
-    expect(open.value).toBe(false)
-  })
-
-  it('a click on the trigger itself does not close it', async () => {
-    const mounted = mountComposable(() => useFloatingMenu())
-    unmount = mounted.unmount
-    const { open, triggerRef, toggle } = mounted.result
-    triggerRef.value = document.createElement('button')
-    document.body.appendChild(triggerRef.value)
+  it('stays open for a click on the trigger or anywhere inside the panel', async () => {
+    const { open, triggerRef, panelRef, toggle } = menu({ withPanel: true })
+    const item = document.createElement('button')
+    panelRef.value.appendChild(item)
 
     await toggle()
     click(triggerRef.value)
-
     expect(open.value).toBe(true)
-  })
 
-  it('a click inside the panel does not close it', async () => {
-    const mounted = mountComposable(() => useFloatingMenu())
-    unmount = mounted.unmount
-    const { open, triggerRef, panelRef, toggle } = mounted.result
-    triggerRef.value = document.createElement('button')
-    panelRef.value = document.createElement('div')
-    const item = document.createElement('button')
-    panelRef.value.appendChild(item)
-    document.body.append(triggerRef.value, panelRef.value)
-
-    await toggle()
     click(item)
-
     expect(open.value).toBe(true)
   })
 
-  it('window resize closes it', async () => {
-    const mounted = mountComposable(() => useFloatingMenu())
-    unmount = mounted.unmount
-    const { open, triggerRef, toggle } = mounted.result
-    triggerRef.value = document.createElement('button')
+  it('closes on an outside click, a window resize or scroll, and on close()', async () => {
+    const outside = menu({ withPanel: true })
+    await outside.toggle()
+    click(document.body)
+    expect(outside.open.value).toBe(false)
+    outside.unmount()
 
-    await toggle()
+    const resized = menu()
+    await resized.toggle()
     window.dispatchEvent(new Event('resize'))
+    expect(resized.open.value).toBe(false)
+    resized.unmount()
 
-    expect(open.value).toBe(false)
-  })
-
-  it('window scroll closes it', async () => {
-    const mounted = mountComposable(() => useFloatingMenu())
-    unmount = mounted.unmount
-    const { open, triggerRef, toggle } = mounted.result
-    triggerRef.value = document.createElement('button')
-
-    await toggle()
+    const scrolled = menu()
+    await scrolled.toggle()
     window.dispatchEvent(new Event('scroll'))
+    expect(scrolled.open.value).toBe(false)
+    scrolled.unmount()
 
-    expect(open.value).toBe(false)
-  })
-
-  it('close() closes it directly', async () => {
-    const mounted = mountComposable(() => useFloatingMenu())
-    unmount = mounted.unmount
-    const { open, triggerRef, toggle, close } = mounted.result
-    triggerRef.value = document.createElement('button')
-
-    await toggle()
-    close()
-
-    expect(open.value).toBe(false)
+    const closed = menu()
+    await closed.toggle()
+    closed.close()
+    expect(closed.open.value).toBe(false)
   })
 
   it('unmounting stops listening — a later outside click no longer closes it', async () => {
-    const mounted = mountComposable(() => useFloatingMenu())
-    const { open, triggerRef, toggle } = mounted.result
-    triggerRef.value = document.createElement('button')
-    document.body.appendChild(triggerRef.value)
+    const { open, toggle, unmount: unmountNow } = menu()
 
     await toggle()
-    mounted.unmount()
+    unmountNow()
     click(document.body)
 
     // open itself is meaningless post-unmount; this only proves the

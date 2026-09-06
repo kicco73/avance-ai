@@ -38,16 +38,16 @@ export function confirmDialog({ title, body, okLabel = 'Confirm', danger = false
 // validate(value), if given, runs on every keystroke — a returned
 // non-empty string is shown inline under the field and blocks Confirm;
 // undefined/null/'' means valid.
-export function promptDialog({ title, body, placeholder = '', initialValue = '', validate }) {
-  return enqueue({ kind: 'prompt', title, body, placeholder, initialValue, validate })
+export function promptDialog({ title, body, placeholder = '', initialValue = '', validate, okLabel = 'OK' }) {
+  return enqueue({ kind: 'prompt', title, body, placeholder, initialValue, validate, okLabel })
 }
 
 // Same contract as promptDialog (resolves the entered text, or null on
 // Cancel/×/ESC/backdrop) but for free-form multi-line text — DialogHost.vue
 // renders a <textarea> instead of a single-line <input>, so Enter inserts
 // a newline rather than submitting.
-export function textareaDialog({ title, body, placeholder = '', initialValue = '', validate }) {
-  return enqueue({ kind: 'textarea', title, body, placeholder, initialValue, validate })
+export function textareaDialog({ title, body, placeholder = '', initialValue = '', validate, okLabel = 'OK' }) {
+  return enqueue({ kind: 'textarea', title, body, placeholder, initialValue, validate, okLabel })
 }
 
 // options: [{ id, label, danger? }] — one button per option, resolving

@@ -145,6 +145,7 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
           ref="sourceContentPanelRef"
           :project-id="projectId"
           :file-name="currentSourceArchiveName"
+          :source-name="currentSourceName"
           @saved="emit('saved', $event)"
         />
         <!-- Stays mounted (v-show): its InspectorGraph resolves the

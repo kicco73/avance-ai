@@ -71,57 +71,32 @@ def _env_tracking_row_count(session_id: int) -> int:
     ).count()
 
 
-async def test_a_test_sessions_action_env_write_leaves_no_tracking_row(service):
-    session = await service.create_draft_session(PROJECT_ID)
+async def test_a_test_sessions_env_lives_only_in_memory_isolated_from_the_live_one_and_from_the_next_test_session(service):
+    live_session = await service.get_current_session_if_any_or_create_new(None)
+    first = await service.create_draft_session(PROJECT_ID)
 
-    result = await service.apply_manual_action("advance", session["id"])
+    result = await service.apply_manual_action("advance", first["id"])
 
     assert result["state"]["key"] == "b"
-    assert _env_tracking_row_count(session["id"]) == 0
-    assert service.get_env(session["id"])["action_set"] == {"favorite_color": "blue"}
-
-
-async def test_the_live_env_is_untouched_by_a_test_sessions_turn(service):
-    live_session = await service.get_current_session_if_any_or_create_new(None)
-    test_session = await service.create_draft_session(PROJECT_ID)
-
-    await service.apply_manual_action("advance", test_session["id"])
-
+    assert _env_tracking_row_count(first["id"]) == 0
+    assert service.get_env(first["id"])["action_set"] == {"favorite_color": "blue"}
     assert service.get_env(live_session["id"])["action_set"] == {}
 
-
-async def test_two_consecutive_test_sessions_of_the_same_user_do_not_see_each_others_env(service):
-    first = await service.create_draft_session(PROJECT_ID)
-    await service.apply_manual_action("advance", first["id"])
-
     second = await service.create_draft_session(PROJECT_ID)
-
     assert service.get_env(second["id"])["action_set"] == {}
 
 
-async def test_reset_test_sessions_discards_its_ephemeral_env(service):
+@pytest.mark.parametrize("discard", ["reset", "delete", "close"])
+async def test_resetting_deleting_or_closing_a_test_session_discards_its_ephemeral_env(service, discard):
     session = await service.create_draft_session(PROJECT_ID)
     await service.apply_manual_action("advance", session["id"])
     assert EphemeralEnvRegistry().get(session["id"]).action_set() == {"favorite_color": "blue"}
 
-    service.reset_test_sessions(PROJECT_ID)
-
-    assert EphemeralEnvRegistry().get(session["id"]).action_set() == {}
-
-
-async def test_delete_session_discards_its_ephemeral_env(service):
-    session = await service.create_draft_session(PROJECT_ID)
-    await service.apply_manual_action("advance", session["id"])
-
-    service.delete_session(session["id"])
-
-    assert EphemeralEnvRegistry().get(session["id"]).action_set() == {}
-
-
-async def test_close_session_discards_its_ephemeral_env(service):
-    session = await service.create_draft_session(PROJECT_ID)
-    await service.apply_manual_action("advance", session["id"])
-
-    await service.close_session(session["id"])
+    if discard == "reset":
+        service.reset_test_sessions(PROJECT_ID)
+    elif discard == "delete":
+        service.delete_session(session["id"])
+    else:
+        await service.close_session(session["id"])
 
     assert EphemeralEnvRegistry().get(session["id"]).action_set() == {}

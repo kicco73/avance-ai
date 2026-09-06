@@ -8,61 +8,41 @@ import pytest
 pytestmark = pytest.mark.contract
 
 
-@pytest.mark.regression
-def test_runtime_status_lists_every_project(client, hello_project):
+def _status(client) -> dict:
     response = client.get("/api/settings/projects/runtime-status")
-
     assert response.status_code == 200
-    body = response.json()
-    [row] = body["projects"]
+    [row] = response.json()["projects"]
+    return row
+
+
+@pytest.mark.regression
+def test_pause_and_resume_round_trip_through_the_runtime_status_listing_and_each_rejects_the_wrong_starting_state(client, hello_project):
+    row = _status(client)
     assert row["id"] == hello_project
     assert row["status"] == "running"
     assert row["paused_reason"] is None
     assert row["revision"] == 0
     assert row["published_revision"] == 0
 
+    assert client.put(f"/api/projects/{hello_project}/resume").status_code == 400
 
-@pytest.mark.regression
-def test_pause_then_resume_round_trips(client, hello_project):
     response = client.put(f"/api/projects/{hello_project}/pause")
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "manually_paused"
+    row = _status(client)
+    assert row["status"] == "manually_paused"
+    assert row["paused_reason"] == "Manually paused."
 
-    status = client.get("/api/settings/projects/runtime-status").json()["projects"][0]
-    assert status["status"] == "manually_paused"
-    assert status["paused_reason"] == "Manually paused."
+    assert client.put(f"/api/projects/{hello_project}/pause").status_code == 400
 
     response = client.put(f"/api/projects/{hello_project}/resume")
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "running"
 
 
-@pytest.mark.regression
-def test_pause_rejects_a_project_that_is_not_running(client, hello_project):
-    client.put(f"/api/projects/{hello_project}/pause")
-
-    response = client.put(f"/api/projects/{hello_project}/pause")
-
-    assert response.status_code == 400
-
-
-@pytest.mark.regression
-def test_resume_rejects_a_project_that_is_not_manually_paused(client, hello_project):
-    response = client.put(f"/api/projects/{hello_project}/resume")
-
-    assert response.status_code == 400
-
-
-@pytest.mark.contract
-def test_pause_404s_for_an_unknown_project(client):
-    response = client.put("/api/projects/does-not-exist/pause")
-    assert response.status_code == 404
-
-
-@pytest.mark.contract
-def test_resume_404s_for_an_unknown_project(client):
-    response = client.put("/api/projects/does-not-exist/resume")
-    assert response.status_code == 404
+def test_pause_and_resume_both_404_for_an_unknown_project(client):
+    assert client.put("/api/projects/does-not-exist/pause").status_code == 404
+    assert client.put("/api/projects/does-not-exist/resume").status_code == 404
 
 
 @pytest.mark.regression

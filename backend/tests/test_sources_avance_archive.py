@@ -6,10 +6,11 @@ Reads straight from Db at the automaton's own (project_name, revision)
 in-memory copy, so every test here seeds real Archive rows instead of
 building a MemoryArchive.
 
-select()/value() are the only methods this driver implements (see
-SourceDriver's own docstring on why a whole-file read isn't a source.*
-capability at all — and `update`, part of the uniform interface, stays
-unsupported here).
+select_rows_containing()/select_rows_where_column()/
+select_rows_where_column_in_range()/value() are the only methods this
+driver implements (see SourceDriver's own docstring on why a whole-file
+read isn't a source.* capability at all — and `update`, part of the
+uniform interface, stays unsupported here).
 """
 from __future__ import annotations
 
@@ -67,29 +68,30 @@ def test_parse_source_url_splits_scheme_and_path_rejecting_a_missing_scheme_or_p
             parse_source_url(bad)
 
 
-def test_select_raises_for_an_unknown_or_binary_archive(db):
+def test_select_rows_containing_raises_for_an_unknown_or_binary_archive(db):
     revision = _seed(db, {"logo.png": b"\x89PNG"}, {"logo.png": "image/png"})
     automaton = _automaton(PROJECT_ID, revision)
 
     with pytest.raises(ValueError):
-        _driver(automaton, db, "notes.txt").select("x")
+        _driver(automaton, db, "notes.txt").select_rows_containing("x")
     with pytest.raises(ValueError):
-        _driver(automaton, db, "logo.png").select("x")
+        _driver(automaton, db, "logo.png").select_rows_containing("x")
 
 
-def test_select_returns_the_header_plus_every_case_insensitive_match_or_the_empty_string_or_every_row(db):
+def test_select_rows_containing_returns_the_header_plus_every_case_insensitive_match_or_the_empty_string_or_every_row(db):
     # "" means "not found," full stop — the header only ever appears
-    # alongside at least one matching row (see SourceDriver.select's own
-    # docstring), so `select(...) != ''` is a real existence check.
+    # alongside at least one matching row (see SourceDriver.
+    # select_rows_containing's own docstring), so
+    # `select_rows_containing(...) != ''` is a real existence check.
     driver, _ = _seeded_driver(db, "cities.csv", CSV)
 
-    assert driver.select("paris") == "city,country\nParis,France\nparis,Texas\n"
-    assert driver.select("London") == "city,country\nLondon,UK\n"
-    assert driver.select("Tokyo") == ""
-    assert driver.select() == CSV
+    assert driver.select_rows_containing("paris") == "city,country\nParis,France\nparis,Texas\n"
+    assert driver.select_rows_containing("London") == "city,country\nLondon,UK\n"
+    assert driver.select_rows_containing("Tokyo") == ""
+    assert driver.select_rows_containing() == CSV
 
 
-def test_select_result_beyond_the_char_limit_is_refused_with_the_header_still_attached(db):
+def test_select_rows_containing_result_beyond_the_char_limit_is_refused_with_the_header_still_attached(db):
     # One header row plus enough matching rows to blow well past
     # MAX_SOURCE_RESULT_CHARS — every source.*/tool result is bounded
     # the same way, regardless of caller (see SourceDriver._bounded). The
@@ -98,14 +100,14 @@ def test_select_result_beyond_the_char_limit_is_refused_with_the_header_still_at
     rows = "\n".join(f"paris-row-{i}" for i in range(MAX_SOURCE_RESULT_CHARS))
     driver, _ = _seeded_driver(db, "big.csv", f"header\n{rows}\n")
 
-    assert driver.select("paris") == "error: response too long — provide more specific filters, then try again.\nheader"
+    assert driver.select_rows_containing("paris") == "error: response too long — provide more specific filters, then try again.\nheader"
 
 
-def test_select_ands_several_values_together_while_one_value_returns_every_match(db):
+def test_select_rows_containing_ands_several_values_together_while_one_value_returns_every_match(db):
     driver, _ = _seeded_driver(db, "flights.csv", "code,date\nVY3003,2026-06-01\nVY3003,2026-06-02\nVY4000,2026-06-01\n")
 
-    assert driver.select("VY3003", "2026-06-01") == "code,date\nVY3003,2026-06-01\n"
-    assert driver.select("VY3003") == "code,date\nVY3003,2026-06-01\nVY3003,2026-06-02\n"
+    assert driver.select_rows_containing("VY3003", "2026-06-01") == "code,date\nVY3003,2026-06-01\n"
+    assert driver.select_rows_containing("VY3003") == "code,date\nVY3003,2026-06-01\nVY3003,2026-06-02\n"
 
 
 def test_create_delete_and_read_do_not_exist_and_update_is_unsupported_on_the_archive_driver(db):
@@ -123,19 +125,71 @@ def test_create_delete_and_read_do_not_exist_and_update_is_unsupported_on_the_ar
         driver.update(fields={"a": "b"})
 
 
-def test_keys_project_the_matching_rows_onto_the_named_columns_in_the_order_asked_keeping_the_files_delimiter(db):
+def test_select_rows_containing_returns_whole_rows_and_takes_no_keys_argument(db):
     driver, _ = _seeded_driver(db, "flights.csv", FLIGHTS)
 
-    assert driver.select("VY3003", "2026-08-16", keys=["data_partenza"]) == "data_partenza\n2026-08-16\n"
-    assert driver.select("VY3003", keys=["data_partenza", "codice_volo"]) == "data_partenza,codice_volo\n2026-08-16,VY3003\n2026-08-17,VY3003\n"
-    assert driver.select("2026-08-17") == "codice_volo,data_partenza,datetime_partenza_reale\nVY3003,2026-08-17,2026-08-17 07:05\n"
+    assert driver.select_rows_containing("VY3003", "2026-08-16") == (
+        "codice_volo,data_partenza,datetime_partenza_reale\nVY3003,2026-08-16,2026-08-16 07:12\n"
+    )
+    with pytest.raises(TypeError):
+        driver.select_rows_containing("VY3003", keys=["data_partenza"])
 
-    unknown = driver.select("VY3003", keys=["nope"])
+
+def test_select_rows_where_column_compares_numbers_iso_dates_and_text_returning_whole_rows(db):
+    driver, _ = _seeded_driver(db, "flights.csv", FLIGHTS)
+
+    assert driver.select_rows_where_column("data_partenza", "=", "2026-08-17") == (
+        "codice_volo,data_partenza,datetime_partenza_reale\nVY3003,2026-08-17,2026-08-17 07:05\n"
+    )
+    assert driver.select_rows_where_column("data_partenza", ">", "2026-08-16") == (
+        "codice_volo,data_partenza,datetime_partenza_reale\nVY3003,2026-08-17,2026-08-17 07:05\n"
+    )
+    assert driver.select_rows_where_column("data_partenza", ">=", "2026-08-16").count("VY3003") == 2
+    assert driver.select_rows_where_column("data_partenza", "<", "2026-08-16") == ""
+    assert driver.select_rows_where_column("codice_volo", "!=", "VY3003") == ""
+    # A datetime cell still compares against a plain ISO date.
+    assert driver.select_rows_where_column("datetime_partenza_reale", "<", "2026-08-17") == (
+        "codice_volo,data_partenza,datetime_partenza_reale\nVY3003,2026-08-16,2026-08-16 07:12\n"
+    )
+
+    numbers, _ = _seeded_driver(db, "seats.csv", "flight,free_seats\nVY1,12\nVY2,9\nVY3,100\n")
+    assert numbers.select_rows_where_column("free_seats", ">=", "12") == "flight,free_seats\nVY1,12\nVY3,100\n"
+    assert numbers.select_rows_where_column("flight", "=", "vy2") == "flight,free_seats\nVY2,9\n"
+
+
+def test_select_rows_where_column_reports_an_unknown_column_or_operator_as_text_never_an_exception(db):
+    driver, _ = _seeded_driver(db, "flights.csv", FLIGHTS)
+
+    unknown = driver.select_rows_where_column("nope", "=", "x")
     assert unknown.startswith("error: unknown column(s) 'nope'")
     assert "codice_volo, data_partenza, datetime_partenza_reale" in unknown
 
-    semicolons, _ = _seeded_driver(db, "flights.csv", "code;city\nVY1;Paris\nVY2;Rome\n")
-    assert semicolons.select("VY", keys=["city"]) == "city\nParis\nRome\n"
+    assert driver.select_rows_where_column("codice_volo", "==", "VY3003").startswith("error: unknown operator '=='")
+
+
+def test_select_rows_where_column_in_range_includes_both_bounds_over_numbers_and_iso_dates(db):
+    driver, _ = _seeded_driver(db, "flights.csv", FLIGHTS)
+
+    assert driver.select_rows_where_column_in_range("data_partenza", "2026-08-16", "2026-08-17") == FLIGHTS
+    assert driver.select_rows_where_column_in_range("data_partenza", "2026-08-17", "2026-08-31") == (
+        "codice_volo,data_partenza,datetime_partenza_reale\nVY3003,2026-08-17,2026-08-17 07:05\n"
+    )
+    assert driver.select_rows_where_column_in_range("data_partenza", "2026-09-01", "2026-09-30") == ""
+    assert driver.select_rows_where_column_in_range("nope", "1", "2").startswith("error: unknown column(s) 'nope'")
+
+    numbers, _ = _seeded_driver(db, "seats.csv", "flight,free_seats\nVY1,12\nVY2,9\nVY3,100\n")
+    assert numbers.select_rows_where_column_in_range("free_seats", "9", "12") == "flight,free_seats\nVY1,12\nVY2,9\n"
+
+
+def test_the_column_filtered_reads_keep_the_files_own_delimiter_and_bound_their_result(db):
+    semicolons, _ = _seeded_driver(db, "cities.csv", "code;city\nVY1;Paris\nVY2;Rome\n")
+    assert semicolons.select_rows_where_column("city", "=", "rome") == "code;city\nVY2;Rome\n"
+
+    rows = "\n".join(f"row-{i},1" for i in range(MAX_SOURCE_RESULT_CHARS))
+    big, _ = _seeded_driver(db, "big.csv", f"name,n\n{rows}\n")
+    assert big.select_rows_where_column("n", "=", "1") == (
+        "error: response too long — provide more specific filters, then try again.\nname,n"
+    )
 
 
 def test_value_returns_the_key_cell_of_the_first_matching_row_or_the_empty_string_reporting_an_unknown_column_as_text(db):
@@ -152,15 +206,15 @@ def test_source_namespace_resolves_a_declared_name_to_its_driver_and_raises_for_
 
     resolved = SourceNamespace(db, automaton).pino
     assert isinstance(resolved, AvanceArchiveSource)
-    assert resolved.select("archive") == "note\nhello from the archive\n"
+    assert resolved.select_rows_containing("archive") == "note\nhello from the archive\n"
 
     with pytest.raises(ValueError):
         SourceNamespace(db, automaton).nope
 
 
 class TestPerSessionReadCache:
-    """With no session_id (a wake-up re-evaluation, a test replay),
-    select() goes straight to the canonical archive and never writes a
+    """With no session_id (a wake-up re-evaluation, a test replay), a
+    read goes straight to the canonical archive and never writes a
     cache copy. With one, it reads through cache/sessions/<id>/<archive
     path> instead, duplicating the canonical content into it on a miss."""
 
@@ -168,25 +222,25 @@ class TestPerSessionReadCache:
         revision = _seed(db, {"notes.txt": b"note\noriginal\n"}, {"notes.txt": "text/plain"})
         automaton = _automaton(PROJECT_ID, revision)
 
-        assert _driver(automaton, db, "notes.txt", session_id=None).select("original") == "note\noriginal\n"
+        assert _driver(automaton, db, "notes.txt", session_id=None).select_rows_containing("original") == "note\noriginal\n"
         assert not any(name.startswith("cache/") for name in db.list_archives(PROJECT_ID, revision=revision))
 
-        assert _driver(automaton, db, "notes.txt", session_id=42).select("original") == "note\noriginal\n"
+        assert _driver(automaton, db, "notes.txt", session_id=42).select_rows_containing("original") == "note\noriginal\n"
         assert db.get_archive(PROJECT_ID, "cache/sessions/42/notes.txt", revision=revision) == b"note\noriginal\n"
 
         # The project gets edited/republished underneath the still-open
         # session — the canonical archive now reads differently, but this
         # session's own cached copy keeps seeing exactly what it first read.
         db.save_project_files(PROJECT_ID, {"notes.txt": b"note\nedited\n"}, {"notes.txt": "text/plain"})
-        assert _driver(automaton, db, "notes.txt", session_id=42).select("original") == "note\noriginal\n"
-        assert _driver(automaton, db, "notes.txt", session_id=None).select("edited") == "note\nedited\n"
+        assert _driver(automaton, db, "notes.txt", session_id=42).select_rows_containing("original") == "note\noriginal\n"
+        assert _driver(automaton, db, "notes.txt", session_id=None).select_rows_containing("edited") == "note\nedited\n"
 
     def test_different_sessions_get_independent_cache_copies_and_select_matches_through_them(self, db):
         revision = _seed(db, {"cities.csv": CSV.encode()}, {"cities.csv": "text/csv"})
         automaton = _automaton(PROJECT_ID, revision)
 
-        assert _driver(automaton, db, "cities.csv", session_id=1).select("paris") == "city,country\nParis,France\nparis,Texas\n"
-        _driver(automaton, db, "cities.csv", session_id=2).select("x")
+        assert _driver(automaton, db, "cities.csv", session_id=1).select_rows_containing("paris") == "city,country\nParis,France\nparis,Texas\n"
+        _driver(automaton, db, "cities.csv", session_id=2).select_rows_containing("x")
 
         assert db.get_archive(PROJECT_ID, "cache/sessions/1/cities.csv", revision=revision) == CSV.encode()
         assert db.get_archive(PROJECT_ID, "cache/sessions/2/cities.csv", revision=revision) == CSV.encode()
