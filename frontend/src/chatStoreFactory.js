@@ -1,4 +1,4 @@
-import { nextTick, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import {
   getMessages, getSessionState, postAction, getAutoTracking, postAutoTracking, getActuators, postActuators,
   postTruncateSession, deleteSession, postCloseSession, putMessageReaction, postListenTranscribe, messageAudioUrl,
@@ -35,6 +35,19 @@ export const inputTokenBudgetPerTurn = ref(null)
 // Same null-until-boot shape as inputTokenBudgetPerTurn above.
 export const totalTokenBudgetPerSession = ref(null)
 
+export function setCapabilities({ talkAvailable: talk, micAvailable: mic }) {
+  talkAvailable.value = talk
+  micAvailable.value = mic
+}
+
+export function setInputTokenBudgetPerTurn(value) {
+  inputTokenBudgetPerTurn.value = value
+}
+
+export function setTotalTokenBudgetPerSession(value) {
+  totalTokenBudgetPerSession.value = value
+}
+
 export function toggleSpokenText() {
   spokenTextEnabled.value = !spokenTextEnabled.value
 }
@@ -59,7 +72,11 @@ export function createChatStore({
   const currentProjectId = ref(null)
   const messages = ref([])
   const historyLoaded = ref(false)
-  const chatLoading = ref(false)
+  // How many turns are in flight right now: more than one is normal, the
+  // input stays open while the model answers (see submitMessage), so a
+  // user can send again before the previous reply lands.
+  const turnsInFlight = ref(0)
+  const chatLoading = computed(() => turnsInFlight.value > 0)
   const chatStatus = ref('')
   const actionLoading = ref(false)
   const autoTrackingEnabled = ref(true)
@@ -329,7 +346,7 @@ export function createChatStore({
   async function submitMessage(message) {
     clearApiError()
     setMessageFailed(message.id, false)
-    chatLoading.value = true
+    turnsInFlight.value++
 
     // Snapshotted once, up front: this turn's own session, never re-read
     // off currentSessionId.value below. The AI provider can take a long
@@ -547,12 +564,11 @@ export function createChatStore({
       // about whichever different session the user's now looking at.
       if (currentSessionId.value === turnSessionId) handleSessionInactiveError(err)
     } finally {
-      // Unconditional, unlike everything above: this is the one truly
-      // global flag (one send in flight at a time, whichever chat it's
-      // for), so it must always clear on completion — gating it on
-      // turnSessionId would leave a switched-away-from chat's input
-      // stuck "loading" forever once nothing is ever going to flip it back.
-      chatLoading.value = false
+      // Unconditional, unlike everything above: a turn that started must
+      // always be counted out again on completion — gating it on
+      // turnSessionId would leave a switched-away-from chat counting a
+      // turn nothing is ever going to finish.
+      turnsInFlight.value--
       chatStatus.value = ''
     }
   }
@@ -591,7 +607,6 @@ export function createChatStore({
   }
 
   async function handleResend(index) {
-    if (chatLoading.value) return
     const message = messages.value[index]
     if (!message || message.role !== 'user') return
     await submitMessage(message)

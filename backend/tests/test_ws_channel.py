@@ -252,6 +252,8 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     persisted = db.get_messages(session["id"])
     assert [m["role"] for m in persisted] == ["user", "user", "assistant", "assistant"]
     assert [m["content"] for m in persisted if m["role"] == "user"] == ["I have a problem", "with flight VY3003"]
+
+    # Each frame's own turn reported under its own turn_id, chunks first.
     for turn_id in ("first", "second"):
         own = _frames_of(websocket.sent, turn_id)
         assert own[-1]["type"] == "done", own

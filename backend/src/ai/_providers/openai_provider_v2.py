@@ -22,10 +22,27 @@ from ai.llm_provider import (
     ToolCallsRequested,
     ToolSpec,
     content_to_text,
+    is_text_fragments,
 )
 from logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
+
+
+def _one_content(parts: list[dict]):
+    """A single text part stays a plain string — byte for byte the request
+    this provider has always sent; several stay content parts."""
+    return parts[0]["text"] if len(parts) == 1 else parts
+
+
+def _merged_content(existing, parts: list[dict]):
+    """Two consecutive same-role turns as one. Two plain texts join with a
+    blank line, as they always have; anything carrying real parts keeps
+    them side by side instead."""
+    if isinstance(existing, str) and len(parts) == 1:
+        return f"{existing}\n\n{parts[0]['text']}"
+    existing_parts = existing if isinstance(existing, list) else [{"type": "text", "text": existing}]
+    return [*existing_parts, *parts]
 
 # Fallback when tiktoken has no encoding for this model name (e.g. a
 # llama.cpp/local model) — the closest OpenAI encoding still gives a
@@ -139,7 +156,14 @@ class OpenAICompatibleProvider(LLMProvider):
                 continue
 
             role_out = "assistant" if role == "assistant" else "user"
-            text_content: str = content_to_text(message.get("content"), "OpenAICompatible")
+            content = message.get("content")
+            # The fragments of a coalesced turn travel as content parts of
+            # one message; anything else is still one flat text.
+            parts = (
+                [{"type": "text", "text": fragment} for fragment in content]
+                if is_text_fragments(content)
+                else [{"type": "text", "text": content_to_text(content, "OpenAICompatible")}]
+            )
             # OpenAI-compatible chat templates (llama.cpp, LM Studio) assume
             # strict user/assistant alternation; consecutive same-role turns
             # (e.g. an AI-initiated opening message followed by attachment
@@ -148,9 +172,9 @@ class OpenAICompatibleProvider(LLMProvider):
             # turns — never across a tool/tool_calls message, which always
             # stays standalone (see the two `continue`s above).
             if messages and messages[-1]["role"] == role_out:
-                messages[-1]["content"] = f"{messages[-1]['content']}\n\n{text_content}"
+                messages[-1]["content"] = _merged_content(messages[-1]["content"], parts)
             else:
-                messages.append({"role": role_out, "content": text_content})
+                messages.append({"role": role_out, "content": _one_content(parts)})
         return messages
 
     @staticmethod

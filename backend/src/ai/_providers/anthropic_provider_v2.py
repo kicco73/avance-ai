@@ -29,6 +29,7 @@ from ai.llm_provider import (
 	ToolCallsRequested,
 	ToolSpec,
 	content_to_text,
+	is_text_fragments,
 )
 from logging_factory import LoggerFactory
 
@@ -219,6 +220,15 @@ class AnthropicProvider(LLMProvider):
 				continue
 
 			content: Any = message["content"]
+
+			if is_text_fragments(content):
+				# One user message the model must read as a whole: the
+				# fragments of a coalesced turn, as separate text blocks.
+				messages.append({
+					"role": role,
+					"content": [{"type": "text", "text": fragment} for fragment in content],
+				})
+				continue
 
 			if isinstance(content, str):
 				messages.append(

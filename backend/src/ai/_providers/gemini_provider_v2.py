@@ -28,6 +28,7 @@ from ai.llm_provider import (
 	ToolCallsRequested,
 	ToolSpec,
 	content_to_text,
+	is_text_fragments,
 )
 
 logger = LoggerFactory.get_logger(__name__)
@@ -263,7 +264,15 @@ class GeminiProvider(LLMProvider):
 				continue
 
 			gemini_role = "model" if role == "assistant" else "user"
-			text_content: str = content_to_text(message["content"], "Gemini")
+			content = message["content"]
+			if is_text_fragments(content):
+				# One user Content whose parts are this turn's fragments —
+				# several texts the model reads as a single message.
+				contents.append(types.Content(
+					role=gemini_role, parts=[types.Part.from_text(text=fragment) for fragment in content],
+				))
+				continue
+			text_content: str = content_to_text(content, "Gemini")
 			contents.append(types.Content(role=gemini_role, parts=[types.Part.from_text(text=text_content)]))
 
 		return contents

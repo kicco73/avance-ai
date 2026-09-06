@@ -380,3 +380,17 @@ async def test_impersonation_does_not_leak_past_the_turn(env):
     await service.handle(IncomingMessage(id="wamid.9", sender=LINKED_NUMBER, type="text", text="hola"))
     assert chat.calls == [("session", LINKED_EMAIL), ("turn", LINKED_EMAIL)]
     assert Session().user == "user"
+
+
+def test_a_second_inbound_answered_by_the_turn_already_running_sends_nothing(env):
+    """Two messages arriving close together are answered together by
+    whichever turn got there first (see ChatService's own coalescing).
+    The reply went out with that turn, so the second inbound must stay
+    silent rather than send it a second time."""
+    client, _, chat, _, api = env
+    chat.turn_already_answered = True
+
+    assert _post(client, _payload(text="con el vuelo VY3003")).status_code == HTTPStatus.OK
+
+    assert ("turn", LINKED_EMAIL) in chat.calls
+    assert api.sent == []

@@ -154,7 +154,11 @@ onBeforeUnmount(() => {
 
 function submit() {
   const text = draft.value.trim()
-  if (!text || chatLoading.value || chatDisabled.value) return
+  // Deliberately not gated on chatLoading: a reply being generated never
+  // closes the input. Whatever arrives meanwhile is answered by the next
+  // turn, together with anything else waiting (see the backend's own
+  // coalescing).
+  if (!text || chatDisabled.value) return
   // Inside this same click/submit gesture — narration for the reply this
   // triggers plays moments later, well outside any gesture of its own.
   unlockAudioPlayback()
@@ -163,13 +167,12 @@ function submit() {
 }
 
 function resend(i) {
-  if (chatLoading.value) return
   handleResend(i)
 }
 
 async function startPtt(event) {
   if (event?.pointerType === 'mouse' && event.button !== 0) return
-  if (recording.value || chatLoading.value || chatDisabled.value) return
+  if (recording.value || chatDisabled.value) return
   // Inside this same pointerdown gesture — the voice message this
   // eventually sends gets a reply whose own narration plays well outside
   // any gesture of its own.
@@ -356,7 +359,7 @@ watch(
       <ChatInput
         ref="chatInputRef"
         v-model="draft"
-        :disabled="chatLoading || chatDisabled || !chatConnected"
+        :disabled="chatDisabled || !chatConnected"
         :recording="recording"
         :mic-available="micAvailable"
         :talk-available="talkAvailable"

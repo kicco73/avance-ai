@@ -169,12 +169,25 @@ class AIServiceProviderOutputTruncatedError(Exception):
 		self.reason = reason
 
 
+def is_text_fragments(content: Any) -> bool:
+	"""True for one user message made of several text blocks — the
+	fragments of a coalesced turn (see Db.get_turn_history). Tells them
+	apart from the other list shape a content can have, the attachment
+	blocks content_to_text flattens below."""
+	return isinstance(content, list) and bool(content) and all(isinstance(block, str) for block in content)
+
+
 def content_to_text(content: Any, provider_name: str = "LLM") -> str:
 	"""Flattens provider-neutral attachment blocks to plain text.
-	Binary (base64) attachments are skipped if unsupported.
+	Binary (base64) attachments are skipped if unsupported. A message of
+	several text fragments joins with a newline — for estimating tokens
+	only; every provider renders those as real, separate blocks of one
+	message (see is_text_fragments's own callers).
 	"""
 	if isinstance(content, str):
 		return content
+	if is_text_fragments(content):
+		return "\n".join(content)
 	parts: list[str] = []
 	for block in content:
 		source = block["source"]

@@ -92,6 +92,7 @@ class _FakeDb:
             "id": len(self.messages) + 1, "session_id": session_id, "role": role, "content": content,
             "audio_text": audio_text,
         })
+        return self.messages[-1]["id"]
 
 
 class _FakeAuthService:
@@ -138,6 +139,10 @@ class _FakeChatService:
         self.terms_content: str = "Please accept to continue."
         self.accepted_terms_for: list[str] = []
         self.in_turn = False
+        # When True, process_turn persists the user message but reports no
+        # reply of its own — a turn already in flight took this message
+        # along with its own fragments (see ChatService's own coalescing).
+        self.turn_already_answered = False
         self.announces_audio = True
         self.announced_audio_text: str | None = None
 
@@ -182,10 +187,14 @@ class _FakeChatService:
                 on_metadata("audio", self.announced_audio_text or self.reply_audio_text)
                 await asyncio.sleep(0)
             self.db.add(session_id, "user", text)
-            self.db.add(session_id, "assistant", f"**Hola** — has dicho: {text}", audio_text=self.reply_audio_text)
+            if self.turn_already_answered:
+                return {"session_id": session_id, "state": self.state, "assistant_message_id": None, "reply": []}
+            assistant_id = self.db.add(
+                session_id, "assistant", f"**Hola** — has dicho: {text}", audio_text=self.reply_audio_text,
+            )
         finally:
             self.in_turn = False
-        return {"session_id": session_id, "state": self.state}
+        return {"session_id": session_id, "state": self.state, "assistant_message_id": assistant_id}
 
     async def apply_manual_action(self, action_name, session_id):
         self.calls.append(("action", Session().user, action_name))

@@ -360,28 +360,33 @@ class WhatsAppService(object):
 
     async def _attempt_turn(
         self, session_id: int, text: str, on_metadata,
-    ) -> tuple[str | None, list[dict] | None, str | None]:
-        """(notice, manual_actions, retry_code) for one turn attempt —
-        retry_code (session_closed/session_not_found) tells the caller to
-        acquire a fresh session and attempt once more."""
+    ) -> tuple[str | None, list[dict] | None, str | None, bool]:
+        """(notice, manual_actions, retry_code, answered) for one turn
+        attempt — retry_code (session_closed/session_not_found) tells the
+        caller to acquire a fresh session and attempt once more.
+        `answered` is False when this turn produced no reply of its own
+        because a turn already running had taken this message along with
+        its own fragments (see ChatService's own coalescing): the reply
+        that covers it has already been sent by that turn, so this one
+        must stay silent rather than send it twice."""
         try:
             await self._chat_service.prepare_user_initiated_turn(session_id)
             reply = await self._chat_service.process_turn(session_id, text, on_metadata=on_metadata)
-            return None, reply["state"]["manual_actions"], None
+            return None, reply["state"]["manual_actions"], None, reply.get("assistant_message_id") is not None
         except ServiceError as exc:
             if exc.code == "state_not_chat":
                 state = self._chat_service.get_state_for_session(session_id)
-                return REPLY_NO_CHAT_STATE, state["manual_actions"], None
+                return REPLY_NO_CHAT_STATE, state["manual_actions"], None, False
             if exc.code in ("session_channel_mismatch", "session_superseded"):
-                return REPLY_SESSION_TAKEN_OVER, None, None
+                return REPLY_SESSION_TAKEN_OVER, None, None, False
             if exc.code == "turn_in_progress":
-                return REPLY_BUSY, None, None
+                return REPLY_BUSY, None, None, False
             if exc.code == "project_unavailable":
-                return REPLY_PAUSED, None, None
+                return REPLY_PAUSED, None, None, False
             if exc.code in ("session_closed", "session_not_found"):
-                return None, None, exc.code
+                return None, None, exc.code, False
             logger.exception(f"WhatsApp: turn failed on session {session_id}: {exc.message}")
-            return "There was a problem processing your message. Please try again.", None, None
+            return "There was a problem processing your message. Please try again.", None, None, False
 
     async def _run_turn(self, text: str, spoken: bool = False) -> tuple[list[Reply], list[dict] | None, int | None]:
         """Unlike ChatWindow.vue's own bootstrap, it's the user's text
@@ -400,16 +405,21 @@ class WhatsAppService(object):
         on_metadata = voice_notes.on_metadata if voice_notes is not None else None
 
         last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
-        notice, manual_actions, retry_code = await self._attempt_turn(session_id, text, on_metadata)
+        notice, manual_actions, retry_code, answered = await self._attempt_turn(session_id, text, on_metadata)
         if retry_code is not None:
             session_id, early = await self._bootstrap_exclusive_session()
             if early is not None:
                 return early
             last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
-            notice, manual_actions, retry_code = await self._attempt_turn(session_id, text, on_metadata)
+            notice, manual_actions, retry_code, answered = await self._attempt_turn(session_id, text, on_metadata)
             if retry_code is not None:
                 notice = REPLY_TECHNICAL_PROBLEM
 
+        if not answered and notice is None:
+            # A turn already in flight answered this message together with
+            # its own; that reply went out with it. Anything persisted
+            # since is exactly that reply, so send nothing.
+            return [], manual_actions, session_id
         return self._new_assistant_replies(session_id, last_seen_id, notice), manual_actions, session_id
 
     async def _attempt_action(

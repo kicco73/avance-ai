@@ -542,6 +542,27 @@ class ChatService(object):
 		async with self._session_lifecycle_locks.get(f"{username}/{project_id}"):
 			yield
 
+	def _already_answered_response(
+		self, session_id: int, automaton: Automaton, state: State, user_message_id: int,
+	) -> dict:
+		"""A turn whose own message a previous turn already consumed: it is
+		over the moment it gets the lock, with no reply of its own. The
+		frontend already has a branch for "no reply was generated this
+		turn" (a null assistant_message_id drops the placeholder bubble),
+		which is exactly this case."""
+		return {
+			"reply": [],
+			"user_message_id": user_message_id,
+			"user_message_reaction": None,
+			"assistant_message_id": None,
+			"state": self._with_manual_actions(session_id, automaton.get_state_payload(state)),
+			"state_changed": False,
+			"new_state": None,
+			"triggered_action": None,
+			"ai_model": self.get_ai_models_info(),
+			"session_id": session_id,
+		}
+
 	def _project_id_for_session(self, session_id: int) -> str:
 		return self._ownership.require_session(session_id)["project_id"]
 
@@ -701,7 +722,15 @@ class ChatService(object):
 		on_metadata: OnMetadata | None = None,
 		user_message_id: int | None = None,
 	) -> dict:
+		"""`user_message_id` is set when the transport already persisted
+		this message (the websocket does, the moment it read the frame —
+		see WsNotifications); any other caller hands over the text and it
+		is persisted here, still before the session lock, so the bubble
+		appears at once and the order of the conversation is fixed before
+		anything waits."""
 		project_id = self._project_id_for_session(session_id)
+		if text is not None and user_message_id is None:
+			user_message_id = self.accept_user_message(session_id, text)
 		async with self._session_scope(project_id, session_id):
 			return await self._process_turn_body(session_id, text, on_metadata, user_message_id)
 
@@ -718,10 +747,17 @@ class ChatService(object):
 		project_id = session["project_id"]
 		self._ensure_project_available(project_id)
 		ai_service = self._ai_test_service if session["type"] == "test" else self._ai_service
-		_, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
+		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 		self._require_active_session(session_id, project_id, state.key)
+		fragments = self._db.unconsumed_user_fragments(session_id) if user_message_id is not None else []
+		if user_message_id is not None and not any(f["id"] == user_message_id for f in fragments):
+			# An earlier turn already took this message along with the rest
+			# of its own fragments and answered for all of them — see
+			# _already_answered_response.
+			return self._already_answered_response(session_id, automaton, state, user_message_id)
 		reply = await self._tracking_service._process(
-			session_id, text, ai_service, on_metadata, user_message_id=user_message_id,
+			session_id, [f["content"] for f in fragments], ai_service, on_metadata,
+			user_message_ids=[f["id"] for f in fragments],
 		)
 		self._session_manager.touch_session(reply['session_id'], reply['state']['key'])
 		reply['state'] = self._with_manual_actions(session_id, reply['state'])

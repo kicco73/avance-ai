@@ -77,12 +77,12 @@ class UserVariables:
 	state: State
 	project_id: str
 	session_id: int
-	# Set by _save_user_message once the turn's own user-facing message
-	# (real or placeholder) has been persisted — None beforehand.
+	# Set by _open_turn to the fragment that closes this turn (or to the
+	# placeholder of an AI-initiated one) — None beforehand.
 	message_id: int | None = None
 	# True when this turn has no real user text (an opening message) — the
-	# AI is initiating, not replying. Literally `not text`, computed once
-	# in _save_user_message.
+	# AI is initiating, not replying. Literally `not fragments`, computed
+	# once in _open_turn.
 	has_ai_started_conversation: bool = False
 
 @dataclass
@@ -130,32 +130,46 @@ class TrackingProcessor(object):
 	async def _get_ai_reply(self) -> OutVariables:
 		raise NotImplementedError
 
-	def _save_user_message(self, text: str | None, user_message_id: int | None = None) -> None:
-		"""Persists this turn's own user-facing message — the real text if
-		there is one, a '...' placeholder otherwise — and records enough
-		on self.user for process() to later delete that placeholder rather than keep it as a fake user turn.
-		A message the transport already persisted in arrival order (see
-		ChatService.accept_user_message) is taken as-is by its id.
+	def _open_turn(self, fragments: list[str], user_message_ids: list[int] | None) -> None:
+		"""Binds this turn to the user message that closes it — the LAST
+		fragment (see ChatService's own coalescing): its Tracking row, the
+		bot's reaction and the input tokens all land there. Every fragment
+		is already persisted by then, in arrival order, so nothing is saved
+		here — except the '...' placeholder of an AI-initiated turn, which
+		has no user message at all and which process() deletes again once
+		the reply exists.
 		Also stamps this turn's own start (see self._turn_started_at's own
-		use in process()) — captured *before* the save, never after, so it
+		use in process()) — captured *before* that save, never after, so it
 		can never postdate a tool write this same turn later makes."""
 		self._turn_started_at = datetime.utcnow()
-		if user_message_id is None:
-			user_message_id = self.db.save_message("user", text or '...', self.user.session_id)
-		self.user = replace(self.user, message_id=user_message_id, has_ai_started_conversation=not text)
+		if not user_message_ids:
+			user_message_ids = [self.db.save_message("user", '...', self.user.session_id)]
+		self._fragment_ids = list(user_message_ids)
+		self.user = replace(
+			self.user, message_id=self._fragment_ids[-1], has_ai_started_conversation=not fragments,
+		)
 
 	async def process(
-		self, text: str | None, on_metadata: MetadataCallback | None = None, user_message_id: int | None = None,
+		self,
+		text: str | list[str] | None,
+		on_metadata: MetadataCallback | None = None,
+		user_message_ids: list[int] | None = None,
 	) -> dict:
+		"""`text` is this turn's own user fragments: every user message
+		that arrived since the last reply, which this one turn answers
+		together (see PROJECT_SPECS.md's own turn section). Empty for an
+		AI-initiated turn. Signals and triggers are evaluated once, for
+		the whole turn."""
+		fragments = [text] if isinstance(text, str) else list(text or [])
 		state = self.user.state
 
-		if not state.chat and text not in (None, "", "..."):
+		if not state.chat and [f for f in fragments if f not in ("", "...")]:
 			raise TrackingServiceError(
 				"This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT,
 				code="state_not_chat",
 			)
 
-		self._save_user_message(text, user_message_id)
+		self._open_turn(fragments, user_message_ids)
 
 		def dummy_on_metadata(key: str, value: str) -> None:
 			pass
@@ -175,6 +189,10 @@ class TrackingProcessor(object):
 		# reply is what actually reported these memory values, unlike
 		# self.out.tracking_id, which may already be linked to an earlier message.
 		self.env.update(self.metadata.memory, message_id=assistant_id, declared_keys=self.user.automaton.declared_env_key_names())
+
+		# Every fragment this turn took is answered by the reply just saved
+		# — what keeps the next turn from picking any of them up again.
+		self.db.mark_messages_answered(self._fragment_ids, assistant_id)
 
 		if self.metadata.tool_calls:
 			self.db.record_tool_calls(self.user.session_id, self.metadata.tool_calls, message_id=assistant_id)

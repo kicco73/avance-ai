@@ -17,6 +17,52 @@ logger = LoggerFactory.get_logger(__name__)
 # sentinel since it's the explicit value being distinguished for.
 _TIMESTAMP_UNSET = object()
 
+def _turn_key(row: dict) -> tuple:
+    """Where a message sits in the conversation *by turn*, not by id. A
+    user message belongs to the turn that answered it (`answered_by`); an
+    assistant message is that turn. Stored ids alone no longer say this:
+    a fragment that arrives while the previous turn is generating is
+    written before that turn's own reply, so ordering by id would show it
+    inside a turn it had nothing to do with. Fragments still waiting for a
+    turn sort last, where they belong."""
+    if row["role"] == "user":
+        answered_by = row.get("answered_by")
+        return (answered_by if answered_by is not None else float("inf"), 0, row["id"])
+    return (row["id"], 1, row["id"])
+
+
+def _group_user_fragments(rows: list[dict]) -> list[dict]:
+    """The conversation in turn order, with each turn's own user fragments
+    collapsed into one entry carrying the list of their texts. The entry
+    keeps the LAST fragment's own id and timestamp: that fragment is the
+    one that closes the turn, and everything a turn binds to its user
+    message (its Tracking row, the bot's reaction, the input tokens) binds
+    to it."""
+    grouped: list[dict] = []
+    for row in sorted(rows, key=_turn_key):
+        previous = grouped[-1] if grouped else None
+        same_turn = (
+            previous is not None
+            and previous["role"] == "user"
+            and row["role"] == "user"
+            and previous.get("answered_by") == row.get("answered_by")
+        )
+        if same_turn:
+            texts = previous["content"] if isinstance(previous["content"], list) else [previous["content"]]
+            grouped[-1] = {**row, "content": [*texts, row["content"]]}
+            continue
+        grouped.append(dict(row))
+    return grouped
+
+
+def _history_row(m, session_id: int) -> dict:
+    return {
+        'id': m.id, 'role': m.role, 'content': m.content, 'audio_text': m.audio_text, 'reaction': m.reaction,
+        'tokens': m.tokens, 'answered_by': m.answered_by, 'timestamp': _utc_iso(m.timestamp),
+        'session_id': session_id,
+    }
+
+
 class MessageMixin:
 
     def save_message(
@@ -75,10 +121,48 @@ class MessageMixin:
         ]
 
     def get_turn_history(self, session_id: int, since: datetime | None, token_budget: int | None) -> list[dict]:
+        """The conversation as the model sees it: in turn order, with each
+        turn's own user fragments as ONE entry whose `content` is the list
+        of their texts, so they arrive as a single user message of several
+        blocks rather than as separate turns (see PROJECT_SPECS.md's own
+        turn section). A lone fragment keeps `content` a plain string,
+        exactly as before, so nothing changes for existing sessions. The
+        token budget still cuts message by message, oldest first; a group
+        it would cut in half is dropped whole instead."""
+        rows = self._turn_history_rows(session_id, since, token_budget)
+        if token_budget is not None:
+            rows = self._without_half_cut_group(session_id, since, rows)
+        return _group_user_fragments(rows)
+
+    def _without_half_cut_group(self, session_id: int, since: datetime | None, rows: list[dict]) -> list[dict]:
+        """The budget cuts from the oldest end, so the only group it can
+        ever cut in half is the leading one — dropped whole rather than
+        handed to the model as a turn missing its own opening."""
+        if not rows or rows[0]["role"] != "user":
+            return rows
+        first = rows[0]
+        query = Message.select().where(
+            (Message.session == session_id) & (Message.role == "user") & (Message.id < first["id"])
+        )
+        query = (
+            query.where(Message.answered_by == first["answered_by"])
+            if first["answered_by"] is not None
+            else query.where(Message.answered_by.is_null(True))
+        )
+        if since is not None:
+            query = query.where(Message.timestamp > since)
+        if not query.exists():
+            return rows
+        return [row for row in rows if not (row["role"] == "user" and row["answered_by"] == first["answered_by"])]
+
+    def _turn_history_rows(self, session_id: int, since: datetime | None, token_budget: int | None) -> list[dict]:
         # FIXME: COALESCE is load-bearing — SUM() over an all-NULL window
         # is NULL, never <= token_budget, which would empty the result.
         if token_budget is None:
-            return self.get_messages(session_id, since=since)
+            query = Message.select().where(Message.session == session_id)
+            if since is not None:
+                query = query.where(Message.timestamp > since)
+            return [_history_row(m, session_id) for m in query.order_by(Message.id)]
 
         windowed = Message.select(
             Message.id,
@@ -94,7 +178,37 @@ class MessageMixin:
                  .where(cte.c.running_tokens <= token_budget)
                  .order_by(Message.id)
                  .with_cte(cte))
-        return [{'id': m.id, 'role': m.role, 'content': m.content, 'audio_text': m.audio_text, 'reaction': m.reaction, 'tokens': m.tokens, 'timestamp': _utc_iso(m.timestamp), 'session_id': session_id} for m in query]
+        return [_history_row(m, session_id) for m in query]
+
+    def unconsumed_user_fragments(self, session_id: int) -> list[dict]:
+        """Every user message no turn has answered yet — the fragments
+        this session has accumulated. The queue of a coalesced turn is
+        exactly this, read off the database rather than held in memory, so
+        a restart loses nothing; and unlike "everything after the last
+        reply", it stays right for a message that arrived while that reply
+        was still being generated."""
+        query = (Message
+                 .select()
+                 .where(
+                     (Message.session == session_id)
+                     & (Message.role == "user")
+                     & (Message.answered_by.is_null(True))
+                 ))
+        return [
+            {'id': m.id, 'role': m.role, 'content': m.content, 'timestamp': _utc_iso(m.timestamp)}
+            for m in query.order_by(Message.id)
+        ]
+
+    def mark_messages_answered(self, message_ids: list[int], assistant_message_id: int) -> None:
+        """Closes the turn over its own fragments: every one of them now
+        points at the reply that answered it, so no later turn picks it up
+        again (see unconsumed_user_fragments)."""
+        if not message_ids:
+            return
+        (Message
+         .update(answered_by=assistant_message_id)
+         .where(Message.id.in_(list(message_ids)))
+         .execute())
 
     def has_messages_since(self, session_id: int, since: datetime | None) -> bool:
         query = Message.select().where(Message.session == session_id)

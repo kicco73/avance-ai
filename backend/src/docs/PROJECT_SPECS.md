@@ -26,6 +26,40 @@ there, in reading order, before any processing starts. Parallel HTTP
 requests could never guarantee that, which is why the chat moved onto the
 socket.
 
+## 0.1 What a turn is
+
+A **turn** is one reply, and it answers **every** user message that has
+arrived and not yet been answered — not one message each. People write
+the way they speak ("hi" / "I have a problem" / "with flight VY3003", in
+three sends), and the input stays open while the model is answering, so
+several messages routinely pile up.
+
+Those messages are the turn's **fragments**. They reach the model as a
+**single user message of several text blocks** — never concatenated into
+one string, never as separate conversation turns: Anthropic gets several
+`text` blocks in one message, OpenAI several `text` content parts, Gemini
+several `Part`s in one `Content`. A turn with a single fragment sends a
+plain string exactly as before.
+
+Consequences worth stating plainly:
+
+- **Signals and triggers are evaluated once per turn**, over the whole
+  turn, never once per fragment.
+- **Everything that binds to "the user's message" binds to the last
+  fragment** — the one that closes the turn: the Tracking row, the bot's
+  reaction, the turn's input tokens.
+- **A message that arrives while a turn is generating never joins that
+  turn.** It waits and opens the next one. Its own request gets a reply of
+  its own only if no other turn answered it first; when one did, that
+  request ends with no reply (`assistant_message_id: null`), because the
+  answer has already been delivered.
+- **There is no waiting window and no in-memory queue.** A turn starts as
+  soon as it can, and which messages are still unanswered is a fact in the
+  database (see `Message.answered_by`), so a restart loses nothing.
+- **The history budget cuts whole turns.** A group of fragments the budget
+  can only fit part of is dropped entirely, rather than shown to the model
+  as a turn missing its own opening.
+
 ## 1. Top-level fields
 
 | Field | Required | Type | Default | Meaning |

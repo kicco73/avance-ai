@@ -235,6 +235,7 @@ class SchemaMigrator:
                 for column in sorted(actual[table] - columns):
                     operations.append(migrator.drop_column(table, column))
             migrate(*operations)
+            self._backfill_answered_by(actual)
             self._database.create_tables(new_models, safe=True)
             # Tables just (re)created above already got every index for
             # free from create_tables()/_rebuild_table's own create_tables
@@ -243,6 +244,26 @@ class SchemaMigrator:
             self._sync_indexes((actual.keys() & expected.keys()) - rebuild_tables, path)
         finally:
             self._database.execute_sql('PRAGMA foreign_keys = ON')
+
+    def _backfill_answered_by(self, actual: dict[str, set[str]]) -> None:
+        """Message.answered_by is what says which turn a user message
+        belongs to (see its own comment in models.py). Every message that
+        predates the column has it NULL, which would read as "still
+        waiting for a turn" and make the next turn answer the whole
+        conversation at once — so on the one migration that adds the
+        column, every user message already followed by a reply is pointed
+        at that reply."""
+        if "Message" not in actual or "answered_by" in actual["Message"]:
+            return
+        self._database.execute_sql(
+            '''UPDATE "Message" SET answered_by = (
+                   SELECT MIN(reply.id) FROM "Message" AS reply
+                   WHERE reply.session_id = "Message".session_id
+                     AND reply.role = \'assistant\'
+                     AND reply.id > "Message".id
+               )
+               WHERE role = \'user\''''
+        )
 
     def _tables_needing_constraint_rebuild(
         self, actual: dict[str, set[str]], expected: dict[str, set[str]], path: str,
