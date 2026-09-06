@@ -21,10 +21,10 @@ class FakeSink:
     def __init__(self):
         self.transitions = []
 
-    def save_signal_snapshot(self, values, session_id, message_id=None):
+    def save_signal_snapshot(self, values, session_id, message_id=None, output_values=None):
         return 0
 
-    def save_transition(self, old_state, action, new_state, session_id, transition_log_level, signal_values=None, message_id=None, origin=None):
+    def save_transition(self, old_state, action, new_state, session_id, transition_log_level, signal_values=None, message_id=None, origin=None, output_values=None):
         self.transitions.append((old_state, action, new_state))
         return len(self.transitions)
 
@@ -38,7 +38,7 @@ class FakeEnv:
 
 
 class FakeScopeBuilder:
-    def build(self, automaton, state_key, signal_values, session_id=None):
+    def build(self, automaton, state_key, signal_values, session_id=None, output_values=None):
         return {}
 
 
