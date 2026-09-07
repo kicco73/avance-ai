@@ -1,4 +1,4 @@
-"""An action's on-enter runs as an OnEnterTask, now or deferred — never
+"""An action's task runs as an ActionTask, now or deferred — never
 inline in the request that fired it — and what it produces reaches the
 browser over the websocket. The task is hibernated as script + frozen
 scope under (user, project, revision), so a brand-new JobService/factory
@@ -24,7 +24,7 @@ from db.models import Task as TaskRow, User
 from job import JobService
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
-from tracking.actuators.on_enter_task import ACTUATORS_LIVE, OnEnterTask, ScopeHydrator
+from tracking.actuators.action_task import ACTUATORS_LIVE, ActionTask, ScopeHydrator
 from tracking.env import Env, PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
@@ -53,8 +53,8 @@ states:
     actions:
       - name: go
         target: b
-        on-enter: |
-          {on_enter}
+        task: |
+          {task}
   b:
     ui-label: B
     contextual-prompt: there
@@ -63,8 +63,8 @@ states:
 DEFER_LINE = "actuator.defer(lambda: actuator.notify(user.name, 'high' if signal.distress > 50 else 'low'), datetime.datetime(2030, 1, 1))"
 
 
-def _yml(on_enter: str) -> str:
-    return INDEX_YML.replace("{on_enter}", on_enter)
+def _yml(task: str) -> str:
+    return INDEX_YML.replace("{task}", task)
 
 
 def _wait_until(predicate, timeout=3.0, interval=0.01) -> bool:
@@ -97,7 +97,7 @@ def _stop_services():
 @pytest.fixture
 def file_db(tmp_path) -> Db:
     # File-backed: the scheduler/queue threads open their own connections.
-    instance = Db(f"sqlite:///{tmp_path / 'on_enter.db'}")
+    instance = Db(f"sqlite:///{tmp_path / 'task.db'}")
     instance.get_or_create_user("test", "sub-user", "user", "Ada", None)
     return instance
 
@@ -135,11 +135,11 @@ def _process(db: Db, websocket: _FakeWebSocket | None = None, *, start: bool = F
 
 def _fire_go(db: Db, factory, project_service: ProjectService, signal_values: dict, *, session_id: int | None = None, ai_service=None) -> None:
     """Applies state a's `go` action the way TrackingEngine.apply_transition
-    does — env: synchronously, on-enter as a task."""
+    does — env: synchronously, task as a task."""
     automaton = project_service.get_automaton(PROJECT, db.get_project_published_revision(PROJECT))
     context = FixedProjectContext(automaton=automaton, project_id=PROJECT)
     # Same branch production code takes (see PersistedEnv's own docstring
-    # and tracking.actuators.on_enter_task.ScopeHydrator): no real session
+    # and tracking.actuators.action_task.ScopeHydrator): no real session
     # means a plain, in-memory Env(), never PersistedEnv(None).
     env = PersistedEnv(db, context, session_id=session_id) if session_id is not None else Env()
     builder = EvaluationScopeBuilder(
@@ -162,8 +162,8 @@ def test_persisted_env_cannot_be_constructed_without_a_session_id(db):
 
 
 def test_build_scope_with_no_session_never_constructs_a_persisted_env(file_db):
-    """reset_test_sessions' own project-wide reset schedules an OnEnterTask
-    with session_id=None (see ChatService._schedule_on_enter) — build_scope
+    """reset_test_sessions' own project-wide reset schedules an ActionTask
+    with session_id=None (see ChatService._schedule_task) — build_scope
     must fall back to a plain, ephemeral Env() for that, never PersistedEnv
     (which now requires a real session_id — see its own constructor): this
     used to fall through to PersistedEnv(db, context) with none at all,
@@ -183,16 +183,16 @@ def test_build_scope_with_no_session_never_constructs_a_persisted_env(file_db):
     hydrator.build_scope(USERNAME, payload)  # must not raise
 
 
-# --- immediate on-enter ------------------------------------------------------
+# --- immediate task ------------------------------------------------------
 
-def test_an_on_enter_is_hibernated_as_a_task_due_now_not_run_inline(file_db):
+def test_a_task_is_hibernated_as_a_task_due_now_not_run_inline(file_db):
     _, project_service, factory = _process(file_db)
     _publish(file_db, project_service, _yml("actuator.notify(user.name, 'welcome')"))
 
     _fire_go(file_db, factory, project_service, {"distress": 10})
 
     (row,) = file_db.list_tasks()
-    assert row["type"] == OnEnterTask.TYPE
+    assert row["type"] == ActionTask.TYPE
     assert row["status"] == "pending"  # the service is not started: nothing ran inline
     assert row["username"] == USERNAME and row["project_id"] == PROJECT
     assert row["run_at"] <= datetime.now(row["run_at"].tzinfo)
@@ -204,7 +204,7 @@ def test_an_on_enter_is_hibernated_as_a_task_due_now_not_run_inline(file_db):
     assert "session" not in row["payload"]["snapshot"]
 
 
-def test_an_on_enter_task_pushes_its_snippets_over_the_websocket(file_db):
+def test_a_task_task_pushes_its_snippets_over_the_websocket(file_db):
     websocket = _FakeWebSocket()
     _, project_service, factory = _process(file_db, websocket, start=True)
     _publish(file_db, project_service, _yml("actuator.celebrate()\n          actuator.notify(user.name, 'welcome')"))
@@ -212,7 +212,7 @@ def test_an_on_enter_task_pushes_its_snippets_over_the_websocket(file_db):
     _fire_go(file_db, factory, project_service, {"distress": 10})
 
     assert _wait_until(lambda: websocket.sent), file_db.list_tasks()
-    assert websocket.sent == [{"type": "notification", "on-enter": 'celebrate()\nnotify("Ada", "welcome")'}]
+    assert websocket.sent == [{"type": "notification", "task": 'celebrate()\nnotify("Ada", "welcome")'}]
     assert _wait_until(lambda: file_db.list_tasks()[0]["status"] == "done")
 
 
@@ -231,11 +231,11 @@ def test_actuator_prompt_runs_inside_the_task_with_the_firing_sessions_history(f
     (row,) = file_db.list_tasks()
     assert row["payload"]["session_id"] == session_id
     assert _wait_until(lambda: websocket.sent), file_db.list_tasks()
-    assert websocket.sent == [{"type": "notification", "on-enter": 'notify("Note", "Fake AI reply.")'}]
+    assert websocket.sent == [{"type": "notification", "task": 'notify("Note", "Fake AI reply.")'}]
     assert file_db.get_messages(session_id) == []  # read-only, as before
 
 
-def test_a_fake_actuator_sets_on_enter_still_runs_as_a_task_and_reports(file_db):
+def test_a_fake_actuator_sets_task_still_runs_as_a_task_and_reports(file_db):
     """Test session with "Run actuators" off: send_mail is suppressed and
     reported, celebrate/notify tunnel — through the same task path."""
     websocket = _FakeWebSocket()
@@ -256,8 +256,8 @@ def test_a_fake_actuator_sets_on_enter_still_runs_as_a_task_and_reports(file_db)
     assert row["payload"]["actuators"] == "fake"
     assert _wait_until(lambda: websocket.sent), file_db.list_tasks()
     (frame,) = websocket.sent
-    assert "Run actuators is off" in frame["on-enter"]
-    assert frame["on-enter"].endswith("celebrate()")
+    assert "Run actuators is off" in frame["task"]
+    assert frame["task"].endswith("celebrate()")
 
 
 # --- switch_to_human / switch_to_ai -----------------------------------------
@@ -266,7 +266,7 @@ def test_switch_to_human_hands_the_session_to_its_target_and_pages_them(file_db)
     """actuator.switch_to_human(user_id) records the operator on the
     factory (see ActuatorSetFactory.get_human_operator) and pages every
     one of that operator's own websocket connections — never the
-    connection the on-enter's own firing session happens to be on."""
+    connection the task's own firing session happens to be on."""
     _, project_service, factory = _process(file_db, start=True)
     admin_socket = _FakeWebSocket()
     ws_notifications = WsNotifications(auth_service=None)
@@ -314,11 +314,11 @@ def test_a_fake_actuator_set_suppresses_switch_to_human(file_db):
 
     assert _wait_until(lambda: websocket.sent), file_db.list_tasks()
     (frame,) = websocket.sent
-    assert "Run actuators is off" in frame["on-enter"]
-    assert "no one was paged" in frame["on-enter"]
+    assert "Run actuators is off" in frame["task"]
+    assert "no one was paged" in frame["task"]
 
 
-def test_an_on_enter_survives_a_restart_and_runs_against_an_equivalent_environment(file_db):
+def test_a_task_survives_a_restart_and_runs_against_an_equivalent_environment(file_db):
     _, project_service, factory = _process(file_db)
     _publish(file_db, project_service, _yml("actuator.notify(user.name, 'high' if signal.distress > 50 else 'low')"))
     _fire_go(file_db, factory, project_service, {"distress": 70})
@@ -333,7 +333,7 @@ def test_an_on_enter_survives_a_restart_and_runs_against_an_equivalent_environme
     assert _wait_until(lambda: file_db.get_task(row["key"])["status"] == "done"), file_db.get_task(row["key"])
     # user.name is the frozen "Ada", signal.distress the frozen 70 —
     # exactly what the in-turn evaluation would have seen.
-    assert websocket.sent == [{"type": "notification", "on-enter": 'notify("Ada", "high")'}]
+    assert websocket.sent == [{"type": "notification", "task": 'notify("Ada", "high")'}]
 
 
 # --- deferred ----------------------------------------------------------------
@@ -346,7 +346,7 @@ def test_a_deferred_lambda_is_the_same_task_with_a_later_when_and_no_session(fil
 
     _fire_go(file_db, factory, project_service, {"distress": 70}, session_id=session_id)
 
-    # The outer on-enter task runs now and, running, hibernates the inner one.
+    # The outer task runs now and, running, hibernates the inner one.
     assert _wait_until(lambda: len(file_db.list_tasks()) == 2 and all(r["status"] in ("done", "pending") for r in file_db.list_tasks()))
     outer = next(r for r in file_db.list_tasks() if r["payload"]["session_id"] == session_id)
     inner = next(r for r in file_db.list_tasks() if r["key"] != outer["key"])
@@ -374,7 +374,7 @@ def test_a_deferred_call_runs_after_a_restart_against_the_frozen_scope(file_db):
     _process(file_db, websocket, start=True)
 
     assert _wait_until(lambda: file_db.get_task(inner["key"])["status"] == "done"), file_db.get_task(inner["key"])
-    assert websocket.sent == [{"type": "notification", "on-enter": 'notify("Ada", "high")'}]
+    assert websocket.sent == [{"type": "notification", "task": 'notify("Ada", "high")'}]
 
 
 def test_a_deferred_lambda_sees_names_assigned_earlier_in_the_same_script(file_db):
@@ -394,7 +394,7 @@ def test_a_deferred_lambda_sees_names_assigned_earlier_in_the_same_script(file_d
     _process(file_db, websocket, start=True)
 
     assert _wait_until(lambda: file_db.get_task(inner["key"])["status"] == "done"), file_db.get_task(inner["key"])
-    assert websocket.sent == [{"type": "notification", "on-enter": 'notify("Later", "hello Ada")'}]
+    assert websocket.sent == [{"type": "notification", "task": 'notify("Later", "hello Ada")'}]
 
 
 def test_the_task_runs_against_the_revision_it_was_written_for(file_db):
@@ -411,7 +411,7 @@ def test_the_task_runs_against_the_revision_it_was_written_for(file_db):
     _process(file_db, websocket, start=True)
 
     assert _wait_until(lambda: file_db.get_task(row["key"])["status"] == "done"), file_db.get_task(row["key"])
-    assert websocket.sent == [{"type": "notification", "on-enter": 'notify("Ada", "old")'}]
+    assert websocket.sent == [{"type": "notification", "task": 'notify("Ada", "old")'}]
 
 
 def test_deleting_the_project_takes_its_pending_tasks_with_it(file_db):
@@ -439,7 +439,7 @@ def test_a_task_never_sees_a_session(file_db):
 
     _process(file_db, websocket, start=True)
 
-    # render_on_enter_script logs and skips a failing statement, same as
+    # render_task_script logs and skips a failing statement, same as
     # the in-turn evaluation always did: the task settles done with nothing to push.
     assert _wait_until(lambda: file_db.get_task(row["key"])["status"] == "done"), file_db.get_task(row["key"])
     assert websocket.sent == []

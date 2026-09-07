@@ -24,7 +24,7 @@ const props = defineProps({
   // Forwarded to InspectorDetailCard.vue when selectedElement is an
   // action — its target <select> options.
   availableStates: { type: Array, default: () => [] },
-  // Forwarded to InspectorDetailCard.vue's own OnEnterDialog.vue — unlike
+  // Forwarded to InspectorDetailCard.vue's own ScriptEditDialog.vue — unlike
   // @set-field (fire-and-forget, every other field), that dialog's OK
   // button needs to know whether the write actually landed before
   // closing, which only a real awaited call (not a Vue emit) can answer.

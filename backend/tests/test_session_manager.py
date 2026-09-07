@@ -19,6 +19,7 @@ class _FakeInitAction:
 class _FakeAutomaton:
     def __init__(self, target):
         self.init_action = _FakeInitAction(target)
+        self.new_session_strategy = "resume"
 
 
 class _FakeState:

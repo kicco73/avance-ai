@@ -300,7 +300,7 @@ def _interactive_payload(msg_id="wamid.1", sender=LINKED_NUMBER, kind="button_re
 def _action(name, ui_button, ui_description=None, has_trigger=False) -> dict:
     return {
         "name": name, "ui_label": name, "ui_button": ui_button, "ui_description": ui_description,
-        "target": "y", "has_trigger": has_trigger, "on-enter": None,
+        "target": "y", "has_trigger": has_trigger, "task": None,
     }
 
 

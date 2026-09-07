@@ -7,7 +7,7 @@
 // which pool a single store instance happens to be routed to right now.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
+vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
   getCurrentSession: vi.fn(),
   postCreateSession: vi.fn(),
@@ -39,7 +39,7 @@ describe('the live store and the test store always route to their own endpoints'
   let testChatStore
   let api
   let dialogStore
-  let onEnterActions
+  let taskActions
 
   beforeEach(async () => {
     vi.resetModules()
@@ -48,7 +48,7 @@ describe('the live store and the test store always route to their own endpoints'
     testChatStore.setTestProject('my-project')
     api = await import('../src/api.js')
     dialogStore = await import('../src/dialogStore.js')
-    onEnterActions = await import('../src/onEnterActions.js')
+    taskActions = await import('../src/taskActions.js')
     api.getMessages.mockResolvedValue([])
     api.getSessions.mockResolvedValue([])
     api.getTestSessions.mockResolvedValue([])
@@ -84,8 +84,8 @@ describe('the live store and the test store always route to their own endpoints'
     expect(dialogStore.confirmDialog).toHaveBeenCalled()
     expect(api.postCreateSession).toHaveBeenCalled()
     expect(api.postCreateTestSession).not.toHaveBeenCalled()
-    // init-action's own on-enter arrives over the websocket, never off this response.
-    expect(onEnterActions.runOnEnterScript).not.toHaveBeenCalled()
+    // init-action's own task arrives over the websocket, never off this response.
+    expect(taskActions.runTaskScript).not.toHaveBeenCalled()
 
     dialogStore.confirmDialog.mockClear()
     api.postCreateTestSession.mockResolvedValue({ id: 4, active: true })
@@ -106,8 +106,8 @@ describe('the live store and the test store always route to their own endpoints'
     await testChatStore.handleReset()
 
     expect(api.postResetTestSessions).toHaveBeenCalledWith('my-project')
-    // Its on-enter arrives over the websocket too.
-    expect(onEnterActions.runOnEnterScript).not.toHaveBeenCalled()
+    // Its task arrives over the websocket too.
+    expect(taskActions.runTaskScript).not.toHaveBeenCalled()
     expect(testChatStore.state.value).toEqual({ key: 'a', ui_label: 'A', actions: [] })
   })
 

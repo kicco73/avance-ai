@@ -38,11 +38,11 @@ class Action:
     # Not state-level: two different actions landing on the same target
     # state can each carry their own value (or none), since it describes
     # *how you got there*, not the destination itself.
-    on_enter: str | None = None
-    # Same statement-splitting as on_enter (TriggerExpressionAnalyzer.
-    # on_enter_statements) but one `env.<key> = expr` line per env write
+    task: str | None = None
+    # Same statement-splitting as task (TriggerExpressionAnalyzer.
+    # task_statements) but one `env.<key> = expr` line per env write
     # (TriggerExpressionAnalyzer.on_exit_assignment) — no actuator.*
-    # calls of its own, that stays on_enter's job. The future replacement
+    # calls of its own, that stays task's job. The future replacement
     # for the declarative `env:` map below: see Automaton.eval_action_on_exit.
     on_exit: str | None = None
     # {env key: expression source}, evaluated when this action fires and
@@ -205,7 +205,7 @@ class Source:
 
 
 # Functional syntax (not the class form the other Payload types use):
-# "on-enter" isn't a valid Python identifier, so a class body can't declare it.
+# "task" isn't a valid Python identifier, so a class body can't declare it.
 ActionPayload = TypedDict("ActionPayload", {
     "name": str,
     "ui_label": str,
@@ -213,7 +213,7 @@ ActionPayload = TypedDict("ActionPayload", {
     "ui_description": str | None,
     "target": str,
     "has_trigger": bool,
-    "on-enter": str | None,
+    "task": str | None,
     "on-exit": str | None,
 })
 
@@ -250,21 +250,21 @@ def manual_actions_for(actions: list[ActionPayload], auto_tracking_enabled: bool
 
 class JsSnippet(str):
     # FIXME: subclassing str, not a plain str, is load-bearing —
-    # render_on_enter uses isinstance(result, JsSnippet) to tell an
+    # render_task uses isinstance(result, JsSnippet) to tell an
     # actuator's wire-ready JS apart from actuator.prompt()'s plain text.
     pass
 
 
 class DeferredExpression(object):
-    """What a zero-argument `lambda:` in an on-enter line evaluates to:
+    """What a zero-argument `lambda:` in a task line evaluates to:
     a callable closing over the evaluator (hence its scope) and the
     lambda's body, exactly like the plain closure it replaces — but one
     that also *knows its own source* (`source`, the body re-emitted by
     ast.unparse) and the EvaluationScope it was built against. Those two
     are what let actuator.defer hibernate the call instead of holding a
-    live closure (see tracking/actuators/on_enter_task.py)."""
+    live closure (see tracking/actuators/action_task.py)."""
 
-    def __init__(self, evaluator: "_OnEnterEval", body: ast.expr) -> None:
+    def __init__(self, evaluator: "_TaskEval", body: ast.expr) -> None:
         self._evaluator = evaluator
         self._body = body
         self.source: str = ast.unparse(body)
@@ -280,8 +280,8 @@ class DeferredExpression(object):
         return f"DeferredExpression({self.source!r})"
 
 
-class _OnEnterEval(simpleeval.EvalWithCompoundTypes):
-    """Evaluates one on-enter line. Only ever against an EvaluationScope
+class _TaskEval(simpleeval.EvalWithCompoundTypes):
+    """Evaluates one task line. Only ever against an EvaluationScope
     — a plain dict has no automaton/state to hibernate a deferred call
     with, so it is refused up front rather than failing at defer time."""
 
@@ -289,7 +289,7 @@ class _OnEnterEval(simpleeval.EvalWithCompoundTypes):
 
     def __init__(self, names: EvaluationScope) -> None:
         if not isinstance(names, EvaluationScope):
-            raise TypeError(f"_OnEnterEval needs an EvaluationScope, got {type(names).__name__}.")
+            raise TypeError(f"_TaskEval needs an EvaluationScope, got {type(names).__name__}.")
         super().__init__(names=names)
         self.nodes[ast.Lambda] = self._eval_lambda
 
@@ -370,6 +370,13 @@ class Automaton(object):
         project_ui_label: str | None = None,
         project_ui_description: str | None = None,
         talk_enabled: bool = True,
+        # "resume" (default): a brand-new live session picks up wherever
+        # this user's own live automaton state already is (LiveSessionStrategy.
+        # starting_state). "restart": it enters cold instead, exactly like a
+        # test/preview session does — see SessionTypeStrategy.
+        # _init_action_start (session_type_strategy.py) — the target/task
+        # pair every strategy that starts a session at project boot shares.
+        new_session_strategy: str = "resume",
         # Non-fatal findings AutomatonBuilder.build collected while
         # validating this project — a configuration that builds and runs
         # but almost certainly isn't what the author meant (see
@@ -378,7 +385,7 @@ class Automaton(object):
         build_warnings: list[str] | None = None,
     ):
         # A real Action (not just a target state string) so it can also
-        # carry its own on_enter/env — see ChatService._ensure_project_bootstrap.
+        # carry its own task/env — see ChatService._ensure_project_bootstrap.
         self.init_action = init_action
         self.states = states
         self.general_prompt = general_prompt
@@ -397,6 +404,7 @@ class Automaton(object):
         # mutually exclusive — this flag selects between them.
         self.autotracking_on_ai_message = autotracking_on_ai_message
         self.talk_enabled = talk_enabled
+        self.new_session_strategy = new_session_strategy
         self.build_warnings = list(build_warnings or [])
         # Which DB storage revision this Automaton actually came from —
         # unset here (never a build()-time concern: most callers,
@@ -433,7 +441,7 @@ class Automaton(object):
             "ui_description": action.ui_description,
             "target": action.target,
             "has_trigger": action.trigger is not None,
-            "on-enter": action.on_enter,
+            "task": action.task,
             "on-exit": action.on_exit,
         }
 
@@ -527,14 +535,14 @@ class Automaton(object):
     def _on_exit_assigned_keys(on_exit: str | None) -> set[str]:
         """The env key names an `on-exit` script writes — statically, by
         parsing its `env.<key> = expr` lines (TriggerExpressionAnalyzer.
-        on_enter_statements/on_exit_assignment), never by evaluating
+        task_statements/on_exit_assignment), never by evaluating
         them. A malformed script (build-time validation already rules
         this out for anything reaching here) or a non-assignment line
         contributes nothing rather than raising."""
         if not on_exit:
             return set()
         try:
-            statements = TriggerExpressionAnalyzer.on_enter_statements(on_exit)
+            statements = TriggerExpressionAnalyzer.task_statements(on_exit)
         except SyntaxError:
             return set()
         keys: set[str] = set()
@@ -575,7 +583,7 @@ class Automaton(object):
                 for expression in action.env.values():
                     referenced |= TriggerExpressionAnalyzer.signal_names(expression)
             if action.on_exit:
-                for _line_number, statement in TriggerExpressionAnalyzer.on_enter_statements(action.on_exit):
+                for _line_number, statement in TriggerExpressionAnalyzer.task_statements(action.on_exit):
                     assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
                     if assignment is not None:
                         referenced |= TriggerExpressionAnalyzer.signal_names(assignment[1])
@@ -624,20 +632,20 @@ class Automaton(object):
         """`action.on_exit`'s own `env.<key> = expr` lines, evaluated
         against `scope` — eval_action_env's own contract (only
         successfully evaluated keys are returned, a bad expression logs
-        and is skipped), but split into statements with on-enter's own
-        grammar (TriggerExpressionAnalyzer.on_enter_statements) so
-        on-exit reads exactly like on-enter: one statement per line, a
+        and is skipped), but split into statements with task's own
+        grammar (TriggerExpressionAnalyzer.task_statements) so
+        on-exit reads exactly like task: one statement per line, a
         single call may span several lines, and a '#' comment just
         works. A statement that isn't an `env.<key> = <expr>` assignment
         (TriggerExpressionAnalyzer.on_exit_assignment) is refused
         (on-exit has no actuator.* side effects of its own — that's
-        on-enter's job) and logged, not raised — build-time validation
+        task's job) and logged, not raised — build-time validation
         (AutomatonValidator.validate_on_exit) already rules this out for
         any project reaching here."""
         if not action.on_exit:
             return {}
         try:
-            statements = TriggerExpressionAnalyzer.on_enter_statements(action.on_exit)
+            statements = TriggerExpressionAnalyzer.task_statements(action.on_exit)
         except SyntaxError as exc:
             logger.warning("on-exit parsing failed for action '%s': %s", action.name, exc)
             return {}
@@ -661,15 +669,15 @@ class Automaton(object):
         return result
 
     @staticmethod
-    def render_on_enter(action: Action, scope: EvaluationScope) -> str | None:
-        """Evaluates `action.on_enter` — the same namespaced-expression
+    def render_task(action: Action, scope: EvaluationScope) -> str | None:
+        """Evaluates `action.task` — the same namespaced-expression
         grammar as `trigger`/`env` (one `actuator.<name>(...)` call per
         top-level statement, e.g. `actuator.celebrate()` /
         `actuator.notify(user.name, "Hi!")`, split via
-        TriggerExpressionAnalyzer.on_enter_statements so a single call may
+        TriggerExpressionAnalyzer.task_statements so a single call may
         itself span several lines and a '#' comment needs no special
         handling) — into the wire-ready JS text the frontend's
-        onEnterActions.js already knows how to run unchanged: each
+        taskActions.js already knows how to run unchanged: each
         statement's own return value is tunneled through verbatim only
         when it's a JsSnippet (`celebrate()`, `notify(...)`, and `show(...)`
         compile to themselves, minus the "actuator." prefix) — a plain
@@ -677,47 +685,47 @@ class Automaton(object):
         text, never wrapped by another actuator call) or None (a pure
         server-side side effect, e.g. `send_mail`) both contribute
         nothing. A statement may instead be a simple `name = <expr>`
-        assignment (see TriggerExpressionAnalyzer.on_enter_assignment):
+        assignment (see TriggerExpressionAnalyzer.task_assignment):
         `<expr>` is evaluated the same way but its result is stored under
         `name` directly on `actuator_scope` — never appended to
         `snippets`, even when it's a JsSnippet — so every later statement
-        in this same on_enter can reference `name` bare (including inside
+        in this same task can reference `name` bare (including inside
         an actuator.defer(...) lambda, which shares this same evaluator/
         scope — see DeferredExpression.scope and freeze()'s own "extra"
         capture, which already snapshots any such bare scalar). A
         statement that fails to evaluate is logged and simply contributes
         nothing (an assignment that fails leaves `name` unset, so a later
         reference to it fails too, same way any other undefined name
-        would) — this only ever affects on_enter as a whole (rather than
+        would) — this only ever affects task as a whole (rather than
         one statement of it) when it fails to parse at all, which
         build-time validation already rules out for any project this ever
         runs against."""
-        if not action.on_enter:
+        if not action.task:
             return None
-        return Automaton.render_on_enter_script(action.on_enter, scope.for_actuators(action_name=action.name))
+        return Automaton.render_task_script(action.task, scope.for_actuators(action_name=action.name))
 
     @staticmethod
-    def render_on_enter_script(script: str, actuator_scope: EvaluationScope) -> str | None:
-        """render_on_enter's own engine, on a bare script and an already
-        actuator-view scope — also what an OnEnterTask runs, later and
+    def render_task_script(script: str, actuator_scope: EvaluationScope) -> str | None:
+        """render_task's own engine, on a bare script and an already
+        actuator-view scope — also what an ActionTask runs, later and
         possibly in another process, against a rehydrated scope (see
-        tracking/actuators/on_enter_task.py): the same code path whether
-        the on-enter fires now or was deferred."""
+        tracking/actuators/action_task.py): the same code path whether
+        the task fires now or was deferred."""
         action_name = actuator_scope.action_name
         try:
-            statements = TriggerExpressionAnalyzer.on_enter_statements(script)
+            statements = TriggerExpressionAnalyzer.task_statements(script)
         except SyntaxError as exc:
-            logger.warning("on-enter parsing failed for action '%s': %s", action_name, exc)
+            logger.warning("task parsing failed for action '%s': %s", action_name, exc)
             return None
         snippets = []
         for _line_number, statement in statements:
-            assignment = TriggerExpressionAnalyzer.on_enter_assignment(statement)
+            assignment = TriggerExpressionAnalyzer.task_assignment(statement)
             target, expression = assignment if assignment is not None else (None, statement)
             try:
-                result = _OnEnterEval(names=actuator_scope).eval(expression)
+                result = _TaskEval(names=actuator_scope).eval(expression)
             except Exception as exc:
                 logger.warning(
-                    "on-enter expression evaluation failed for action '%s' ('%s'): %s",
+                    "task expression evaluation failed for action '%s' ('%s'): %s",
                     action_name, statement, exc,
                 )
                 continue

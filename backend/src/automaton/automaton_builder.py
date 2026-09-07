@@ -110,7 +110,7 @@ class AutomatonBuilder(object):
         return {key: value if isinstance(value, str) else str(value) for key, value in raw_env.items()}
 
     def _build_action(self, key: str, raw_action: dict, all_archives: dict[str, MemoryArchive]) -> Action:
-        on_enter = raw_action.get("on-enter")
+        task = raw_action.get("task")
         on_exit = raw_action.get("on-exit")
         line = BuildCursor.own_line(raw_action)
         self._at(line, f"states.{key}.actions.{raw_action.get('name', '?')}")
@@ -124,7 +124,7 @@ class AutomatonBuilder(object):
             attachments=ArchiveResolver.extract_required_archives(
                 raw_action.get("attachments", []), all_archives, f"action {raw_action['name']}"
             ),
-            on_enter=on_enter,
+            task=task,
             on_exit=on_exit,
             env=self._build_action_env(raw_action.get("env"), raw_action["name"]),
             line=line,
@@ -241,7 +241,7 @@ class AutomatonBuilder(object):
             ui_label=raw_init_action.get("ui-label", "init-action"),
             ui_button="",
             target=raw_init_action["target"],
-            on_enter=raw_init_action.get("on-enter"),
+            task=raw_init_action.get("task"),
             on_exit=raw_init_action.get("on-exit"),
             env=env or None,
             line=line,
@@ -400,5 +400,6 @@ class AutomatonBuilder(object):
             project_ui_label=metadata.ui_label,
             project_ui_description=metadata.ui_description,
             talk_enabled=metadata.talk_enabled,
+            new_session_strategy=metadata.new_session_strategy,
             build_warnings=self._cursor.warnings,
         )

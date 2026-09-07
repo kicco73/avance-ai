@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from automaton.automaton import Action, Automaton, Signal, State, _OnEnterEval
+from automaton.automaton import Action, Automaton, Signal, State, _TaskEval
 from automaton.scope import EvaluationScope
-from conftest import FakeAiService, parse_sse_result, run_on_enter_tasks
+from conftest import FakeAiService, parse_sse_result, run_pending_tasks
 from db import Db
 from tracking.actuators.actuator_set import FakeActuatorSet, LiveActuatorSet
 
@@ -71,13 +71,13 @@ def test_with_ai_service_never_mutates_the_original_instance():
     assert original.prompt("Say hi.") == ""
 
 
-def test_on_enter_can_compose_prompt_with_notify():
+def test_task_can_compose_prompt_with_notify():
     ai_service = FakeAiService()
     automaton = _automaton()
     actuator = FakeActuatorSet().with_ai_service(ai_service)
 
     scope = EvaluationScope({"actuator": actuator}, automaton=automaton, state_key="a")
-    result = _OnEnterEval(names=scope).eval(
+    result = _TaskEval(names=scope).eval(
         "actuator.notify('Note', actuator.prompt('Summarize the situation.'))"
     )
 
@@ -87,7 +87,7 @@ def test_on_enter_can_compose_prompt_with_notify():
 @pytest.mark.regression
 def test_aprendr_catala_sample_fires_actuator_prompt_through_the_real_app(client, app):
     """End-to-end: the real upload/build/manual-action pipeline, exercising
-    'grammar''s own on-enter (actuator.notify(..., actuator.prompt(...)))
+    'grammar''s own task (actuator.notify(..., actuator.prompt(...)))
     — the migration this sample project got when action-prompt was removed."""
     content = (SAMPLES_DIR / "Aprendr català.zip").read_bytes()
     resp = client.post("/api/projects/upload", content=content, headers={"Content-Type": "application/zip"})
@@ -102,8 +102,8 @@ def test_aprendr_catala_sample_fires_actuator_prompt_through_the_real_app(client
     action_response = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "grammar"})
 
     assert action_response.status_code == 200, action_response.text
-    assert "on-enter" not in action_response.json()
-    # The model call runs in the on-enter task, off the request; its
+    assert "task" not in action_response.json()
+    # The model call runs in the task, off the request; its
     # result reaches the browser as a notification frame.
-    frames = run_on_enter_tasks(app)
-    assert frames == [{"type": "notification", "on-enter": f'notify({json.dumps("Gramàtica")}, "Fake AI reply.")'}]
+    frames = run_pending_tasks(app)
+    assert frames == [{"type": "notification", "task": f'notify({json.dumps("Gramàtica")}, "Fake AI reply.")'}]

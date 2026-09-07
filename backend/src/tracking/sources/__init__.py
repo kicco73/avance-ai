@@ -137,7 +137,7 @@ class ToolSet:
     per-session execution — but never its mechanics: call() below runs
     inline, inside AiService's own tool-call loop, and the model waits on
     its result within that same request — never scheduled as an
-    OnEnterTask/JobService job, never persisted the way an on-enter script is."""
+    ActionTask/JobService job, never persisted the way a task script is."""
 
     def __init__(
         self, namespace: "SourceNamespace", may_read: list[Source], must_read: list[Source],

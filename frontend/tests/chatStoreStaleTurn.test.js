@@ -7,7 +7,7 @@
 // turnSessionId in submitMessage/handleAction.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
+vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
   postAction: vi.fn(),
   getSessions: vi.fn(),
@@ -62,7 +62,7 @@ describe('a turn stays pinned to the session it was sent for, even if the user s
       user_message_id: 41,
       assistant_message_id: 51,
       state: { key: 'a-done', ui_label: 'A done', actions: [] },
-      'on-enter': null,
+      'task': null,
       session_id: 1
     })
     await sendPromise
@@ -85,7 +85,7 @@ describe('a turn stays pinned to the session it was sent for, even if the user s
 
     turn.resolve({
       reply: [], user_message_id: 1, assistant_message_id: 2,
-      state: { key: 'a', ui_label: 'A', actions: [] }, 'on-enter': null, session_id: 1
+      state: { key: 'a', ui_label: 'A', actions: [] }, 'task': null, session_id: 1
     })
     await sendPromise
 

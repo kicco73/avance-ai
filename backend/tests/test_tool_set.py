@@ -24,7 +24,7 @@ def file_db(tmp_path) -> Db:
     # File-backed, not :memory: — ToolSet.call() runs the driver via
     # asyncio.to_thread, and a second thread's own connection to
     # ":memory:" would see a distinct, empty database instead of shared
-    # state (see conftest.py's own app_db/test_on_enter_task.py's own
+    # state (see conftest.py's own app_db/test_action_task.py's own
     # file_db, the same concern for a real background job-worker thread).
     return Db(f"sqlite:///{tmp_path / 'tool_set.db'}")
 

@@ -38,7 +38,7 @@ class SourceContext:
     (AvanceArchiveSource reads `db` at `automaton`'s pinned revision,
     through a per-`session_id` cache). `env` is unused by every driver
     today. `session_id` is None outside a real chat session (a wake-up
-    re-evaluation, a test replay, an on-enter deferred call)."""
+    re-evaluation, a test replay, a task deferred call)."""
     db: "Db | None"
     automaton: "Automaton"
     session_id: int | None

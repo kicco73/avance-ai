@@ -143,8 +143,8 @@ class PersistedEnv(Env):
         ValueError on None rather than silently accepting it and only
         failing later, on the first _write_memory/_write_action_set call
         (Tracking.session is a real FK): a caller with no real session
-        must use a plain Env() instead (see ChatService._schedule_on_enter/
-        tracking.actuators.on_enter_task.ScopeHydrator, both of which
+        must use a plain Env() instead (see ChatService._schedule_task/
+        tracking.actuators.action_task.ScopeHydrator, both of which
         branch on session_id before ever constructing one of these)."""
         if session_id is None:
             raise ValueError("PersistedEnv requires a real session_id — use Env() when there is no session.")

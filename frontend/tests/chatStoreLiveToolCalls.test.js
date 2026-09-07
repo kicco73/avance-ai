@@ -7,7 +7,7 @@
 // hadToolCall/result.assistant_message_id branch.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
+vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
   postAction: vi.fn(),
   getSessions: vi.fn(),
@@ -40,7 +40,7 @@ describe('a live turn backfills its own persisted tool-call trace once it lands'
       onStatus('')
       return {
         reply: [], user_message_id: 40, assistant_message_id: 51,
-        state: { key: 'a', ui_label: 'A', actions: [] }, 'on-enter': null, session_id: 1,
+        state: { key: 'a', ui_label: 'A', actions: [] }, 'task': null, session_id: 1,
       }
     })
     const toolCallRecord = {
@@ -63,7 +63,7 @@ describe('a live turn backfills its own persisted tool-call trace once it lands'
     chatStore.currentSessionId.value = 1
     chatClient.sendMessage.mockResolvedValue({
       reply: [], user_message_id: 40, assistant_message_id: 52,
-      state: { key: 'a', ui_label: 'A', actions: [] }, 'on-enter': null, session_id: 1,
+      state: { key: 'a', ui_label: 'A', actions: [] }, 'task': null, session_id: 1,
     })
 
     await chatStore.handleSend('hi')

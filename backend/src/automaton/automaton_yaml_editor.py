@@ -188,7 +188,7 @@ class AutomatonYamlEditor:
             "ui_description": raw_action["ui-description"].strip() if raw_action.get("ui-description") else None,
             "target": raw_action.get("target", state_name),
             "has_trigger": raw_action.get("trigger") is not None,
-            "on-enter": raw_action.get("on-enter"),
+            "task": raw_action.get("task"),
             "on-exit": raw_action.get("on-exit"),
         }
 

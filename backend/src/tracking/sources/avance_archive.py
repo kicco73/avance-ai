@@ -16,7 +16,7 @@ matching the filter returns "" — not even the header — so
 `value(*values, key=...)`: the `key` cell of the first matching row, as a scalar string, for
 scripts/triggers that want one value rather than a table to parse —
 never a model tool. A whole-file read is
-`attachment.read(name)`'s job (on-enter only, see
+`attachment.read(name)`'s job (task only, see
 tracking.actuators.attachment_namespace) — SourceDriver itself has no
 such method at all: every method here must return a bounded result, and
 a whole file is exactly what bounding a result doesn't make sense for.
@@ -74,7 +74,7 @@ class AvanceArchiveSource(SourceDriver):
         self._automaton = context.automaton
         self._archive_path = archive_path
         # None outside a real chat session (a wake-up re-evaluation, a
-        # test replay, an on-enter deferred call with no session recorded)
+        # test replay, a task deferred call with no session recorded)
         # — _read_text falls back to the canonical archive directly then,
         # since there's no session of its own for a cache copy to belong to.
         self._session_id = context.session_id

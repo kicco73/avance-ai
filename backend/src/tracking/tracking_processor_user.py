@@ -82,7 +82,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 
 			# Must run before the regenerated prompt below (the action's
 			# env: writes feed it), and not again via apply_transition
-			# further down — see record_transition. The action's on-enter
+			# further down — see record_transition. The action's task
 			# is scheduled as a task from here, once.
 			#
 			# Note: with signal-tracking-on-ai-message false (the case that

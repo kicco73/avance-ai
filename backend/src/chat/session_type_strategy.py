@@ -47,11 +47,24 @@ class SessionTypeStrategy(ABC):
     @abstractmethod
     def revision_for(self, project_service: "ProjectService", project_id: str) -> int: ...
 
-    # The "on-enter" payload a brand-new session of this type should report
+    # The "task" payload a brand-new session of this type should report
     # to the client, if any — None when starting_state() resumes an
     # already-ongoing state rather than genuinely entering one.
     @abstractmethod
-    def on_enter_for_new_session(self, automaton: "Automaton") -> dict | None: ...
+    def task_for_new_session(self, automaton: "Automaton") -> dict | None: ...
+
+    # Where a session entering cold starts: the automaton's own
+    # init_action, target state plus its task payload (None if it
+    # declares none) — shared by every strategy that ever starts a
+    # session at project boot rather than resuming an ongoing one (test
+    # and preview always; live too, under new-session-strategy: restart —
+    # see LiveSessionStrategy below). The one centralized place this
+    # project's "restart" behavior (also what the Run panel's own Clear
+    # button gets, by deleting a test session and creating a fresh one)
+    # comes from.
+    @staticmethod
+    def _init_action_start(automaton: "Automaton") -> tuple[str, dict | None]:
+        return automaton.init_action.target, automaton.init_action.task
 
 
 class LiveSessionStrategy(SessionTypeStrategy):
@@ -72,13 +85,17 @@ class LiveSessionStrategy(SessionTypeStrategy):
         )
 
     def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
-        _, state = project_service.get_automaton_and_state(project_id, type=self.type_name, username=username)
+        automaton, state = project_service.get_automaton_and_state(project_id, type=self.type_name, username=username)
+        if automaton.new_session_strategy == "restart":
+            return self._init_action_start(automaton)[0]
         return state.key
 
     def revision_for(self, project_service: "ProjectService", project_id: str) -> int:
         return project_service.get_published_revision(project_id)
 
-    def on_enter_for_new_session(self, automaton: "Automaton") -> dict | None:
+    def task_for_new_session(self, automaton: "Automaton") -> dict | None:
+        if automaton.new_session_strategy == "restart":
+            return self._init_action_start(automaton)[1]
         return None
 
 
@@ -106,13 +123,13 @@ class TestSessionStrategy(SessionTypeStrategy):
     def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
         revision = self.revision_for(project_service, project_id)
         automaton = project_service.get_automaton(project_id, revision)
-        return automaton.init_action.target
+        return self._init_action_start(automaton)[0]
 
     def revision_for(self, project_service: "ProjectService", project_id: str) -> int:
         return project_service.get_draft_revision(project_id)
 
-    def on_enter_for_new_session(self, automaton: "Automaton") -> dict | None:
-        return automaton.init_action.on_enter
+    def task_for_new_session(self, automaton: "Automaton") -> dict | None:
+        return self._init_action_start(automaton)[1]
 
 
 class PreviewSessionStrategy(SessionTypeStrategy):
@@ -130,13 +147,13 @@ class PreviewSessionStrategy(SessionTypeStrategy):
     def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
         revision = self.revision_for(project_service, project_id)
         automaton = project_service.get_automaton(project_id, revision)
-        return automaton.init_action.target
+        return self._init_action_start(automaton)[0]
 
     def revision_for(self, project_service: "ProjectService", project_id: str) -> int:
         return project_service.get_published_revision(project_id)
 
-    def on_enter_for_new_session(self, automaton: "Automaton") -> dict | None:
-        return automaton.init_action.on_enter
+    def task_for_new_session(self, automaton: "Automaton") -> dict | None:
+        return self._init_action_start(automaton)[1]
 
 
 class ImportedSessionStrategy(SessionTypeStrategy):
@@ -163,7 +180,7 @@ class ImportedSessionStrategy(SessionTypeStrategy):
             "An imported session's revision is stamped at import time, never resolved fresh."
         )
 
-    def on_enter_for_new_session(self, automaton: "Automaton") -> dict | None:
+    def task_for_new_session(self, automaton: "Automaton") -> dict | None:
         raise NotImplementedError(
             "An imported session is never created via create_session — nothing to report."
         )

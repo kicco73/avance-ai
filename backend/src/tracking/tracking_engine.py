@@ -165,7 +165,7 @@ class TrackingEngine:
         "don't publish" — a test replay has no real user/project of
         its own and must never trigger a StateChanged/EnvChanged a wake-up
         handler could act on. Returns the tracking row id. The fired
-        action's own on-enter is scheduled as a task by apply_action_env,
+        action's own task is scheduled as a task by apply_action_env,
         never returned: it reaches the browser over the websocket.
         `output_values`: structured output dict from this turn's AI generation."""
         if action is None:
@@ -202,7 +202,7 @@ class TrackingEngine:
     ) -> int:
         # FIXME: caller must have already applied action's own env: (via
         # apply_action_env) itself — calling apply_transition too for the
-        # same action would run apply_action_env (and any on-enter) twice.
+        # same action would run apply_action_env (and any task) twice.
         tracking_id = self._sink.save_transition(
             state.key,
             action.name,
@@ -249,16 +249,16 @@ class TrackingEngine:
         and manual-action paths (the latter fires with empty
         signal_values). Publishes one EnvChanged per key actually
         written; on-exit's own value for a key wins over env:'s should an
-        action somehow declare both. Then hands `action.on_enter` (§6.5's
+        action somehow declare both. Then hands `action.task` (§6.5's
         actuator.* calls) to the scope's own actuator set, which runs it
-        as an OnEnterTask due now — never inline here: actuator.prompt
+        as an ActionTask due now — never inline here: actuator.prompt
         is a model call, send_mail a network call, and the browser gets
         whatever they produce over the websocket (see
-        tracking/actuators/on_enter_task.py). `session_id`: the firing
-        session, for the OnEnterTask itself. `output_values`: structured
+        tracking/actuators/action_task.py). `session_id`: the firing
+        session, for the ActionTask itself. `output_values`: structured
         output dict from this turn's AI generation, available in env
-        expressions and on-enter/on-exit scripts."""
-        if not action.env and not action.on_enter and not action.on_exit:
+        expressions and task/on-exit scripts."""
+        if not action.env and not action.task and not action.on_exit:
             return
         scope = self._scope_builder.build(
             automaton, state_key, signal_values, session_id=session_id, output_values=output_values,
@@ -273,18 +273,18 @@ class TrackingEngine:
             if username is not None and project_id is not None:
                 for key, value in updates.items():
                     publish(EnvChanged(username=username, project_id=project_id, key=key, value=value))
-        if action.on_enter:
-            scope["actuator"].schedule_on_enter(action, scope, session_id=session_id)
+        if action.task:
+            scope["actuator"].schedule_task(action, scope, session_id=session_id)
 
-    def schedule_on_enter(
+    def schedule_task(
         self, automaton: Automaton, action: Action, state_key: str, session_id: int | None = None,
     ) -> None:
-        """`action.on_enter` scheduled against a fresh scope, with no env
-        applied — for a caller firing an action's on-enter outside a
+        """`action.task` scheduled against a fresh scope, with no env
+        applied — for a caller firing an action's task outside a
         real transition/env-apply path (a brand-new session's own
         init-action, a test-session reset), where env: is either
         irrelevant or already handled elsewhere."""
-        if not action.on_enter:
+        if not action.task:
             return
         scope = self._scope_builder.build(automaton, state_key, None, session_id=session_id)
-        scope["actuator"].schedule_on_enter(action, scope, session_id=session_id)
+        scope["actuator"].schedule_task(action, scope, session_id=session_id)

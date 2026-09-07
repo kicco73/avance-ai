@@ -36,11 +36,11 @@ def test_graph_includes_an_edge_from_the_reserved_state_for_init_action(client, 
     assert init_edges[0]["action"]["has_trigger"] is False
 
 
-def test_on_enter_is_reported_per_edge_not_per_node(client):
-    """on-enter belongs to the action (edge), not its destination state
-    (node) — see automaton.Action.on_enter."""
+def test_task_is_reported_per_edge_not_per_node(client):
+    """task belongs to the action (edge), not its destination state
+    (node) — see automaton.Action.task."""
     yml = (
-        "project:\n  id: on_enter_proj\n"
+        "project:\n  id: task_proj\n"
         "init-action:\n  target: a\n"
         "states:\n"
         "  a:\n"
@@ -50,7 +50,7 @@ def test_on_enter_is_reported_per_edge_not_per_node(client):
         "        target: b\n"
         "      - name: go-loud\n"
         "        target: b\n"
-        "        on-enter: actuator.celebrate()\n"
+        "        task: actuator.celebrate()\n"
         "  b:\n"
         "    contextual-prompt: there\n"
     )
@@ -60,7 +60,7 @@ def test_on_enter_is_reported_per_edge_not_per_node(client):
 
     graph = client.get(f"/api/projects/{project_id}/graph").json()
 
-    assert "on-enter" not in graph["nodes"][0]["state"]
+    assert "task" not in graph["nodes"][0]["state"]
     edges_by_name = {e["action"]["name"]: e for e in graph["edges"]}
-    assert edges_by_name["go-quiet"]["action"]["on-enter"] is None
-    assert edges_by_name["go-loud"]["action"]["on-enter"] == "actuator.celebrate()"
+    assert edges_by_name["go-quiet"]["action"]["task"] is None
+    assert edges_by_name["go-loud"]["action"]["task"] == "actuator.celebrate()"

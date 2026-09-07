@@ -5,9 +5,7 @@
 import { computed, ref, watch } from 'vue'
 import { vAutosize } from './textareaAutosize.js'
 import CardMenu from './CardMenu.vue'
-import TriggerEditor from './TriggerEditor.vue'
-import OnEnterDialog from './OnEnterDialog.vue'
-import OnExitDialog from './OnExitDialog.vue'
+import ScriptEditDialog from './ScriptEditDialog.vue'
 import { handleEnterNext } from './enterToNextField.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 import { customDialog } from '../../dialogStore.js'
@@ -50,8 +48,8 @@ const props = defineProps({
   // "Current" — for a caller that already knows which state a card
   // stands for, rather than deriving it from highlightedStateKey. State only.
   roleBadge: { type: String, default: null },
-  // The On enter dialog's own OK button needs to await a real save
-  // result (see openOnEnterDialog below) — every other field here
+  // ScriptEditDialog.vue's own Save button needs to await a real save
+  // result (see openScriptDialog below) — every other field here
   // commits fire-and-forget through the set-field emit instead, which
   // can't report back whether its write actually landed.
   saveField: { type: Function, default: null }
@@ -83,7 +81,6 @@ function handleCardClick() {
 const editUiLabel = ref('')
 const editUiDescription = ref('')
 const editContextualPrompt = ref('')
-const editTrigger = ref('')
 const editTarget = ref('')
 
 const elementIdentity = computed(() => {
@@ -100,7 +97,6 @@ function resetEditBuffers() {
   editUiLabel.value = d.uiLabel ?? ''
   editUiDescription.value = d.uiDescription ?? ''
   editContextualPrompt.value = d.contextualPrompt ?? ''
-  editTrigger.value = d.trigger ?? ''
   editTarget.value = d.target ?? ''
 }
 
@@ -127,48 +123,33 @@ function commitContextualPrompt() {
   commitTextField('contextual-prompt', editContextualPrompt.value, props.selectedElement?.data.contextualPrompt ?? '')
 }
 
-function commitTrigger() {
-  commitTextField('trigger', editTrigger.value, props.selectedElement?.data.trigger ?? '')
-}
-
 function commitTarget() {
   commitTextField('target', editTarget.value, props.selectedElement?.data.target ?? '')
 }
 
-// The "On enter" badge (action cards only) opens the same TriggerEditor
-// the inline form used to carry, just full-size in a dialog (a 20-line
-// actuator script needs real room, unlike the other one-line fields
-// above). onCommit goes through saveField (a real awaited call), not
-// commitTextField/set-field (fire-and-forget) — OnEnterDialog.vue's own
-// OK button needs the actual save result to know whether to close.
-// Wire key is "on-enter" (kebab-case, not "onEnter") — written straight
-// into the YAML under that literal key on the backend, same convention
-// every other field here follows ('ui-label', 'history-cutoff', ...).
-function openOnEnterDialog() {
+// Trigger/On exit/Task badges (action cards only) all open the same
+// ScriptEditDialog, just starting on a different tab — one dialog
+// replacing what used to be an always-inline TriggerEditor plus two
+// separate on-enter/on-exit dialogs. onCommit goes through saveField (a
+// real awaited call), not commitTextField/set-field (fire-and-forget) —
+// the dialog's own Save button needs the actual save result to know
+// whether to keep a field's edit or roll it back. Wire keys are
+// "on-exit"/"task" (kebab-case/lowercase, not camelCase) — written
+// straight into the YAML under those literal keys on the backend, same
+// convention every other field here follows ('ui-label',
+// 'history-cutoff', ...). showTrigger is false for the init-action,
+// which has no trigger of its own to edit.
+function openScriptDialog(tab) {
   customDialog({
-    component: OnEnterDialog,
+    component: ScriptEditDialog,
     wide: true,
     props: {
-      initialValue: props.selectedElement?.data.onEnter ?? '',
-      excludeNamespaces: ['session'],
-      onCommit: (value) => props.saveField('on-enter', value)
-    }
-  })
-}
-
-// Same shape as openOnEnterDialog above, wire key "on-exit" — on-exit has
-// no actuator.* calls of its own (that's on-enter's job), so, unlike
-// on-enter's dialog, `actuator` stays excluded rather than `session`
-// (see TriggerEditor's own exclude-namespaces — same exclusion
-// ActionEnvEditor.vue's removed per-row env editor used for its value field).
-function openOnExitDialog() {
-  customDialog({
-    component: OnExitDialog,
-    wide: true,
-    props: {
-      initialValue: props.selectedElement?.data.onExit ?? '',
-      excludeNamespaces: ['actuator'],
-      onCommit: (value) => props.saveField('on-exit', value)
+      initialTrigger: props.selectedElement?.data.trigger ?? '',
+      initialOnExit: props.selectedElement?.data.onExit ?? '',
+      initialTask: props.selectedElement?.data.task ?? '',
+      showTrigger: !props.selectedElement?.data.isInitEdge,
+      initialTab: tab,
+      onCommit: (field, value) => props.saveField(field, value)
     }
   })
 }
@@ -268,13 +249,14 @@ const hasSelectedElementBadges = computed(() => {
     return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff ||
       (d.reactionsEnabled && d.hasReactions) || (d.aiMayQuerySources?.length > 0) || (d.aiMustQuerySources?.length > 0)
   }
-  // "On enter"/"On exit" are always-shown clickable badges once the form
-  // is open — same reasoning, and same layout position (first in this
-  // row), as No chat/History cutoff above. Closed, same read-only set as
-  // non-editable, plus either badge whenever the action has that script.
+  // "Trigger"/"On exit"/"Task" are always-shown clickable badges once the
+  // form is open — same reasoning, and same layout position (first in
+  // this row), as No chat/History cutoff above. Closed, same read-only
+  // set as non-editable, plus whichever badge whenever the action has
+  // that script.
   if (showEditForm.value) return true
   const d = props.selectedElement.data
-  return isSelectedActionFired.value || !d.hasTrigger || d.isInitEdge || !!d.onEnter || !!d.onExit
+  return isSelectedActionFired.value || !d.hasTrigger || d.isInitEdge || !!d.trigger || !!d.task || !!d.onExit
 })
 
 // Only reachable while the edit form's attachment list is showing. A
@@ -407,14 +389,14 @@ function selectAttachment(fileName) {
         </template>
         <template v-else>
           <button
-            v-if="showEditForm || selectedElement.data.onEnter"
+            v-if="!selectedElement.data.isInitEdge && (showEditForm || selectedElement.data.trigger)"
             type="button"
-            class="inspector-detail-badge inspector-detail-badge-toggle inspector-detail-badge-onenter-btn"
-            :class="selectedElement.data.onEnter ? ['inspector-detail-badge-toggle-on', 'inspector-detail-badge-onenter'] : 'inspector-detail-badge-toggle-off'"
+            class="inspector-detail-badge inspector-detail-badge-toggle inspector-detail-badge-trigger-btn"
+            :class="selectedElement.data.trigger ? ['inspector-detail-badge-toggle-on', 'inspector-detail-badge-trigger'] : 'inspector-detail-badge-toggle-off'"
             :disabled="!editable"
-            title="On enter"
-            @click.stop="openOnEnterDialog()"
-          >On enter</button>
+            title="Trigger"
+            @click.stop="openScriptDialog('trigger')"
+          >Trigger</button>
           <button
             v-if="showEditForm || selectedElement.data.onExit"
             type="button"
@@ -422,8 +404,17 @@ function selectAttachment(fileName) {
             :class="selectedElement.data.onExit ? ['inspector-detail-badge-toggle-on', 'inspector-detail-badge-onexit'] : 'inspector-detail-badge-toggle-off'"
             :disabled="!editable"
             title="On exit"
-            @click.stop="openOnExitDialog()"
+            @click.stop="openScriptDialog('on-exit')"
           >On exit</button>
+          <button
+            v-if="showEditForm || selectedElement.data.task"
+            type="button"
+            class="inspector-detail-badge inspector-detail-badge-toggle inspector-detail-badge-task-btn"
+            :class="selectedElement.data.task ? ['inspector-detail-badge-toggle-on', 'inspector-detail-badge-task'] : 'inspector-detail-badge-toggle-off'"
+            :disabled="!editable"
+            title="Task"
+            @click.stop="openScriptDialog('task')"
+          >Task</button>
           <template v-if="!showEditForm">
             <span v-if="selectedElement.data.isInitEdge" class="inspector-detail-badge inspector-detail-badge-start">Start</span>
             <span v-if="isSelectedActionFired" class="inspector-detail-badge inspector-detail-badge-fired">Fired</span>
@@ -511,13 +502,6 @@ function selectAttachment(fileName) {
               @click.stop
               @blur="commitUiDescription"
             ></textarea>
-            <template v-if="!selectedElement.data.isInitEdge">
-              <label class="inspector-detail-form-label" title="A Python expression, evaluated server-side">
-                <span class="inspector-py-field-icon" title="Python expression">PY</span>
-                Trigger
-              </label>
-              <TriggerEditor v-model="editTrigger" :exclude-namespaces="['actuator']" @click.stop @blur="commitTrigger" />
-            </template>
             <p class="inspector-detail-field">
               <template v-if="!selectedElement.data.isInitEdge"><strong>{{ stateLabelFor(selectedElement.data.source) }}</strong> → </template>
               <select
@@ -537,7 +521,6 @@ function selectAttachment(fileName) {
               <strong>Env:</strong>
               <code v-for="[key, value] in envEntries" :key="key" class="inspector-detail-code">{{ key }} = {{ value }}</code>
             </p>
-            <p v-if="selectedElement.data.trigger" class="inspector-detail-field"><strong>Trigger:</strong><code class="inspector-detail-code">{{ selectedElement.data.trigger }}</code></p>
           </div>
         </Transition>
       </template>
@@ -601,12 +584,15 @@ function selectAttachment(fileName) {
    its own active-state color differs, so this is the one declaration
    left to override, and only together with -toggle-on (compound
    selector, so it wins regardless of source order). */
-.inspector-detail-badge-onenter-btn { appearance: none; border: none; margin: 0; font-family: inherit; cursor: pointer; }
-.inspector-detail-badge-onenter-btn:disabled { cursor: not-allowed; opacity: 0.6; }
-.inspector-detail-badge-onenter.inspector-detail-badge-toggle-on { background: #4b8bbe; }
+.inspector-detail-badge-trigger-btn { appearance: none; border: none; margin: 0; font-family: inherit; cursor: pointer; }
+.inspector-detail-badge-trigger-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+.inspector-detail-badge-trigger.inspector-detail-badge-toggle-on { background: #4b8bbe; }
 .inspector-detail-badge-onexit-btn { appearance: none; border: none; margin: 0; font-family: inherit; cursor: pointer; }
 .inspector-detail-badge-onexit-btn:disabled { cursor: not-allowed; opacity: 0.6; }
 .inspector-detail-badge-onexit.inspector-detail-badge-toggle-on { background: #00838f; }
+.inspector-detail-badge-task-btn { appearance: none; border: none; margin: 0; font-family: inherit; cursor: pointer; }
+.inspector-detail-badge-task-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+.inspector-detail-badge-task.inspector-detail-badge-toggle-on { background: #7c4dff; }
 .inspector-detail-title { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inspector-detail-title-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
 .inspector-detail-title-input:hover, .inspector-detail-title-input:focus { border-color: #ccc; background: white; }
@@ -614,8 +600,6 @@ function selectAttachment(fileName) {
 /* Marks a field the AI itself reads, as opposed to a purely
    human-facing one like Description. */
 .inspector-ai-field-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; }
-/* Marks a field evaluated server-side as a Python expression. */
-.inspector-py-field-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 1.1rem; height: 0.85rem; border-radius: 3px; background: #4b8bbe; color: white; font-size: 0.55rem; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -0.02em; }
 .inspector-detail-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.8rem; line-height: 1.54; padding: 0.4rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
 .inspector-detail-target-select { display: inline-block; width: auto; max-width: 100%; font: inherit; font-weight: 700; font-size: inherit; color: #333; padding: 0.05rem 0.2rem; border-radius: 4px; border: 1px solid transparent; background: transparent; cursor: pointer; }
 .inspector-detail-target-select:hover, .inspector-detail-target-select:focus { border-color: #ccc; background: white; }

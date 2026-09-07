@@ -102,7 +102,7 @@ export function createChatStore({
     turnCount.value++
   }
 
-  // A fired action's own "on-enter" script is never part of a turn's
+  // A fired action's own "task" script is never part of a turn's
   // response: the backend runs it as a task and pushes its output over
   // the websocket, where notificationBus.js runs it once, globally.
   function handleStateChange(newState) {
@@ -748,7 +748,7 @@ export function createChatStore({
     clearChatUi()
     try {
       // A reset re-enters the automaton through init-action, same as a
-      // session's very first transition — its on-enter arrives over the
+      // session's very first transition — its task arrives over the
       // websocket like any other, never in this response.
       const newState = await resetSession()
       state.value = null
@@ -784,7 +784,7 @@ export function createChatStore({
       clearApiError()
       messages.value = []
       // A brand new session enters init_action.target through init_action
-      // itself; its on-enter arrives over the websocket like any other.
+      // itself; its task arrives over the websocket like any other.
       await loadMessages()
       // Opened unconditionally so the new session is visible right away,
       // regardless of whether the panel was already open.

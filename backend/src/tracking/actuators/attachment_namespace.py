@@ -1,4 +1,4 @@
-"""The on-enter-only `attachment` namespace — `attachment.read(name)`
+"""The task-only `attachment` namespace — `attachment.read(name)`
 returns one of this project's own archive files' whole text content,
 resolved the same "exact path or unique basename under `behaviour/`" way
 a source's own `url:` is (see AutomatonBuilder._extract_required_archives).

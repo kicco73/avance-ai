@@ -67,7 +67,7 @@ class WakeupService:
         self._ws_notifications = ws_notifications
         self._tracking_service = tracking_service
         # Only actuator.prompt() needs this — None here just means a
-        # self-loop's own on-enter falls back to actuator.prompt()'s own
+        # self-loop's own task falls back to actuator.prompt()'s own
         # no-context default ("", logged) instead of a real generation call.
         self._ai_service = ai_service
 
@@ -137,8 +137,8 @@ class WakeupService:
                 # A "notification" frame, never "done" — chatClient.js drops a
                 # "done" with no pendingTurn in flight, which a push never is.
                 # Best-effort live nudge only; the transition above is already
-                # persisted regardless, and its on-enter arrives in its own
-                # frame, from the OnEnterTask apply_transition scheduled.
+                # persisted regardless, and its task arrives in its own
+                # frame, from the ActionTask apply_transition scheduled.
                 if self._ws_notifications is not None:
                     state_payload = automaton.get_state_payload(state)
                     auto_tracking_enabled = (

@@ -31,12 +31,12 @@ const model = defineModel({ type: String, default: '' })
 const props = defineProps({
   excludeNamespaces: { type: Array, default: () => [] },
   // Taller CodeMirror content area — for a caller editing a real
-  // multi-line script (e.g. OnEnterDialog.vue) rather than the usual
+  // multi-line script (e.g. ScriptEditDialog.vue) rather than the usual
   // one-line trigger/env expression.
   large: { type: Boolean, default: false },
   // Where completion/hover tooltips mount — defaults to <body>, which
   // works for every plain (non-modal) usage. A caller embedding this
-  // inside a native <dialog> (see OnEnterDialog.vue) MUST override it to
+  // inside a native <dialog> (see ScriptEditDialog.vue) MUST override it to
   // an element inside that same dialog: showModal() promotes the dialog
   // to the browser's own top layer, so a body-parented tooltip renders
   // behind it regardless of z-index — invisible, not just occluded.
@@ -82,7 +82,7 @@ const namespaceHighlighter = ViewPlugin.fromClass(
 // Same as CodeMirror's basicSetup, minus gutter pieces (lineNumbers etc.)
 // — a one-line trigger/env expression needs no line-number column, and
 // dropping just lineNumbers would still leave an empty gutter strip.
-// `large` (a real multi-line script, e.g. OnEnterDialog.vue) adds
+// `large` (a real multi-line script, e.g. ScriptEditDialog.vue) adds
 // lineNumbers back in createEditor() below instead.
 const editorSetup = [
   highlightSpecialChars(),

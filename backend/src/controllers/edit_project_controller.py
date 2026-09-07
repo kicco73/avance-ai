@@ -31,7 +31,7 @@ STATE_EDITABLE_FIELDS = {
     "ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat", "reactions-enabled",
     "ai-may-read-sources", "ai-must-read-sources", "ai-may-write-sources", "input", "output",
 }
-ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "target", "trigger", "on-enter", "on-exit", "env"}
+ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "target", "trigger", "task", "on-exit", "env"}
 # The init-action is an action like any other (see AutomatonYamlEditor.
 # _init_action_payload) minus 'trigger' — it's the automaton's
 # unconditional entry point, never conditionally fired, so

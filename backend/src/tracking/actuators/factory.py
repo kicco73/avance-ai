@@ -6,8 +6,8 @@ from db import Db
 from job import JobService
 from notification.notification_service import NotificationService
 
-from .actuator_set import ActuatorSet, FakeActuatorSet, LiveActuatorSet, OnEnterDispatcher
-from .on_enter_task import ACTUATORS_FAKE, ACTUATORS_LIVE, OnEnterTask, ScopeHydrator
+from .actuator_set import ActuatorSet, FakeActuatorSet, LiveActuatorSet, TaskDispatcher
+from .action_task import ACTUATORS_FAKE, ACTUATORS_LIVE, ActionTask, ScopeHydrator
 
 if TYPE_CHECKING:
     from ai import AiService
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 class ActuatorSetFactory:
-    """Registers the on-enter task type with the JobService at
+    """Registers the task type with the JobService at
     construction — before the service is started (main.py starts it
     last), so a hibernated row can never be claimed with nobody to
     hydrate it. The websocket adapter is the one late binding left
@@ -43,7 +43,7 @@ class ActuatorSetFactory:
         self._ws_notifications: "WsNotifications | None" = None
         self._whatsapp_service: "WhatsAppService | None" = None
         self._hydrator = ScopeHydrator(db, project_service, self, ai_service)
-        job_service.register_task_type(OnEnterTask.TYPE, self._hydrator.hydrate)
+        job_service.register_task_type(ActionTask.TYPE, self._hydrator.hydrate)
 
     def get_human_operator(self, session_id: int) -> str | None:
         return self._human_operators.get(session_id)
@@ -64,11 +64,11 @@ class ActuatorSetFactory:
     def set_whatsapp_service(self, whatsapp_service: "WhatsAppService | None") -> None:
         self._whatsapp_service = whatsapp_service
 
-    def _dispatcher(self, project_id: str, actuators: str) -> OnEnterDispatcher:
-        return OnEnterDispatcher(self._job_service, self._hydrator, project_id=project_id, actuators=actuators)
+    def _dispatcher(self, project_id: str, actuators: str) -> TaskDispatcher:
+        return TaskDispatcher(self._job_service, self._hydrator, project_id=project_id, actuators=actuators)
 
     def live(self, *, project_id: str) -> LiveActuatorSet:
-        """Bound to `project_id`: what its on-enter tasks are hibernated under."""
+        """Bound to `project_id`: what its task tasks are hibernated under."""
         return LiveActuatorSet(
             self._notification_service, self._dispatcher(project_id, ACTUATORS_LIVE),
             whatsapp_service=self._whatsapp_service, factory=self,
@@ -77,7 +77,7 @@ class ActuatorSetFactory:
     def fake(self, *, project_id: str) -> FakeActuatorSet:
         """Same binding, real side effects suppressed (a test session
         with "Run actuators" off, or a project-wide test reset with no
-        session at all) — its on-enter still runs as a task, so its
+        session at all) — its task still runs as a task, so its
         notify()/celebrate() reach the browser the same way."""
         return FakeActuatorSet(self._dispatcher(project_id, ACTUATORS_FAKE), factory=self)
 

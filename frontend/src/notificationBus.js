@@ -1,15 +1,15 @@
 // The one consumer of chatClient's single notification handler.
 //
-// Every server-pushed "notification" frame carries at most an on-enter
+// Every server-pushed "notification" frame carries at most a task
 // script (an action's actuator.celebrate()/notify()/show() output — which
-// the backend now always delivers this way, from the OnEnterTask that ran
+// the backend now always delivers this way, from the ActionTask that ran
 // it, never inside a turn's own response) and/or a state update for a
 // project (a cross-project wake-up). The script is a global UI effect —
 // a toast, confetti, a dialog — so it runs exactly once here, whichever
 // chat stores happen to exist; only the state part is fanned out, to
 // every store that asked, each deciding whether it is about its project.
 import { chatChannel } from './chatChannel.js'
-import { runOnEnterScript } from './onEnterActions.js'
+import { runTaskScript } from './taskActions.js'
 
 const stateSubscribers = new Set()
 let registered = false
@@ -17,8 +17,8 @@ let registered = false
 function ensureRegistered() {
   if (registered) return
   registered = true
-  chatChannel.subscribe('notification', ({ project_name, state, 'on-enter': onEnter }) => {
-    if (onEnter) runOnEnterScript(onEnter)
+  chatChannel.subscribe('notification', ({ project_name, state, task }) => {
+    if (task) runTaskScript(task)
     if (state) {
       for (const subscriber of stateSubscribers) subscriber({ project_name, state })
     }

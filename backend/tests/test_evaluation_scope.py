@@ -167,7 +167,7 @@ def test_attachment_read_resolves_a_text_archive_from_both_scope_views_and_raise
     """attachment.read(name), like a source read, goes straight to Db at
     the automaton's own pinned (project_id, revision) — never automaton.
     attachments' in-memory copy — and stays present in the actuator view
-    an on-enter line actually runs against, which drops only `session`."""
+    a task line actually runs against, which drops only `session`."""
     db.ensure_project(PROJECT_ID)
     db.save_project_files(
         PROJECT_ID, {"behaviour/policy.txt": b"be kind", "logo.png": b"\x89PNG"},

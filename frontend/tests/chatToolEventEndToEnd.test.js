@@ -13,7 +13,7 @@ import { toolTraceLine } from '../src/toolTraceLine.js'
 import { TOOL_STATUS_MIN_MS } from '../src/toolStatusHold.js'
 import { installFakeChatSocket, turnIdOf } from './fakeChatSocket.js'
 
-vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
+vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
   postAction: vi.fn(),
   getSessions: vi.fn(),

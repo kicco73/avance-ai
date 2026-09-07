@@ -16,7 +16,7 @@ from logging_factory import LoggerFactory
 from notification.notification_service import NotificationService
 from session import Session
 
-from .on_enter_task import OnEnterTask, ScopeHydrator
+from .action_task import ActionTask, ScopeHydrator
 
 if TYPE_CHECKING:
     from whatsapp.whatsapp_service import WhatsAppService
@@ -40,27 +40,27 @@ def _run_sync(coro: Coroutine[Any, Any, _T]) -> _T:
 
 class ActuatorSet(ABC):
     """`celebrate`/`notify`/`show`/`prompt` compile straight to the frontend's
-    own onEnterActions.js locals of the same name (see
-    Automaton.render_on_enter) or, for `prompt`, run a read-only
+    own taskActions.js locals of the same name (see
+    Automaton.render_task) or, for `prompt`, run a read-only
     generation call — no real-world side effect either subclass could
     meaningfully suppress, so all four behave identically regardless of
     a test session's "Run actuators" toggle. Only `send_mail`/`defer`
     (real side effects) are each subclass's own concern."""
 
     def __init__(
-        self, dispatcher: "OnEnterDispatcher | None" = None, factory: "ActuatorSetFactory | None" = None,
+        self, dispatcher: "TaskDispatcher | None" = None, factory: "ActuatorSetFactory | None" = None,
     ) -> None:
-        # Bound fresh per on-enter evaluation via with_ai_service —
+        # Bound fresh per task evaluation via with_ai_service —
         # never set any other way (see EvaluationScopeBuilder.build).
         self._ai_service: "AiService | None" = None
         # Same lifecycle as _ai_service above — the tool catalog of
-        # whichever state this on-enter is actually evaluated for (see
+        # whichever state this task is actually evaluated for (see
         # EvaluationScopeBuilder.build's own with_ai_service call), used
         # only by prompt() below. None wherever _ai_service is too, or
         # for a state with neither ai-may-read-sources nor
         # ai-must-read-sources declared.
         self._tool_set: "ToolSet | None" = None
-        # How this set gets an on-enter script run as a Task. None only
+        # How this set gets a task script run as a Task. None only
         # for a bare set nobody wired to a JobService (a test replay's
         # own FakeActuatorSet default): the script then runs inline and
         # its output is dropped, since no browser is listening anyway.
@@ -70,22 +70,22 @@ class ActuatorSet(ABC):
         # ActuatorSetFactory.set_human_operator/clear_human_operator),
         # same "ask the thing that made you" shape as _dispatcher above.
         self._factory = factory
-        # Bound fresh per on-enter evaluation via with_session — never
+        # Bound fresh per task evaluation via with_session — never
         # set any other way. None for a set built without a firing
         # session (e.g. a deferred call, or a project-wide test reset)
         # — switch_to_human/switch_to_ai are then no-ops, same as
-        # session.* being absent from an on-enter script's own scope.
+        # session.* being absent from a task script's own scope.
         self._session_id: int | None = None
 
-    def schedule_on_enter(self, action: Action, scope: EvaluationScope, *, session_id: int | None) -> None:
-        """Runs `action.on_enter` as an OnEnterTask due now (see
-        on_enter_task.py) — never inline in the request that fired it.
+    def schedule_task(self, action: Action, scope: EvaluationScope, *, session_id: int | None) -> None:
+        """Runs `action.task` as an ActionTask due now (see
+        action_task.py) — never inline in the request that fired it.
         `scope`: the full scope the transition was evaluated in; the
         task keeps its actuator view."""
-        if not action.on_enter:
+        if not action.task:
             return
         if self._dispatcher is None:
-            Automaton.render_on_enter(action, scope)
+            Automaton.render_task(action, scope)
             return
         self._dispatcher.schedule_now(action, scope, session_id=session_id)
 
@@ -115,7 +115,7 @@ class ActuatorSet(ABC):
 
     def with_ai_service(self, ai_service: "AiService", tool_set: "ToolSet | None" = None) -> "ActuatorSet":
         """A copy of this actuator set bound to `ai_service` (and,
-        optionally, the tool catalog of whichever state this on-enter is
+        optionally, the tool catalog of whichever state this task is
         being evaluated for — see EvaluationScopeBuilder.build) — never
         mutates `self`, so the long-lived instance a factory hands out
         stays reusable across calls."""
@@ -126,7 +126,7 @@ class ActuatorSet(ABC):
 
     def with_session(self, session_id: int) -> "ActuatorSet":
         """A copy of this actuator set bound to the session whose
-        on-enter is actually running — see ScopeHydrator.build_scope,
+        task is actually running — see ScopeHydrator.build_scope,
         the only place session_id is known at the moment a script's
         actuator.* calls are evaluated. Same never-mutate-self shape as
         with_ai_service above."""
@@ -159,9 +159,9 @@ class ActuatorSet(ABC):
         raise NotImplementedError
 
 
-class OnEnterDispatcher(object):
-    """What turns an on-enter (now) or a deferred lambda (later) into an
-    OnEnterTask on the JobService, under (the current user, one project)
+class TaskDispatcher(object):
+    """What turns a task (now) or a deferred lambda (later) into an
+    ActionTask on the JobService, under (the current user, one project)
     — the two things a Task row keys on (see jobs/task.py) — and marked
     with which actuator set (live or fake) must be rebuilt to run it."""
 
@@ -178,13 +178,13 @@ class OnEnterDispatcher(object):
     def _check_project(self, scope: EvaluationScope) -> None:
         if scope.automaton.project_id != self._project_id:
             raise ValueError(
-                f"on-enter evaluated for project '{scope.automaton.project_id}' but this actuator set "
+                f"task evaluated for project '{scope.automaton.project_id}' but this actuator set "
                 f"belongs to '{self._project_id}'."
             )
 
     def schedule_now(self, action: Action, scope: EvaluationScope, *, session_id: int | None) -> None:
         self._check_project(scope)
-        task = OnEnterTask.now(
+        task = ActionTask.now(
             action, scope, username=Session().user, actuators=self._actuators, session_id=session_id,
             hydrator=self._hydrator,
         )
@@ -192,7 +192,7 @@ class OnEnterDispatcher(object):
 
     def schedule_later(self, act: DeferredExpression, when: datetime) -> None:
         self._check_project(act.scope)
-        task = OnEnterTask.later(
+        task = ActionTask.later(
             act, when, username=Session().user, actuators=self._actuators, hydrator=self._hydrator,
         )
         self._job_service.schedule(task, when)
@@ -200,12 +200,12 @@ class OnEnterDispatcher(object):
 
 class LiveActuatorSet(ActuatorSet):
     """Always bound to one project through its dispatcher: every
-    on-enter and every defer() is hibernated under (the current user,
+    task and every defer() is hibernated under (the current user,
     that project) — never a session, which will be over by the time a
-    deferred call runs (see on_enter_task.py)."""
+    deferred call runs (see action_task.py)."""
 
     def __init__(
-        self, notification_service: NotificationService, dispatcher: "OnEnterDispatcher",
+        self, notification_service: NotificationService, dispatcher: "TaskDispatcher",
         whatsapp_service: "WhatsAppService | None" = None, factory: "ActuatorSetFactory | None" = None,
     ) -> None:
         super().__init__(dispatcher, factory)
@@ -233,7 +233,7 @@ class LiveActuatorSet(ActuatorSet):
         # they guard the Python-level API only.
         if not isinstance(act, DeferredExpression):
             raise TypeError(
-                f"actuator.defer needs a `lambda: ...` evaluated from an on-enter line, got {type(act).__name__}."
+                f"actuator.defer needs a `lambda: ...` evaluated from a task line, got {type(act).__name__}."
             )
         if not isinstance(when, datetime):
             raise TypeError(f"actuator.defer needs a datetime as `when`, got {type(when).__name__}.")

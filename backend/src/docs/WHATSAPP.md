@@ -142,7 +142,7 @@ that client explicitly starts a new one.
 
 `actuator.whatsapp(phone_number, message_md)` (see PROJECT_SPECS.md §5.4)
 is the one path out of the Cloud API that isn't a reply to an inbound
-turn: an on-enter script can message any `phone_number` already linked
+turn: a task script can message any `phone_number` already linked
 to a `User` row, through `WhatsAppService.send_message` →
 `WhatsAppCloudApiClient.send_text`, the same Markdown flattening as
 every other outbound message. `False` — nothing sent — for a number with

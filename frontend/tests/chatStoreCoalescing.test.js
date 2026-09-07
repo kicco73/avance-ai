@@ -6,7 +6,7 @@
 // own coalescing, and submitMessage's assistant_message_id branch).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
+vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
   postAction: vi.fn(),
   getSessions: vi.fn(),
@@ -29,7 +29,7 @@ function answered(id, content) {
     user_message_id: id - 1,
     assistant_message_id: id,
     state: STATE,
-    'on-enter': null,
+    'task': null,
     session_id: 1,
   }
 }
@@ -40,7 +40,7 @@ function alreadyAnswered(userMessageId) {
     user_message_id: userMessageId,
     assistant_message_id: null,
     state: STATE,
-    'on-enter': null,
+    'task': null,
     session_id: 1,
   }
 }

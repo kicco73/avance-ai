@@ -79,7 +79,7 @@ class TestPutStateField:
 
 
 class TestPutActionField:
-    def test_edits_target_ui_description_on_enter_and_trigger_and_clearing_trigger_removes_the_key(self, client, hello_project):
+    def test_edits_target_ui_description_task_and_trigger_and_clearing_trigger_removes_the_key(self, client, hello_project):
         client.post(f"/api/projects/{hello_project}/states")
         action = client.post(f"/api/projects/{hello_project}/states/Hello/actions").json()
         base = f"/api/projects/{hello_project}/states/Hello/actions/{action['name']}"
@@ -93,10 +93,10 @@ class TestPutActionField:
         assert response.json()["ui_description"] == "A short action description."
         assert "A short action description." in _index_yml(client, hello_project)
 
-        response = client.put(f"{base}/on-enter", json={"value": "actuator.notify('Nice!', 'You reached **state B**.')"})
+        response = client.put(f"{base}/task", json={"value": "actuator.notify('Nice!', 'You reached **state B**.')"})
         assert response.status_code == 200
-        assert response.json()["on-enter"] == "actuator.notify('Nice!', 'You reached **state B**.')"
-        assert "on-enter:" in _index_yml(client, hello_project)
+        assert response.json()["task"] == "actuator.notify('Nice!', 'You reached **state B**.')"
+        assert "task:" in _index_yml(client, hello_project)
 
         response = client.put(f"{base}/trigger", json={"value": "True"})
         assert response.status_code == 200
@@ -175,7 +175,7 @@ class TestPutInitAction:
         assert client.delete(f"/api/projects/{hello_project}/states/Hello").status_code == 204
         assert client.delete(f"/api/projects/{hello_project}/states/state-0").status_code == 400
 
-    def test_edits_ui_description_and_on_enter_never_reports_a_trigger_and_rejects_setting_one(self, client, hello_project):
+    def test_edits_ui_description_and_task_never_reports_a_trigger_and_rejects_setting_one(self, client, hello_project):
         """The init-action is an action like any other action-field edit —
         same payload shape, same endpoint pattern, same env editing — minus
         'trigger', which AutomatonBuilder's own _build_init_action never
@@ -188,9 +188,9 @@ class TestPutInitAction:
         assert response.json()["ui_description"] == "Where every session begins."
         assert "Where every session begins." in _index_yml(client, hello_project)
 
-        response = client.put(f"{base}/on-enter", json={"value": "actuator.celebrate()"})
+        response = client.put(f"{base}/task", json={"value": "actuator.celebrate()"})
         assert response.status_code == 200
-        assert response.json()["on-enter"] == "actuator.celebrate()"
+        assert response.json()["task"] == "actuator.celebrate()"
 
         response = client.put(f"{base}/ui-label", json={"value": "Start"})
         assert response.status_code == 200

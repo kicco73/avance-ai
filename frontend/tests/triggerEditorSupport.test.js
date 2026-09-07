@@ -220,7 +220,7 @@ describe('excludingNamespaces', () => {
 
     const registry = { ...REGISTRY, sessionish: { x: '' }, actuator: { notify: '' } }
     const filtered = excludingNamespaces(registry, ['session'])
-    // What the on-enter editor sees: session gone, session.metric gone
+    // What the task editor sees: session gone, session.metric gone
     // with it, actuator kept — and never a mere string-prefix match.
     expect(Object.keys(filtered)).toContain('sessionish')
     expect(filtered.actuator).toBeDefined()

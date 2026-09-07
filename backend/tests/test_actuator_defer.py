@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import pytest
 import simpleeval
 
-from automaton.automaton import DeferredExpression, _OnEnterEval
+from automaton.automaton import DeferredExpression, _TaskEval
 from automaton.scope import EvaluationScope
 from conftest import make_test_actuator_factory
 from tracking.actuators.actuator_set import FakeActuatorSet, LiveActuatorSet
@@ -22,7 +22,7 @@ def _live_actuator_set(db) -> LiveActuatorSet:
     return make_test_actuator_factory(db).live(project_id="p")
 
 
-def test_a_live_defer_refuses_anything_but_an_on_enter_lambda_and_a_real_datetime_scheduling_nothing(db):
+def test_a_live_defer_refuses_anything_but_a_task_lambda_and_a_real_datetime_scheduling_nothing(db):
     """No in-memory fallback exists: a plain callable has no source to
     hibernate, so it is refused rather than silently run once."""
     actuator = _live_actuator_set(db)
@@ -30,7 +30,7 @@ def test_a_live_defer_refuses_anything_but_an_on_enter_lambda_and_a_real_datetim
     with pytest.raises(TypeError, match="lambda"):
         actuator.defer(threading.Event().set, datetime.now(timezone.utc))
 
-    act = _OnEnterEval(names=_scope({})).eval("lambda: 1")
+    act = _TaskEval(names=_scope({})).eval("lambda: 1")
     with pytest.raises(TypeError, match="datetime"):
         actuator.defer(act, "2030-01-01")
 
@@ -58,7 +58,7 @@ def test_a_zero_argument_lambda_evaluates_to_a_deferred_expression_that_knows_it
     recorder = _Recorder()
     scope = _scope({"recorder": recorder})
 
-    act = _OnEnterEval(names=scope).eval("lambda: recorder.record(1 + 2)")
+    act = _TaskEval(names=scope).eval("lambda: recorder.record(1 + 2)")
 
     assert isinstance(act, DeferredExpression)
     assert act.source == "recorder.record(1 + 2)"
@@ -68,10 +68,10 @@ def test_a_zero_argument_lambda_evaluates_to_a_deferred_expression_that_knows_it
     assert recorder.calls == [3]
 
 
-def test_on_enter_eval_rejects_a_lambda_with_arguments_and_a_plain_dict_scope():
+def test_task_eval_rejects_a_lambda_with_arguments_and_a_plain_dict_scope():
     """A plain dict has no automaton/state behind it — nothing a deferred
     call could be hibernated with — so it is refused up front."""
     with pytest.raises(simpleeval.FeatureNotAvailable):
-        _OnEnterEval(names=_scope({})).eval("lambda x: x")
+        _TaskEval(names=_scope({})).eval("lambda x: x")
     with pytest.raises(TypeError, match="EvaluationScope"):
-        _OnEnterEval(names={})
+        _TaskEval(names={})

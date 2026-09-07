@@ -77,7 +77,7 @@ export function aboutDialog({ version }) {
 // closes, same promise contract as every other kind, though most custom
 // content has nothing meaningful to resolve with — the × button alone
 // is enough to close it. `wide`: the usual 420px card is cramped for
-// something like a real code editor (see OnEnterDialog.vue) — opts into
+// something like a real code editor (see ScriptEditDialog.vue) — opts into
 // a roomier max-width instead (see DialogHost.vue's own .app-dialog-wide).
 export function customDialog({ component, props = {}, wide = false }) {
   // markRaw: `component` is a static component definition, not app

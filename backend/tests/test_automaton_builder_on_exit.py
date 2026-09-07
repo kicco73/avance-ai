@@ -1,9 +1,9 @@
 """on-exit is an action's own field (Action.on_exit), not the state's —
-same "which action, not which destination state" ownership as on-enter
-(see test_automaton_builder_on_enter.py). Unlike on-enter, every
+same "which action, not which destination state" ownership as task
+(see test_automaton_builder_task.py). Unlike task, every
 on-exit line must be an `env.<key> = expr` assignment writing an
-already declared env key: it shares on-enter's own statement splitting
-(TriggerExpressionAnalyzer.on_enter_statements) but not its assignment
+already declared env key: it shares task's own statement splitting
+(TriggerExpressionAnalyzer.task_statements) but not its assignment
 shape — on_exit_assignment requires the explicit `env.` target, since
 on-exit has no local-variable concept of its own, only env writes — the
 future replacement for the declarative `env:` map (see

@@ -61,7 +61,7 @@ states:
         ui-button: "Agency / OTA"
         target: redirect_agency
         trigger: signal.bought_via_agency and signal.confidence > 80
-        on-enter: |
+        task: |
           actuator.send_mail(user.email, 'Your Vueling refund request must be handled through the travel agency or intermediary where you originally purchased the ticket.')
       - name: go_to_not_entitled
         ui-label: "Not entitled"
@@ -96,7 +96,7 @@ states:
       - name: go_to_propose
         ui-label: "Proceed to proposal"
         target: propose
-        on-enter: ''
+        task: ''
         trigger: '1'
     chat: true
   propose:
@@ -115,7 +115,7 @@ states:
         ui-button: "Dispute amount"
         target: dispute_amount
         trigger: "signal.user_disputes_amount"
-        on-enter: |
+        task: |
           actuator.send_mail(user.email, 'We have received your dispute regarding the proposed Vueling refund amount. Our team will review your case.')
   collect_payout:
     ui-label: "Payout details collection"
@@ -128,7 +128,7 @@ states:
         ui-button: "Yes, all correct"
         target: pending_approval
         trigger: "signal.payout_method_card > 50 or (signal.iban_valid and signal.payout_confirmed)"
-        on-enter: |
+        task: |
           actuator.send_mail(user.email, 'Your Vueling refund has been successfully issued.')
   pending_approval:
     chat: false

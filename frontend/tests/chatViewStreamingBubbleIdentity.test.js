@@ -11,7 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from 'vue'
 
-vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
+vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }))
 vi.mock('../src/mic.js', () => ({ startRecording: vi.fn(), stopRecording: vi.fn() }))
 vi.mock('../src/audio.js', () => ({ playMessageChime: vi.fn(), playMessageAudio: vi.fn() }))
@@ -83,7 +83,7 @@ describe("a live turn's assistant bubble survives the messageId backfill without
 
     resolveTurn({
       reply: [], user_message_id: 10, assistant_message_id: 99,
-      state: { key: 'x', ui_label: 'X', actions: [] }, 'on-enter': null, session_id: 1,
+      state: { key: 'x', ui_label: 'X', actions: [] }, 'task': null, session_id: 1,
     })
     await sendPromise
     await new Promise((resolve) => setTimeout(resolve, 0))

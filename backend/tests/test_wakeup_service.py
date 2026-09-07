@@ -166,7 +166,7 @@ class TestWsAdapterPush:
         ws_notifications._connections[USERNAME] = [websocket]
         return ws_notifications, websocket
 
-    def test_a_fired_self_loop_pushes_the_state_and_project_name_but_never_its_on_enter(self, db, project_service):
+    def test_a_fired_self_loop_pushes_the_state_and_project_name_but_never_its_task(self, db, project_service):
         _both_projects(db, project_service)
         ws_notifications, websocket = self._connected()
 
@@ -176,9 +176,9 @@ class TestWsAdapterPush:
         assert websocket.sent[0]["type"] == "notification"
         assert websocket.sent[0]["project_name"] == "watcher"
         assert websocket.sent[0]["state"]["key"] == "x"  # self-loop — the state itself never changes
-        # The fired action's on-enter is a task of its own (see
-        # tracking/actuators/on_enter_task.py), never part of this frame.
-        assert "on-enter" not in websocket.sent[0]
+        # The fired action's task is a task of its own (see
+        # tracking/actuators/action_task.py), never part of this frame.
+        assert "task" not in websocket.sent[0]
         # The fired action has a trigger and no tracking_service was wired
         # in (defaults to "always auto-tracked") — filtered out of
         # manual_actions same as a live session's own state payload would.

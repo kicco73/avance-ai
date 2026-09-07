@@ -70,7 +70,7 @@ class TestAddAction:
         assert payload["ui_description"] is None
         assert payload["target"] == "b"
         assert payload["has_trigger"] is False
-        assert payload["on-enter"] is None
+        assert payload["task"] is None
 
         automaton = builds(editor.serialize())
         assert any(a.name == payload["name"] for a in automaton.states["b"].actions)
@@ -132,12 +132,12 @@ class TestSetActionField:
 
         assert editor.set_action_field("a", "go-b", "target", "c")["target"] == "c"
         assert editor.set_action_field("a", "go-b", "ui-description", "Goes to B.")["ui_description"] == "Goes to B."
-        editor.set_action_field("a", "go-b", "on-enter", "actuator.celebrate()")
+        editor.set_action_field("a", "go-b", "task", "actuator.celebrate()")
 
         action = _action(builds(editor.serialize()), "a", "go-b")
         assert action.target == "c"
         assert action.ui_description == "Goes to B."
-        assert action.on_enter == "actuator.celebrate()"
+        assert action.task == "actuator.celebrate()"
 
     def test_trigger_edit_and_clearing_removes_the_key_instead_of_storing_an_empty_string(self):
         editor = make_editor()

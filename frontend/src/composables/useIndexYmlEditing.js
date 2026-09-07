@@ -89,9 +89,9 @@ export function useIndexYmlEditing(
   }
 
   // Returns whether the write actually succeeded (via guardedAction, see
-  // its own comment) — OnEnterDialog.vue's own OK button awaits this
+  // its own comment) — ScriptEditDialog.vue's own OK button awaits this
   // through EditProjectView.vue's handleSetSelectedElementField, so a
-  // validation failure (e.g. a malformed on-enter script) keeps the
+  // validation failure (e.g. a malformed task script) keeps the
   // dialog open instead of closing on a save that never landed. Every
   // other caller here still just fires it and ignores the result.
   function handleSetActionField(stateName, actionName, field, value) {

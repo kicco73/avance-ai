@@ -11,7 +11,7 @@
 // stream itself later errors.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
+vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
   postAction: vi.fn(),
   getSessions: vi.fn(),
@@ -41,7 +41,7 @@ describe('submitMessage reconciles the streaming bubble against done.reply', () 
       return {
         reply: [{ id: 77, content: 'Hello, full answer.', audio_text: 'audio-77', timestamp: '2026-01-01T00:00:00Z' }],
         user_message_id: 40, assistant_message_id: 77,
-        state: { key: 'a', ui_label: 'A', actions: [] }, 'on-enter': null, session_id: 1,
+        state: { key: 'a', ui_label: 'A', actions: [] }, 'task': null, session_id: 1,
       }
     })
 
@@ -63,7 +63,7 @@ describe('submitMessage reconciles the streaming bubble against done.reply', () 
       return {
         reply: [{ id: 88, content: 'Recreated reply.', audio_text: null, timestamp: '2026-01-01T00:00:01Z' }],
         user_message_id: 41, assistant_message_id: 88,
-        state: { key: 'a', ui_label: 'A', actions: [] }, 'on-enter': null, session_id: 1,
+        state: { key: 'a', ui_label: 'A', actions: [] }, 'task': null, session_id: 1,
       }
     })
 

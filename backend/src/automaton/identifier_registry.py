@@ -33,14 +33,14 @@ class IdentifierRegistry:
         "celebrate": "Plays a confetti animation in the frontend — e.g. actuator.celebrate().",
         "notify": "Shows a toast in the frontend — e.g. actuator.notify('Nice!', 'You reached **state B**.'). `body_md` is markdown.",
         "show": "Shows a dialog in the frontend with body_md as its content — e.g. actuator.show('**Full** details here.'). `body_md` is markdown.",
-        "defer": "Runs another actuator call later — e.g. actuator.defer(lambda: actuator.send_mail(user.email, 'Reminder'), datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=env.reminder_days)). The first argument must be a `lambda:` with no arguments; `when` must be built from datetime.datetime(...) or datetime.datetime.now(...), optionally ± datetime.timedelta(...). The call survives a server restart: it is stored as text with a snapshot of `user`/`signal`/`env` as they were when deferred, under the user and project (never a session — `session.*` is not available in on-enter).",
+        "defer": "Runs another actuator call later — e.g. actuator.defer(lambda: actuator.send_mail(user.email, 'Reminder'), datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=env.reminder_days)). The first argument must be a `lambda:` with no arguments; `when` must be built from datetime.datetime(...) or datetime.datetime.now(...), optionally ± datetime.timedelta(...). The call survives a server restart: it is stored as text with a snapshot of `user`/`signal`/`env` as they were when deferred, under the user and project (never a session — `session.*` is not available in task).",
         "prompt": "Runs an extra, synchronous, fully isolated model call — no conversation history, no attachments, no signal/env context, nothing persisted, just `prompt` in and its text back — e.g. actuator.notify('Note', actuator.prompt('Summarize the last exchange in one sentence.')).",
         "switch_to_human": "Hands the session to a person — e.g. actuator.switch_to_human(user.email). `user_id` is that person's username/email; they get pushed a notification with a link to take over this session's next turns as the human, in place of the AI.",
         "switch_to_ai": "Hands a session back to the AI after switch_to_human — e.g. actuator.switch_to_ai().",
     }
 
     ATTACHMENT: dict[str, str] = {
-        "read": "Returns one of this project's own archive files' whole text content — e.g. attachment.read('policy.txt'). On-enter only. `name` must be a string literal (exact archive path, or a unique basename under behaviour/); the file must exist, be text, and be under the size limit — all checked when the project is built, not when this runs.",
+        "read": "Returns one of this project's own archive files' whole text content — e.g. attachment.read('policy.txt'). Task only. `name` must be a string literal (exact archive path, or a unique basename under behaviour/); the file must exist, be text, and be under the size limit — all checked when the project is built, not when this runs.",
     }
 
     DATETIME: dict[str, str] = {
@@ -89,7 +89,7 @@ class IdentifierRegistry:
     # the registry below. A `trigger:`/`env:` expression is evaluated
     # *inside* a session and may do nothing but read, so `actuator` is
     # out — and so is `attachment`, a whole-file read with no place in a
-    # boolean condition or a simple value. An `on-enter` line is where
+    # boolean condition or a simple value. An `task` line is where
     # actuators (and attachment.read) are called — and an actuator.defer'd
     # call runs long after the session that fired it is over, so `session`
     # (and everything under it) is out there instead.

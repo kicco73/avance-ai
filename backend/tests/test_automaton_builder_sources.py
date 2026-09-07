@@ -84,7 +84,7 @@ def test_an_avance_url_is_provisioned_empty_when_never_seen_and_a_trigger_may_ca
 ], ids=["undeclared-source", "unsupported-method", "read-points-to-attachment-read"])
 def test_a_trigger_may_only_call_a_supported_method_on_a_declared_source(sources_yaml, trigger, match):
     # SourceDriver has no `read` at all, by design — a whole-file read is
-    # attachment.read(name)'s job (on-enter only), never a source.*
+    # attachment.read(name)'s job (task only), never a source.*
     # capability, so that one gets a more useful message than a bare
     # "undefined name."
     with pytest.raises(ValueError, match=match):

@@ -84,7 +84,7 @@ class TestPush:
         connection = _RecordingConnection()
         channel._connections[USERNAME] = [connection]
 
-        payload = {"type": "notification", "project_name": "proj", "state": {"key": "x"}, "on-enter": "notify('hi')"}
+        payload = {"type": "notification", "project_name": "proj", "state": {"key": "x"}, "task": "notify('hi')"}
         assert asyncio.run(channel.push(USERNAME, payload)) is True
         assert connection.sent == [payload]
 

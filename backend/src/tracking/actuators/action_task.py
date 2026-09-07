@@ -1,8 +1,8 @@
-"""An action's on-enter, run as a Task — now or later.
+"""An action's task, run as a Task — now or later.
 
-Every `on-enter:` script runs outside the request that fired it: the
+Every `task:` script runs outside the request that fired it: the
 transition and its `env:` writes are applied synchronously (they feed
-the very next prompt), then the script is hibernated as an OnEnterTask
+the very next prompt), then the script is hibernated as an ActionTask
 due *now* and executed by a JobService worker. actuator.prompt is a
 model call, actuator.send_mail a network call — neither belongs on the
 event-loop thread of a chat turn. What the browser gets (`celebrate()`,
@@ -26,7 +26,7 @@ and EvaluationScope.for_actuators):
   live proxies             metric, source, automaton, datetime, actuator —
                            each re-reads Session().user and the project
                            context whenever it is touched
-  absent by construction   session — an on-enter line never sees it, so a
+  absent by construction   session — a task line never sees it, so a
                            deferred call can't depend on a session that
                            will long be over when it runs
 
@@ -67,7 +67,7 @@ logger = LoggerFactory.get_logger(__name__)
 # Top-level scope entries stored verbatim. Anything else at the top
 # level that is a bare JSON scalar (a core metric merged by
 # MetricService.merge_if_referenced, a name assigned by an earlier
-# on-enter statement) is frozen too, under "extra".
+# task statement) is frozen too, under "extra".
 _FROZEN_NAMESPACES = ("signal", "env", "user")
 _SCALARS = (int, float, str, bool, type(None))
 
@@ -75,12 +75,12 @@ ACTUATORS_LIVE = "live"
 ACTUATORS_FAKE = "fake"
 
 
-class OnEnterTask(Task):
+class ActionTask(Task):
     """Pure data (`payload`) plus a hydrator that turns it back into a
     scope at run time. See the module docstring for what the payload
     holds and why."""
 
-    TYPE = "on-enter"
+    TYPE = "task"
 
     def __init__(self, key: str, username: str, payload: dict[str, Any], hydrator: "ScopeHydrator") -> None:
         super().__init__(key=key, username=username)
@@ -93,17 +93,17 @@ class OnEnterTask(Task):
     def now(
         cls, action: Action, scope: EvaluationScope, *, username: str, actuators: str, session_id: int | None,
         hydrator: "ScopeHydrator",
-    ) -> "OnEnterTask":
-        """The whole `action.on_enter` script, due immediately."""
+    ) -> "ActionTask":
+        """The whole `action.task` script, due immediately."""
         return cls._build(
-            action.on_enter or "", scope.for_actuators(action_name=action.name), datetime.now(timezone.utc),
+            action.task or "", scope.for_actuators(action_name=action.name), datetime.now(timezone.utc),
             username=username, actuators=actuators, session_id=session_id, hydrator=hydrator,
         )
 
     @classmethod
     def later(
         cls, act: DeferredExpression, when: datetime, *, username: str, actuators: str, hydrator: "ScopeHydrator",
-    ) -> "OnEnterTask":
+    ) -> "ActionTask":
         """actuator.defer: the lambda's body as a one-statement script,
         due at `when`, with no session (see module docstring)."""
         return cls._build(
@@ -114,10 +114,10 @@ class OnEnterTask(Task):
     def _build(
         cls, script: str, scope: EvaluationScope, when: datetime, *, username: str, actuators: str,
         session_id: int | None, hydrator: "ScopeHydrator",
-    ) -> "OnEnterTask":
+    ) -> "ActionTask":
         automaton = scope.automaton
         if automaton.project_id is None:
-            raise ValueError("An on-enter task needs a project to be pinned to — the automaton declares no project.id.")
+            raise ValueError("A task needs a project to be pinned to — the automaton declares no project.id.")
         state = automaton.states.get(scope.state_key)
         payload = {
             "script": script,
@@ -174,7 +174,7 @@ class OnEnterTask(Task):
 
     @property
     def ui_description(self) -> str:
-        kind = "Deferred by" if self.is_deferred else "On-enter of"
+        kind = "Deferred by" if self.is_deferred else "Task of"
         return (
             f"{kind} state '{self._payload['state_key']}' on behalf of {self.username}: runs at "
             f"{self._payload['when']} (UTC) against the signals, env and user facts as they were when it was "
@@ -196,10 +196,10 @@ class OnEnterTask(Task):
         return None
 
     async def _run_next_step(self) -> None:
-        on_enter = self._hydrator.run(self.username, self._payload)
+        task = self._hydrator.run(self.username, self._payload)
         ws_notifications = self._hydrator.ws_notifications
-        if on_enter and ws_notifications is not None:
-            await ws_notifications.push(self.username, {"type": "notification", "on-enter": on_enter})
+        if task and ws_notifications is not None:
+            await ws_notifications.push(self.username, {"type": "notification", "task": task})
 
 
 class ScopeHydrator(object):
@@ -223,14 +223,14 @@ class ScopeHydrator(object):
     def ws_notifications(self) -> "WsNotifications | None":
         return self._actuator_factory.ws_notifications
 
-    def hydrate(self, key: str, username: str, payload: dict[str, Any]) -> OnEnterTask:
-        """JobService's hydrator for OnEnterTask.TYPE. Cheap and
+    def hydrate(self, key: str, username: str, payload: dict[str, Any]) -> ActionTask:
+        """JobService's hydrator for ActionTask.TYPE. Cheap and
         side-effect free: the project is only resolved when the task
         actually runs."""
         for field in ("script", "project_id", "project_revision", "state_key", "snapshot", "actuators"):
             if field not in payload:
                 raise ValueError(f"Task {key} payload is missing '{field}'.")
-        return OnEnterTask(key, username, payload, self)
+        return ActionTask(key, username, payload, self)
 
     def build_scope(self, username: str, payload: dict[str, Any]) -> EvaluationScope:
         """Must be called under Session().impersonate(username): every
@@ -260,7 +260,7 @@ class ScopeHydrator(object):
         firing_session = self._db.get_chat_session(firing_session_id) if firing_session_id is not None else None
         # No real session to persist through (e.g. reset_test_sessions' own
         # project-wide reset, scheduled with session_id=None) — the same
-        # ephemeral, in-memory fallback ChatService._schedule_on_enter
+        # ephemeral, in-memory fallback ChatService._schedule_task
         # already uses for this exact case, never a live PersistedEnv:
         # that would read/write the *live* persisted env instead, and
         # crash on its first write (Tracking.session is a real FK).
@@ -283,4 +283,4 @@ class ScopeHydrator(object):
     def run(self, username: str, payload: dict[str, Any]) -> str | None:
         with Session().impersonate(username):
             scope = self.build_scope(username, payload)
-            return Automaton.render_on_enter_script(payload["script"], scope)
+            return Automaton.render_task_script(payload["script"], scope)

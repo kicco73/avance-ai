@@ -307,10 +307,10 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     fastapi_app.state.chat_service = chat_service
     fastapi_app.state.db = app_db
     fastapi_app.state.auth_service = auth_service
-    # For tests that need to watch an on-enter task run: start the
+    # For tests that need to watch a task run: start the
     # service and register a fake websocket on the factory (see
-    # run_on_enter_tasks below). Never started here — most tests only
-    # ever assert on the Task rows an on-enter leaves behind.
+    # run_pending_tasks below). Never started here — most tests only
+    # ever assert on the Task rows a task leaves behind.
     fastapi_app.state.job_service = job_service
     fastapi_app.state.actuator_factory = actuator_factory
     return fastapi_app
@@ -327,9 +327,9 @@ class FakeWebSocket:
         self.sent.append(payload)
 
 
-def run_on_enter_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0) -> list[dict]:
+def run_pending_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0) -> list[dict]:
     """Starts the app fixture's JobService (once), attaches a FakeWebSocket
-    for `username`, waits until no on-enter task is pending or dispatched,
+    for `username`, waits until no task is pending or dispatched,
     and returns the frames the browser would have received. Stops the
     service afterwards so its thread never outlives the test."""
     import time

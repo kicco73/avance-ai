@@ -1,7 +1,7 @@
 // Regression: @lezer/yaml tags a plain scalar (an unquoted value, or a
 // `|`/`>` block's own body) as tags.content — left uncolored by
 // @codemirror/language's defaultHighlightStyle, so most of index.yml's
-// actual text (ui-labels, contextual-prompts, on-enter bodies) used to
+// actual text (ui-labels, contextual-prompts, task bodies) used to
 // render with no syntax highlighting at all, only keys/comments/block
 // markers colored. CodeEditor.vue now also registers a value-highlight
 // style for text/yaml buffers — this pins that both keys AND plain

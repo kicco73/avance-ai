@@ -8,6 +8,8 @@ from logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 
+VALID_NEW_SESSION_STRATEGIES = {"resume", "restart"}
+
 
 def load_yaml(text: str):
     # A fresh YAML per call: a shared instance is not thread-safe across concurrent load() calls.
@@ -23,6 +25,11 @@ class ProjectMetadata:
     ui_description: str | None
     autotracking_on_ai_message: bool
     talk_enabled: bool
+    # "resume" (default): a brand-new live session resumes wherever this
+    # user's own live automaton state already is. "restart": it enters
+    # cold instead, same as a test/preview session — see
+    # SessionTypeStrategy._init_action_start (session_type_strategy.py).
+    new_session_strategy: str
 
     @classmethod
     def from_raw(cls, raw: dict, *, legacy_project_id: str | None = None) -> "ProjectMetadata":
@@ -49,6 +56,12 @@ class ProjectMetadata:
         revision = raw_project.get("revision", 0)
         if not isinstance(revision, int) or isinstance(revision, bool) or revision < 0:
             raise ValueError(f"project.revision {revision!r} must be a non-negative integer.")
+        new_session_strategy = raw_project.get("new-session-strategy", "resume")
+        if new_session_strategy not in VALID_NEW_SESSION_STRATEGIES:
+            raise ValueError(
+                f"project.new-session-strategy {new_session_strategy!r} must be one of "
+                f"{sorted(VALID_NEW_SESSION_STRATEGIES)}."
+            )
         return cls(
             project_id=project_id,
             family=family,
@@ -57,6 +70,7 @@ class ProjectMetadata:
             ui_description=raw_project.get("ui-description"),
             autotracking_on_ai_message=raw_project.get("signal-tracking-on-ai-message", False),
             talk_enabled=raw_project.get("talk-enabled", True),
+            new_session_strategy=new_session_strategy,
         )
 
 

@@ -98,13 +98,13 @@ class _PausableLock:
 
     def __init__(self) -> None:
         self._real_lock = asyncio.Lock()
-        self.on_enter: asyncio.Event | None = None
+        self.task: asyncio.Event | None = None
         self.hold: asyncio.Event | None = None
 
     async def __aenter__(self):
         await self._real_lock.acquire()
-        if self.on_enter is not None:
-            self.on_enter.set()
+        if self.task is not None:
+            self.task.set()
         if self.hold is not None:
             await self.hold.wait()
         return self
@@ -122,7 +122,7 @@ def _install_pausable_lock(chat_service: ChatService) -> _PausableLock:
 async def test_concurrent_acquire_exclusive_session_from_different_channels_serializes(db):
     chat_service = _chat_service(db)
     lock = _install_pausable_lock(chat_service)
-    lock.on_enter = asyncio.Event()
+    lock.task = asyncio.Event()
     lock.hold = asyncio.Event()
 
     async def native_call():
@@ -134,7 +134,7 @@ async def test_concurrent_acquire_exclusive_session_from_different_channels_seri
         return await chat_service.acquire_exclusive_session()
 
     first = asyncio.create_task(native_call())
-    await asyncio.wait_for(lock.on_enter.wait(), timeout=5.0)
+    await asyncio.wait_for(lock.task.wait(), timeout=5.0)
 
     second = asyncio.create_task(whatsapp_call())
     await asyncio.sleep(0.05)
@@ -157,7 +157,7 @@ async def test_concurrent_acquire_exclusive_session_from_different_channels_seri
 async def test_get_current_session_concurrent_with_acquire_exclusive_session_never_double_creates(db):
     chat_service = _chat_service(db)
     lock = _install_pausable_lock(chat_service)
-    lock.on_enter = asyncio.Event()
+    lock.task = asyncio.Event()
     lock.hold = asyncio.Event()
 
     async def bootstrap_call():
@@ -169,7 +169,7 @@ async def test_get_current_session_concurrent_with_acquire_exclusive_session_nev
         return await chat_service.acquire_exclusive_session()
 
     first = asyncio.create_task(bootstrap_call())
-    await asyncio.wait_for(lock.on_enter.wait(), timeout=5.0)
+    await asyncio.wait_for(lock.task.wait(), timeout=5.0)
 
     second = asyncio.create_task(exclusive_call())
     await asyncio.sleep(0.05)

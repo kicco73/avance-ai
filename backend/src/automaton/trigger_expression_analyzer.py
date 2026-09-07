@@ -153,8 +153,8 @@ class TriggerExpressionAnalyzer:
         return calls
 
     @staticmethod
-    def on_enter_statements(source: str) -> list[tuple[int, str]]:
-        """Splits `on-enter` source into one (line_number, statement source)
+    def task_statements(source: str) -> list[tuple[int, str]]:
+        """Splits `task` source into one (line_number, statement source)
         pair per top-level statement — one `actuator.<name>(...)` call each
         — using Python's own parser rather than naively splitting on '\\n'.
         This is what lets a single call span several lines (implicit
@@ -175,16 +175,16 @@ class TriggerExpressionAnalyzer:
         return [(stmt.lineno, ast.get_source_segment(source, stmt)) for stmt in tree.body]
 
     @staticmethod
-    def on_enter_assignment(statement: str) -> tuple[str, str] | None:
+    def task_assignment(statement: str) -> tuple[str, str] | None:
         """(target_name, rhs_source) if `statement` (one already-split
-        on_enter_statements() segment) is a simple single-name assignment
-        — `name = <expr>`, the only assignment shape an on-enter line may
+        task_statements() segment) is a simple single-name assignment
+        — `name = <expr>`, the only assignment shape a task line may
         take — None for anything else (a bare actuator/source call, or a
         shape (tuple/attribute/subscript target, chained `a = b = ...`)
         this deliberately doesn't support, left to fail the normal
         mode="eval" parse everywhere else the way any other malformed
-        on-enter line already does). Never raises on `statement` itself:
-        it already parsed once, as part of on_enter_statements()."""
+        task line already does). Never raises on `statement` itself:
+        it already parsed once, as part of task_statements()."""
         tree = ast.parse(statement, mode="exec")
         if len(tree.body) != 1 or not isinstance(tree.body[0], ast.Assign):
             return None
@@ -196,18 +196,18 @@ class TriggerExpressionAnalyzer:
     @staticmethod
     def on_exit_assignment(statement: str) -> tuple[str, str] | None:
         """(env_key, rhs_source) if `statement` (one already-split
-        on_enter_statements() segment) is an `env.<key> = <expr>`
+        task_statements() segment) is an `env.<key> = <expr>`
         assignment — the only shape an on-exit line may take (see
         AutomatonValidator.validate_on_exit/Automaton.eval_action_on_exit)
         — None for anything else (a bare name target, a chained
         `a = b = ...`, a tuple/subscript target, or an attribute target on
-        anything other than bare `env`). Mirrors on_enter_assignment's own
+        anything other than bare `env`). Mirrors task_assignment's own
         shape but requires the explicit `env.` prefix — on-exit has no
         local-variable concept of its own, only env writes, so the target
         is always a real env key, spelled the same way an expression reads
         one back (`env.<key>`), never a bare name. Never raises on
         `statement` itself: it already parsed once, as part of
-        on_enter_statements()."""
+        task_statements()."""
         tree = ast.parse(statement, mode="exec")
         if len(tree.body) != 1 or not isinstance(tree.body[0], ast.Assign):
             return None

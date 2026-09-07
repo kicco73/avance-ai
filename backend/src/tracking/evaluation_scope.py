@@ -76,7 +76,7 @@ class EvaluationScopeBuilder(object):
         new value, ahead of TrackingProcessor.process's own persisted
         copy-back. env/session/user/source/attachment/metric are cheap,
         lazy proxies included unconditionally
-        (attachment.read is only ever reachable from on-enter — see
+        (attachment.read is only ever reachable from task — see
         IdentifierRegistry.TRIGGER_SCOPE_EXCLUDES — but nothing stops it
         being present for trigger/env too, the same as `actuator` already
         is); only the bare core-metric names are gated, since building
@@ -113,7 +113,7 @@ class EvaluationScopeBuilder(object):
         if self._automaton_namespace is not None:
             scope["automaton"] = self._automaton_namespace.scoped_to(automaton.family)
         if self._ai_service is not None:
-            # actuator.prompt()'s own tool catalog — this on-enter's own
+            # actuator.prompt()'s own tool catalog — this task's own
             # state's ai-may-read-sources/ai-must-read-sources/
             # ai-may-write-sources, resolved through the same
             # SourceNamespace (and so the same per-session read cache and

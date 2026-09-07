@@ -48,7 +48,7 @@ def test_truncate_rejects_a_malformed_timestamp(client, hello_project):
 @pytest.mark.contract
 def test_truncate_response_shape_is_a_bare_state_payload(client, hello_project):
     """Truncate returns a bare StatePayload, unlike GET /api/state's
-    superset. It never fires init-action, so it carries no "on-enter"
+    superset. It never fires init-action, so it carries no "task"
     key, unlike reset's response."""
     session = client.get("/api/chat/session").json()
 
@@ -58,8 +58,8 @@ def test_truncate_response_shape_is_a_bare_state_payload(client, hello_project):
     reset_response = client.post(f"/api/projects/{hello_project}/test-sessions/reset")
 
     assert response.status_code == 200
-    assert "on-enter" not in response.json()
-    assert set(response.json().keys()) == set(reset_response.json().keys()) - {"on-enter"}
+    assert "task" not in response.json()
+    assert set(response.json().keys()) == set(reset_response.json().keys()) - {"task"}
 
 
 @pytest.mark.regression

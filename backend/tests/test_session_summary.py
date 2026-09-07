@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from conftest import run_on_enter_tasks, chat_turn
+from conftest import run_pending_tasks, chat_turn
 
 pytestmark = pytest.mark.contract
 
@@ -21,7 +21,7 @@ def test_closing_a_live_session_produces_a_summary(client, app, app_db, hello_pr
     resp = client.post(f"/api/chat/sessions/{session['id']}/close")
     assert resp.status_code == 200, resp.text
 
-    run_on_enter_tasks(app)
+    run_pending_tasks(app)
 
     assert app_db.get_chat_session(session["id"])["ai_summary"] == "Fake AI reply."
 
@@ -33,7 +33,7 @@ def test_closing_a_live_session_also_sets_the_title_and_the_apps_ai_summary(clie
     resp = client.post(f"/api/chat/sessions/{session['id']}/close")
     assert resp.status_code == 200, resp.text
 
-    run_on_enter_tasks(app)
+    run_pending_tasks(app)
 
     assert app_db.get_chat_session(session["id"])["title"] == "Fake title."
     apps = app_db.list_projects_for_app_store("user")
@@ -44,7 +44,7 @@ def test_closing_a_live_session_also_sets_the_title_and_the_apps_ai_summary(clie
 def test_a_still_open_session_has_no_summary(client, app, app_db, hello_project):
     session = client.get("/api/chat/session").json()
     chat_turn(client, session['id'], "hi")
-    run_on_enter_tasks(app)
+    run_pending_tasks(app)
 
     assert app_db.get_chat_session(session["id"])["ai_summary"] is None
 
@@ -61,6 +61,6 @@ def test_a_session_merely_expired_by_the_open_window_is_never_queued(client, app
     new_session = client.get("/api/chat/session").json()
     assert new_session["id"] != session["id"]
 
-    run_on_enter_tasks(app)
+    run_pending_tasks(app)
 
     assert app_db.get_chat_session(session["id"])["ai_summary"] is None

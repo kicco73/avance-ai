@@ -1,17 +1,17 @@
-// An action's own "on-enter" script never rides in a turn's or a manual
+// An action's own "task" script never rides in a turn's or a manual
 // action's response any more: the backend runs it as a task and pushes
 // its output over the websocket as a "notification" frame, which
 // notificationBus.js runs exactly once, globally. These tests pin both
 // halves: a store never runs a script off a response (even a stale one
 // that still carries the old key), and the bus runs whatever frame
 // arrives, whether or not it also carries a state for some project.
-// onEnterActions.js itself (script → onEnterLocals binding) has its own
-// dedicated tests — see onEnterActions.test.js.
+// taskActions.js itself (script → taskLocals binding) has its own
+// dedicated tests — see taskActions.test.js.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildTimeline } from '../src/testTimeline.js'
 import { TOOL_STATUS_MIN_MS } from '../src/toolStatusHold.js'
 
-vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
+vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
   postAction: vi.fn(),
   getSessions: vi.fn(),
@@ -21,15 +21,15 @@ vi.mock('../src/api.js', () => ({
 vi.mock('../src/chatChannel.js', () => ({ chatChannel: { subscribe: vi.fn(() => () => {}) } }))
 vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 
-describe('handleAction (manual test action) never runs an on-enter script off the response', () => {
+describe('handleAction (manual test action) never runs an task script off the response', () => {
   let chatStore
-  let onEnterActions
+  let taskActions
   let api
 
   beforeEach(async () => {
     vi.resetModules()
     chatStore = await import('../src/chatStore.js')
-    onEnterActions = await import('../src/onEnterActions.js')
+    taskActions = await import('../src/taskActions.js')
     api = await import('../src/api.js')
   })
 
@@ -37,29 +37,29 @@ describe('handleAction (manual test action) never runs an on-enter script off th
     vi.clearAllMocks()
   })
 
-  it('applies the state and runs nothing, even off a stale response still carrying "on-enter"', async () => {
+  it('applies the state and runs nothing, even off a stale response still carrying "task"', async () => {
     api.postAction.mockResolvedValue({
       reply: [],
       state: { key: 'b', ui_label: 'B', actions: [] },
-      'on-enter': 'celebrate()',
+      'task': 'celebrate()',
       session_id: 1
     })
 
     await chatStore.handleAction('go-loud')
 
-    expect(onEnterActions.runOnEnterScript).not.toHaveBeenCalled()
+    expect(taskActions.runTaskScript).not.toHaveBeenCalled()
     expect(chatStore.state.value.key).toBe('b')
   })
 })
 
-describe('the notification bus runs a pushed on-enter script once, globally', () => {
-  let onEnterActions
+describe('the notification bus runs a pushed task script once, globally', () => {
+  let taskActions
   let chatChannel
   let bus
 
   beforeEach(async () => {
     vi.resetModules()
-    onEnterActions = await import('../src/onEnterActions.js')
+    taskActions = await import('../src/taskActions.js')
     ;({ chatChannel } = await import('../src/chatChannel.js'))
     bus = await import('../src/notificationBus.js')
   })
@@ -76,14 +76,14 @@ describe('the notification bus runs a pushed on-enter script once, globally', ()
     return chatChannel.subscribe.mock.calls[0][1]
   }
 
-  it('runs the script of a frame carrying only "on-enter" (an OnEnterTask that ran server-side)', () => {
+  it('runs the script of a frame carrying only "task" (an ActionTask that ran server-side)', () => {
     const seen = []
     bus.subscribeToStateNotifications((frame) => seen.push(frame))
 
-    pushedFrame()({ project_name: undefined, state: undefined, 'on-enter': "notify('Nice!', 'You reached **state B**.')" })
+    pushedFrame()({ project_name: undefined, state: undefined, 'task': "notify('Nice!', 'You reached **state B**.')" })
 
-    expect(onEnterActions.runOnEnterScript).toHaveBeenCalledTimes(1)
-    expect(onEnterActions.runOnEnterScript).toHaveBeenCalledWith("notify('Nice!', 'You reached **state B**.')")
+    expect(taskActions.runTaskScript).toHaveBeenCalledTimes(1)
+    expect(taskActions.runTaskScript).toHaveBeenCalledWith("notify('Nice!', 'You reached **state B**.')")
     expect(seen).toEqual([])  // no state: nothing for the stores
   })
 
@@ -93,9 +93,9 @@ describe('the notification bus runs a pushed on-enter script once, globally', ()
     bus.subscribeToStateNotifications((frame) => a.push(frame))
     bus.subscribeToStateNotifications((frame) => b.push(frame))
 
-    pushedFrame()({ project_name: 'proj', state: { key: 'x' }, 'on-enter': 'celebrate()' })
+    pushedFrame()({ project_name: 'proj', state: { key: 'x' }, 'task': 'celebrate()' })
 
-    expect(onEnterActions.runOnEnterScript).toHaveBeenCalledTimes(1)
+    expect(taskActions.runTaskScript).toHaveBeenCalledTimes(1)
     expect(a).toEqual([{ project_name: 'proj', state: { key: 'x' } }])
     expect(b).toEqual([{ project_name: 'proj', state: { key: 'x' } }])
   })
@@ -132,7 +132,7 @@ describe('submitMessage correlates ids directly, never through result.reply', ()
       user_message_id: 42,
       assistant_message_id: 5,
       state: { key: 'a', ui_label: 'A', actions: [] },
-      'on-enter': null,
+      'task': null,
       session_id: 1
     })
 
@@ -154,7 +154,7 @@ describe('submitMessage correlates ids directly, never through result.reply', ()
       user_message_reaction: 'listening',
       assistant_message_id: 5,
       state: { key: 'a', ui_label: 'A', actions: [] },
-      'on-enter': null,
+      'task': null,
       session_id: 1
     })
 
@@ -177,7 +177,7 @@ describe('submitMessage correlates ids directly, never through result.reply', ()
         onStatus('')
         return {
           reply: [], user_message_id: 42, assistant_message_id: 5,
-          state: { key: 'a', ui_label: 'A', actions: [] }, 'on-enter': null, session_id: 1
+          state: { key: 'a', ui_label: 'A', actions: [] }, 'task': null, session_id: 1
         }
       })
 
@@ -196,7 +196,7 @@ describe('submitMessage correlates ids directly, never through result.reply', ()
       user_message_id: 42,
       assistant_message_id: 5,
       state: { key: 'a', ui_label: 'A', actions: [] },
-      'on-enter': null,
+      'task': null,
       session_id: 1
     })
 
@@ -221,7 +221,7 @@ describe('submitMessage correlates ids directly, never through result.reply', ()
       user_message_id: 42,
       assistant_message_id: 11,
       state: { key: 'a', ui_label: 'A', actions: [] },
-      'on-enter': null,
+      'task': null,
       session_id: 1
     })
 
@@ -241,7 +241,7 @@ describe('submitMessage correlates ids directly, never through result.reply', ()
       user_message_id: 42,
       assistant_message_id: null,
       state: { key: 'a', ui_label: 'A', actions: [] },
-      'on-enter': null,
+      'task': null,
       session_id: 1
     })
 
@@ -290,7 +290,7 @@ describe('submitMessage keeps every turn correctly ordered against real buildTim
         assistant_message_id: 4,
         state: { key: 'Contemplation', ui_label: 'Contemplation', actions: [] },
         state_changed: true,
-        'on-enter': null,
+        'task': null,
         session_id: 1
       }
     })
@@ -305,7 +305,7 @@ describe('submitMessage keeps every turn correctly ordered against real buildTim
         assistant_message_id: 6,
         state: { key: 'Preparation', ui_label: 'Preparation', actions: [] },
         state_changed: true,
-        'on-enter': null,
+        'task': null,
         session_id: 1
       }
     })

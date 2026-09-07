@@ -107,16 +107,16 @@ describe('useIndexYmlEditing', () => {
       expect(selectedGraphElement.value).toEqual(actionEl)
     })
 
-    // OnEnterDialog.vue's own OK button awaits exactly this return value
+    // ScriptEditDialog.vue's own OK button awaits exactly this return value
     // (through EditProjectView.vue's handleSetSelectedElementField) to
     // decide whether to close — it must never resolve true for a write
     // that never actually landed, and never throw.
     it('resolves true once the write succeeds and false when it is rejected', async () => {
       putActionField.mockResolvedValue({})
-      await expect(s.handleSetActionField('greeting', 'go', 'on-enter', 'actuator.celebrate()')).resolves.toBe(true)
+      await expect(s.handleSetActionField('greeting', 'go', 'task', 'actuator.celebrate()')).resolves.toBe(true)
 
-      putActionField.mockRejectedValue(new Error('invalid on-enter'))
-      await expect(s.handleSetActionField('greeting', 'go', 'on-enter', 'not.a.real.call()')).resolves.toBe(false)
+      putActionField.mockRejectedValue(new Error('invalid task'))
+      await expect(s.handleSetActionField('greeting', 'go', 'task', 'not.a.real.call()')).resolves.toBe(false)
     })
   })
 

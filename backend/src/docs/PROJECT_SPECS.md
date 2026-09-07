@@ -276,7 +276,7 @@ actions:
     ui-button: "Move on"
     target: next_state          # omit for a self-loop (stays on this state)
     trigger: "signal.mood >= 70 and engagement >= 20"
-    on-enter: |
+    task: |
       actuator.notify('Nice!', actuator.prompt('Write a short celebratory one-liner.'))
     env:
       reset_counter: True
@@ -289,7 +289,7 @@ actions:
 | `name` | **yes** | string | — | This action's own identifier — what a manual firing references. |
 | `target` | no | string | this action's own state | Destination state; must be a real key (or the current state itself). Omitted/self-referential ⇒ self-loop (only the action's own effects happen). |
 | `trigger` | no | string (expression) | `None` | Boolean expression over signal/metric names — §5.2. Absent ⇒ manual-only (never auto-fired). |
-| `on-enter` | no | string | `None` | One or more `actuator.<name>(...)` calls, one per line — side effect of firing, same timing as `env:`. §5.4. Per-action, not per-destination-state: two actions landing on the same state can each carry a different (or no) value. |
+| `task` | no | string | `None` | One or more `actuator.<name>(...)` calls, one per line — side effect of firing, same timing as `env:`. §5.4. Per-action, not per-destination-state: two actions landing on the same state can each carry a different (or no) value. |
 | `on-exit` | no | string | `None` | One or more `env.<key> = expression` lines, one env write per line — same timing as `env:`, and its future replacement. §5.3bis. |
 | `env` | no | mapping key → expression | `None` | Updates the project's environment memory when this action fires. §5.3. Legacy — new actions should write the same updates as `on-exit` lines instead. |
 | `ui-label` | no | string | `name` | Shown in the frontend. |
@@ -335,7 +335,7 @@ user.role == "admin"
 
 A **bare** name is only ever a core metric (§2) — nothing else may appear
 unnamespaced. `actuator.<name>(...)` is reserved but only valid inside
-`on-enter:` (§5.4), never in `trigger:`/`env:`.
+`task:` (§5.4), never in `trigger:`/`env:`.
 
 **`automaton.<id>.*`** reads a different project's live state/env for the
 same logged-in user: `automaton.<id>.state` (current state key, or `None`
@@ -440,7 +440,7 @@ now" — not the `attachments:` mechanism, nothing is eagerly loaded).
 Assumes a normalized CSV (header + one row per record; the separator is
 detected). Implements every `select_rows_*` read and `value` — never
 `update`, read-only. A
-whole-file read is `attachment.read(name)`'s job (on-enter only), not a
+whole-file read is `attachment.read(name)`'s job (task only), not a
 `source.*` capability.
 
 **`avance:env` — the project's own env keys.** A one-row table whose
@@ -589,7 +589,7 @@ from having a `trigger` that stays `false`. Same build-time validation as
 recognized-but-never-set `env.<name>`, a runtime error) is logged and
 that key's previous value is left untouched — one bad key never blocks
 the rest of the mapping. Updates merge onto the store and land **before**
-anything else that turn generates a reply (this action's own `on-enter`,
+anything else that turn generates a reply (this action's own `task`,
 the destination state's opening message, or a normal chat turn) — the
 very next prompt already reflects it.
 
@@ -602,12 +602,12 @@ action firing again, or of the model's own `update` on a `readwrite` key.
 same env-write contract (must already be declared under top-level `env:`,
 same "one bad key never blocks the rest" evaluation-time failure
 handling, same "lands before anything else that turn generates a reply"
-timing), spelled with `on-enter`'s own statement splitting instead of a
+timing), spelled with `task`'s own statement splitting instead of a
 YAML mapping: one `env.<key> = expression` assignment per non-blank
 line, same namespaced scope/mechanics as `trigger`/`env` (§5.2, minus
 the boolean cast) — the RHS may itself reference `env.<key>` (its own
 last stored value, from *before* this action fired) exactly like a
-`env:` mapping entry could. Unlike `on-enter` (§5.4), a line here may
+`env:` mapping entry could. Unlike `task` (§5.4), a line here may
 only be that one assignment shape, always targeting `env.<key>` — no
 `actuator.<name>(...)` calls, no bare local variables — `on-exit` has no
 side effect of its own besides the env writes:
@@ -626,7 +626,7 @@ An action may declare `env:` and `on-exit` at once (only already-published
 YAML predating `on-exit` should still have a reason to); should both
 write the same key, `on-exit`'s own value wins.
 
-**5.4 Action `on-enter`.** One or more statements, one per non-blank
+**5.4 Action `task`.** One or more statements, one per non-blank
 line, same namespaced scope as `trigger`/`env` (§5.2) as a firing side
 effect, same timing as `env:` — except it additionally sees `actuator`
 and does **not** see `session.*`/`session.metric.*` (a call may be
@@ -635,13 +635,13 @@ built without a session rather than allowing it selectively). Each
 statement is either an `actuator.<name>(...)` call, or a simple
 `name = <expr>` local-variable assignment — the only other shape
 allowed — making `name` usable, bare, by every *later* statement in this
-same on-enter script (never an earlier one, never a different action's
-own on-enter). This exists to let one `actuator.prompt(...)` call's
+same task script (never an earlier one, never a different action's
+own task). This exists to let one `actuator.prompt(...)` call's
 result reach more than one later call without re-running the model each
 time:
 
 ```yaml
-on-enter: |
+task: |
   actuator.celebrate()
   actuator.notify('Nice!', 'You reached **state B**.')
   translated = actuator.prompt('Translate to Catalan: The party starts at 9pm.')
@@ -649,7 +649,7 @@ on-enter: |
   actuator.send_mail(user.email, translated)
 ```
 
-**Every on-enter script runs as a task, never inside the request that
+**Every task script runs as a task, never inside the request that
 fired it.** The transition and the action's `env:` writes are applied
 synchronously (they feed the very next prompt); the script itself is
 hibernated in the database as a task due immediately and executed by a
@@ -674,7 +674,7 @@ are — frozen at the moment `defer` runs, not re-evaluated later.
 **Actuators** are code-defined plugins, not project-declared. Seven exist:
 
 - `actuator.celebrate()` / `actuator.notify(title, body_md)` / `actuator.show(body_md)` —
-  compile straight to `onEnterActions.js` locals of the same name
+  compile straight to `taskActions.js` locals of the same name
   (confetti / toast / dialog). Nothing runs server-side beyond building
   that JS snippet — the tunnel is exact, e.g. `actuator.notify('Nice!', 'Well done')`
   reaches the browser as literal `notify("Nice!", "Well done")`. `show`
@@ -686,13 +686,13 @@ are — frozen at the moment `defer` runs, not re-evaluated later.
   message to `phone_number` (E.164 digits, `+` optional) through the same
   Cloud API the WhatsApp channel itself sends replies with, markdown
   converted the same way. Unlike `send_mail` it isn't fire-and-forget:
-  the on-enter task blocks on the API call and the statement's own value
+  the task blocks on the API call and the statement's own value
   is `True` once it's accepted, `False` — nothing sent — for a
   `phone_number` with no linked user account or a failed API call, so a
   script can react to it, e.g. `sent = actuator.whatsapp(to, body)`. Once
   sent, `message_md` is also appended as an `assistant` message to the
   recipient's own live session on *this* action's project (the one
-  bound to the actuator set the on-enter script is running under, not
+  bound to the actuator set the task script is running under, not
   necessarily the recipient's own active project) — the recipient's
   currently open one if there is any (any channel), or a freshly opened
   `whatsapp-chat` one otherwise. Best-effort: a failure recording it
@@ -711,7 +711,7 @@ are — frozen at the moment `defer` runs, not re-evaluated later.
   deleting the project or user removes it. Inside the lambda, `user`/
   `signal`/`env` read as snapshotted, while `actuator`/`metric`/`source`/
   `automaton` are live at run time (a deferred call may itself defer).
-  `session.*` is unavailable throughout `on-enter`.
+  `session.*` is unavailable throughout `task`.
 - `actuator.prompt(prompt)` — one extra synchronous model call, fully
   isolated from the conversation: no system prompt beyond `prompt`
   itself, no `general-prompt`/`contextual-prompt`, no attachments, no
@@ -720,7 +720,7 @@ are — frozen at the moment `defer` runs, not re-evaluated later.
   `actuator.notify`'s `body_md`):
 
   ```yaml
-  on-enter: |
+  task: |
     actuator.notify('Nice!', actuator.prompt('Translate to Catalan: Nice to reach this state!'))
   ```
 
@@ -766,13 +766,13 @@ conversation.
 ```yaml
 init-action:
   target: lobby
-  on-enter: actuator.celebrate()
+  task: actuator.celebrate()
 ```
 
 | Field | Required | Type | Meaning |
 | --- | --- | --- | --- |
 | `target` | **yes** | string | Starting state — must be a real key under `states:`. |
-| `on-enter` | no | string | Same mechanics as any action's (§5.4), fired (as a task, delivered over the websocket) the one time init-action fires. |
+| `task` | no | string | Same mechanics as any action's (§5.4), fired (as a task, delivered over the websocket) the one time init-action fires. |
 | `on-exit` | no | string | Same mechanics as any action's (§5.3bis), applied the one time init-action fires. |
 | `env` | no | mapping key → expression | Same mechanics as any action's (§5.3), applied on top of every declared key's own default the one time init-action fires — the place to reset a `readwrite` key a previous case left behind. |
 
@@ -797,7 +797,7 @@ of how you're likely to hit them:
 - Every action's `trigger`, if given: syntactically valid and every
   reference resolves (§5.2's rules per namespace).
 - Every action's `env`, if given: a mapping, each expression validated the same way as `trigger`.
-- Every action's `on-enter`, if given: one `actuator.<name>(...)` call (or
+- Every action's `task`, if given: one `actuator.<name>(...)` call (or
   `name = <expr>` assignment — §5.4) per non-blank line, validated the
   same way plus its own argument-count check; an assignment's `name` may
   not shadow a reserved namespace or core metric, and may only be
@@ -843,6 +843,6 @@ extensive comment block on exercising each one.
 **Richer real-world examples**: the "default" sample (multiple signals
 with attachments, a `fixed-message` state, per-state
 `transition-log-level`); "Aprendr català" (`history-cutoff`, a
-`fixed-message` state, `on-enter: actuator.celebrate()`,
+`fixed-message` state, `task: actuator.celebrate()`,
 `actuator.notify(...)`/`actuator.prompt(...)` combos surfacing generated
 hints as toasts); "Drogodependencia" (simpler, neither).

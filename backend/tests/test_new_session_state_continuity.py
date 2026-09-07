@@ -1,6 +1,6 @@
 """A new live session must resume wherever this user's conversation
 already is — never replay init-action, which would both jump the visible
-state back to the start and re-fire whatever on-enter the project defines
+state back to the start and re-fire whatever task the project defines
 for it. A new test/draft session is the opposite: always a fresh run
 through init-action, regardless of where a previous draft session left off.
 """
@@ -14,7 +14,7 @@ pytestmark = pytest.mark.contract
 
 YML = (
     "project:\n  id: proj\n"
-    "init-action:\n  target: a\n  on-enter: actuator.celebrate()\n"
+    "init-action:\n  target: a\n  task: actuator.celebrate()\n"
     "states:\n"
     "  a:\n"
     "    contextual-prompt: hi\n"
@@ -48,7 +48,7 @@ def test_new_live_session_resumes_the_users_current_state_not_init(client):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["start_state"] == "b"
-    assert "on-enter" not in body
+    assert "task" not in body
 
     # A brand-new session has no Tracking rows of its own yet — re-fetching
     # it (exactly what the frontend's loadMessages() does right after
@@ -100,8 +100,8 @@ def test_new_test_session_still_restarts_at_init_every_time(client, app_db):
     assert resp.status_code == 200, resp.text
     first = resp.json()
     assert first["start_state"] == "a"
-    # init-action's on-enter fires as a task, never inside this response.
-    assert "on-enter" not in first
+    # init-action's task fires as a task, never inside this response.
+    assert "task" not in first
     assert [t["payload"]["script"].strip() for t in app_db.list_tasks()] == ["actuator.celebrate()"]
 
     resp = client.post(f"/api/chat/sessions/{first['id']}/action", json={"action_name": "go"})
@@ -112,5 +112,5 @@ def test_new_test_session_still_restarts_at_init_every_time(client, app_db):
     assert resp.status_code == 200, resp.text
     second = resp.json()
     assert second["start_state"] == "a"
-    assert "on-enter" not in second
+    assert "task" not in second
     assert [t["payload"]["script"].strip() for t in app_db.list_tasks()] == ["actuator.celebrate()"] * 2

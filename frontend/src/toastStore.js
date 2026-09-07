@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 
-// Toasts fired by an action's on-enter script `notify` local — a plain
+// Toasts fired by an action's task script `notify` local — a plain
 // queue any component can render from, since more than one can be in
 // flight at once.
 export const toasts = ref([])
@@ -13,7 +13,7 @@ export function dismissToast(id) {
   if (idx !== -1) toasts.value.splice(idx, 1)
 }
 
-// The on-enter script's `notify(title, body)`. `body` is markdown,
+// The task script's `notify(title, body)`. `body` is markdown,
 // rendered by ToastContainer.vue — never here, so this store stays free
 // of any HTML/sanitization concern.
 export function notify(title, body) {

@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TOOL_STATUS_MIN_MS } from '../src/toolStatusHold.js'
 
-vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
+vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
   postAction: vi.fn(),
   getSessions: vi.fn(),
@@ -18,7 +18,7 @@ vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: v
 
 const DONE = {
   reply: [{ id: 51, content: 'Found it.', timestamp: 't' }], user_message_id: 40, assistant_message_id: 51,
-  state: { key: 'a', ui_label: 'A', actions: [] }, 'on-enter': null, session_id: 1,
+  state: { key: 'a', ui_label: 'A', actions: [] }, 'task': null, session_id: 1,
 }
 
 function assistantStatus(chatStore) {

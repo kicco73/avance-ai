@@ -97,8 +97,8 @@ class ChatService(object):
 		)
 		return TrackingEngine(DbTrackingSink(self._db), env, scope_builder), actuator_set
 
-	def _schedule_on_enter(self, automaton: Automaton, action: Action, session_id: int | None, project_id: str) -> None:
-		if not action.on_enter:
+	def _schedule_task(self, automaton: Automaton, action: Action, session_id: int | None, project_id: str) -> None:
+		if not action.task:
 			return
 		if session_id is not None:
 			tracking_engine, _ = self._tracking_engine_for_session(session_id)
@@ -109,7 +109,7 @@ class ChatService(object):
 				self._db, self._automaton_namespace, self._actuator_factory.fake(project_id=project_id),
 			)
 			tracking_engine = TrackingEngine(DbTrackingSink(self._db), env, scope_builder)
-		tracking_engine.schedule_on_enter(automaton, action, action.target, session_id=session_id)
+		tracking_engine.schedule_task(automaton, action, action.target, session_id=session_id)
 
 	@property
 	def _active_project_id(self) -> str:
@@ -295,8 +295,8 @@ class ChatService(object):
 				raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		automaton = self._project_service.get_automaton_for_session(session["id"])
 		payload = self._session_payload(session, active=True)
-		if strategy.on_enter_for_new_session(automaton) is not None:
-			self._schedule_on_enter(automaton, automaton.init_action, session["id"], project_id)
+		if strategy.task_for_new_session(automaton) is not None:
+			self._schedule_task(automaton, automaton.init_action, session["id"], project_id)
 		return payload
 
 	async def create_session(self) -> dict:
@@ -320,7 +320,7 @@ class ChatService(object):
 			EphemeralEnvRegistry().discard(reset_id)
 			self._db.delete_archives_with_prefix(project_id, f"{CACHE_DIR}/sessions/{reset_id}/")
 		automaton, state = self._project_service.get_automaton_and_state(project_id, type='test')
-		self._schedule_on_enter(automaton, automaton.init_action, None, project_id)
+		self._schedule_task(automaton, automaton.init_action, None, project_id)
 		return automaton.get_state_payload(state)
 
 	def _list_sessions_by_type(self, project_id: str, type: str | tuple[str, ...], active_type: str) -> list[dict]:
@@ -613,7 +613,7 @@ class ChatService(object):
 		tracking_engine, _ = self._tracking_engine_for_session(session_id)
 		for key, expression in missing.items():
 			tracking_engine.apply_action_env(
-				automaton, replace(action, env={key: expression}, on_enter=None, on_exit=None), {}, "",
+				automaton, replace(action, env={key: expression}, task=None, on_exit=None), {}, "",
 				username=self._username, project_id=project_id, session_id=session_id,
 			)
 

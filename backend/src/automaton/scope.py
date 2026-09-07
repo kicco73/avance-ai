@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 
 class EvaluationScope(dict):
-    """The `names` dict a trigger/env/on-enter expression evaluates
+    """The `names` dict a trigger/env/task expression evaluates
     against (see tracking.evaluation_scope.EvaluationScopeBuilder — the
     one place it is assembled), remembering *where it was built from*:
     the automaton and state key its expressions belong to. Still a plain
@@ -16,7 +16,7 @@ class EvaluationScope(dict):
     reconstruct an equivalent scope later — an actuator.defer'd call
     outliving the process it was evaluated in (see tracking/actuators/).
 
-    for_actuators() is the view an on-enter line sees: the same names
+    for_actuators() is the view a task line sees: the same names
     minus IdentifierRegistry.ACTUATOR_SCOPE_EXCLUDES, so `session` is
     simply absent there rather than forbidden by a check."""
 
@@ -26,7 +26,7 @@ class EvaluationScope(dict):
         super().__init__(names)
         self.automaton = automaton
         self.state_key = state_key
-        # Only set on the actuator view: the action whose on-enter is being rendered.
+        # Only set on the actuator view: the action whose task is being rendered.
         self.action_name = action_name
 
     def for_actuators(self, action_name: str | None = None) -> "EvaluationScope":

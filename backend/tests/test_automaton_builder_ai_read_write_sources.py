@@ -116,7 +116,7 @@ states:
     actions:
       - name: advance
         target: a
-        on-enter: |
+        task: |
           source.flights.update(fields={'a': 'b'})
 """
     with pytest.raises(ValueError, match=r"undefined name\(s\): source.flights.update"):

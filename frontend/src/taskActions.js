@@ -6,22 +6,22 @@ function show(body_md) {
   infoDialog({ body: body_md, markdown: true })
 }
 
-// The full set of functions an action's "on-enter" script can call — the
+// The full set of functions an action's "task" script can call — the
 // one module every such local function lives in, so a new local only
 // ever needs adding here.
-export const onEnterLocals = { celebrate, notify, show }
+export const taskLocals = { celebrate, notify, show }
 
-// Runs `script` (e.g. "celebrate()") with each of onEnterLocals bound as
+// Runs `script` (e.g. "celebrate()") with each of taskLocals bound as
 // a top-level identifier — `new Function` compiles a fresh function body
 // each call, so `script` never inherits this module's real local bindings.
-export function runOnEnterScript(script) {
+export function runTaskScript(script) {
   if (!script) return
   try {
-    const names = Object.keys(onEnterLocals)
-    const values = names.map((name) => onEnterLocals[name])
+    const names = Object.keys(taskLocals)
+    const values = names.map((name) => taskLocals[name])
     const run = new Function(...names, script)
     run(...values)
   } catch (err) {
-    console.error('on-enter script failed:', script, err)
+    console.error('task script failed:', script, err)
   }
 }

@@ -12,11 +12,11 @@ pytestmark = pytest.mark.contract
 @pytest.mark.regression
 def test_scheduled_tasks_lists_every_task_soonest_first(client, app_db, hello_project):
     app_db.create_task(
-        "task-2", "on_enter", "user", hello_project, datetime(2030, 1, 2, tzinfo=timezone.utc),
+        "task-2", "task", "user", hello_project, datetime(2030, 1, 2, tzinfo=timezone.utc),
         {"secret": "internal"}, "Second task", "Runs second",
     )
     app_db.create_task(
-        "task-1", "on_enter", "user", hello_project, datetime(2030, 1, 1, tzinfo=timezone.utc),
+        "task-1", "task", "user", hello_project, datetime(2030, 1, 1, tzinfo=timezone.utc),
         {"secret": "internal"}, "First task", "Runs first",
     )
 

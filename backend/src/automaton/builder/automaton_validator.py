@@ -75,7 +75,7 @@ class AutomatonValidator:
         if unknown:
             message = f"{context} references undefined name(s): {', '.join(sorted(unknown))}"
             if read_on_a_source:
-                message += " — a whole-file read is attachment.read(name)'s job (on-enter only), not source.*."
+                message += " — a whole-file read is attachment.read(name)'s job (task only), not source.*."
             raise ValueError(message)
 
     @staticmethod
@@ -111,25 +111,25 @@ class AutomatonValidator:
                 )
 
     @classmethod
-    def validate_on_enter(
-        cls, on_enter: str | None, context: str, registry: dict[str, dict[str, str]], sources: dict[str, Source],
+    def validate_task(
+        cls, task: str | None, context: str, registry: dict[str, dict[str, str]], sources: dict[str, Source],
         all_archives: dict[str, MemoryArchive],
     ) -> None:
-        if not on_enter:
+        if not task:
             return
         try:
-            statements = TriggerExpressionAnalyzer.on_enter_statements(on_enter)
+            statements = TriggerExpressionAnalyzer.task_statements(task)
         except SyntaxError as exc:
-            raise ValueError(f"{context} ('{on_enter}') is not valid on-enter source: {exc}") from exc
+            raise ValueError(f"{context} ('{task}') is not valid task source: {exc}") from exc
         known_locals: set[str] = set()
         for line_number, statement in statements:
-            line_context = f"{context}, on-enter line {line_number}"
-            assignment = TriggerExpressionAnalyzer.on_enter_assignment(statement)
+            line_context = f"{context}, task line {line_number}"
+            assignment = TriggerExpressionAnalyzer.task_assignment(statement)
             target, expression = assignment if assignment is not None else (None, statement)
             if target is not None and (target in TriggerExpressionAnalyzer.RESERVED_NAMESPACES or target in metric_names()):
                 raise ValueError(
                     f"{line_context} ('{statement}'): '{target}' is a reserved name "
-                    "(a namespace or core metric) and can't be used as an on-enter local variable."
+                    "(a namespace or core metric) and can't be used as a task local variable."
                 )
             cls.validate_namespaced_expression(expression, line_context, registry, sources, frozenset(known_locals))
             cls.validate_actuator_arity(expression, line_context)
@@ -145,8 +145,8 @@ class AutomatonValidator:
         cls, on_exit: str | None, context: str, registry: dict[str, dict[str, str]], sources: dict[str, Source],
         env_keys: dict[str, EnvKey],
     ) -> None:
-        """`on-exit` shares on-enter's own statement splitting
-        (TriggerExpressionAnalyzer.on_enter_statements — same multi-line-
+        """`on-exit` shares task's own statement splitting
+        (TriggerExpressionAnalyzer.task_statements — same multi-line-
         call/'#'-comment handling) but every statement must be an
         `env.<key> = expr` assignment (TriggerExpressionAnalyzer.
         on_exit_assignment): it has no actuator.* side effects of its
@@ -157,7 +157,7 @@ class AutomatonValidator:
         if not on_exit:
             return
         try:
-            statements = TriggerExpressionAnalyzer.on_enter_statements(on_exit)
+            statements = TriggerExpressionAnalyzer.task_statements(on_exit)
         except SyntaxError as exc:
             raise ValueError(f"{context} ('{on_exit}') is not valid on-exit source: {exc}") from exc
         for line_number, statement in statements:
@@ -249,8 +249,8 @@ class AutomatonValidator:
                         registry_without_actuator, sources,
                     )
                     self.validate_env_key_type(env_keys[env_key], expression, action_context)
-            if action.on_enter:
-                self.validate_on_enter(action.on_enter, action_context, registry_without_session, sources, all_archives)
+            if action.task:
+                self.validate_task(action.task, action_context, registry_without_session, sources, all_archives)
             if action.on_exit:
                 self.validate_on_exit(action.on_exit, action_context, registry_without_actuator, sources, env_keys)
 

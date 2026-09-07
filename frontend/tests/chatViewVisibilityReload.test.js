@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from 'vue'
 
-vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
+vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }))
 vi.mock('../src/mic.js', () => ({ startRecording: vi.fn(), stopRecording: vi.fn() }))
 vi.mock('../src/audio.js', () => ({ playMessageChime: vi.fn(), playMessageAudio: vi.fn() }))
@@ -80,7 +80,7 @@ describe('ChatView.vue never reloads messages mid-turn on visibilitychange', () 
     resolveTurn({
       reply: [{ id: 5, content: 'done', audio_text: null, timestamp: 't' }],
       user_message_id: 1, assistant_message_id: 5,
-      state: { key: 'x', ui_label: 'X', actions: [] }, 'on-enter': null, session_id: 1,
+      state: { key: 'x', ui_label: 'X', actions: [] }, 'task': null, session_id: 1,
     })
     await sendPromise
 
