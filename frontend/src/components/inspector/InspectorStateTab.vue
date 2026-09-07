@@ -12,7 +12,6 @@ import InspectorProjectCard from './InspectorProjectCard.vue'
 import InspectorFileCard from './InspectorFileCard.vue'
 import InspectorSourceCard from './InspectorSourceCard.vue'
 import SessionDetailCard from './SessionDetailCard.vue'
-import ActionEnvEditor from './ActionEnvEditor.vue'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -23,9 +22,8 @@ const props = defineProps({
   // only meaningful when selectedElement is an action.
   firedActionEdge: { type: Object, default: null },
   // Forwarded to InspectorDetailCard.vue when selectedElement is an
-  // action — its target <select> options and Env editor's key suggestions.
+  // action — its target <select> options.
   availableStates: { type: Array, default: () => [] },
-  availableEnvKeys: { type: Array, default: () => [] },
   // Forwarded to InspectorDetailCard.vue's own OnEnterDialog.vue — unlike
   // @set-field (fire-and-forget, every other field), that dialog's OK
   // button needs to know whether the write actually landed before
@@ -210,12 +208,6 @@ onMounted(loadProjectMetadata)
       @set-field="(field, value) => emit('set-field', field, value)"
       @delete="emit('delete', selectedElement)"
       @open-actions-order="emit('open-actions-order', selectedElement)"
-    />
-    <ActionEnvEditor
-      v-if="isBehaviorContext && !readOnly && open && selectedElement?.kind === 'action'"
-      :env="selectedElement.data.env"
-      :key-options="availableEnvKeys"
-      @set-field="(field, value) => emit('set-field', field, value)"
     />
     <div v-if="isBehaviorContext && !readOnly && selectedElement?.kind !== 'action'" class="inspector-state-tab-add-row">
       <button v-if="!selectedElement" class="inspector-state-tab-add-btn" @click="emit('add-state')">+ Add state</button>

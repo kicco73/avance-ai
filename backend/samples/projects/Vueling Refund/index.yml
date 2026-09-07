@@ -13,11 +13,11 @@ states:
         ui-button: "Request refund"
         target: locate_booking
         trigger: "signal.intent_refund > 70"
-        env:
-          customer_record: source.tickets_sold.select_rows_containing(user.email)
-          flight: source.tickets_sold.value(user.email, key='codice_volo')
-          flight_date: source.tickets_sold.value(user.email, key='datetime_volo')
-          pnr: "''"
+        on-exit: |
+          env.customer_record = source.tickets_sold.select_rows_containing(user.email)
+          env.flight = source.tickets_sold.value(user.email, key='codice_volo')
+          env.flight_date = source.tickets_sold.value(user.email, key='datetime_volo')
+          env.pnr = ''
       - name: go_to_out_of_scope
         ui-label: "Other / Complaint"
         ui-button: "Other issue"
@@ -40,8 +40,7 @@ states:
         ui-button: "Verify booking"
         target: verify_entitlement
         trigger: "source.tickets_sold.select_rows_containing(user.email, env.flight) != '' and env.pnr != ''"
-        env:
-          _flight_record: source.flight_records.select_rows_containing(env.flight, env.flight_date[:10])
+        on-exit: env._flight_record = source.flight_records.select_rows_containing(env.flight, env.flight_date[:10])
       - name: go_to_booking_not_found
         ui-label: "Booking not found"
         target: booking_not_found

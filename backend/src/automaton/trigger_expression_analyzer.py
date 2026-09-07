@@ -193,6 +193,35 @@ class TriggerExpressionAnalyzer:
             return None
         return stmt.targets[0].id, ast.get_source_segment(statement, stmt.value)
 
+    @staticmethod
+    def on_exit_assignment(statement: str) -> tuple[str, str] | None:
+        """(env_key, rhs_source) if `statement` (one already-split
+        on_enter_statements() segment) is an `env.<key> = <expr>`
+        assignment — the only shape an on-exit line may take (see
+        AutomatonValidator.validate_on_exit/Automaton.eval_action_on_exit)
+        — None for anything else (a bare name target, a chained
+        `a = b = ...`, a tuple/subscript target, or an attribute target on
+        anything other than bare `env`). Mirrors on_enter_assignment's own
+        shape but requires the explicit `env.` prefix — on-exit has no
+        local-variable concept of its own, only env writes, so the target
+        is always a real env key, spelled the same way an expression reads
+        one back (`env.<key>`), never a bare name. Never raises on
+        `statement` itself: it already parsed once, as part of
+        on_enter_statements()."""
+        tree = ast.parse(statement, mode="exec")
+        if len(tree.body) != 1 or not isinstance(tree.body[0], ast.Assign):
+            return None
+        stmt = tree.body[0]
+        if len(stmt.targets) != 1:
+            return None
+        target = stmt.targets[0]
+        if (
+            not isinstance(target, ast.Attribute) or not isinstance(target.value, ast.Name)
+            or target.value.id != "env"
+        ):
+            return None
+        return target.attr, ast.get_source_segment(statement, stmt.value)
+
     # Every identifier whose runtime *type* is fixed by its own contract, well
     # enough to check statically. `env.*` is absent: it's a free-form store any
     # expression can set to anything, so its type is treated as unknown.

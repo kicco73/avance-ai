@@ -95,6 +95,7 @@ function edgeToCyData(e, id) {
     trigger: e.trigger,
     hasTrigger: e.action.has_trigger,
     onEnter: e.action['on-enter'],
+    onExit: e.action['on-exit'],
     env: e.env || {},
     isInitEdge
   }

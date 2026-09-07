@@ -140,6 +140,42 @@ class AutomatonValidator:
             if target is not None:
                 known_locals.add(target)
 
+    @classmethod
+    def validate_on_exit(
+        cls, on_exit: str | None, context: str, registry: dict[str, dict[str, str]], sources: dict[str, Source],
+        env_keys: dict[str, EnvKey],
+    ) -> None:
+        """`on-exit` shares on-enter's own statement splitting
+        (TriggerExpressionAnalyzer.on_enter_statements — same multi-line-
+        call/'#'-comment handling) but every statement must be an
+        `env.<key> = expr` assignment (TriggerExpressionAnalyzer.
+        on_exit_assignment): it has no actuator.* side effects of its
+        own, only env writes — the future replacement for the
+        declarative `env:` map, so each assignment is checked exactly
+        like one of that map's own entries (env key must already be
+        declared, validate_env_key_type included)."""
+        if not on_exit:
+            return
+        try:
+            statements = TriggerExpressionAnalyzer.on_enter_statements(on_exit)
+        except SyntaxError as exc:
+            raise ValueError(f"{context} ('{on_exit}') is not valid on-exit source: {exc}") from exc
+        for line_number, statement in statements:
+            line_context = f"{context}, on-exit line {line_number}"
+            assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
+            if assignment is None:
+                raise ValueError(
+                    f"{line_context} ('{statement}'): on-exit only supports 'env.<key> = expr' assignments."
+                )
+            env_key, expression = assignment
+            if env_key not in registry.get("env", {}):
+                raise ValueError(
+                    f"{line_context}: env key '{env_key}' is not declared in the project's own "
+                    "'env' section — declare it there first."
+                )
+            cls.validate_namespaced_expression(expression, line_context, registry, sources)
+            cls.validate_env_key_type(env_keys[env_key], expression, line_context)
+
     @staticmethod
     def validate_trigger_types(expression: str, context: str) -> None:
         violations = TriggerExpressionAnalyzer.type_violations(expression)
@@ -215,6 +251,8 @@ class AutomatonValidator:
                     self.validate_env_key_type(env_keys[env_key], expression, action_context)
             if action.on_enter:
                 self.validate_on_enter(action.on_enter, action_context, registry_without_session, sources, all_archives)
+            if action.on_exit:
+                self.validate_on_exit(action.on_exit, action_context, registry_without_actuator, sources, env_keys)
 
     def validate_state_io(self, state: State, env_keys: dict[str, EnvKey]) -> None:
         for field_name, names in (("input", state.input), ("output", state.output)):

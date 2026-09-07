@@ -39,9 +39,17 @@ class Action:
     # state can each carry their own value (or none), since it describes
     # *how you got there*, not the destination itself.
     on_enter: str | None = None
+    # Same statement-splitting as on_enter (TriggerExpressionAnalyzer.
+    # on_enter_statements) but one `env.<key> = expr` line per env write
+    # (TriggerExpressionAnalyzer.on_exit_assignment) — no actuator.*
+    # calls of its own, that stays on_enter's job. The future replacement
+    # for the declarative `env:` map below: see Automaton.eval_action_on_exit.
+    on_exit: str | None = None
     # {env key: expression source}, evaluated when this action fires and
     # merged onto the env store so the next prompt sees the update. Same
-    # scope/mechanics as `trigger` (see _eval_trigger), minus the boolean cast.
+    # scope/mechanics as `trigger` (see _eval_trigger), minus the boolean
+    # cast. Legacy authoring path, kept working for already-published
+    # YAML — new actions declare the same writes as `on-exit` lines instead.
     env: dict[str, str] | None = None
     # 0-based line in the project's own index.yml where this action is
     # declared (see AutomatonBuilder._build_action) — None for a
@@ -206,6 +214,7 @@ ActionPayload = TypedDict("ActionPayload", {
     "target": str,
     "has_trigger": bool,
     "on-enter": str | None,
+    "on-exit": str | None,
 })
 
 class ReactionOptionPayload(TypedDict):
@@ -425,6 +434,7 @@ class Automaton(object):
             "target": action.target,
             "has_trigger": action.trigger is not None,
             "on-enter": action.on_enter,
+            "on-exit": action.on_exit,
         }
 
     @staticmethod
@@ -513,14 +523,37 @@ class Automaton(object):
             f"Action '{action_name}' not available in state '{state.key}'"
         )
 
+    @staticmethod
+    def _on_exit_assigned_keys(on_exit: str | None) -> set[str]:
+        """The env key names an `on-exit` script writes — statically, by
+        parsing its `env.<key> = expr` lines (TriggerExpressionAnalyzer.
+        on_enter_statements/on_exit_assignment), never by evaluating
+        them. A malformed script (build-time validation already rules
+        this out for anything reaching here) or a non-assignment line
+        contributes nothing rather than raising."""
+        if not on_exit:
+            return set()
+        try:
+            statements = TriggerExpressionAnalyzer.on_enter_statements(on_exit)
+        except SyntaxError:
+            return set()
+        keys: set[str] = set()
+        for _line_number, statement in statements:
+            assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
+            if assignment is not None:
+                keys.add(assignment[0])
+        return keys
+
     def declared_env_key_names(self) -> set[str]:
         names = {env_key.name for env_key in self.env_keys}
         if self.init_action.env:
             names |= set(self.init_action.env)
+        names |= self._on_exit_assigned_keys(self.init_action.on_exit)
         for state in self.states.values():
             for action in state.actions:
                 if action.env:
                     names |= set(action.env)
+                names |= self._on_exit_assigned_keys(action.on_exit)
         return names
 
     def triggers_reference(self, state_key: str, names: set[str]) -> bool:
@@ -541,6 +574,11 @@ class Automaton(object):
             if action.env:
                 for expression in action.env.values():
                     referenced |= TriggerExpressionAnalyzer.signal_names(expression)
+            if action.on_exit:
+                for _line_number, statement in TriggerExpressionAnalyzer.on_enter_statements(action.on_exit):
+                    assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
+                    if assignment is not None:
+                        referenced |= TriggerExpressionAnalyzer.signal_names(assignment[1])
         return referenced & {s.name for s in self.signals}
 
     def all_triggerable_signal_names(self) -> set[str]:
@@ -577,6 +615,47 @@ class Automaton(object):
             except Exception as exc:
                 logger.warning(
                     "env expression evaluation failed for action '%s', key '%s' ('%s'): %s",
+                    action.name, key, expression, exc,
+                )
+        return result
+
+    @staticmethod
+    def eval_action_on_exit(action: Action, scope: dict[str, Any]) -> dict[str, Any]:
+        """`action.on_exit`'s own `env.<key> = expr` lines, evaluated
+        against `scope` — eval_action_env's own contract (only
+        successfully evaluated keys are returned, a bad expression logs
+        and is skipped), but split into statements with on-enter's own
+        grammar (TriggerExpressionAnalyzer.on_enter_statements) so
+        on-exit reads exactly like on-enter: one statement per line, a
+        single call may span several lines, and a '#' comment just
+        works. A statement that isn't an `env.<key> = <expr>` assignment
+        (TriggerExpressionAnalyzer.on_exit_assignment) is refused
+        (on-exit has no actuator.* side effects of its own — that's
+        on-enter's job) and logged, not raised — build-time validation
+        (AutomatonValidator.validate_on_exit) already rules this out for
+        any project reaching here."""
+        if not action.on_exit:
+            return {}
+        try:
+            statements = TriggerExpressionAnalyzer.on_enter_statements(action.on_exit)
+        except SyntaxError as exc:
+            logger.warning("on-exit parsing failed for action '%s': %s", action.name, exc)
+            return {}
+        result: dict[str, Any] = {}
+        for _line_number, statement in statements:
+            assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
+            if assignment is None:
+                logger.warning(
+                    "on-exit statement ignored for action '%s': '%s' is not an 'env.<key> = expr' assignment.",
+                    action.name, statement,
+                )
+                continue
+            key, expression = assignment
+            try:
+                result[key] = simpleeval.EvalWithCompoundTypes(names=scope).eval(expression)
+            except Exception as exc:
+                logger.warning(
+                    "on-exit expression evaluation failed for action '%s', key '%s' ('%s'): %s",
                     action.name, key, expression, exc,
                 )
         return result

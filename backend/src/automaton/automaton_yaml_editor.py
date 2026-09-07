@@ -189,6 +189,7 @@ class AutomatonYamlEditor:
             "target": raw_action.get("target", state_name),
             "has_trigger": raw_action.get("trigger") is not None,
             "on-enter": raw_action.get("on-enter"),
+            "on-exit": raw_action.get("on-exit"),
         }
 
     def _action_payload(self, state_name: str, action_name: str) -> ActionPayload:

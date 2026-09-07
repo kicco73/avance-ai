@@ -290,7 +290,8 @@ actions:
 | `target` | no | string | this action's own state | Destination state; must be a real key (or the current state itself). Omitted/self-referential ⇒ self-loop (only the action's own effects happen). |
 | `trigger` | no | string (expression) | `None` | Boolean expression over signal/metric names — §5.2. Absent ⇒ manual-only (never auto-fired). |
 | `on-enter` | no | string | `None` | One or more `actuator.<name>(...)` calls, one per line — side effect of firing, same timing as `env:`. §5.4. Per-action, not per-destination-state: two actions landing on the same state can each carry a different (or no) value. |
-| `env` | no | mapping key → expression | `None` | Updates the project's environment memory when this action fires. §5.3. |
+| `on-exit` | no | string | `None` | One or more `env.<key> = expression` lines, one env write per line — same timing as `env:`, and its future replacement. §5.3bis. |
+| `env` | no | mapping key → expression | `None` | Updates the project's environment memory when this action fires. §5.3. Legacy — new actions should write the same updates as `on-exit` lines instead. |
 | `ui-label` | no | string | `name` | Shown in the frontend. |
 | `ui-button` | no | string | `ui-label`, then `name` | Manual-action button text. |
 | `ui-description` | no | string | `None` | Shown in the frontend. |
@@ -597,6 +598,34 @@ store feeds a trigger's `env.<name>`. The action-set one is never
 directly editable in the Inspector — only ever a side effect of its
 action firing again, or of the model's own `update` on a `readwrite` key.
 
+**5.3bis Action `on-exit`.** The future replacement for `env:` above —
+same env-write contract (must already be declared under top-level `env:`,
+same "one bad key never blocks the rest" evaluation-time failure
+handling, same "lands before anything else that turn generates a reply"
+timing), spelled with `on-enter`'s own statement splitting instead of a
+YAML mapping: one `env.<key> = expression` assignment per non-blank
+line, same namespaced scope/mechanics as `trigger`/`env` (§5.2, minus
+the boolean cast) — the RHS may itself reference `env.<key>` (its own
+last stored value, from *before* this action fired) exactly like a
+`env:` mapping entry could. Unlike `on-enter` (§5.4), a line here may
+only be that one assignment shape, always targeting `env.<key>` — no
+`actuator.<name>(...)` calls, no bare local variables — `on-exit` has no
+side effect of its own besides the env writes:
+
+```yaml
+    actions:
+      - name: advance
+        target: b
+        trigger: "signal.mood >= 70"
+        on-exit: |
+          env.reset_counter = True
+          env.number_of_steps = env.number_of_steps + 1
+```
+
+An action may declare `env:` and `on-exit` at once (only already-published
+YAML predating `on-exit` should still have a reason to); should both
+write the same key, `on-exit`'s own value wins.
+
 **5.4 Action `on-enter`.** One or more statements, one per non-blank
 line, same namespaced scope as `trigger`/`env` (§5.2) as a firing side
 effect, same timing as `env:` — except it additionally sees `actuator`
@@ -744,6 +773,7 @@ init-action:
 | --- | --- | --- | --- |
 | `target` | **yes** | string | Starting state — must be a real key under `states:`. |
 | `on-enter` | no | string | Same mechanics as any action's (§5.4), fired (as a task, delivered over the websocket) the one time init-action fires. |
+| `on-exit` | no | string | Same mechanics as any action's (§5.3bis), applied the one time init-action fires. |
 | `env` | no | mapping key → expression | Same mechanics as any action's (§5.3), applied on top of every declared key's own default the one time init-action fires — the place to reset a `readwrite` key a previous case left behind. |
 
 A mapping, not a list item — otherwise a regular action with no
@@ -772,6 +802,11 @@ of how you're likely to hit them:
   same way plus its own argument-count check; an assignment's `name` may
   not shadow a reserved namespace or core metric, and may only be
   referenced by a *later* line.
+- Every action's `on-exit`, if given: one `env.<key> = expr` assignment
+  per non-blank line — §5.3bis — each `key` already declared under
+  top-level `env:` and each expression validated the same way as
+  `env:`'s own (including its type-consistency check against that key's
+  declared default).
 - No signal named after a reserved core metric (§2).
 - Every `attachments:` entry (global/signal/state, not action) names a file actually present alongside `index.yml`.
 - Every `sources:` entry's own `url`, if set, has a recognized driver scheme, and (for `avance:<path>`) its path names a file actually present alongside `index.yml`.

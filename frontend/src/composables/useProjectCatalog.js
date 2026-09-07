@@ -1,16 +1,15 @@
 import { ref } from 'vue'
-import { getProjectEnvKeys, getProjectGraph } from '../api.js'
+import { getProjectGraph } from '../api.js'
 import { clearApiError, setApiWarning } from '../errorStore.js'
 import { refreshIdentifierRegistry } from '../identifierRegistry.js'
 import { refreshProjectFiles } from '../projectFiles.js'
 
 // The draft's automaton-derived catalog: state keys/labels, action labels
 // (keyed `${stateKey}::${actionName}`, names are only unique per state),
-// declared env keys, build warnings and the "project_broken" flag.
+// build warnings and the "project_broken" flag.
 export function useProjectCatalog(projectId) {
   const validStateKeys = ref(new Set())
   const availableStates = ref([])
-  const availableEnvKeys = ref([])
   const projectBroken = ref(false)
   const buildWarnings = ref([])
   const actionLabelsByState = ref(new Map())
@@ -44,17 +43,12 @@ export function useProjectCatalog(projectId) {
         )
       }
     }
-    try {
-      availableEnvKeys.value = (await getProjectEnvKeys(projectId)).env_keys.map((e) => e.env_key.name)
-    } catch {
-      // already surfaced via apiFetch
-    }
     refreshIdentifierRegistry(projectId)
     refreshProjectFiles(projectId)
   }
 
   return {
-    validStateKeys, availableStates, availableEnvKeys, projectBroken, buildWarnings,
+    validStateKeys, availableStates, projectBroken, buildWarnings,
     stateLabelFor, actionLabelFor, refreshCatalog,
   }
 }

@@ -613,7 +613,7 @@ class ChatService(object):
 		tracking_engine, _ = self._tracking_engine_for_session(session_id)
 		for key, expression in missing.items():
 			tracking_engine.apply_action_env(
-				automaton, replace(action, env={key: expression}, on_enter=None), {}, "",
+				automaton, replace(action, env={key: expression}, on_enter=None, on_exit=None), {}, "",
 				username=self._username, project_id=project_id, session_id=session_id,
 			)
 

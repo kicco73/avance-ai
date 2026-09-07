@@ -48,6 +48,7 @@ const ACTION_FIELDS = [
   { name: 'target' },
   { name: 'trigger' },
   { name: 'on-enter' },
+  { name: 'on-exit' },
   { name: 'env', nested: true },
   { name: 'ui-label' },
   { name: 'ui-button' },
@@ -57,7 +58,8 @@ const ACTION_FIELDS = [
 
 const INIT_ACTION_FIELDS = [
   { name: 'target' },
-  { name: 'on-enter' }
+  { name: 'on-enter' },
+  { name: 'on-exit' }
 ]
 
 const SIGNAL_FIELDS = [

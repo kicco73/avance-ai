@@ -172,7 +172,7 @@ const {
 } = useTestModeSelection(props.projectId, indexYmlEditorRef)
 
 const {
-  validStateKeys, availableStates, availableEnvKeys, buildWarnings, stateLabelFor, actionLabelFor, refreshCatalog,
+  validStateKeys, availableStates, buildWarnings, stateLabelFor, actionLabelFor, refreshCatalog,
 } = useProjectCatalog(props.projectId)
 
 const {
@@ -557,7 +557,6 @@ onBeforeUnmount(() => {
                 :state-tokens="stateTabTokens"
                 :fired-action-edge="firedActionEdge"
                 :available-states="availableStates"
-                :available-env-keys="availableEnvKeys"
                 :selected-session="mode === 'test' ? autoSelectedSession : null"
                 :session-input-tokens="mode === 'test' ? autoSessionInputTokens : null"
                 :total-token-budget-per-session="totalTokenBudgetPerSession"

@@ -7,6 +7,7 @@ import { vAutosize } from './textareaAutosize.js'
 import CardMenu from './CardMenu.vue'
 import TriggerEditor from './TriggerEditor.vue'
 import OnEnterDialog from './OnEnterDialog.vue'
+import OnExitDialog from './OnExitDialog.vue'
 import { handleEnterNext } from './enterToNextField.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 import { customDialog } from '../../dialogStore.js'
@@ -155,6 +156,23 @@ function openOnEnterDialog() {
   })
 }
 
+// Same shape as openOnEnterDialog above, wire key "on-exit" — on-exit has
+// no actuator.* calls of its own (that's on-enter's job), so, unlike
+// on-enter's dialog, `actuator` stays excluded rather than `session`
+// (see TriggerEditor's own exclude-namespaces — same exclusion
+// ActionEnvEditor.vue's removed per-row env editor used for its value field).
+function openOnExitDialog() {
+  customDialog({
+    component: OnExitDialog,
+    wide: true,
+    props: {
+      initialValue: props.selectedElement?.data.onExit ?? '',
+      excludeNamespaces: ['actuator'],
+      onCommit: (value) => props.saveField('on-exit', value)
+    }
+  })
+}
+
 // history-cutoff/chat: a plain instant toggle, not a typed field — no
 // local buffer/blur dance needed.
 function commitBoolField(field, value) {
@@ -250,13 +268,13 @@ const hasSelectedElementBadges = computed(() => {
     return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff ||
       (d.reactionsEnabled && d.hasReactions) || (d.aiMayQuerySources?.length > 0) || (d.aiMustQuerySources?.length > 0)
   }
-  // "On enter" is an always-shown clickable badge once the form is open
-  // — same reasoning, and same layout position (first in this row), as
-  // No chat/History cutoff above. Closed, same read-only set as
-  // non-editable, plus "On enter" itself whenever the action has one.
+  // "On enter"/"On exit" are always-shown clickable badges once the form
+  // is open — same reasoning, and same layout position (first in this
+  // row), as No chat/History cutoff above. Closed, same read-only set as
+  // non-editable, plus either badge whenever the action has that script.
   if (showEditForm.value) return true
   const d = props.selectedElement.data
-  return isSelectedActionFired.value || !d.hasTrigger || d.isInitEdge || !!d.onEnter
+  return isSelectedActionFired.value || !d.hasTrigger || d.isInitEdge || !!d.onEnter || !!d.onExit
 })
 
 // Only reachable while the edit form's attachment list is showing. A
@@ -397,6 +415,15 @@ function selectAttachment(fileName) {
             title="On enter"
             @click.stop="openOnEnterDialog()"
           >On enter</button>
+          <button
+            v-if="showEditForm || selectedElement.data.onExit"
+            type="button"
+            class="inspector-detail-badge inspector-detail-badge-toggle inspector-detail-badge-onexit-btn"
+            :class="selectedElement.data.onExit ? ['inspector-detail-badge-toggle-on', 'inspector-detail-badge-onexit'] : 'inspector-detail-badge-toggle-off'"
+            :disabled="!editable"
+            title="On exit"
+            @click.stop="openOnExitDialog()"
+          >On exit</button>
           <template v-if="!showEditForm">
             <span v-if="selectedElement.data.isInitEdge" class="inspector-detail-badge inspector-detail-badge-start">Start</span>
             <span v-if="isSelectedActionFired" class="inspector-detail-badge inspector-detail-badge-fired">Fired</span>
@@ -577,6 +604,9 @@ function selectAttachment(fileName) {
 .inspector-detail-badge-onenter-btn { appearance: none; border: none; margin: 0; font-family: inherit; cursor: pointer; }
 .inspector-detail-badge-onenter-btn:disabled { cursor: not-allowed; opacity: 0.6; }
 .inspector-detail-badge-onenter.inspector-detail-badge-toggle-on { background: #4b8bbe; }
+.inspector-detail-badge-onexit-btn { appearance: none; border: none; margin: 0; font-family: inherit; cursor: pointer; }
+.inspector-detail-badge-onexit-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+.inspector-detail-badge-onexit.inspector-detail-badge-toggle-on { background: #00838f; }
 .inspector-detail-title { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inspector-detail-title-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
 .inspector-detail-title-input:hover, .inspector-detail-title-input:focus { border-color: #ccc; background: white; }

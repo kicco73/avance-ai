@@ -111,6 +111,7 @@ class AutomatonBuilder(object):
 
     def _build_action(self, key: str, raw_action: dict, all_archives: dict[str, MemoryArchive]) -> Action:
         on_enter = raw_action.get("on-enter")
+        on_exit = raw_action.get("on-exit")
         line = BuildCursor.own_line(raw_action)
         self._at(line, f"states.{key}.actions.{raw_action.get('name', '?')}")
         return Action(
@@ -124,6 +125,7 @@ class AutomatonBuilder(object):
                 raw_action.get("attachments", []), all_archives, f"action {raw_action['name']}"
             ),
             on_enter=on_enter,
+            on_exit=on_exit,
             env=self._build_action_env(raw_action.get("env"), raw_action["name"]),
             line=line,
         )
@@ -240,6 +242,7 @@ class AutomatonBuilder(object):
             ui_button="",
             target=raw_init_action["target"],
             on_enter=raw_init_action.get("on-enter"),
+            on_exit=raw_init_action.get("on-exit"),
             env=env or None,
             line=line,
         )

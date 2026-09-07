@@ -242,10 +242,14 @@ class TrackingEngine:
         session_id: int | None = None,
         output_values: dict | None = None,
     ) -> None:
-        """Applies `action`'s own `env:` updates to the current scope —
-        shared by both the auto-tracking and manual-action paths (the
-        latter fires with empty signal_values). Publishes one EnvChanged
-        per key actually written. Then hands `action.on_enter` (§6.5's
+        """Applies `action`'s own env writes to the current scope — both
+        the legacy declarative `env:` map and its own `on-exit` script
+        (the future replacement for it, same `key = expr` writes, see
+        Automaton.eval_action_on_exit) — shared by both the auto-tracking
+        and manual-action paths (the latter fires with empty
+        signal_values). Publishes one EnvChanged per key actually
+        written; on-exit's own value for a key wins over env:'s should an
+        action somehow declare both. Then hands `action.on_enter` (§6.5's
         actuator.* calls) to the scope's own actuator set, which runs it
         as an OnEnterTask due now — never inline here: actuator.prompt
         is a model call, send_mail a network call, and the browser gets
@@ -253,19 +257,22 @@ class TrackingEngine:
         tracking/actuators/on_enter_task.py). `session_id`: the firing
         session, for the OnEnterTask itself. `output_values`: structured
         output dict from this turn's AI generation, available in env
-        expressions and on-enter scripts."""
-        if not action.env and not action.on_enter:
+        expressions and on-enter/on-exit scripts."""
+        if not action.env and not action.on_enter and not action.on_exit:
             return
         scope = self._scope_builder.build(
             automaton, state_key, signal_values, session_id=session_id, output_values=output_values,
         )
+        updates: dict = {}
         if action.env:
-            updates = automaton.eval_action_env(action, scope)
-            if updates:
-                self._env.update_action_set(updates)
-                if username is not None and project_id is not None:
-                    for key, value in updates.items():
-                        publish(EnvChanged(username=username, project_id=project_id, key=key, value=value))
+            updates.update(automaton.eval_action_env(action, scope))
+        if action.on_exit:
+            updates.update(automaton.eval_action_on_exit(action, scope))
+        if updates:
+            self._env.update_action_set(updates)
+            if username is not None and project_id is not None:
+                for key, value in updates.items():
+                    publish(EnvChanged(username=username, project_id=project_id, key=key, value=value))
         if action.on_enter:
             scope["actuator"].schedule_on_enter(action, scope, session_id=session_id)
 
