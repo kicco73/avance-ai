@@ -12,7 +12,7 @@ project:
   talk-enabled: false
 init-action:
   ui-label: new user
-  task: actuator.celebrate()
+  on-exit: chat.celebrate()
   target: state-0
 
 # Fixed instructions appended to every state's contextual_prompt (except
@@ -149,7 +149,7 @@ reactions:
     definition: |
       Use only alongside a real milestone: committing to a concrete plan,
       reaching a sustained-behavior threshold, or another moment that
-      already triggers actuator.celebrate() task. Never use it as a
+      already triggers chat.celebrate() via on-exit. Never use it as a
       substitute for actually acknowledging the milestone in the reply.
 
   listening:
@@ -463,7 +463,7 @@ states:
         ui-button: "Mark: plan defined"
         target: Action
         trigger:
-        task: actuator.celebrate()
+        on-exit: chat.celebrate()
 
       - name: action-0
         ui-label: Falta de Vinculo Terapeutico
@@ -559,7 +559,7 @@ states:
   Crisis:
     ui-label: Crisis
     transition-log-level: CRITICAL
-    chat: false
+    chat-enabled: false
     ui-description: >
       An acute-risk signal has been detected. Control passes to a fixed,
       non-generative safety protocol: this state has no contextual_prompt —
@@ -582,7 +582,7 @@ states:
     ui-label: Vinculacion
     contextual-prompt: "Escucha. Refleja. Devuelve lo dicho con precisión y sin añadir. Ofrece un encuadre breve y honesto; qué es esto, qué puede esperar, qué NO puede esperar, y que puede irse cuando quiera. Administra, y sólo si el flujo lo permite, ítems de E6 (6.1 a 6.5). Son los únicos autorizados y no cuentan contra la cuota de dosificación. Ofrece información de reducción de daños si la persona la pide o si el contenido lo hace pertinente."
     ui-description: "Estado previo a toda evaluación.\nNo es un estadio del Modelo Transteórico: es la PRECONDICIÓN para que el Modelo Transteórico pueda aplicarse."
-    chat: true
+    chat-enabled: true
     history-cutoff: false
     reactions-enabled: true
     actions:

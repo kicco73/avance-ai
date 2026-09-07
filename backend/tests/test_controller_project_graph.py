@@ -50,7 +50,7 @@ def test_task_is_reported_per_edge_not_per_node(client):
         "        target: b\n"
         "      - name: go-loud\n"
         "        target: b\n"
-        "        task: actuator.celebrate()\n"
+        "        task: task.send_mail(user.email, 'hi')\n"
         "  b:\n"
         "    contextual-prompt: there\n"
     )
@@ -63,4 +63,4 @@ def test_task_is_reported_per_edge_not_per_node(client):
     assert "task" not in graph["nodes"][0]["state"]
     edges_by_name = {e["action"]["name"]: e for e in graph["edges"]}
     assert edges_by_name["go-quiet"]["action"]["task"] is None
-    assert edges_by_name["go-loud"]["action"]["task"] == "actuator.celebrate()"
+    assert edges_by_name["go-loud"]["action"]["task"] == "task.send_mail(user.email, 'hi')"

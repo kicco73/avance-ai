@@ -1,4 +1,4 @@
-"""actuator.switch_to_human(user_id) takes a session out of the automaton
+"""chat.switch_to_human(user_id) takes a session out of the automaton
 entirely (see ChatService._process_human_turn): no _session_scope lock, no
 TrackingEngine, no auto-generated opening message — the operator's own
 reply is the only thing that produces the assistant message, delivered
@@ -14,7 +14,7 @@ from ai.ai_service import AiService
 from chat.chat_service import ChatService
 from chat.sessions.session_manager import ChatSessionManager
 from chat.ws_turn import WsChatTurn
-from conftest import make_test_actuator_factory, make_test_job_service
+from conftest import make_test_namespace_factory, make_test_job_service
 from db.db import Db
 from metrics.metric_service import MetricService
 from talker.base_talker import BaseTalker
@@ -83,8 +83,8 @@ def chat_service_for(tmp_path):
         project_service = FakeProjectService(automaton)
         metric_service = MetricService(db, project_service)
         job_service = make_test_job_service(db)
-        actuator_factory = make_test_actuator_factory(db, job_service)
-        tracking_service = TrackingService(db, project_service, metric_service, actuator_factory)
+        namespace_factory = make_test_namespace_factory(db, job_service)
+        tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
         calls = {"count": 0}
 
         def build_talker(username, session_id, session_type, project_id):
@@ -99,9 +99,9 @@ def chat_service_for(tmp_path):
         service = ChatService(
             ai_service=ai_service, ai_test_service=ai_service, project_service=project_service, db=db,
             session_manager=ChatSessionManager(db), tracking_service=tracking_service,
-            metric_service=metric_service, job_service=job_service, actuator_factory=actuator_factory,
+            metric_service=metric_service, job_service=job_service, namespace_factory=namespace_factory,
         )
-        return service, actuator_factory
+        return service, namespace_factory
 
     make.db = db
     return make
@@ -116,11 +116,11 @@ async def _run_turn(chat_service: ChatService, session_id: int, turn_id: str, te
 
 
 async def test_a_human_operators_reply_arrives_as_the_turns_own_done_frame(chat_service_for):
-    chat_service, actuator_factory = chat_service_for(
+    chat_service, namespace_factory = chat_service_for(
         _automaton(with_sources=False, autotracking_on_ai_message=True)
     )
     session = await chat_service.get_current_session_if_any_or_create_new(None)
-    actuator_factory.set_human_operator(session["id"], OPERATOR)
+    namespace_factory.set_human_operator(session["id"], OPERATOR)
 
     events = await _run_turn(chat_service, session["id"], "turn-1", "hello, is anyone there?")
 
@@ -140,11 +140,11 @@ async def test_a_human_mode_turn_never_holds_the_session_lock(chat_service_for):
     the whole point of dropping _session_scope for human mode."""
     started = asyncio.Event()
     finish = asyncio.Event()
-    chat_service, actuator_factory = chat_service_for(
+    chat_service, namespace_factory = chat_service_for(
         _automaton(with_sources=False, autotracking_on_ai_message=True), delay_first=finish,
     )
     session = await chat_service.get_current_session_if_any_or_create_new(None)
-    actuator_factory.set_human_operator(session["id"], OPERATOR)
+    namespace_factory.set_human_operator(session["id"], OPERATOR)
 
     async def first_turn():
         started.set()
@@ -167,11 +167,11 @@ async def test_a_human_mode_turn_never_holds_the_session_lock(chat_service_for):
 
 
 async def test_a_human_mode_session_never_auto_generates_an_opening_message(chat_service_for):
-    chat_service, actuator_factory = chat_service_for(
+    chat_service, namespace_factory = chat_service_for(
         _automaton(with_sources=False, autotracking_on_ai_message=True)
     )
     session = await chat_service.get_current_session_if_any_or_create_new(None)
-    actuator_factory.set_human_operator(session["id"], OPERATOR)
+    namespace_factory.set_human_operator(session["id"], OPERATOR)
 
     messages = await chat_service.get_messages(session["id"])
 

@@ -10,7 +10,9 @@ from __future__ import annotations
 import pytest
 
 from automaton.automaton import Action, Automaton, State
+from automaton.scope import EvaluationScope
 from events import EnvChanged, StateChanged, subscribe
+from tracking.actuators.chat_namespace import FakeChatNamespace
 from tracking.tracking_engine import TrackingEngine
 
 pytestmark = pytest.mark.contract
@@ -42,6 +44,33 @@ class FakeEnv:
 class FakeScopeBuilder:
     def build(self, automaton, state_key, signal_values, session_id=None, output_values=None):
         return {}
+
+
+class FakeChatNamespaceRecorder(FakeChatNamespace):
+    """The real FakeChatNamespace (so chat.celebrate()/chat.notify(...)
+    still evaluate as genuine ChatNamespace calls), plus recording
+    push_notification's own calls — apply_action_env's real target,
+    normally backed by a websocket/factory neither exists here."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.pushed: list[str] = []
+
+    def push_notification(self, snippet_text: str) -> None:
+        self.pushed.append(snippet_text)
+
+
+class FakeScopeBuilderWithChat:
+    """Same as FakeScopeBuilder, but a real EvaluationScope carrying a
+    fake `chat` namespace — needed once an on-exit script's own bare
+    statement (a chat.* call) is evaluated through _TaskEval, which
+    requires a genuine EvaluationScope, not a plain dict."""
+
+    def __init__(self, chat: FakeChatNamespaceRecorder) -> None:
+        self._chat = chat
+
+    def build(self, automaton, state_key, signal_values, session_id=None, output_values=None):
+        return EvaluationScope({"chat": self._chat}, automaton=automaton, state_key=state_key)
 
 
 def _automaton(
@@ -138,6 +167,35 @@ def test_apply_action_env_prefers_on_exit_over_env_for_the_same_key():
         action_target="a", action_env={"counter": "0"}, action_on_exit="env.counter = 1",
     )
     engine, _sink, env = _engine()
+    engine.apply_action_env(automaton, action, {}, state.key)
+
+    assert env.updates == [{"counter": 1}]
+
+
+def test_apply_action_env_pushes_on_exits_own_chat_snippets_through_the_scopes_chat_namespace():
+    """A mixed on-exit script (env write + bare chat.* call) applies its
+    env update exactly as before and separately pushes the joined
+    chat.* snippet text through scope["chat"].push_notification —
+    synchronously, right here, never via a background ActionTask (that
+    stays task's own job, see tracking/actuators/action_task.py)."""
+    automaton, state, action = _automaton(
+        action_target="a", action_on_exit="env.counter = 1\nchat.celebrate()\nchat.notify('Nice!', 'Done.')",
+    )
+    chat = FakeChatNamespaceRecorder()
+    engine = TrackingEngine(FakeSink(), FakeEnv(), FakeScopeBuilderWithChat(chat))
+
+    engine.apply_action_env(automaton, action, {}, state.key)
+
+    assert chat.pushed == ['celebrate()\nnotify("Nice!", "Done.")']
+
+
+def test_apply_action_env_never_touches_chat_when_on_exit_writes_env_only():
+    """FakeScopeBuilder's own scope carries no "chat" key at all — if
+    apply_action_env ever touched it for a plain env-only on-exit
+    script, this would KeyError instead of passing."""
+    automaton, state, action = _automaton(action_target="a", action_on_exit="env.counter = 1")
+    engine, _sink, env = _engine()
+
     engine.apply_action_env(automaton, action, {}, state.key)
 
     assert env.updates == [{"counter": 1}]

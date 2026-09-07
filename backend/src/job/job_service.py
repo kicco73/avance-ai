@@ -2,7 +2,7 @@
 
 Every job the platform runs outside a test run — a session import, a
 project upload, a session summary, an outgoing mail, a cross-project
-wake-up, an actuator.defer — goes through this service: it holds the
+wake-up, a task.defer — goes through this service: it holds the
 shared JobQueue (worker pool) and the Scheduler (time-based hand-off
 into that queue) as private members, and nothing else in the codebase
 constructs or touches either. Consumers get four verbs — submit now,

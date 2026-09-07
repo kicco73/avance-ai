@@ -170,7 +170,7 @@ class AutomatonYamlEditor:
             "ui_label": raw_state.get("ui-label", state_name),
             "ui_description": raw_state["ui-description"].strip() if raw_state.get("ui-description") else None,
             "final": len(raw_actions) == 0,
-            "chat": raw_state.get("chat", True),
+            "chat_enabled": raw_state.get("chat-enabled", True),
             "actions": [self._action_payload_from_raw(raw_action, state_name) for raw_action in raw_actions],
             "ai_may_read_sources": list(raw_state.get("ai-may-read-sources") or []),
             "ai_must_read_sources": list(raw_state.get("ai-must-read-sources") or []),

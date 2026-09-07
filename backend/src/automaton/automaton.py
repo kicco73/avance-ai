@@ -40,10 +40,12 @@ class Action:
     # *how you got there*, not the destination itself.
     task: str | None = None
     # Same statement-splitting as task (TriggerExpressionAnalyzer.
-    # task_statements) but one `env.<key> = expr` line per env write
-    # (TriggerExpressionAnalyzer.on_exit_assignment) — no actuator.*
-    # calls of its own, that stays task's job. The future replacement
-    # for the declarative `env:` map below: see Automaton.eval_action_on_exit.
+    # task_statements): a mix of `env.<key> = expr` lines
+    # (TriggerExpressionAnalyzer.on_exit_assignment) and bare
+    # `chat.<method>(...)` calls — no task.*'s own send_mail/whatsapp/
+    # defer/prompt, that stays task's job. The future replacement for
+    # the declarative `env:` map below (its own env-write half): see
+    # Automaton.eval_action_on_exit.
     on_exit: str | None = None
     # {env key: expression source}, evaluated when this action fires and
     # merged onto the env store so the next prompt sees the update. Same
@@ -84,8 +86,11 @@ class State:
     history_cutoff: bool = False
     # If false, chat turns are rejected while this is the current state
     # (see chat.turn_processor.TurnProcessor._begin_turn) — independent of
-    # fixed_message/history_cutoff: neither implies this.
-    chat: bool = True
+    # fixed_message/history_cutoff: neither implies this. Named
+    # chat_enabled, not chat, to keep clear of the unrelated `chat.*`
+    # expression namespace an on-exit script can call into (see
+    # tracking.actuators.chat_namespace).
+    chat_enabled: bool = True
     # If true, the bot may react to the user's message this turn, choosing
     # from the project's whole `reactions` dict — never a per-state subset
     # (see TurnProtocol's own conditional inclusion of the 'reaction' tag).
@@ -226,7 +231,7 @@ class StatePayload(TypedDict):
     ui_label: str
     ui_description: str | None
     final: bool
-    chat: bool
+    chat_enabled: bool
     # The project's whole reaction vocabulary, independent of `key` — a
     # user can react with any of these on any bot message, regardless of
     # which state produced it. See State.reactions_enabled for the bot's
@@ -250,8 +255,9 @@ def manual_actions_for(actions: list[ActionPayload], auto_tracking_enabled: bool
 
 class JsSnippet(str):
     # FIXME: subclassing str, not a plain str, is load-bearing —
-    # render_task uses isinstance(result, JsSnippet) to tell an
-    # actuator's wire-ready JS apart from actuator.prompt()'s plain text.
+    # render_task/eval_action_on_exit use isinstance(result, JsSnippet)
+    # to tell a task/chat call's wire-ready JS apart from task.prompt()'s
+    # plain text.
     pass
 
 
@@ -261,7 +267,7 @@ class DeferredExpression(object):
     lambda's body, exactly like the plain closure it replaces — but one
     that also *knows its own source* (`source`, the body re-emitted by
     ast.unparse) and the EvaluationScope it was built against. Those two
-    are what let actuator.defer hibernate the call instead of holding a
+    are what let task.defer hibernate the call instead of holding a
     live closure (see tracking/actuators/action_task.py)."""
 
     def __init__(self, evaluator: "_TaskEval", body: ast.expr) -> None:
@@ -503,7 +509,7 @@ class Automaton(object):
             "ui_label": state.ui_label,
             "ui_description": state.ui_description,
             "final": state.final,
-            "chat": state.chat,
+            "chat_enabled": state.chat_enabled,
             "reactions": [self.get_reaction_option_payload(r) for r in self.reactions],
             "actions": [Automaton.get_action_payload(a) for a in state.actions],
             "ai_may_read_sources": list(state.ai_may_read_sources),
@@ -628,69 +634,88 @@ class Automaton(object):
         return result
 
     @staticmethod
-    def eval_action_on_exit(action: Action, scope: dict[str, Any]) -> dict[str, Any]:
-        """`action.on_exit`'s own `env.<key> = expr` lines, evaluated
-        against `scope` — eval_action_env's own contract (only
-        successfully evaluated keys are returned, a bad expression logs
-        and is skipped), but split into statements with task's own
-        grammar (TriggerExpressionAnalyzer.task_statements) so
-        on-exit reads exactly like task: one statement per line, a
-        single call may span several lines, and a '#' comment just
-        works. A statement that isn't an `env.<key> = <expr>` assignment
-        (TriggerExpressionAnalyzer.on_exit_assignment) is refused
-        (on-exit has no actuator.* side effects of its own — that's
-        task's job) and logged, not raised — build-time validation
-        (AutomatonValidator.validate_on_exit) already rules this out for
-        any project reaching here."""
+    def eval_action_on_exit(action: Action, scope: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
+        """`action.on_exit`'s own mixed grammar, evaluated against
+        `scope` and split into statements with task's own grammar
+        (TriggerExpressionAnalyzer.task_statements) so on-exit reads
+        exactly like task: one statement per line, a single call may
+        span several lines, and a '#' comment just works. Each
+        statement is either an `env.<key> = expr` assignment
+        (TriggerExpressionAnalyzer.on_exit_assignment — eval_action_env's
+        own contract: only successfully evaluated keys are returned, a
+        bad expression logs and is skipped) or a bare `chat.<method>(...)`
+        call, evaluated the same way render_task_script evaluates a
+        task line's own non-assignment statement — its return value is
+        collected only when it's a JsSnippet, everything else
+        contributes nothing. A statement that's neither a valid
+        assignment nor a `chat.*` call producing a JsSnippet is logged
+        and skipped, never raised — build-time validation
+        (AutomatonValidator.validate_on_exit) already rules out anything
+        else reaching here. Note what on-exit still can't do:
+        task.*'s own send_mail/whatsapp/defer/prompt remain task's job
+        alone — on-exit may only write env and call chat.*. Returns
+        (env_updates, joined_chat_snippets_or_None), the second element
+        exactly `render_task_script`'s own final line."""
         if not action.on_exit:
-            return {}
+            return {}, None
         try:
             statements = TriggerExpressionAnalyzer.task_statements(action.on_exit)
         except SyntaxError as exc:
             logger.warning("on-exit parsing failed for action '%s': %s", action.name, exc)
-            return {}
+            return {}, None
         result: dict[str, Any] = {}
+        snippets: list[str] = []
         for _line_number, statement in statements:
             assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
-            if assignment is None:
-                logger.warning(
-                    "on-exit statement ignored for action '%s': '%s' is not an 'env.<key> = expr' assignment.",
-                    action.name, statement,
-                )
+            if assignment is not None:
+                key, expression = assignment
+                try:
+                    result[key] = simpleeval.EvalWithCompoundTypes(names=scope).eval(expression)
+                except Exception as exc:
+                    logger.warning(
+                        "on-exit expression evaluation failed for action '%s', key '%s' ('%s'): %s",
+                        action.name, key, expression, exc,
+                    )
                 continue
-            key, expression = assignment
             try:
-                result[key] = simpleeval.EvalWithCompoundTypes(names=scope).eval(expression)
+                value = _TaskEval(names=scope).eval(statement)
             except Exception as exc:
                 logger.warning(
-                    "on-exit expression evaluation failed for action '%s', key '%s' ('%s'): %s",
-                    action.name, key, expression, exc,
+                    "on-exit expression evaluation failed for action '%s' ('%s'): %s",
+                    action.name, statement, exc,
                 )
-        return result
+                continue
+            if isinstance(value, JsSnippet):
+                snippets.append(value)
+            else:
+                logger.warning(
+                    "on-exit statement ignored for action '%s': '%s' is neither an 'env.<key> = expr' "
+                    "assignment nor a 'chat.<method>(...)' call.",
+                    action.name, statement,
+                )
+        return result, ("\n".join(snippets) if snippets else None)
 
     @staticmethod
     def render_task(action: Action, scope: EvaluationScope) -> str | None:
         """Evaluates `action.task` — the same namespaced-expression
-        grammar as `trigger`/`env` (one `actuator.<name>(...)` call per
-        top-level statement, e.g. `actuator.celebrate()` /
-        `actuator.notify(user.name, "Hi!")`, split via
-        TriggerExpressionAnalyzer.task_statements so a single call may
-        itself span several lines and a '#' comment needs no special
-        handling) — into the wire-ready JS text the frontend's
+        grammar as `trigger`/`env` (one `task.<name>(...)` call per
+        top-level statement, e.g. `task.send_mail(user.email, "Hi!")`,
+        split via TriggerExpressionAnalyzer.task_statements so a single
+        call may itself span several lines and a '#' comment needs no
+        special handling) — into the wire-ready JS text the frontend's
         taskActions.js already knows how to run unchanged: each
         statement's own return value is tunneled through verbatim only
-        when it's a JsSnippet (`celebrate()`, `notify(...)`, and `show(...)`
-        compile to themselves, minus the "actuator." prefix) — a plain
-        `str` (e.g. a bare `actuator.prompt(...)` statement's own reply
-        text, never wrapped by another actuator call) or None (a pure
-        server-side side effect, e.g. `send_mail`) both contribute
-        nothing. A statement may instead be a simple `name = <expr>`
-        assignment (see TriggerExpressionAnalyzer.task_assignment):
-        `<expr>` is evaluated the same way but its result is stored under
-        `name` directly on `actuator_scope` — never appended to
-        `snippets`, even when it's a JsSnippet — so every later statement
-        in this same task can reference `name` bare (including inside
-        an actuator.defer(...) lambda, which shares this same evaluator/
+        when it's a JsSnippet — a plain `str` (e.g. a bare
+        `task.prompt(...)` statement's own reply text, never wrapped by
+        another task call) or None (a pure server-side side effect,
+        e.g. `send_mail`) both contribute nothing. A statement may
+        instead be a simple `name = <expr>` assignment (see
+        TriggerExpressionAnalyzer.task_assignment): `<expr>` is
+        evaluated the same way but its result is stored under `name`
+        directly on `task_scope` — never appended to `snippets`, even
+        when it's a JsSnippet — so every later statement in this same
+        task can reference `name` bare (including inside a
+        task.defer(...) lambda, which shares this same evaluator/
         scope — see DeferredExpression.scope and freeze()'s own "extra"
         capture, which already snapshots any such bare scalar). A
         statement that fails to evaluate is logged and simply contributes
@@ -702,16 +727,16 @@ class Automaton(object):
         runs against."""
         if not action.task:
             return None
-        return Automaton.render_task_script(action.task, scope.for_actuators(action_name=action.name))
+        return Automaton.render_task_script(action.task, scope.for_task(action_name=action.name))
 
     @staticmethod
-    def render_task_script(script: str, actuator_scope: EvaluationScope) -> str | None:
+    def render_task_script(script: str, task_scope: EvaluationScope) -> str | None:
         """render_task's own engine, on a bare script and an already
-        actuator-view scope — also what an ActionTask runs, later and
+        task-view scope — also what an ActionTask runs, later and
         possibly in another process, against a rehydrated scope (see
         tracking/actuators/action_task.py): the same code path whether
         the task fires now or was deferred."""
-        action_name = actuator_scope.action_name
+        action_name = task_scope.action_name
         try:
             statements = TriggerExpressionAnalyzer.task_statements(script)
         except SyntaxError as exc:
@@ -722,7 +747,7 @@ class Automaton(object):
             assignment = TriggerExpressionAnalyzer.task_assignment(statement)
             target, expression = assignment if assignment is not None else (None, statement)
             try:
-                result = _TaskEval(names=actuator_scope).eval(expression)
+                result = _TaskEval(names=task_scope).eval(expression)
             except Exception as exc:
                 logger.warning(
                     "task expression evaluation failed for action '%s' ('%s'): %s",
@@ -730,7 +755,7 @@ class Automaton(object):
                 )
                 continue
             if target is not None:
-                actuator_scope[target] = result
+                task_scope[target] = result
             elif isinstance(result, JsSnippet):
                 snippets.append(result)
         return "\n".join(snippets) if snippets else None

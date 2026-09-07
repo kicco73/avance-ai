@@ -9,7 +9,7 @@ from ai import AiService
 from ai.llm_provider import ToolCall, ToolCallsRequested, ToolSpec
 from automaton.automaton import Action, Automaton, State
 from chat.errors import ChatServiceError
-from conftest import make_test_actuator_factory
+from conftest import make_test_namespace_factory
 from metrics.metric_service import MetricService
 from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
@@ -83,7 +83,7 @@ async def test_a_turn_whose_system_prompt_alone_exceeds_the_budget_is_rejected_b
     metrics = MetricService(db, project_service)
     ai_service = RecordingAiService()
     service = TrackingService(
-        db, project_service, metrics, make_test_actuator_factory(db), input_token_budget_per_turn=10,
+        db, project_service, metrics, make_test_namespace_factory(db), input_token_budget_per_turn=10,
     )
 
     with pytest.raises(ChatServiceError) as exc_info:
@@ -105,7 +105,7 @@ async def test_a_turn_within_budget_is_not_rejected(db):
     metrics = MetricService(db, project_service)
     ai_service_ok = RecordingAiServiceThatFinishes()
     service = TrackingService(
-        db, project_service, metrics, make_test_actuator_factory(db), input_token_budget_per_turn=100000,
+        db, project_service, metrics, make_test_namespace_factory(db), input_token_budget_per_turn=100000,
     )
 
     await service._process(session_id, "hello", ai_service_ok)

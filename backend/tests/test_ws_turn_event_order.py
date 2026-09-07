@@ -16,7 +16,7 @@ from automaton.automaton import Action, Automaton, Source, State
 from chat.chat_service import ChatService
 from chat.sessions.session_manager import ChatSessionManager
 from chat.ws_turn import WsChatTurn
-from conftest import make_test_actuator_factory, make_test_job_service
+from conftest import make_test_namespace_factory, make_test_job_service
 from db.db import Db
 from metrics.metric_service import MetricService
 from test_chat_tool_set_integration import FakeProjectService, PROJECT_ID
@@ -84,12 +84,12 @@ def chat_service_for(tmp_path):
         project_service = FakeProjectService(automaton)
         metric_service = MetricService(db, project_service)
         job_service = make_test_job_service(db)
-        actuator_factory = make_test_actuator_factory(db, job_service)
-        tracking_service = TrackingService(db, project_service, metric_service, actuator_factory)
+        namespace_factory = make_test_namespace_factory(db, job_service)
+        tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
         return ChatService(
             ai_service=ai_service, ai_test_service=ai_service, project_service=project_service, db=db,
             session_manager=ChatSessionManager(db), tracking_service=tracking_service,
-            metric_service=metric_service, job_service=job_service, actuator_factory=actuator_factory,
+            metric_service=metric_service, job_service=job_service, namespace_factory=namespace_factory,
         )
 
     # The very database those services write to — what a test asserts the

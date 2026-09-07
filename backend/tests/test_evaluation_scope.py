@@ -87,6 +87,8 @@ def test_the_scope_always_carries_every_namespace(db):
     assert isinstance(scope["source"], SourceNamespace)
     assert isinstance(scope["attachment"], AttachmentNamespace)
     assert scope["metric"].retention() is not None
+    assert scope["task"] is not None
+    assert scope["chat"] is not None
 
 
 @pytest.mark.parametrize("trigger", [
@@ -166,8 +168,8 @@ def test_a_declared_source_is_readable_from_an_env_expression_end_to_end(db):
 def test_attachment_read_resolves_a_text_archive_from_both_scope_views_and_raises_for_anything_else(db):
     """attachment.read(name), like a source read, goes straight to Db at
     the automaton's own pinned (project_id, revision) — never automaton.
-    attachments' in-memory copy — and stays present in the actuator view
-    a task line actually runs against, which drops only `session`."""
+    attachments' in-memory copy — and stays present in the task view
+    a task line actually runs against, which drops only `session`/`chat`."""
     db.ensure_project(PROJECT_ID)
     db.save_project_files(
         PROJECT_ID, {"behaviour/policy.txt": b"be kind", "logo.png": b"\x89PNG"},
@@ -176,16 +178,18 @@ def test_attachment_read_resolves_a_text_archive_from_both_scope_views_and_raise
     automaton = _pinned(db, _automaton_with_trigger("signal.mood >= 1"))
 
     scope = _builder(db).build(automaton, "a", {})
-    actuator_scope = scope.for_actuators()
+    task_scope = scope.for_task()
 
     assert scope["attachment"].read("policy.txt") == "be kind"
-    assert actuator_scope["attachment"].read("policy.txt") == "be kind"
+    assert task_scope["attachment"].read("policy.txt") == "be kind"
     with pytest.raises(ValueError, match="not found"):
         scope["attachment"].read("nope.txt")
     with pytest.raises(ValueError, match="binary file"):
         scope["attachment"].read("logo.png")
 
     assert "session" in scope
-    assert "session" not in actuator_scope
-    assert set(actuator_scope) == set(scope) - {"session"}
-    assert actuator_scope.automaton is automaton and actuator_scope.state_key == "a"
+    assert "chat" in scope
+    assert "session" not in task_scope
+    assert "chat" not in task_scope
+    assert set(task_scope) == set(scope) - {"session", "chat"}
+    assert task_scope.automaton is automaton and task_scope.state_key == "a"

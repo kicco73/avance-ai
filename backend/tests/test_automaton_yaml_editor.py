@@ -31,7 +31,7 @@ class TestAddState:
         assert payload["ui_label"] == "New State"
         assert payload["ui_description"] is None
         assert payload["final"] is True
-        assert payload["chat"] is True
+        assert payload["chat_enabled"] is True
         assert payload["actions"] == []
 
         second = editor.add_state()
@@ -132,12 +132,12 @@ class TestSetActionField:
 
         assert editor.set_action_field("a", "go-b", "target", "c")["target"] == "c"
         assert editor.set_action_field("a", "go-b", "ui-description", "Goes to B.")["ui_description"] == "Goes to B."
-        editor.set_action_field("a", "go-b", "task", "actuator.celebrate()")
+        editor.set_action_field("a", "go-b", "task", "task.send_mail(user.email, 'hi')")
 
         action = _action(builds(editor.serialize()), "a", "go-b")
         assert action.target == "c"
         assert action.ui_description == "Goes to B."
-        assert action.task == "actuator.celebrate()"
+        assert action.task == "task.send_mail(user.email, 'hi')"
 
     def test_trigger_edit_and_clearing_removes_the_key_instead_of_storing_an_empty_string(self):
         editor = make_editor()

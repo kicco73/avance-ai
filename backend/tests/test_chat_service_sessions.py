@@ -26,12 +26,12 @@ def chat_service(db):
     job_service = make_test_job_service(db)
     # None is fine here since these tests never reach any path that reads it.
     tracking_service = TrackingService(
-        db, project_service=None, metrics_service=metric_service, actuator_factory=None,
+        db, project_service=None, metrics_service=metric_service, namespace_factory=None,
     )
     return ChatService(
         ai_service=None, ai_test_service=None, project_service=None, db=db, session_manager=ChatSessionManager(db),
         tracking_service=tracking_service, metric_service=metric_service,
-        job_service=job_service, actuator_factory=None,
+        job_service=job_service, namespace_factory=None,
     )
 
 

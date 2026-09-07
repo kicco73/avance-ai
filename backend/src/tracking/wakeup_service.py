@@ -15,7 +15,7 @@ from logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from session import Session
-from tracking.actuators import ActuatorSetFactory
+from tracking.actuators import TaskNamespaceFactory
 from tracking.automaton_namespace import AutomatonNamespace
 from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
@@ -53,21 +53,21 @@ class WakeupJob(CancelableJob):
 
 class WakeupService:
     def __init__(
-        self, db: Db, project_service: ProjectService, job_service: JobService, actuator_factory: ActuatorSetFactory,
+        self, db: Db, project_service: ProjectService, job_service: JobService, namespace_factory: TaskNamespaceFactory,
         ws_notifications: WsNotifications | None = None, tracking_service: TrackingService | None = None,
         ai_service: AiService | None = None,
     ) -> None:
         self._db = db
         self._project_service = project_service
         self._job_service = job_service
-        self._actuator_factory = actuator_factory
+        self._namespace_factory = namespace_factory
         # None whenever no websocket transport is configured — push is
         # simply skipped in that case; a re-evaluated self-loop is still
         # applied and persisted either way, only live delivery depends on this.
         self._ws_notifications = ws_notifications
         self._tracking_service = tracking_service
-        # Only actuator.prompt() needs this — None here just means a
-        # self-loop's own task falls back to actuator.prompt()'s own
+        # Only task.prompt() needs this — None here just means a
+        # self-loop's own task falls back to task.prompt()'s own
         # no-context default ("", logged) instead of a real generation call.
         self._ai_service = ai_service
 
@@ -120,7 +120,9 @@ class WakeupService:
             automaton_namespace = AutomatonNamespace(self._db, self._project_service)
             scope_builder = EvaluationScopeBuilder(
                 env, metrics, session_facts, user_facts, self._db, automaton_namespace,
-                self._actuator_factory.live(project_id=observer_project_id), ai_service=self._ai_service,
+                self._namespace_factory.live(project_id=observer_project_id),
+                chat_namespace=self._namespace_factory.chat_live(project_id=observer_project_id),
+                ai_service=self._ai_service,
             )
             tracking_engine = TrackingEngine(DbTrackingSink(self._db), env, scope_builder)
 

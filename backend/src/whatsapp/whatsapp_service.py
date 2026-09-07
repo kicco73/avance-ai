@@ -491,17 +491,17 @@ class WhatsAppService(object):
         normalized = phone_number.strip().lstrip("+")
         user = self._db.get_user_by_whatsapp_phone_number(normalized)
         if user is None:
-            logger.info(f"WhatsApp: actuator.whatsapp to unregistered number {phone_number} — not sent.")
+            logger.info(f"WhatsApp: task.whatsapp to unregistered number {phone_number} — not sent.")
             return False
         try:
             await self._client.send_text(normalized, to_whatsapp_markdown(message_md))
         except httpx.HTTPError as exc:
-            logger.warning(f"WhatsApp: actuator.whatsapp to {phone_number} failed: {exc}")
+            logger.warning(f"WhatsApp: task.whatsapp to {phone_number} failed: {exc}")
             return False
         try:
             await self._chat_service.record_whatsapp_send(user["id"], project_id, message_md)
         except Exception as exc:  # noqa: BLE001
-            logger.warning(f"WhatsApp: actuator.whatsapp sent to {phone_number} but session logging failed: {exc}")
+            logger.warning(f"WhatsApp: task.whatsapp sent to {phone_number} but session logging failed: {exc}")
         return True
 
     def _wants_voice(self, spoken: bool) -> bool:

@@ -27,16 +27,19 @@ class IdentifierRegistry:
         "state_duration_in_minutes": "How long the conversation has sat in its current state, in minutes.",
     }
 
-    ACTUATOR: dict[str, str] = {
-        "send_mail": "Sends an email — e.g. actuator.send_mail(user.email, 'Some **markdown** body').",
-        "whatsapp": "Sends a WhatsApp message to a phone number already linked to a user account — e.g. actuator.whatsapp('34600000001', 'Some **markdown** body'). `phone_number` is E.164 digits, '+' optional. Returns True once sent, False for a number with no linked account or a failed delivery — nothing is sent in the False case. Once sent, it's also logged as an assistant message in the recipient's open session on this project, opening a new whatsapp session for them if they don't have one open.",
-        "celebrate": "Plays a confetti animation in the frontend — e.g. actuator.celebrate().",
-        "notify": "Shows a toast in the frontend — e.g. actuator.notify('Nice!', 'You reached **state B**.'). `body_md` is markdown.",
-        "show": "Shows a dialog in the frontend with body_md as its content — e.g. actuator.show('**Full** details here.'). `body_md` is markdown.",
-        "defer": "Runs another actuator call later — e.g. actuator.defer(lambda: actuator.send_mail(user.email, 'Reminder'), datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=env.reminder_days)). The first argument must be a `lambda:` with no arguments; `when` must be built from datetime.datetime(...) or datetime.datetime.now(...), optionally ± datetime.timedelta(...). The call survives a server restart: it is stored as text with a snapshot of `user`/`signal`/`env` as they were when deferred, under the user and project (never a session — `session.*` is not available in task).",
-        "prompt": "Runs an extra, synchronous, fully isolated model call — no conversation history, no attachments, no signal/env context, nothing persisted, just `prompt` in and its text back — e.g. actuator.notify('Note', actuator.prompt('Summarize the last exchange in one sentence.')).",
-        "switch_to_human": "Hands the session to a person — e.g. actuator.switch_to_human(user.email). `user_id` is that person's username/email; they get pushed a notification with a link to take over this session's next turns as the human, in place of the AI.",
-        "switch_to_ai": "Hands a session back to the AI after switch_to_human — e.g. actuator.switch_to_ai().",
+    TASK: dict[str, str] = {
+        "send_mail": "Sends an email — e.g. task.send_mail(user.email, 'Some **markdown** body').",
+        "whatsapp": "Sends a WhatsApp message to a phone number already linked to a user account — e.g. task.whatsapp('34600000001', 'Some **markdown** body'). `phone_number` is E.164 digits, '+' optional. Returns True once sent, False for a number with no linked account or a failed delivery — nothing is sent in the False case. Once sent, it's also logged as an assistant message in the recipient's open session on this project, opening a new whatsapp session for them if they don't have one open.",
+        "defer": "Runs another task call later — e.g. task.defer(lambda: task.send_mail(user.email, 'Reminder'), datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=env.reminder_days)). The first argument must be a `lambda:` with no arguments; `when` must be built from datetime.datetime(...) or datetime.datetime.now(...), optionally ± datetime.timedelta(...). The call survives a server restart: it is stored as text with a snapshot of `user`/`signal`/`env` as they were when deferred, under the user and project (never a session — `session.*` is not available in task).",
+        "prompt": "Runs an extra, synchronous, fully isolated model call — no conversation history, no attachments, no signal/env context, nothing persisted, just `prompt` in and its text back — e.g. task.send_mail(user.email, task.prompt('Summarize the last exchange in one sentence.')).",
+    }
+
+    CHAT: dict[str, str] = {
+        "celebrate": "Plays a confetti animation in the frontend — e.g. chat.celebrate(). Only available in an action's own on-exit script.",
+        "notify": "Shows a toast in the frontend — e.g. chat.notify('Nice!', 'You reached **state B**.'). `body_md` is markdown. Only available in an action's own on-exit script.",
+        "show": "Shows a dialog in the frontend with body_md as its content — e.g. chat.show('**Full** details here.'). `body_md` is markdown. Only available in an action's own on-exit script.",
+        "switch_to_human": "Hands the session to a person — e.g. chat.switch_to_human(user.email). `user_id` is that person's username/email; they get pushed a notification with a link to take over this session's next turns as the human, in place of the AI. Only available in an action's own on-exit script.",
+        "switch_to_ai": "Hands a session back to the AI after switch_to_human — e.g. chat.switch_to_ai(). Only available in an action's own on-exit script.",
     }
 
     ATTACHMENT: dict[str, str] = {
@@ -44,7 +47,7 @@ class IdentifierRegistry:
     }
 
     DATETIME: dict[str, str] = {
-        "datetime": "Builds a specific date and time — e.g. datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc). Mainly used as actuator.defer's own `when` argument, which must be timezone-aware.",
+        "datetime": "Builds a specific date and time — e.g. datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc). Mainly used as task.defer's own `when` argument, which must be timezone-aware.",
         "timedelta": "A duration, for offsetting a datetime — e.g. datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1).",
     }
 
@@ -85,17 +88,24 @@ class IdentifierRegistry:
     # so SESSION_METRIC's own metrics would otherwise match here too.
     METRIC: dict[str, str] = _metric_descriptions(has_scope="all_sessions_per_user", excludes_scope="one_session")
 
-    # The two places an expression can live see two different views of
-    # the registry below. A `trigger:`/`env:` expression is evaluated
-    # *inside* a session and may do nothing but read, so `actuator` is
+    # The three places an expression can live see three different views
+    # of the registry below. A `trigger:`/`env:` expression is evaluated
+    # *inside* a session and may do nothing but read, so `task` is
     # out — and so is `attachment`, a whole-file read with no place in a
-    # boolean condition or a simple value. An `task` line is where
-    # actuators (and attachment.read) are called — and an actuator.defer'd
+    # boolean condition or a simple value — and so is `chat`, whose
+    # methods are only ever meaningful as the reaction to leaving a
+    # state, not as part of deciding whether to. A `task:` line is where
+    # task.* (and attachment.read) are called — and a task.defer'd
     # call runs long after the session that fired it is over, so `session`
-    # (and everything under it) is out there instead.
+    # is out there instead, and so is `chat` (an on-exit-only namespace,
+    # never task's). An `on-exit:` script is where `chat` is available —
+    # otherwise the same exclusions as trigger/env (task.*/attachment
+    # stay out; on-exit has no local-variable/attachment-read concept of
+    # its own).
     # Exclusion is by prefix: naming a namespace drops its nested ones too.
-    TRIGGER_SCOPE_EXCLUDES: tuple[str, ...] = ("actuator", "attachment")
-    ACTUATOR_SCOPE_EXCLUDES: tuple[str, ...] = ("session",)
+    TRIGGER_SCOPE_EXCLUDES: tuple[str, ...] = ("task", "attachment", "chat")
+    TASK_SCOPE_EXCLUDES: tuple[str, ...] = ("session", "chat")
+    ON_EXIT_SCOPE_EXCLUDES: tuple[str, ...] = ("task", "attachment")
 
     @staticmethod
     def excluding(registry: dict[str, dict[str, str]], excluded: tuple[str, ...]) -> dict[str, dict[str, str]]:
@@ -109,8 +119,12 @@ class IdentifierRegistry:
         return cls.excluding(registry, cls.TRIGGER_SCOPE_EXCLUDES)
 
     @classmethod
-    def for_actuators(cls, registry: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
-        return cls.excluding(registry, cls.ACTUATOR_SCOPE_EXCLUDES)
+    def for_task(cls, registry: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
+        return cls.excluding(registry, cls.TASK_SCOPE_EXCLUDES)
+
+    @classmethod
+    def for_on_exit(cls, registry: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
+        return cls.excluding(registry, cls.ON_EXIT_SCOPE_EXCLUDES)
 
     @classmethod
     def build(cls, signals: list[Signal], env_keys: list[EnvKey]) -> dict[str, dict[str, str]]:
@@ -123,7 +137,8 @@ class IdentifierRegistry:
             "session": dict(cls.SESSION),
             "session.metric": dict(cls.SESSION_METRIC),
             "user": dict(cls.USER),
-            "actuator": dict(cls.ACTUATOR),
+            "task": dict(cls.TASK),
+            "chat": dict(cls.CHAT),
             "attachment": dict(cls.ATTACHMENT),
             "metric": dict(cls.METRIC),
             "datetime": dict(cls.DATETIME),

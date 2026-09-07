@@ -15,7 +15,7 @@ from automaton.automaton import Action, Automaton, State
 from chat.channels import NATIVE_CHAT, WHATSAPP_CHAT
 from chat.chat_service import ChatService
 from chat.sessions.session_manager import ChatSessionManager
-from conftest import FakeAiService, make_test_actuator_factory, make_test_job_service
+from conftest import FakeAiService, make_test_namespace_factory, make_test_job_service
 from metrics.metric_service import MetricService
 from session import Session
 from tracking.tracking_service import TrackingService
@@ -80,13 +80,13 @@ def _chat_service(db) -> ChatService:
     project_service = _FakeProjectService(_automaton())
     metric_service = MetricService(db, project_service)
     job_service = make_test_job_service(db)
-    actuator_factory = make_test_actuator_factory(db, job_service)
-    tracking_service = TrackingService(db, project_service, metric_service, actuator_factory)
+    namespace_factory = make_test_namespace_factory(db, job_service)
+    tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
     return ChatService(
         ai_service=ai_service, ai_test_service=ai_service, project_service=project_service, db=db,
         session_manager=ChatSessionManager(db, open_window_minutes=5),
         tracking_service=tracking_service, metric_service=metric_service,
-        job_service=job_service, actuator_factory=actuator_factory,
+        job_service=job_service, namespace_factory=namespace_factory,
     )
 
 

@@ -73,7 +73,7 @@ def test_returns_one_dict_per_namespace_for_the_active_project(client):
     body = response.json()
     # "automaton" is always present, even empty with no other project.
     assert set(body) == {
-        "signal", "env", "session", "session.metric", "user", "source", "actuator", "attachment", "metric",
+        "signal", "env", "session", "session.metric", "user", "source", "task", "chat", "attachment", "metric",
         "automaton", "datetime", "datetime.timezone",
     }
     assert body["automaton"] == {}

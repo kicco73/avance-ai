@@ -16,7 +16,7 @@ from automaton.automaton import Action, Automaton, State
 from chat.chat_service import ChatService
 from chat.errors import ChatServiceError
 from chat.sessions.session_manager import ChatSessionManager
-from conftest import FakeAiService, make_test_actuator_factory, make_test_job_service
+from conftest import FakeAiService, make_test_namespace_factory, make_test_job_service
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService
 
@@ -86,8 +86,8 @@ def _chat_service(db) -> tuple[ChatService, _FakeProjectService]:
     project_service = _FakeProjectService(_automaton())
     metric_service = MetricService(db, project_service)
     job_service = make_test_job_service(db)
-    actuator_factory = make_test_actuator_factory(db, job_service)
-    tracking_service = TrackingService(db, project_service, metric_service, actuator_factory)
+    namespace_factory = make_test_namespace_factory(db, job_service)
+    tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
     chat_service = ChatService(
         ai_service=ai_service,
         ai_test_service=ai_service,
@@ -97,7 +97,7 @@ def _chat_service(db) -> tuple[ChatService, _FakeProjectService]:
         tracking_service=tracking_service,
         metric_service=metric_service,
         job_service=job_service,
-        actuator_factory=actuator_factory,
+        namespace_factory=namespace_factory,
     )
     return chat_service, project_service
 

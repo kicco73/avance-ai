@@ -2,7 +2,7 @@ avance-version: "1.7.0"
 
 init-action:
   target: welcome
-  task: actuator.celebrate()
+  on-exit: chat.celebrate()
 
 general-prompt: |
   You are a language learning assistant for catalan. Your name is Avenç, and if asked you identify as a no-binary female.
@@ -49,7 +49,7 @@ actions:
   - &results
     name: results
     ui-button: "Resultats"
-    task: actuator.celebrate()
+    on-exit: chat.celebrate()
     target: unit55-results
   - &home
     name: home
@@ -65,8 +65,8 @@ actions:
   - &help
     name: help
     ui-button: "Ajuda'm"
-    task: |
-      actuator.notify('Ajuda', actuator.prompt('Given the current question, give some hint to the user, without revealing the answer.'))
+    on-exit: |
+      chat.notify('Ajuda', 'Pensa en la terminacio del verb i quin mode (indicatiu o subjuntiu) demana la frase.')
   - &chat
     name: chat
     ui-button: "Xat"
@@ -104,7 +104,7 @@ states:
     ui-label: "Benviguts"
     ui-description: >
       Aprèn català amb Avance
-    chat: false
+    chat-enabled: false
     history-cutoff: true
     contextual-prompt: |
       Give a warm welcome, put it in bold as a title.
@@ -127,7 +127,7 @@ states:
       Show a short introduction explaining the cases where subjuntive - present tense is used. Use tables.
       Ask the user to pick an exercise among the choices the application is showing (that you don't see). Strictly don't invent anything.
     history-cutoff: true
-    chat: false
+    chat-enabled: false
     actions:
       - <<: *regulars
       - <<: *alteracions
@@ -163,8 +163,8 @@ states:
       - <<: *results
         trigger: "signal.progress == 100"
       - <<: *grammar
-        task: |
-          actuator.notify('Gramàtica', actuator.prompt('Show a table with the rules to conjugate regular verbs in this mode and tense. Show all the verbs: parlar, prometre, tenir, llegir.'))
+        on-exit: |
+          chat.notify('Gramàtica', 'Present de subjuntiu, verbs regulars: arrel + -i, -is, -i, -im, -iu, -in (ex: parli, prometi, tingui, llegeixi).')
       - <<: *unit-subjuntive
     attachments:
       - verbs.txt
@@ -202,8 +202,8 @@ states:
       - <<: *results
         trigger: "signal.progress == 100"
       - <<: *grammar
-        task: |
-          actuator.notify('Gramàtica', actuator.prompt('Explain the trick: all verbs whose infinitive ends in -jar, -car, -çar, -gar have hortographic alterations. Show a table of the rules to conjugate this kind of regular verbs, with also some examples.'))
+        on-exit: |
+          chat.notify('Gramàtica', 'Verbs amb alteracio ortografica (-jar, -car, -çar, -gar) canvien la consonant final abans de -i: jugar -> jugui, tocar -> toqui, començar -> comenci, pagar -> pagui.')
       - <<: *unit-subjuntive
     attachments:
       - verbs.txt
@@ -236,8 +236,8 @@ states:
       - <<: *results
         trigger: "signal.progress == 100"
       - <<: *grammar
-        task: |
-          actuator.notify('Gramàtica', actuator.prompt('Explain the trick: all verbs that end in -c (like creure, jo crec -> cregui) in the first person indicative present tense will need the ortographic change in -gu. Show a table of the rules to conjugate this kind of regular verbs, with also an example.'))
+        on-exit: |
+          chat.notify('Gramàtica', 'Verbs amb alteracio -gu (com creure -> cregui) afegeixen una -u- despres de la -g abans de -i.')
       - <<: *unit-subjuntive
     attachments:
       - verbs.txt
@@ -267,8 +267,8 @@ states:
       - <<: *results
         trigger: "signal.progress == 100"
       - <<: *grammar
-        task: |
-          actuator.notify('Gramàtica', actuator.prompt('Show a quick table with conjugations for some important random irregular verbs of the subjuntive - present tense.'))
+        on-exit: |
+          chat.notify('Gramàtica', 'Alguns verbs irregulars al subjuntiu present: ser -> sigui, saber -> sapiga, anar -> vagi, haver -> hagi, voler -> vulgui, fer -> faci.')
       - <<: *unit-subjuntive
 
   unit55-D:
@@ -325,7 +325,7 @@ states:
     ui-label: "Unitat 55 - Resultats"
     ui-description: >
       Resum del rendiment global
-    chat: false
+    chat-enabled: false
     contextual-prompt: |
       Unit 55. Summary of the current user performance.
       Assume there are 6 exercises in this unit.

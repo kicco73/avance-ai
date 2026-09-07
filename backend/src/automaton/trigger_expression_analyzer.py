@@ -18,7 +18,7 @@ class TriggerExpressionAnalyzer:
     # express — same reason `source.<name>.<method>` is never matched through
     # here either (see source_refs, matched directly instead).
     RESERVED_NAMESPACES = (
-        "signal", "env", "session", "user", "source", "actuator", "attachment", "metric", "automaton", "datetime",
+        "signal", "env", "session", "user", "source", "task", "chat", "attachment", "metric", "automaton", "datetime",
     )
 
     # Dotted sub-namespaces nested one level under a reserved namespace above —
@@ -155,7 +155,7 @@ class TriggerExpressionAnalyzer:
     @staticmethod
     def task_statements(source: str) -> list[tuple[int, str]]:
         """Splits `task` source into one (line_number, statement source)
-        pair per top-level statement — one `actuator.<name>(...)` call each
+        pair per top-level statement — one `task.<name>(...)` call each
         — using Python's own parser rather than naively splitting on '\\n'.
         This is what lets a single call span several lines (implicit
         continuation inside its own parens) and lets both a whole-line and
@@ -179,7 +179,7 @@ class TriggerExpressionAnalyzer:
         """(target_name, rhs_source) if `statement` (one already-split
         task_statements() segment) is a simple single-name assignment
         — `name = <expr>`, the only assignment shape a task line may
-        take — None for anything else (a bare actuator/source call, or a
+        take — None for anything else (a bare task/source call, or a
         shape (tuple/attribute/subscript target, chained `a = b = ...`)
         this deliberately doesn't support, left to fail the normal
         mode="eval" parse everywhere else the way any other malformed
@@ -221,6 +221,30 @@ class TriggerExpressionAnalyzer:
         ):
             return None
         return target.attr, ast.get_source_segment(statement, stmt.value)
+
+    @staticmethod
+    def bare_namespace_call(statement: str, namespace: str) -> str | None:
+        """The method name if `statement` (one already-split
+        task_statements() segment) is exactly a bare `<namespace>.<method>(...)`
+        call — an ast.Expr wrapping a Call whose func is that two-level
+        dotted attribute — None for anything else (an assignment, a bare
+        literal, a call on a different namespace, or a call whose func
+        isn't a plain two-level dotted name). Used by on-exit's own
+        mixed grammar (AutomatonValidator.validate_on_exit) to recognize
+        a `chat.<method>(...)` statement, the one shape (besides an
+        `env.<key> = expr` assignment) an on-exit line may take. Never
+        raises on `statement` itself: it already parsed once, as part of
+        task_statements()."""
+        tree = ast.parse(statement, mode="exec")
+        if len(tree.body) != 1 or not isinstance(tree.body[0], ast.Expr):
+            return None
+        call = tree.body[0].value
+        if not isinstance(call, ast.Call):
+            return None
+        chain = TriggerExpressionAnalyzer._dotted_chain(call.func)
+        if chain is None or len(chain) != 2 or chain[0] != namespace:
+            return None
+        return chain[1]
 
     # Every identifier whose runtime *type* is fixed by its own contract, well
     # enough to check statically. `env.*` is absent: it's a free-form store any
@@ -322,7 +346,7 @@ class TriggerExpressionAnalyzer:
                 )
         return violations
 
-    # --- actuator.defer(lambda: ..., when) --------------------------------
+    # --- task.defer(lambda: ..., when) --------------------------------
 
     _KIND_DATETIME = "datetime"
     _KIND_TIMEDELTA = "timedelta"
@@ -364,7 +388,7 @@ class TriggerExpressionAnalyzer:
 
     @classmethod
     def defer_violations(cls, expression: str) -> list[str]:
-        """Everything that would make an `actuator.defer(act, when)` in
+        """Everything that would make a `task.defer(act, when)` in
         `expression` unschedulable — or unhibernatable — at runtime,
         caught here instead: `act` must be a zero-argument `lambda:` (a
         bound method or any other value has no source to persist), and
@@ -376,20 +400,20 @@ class TriggerExpressionAnalyzer:
         tree = ast.parse(expression, mode="eval")
         violations: list[str] = []
         for node in ast.walk(tree):
-            if not isinstance(node, ast.Call) or cls._dotted_chain(node.func) != ("actuator", "defer"):
+            if not isinstance(node, ast.Call) or cls._dotted_chain(node.func) != ("task", "defer"):
                 continue
             if len(node.args) != 2 or node.keywords:
                 continue  # arity is reported by the builder's own check
             act, when = node.args
             if not isinstance(act, ast.Lambda):
                 violations.append(
-                    f"actuator.defer(...): the first argument must be a `lambda: ...`, got '{ast.unparse(act)}'"
+                    f"task.defer(...): the first argument must be a `lambda: ...`, got '{ast.unparse(act)}'"
                 )
             elif act.args.args or act.args.vararg or act.args.kwonlyargs or act.args.kwarg or act.args.posonlyargs:
-                violations.append("actuator.defer(...): the lambda must take no arguments")
+                violations.append("task.defer(...): the lambda must take no arguments")
             if cls._temporal_kind(when) != cls._KIND_DATETIME:
                 violations.append(
-                    f"actuator.defer(...): `when` must be a datetime built from datetime.datetime(...) or "
+                    f"task.defer(...): `when` must be a datetime built from datetime.datetime(...) or "
                     f"datetime.datetime.now(...), optionally ± datetime.timedelta(...), got '{ast.unparse(when)}'"
                 )
             for inner in ast.walk(when):
@@ -397,7 +421,7 @@ class TriggerExpressionAnalyzer:
                     for argument in (*inner.args, *(keyword.value for keyword in inner.keywords)):
                         if cls._leaf_kind(argument) == cls._KIND_STRING:
                             violations.append(
-                                f"actuator.defer(...): datetime.timedelta() takes numbers, got the string "
+                                f"task.defer(...): datetime.timedelta() takes numbers, got the string "
                                 f"'{ast.unparse(argument)}'"
                             )
         return violations

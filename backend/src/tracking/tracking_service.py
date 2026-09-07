@@ -11,7 +11,7 @@ from metrics.metric_service import MetricService
 
 from chat.sessions.env_for_session import env_for_session
 
-from .actuators import ActuatorSetFactory
+from .actuators import TaskNamespaceFactory
 from .automaton_namespace import AutomatonNamespace
 from .errors import TrackingServiceError
 from .fixed_project_context import FixedProjectContext
@@ -46,7 +46,7 @@ class TrackingService(object):
 		db: Db,
 		project_service: ProjectService,
 		metrics_service: MetricService,
-		actuator_factory: ActuatorSetFactory,
+		namespace_factory: TaskNamespaceFactory,
 		talk_enabled: bool = True,
 		# FIXME: mirrors AppConfig's own default (config.py) — keep in sync.
 		input_token_budget_per_turn: int | None = 16000,
@@ -56,7 +56,7 @@ class TrackingService(object):
 	) -> None:
 		self._db = db
 		self._project_service = project_service
-		self._actuator_factory = actuator_factory
+		self._namespace_factory = namespace_factory
 		self._metrics = metrics_service
 		self._talk_enabled = talk_enabled
 		self._input_token_budget_per_turn = input_token_budget_per_turn
@@ -70,7 +70,7 @@ class TrackingService(object):
 		self._human_talker_factory: HumanTalkerFactory | None = None
 
 	def set_human_talker_factory(self, factory: HumanTalkerFactory) -> None:
-		"""Late-bound the same way actuator_factory.set_ws_notifications is
+		"""Late-bound the same way namespace_factory.set_ws_notifications is
 		— TrackingService is built before WsNotifications exists, so
 		main.py wires this in once both are constructed."""
 		self._human_talker_factory = factory
@@ -310,16 +310,17 @@ class TrackingService(object):
 		session_facts = SessionFacts(self._db, fixed_context)
 		user_facts = UserFacts(self._db)
 		automaton_namespace = AutomatonNamespace(self._db, self._project_service)
-		actuator_set = self._actuator_factory.for_session(session_id)
+		task_namespace = self._namespace_factory.for_session(session_id)
+		chat_namespace = self._namespace_factory.chat_for_session(session_id)
 		metrics = MetricService(
 			self._db, fixed_context, max_session_duration_in_minutes=self._metrics.max_session_duration_in_minutes
 		)
 		scope_builder = EvaluationScopeBuilder(
-			env, metrics, session_facts, user_facts, self._db, automaton_namespace, actuator_set,
+			env, metrics, session_facts, user_facts, self._db, automaton_namespace, task_namespace, chat_namespace,
 			ai_service=ai_service,
 		)
 
-		# A session with an operator (see ActuatorSetFactory.
+		# A session with an operator (see TaskNamespaceFactory.
 		# get_human_operator) never reaches here at all — ChatService.
 		# process_turn routes it to _process_human_turn before ever
 		# calling this method, so this is always the plain AiTalker path.

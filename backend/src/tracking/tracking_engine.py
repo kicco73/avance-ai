@@ -250,14 +250,20 @@ class TrackingEngine:
         signal_values). Publishes one EnvChanged per key actually
         written; on-exit's own value for a key wins over env:'s should an
         action somehow declare both. Then hands `action.task` (§6.5's
-        actuator.* calls) to the scope's own actuator set, which runs it
-        as an ActionTask due now — never inline here: actuator.prompt
+        task.* calls) to the scope's own task namespace, which runs it
+        as an ActionTask due now — never inline here: task.prompt
         is a model call, send_mail a network call, and the browser gets
         whatever they produce over the websocket (see
-        tracking/actuators/action_task.py). `session_id`: the firing
-        session, for the ActionTask itself. `output_values`: structured
-        output dict from this turn's AI generation, available in env
-        expressions and task/on-exit scripts."""
+        tracking/actuators/action_task.py). on-exit's own `chat.*` calls,
+        by contrast, run synchronously right here — no ActionTask, no
+        job queue — and are pushed over that exact same "notification"
+        websocket frame via the scope's own chat namespace (see
+        ChatNamespace.push_notification): chat.* has no server-side
+        network/model call to keep off the event-loop thread, so there's
+        nothing to hibernate. `session_id`: the firing session, for the
+        ActionTask itself and for the chat namespace's own push.
+        `output_values`: structured output dict from this turn's AI
+        generation, available in env expressions and task/on-exit scripts."""
         if not action.env and not action.task and not action.on_exit:
             return
         scope = self._scope_builder.build(
@@ -266,15 +272,19 @@ class TrackingEngine:
         updates: dict = {}
         if action.env:
             updates.update(automaton.eval_action_env(action, scope))
+        chat_snippets: str | None = None
         if action.on_exit:
-            updates.update(automaton.eval_action_on_exit(action, scope))
+            on_exit_updates, chat_snippets = automaton.eval_action_on_exit(action, scope)
+            updates.update(on_exit_updates)
         if updates:
             self._env.update_action_set(updates)
             if username is not None and project_id is not None:
                 for key, value in updates.items():
                     publish(EnvChanged(username=username, project_id=project_id, key=key, value=value))
         if action.task:
-            scope["actuator"].schedule_task(action, scope, session_id=session_id)
+            scope["task"].schedule_task(action, scope, session_id=session_id)
+        if chat_snippets:
+            scope["chat"].push_notification(chat_snippets)
 
     def schedule_task(
         self, automaton: Automaton, action: Action, state_key: str, session_id: int | None = None,
@@ -287,4 +297,4 @@ class TrackingEngine:
         if not action.task:
             return
         scope = self._scope_builder.build(automaton, state_key, None, session_id=session_id)
-        scope["actuator"].schedule_task(action, scope, session_id=session_id)
+        scope["task"].schedule_task(action, scope, session_id=session_id)

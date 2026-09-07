@@ -35,7 +35,7 @@ from session import Session
 from testing.test_service import TestService
 from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from testing.last_status_broadcaster import LastStatusBroadcaster
-from tracking.actuators import ActuatorSetFactory
+from tracking.actuators import TaskNamespaceFactory
 from tracking.tracking_service import TrackingService
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
@@ -223,17 +223,17 @@ def make_test_job_service(db: Db, broadcaster=None) -> JobService:
     """A real JobService over a one-worker pool — what every test that
     needs platform jobs (never a TestService's own throttled pool) shares.
     Not started: nothing here claims hibernated tasks unless a test
-    calls start() itself (see test_actuator_defer_persistence.py)."""
+    calls start() itself (see test_task_defer.py)."""
     return JobService(max_concurrent=1, broadcaster=broadcaster if broadcaster is not None else NullBroadcaster(), db=db)
 
 
-def make_test_actuator_factory(
+def make_test_namespace_factory(
     db: Db, job_service: JobService | None = None, project_service: ProjectService | None = None,
     ai_service=None,
-) -> ActuatorSetFactory:
-    """A real ActuatorSetFactory, wired the same way main.py does — every
-    test project's own YAML only ever calls actuator.celebrate()/notify(),
-    never actuator.send_mail, so the dummy SMTP config below is never
+) -> TaskNamespaceFactory:
+    """A real TaskNamespaceFactory, wired the same way main.py does — every
+    test project's own YAML only ever calls chat.celebrate()/notify(),
+    never task.send_mail, so the dummy SMTP config below is never
     actually dialed. Shared by every fixture/helper across the test suite
     that needs to construct a TrackingService/ChatService/WakeupService."""
     job_service = job_service if job_service is not None else make_test_job_service(db)
@@ -244,7 +244,7 @@ def make_test_actuator_factory(
         ),
         job_service,
     )
-    return ActuatorSetFactory(notification_service, db, job_service, project_service, ai_service)
+    return TaskNamespaceFactory(notification_service, db, job_service, project_service, ai_service)
 
 
 @pytest.fixture
@@ -259,13 +259,13 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     job_service = make_test_job_service(app_db, test_event_broadcaster)
     # TestService's own pool, as in main.py — never the platform JobService's.
     test_job_queue = JobQueue(max_concurrent=1, broadcaster=test_event_broadcaster)
-    actuator_factory = make_test_actuator_factory(app_db, job_service, project_service, fake_ai_service)
+    namespace_factory = make_test_namespace_factory(app_db, job_service, project_service, fake_ai_service)
     tracking_service = TrackingService(
-        app_db, project_service, metric_service, actuator_factory,
+        app_db, project_service, metric_service, namespace_factory,
     )
     chat_service = ChatService(
         app_db, fake_ai_service, fake_ai_service, project_service, session_manager,
-        tracking_service, metric_service, job_service, actuator_factory,
+        tracking_service, metric_service, job_service, namespace_factory,
     )
     test_service = TestService(
         app_db, fake_ai_service, tracking_service, test_job_queue, project_service, test_event_broadcaster,
@@ -312,7 +312,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     # run_pending_tasks below). Never started here — most tests only
     # ever assert on the Task rows a task leaves behind.
     fastapi_app.state.job_service = job_service
-    fastapi_app.state.actuator_factory = actuator_factory
+    fastapi_app.state.namespace_factory = namespace_factory
     return fastapi_app
 
 
@@ -333,7 +333,7 @@ def run_pending_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0
     and returns the frames the browser would have received. Stops the
     service afterwards so its thread never outlives the test."""
     import time
-    factory = app.state.actuator_factory
+    factory = app.state.namespace_factory
     websocket = FakeWebSocket()
     ws_notifications = WsNotifications(auth_service=None)
     ws_notifications._connections[username] = [websocket]

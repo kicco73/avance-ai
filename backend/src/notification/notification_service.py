@@ -27,7 +27,7 @@ class NotificationService:
     def __init__(self, config: NotificationServiceConfig | None, job_service: JobService) -> None:
         # None whenever this deployment's own .config.yml declares no
         # notification-service section — always constructed regardless
-        # (actuator.send_mail is the only caller, and may never fire), but
+        # (task.send_mail is the only caller, and may never fire), but
         # any actual attempt to send/enqueue a mail then raises, rather
         # than failing app boot for a feature nothing may ever use.
         self._config = config
@@ -83,7 +83,7 @@ class NotificationService:
     def _build_send_mail_job(self, to: str, subject: str, body_md: str) -> SendMailJob:
         if self._config is None:
             raise NotificationError(
-                "No 'notification-service' section in .config.yml — actuator.send_mail can't run."
+                "No 'notification-service' section in .config.yml — task.send_mail can't run."
             )
         message = self._build_message(to, subject, body_md)
         return SendMailJob(

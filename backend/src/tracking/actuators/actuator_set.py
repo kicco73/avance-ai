@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from whatsapp.whatsapp_service import WhatsAppService
 
     from ai import AiService
-    from tracking.actuators.factory import ActuatorSetFactory
+    from tracking.actuators.factory import TaskNamespaceFactory
     from tracking.sources import ToolSet
 
 
@@ -38,17 +38,18 @@ def _run_sync(coro: Coroutine[Any, Any, _T]) -> _T:
         return executor.submit(asyncio.run, coro).result()
 
 
-class ActuatorSet(ABC):
-    """`celebrate`/`notify`/`show`/`prompt` compile straight to the frontend's
-    own taskActions.js locals of the same name (see
-    Automaton.render_task) or, for `prompt`, run a read-only
-    generation call — no real-world side effect either subclass could
-    meaningfully suppress, so all four behave identically regardless of
-    a test session's "Run actuators" toggle. Only `send_mail`/`defer`
-    (real side effects) are each subclass's own concern."""
+class TaskNamespace(ABC):
+    """`prompt` compiles to a read-only generation call — no real-world
+    side effect either subclass could meaningfully suppress, so it
+    behaves identically regardless of a test session's "Run actuators"
+    toggle. Only `send_mail`/`whatsapp`/`defer` (real side effects) are
+    each subclass's own concern. `celebrate`/`notify`/`show`/
+    `switch_to_human`/`switch_to_ai` used to live here too — they moved
+    to ChatNamespace (see chat_namespace.py), since only an on-exit
+    script may call them now."""
 
     def __init__(
-        self, dispatcher: "TaskDispatcher | None" = None, factory: "ActuatorSetFactory | None" = None,
+        self, dispatcher: "TaskDispatcher | None" = None, factory: "TaskNamespaceFactory | None" = None,
     ) -> None:
         # Bound fresh per task evaluation via with_ai_service —
         # never set any other way (see EvaluationScopeBuilder.build).
@@ -60,43 +61,32 @@ class ActuatorSet(ABC):
         # for a state with neither ai-may-read-sources nor
         # ai-must-read-sources declared.
         self._tool_set: "ToolSet | None" = None
-        # How this set gets a task script run as a Task. None only
-        # for a bare set nobody wired to a JobService (a test replay's
-        # own FakeActuatorSet default): the script then runs inline and
-        # its output is dropped, since no browser is listening anyway.
+        # How this namespace gets a task script run as a Task. None only
+        # for a bare namespace nobody wired to a JobService (a test
+        # replay's own FakeTaskNamespace default): the script then runs
+        # inline and its output is dropped, since no browser is listening anyway.
         self._dispatcher = dispatcher
-        # The factory that built this set — where switch_to_human/
-        # switch_to_ai actually record the operator (see
-        # ActuatorSetFactory.set_human_operator/clear_human_operator),
+        # The factory that built this namespace — shared with
+        # ChatNamespace for the human-operator bookkeeping (see
+        # TaskNamespaceFactory.set_human_operator/clear_human_operator),
         # same "ask the thing that made you" shape as _dispatcher above.
         self._factory = factory
         # Bound fresh per task evaluation via with_session — never
-        # set any other way. None for a set built without a firing
-        # session (e.g. a deferred call, or a project-wide test reset)
-        # — switch_to_human/switch_to_ai are then no-ops, same as
-        # session.* being absent from a task script's own scope.
+        # set any other way. None for a namespace built without a firing
+        # session (e.g. a deferred call, or a project-wide test reset).
         self._session_id: int | None = None
 
     def schedule_task(self, action: Action, scope: EvaluationScope, *, session_id: int | None) -> None:
         """Runs `action.task` as an ActionTask due now (see
         action_task.py) — never inline in the request that fired it.
         `scope`: the full scope the transition was evaluated in; the
-        task keeps its actuator view."""
+        task keeps its own task view."""
         if not action.task:
             return
         if self._dispatcher is None:
             Automaton.render_task(action, scope)
             return
         self._dispatcher.schedule_now(action, scope, session_id=session_id)
-
-    def celebrate(self) -> JsSnippet | None:
-        return JsSnippet("celebrate()")
-
-    def notify(self, title: str, body_md: str) -> JsSnippet | None:
-        return JsSnippet(f"notify({json.dumps(title)}, {json.dumps(body_md)})")
-
-    def show(self, body_md: str) -> JsSnippet | None:
-        return JsSnippet(f"show({json.dumps(body_md)})")
 
     def prompt(self, prompt: str) -> str:
         """Runs `prompt` as one extra, synchronous, fully isolated
@@ -105,7 +95,7 @@ class ActuatorSet(ABC):
         (logged) wherever no AI service is bound, e.g. a project-wide
         test reset with no real session behind it."""
         if self._ai_service is None:
-            logger.warning("actuator.prompt() called with no AI service bound — returning ''.")
+            logger.warning("task.prompt() called with no AI service bound — returning ''.")
             return ""
         # tool_set only actually passed when bound — a fake AiService
         # predating tool-calling (most existing tests' own doubles, see
@@ -113,8 +103,8 @@ class ActuatorSet(ABC):
         kwargs = {"tool_set": self._tool_set} if self._tool_set is not None else {}
         return _run_sync(self._ai_service.prompt(prompt, **kwargs))
 
-    def with_ai_service(self, ai_service: "AiService", tool_set: "ToolSet | None" = None) -> "ActuatorSet":
-        """A copy of this actuator set bound to `ai_service` (and,
+    def with_ai_service(self, ai_service: "AiService", tool_set: "ToolSet | None" = None) -> "TaskNamespace":
+        """A copy of this namespace bound to `ai_service` (and,
         optionally, the tool catalog of whichever state this task is
         being evaluated for — see EvaluationScopeBuilder.build) — never
         mutates `self`, so the long-lived instance a factory hands out
@@ -124,23 +114,15 @@ class ActuatorSet(ABC):
         bound._tool_set = tool_set
         return bound
 
-    def with_session(self, session_id: int) -> "ActuatorSet":
-        """A copy of this actuator set bound to the session whose
+    def with_session(self, session_id: int) -> "TaskNamespace":
+        """A copy of this namespace bound to the session whose
         task is actually running — see ScopeHydrator.build_scope,
         the only place session_id is known at the moment a script's
-        actuator.* calls are evaluated. Same never-mutate-self shape as
+        task.* calls are evaluated. Same never-mutate-self shape as
         with_ai_service above."""
         bound = copy.copy(self)
         bound._session_id = session_id
         return bound
-
-    def switch_to_ai(self) -> None:
-        """Hands the session back to the AI after switch_to_human — no
-        real-world side effect to suppress (nobody is paged), so unlike
-        switch_to_human this is one concrete method, not a Live/Fake
-        pair. A no-op outside a session context (see _session_id)."""
-        if self._factory is not None and self._session_id is not None:
-            self._factory.clear_human_operator(self._session_id)
 
     @abstractmethod
     def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
@@ -154,22 +136,20 @@ class ActuatorSet(ABC):
     def defer(self, act: Callable[[], None], when: datetime) -> JsSnippet | None:
         raise NotImplementedError
 
-    @abstractmethod
-    def switch_to_human(self, user_id: str) -> JsSnippet | None:
-        raise NotImplementedError
-
 
 class TaskDispatcher(object):
     """What turns a task (now) or a deferred lambda (later) into an
     ActionTask on the JobService, under (the current user, one project)
     — the two things a Task row keys on (see jobs/task.py) — and marked
-    with which actuator set (live or fake) must be rebuilt to run it."""
+    with which task namespace (live or fake) must be rebuilt to run it."""
 
-    def __init__(self, job_service: JobService, hydrator: ScopeHydrator, *, project_id: str, actuators: str) -> None:
+    def __init__(
+        self, job_service: JobService, hydrator: ScopeHydrator, *, project_id: str, namespace_kind: str,
+    ) -> None:
         self._job_service = job_service
         self._hydrator = hydrator
         self._project_id = project_id
-        self._actuators = actuators
+        self._namespace_kind = namespace_kind
 
     @property
     def project_id(self) -> str:
@@ -178,14 +158,14 @@ class TaskDispatcher(object):
     def _check_project(self, scope: EvaluationScope) -> None:
         if scope.automaton.project_id != self._project_id:
             raise ValueError(
-                f"task evaluated for project '{scope.automaton.project_id}' but this actuator set "
+                f"task evaluated for project '{scope.automaton.project_id}' but this task namespace "
                 f"belongs to '{self._project_id}'."
             )
 
     def schedule_now(self, action: Action, scope: EvaluationScope, *, session_id: int | None) -> None:
         self._check_project(scope)
         task = ActionTask.now(
-            action, scope, username=Session().user, actuators=self._actuators, session_id=session_id,
+            action, scope, username=Session().user, namespace_kind=self._namespace_kind, session_id=session_id,
             hydrator=self._hydrator,
         )
         self._job_service.schedule(task, datetime.now(timezone.utc))
@@ -193,12 +173,12 @@ class TaskDispatcher(object):
     def schedule_later(self, act: DeferredExpression, when: datetime) -> None:
         self._check_project(act.scope)
         task = ActionTask.later(
-            act, when, username=Session().user, actuators=self._actuators, hydrator=self._hydrator,
+            act, when, username=Session().user, namespace_kind=self._namespace_kind, hydrator=self._hydrator,
         )
         self._job_service.schedule(task, when)
 
 
-class LiveActuatorSet(ActuatorSet):
+class LiveTaskNamespace(TaskNamespace):
     """Always bound to one project through its dispatcher: every
     task and every defer() is hibernated under (the current user,
     that project) — never a session, which will be over by the time a
@@ -206,7 +186,7 @@ class LiveActuatorSet(ActuatorSet):
 
     def __init__(
         self, notification_service: NotificationService, dispatcher: "TaskDispatcher",
-        whatsapp_service: "WhatsAppService | None" = None, factory: "ActuatorSetFactory | None" = None,
+        whatsapp_service: "WhatsAppService | None" = None, factory: "TaskNamespaceFactory | None" = None,
     ) -> None:
         super().__init__(dispatcher, factory)
         self._notification_service = notification_service
@@ -222,7 +202,7 @@ class LiveActuatorSet(ActuatorSet):
 
     def whatsapp(self, phone_number: str, message_md: str) -> bool:
         if self._whatsapp_service is None:
-            logger.warning("actuator.whatsapp() called but no 'whatsapp-service' section in .config.yml — message not sent.")
+            logger.warning("task.whatsapp() called but no 'whatsapp-service' section in .config.yml — message not sent.")
             return False
         return _run_sync(self._whatsapp_service.send_message(phone_number, message_md, self._dispatcher.project_id))
 
@@ -233,46 +213,36 @@ class LiveActuatorSet(ActuatorSet):
         # they guard the Python-level API only.
         if not isinstance(act, DeferredExpression):
             raise TypeError(
-                f"actuator.defer needs a `lambda: ...` evaluated from a task line, got {type(act).__name__}."
+                f"task.defer needs a `lambda: ...` evaluated from a task line, got {type(act).__name__}."
             )
         if not isinstance(when, datetime):
-            raise TypeError(f"actuator.defer needs a datetime as `when`, got {type(when).__name__}.")
+            raise TypeError(f"task.defer needs a datetime as `when`, got {type(when).__name__}.")
         self._dispatcher.schedule_later(act, when)
         return None
 
-    def switch_to_human(self, user_id: str) -> None:
-        if self._factory is None or self._session_id is None:
-            logger.warning("actuator.switch_to_human() called outside a session context — ignored.")
-            return None
-        self._factory.set_human_operator(self._session_id, user_id)
-        ws_notifications = self._factory.ws_notifications
-        if ws_notifications is not None:
-            _run_sync(ws_notifications.send_human_takeover(user_id, self._session_id, self._dispatcher.project_id))
-        return None
 
-
-class FakeActuatorSet(ActuatorSet):
-    """Stands in for LiveActuatorSet while a test session's own "Run
+class FakeTaskNamespace(TaskNamespace):
+    """Stands in for LiveTaskNamespace while a test session's own "Run
     actuators" toggle is off — a real side effect is suppressed and
     reported to the frontend via `notify(...)` instead of actually
-    happening (see PROJECT_SPECS.md §6.5)."""
+    happening (see PROJECT_SPECS.md §6.5). `_notify` builds that same
+    wire-ready JS text `chat.notify(...)` would, but locally: `notify`
+    itself is a ChatNamespace method now, not reachable from a `task:` script."""
+
+    def _notify(self, title: str, message: str) -> JsSnippet | None:
+        return JsSnippet(f"notify({json.dumps(title)}, {json.dumps(message)})")
 
     def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
         message = f"send_mail(to={to!r}) — Run actuators is off, no email was sent."
         logger.info(message)
-        return self.notify("Actuator (test)", message)
+        return self._notify("Task (test)", message)
 
     def whatsapp(self, phone_number: str, message_md: str) -> JsSnippet | None:
         message = f"whatsapp(to={phone_number!r}) — Run actuators is off, no message was sent."
         logger.info(message)
-        return self.notify("Actuator (test)", message)
+        return self._notify("Task (test)", message)
 
     def defer(self, act: Callable[[], None], when: datetime) -> JsSnippet | None:
         message = f"defer(when={when.isoformat()!r}) — Run actuators is off, nothing was scheduled."
         logger.info(message)
-        return self.notify("Actuator (test)", message)
-
-    def switch_to_human(self, user_id: str) -> JsSnippet | None:
-        message = f"switch_to_human(user_id={user_id!r}) — Run actuators is off, no one was paged; the AI answers instead."
-        logger.info(message)
-        return self.notify("Actuator (test)", message)
+        return self._notify("Task (test)", message)

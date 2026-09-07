@@ -93,9 +93,9 @@ class TestPutActionField:
         assert response.json()["ui_description"] == "A short action description."
         assert "A short action description." in _index_yml(client, hello_project)
 
-        response = client.put(f"{base}/task", json={"value": "actuator.notify('Nice!', 'You reached **state B**.')"})
+        response = client.put(f"{base}/task", json={"value": "task.send_mail(user.email, 'You reached **state B**.')"})
         assert response.status_code == 200
-        assert response.json()["task"] == "actuator.notify('Nice!', 'You reached **state B**.')"
+        assert response.json()["task"] == "task.send_mail(user.email, 'You reached **state B**.')"
         assert "task:" in _index_yml(client, hello_project)
 
         response = client.put(f"{base}/trigger", json={"value": "True"})
@@ -188,9 +188,9 @@ class TestPutInitAction:
         assert response.json()["ui_description"] == "Where every session begins."
         assert "Where every session begins." in _index_yml(client, hello_project)
 
-        response = client.put(f"{base}/task", json={"value": "actuator.celebrate()"})
+        response = client.put(f"{base}/task", json={"value": "task.send_mail(user.email, 'hi')"})
         assert response.status_code == 200
-        assert response.json()["task"] == "actuator.celebrate()"
+        assert response.json()["task"] == "task.send_mail(user.email, 'hi')"
 
         response = client.put(f"{base}/ui-label", json={"value": "Start"})
         assert response.status_code == 200

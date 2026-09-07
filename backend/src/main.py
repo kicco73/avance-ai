@@ -32,7 +32,7 @@ from ai import AiService
 from testing.test_service import TestService
 from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from testing.last_status_broadcaster import LastStatusBroadcaster
-from tracking.actuators import ActuatorSetFactory
+from tracking.actuators import TaskNamespaceFactory
 from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
@@ -101,12 +101,12 @@ def create_app() -> FastAPI:
         job_service = JobService(max_concurrent=config.jobs_shared_max_concurrent, broadcaster=test_event_broadcaster, db=db)
 
         # Always constructed, even with no notification-service section in
-        # .config.yml — actuator.send_mail (see tracking/actuators/
+        # .config.yml — task.send_mail (see tracking/actuators/
         # actuator_set.py) is the only caller, and may never fire; a real
         # attempt to send/enqueue a mail without one configured raises at
         # that point instead of blocking startup for a feature nothing may ever use.
         if config.notification_service_config is None:
-            logger.critical("No 'notification-service' section in .config.yml — actuator.send_mail will fail if used.")
+            logger.critical("No 'notification-service' section in .config.yml — task.send_mail will fail if used.")
         notification_service = NotificationService(config.notification_service_config, job_service)
         app.state.notification_service = notification_service
 
@@ -130,10 +130,10 @@ def create_app() -> FastAPI:
             session_manager=session_manager,
         )
 
-        # After ProjectService (a hibernated actuator.defer is rebuilt
+        # After ProjectService (a hibernated task.defer is rebuilt
         # against a project revision through it) and before the JobService
         # is started: this registers the task type the scheduler hydrates.
-        actuator_factory = ActuatorSetFactory(notification_service, db, job_service, project_service, ai_live_service)
+        namespace_factory = TaskNamespaceFactory(notification_service, db, job_service, project_service, ai_live_service)
 
         # Built once here (not a global singleton — see auth/auth_service.py's
         # own module docstring), passed explicitly to whatever needs it.
@@ -161,22 +161,22 @@ def create_app() -> FastAPI:
         # tracking/tracking_service.py's own module docstring). Both this and
         # ChatService depend on ai_service/metric_service directly, never each other.
         tracking_service = TrackingService(
-            db, project_service, metric_service, actuator_factory, talk_enabled=talk_service is not None,
+            db, project_service, metric_service, namespace_factory, talk_enabled=talk_service is not None,
             input_token_budget_per_turn=config.input_token_budget_per_turn,
             total_token_budget_per_session=config.total_token_budget_per_session,
         )
         chat_service = ChatService(
             db, ai_live_service, ai_test_service, project_service, session_manager,
-            tracking_service, metric_service, job_service, actuator_factory,
+            tracking_service, metric_service, job_service, namespace_factory,
         )
 
         # Single shared /ws/notifications connection per user (see
         # chat/ws_notifications.py) — the chat channel itself, both
         # directions, also handed to whatever needs to push onto an
-        # already-open connection (WakeupService, actuator_factory's own
+        # already-open connection (WakeupService, namespace_factory's own
         # deferred calls).
         ws_notifications = WsNotifications(auth_service, chat_service)
-        actuator_factory.set_ws_notifications(ws_notifications)
+        namespace_factory.set_ws_notifications(ws_notifications)
         test_event_broadcaster.set_ws_notifications(ws_notifications)
 
         # Manual-testing seam for HumanTalker (see talker.human_talker and
@@ -214,7 +214,7 @@ def create_app() -> FastAPI:
         # Cross-project wake-up (see tracking/wakeup_service.py) —
         # subscribes once for the process lifetime.
         WakeupService(
-            db, project_service, job_service, actuator_factory, ws_notifications=ws_notifications, tracking_service=tracking_service,
+            db, project_service, job_service, namespace_factory, ws_notifications=ws_notifications, tracking_service=tracking_service,
             ai_service=ai_live_service,
         ).register()
 
@@ -228,7 +228,7 @@ def create_app() -> FastAPI:
             )
             if config.whatsapp_service_config is not None else None
         )
-        actuator_factory.set_whatsapp_service(whatsapp_service)
+        namespace_factory.set_whatsapp_service(whatsapp_service)
 
         controller = AvanceController(
             chat_service, project_service, talk_service, listen_service, db, tracking_service, test_service,

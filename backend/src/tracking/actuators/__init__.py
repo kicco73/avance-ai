@@ -1,13 +1,17 @@
-from .actuator_set import ActuatorSet, FakeActuatorSet, LiveActuatorSet, TaskDispatcher
+from .actuator_set import FakeTaskNamespace, LiveTaskNamespace, TaskDispatcher, TaskNamespace
 from .attachment_namespace import AttachmentNamespace, MAX_ATTACHMENT_READ_BYTES
-from .factory import ActuatorSetFactory
+from .chat_namespace import ChatNamespace, FakeChatNamespace, LiveChatNamespace
+from .factory import TaskNamespaceFactory
 
 __all__ = [
-    "ActuatorSet",
-    "FakeActuatorSet",
-    "LiveActuatorSet",
+    "TaskNamespace",
+    "FakeTaskNamespace",
+    "LiveTaskNamespace",
     "TaskDispatcher",
-    "ActuatorSetFactory",
+    "TaskNamespaceFactory",
+    "ChatNamespace",
+    "FakeChatNamespace",
+    "LiveChatNamespace",
     "AttachmentNamespace",
     "MAX_ATTACHMENT_READ_BYTES",
 ]

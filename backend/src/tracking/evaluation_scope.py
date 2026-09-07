@@ -15,7 +15,7 @@ from automaton.automaton import Automaton
 from automaton.scope import EvaluationScope
 from db import Db
 from metrics.metric_service import MetricService
-from tracking.actuators import ActuatorSet, AttachmentNamespace, FakeActuatorSet
+from tracking.actuators import AttachmentNamespace, ChatNamespace, FakeChatNamespace, FakeTaskNamespace, TaskNamespace
 from tracking.env import Env
 from tracking.evaluator import SignalEvaluator
 from tracking.session_facts import SessionFacts
@@ -41,7 +41,8 @@ class EvaluationScopeBuilder(object):
         user: UserFacts,
         db: Db,
         automaton_namespace: "AutomatonNamespace | None" = None,
-        actuator_set: ActuatorSet | None = None,
+        task_namespace: TaskNamespace | None = None,
+        chat_namespace: ChatNamespace | None = None,
         ai_service: "AiService | None" = None,
     ) -> None:
         self._env = env
@@ -56,10 +57,11 @@ class EvaluationScopeBuilder(object):
         # "automaton" namespace: an automaton.* reference there fails to
         # resolve rather than doing real cross-project work during a replay.
         self._automaton_namespace = automaton_namespace
-        self._actuator_set = actuator_set if actuator_set is not None else FakeActuatorSet()
-        # Optional — actuator.prompt() only actually runs a generation
+        self._task_namespace = task_namespace if task_namespace is not None else FakeTaskNamespace()
+        self._chat_namespace = chat_namespace if chat_namespace is not None else FakeChatNamespace()
+        # Optional — task.prompt() only actually runs a generation
         # call once this is given; every caller with no real AiService
-        # (test replay, /api/triggers/preview) omits it, so actuator.prompt()
+        # (test replay, /api/triggers/preview) omits it, so task.prompt()
         # there just returns "" rather than doing real work.
         self._ai_service = ai_service
 
@@ -78,9 +80,9 @@ class EvaluationScopeBuilder(object):
         lazy proxies included unconditionally
         (attachment.read is only ever reachable from task — see
         IdentifierRegistry.TRIGGER_SCOPE_EXCLUDES — but nothing stops it
-        being present for trigger/env too, the same as `actuator` already
-        is); only the bare core-metric names are gated, since building
-        them is eager. `source`/`attachment` are rebuilt fresh every call
+        being present for trigger/env too, the same as `task`/`chat`
+        already are); only the bare core-metric names are gated, since
+        building them is eager. `source`/`attachment` are rebuilt fresh every call
         (unlike env/session/user, never threaded through __init__) since
         they need `automaton` itself — a `build()` parameter, not a
         constructor dependency any caller has to wire up separately — to
@@ -112,8 +114,9 @@ class EvaluationScopeBuilder(object):
         }
         if self._automaton_namespace is not None:
             scope["automaton"] = self._automaton_namespace.scoped_to(automaton.family)
+        scope["chat"] = self._chat_namespace
         if self._ai_service is not None:
-            # actuator.prompt()'s own tool catalog — this task's own
+            # task.prompt()'s own tool catalog — this task's own
             # state's ai-may-read-sources/ai-must-read-sources/
             # ai-may-write-sources, resolved through the same
             # SourceNamespace (and so the same per-session read cache and
@@ -121,7 +124,7 @@ class EvaluationScopeBuilder(object):
             # state itself declares none, or isn't found (a stale automaton
             # snapshot, never a real config error — AutomatonBuilder
             # already validated every name against sources: at build
-            # time). Never forced here — an actuator.prompt() call is a
+            # time). Never forced here — a task.prompt() call is a
             # single isolated request, not part of a state's own
             # multi-round chat turn, so "first turn in this state" has no
             # meaning for it.
@@ -131,8 +134,8 @@ class EvaluationScopeBuilder(object):
                 )
                 if state is not None and state.ai_source_names else None
             )
-            scope["actuator"] = self._actuator_set.with_ai_service(self._ai_service, tool_set=tool_set)
+            scope["task"] = self._task_namespace.with_ai_service(self._ai_service, tool_set=tool_set)
         else:
-            scope["actuator"] = self._actuator_set
+            scope["task"] = self._task_namespace
         merged = self._metrics.merge_if_referenced(automaton, state_key, scope)
         return EvaluationScope(merged, automaton=automaton, state_key=state_key)

@@ -140,7 +140,7 @@ that client explicitly starts a new one.
 
 ## Proactive sends
 
-`actuator.whatsapp(phone_number, message_md)` (see PROJECT_SPECS.md §5.4)
+`task.whatsapp(phone_number, message_md)` (see PROJECT_SPECS.md §5.4)
 is the one path out of the Cloud API that isn't a reply to an inbound
 turn: a task script can message any `phone_number` already linked
 to a `User` row, through `WhatsAppService.send_message` →

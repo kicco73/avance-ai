@@ -62,7 +62,7 @@ states:
         target: redirect_agency
         trigger: signal.bought_via_agency and signal.confidence > 80
         task: |
-          actuator.send_mail(user.email, 'Your Vueling refund request must be handled through the travel agency or intermediary where you originally purchased the ticket.')
+          task.send_mail(user.email, 'Your Vueling refund request must be handled through the travel agency or intermediary where you originally purchased the ticket.')
       - name: go_to_not_entitled
         ui-label: "Not entitled"
         ui-button: "I am not the purchaser"
@@ -98,7 +98,7 @@ states:
         target: propose
         task: ''
         trigger: '1'
-    chat: true
+    chat-enabled: true
   propose:
     ui-label: "Proposal and consent"
     ui-description: "Present the offer to the customer."
@@ -116,7 +116,7 @@ states:
         target: dispute_amount
         trigger: "signal.user_disputes_amount"
         task: |
-          actuator.send_mail(user.email, 'We have received your dispute regarding the proposed Vueling refund amount. Our team will review your case.')
+          task.send_mail(user.email, 'We have received your dispute regarding the proposed Vueling refund amount. Our team will review your case.')
   collect_payout:
     ui-label: "Payout details collection"
     ui-description: "Enter and validate the payment details."
@@ -129,33 +129,33 @@ states:
         target: pending_approval
         trigger: "signal.payout_method_card > 50 or (signal.iban_valid and signal.payout_confirmed)"
         task: |
-          actuator.send_mail(user.email, 'Your Vueling refund has been successfully issued.')
+          task.send_mail(user.email, 'Your Vueling refund has been successfully issued.')
   pending_approval:
-    chat: false
+    chat-enabled: false
     fixed-message: "Your refund request has been successfully processed and forwarded. Thank you for choosing Vueling."
   out_of_scope:
-    chat: false
+    chat-enabled: false
     fixed-message: "Your request falls outside the scope of automatic refunds. Please contact customer support through the dedicated channels."
   booking_not_found:
-    chat: false
+    chat-enabled: false
     fixed-message: "We could not find a booking matching the details provided. Please check the PNR or the route and try again."
   redirect_agency:
-    chat: false
+    chat-enabled: false
     fixed-message: "Since the ticket was purchased through an agency or an intermediary, please contact them directly to handle the refund."
   not_entitled:
-    chat: false
+    chat-enabled: false
     fixed-message: "Sorry, the request can only be submitted by the registered purchaser of the booking."
   not_eligible:
-    chat: false
+    chat-enabled: false
     fixed-message: "Based on the fare conditions and the stated cause, the ticket is not refundable."
   blocked_chargeback:
-    chat: false
+    chat-enabled: false
     fixed-message: "There is already an active dispute (chargeback) on this transaction. The automatic refund process is temporarily blocked."
   dispute_amount:
-    chat: false
+    chat-enabled: false
     fixed-message: "We have recorded your dispute regarding the proposed amount. An agent will take charge of your report."
   handoff_human:
-    chat: false
+    chat-enabled: false
     fixed-message: "We are connecting you with one of our human agents. Please wait a moment."
 signals:
   intent_refund:

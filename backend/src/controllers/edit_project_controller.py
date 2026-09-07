@@ -28,7 +28,7 @@ from .project_commit_mixin import ProjectCommitMixin
 # below — name/key is deliberately never in any of these three: it's
 # generated once at creation and immutable from then on.
 STATE_EDITABLE_FIELDS = {
-    "ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat", "reactions-enabled",
+    "ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat-enabled", "reactions-enabled",
     "ai-may-read-sources", "ai-must-read-sources", "ai-may-write-sources", "input", "output",
 }
 ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "target", "trigger", "task", "on-exit", "env"}

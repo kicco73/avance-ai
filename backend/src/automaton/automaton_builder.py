@@ -214,7 +214,7 @@ class AutomatonBuilder(object):
             transition_log_level=transition_log_level,
             attachments=ArchiveResolver.extract_required_archives(raw_state.get("attachments", []), all_archives, f"state '{key}'"),
             history_cutoff=raw_state.get("history-cutoff", False),
-            chat=raw_state.get("chat", True),
+            chat_enabled=raw_state.get("chat-enabled", True),
             reactions_enabled=raw_state.get("reactions-enabled", False),
             ai_may_read_sources=tuple(raw_source_lists["ai-may-read-sources"]),
             ai_must_read_sources=tuple(raw_source_lists["ai-must-read-sources"]),

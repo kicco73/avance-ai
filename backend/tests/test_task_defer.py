@@ -8,8 +8,8 @@ import simpleeval
 
 from automaton.automaton import DeferredExpression, _TaskEval
 from automaton.scope import EvaluationScope
-from conftest import make_test_actuator_factory
-from tracking.actuators.actuator_set import FakeActuatorSet, LiveActuatorSet
+from conftest import make_test_namespace_factory
+from tracking.actuators.actuator_set import FakeTaskNamespace, LiveTaskNamespace
 
 pytestmark = pytest.mark.contract
 
@@ -18,21 +18,21 @@ def _scope(names: dict) -> EvaluationScope:
     return EvaluationScope(names, automaton=None, state_key="a")
 
 
-def _live_actuator_set(db) -> LiveActuatorSet:
-    return make_test_actuator_factory(db).live(project_id="p")
+def _live_task_namespace(db) -> LiveTaskNamespace:
+    return make_test_namespace_factory(db).live(project_id="p")
 
 
 def test_a_live_defer_refuses_anything_but_a_task_lambda_and_a_real_datetime_scheduling_nothing(db):
     """No in-memory fallback exists: a plain callable has no source to
     hibernate, so it is refused rather than silently run once."""
-    actuator = _live_actuator_set(db)
+    task_namespace = _live_task_namespace(db)
 
     with pytest.raises(TypeError, match="lambda"):
-        actuator.defer(threading.Event().set, datetime.now(timezone.utc))
+        task_namespace.defer(threading.Event().set, datetime.now(timezone.utc))
 
     act = _TaskEval(names=_scope({})).eval("lambda: 1")
     with pytest.raises(TypeError, match="datetime"):
-        actuator.defer(act, "2030-01-01")
+        task_namespace.defer(act, "2030-01-01")
 
     assert db.list_tasks() == []
 
@@ -40,7 +40,7 @@ def test_a_live_defer_refuses_anything_but_a_task_lambda_and_a_real_datetime_sch
 def test_a_fake_defer_never_schedules_anything_and_says_so():
     ran = threading.Event()
 
-    result = FakeActuatorSet().defer(ran.set, datetime.now(timezone.utc))
+    result = FakeTaskNamespace().defer(ran.set, datetime.now(timezone.utc))
 
     assert not ran.is_set()
     assert result is not None and "defer" in result

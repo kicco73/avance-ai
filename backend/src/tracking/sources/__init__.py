@@ -133,7 +133,7 @@ class ToolSet:
     `update` for every one in ai-may-write-sources (see automaton.State),
     resolved through the same SourceNamespace instance (and so the same
     per-session read cache and the same Env) a source.<name>.<method>()
-    expression already uses. Same shape as ActuatorSet — a catalog plus
+    expression already uses. Same shape as TaskNamespace — a catalog plus
     per-session execution — but never its mechanics: call() below runs
     inline, inside AiService's own tool-call loop, and the model waits on
     its result within that same request — never scheduled as an

@@ -17,7 +17,7 @@ from project.archive.layout import CACHE_DIR
 from project_rw_lock import ProjectRwLock
 from session import Session
 
-from tracking.actuators import ActuatorSet, ActuatorSetFactory
+from tracking.actuators import TaskNamespace, TaskNamespaceFactory
 from tracking.automaton_namespace import AutomatonNamespace
 from tracking.env import Env
 from tracking.evaluation_scope import EvaluationScopeBuilder
@@ -54,7 +54,7 @@ class ChatService(object):
 		tracking_service: TrackingService,
 		metric_service: MetricService,
 		job_service: JobService,
-		actuator_factory: ActuatorSetFactory,
+		namespace_factory: TaskNamespaceFactory,
 	) -> None:
 		self._db = db
 		self._ai_service = ai_service
@@ -63,7 +63,7 @@ class ChatService(object):
 		self._session_manager = session_manager
 		self._tracking_service = tracking_service
 		self.metric_service = metric_service
-		self._actuator_factory = actuator_factory
+		self._namespace_factory = namespace_factory
 		session_report_hydrator = SessionReportHydrator(db, ai_service)
 		job_service.register_task_type(SessionReportTask.TYPE, session_report_hydrator.hydrate)
 		session_manager.set_session_report_scheduler(SessionReportScheduler(job_service, session_report_hydrator))
@@ -85,17 +85,19 @@ class ChatService(object):
 	def _env_for_session(self, session_id: int) -> Env:
 		return env_for_session(self._db, self._ownership.require_session(session_id))
 
-	def _tracking_engine_for_session(self, session_id: int) -> tuple[TrackingEngine, "ActuatorSet"]:
+	def _tracking_engine_for_session(self, session_id: int) -> tuple[TrackingEngine, "TaskNamespace"]:
 		session = self._ownership.require_session(session_id)
 		fixed_context = FixedProjectContext(project_id=session["project_id"])
 		env = env_for_session(self._db, session)
 		session_facts = SessionFacts(self._db, fixed_context)
-		actuator_set = self._actuator_factory.for_session(session_id)
+		task_namespace = self._namespace_factory.for_session(session_id)
+		chat_namespace = self._namespace_factory.chat_for_session(session_id)
 		scope_builder = EvaluationScopeBuilder(
 			env, self.metric_service, session_facts, self._user_facts,
-			self._db, self._automaton_namespace, actuator_set, ai_service=self._ai_service_for_session(session_id),
+			self._db, self._automaton_namespace, task_namespace, chat_namespace,
+			ai_service=self._ai_service_for_session(session_id),
 		)
-		return TrackingEngine(DbTrackingSink(self._db), env, scope_builder), actuator_set
+		return TrackingEngine(DbTrackingSink(self._db), env, scope_builder), task_namespace
 
 	def _schedule_task(self, automaton: Automaton, action: Action, session_id: int | None, project_id: str) -> None:
 		if not action.task:
@@ -106,7 +108,8 @@ class ChatService(object):
 			env = Env()
 			scope_builder = EvaluationScopeBuilder(
 				env, self.metric_service, self._session_facts, self._user_facts,
-				self._db, self._automaton_namespace, self._actuator_factory.fake(project_id=project_id),
+				self._db, self._automaton_namespace, self._namespace_factory.fake(project_id=project_id),
+				chat_namespace=self._namespace_factory.chat_fake(project_id=project_id),
 			)
 			tracking_engine = TrackingEngine(DbTrackingSink(self._db), env, scope_builder)
 		tracking_engine.schedule_task(automaton, action, action.target, session_id=session_id)
@@ -536,11 +539,11 @@ class ChatService(object):
 
 	def is_actuators_enabled(self, session_id: int) -> bool:
 		self._ownership.require_own_session(session_id)
-		return self._actuator_factory.is_enabled_for_test_session(session_id)
+		return self._namespace_factory.is_enabled_for_test_session(session_id)
 
 	def set_actuators_enabled(self, session_id: int, enabled: bool) -> None:
 		self._ownership.require_own_session(session_id)
-		self._actuator_factory.set_enabled_for_test_session(session_id, enabled)
+		self._namespace_factory.set_enabled_for_test_session(session_id, enabled)
 
 	def clear_auto_tracking_overrides(self) -> None:
 		self._tracking_service.clear_auto_tracking_overrides()
@@ -667,18 +670,18 @@ class ChatService(object):
 		automaton, state = await self._ensure_project_bootstrap(session_id)
 		if automaton is None:
 			return
-		if state.final or not state.chat:
+		if state.final or not state.chat_enabled:
 			await self._generate_opening_message_if_needed(session_id, automaton, state)
 
 	def _should_generate_opening_message(self, session_id: int, state: State) -> bool:
-		# A session with an operator (see ActuatorSetFactory.
+		# A session with an operator (see TaskNamespaceFactory.
 		# get_human_operator) never auto-generates anything — every
 		# message either side sees while in human mode is one a person
 		# actually wrote, never a model-generated opener.
-		if self._actuator_factory.get_human_operator(session_id) is not None:
+		if self._namespace_factory.get_human_operator(session_id) is not None:
 			return False
 		content_since = self._db.history_cutoff_for_session(session_id, state.history_cutoff)
-		chat_blocked = state.final or not state.chat
+		chat_blocked = state.final or not state.chat_enabled
 		gate_since = self._db.get_last_transition_timestamp_for_session(session_id) if chat_blocked else content_since
 		return not self._db.has_messages_since(session_id, gate_since)
 
@@ -749,7 +752,7 @@ class ChatService(object):
 		self._ensure_project_available(project_id)
 		_, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 		self._require_active_session(session_id, project_id, state.key)
-		if not state.chat:
+		if not state.chat_enabled:
 			raise ChatServiceError(
 				"This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT,
 				code="state_not_chat",
@@ -772,7 +775,7 @@ class ChatService(object):
 		project_id = self._project_id_for_session(session_id)
 		if text is not None and user_message_id is None:
 			user_message_id = self.accept_user_message(session_id, text)
-		operator = self._actuator_factory.get_human_operator(session_id)
+		operator = self._namespace_factory.get_human_operator(session_id)
 		if operator is not None:
 			return await self._process_human_turn(session_id, operator, on_metadata, user_message_id)
 		async with self._session_scope(project_id, session_id):
@@ -781,8 +784,8 @@ class ChatService(object):
 	async def _process_human_turn(
 		self, session_id: int, operator: str, on_metadata: OnMetadata | None, user_message_id: int | None,
 	) -> dict:
-		"""actuator.switch_to_human's own turn path — no automaton, no
-		lock: while a session has an operator (see ActuatorSetFactory.
+		"""chat.switch_to_human's own turn path — no automaton, no
+		lock: while a session has an operator (see TaskNamespaceFactory.
 		get_human_operator) it isn't an automaton-driven conversation at
 		all, so none of TrackingEngine/_session_scope applies. The
 		operator's reply can take anywhere from seconds to minutes;

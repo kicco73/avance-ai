@@ -14,7 +14,7 @@ pytestmark = pytest.mark.contract
 
 YML = (
     "project:\n  id: proj\n"
-    "init-action:\n  target: a\n  task: actuator.celebrate()\n"
+    "init-action:\n  target: a\n  task: task.send_mail(user.email, 'hi')\n"
     "states:\n"
     "  a:\n"
     "    contextual-prompt: hi\n"
@@ -70,7 +70,7 @@ CHATLESS_FINAL_YML = (
     "        target: crisis\n"
     "  crisis:\n"
     "    contextual-prompt: bye\n"
-    "    chat: false\n"
+    "    chat-enabled: false\n"
     "    actions: []\n"
 )
 
@@ -102,7 +102,7 @@ def test_new_test_session_still_restarts_at_init_every_time(client, app_db):
     assert first["start_state"] == "a"
     # init-action's task fires as a task, never inside this response.
     assert "task" not in first
-    assert [t["payload"]["script"].strip() for t in app_db.list_tasks()] == ["actuator.celebrate()"]
+    assert [t["payload"]["script"].strip() for t in app_db.list_tasks()] == ["task.send_mail(user.email, 'hi')"]
 
     resp = client.post(f"/api/chat/sessions/{first['id']}/action", json={"action_name": "go"})
     assert resp.status_code == 200, resp.text
@@ -113,4 +113,4 @@ def test_new_test_session_still_restarts_at_init_every_time(client, app_db):
     second = resp.json()
     assert second["start_state"] == "a"
     assert "task" not in second
-    assert [t["payload"]["script"].strip() for t in app_db.list_tasks()] == ["actuator.celebrate()"] * 2
+    assert [t["payload"]["script"].strip() for t in app_db.list_tasks()] == ["task.send_mail(user.email, 'hi')"] * 2

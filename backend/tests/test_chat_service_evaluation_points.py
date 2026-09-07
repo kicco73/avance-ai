@@ -10,7 +10,7 @@ from automaton.automaton import Action, Automaton, Signal, State
 from chat.chat_service import ChatService
 from chat.sessions.session_manager import ChatSessionManager
 from db.models import Tracking
-from conftest import make_test_actuator_factory, make_test_job_service
+from conftest import make_test_namespace_factory, make_test_job_service
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService, TrackingServiceError
 
@@ -116,9 +116,9 @@ def chat_service_for(db):
         project_service = FakeProjectService(automaton)
         metric_service = MetricService(db, project_service)
         job_service = make_test_job_service(db)
-        actuator_factory = make_test_actuator_factory(db, job_service)
+        namespace_factory = make_test_namespace_factory(db, job_service)
         tracking_service = TrackingService(
-            db, project_service, metric_service, actuator_factory,
+            db, project_service, metric_service, namespace_factory,
         )
         service = ChatService(
             ai_service=ai_service,
@@ -129,7 +129,7 @@ def chat_service_for(db):
             tracking_service=tracking_service,
             metric_service=metric_service,
             job_service=job_service,
-            actuator_factory=actuator_factory,
+            namespace_factory=namespace_factory,
         )
         return service
 

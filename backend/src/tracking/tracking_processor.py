@@ -179,7 +179,7 @@ class TrackingProcessor(object):
 		fragments = [text] if isinstance(text, str) else list(text or [])
 		state = self.user.state
 
-		if not state.chat and [f for f in fragments if f not in ("", "...")]:
+		if not state.chat_enabled and [f for f in fragments if f not in ("", "...")]:
 			raise TrackingServiceError(
 				"This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT,
 				code="state_not_chat",

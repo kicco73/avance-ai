@@ -8,7 +8,7 @@ from automaton.builder.build_cursor import BuildCursor
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from metrics.metrics_framework import metric_names
-from tracking.actuators import ActuatorSet, MAX_ATTACHMENT_READ_BYTES
+from tracking.actuators import ChatNamespace, MAX_ATTACHMENT_READ_BYTES, TaskNamespace
 from tracking.sources import READ_METHOD, WRITE_METHOD, driver_class_for
 
 STATE_SOURCE_FIELDS = (
@@ -79,17 +79,31 @@ class AutomatonValidator:
             raise ValueError(message)
 
     @staticmethod
-    def validate_actuator_arity(expression: str, context: str) -> None:
-        for method_name, arg_count in TriggerExpressionAnalyzer.namespace_calls(expression, "actuator"):
-            method = getattr(ActuatorSet, method_name, None)
+    def _validate_namespace_call_arity(expression: str, context: str, namespace: str, methods_class: type) -> None:
+        """Shared by validate_task_arity/validate_chat_arity below: every
+        `<namespace>.<method>(...)` call in `expression` must pass the
+        same number of arguments its Python-side method (on
+        `methods_class`) actually declares — checked generically off
+        `inspect.signature` rather than one hand-written arity table per
+        namespace."""
+        for method_name, arg_count in TriggerExpressionAnalyzer.namespace_calls(expression, namespace):
+            method = getattr(methods_class, method_name, None)
             if method is None:
                 continue
             expected = len(inspect.signature(method).parameters) - 1
             if arg_count != expected:
                 raise ValueError(
-                    f"{context} ('{expression}'): actuator.{method_name}(...) takes {expected} "
+                    f"{context} ('{expression}'): {namespace}.{method_name}(...) takes {expected} "
                     f"argument(s), got {arg_count}"
                 )
+
+    @classmethod
+    def validate_task_arity(cls, expression: str, context: str) -> None:
+        cls._validate_namespace_call_arity(expression, context, "task", TaskNamespace)
+
+    @classmethod
+    def validate_chat_arity(cls, expression: str, context: str) -> None:
+        cls._validate_namespace_call_arity(expression, context, "chat", ChatNamespace)
 
     @staticmethod
     def validate_attachment_read(expression: str, context: str, all_archives: dict[str, MemoryArchive]) -> None:
@@ -132,7 +146,7 @@ class AutomatonValidator:
                     "(a namespace or core metric) and can't be used as a task local variable."
                 )
             cls.validate_namespaced_expression(expression, line_context, registry, sources, frozenset(known_locals))
-            cls.validate_actuator_arity(expression, line_context)
+            cls.validate_task_arity(expression, line_context)
             cls.validate_attachment_read(expression, line_context, all_archives)
             violations = TriggerExpressionAnalyzer.defer_violations(expression)
             if violations:
@@ -147,13 +161,19 @@ class AutomatonValidator:
     ) -> None:
         """`on-exit` shares task's own statement splitting
         (TriggerExpressionAnalyzer.task_statements — same multi-line-
-        call/'#'-comment handling) but every statement must be an
-        `env.<key> = expr` assignment (TriggerExpressionAnalyzer.
-        on_exit_assignment): it has no actuator.* side effects of its
-        own, only env writes — the future replacement for the
-        declarative `env:` map, so each assignment is checked exactly
-        like one of that map's own entries (env key must already be
-        declared, validate_env_key_type included)."""
+        call/'#'-comment handling), but the mixed grammar its own
+        statements accept differs from task's own: each statement must
+        be *either* an `env.<key> = expr` assignment
+        (TriggerExpressionAnalyzer.on_exit_assignment), checked exactly
+        like one of the declarative `env:` map's own entries (env key
+        must already be declared, validate_env_key_type included), *or*
+        a bare `chat.<method>(...)` call (TriggerExpressionAnalyzer.
+        bare_namespace_call) — on-exit's own side effect, arity-checked
+        the same way task's own namespaced calls are (see
+        validate_chat_arity). `registry` here is expected to be the
+        for_on_exit() view: `chat` visible, `task`/`attachment` excluded
+        — on-exit can't call task.*'s own send_mail/whatsapp/defer/prompt,
+        that's task's own job."""
         if not on_exit:
             return
         try:
@@ -163,18 +183,23 @@ class AutomatonValidator:
         for line_number, statement in statements:
             line_context = f"{context}, on-exit line {line_number}"
             assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
-            if assignment is None:
+            if assignment is not None:
+                env_key, expression = assignment
+                if env_key not in registry.get("env", {}):
+                    raise ValueError(
+                        f"{line_context}: env key '{env_key}' is not declared in the project's own "
+                        "'env' section — declare it there first."
+                    )
+                cls.validate_namespaced_expression(expression, line_context, registry, sources)
+                cls.validate_env_key_type(env_keys[env_key], expression, line_context)
+                continue
+            if TriggerExpressionAnalyzer.bare_namespace_call(statement, "chat") is None:
                 raise ValueError(
-                    f"{line_context} ('{statement}'): on-exit only supports 'env.<key> = expr' assignments."
+                    f"{line_context} ('{statement}'): on-exit only supports 'env.<key> = expr' assignments "
+                    "or a bare 'chat.<method>(...)' call."
                 )
-            env_key, expression = assignment
-            if env_key not in registry.get("env", {}):
-                raise ValueError(
-                    f"{line_context}: env key '{env_key}' is not declared in the project's own "
-                    "'env' section — declare it there first."
-                )
-            cls.validate_namespaced_expression(expression, line_context, registry, sources)
-            cls.validate_env_key_type(env_keys[env_key], expression, line_context)
+            cls.validate_namespaced_expression(statement, line_context, registry, sources)
+            cls.validate_chat_arity(statement, line_context)
 
     @staticmethod
     def validate_trigger_types(expression: str, context: str) -> None:
@@ -208,8 +233,9 @@ class AutomatonValidator:
         env_keys: dict[str, EnvKey], sources: dict[str, Source], all_archives: dict[str, MemoryArchive],
         known_projects: dict[str, frozenset[str]] | None = None,
     ) -> None:
-        registry_without_actuator = IdentifierRegistry.for_triggers(registry)
-        registry_without_session = IdentifierRegistry.for_actuators(registry)
+        registry_for_triggers = IdentifierRegistry.for_triggers(registry)
+        registry_for_task = IdentifierRegistry.for_task(registry)
+        registry_for_on_exit = IdentifierRegistry.for_on_exit(registry)
         self._cursor.at(state.line, f"states.{key}")
         self.validate_state_sources(state, sources)
         self.validate_state_io(state, env_keys)
@@ -223,7 +249,7 @@ class AutomatonValidator:
                 )
             if action.trigger:
                 self.validate_namespaced_expression(
-                    action.trigger, f"{action_context}: trigger", registry_without_actuator, sources,
+                    action.trigger, f"{action_context}: trigger", registry_for_triggers, sources,
                 )
                 self.validate_trigger_types(action.trigger, f"{action_context}: trigger")
                 referenced_projects = TriggerExpressionAnalyzer.automaton_project_refs(action.trigger)
@@ -246,13 +272,13 @@ class AutomatonValidator:
                         )
                     self.validate_namespaced_expression(
                         expression, f"{action_context}: env expression for '{env_key}'",
-                        registry_without_actuator, sources,
+                        registry_for_triggers, sources,
                     )
                     self.validate_env_key_type(env_keys[env_key], expression, action_context)
             if action.task:
-                self.validate_task(action.task, action_context, registry_without_session, sources, all_archives)
+                self.validate_task(action.task, action_context, registry_for_task, sources, all_archives)
             if action.on_exit:
-                self.validate_on_exit(action.on_exit, action_context, registry_without_actuator, sources, env_keys)
+                self.validate_on_exit(action.on_exit, action_context, registry_for_on_exit, sources, env_keys)
 
     def validate_state_io(self, state: State, env_keys: dict[str, EnvKey]) -> None:
         for field_name, names in (("input", state.input), ("output", state.output)):

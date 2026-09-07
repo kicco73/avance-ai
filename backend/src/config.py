@@ -343,7 +343,7 @@ class AppConfig:
 
     @classmethod
     def _parse_notification_service_config(cls, raw: dict, path: Path) -> NotificationServiceConfig | None:
-        """None if the whole section is absent — actuator.send_mail (see
+        """None if the whole section is absent — task.send_mail (see
         tracking/actuators/actuator_set.py) is the only thing that needs
         a NotificationService; nothing else in the system requires one.
         A section that IS present still gets every field required below,

@@ -157,7 +157,7 @@ auth-service:
 
 notification-service:
   # Optional: omit this whole section if no project ever needs
-  # actuator.send_mail — it's the only thing that uses it. Present, url/
+  # task.send_mail — it's the only thing that uses it. Present, url/
   # username/password are mandatory: url is parsed as smtp://host[:port]
   # (STARTTLS, default port 587) or smtps://host[:port] (implicit TLS,
   # default port 465) — no credentials or path/query in the url itself.
