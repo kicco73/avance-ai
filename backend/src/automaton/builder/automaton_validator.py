@@ -20,17 +20,6 @@ class AutomatonValidator:
     def __init__(self, cursor: BuildCursor) -> None:
         self._cursor = cursor
 
-    def validate_env_sources(self, sources: dict[str, Source], env_keys: dict[str, EnvKey], raw_sources) -> None:
-        if any(env_key.exported for env_key in env_keys.values()):
-            return
-        for name, source in sources.items():
-            if source.is_env_source:
-                self._cursor.at(self._cursor.line_of(raw_sources, name), f"sources.{name}")
-                raise ValueError(
-                    f"Source '{name}': url 'avance:env' exposes the project's env keys to the model, but no env "
-                    "key declares 'ai-access: readonly' or 'ai-access: readwrite' — nothing to expose."
-                )
-
     def validate_env_key_default_order(self, env_keys: dict[str, EnvKey], raw_env_keys) -> None:
         all_names = set(env_keys.keys())
         declared_so_far: set[str] = set()
@@ -196,7 +185,7 @@ class AutomatonValidator:
             "output": registry_with_output["output"]
         }
         self._cursor.at(state.line, f"states.{key}")
-        self.validate_state_sources(state, sources, env_keys)
+        self.validate_state_sources(state, sources)
         for action in state.actions:
             self._cursor.at(action.line, f"states.{key}.actions.{action.name}")
             action_context = f"State {key}, action '{action.name}'"
@@ -236,7 +225,7 @@ class AutomatonValidator:
             if action.on_enter:
                 self.validate_on_enter(action.on_enter, action_context, registry_with_output_no_actuator_no_session, sources, all_archives)
 
-    def validate_state_sources(self, state: State, sources: dict[str, Source], env_keys: dict[str, EnvKey]) -> None:
+    def validate_state_sources(self, state: State, sources: dict[str, Source]) -> None:
         by_field = {
             "ai-may-read-sources": state.ai_may_read_sources,
             "ai-must-read-sources": state.ai_must_read_sources,
@@ -260,21 +249,6 @@ class AutomatonValidator:
                         f"State '{state.key}': {field_name} '{source_name}' references undefined name(s): "
                         f"source.{source_name}.{method}"
                     )
-        any_readwrite_key = any(env_key.writable for env_key in env_keys.values())
-        for source_name in state.ai_may_write_sources:
-            source = sources[source_name]
-            if source.is_env_source and source_name not in state.ai_read_source_names:
-                self._cursor.warn(
-                    f"State '{state.key}': ai-may-write-sources '{source_name}' — the model may write the env "
-                    f"here but never sees the current values: add '{source_name}' to 'ai-may-read-sources' or "
-                    "'ai-must-read-sources' too."
-                )
-            if source.is_env_source and not any_readwrite_key:
-                raise ValueError(
-                    f"State '{state.key}': ai-may-write-sources '{source_name}' — url 'avance:env' exposes the "
-                    "model an 'update' tool, but no env key declares 'ai-access: readwrite' — nothing it could "
-                    "ever write."
-                )
 
     @staticmethod
     def validate_env_key_type(declared: EnvKey, expression: str, context: str) -> None:

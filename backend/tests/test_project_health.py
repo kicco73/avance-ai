@@ -178,32 +178,6 @@ def test_get_runtime_status_reports_broken_published_and_draft_separately(db, pr
     assert rows["broken_draft"]["broken"]["draft"] is not None
 
 
-def test_get_runtime_status_reports_the_drafts_own_build_warnings(db, project_service):
-    warning_yml = """
-env:
-  pnr:
-    ai-access: readwrite
-    ai-definition: The record locator.
-sources:
-  env:
-    url: avance:env
-    ai-definition: The automaton's variables.
-init-action:
-  target: a
-states:
-  a:
-    ui-label: A
-    contextual-prompt: hi
-    ai-may-write-sources: [env]
-"""
-    _publish(db, project_service, "warns", warning_yml)
-
-    rows = {row["id"]: row for row in project_service.get_runtime_status()}
-
-    assert len(rows["warns"]["build_warnings"]) == 1
-    assert "never sees the current values" in rows["warns"]["build_warnings"][0]
-
-
 def test_get_runtime_status_reports_no_build_warnings_for_a_clean_project(db, project_service):
     _publish(db, project_service, "clean", VALID_YML)
 

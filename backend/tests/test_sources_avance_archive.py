@@ -100,7 +100,7 @@ def test_select_rows_containing_result_beyond_the_char_limit_is_refused_with_the
     rows = "\n".join(f"paris-row-{i}" for i in range(MAX_SOURCE_RESULT_CHARS))
     driver, _ = _seeded_driver(db, "big.csv", f"header\n{rows}\n")
 
-    assert driver.select_rows_containing("paris") == "error: response too long — provide more specific filters, then try again.\nheader"
+    assert driver.select_rows_containing("paris") == "error: response too long — restrict range with search strings and/or a specific column below:\nheader"
 
 
 def test_select_rows_containing_ands_several_values_together_while_one_value_returns_every_match(db):
@@ -231,7 +231,7 @@ def test_the_column_filtered_reads_keep_the_files_own_delimiter_and_bound_their_
     rows = "\n".join(f"row-{i},1" for i in range(MAX_SOURCE_RESULT_CHARS))
     big, _ = _seeded_driver(db, "big.csv", f"name,n\n{rows}\n")
     assert big.select_rows_where("n", "=", "1") == (
-        "error: response too long — provide more specific filters, then try again.\nname,n"
+        "error: response too long — restrict range with search strings and/or a specific column below:\nname,n"
     )
 
 

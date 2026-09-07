@@ -41,27 +41,6 @@ _FLIGHTS_SOURCE = "sources:\n  flights:\n    ui-label: Flights\n    ai-definitio
 _FLIGHTS_CSV_NO_DEFINITION = "sources:\n  flights:\n    url: avance:flights.csv\n"
 _FLIGHTS_CSV = {"flights.csv": "a,b\n1,2\n"}
 
-_ENV_PROJECT = """
-env:
-  pnr:
-    ai-access: readwrite
-    ai-definition: The booking's own record locator.
-  customer_email:
-    ai-access: readonly
-    ai-definition: The customer's email.
-    value: user.email
-  _hidden:
-    value: "'x'"
-sources:
-  env:
-    url: avance:env
-    ui-label: Env
-    ai-definition: The automaton's variables.
-  flights:
-    ui-label: Flights
-    ai-definition: One row per flight.
-"""
-
 
 def test_each_field_is_parsed_into_its_own_tuple_leaving_the_others_empty():
     bare = _build("").states["a"]
@@ -77,11 +56,6 @@ def test_each_field_is_parsed_into_its_own_tuple_leaving_the_others_empty():
     must = _build("    ai-must-read-sources: [flights]", _FLIGHTS_SOURCE).states["a"]
     assert must.ai_must_read_sources == ("flights",)
     assert must.ai_may_read_sources == ()
-
-    automaton = _build("    ai-may-read-sources: [env]\n    ai-may-write-sources: [env]", _ENV_PROJECT)
-    assert automaton.states["a"].ai_may_write_sources == ("env",)
-    assert automaton.states["a"].ai_source_names == ("env", "env")
-    assert automaton.build_warnings == []
 
 
 @pytest.mark.parametrize("legacy_field, replacement", [
@@ -113,16 +87,6 @@ def test_a_source_may_not_be_both_may_and_must_read_and_a_write_needs_a_driver_w
         _build("    ai-may-write-sources: [flights]", _FLIGHTS_SOURCE)
 
 
-def test_a_write_on_an_env_source_the_state_never_reads_is_a_warning_unless_it_must_read_it():
-    writing_only = _build("    ai-may-write-sources: [env]", _ENV_PROJECT)
-    assert writing_only.states["a"].ai_may_write_sources == ("env",)
-    assert len(writing_only.build_warnings) == 1
-    assert "ai-may-write-sources 'env'" in writing_only.build_warnings[0]
-    assert "ai-may-read-sources" in writing_only.build_warnings[0]
-
-    assert _build("    ai-must-read-sources: [env]\n    ai-may-write-sources: [env]", _ENV_PROJECT).build_warnings == []
-
-
 def test_ai_definition_is_required_only_once_a_source_is_listed_even_before_it_has_a_url():
     # "Created, not yet configured" leniency — a read on a url-less source
     # builds; it just can't be called until a url picks a driver. But
@@ -137,82 +101,8 @@ def test_ai_definition_is_required_only_once_a_source_is_listed_even_before_it_h
     assert _build("", _FLIGHTS_SOURCE.replace("ai-definition: One row per flight.\n", "")).sources[0].ai_definition is None
 
 
-class TestEnvSource:
-    def test_an_env_source_needs_an_exported_key_and_a_write_on_it_a_readwrite_one(self):
-        # readonly-only is a real, buildable env source for select() — but
-        # writing to it would give the model an `update` tool whose
-        # `fields` schema can never have a single property.
-        with pytest.raises(ValueError, match="avance:env.*no env key declares 'ai-access: readonly' or 'ai-access: readwrite'"):
-            _build("", """
-env:
-  _hidden:
-    value: "'x'"
-sources:
-  env:
-    url: avance:env
-    ai-definition: The automaton's variables.
-""")
-        with pytest.raises(ValueError, match="ai-may-write-sources 'env'.*no env key declares 'ai-access: readwrite'"):
-            _build("    ai-may-write-sources: [env]", """
-env:
-  customer_email:
-    ai-access: readonly
-    ai-definition: The customer's email.
-sources:
-  env:
-    url: avance:env
-    ai-definition: The automaton's variables.
-""")
-
-    def test_exported_keys_need_no_env_source_and_an_env_source_provisions_no_archive_and_is_read_only_via_a_read_field(self):
-        no_source = _build("", """
-env:
-  pnr:
-    ai-access: readwrite
-    ai-definition: The record locator.
-""")
-        assert [env_key.name for env_key in no_source.exported_env_keys()] == ["pnr"]
-        assert no_source.sources == []
-
-        automaton = _build("", _ENV_PROJECT)
-        assert "env" not in automaton.attachments
-        assert automaton.sources[0].is_env_source
-
-        reading = _build("    ai-may-read-sources: [env]", _ENV_PROJECT)
-        assert reading.reads_env_source(reading.states["a"]) is True
-        writing_only = _build("    ai-may-write-sources: [env]", _ENV_PROJECT)
-        assert writing_only.reads_env_source(writing_only.states["a"]) is False
-        other_source = _build("    ai-may-read-sources: [flights]", _ENV_PROJECT)
-        assert other_source.reads_env_source(other_source.states["a"]) is False
-
-    def test_a_script_may_select_and_update_an_env_source_but_never_update_an_archive_one(self):
-        env_script = """
-project:
-  id: test_project
-env:
-  pnr:
-    ai-access: readwrite
-    ai-definition: The record locator.
-sources:
-  env:
-    url: avance:env
-    ai-definition: The variables.
-init-action:
-  target: a
-states:
-  a:
-    contextual-prompt: hi
-    actions:
-      - name: advance
-        target: a
-        trigger: "source.env.select_rows_containing() != ''"
-        on-enter: |
-          source.env.update(fields={'pnr': 'X'})
-"""
-        automaton = AutomatonBuilder().build({"index.yml": env_script})
-        assert automaton.states["a"].actions[0].trigger == "source.env.select_rows_containing() != ''"
-
-        archive_script = """
+def test_a_script_may_never_update_a_source_whose_driver_has_no_write_support():
+    archive_script = """
 project:
   id: test_project
 sources:
@@ -229,5 +119,5 @@ states:
         on-enter: |
           source.flights.update(fields={'a': 'b'})
 """
-        with pytest.raises(ValueError, match=r"undefined name\(s\): source.flights.update"):
-            AutomatonBuilder().build({"index.yml": archive_script, **_FLIGHTS_CSV})
+    with pytest.raises(ValueError, match=r"undefined name\(s\): source.flights.update"):
+        AutomatonBuilder().build({"index.yml": archive_script, **_FLIGHTS_CSV})

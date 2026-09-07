@@ -203,9 +203,8 @@ export function postAddEnvKey(projectId) {
   return projectFetch(projectId, `${API_URL}/projects/${encodeURIComponent(projectId)}/env-keys`, { method: 'POST' })
 }
 
-export function postAddSource(projectId, driver = 'avance') {
-  const query = driver === 'avance' ? '' : `?driver=${encodeURIComponent(driver)}`
-  return projectFetch(projectId, `${API_URL}/projects/${encodeURIComponent(projectId)}/sources${query}`, { method: 'POST' })
+export function postAddSource(projectId) {
+  return projectFetch(projectId, `${API_URL}/projects/${encodeURIComponent(projectId)}/sources`, { method: 'POST' })
 }
 
 export function postAddSourceFromFile(projectId, fileName, content) {

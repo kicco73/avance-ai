@@ -223,13 +223,11 @@ class AutomatonYamlEditor:
     def _env_key_payload(self, name: str) -> EnvKeyPayload:
         raw_env_key = self._env_key(name)
         ui_description = raw_env_key.get("ui-description")
-        ai_definition = raw_env_key.get("ai-definition")
         return {
             "name": name,
             "ui_description": ui_description.strip() if ui_description else None,
             "value": raw_env_key.get("value") or "",
             "ai_access": raw_env_key.get("ai-access") or AI_ACCESS_NONE,
-            "ai_definition": ai_definition.strip() if ai_definition else None,
         }
 
     def _source_payload(self, name: str) -> SourcePayload:
@@ -363,10 +361,10 @@ class AutomatonYamlEditor:
                 return self.rename_env_key(name, derived_name)
             return self._env_key_payload(name)
         raw_env_key = self._env_key(name)
-        # The default access (none) and an empty ai-definition remove the
-        # key rather than storing the default explicitly — AutomatonBuilder
-        # reads a missing key exactly the same way.
-        if (field == "ai-access" and value == AI_ACCESS_NONE) or (field == "ai-definition" and not value):
+        # The default access (none) removes the key rather than storing
+        # the default explicitly — AutomatonBuilder reads a missing key
+        # exactly the same way.
+        if field == "ai-access" and value == AI_ACCESS_NONE:
             raw_env_key.pop(field, None)
         else:
             raw_env_key[field] = value

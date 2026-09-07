@@ -72,34 +72,26 @@ def test_a_narrowed_update_schema_keeps_enums_properties_and_descriptions_and_dr
 
 
 def test_an_update_tool_with_an_empty_fields_schema_can_never_reach_this_conversion_at_all():
-    """An avance:env source's own `update` schema narrows `fields` to just
-    its readwrite keys (AvanceEnvSource.parameter_schema) — if none exist,
-    that would be an object schema with zero properties, and Gemini's own
-    Schema (unlike plain JSON Schema) rejects an OBJECT with no properties
-    outright. This never has to be handled here because AutomatonBuilder
-    refuses to build a state's own ai-may-write-sources for an avance:env
-    source with no 'ai-access: readwrite' key at all (see
-    AutomatonBuilder._validate_state_sources) — so no ToolSet, and so no
-    tool declaration, for a schema shaped like this ever exists to send to
-    any provider, Gemini included."""
-    with pytest.raises(ValueError, match="no env key declares 'ai-access: readwrite'"):
+    """No driver in tracking.sources.SOURCE_DRIVERS supports the `update`
+    method at all today — an `ai-may-write-sources` declaration always
+    fails to build (undefined source.<name>.update), so a `fields` schema
+    narrowed down to zero properties (what Gemini's own Schema, unlike
+    plain JSON Schema, rejects outright for an OBJECT) never reaches this
+    conversion for any provider, Gemini included."""
+    with pytest.raises(ValueError, match=r"references undefined name\(s\): source\.flights\.update"):
         AutomatonBuilder().build({"index.yml": """
 project:
   id: test_project
-env:
-  customer_email:
-    ai-access: readonly
-    ai-definition: The customer's email.
 sources:
-  env:
-    url: avance:env
-    ai-definition: The automaton's variables.
+  flights:
+    url: avance:flights.csv
+    ai-definition: Flight records.
 init-action:
   target: a
 states:
   a:
     contextual-prompt: hi
-    ai-may-write-sources: [env]
+    ai-may-write-sources: [flights]
     actions:
       - name: advance
         ui-label: Advance

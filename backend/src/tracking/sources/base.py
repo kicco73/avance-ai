@@ -36,8 +36,8 @@ class SourceContext:
     """Everything a driver may need from the world it runs in, handed to
     every driver alike by SourceNamespace — a driver picks what it uses
     (AvanceArchiveSource reads `db` at `automaton`'s pinned revision,
-    through a per-`session_id` cache; AvanceEnvSource reads and writes
-    `env`). `session_id` is None outside a real chat session (a wake-up
+    through a per-`session_id` cache). `env` is unused by every driver
+    today. `session_id` is None outside a real chat session (a wake-up
     re-evaluation, a test replay, an on-enter deferred call)."""
     db: "Db | None"
     automaton: "Automaton"

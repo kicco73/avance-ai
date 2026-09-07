@@ -45,7 +45,7 @@ SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
 # derive its name from — 'name' is itself directly editable here.
 # 'ai-access'/'ai-definition': what the model may do with the key and the
 # text it reads about it (see automaton.EnvKey).
-ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value", "ai-access", "ai-definition"}
+ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value", "ai-access"}
 # Same reasoning as ENV_KEY_EDITABLE_FIELDS — a source's own id is
 # directly editable, not derived from its ui-label. 'url' is deliberately
 # absent: it's system-managed (ProjectEditor.add_source/set_source_field
@@ -456,11 +456,11 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @post("/api/projects/{project_id}/sources", role="admin")
-    async def add_source(self, project_id: str, request: Request, file_name: str | None = None, driver: str = "avance"):
+    async def add_source(self, project_id: str, request: Request, file_name: str | None = None):
         content = await request.body()
         try:
             return await self.project_service.add_source(
-                project_id, self._activate_project, file_name, content, driver=driver,
+                project_id, self._activate_project, file_name, content,
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc

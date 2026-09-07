@@ -155,37 +155,26 @@ class Reaction:
 
 AI_ACCESS_NONE = "none"
 AI_ACCESS_READONLY = "readonly"
-AI_ACCESS_READWRITE = "readwrite"
-AI_ACCESS_VALUES = (AI_ACCESS_NONE, AI_ACCESS_READONLY, AI_ACCESS_READWRITE)
+AI_ACCESS_VALUES = (AI_ACCESS_NONE, AI_ACCESS_READONLY)
 
 
 @dataclass
 class EnvKey:
     """One project-level `env:` declaration. `value` is the default,
     evaluated once whenever nothing has set the key yet. `ai_access` is
-    what the *model* may do with this key, in absolute terms — none (the
-    default: scripts only, the model never sees it), readonly, or
-    readwrite — and only ever matters through an `avance:env` source
-    (see tracking.sources.avance_env): a state that lists that source in
-    its own ai-*-read-sources shows the model every key with ai_access
-    other than none, and one that lists it in ai-may-write-sources lets
-    the model update the readwrite ones. Scripts (an action's own `env:`)
-    write any key regardless. `ai_definition` is the text the model reads
-    to know what the key means — required whenever ai_access isn't none,
-    the same requirement a source exposed to the model gets."""
+    whether the *model* gets to see this key at all — none (the default:
+    scripts only) or readonly, always rendered in the prompt's own env
+    block (see tracking.env_prompt_block) whenever any key is exported;
+    there is no model-facing write path. Scripts (an action's own `env:`)
+    write any key regardless of ai_access."""
     name: str
     value: str = ""
     ui_description: str | None = None
     ai_access: str = AI_ACCESS_NONE
-    ai_definition: str | None = None
 
     @property
     def exported(self) -> bool:
         return self.ai_access != AI_ACCESS_NONE
-
-    @property
-    def writable(self) -> bool:
-        return self.ai_access == AI_ACCESS_READWRITE
 
 
 @dataclass
@@ -198,11 +187,6 @@ class OutputKey:
     name: str
     ui_description: str | None = None
     ai_definition: str | None = None
-
-
-# The one `url` an `avance:env` source declares — the project's own env
-# keys exposed as a single-row table (see tracking.sources.avance_env).
-ENV_SOURCE_URL = "avance:env"
 
 
 @dataclass
@@ -224,10 +208,6 @@ class Source:
     # ai-must-read-sources/ai-may-write-sources — same requirement a
     # signal's own `definition` gets — optional for every other source.
     ai_definition: str | None = None
-
-    @property
-    def is_env_source(self) -> bool:
-        return self.url.strip() == ENV_SOURCE_URL
 
 
 # Functional syntax (not the class form the other Payload types use):
@@ -334,7 +314,6 @@ class EnvKeyPayload(TypedDict):
     ui_description: str | None
     value: str
     ai_access: str
-    ai_definition: str | None
 
 class OutputKeyPayload(TypedDict):
     name: str
@@ -489,7 +468,6 @@ class Automaton(object):
             "ui_description": env_key.ui_description,
             "value": env_key.value,
             "ai_access": env_key.ai_access,
-            "ai_definition": env_key.ai_definition,
         }
 
     @staticmethod
@@ -562,17 +540,10 @@ class Automaton(object):
 
     def exported_env_keys(self) -> list[EnvKey]:
         """Every declared env key the model may see at all (ai_access
-        other than none), in declaration order — the columns of an
-        `avance:env` source (see tracking.sources.avance_env) and the
-        content of the prompt's own env block (see tracking.env_prompt_block)."""
+        other than none), in declaration order — the content of the
+        prompt's own env block (see tracking.env_prompt_block), shown to
+        every state whenever this list isn't empty."""
         return [env_key for env_key in self.env_keys if env_key.exported]
-
-    def reads_env_source(self, state: State) -> bool:
-        """Whether `state` lists an `avance:env` source in either of its
-        read fields — the one condition under which the model gets an env
-        block in its system prompt at all (see tracking.env_prompt_block)."""
-        env_source_names = {source.name for source in self.sources if source.is_env_source}
-        return any(name in env_source_names for name in state.ai_read_source_names)
 
     def declared_env_key_names(self) -> set[str]:
         names = {env_key.name for env_key in self.env_keys}

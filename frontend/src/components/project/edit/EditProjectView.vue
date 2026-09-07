@@ -187,8 +187,8 @@ const inspectorTabs = computed(() => {
     return [
       { id: 'states', label: 'Info' },
       { id: 'signals', label: 'Signals' },
-      { id: 'metrics', label: 'Metrics' },
-      { id: 'env', label: 'I/O' }
+      { id: 'env', label: 'I/O' },
+      { id: 'metrics', label: 'Metrics' }
     ]
   }
   if (mode.value === 'test') {
@@ -485,7 +485,6 @@ onBeforeUnmount(() => {
           @new-aspect="handleNewAspect"
           @new-legal="handleNewLegal"
           @new-source="handleAddSource"
-          @new-env-source="() => handleAddSource('env')"
           @select-file="selectFileNode"
           @select-source="selectSourceNode"
           @select-sources-root="selectSourcesRootNode"
@@ -494,7 +493,6 @@ onBeforeUnmount(() => {
           @select="selectedGraphElement = $event"
           @saved="handleFileSaved"
           @renamed="handleFileRenamedByHistory"
-          @switch-to-env-keys="inspectorActiveTab = 'env-keys'"
         />
 
         <Transition name="panel-slide-bottom">

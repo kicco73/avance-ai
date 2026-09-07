@@ -18,14 +18,12 @@ from ai import ToolSpec
 from tracking.env import Env
 
 from .avance_archive import SCHEME as AVANCE_SCHEME, AvanceArchiveSource
-from .avance_env import PATH as AVANCE_ENV_PATH, AvanceEnvSource
 from .base import SourceContext, SourceDriver
 from .comparison import OPERATORS
 from .url import parse_source_url
 
-# scheme -> the driver that serves it, except where a scheme's own path
-# selects a different one (see driver_class_for): `avance:env` is the
-# project's env keys, every other `avance:<path>` one of its archive files.
+# scheme -> the driver that serves it — every `avance:<path>` one of the
+# project's archive files.
 SOURCE_DRIVERS: dict[str, type[SourceDriver]] = {
     AVANCE_SCHEME: AvanceArchiveSource,
 }
@@ -35,9 +33,7 @@ def driver_class_for(url: str) -> type[SourceDriver]:
     """The one place a source's `url` is turned into a driver class —
     raises ValueError for a malformed url and KeyError for an unknown
     scheme, exactly as parse_source_url/SOURCE_DRIVERS themselves do."""
-    scheme, path = parse_source_url(url)
-    if scheme == AVANCE_SCHEME and path == AVANCE_ENV_PATH:
-        return AvanceEnvSource
+    scheme, _path = parse_source_url(url)
     return SOURCE_DRIVERS[scheme]
 
 
@@ -275,8 +271,7 @@ class ToolSet:
         Every other argument is passed through by keyword. A write
         (`method == WRITE_METHOD`) also gets `origin="tool"` injected here,
         in Python, never through `arguments` — origin is never part of any
-        tool's own JSON schema, so the model can neither see nor spoof it
-        (see AvanceEnvSource.update's own `origin` docstring)."""
+        tool's own JSON schema, so the model can neither see nor spoof it."""
         resolved = self._resolved.get(name)
         if resolved is None:
             return f"error: unknown tool '{name}'."

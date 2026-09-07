@@ -177,11 +177,9 @@ defineExpose({ loadEnv, refresh })
             class="inspector-env-access"
             :class="'inspector-env-access-' + accessLabel(key)"
             :title="
-              accessLabel(key) === 'readwrite'
-                ? 'The model can read and update this key (ai-access: readwrite)'
-                : accessLabel(key) === 'readonly'
-                  ? 'The model can read this key (ai-access: readonly)'
-                  : 'Scripts only — the model never sees this key (ai-access: none)'
+              accessLabel(key) === 'readonly'
+                ? 'The model can read this key (ai-access: readonly)'
+                : 'Scripts only — the model never sees this key (ai-access: none)'
             "
           >{{ accessLabel(key) }}</span>
         </div>
@@ -257,5 +255,4 @@ defineExpose({ loadEnv, refresh })
 .inspector-env-clear-btn:hover { background: #c62828; color: white; }
 .inspector-env-access { flex-shrink: 0; font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.1rem 0.4rem; border-radius: 999px; color: white; background: #9e9e9e; }
 .inspector-env-access-readonly { background: #4a6fa5; }
-.inspector-env-access-readwrite { background: #6d28d9; }
 </style>

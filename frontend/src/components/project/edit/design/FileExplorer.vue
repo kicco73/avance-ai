@@ -18,7 +18,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'new-attachment', 'new-aspect', 'new-legal', 'new-source', 'new-env-source',
+  'new-attachment', 'new-aspect', 'new-legal', 'new-source',
   'select-file', 'select-source', 'select-sources-root', 'upload-file',
 ])
 
@@ -54,11 +54,6 @@ function selectNewLegal() {
 function selectAddSource() {
   newFileMenuOpen.value = false
   emit('new-source')
-}
-
-function selectAddEnvSource() {
-  newFileMenuOpen.value = false
-  emit('new-env-source')
 }
 
 function handleClickOutsideNewFileMenu(event) {
@@ -149,7 +144,6 @@ watch(
             <li><button class="file-explorer-new-menu-item" :disabled="hasIndexCss" :title="hasIndexCss ? 'index.css already exists' : ''" @click="selectNewAspect">New aspect</button></li>
             <li><button class="file-explorer-new-menu-item" :disabled="hasLegalTerms" :title="hasLegalTerms ? 'legal/terms.md already exists' : ''" @click="selectNewLegal">New legal</button></li>
             <li><button class="file-explorer-new-menu-item" @click="selectAddSource">Add source</button></li>
-            <li><button class="file-explorer-new-menu-item" @click="selectAddEnvSource">Add automaton variables source</button></li>
           </ul>
         </div>
       </div>

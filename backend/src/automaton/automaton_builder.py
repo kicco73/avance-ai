@@ -11,7 +11,6 @@ from typing import Any
 from logging_factory import LoggerFactory
 from metrics.metrics_framework import metric_names
 from tracking.sources import SOURCE_DRIVERS
-from tracking.sources.avance_env import PATH as AVANCE_ENV_PATH
 from tracking.sources.url import parse_source_url
 
 from ruamel.yaml.error import YAMLError
@@ -70,19 +69,11 @@ class AutomatonBuilder(object):
             raise ValueError(
                 f"env key '{name}': 'ai-access' must be one of {', '.join(AI_ACCESS_VALUES)}, got {ai_access!r}."
             )
-        raw_ai_definition = raw_env_key.get("ai-definition")
-        ai_definition = raw_ai_definition.strip() if isinstance(raw_ai_definition, str) and raw_ai_definition.strip() else None
-        if ai_access != AI_ACCESS_NONE and ai_definition is None:
-            raise ValueError(
-                f"env key '{name}': 'ai-access: {ai_access}' requires an 'ai-definition' — the text the model "
-                "reads to know what this variable means, the same requirement a source exposed to the model gets."
-            )
         return EnvKey(
             name=name,
             value=value.strip(),
             ui_description=raw_description.strip() if raw_description else None,
             ai_access=ai_access,
-            ai_definition=ai_definition,
         )
 
     @staticmethod
@@ -113,7 +104,7 @@ class AutomatonBuilder(object):
                 raise ValueError(
                     f"Source '{name}': url scheme '{scheme}' must be one of: {', '.join(sorted(SOURCE_DRIVERS))}."
                 )
-            if scheme == "avance" and path != AVANCE_ENV_PATH and ArchiveResolver.find_archive(path, all_archives, f"source '{name}'") is None:
+            if scheme == "avance" and ArchiveResolver.find_archive(path, all_archives, f"source '{name}'") is None:
                 all_archives[path] = MemoryArchive(
                     filename=path,
                     source={"type": "text", "media_type": "text/plain", "data": ""},
@@ -350,7 +341,6 @@ class AutomatonBuilder(object):
         for name, raw_source in raw_sources.items():
             self._at(self._line_of(raw_sources, name), f"sources.{name}")
             sources[name] = self._build_source(name, raw_source, all_archives)
-        self._validator.validate_env_sources(sources, env_keys, raw_sources)
         self._validator.validate_env_key_default_order(env_keys, raw_env_keys)
 
         raw_states = raw["states"]

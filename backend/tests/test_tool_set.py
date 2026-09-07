@@ -8,15 +8,10 @@ read cache and Env) a source.<name>.<method>() expression already uses.
 """
 from __future__ import annotations
 
-from datetime import datetime
-
 import pytest
 
 from automaton.automaton import Action, Automaton, EnvKey, Source, State
 from db.db import Db
-from db.models import Tracking
-from tracking.env import Env, PersistedEnv
-from tracking.fixed_project_context import FixedProjectContext
 from tracking.sources import METHOD_SCHEMAS, READ_METHODS, SourceNamespace
 
 pytestmark = pytest.mark.contract
@@ -52,18 +47,6 @@ def _automaton(
     )
     automaton.set_storage_location(revision)
     return automaton
-
-
-ENV_SOURCE = Source(name="env", url="avance:env", ui_label="Env", ai_definition="The automaton's variables.")
-ENV_KEYS = [
-    EnvKey(name="pnr", ai_access="readwrite", ai_definition="The record locator."),
-    EnvKey(name="customer_email", ai_access="readonly", ai_definition="The customer's email."),
-    EnvKey(name="_hidden"),
-]
-
-
-def _env_automaton(db) -> Automaton:
-    return _automaton(PROJECT_ID, _seed(db, {}, {}), [ENV_SOURCE], ENV_KEYS)
 
 
 def _two_sources(db) -> Automaton:
@@ -102,13 +85,6 @@ def test_specs_cover_only_the_named_sources_with_every_supported_read_and_update
         *_read_names("flights"), *_read_names("tickets"),
     }
     assert _names(SourceNamespace(db, two).tool_set(["flights"])) == set(_read_names("flights"))
-
-    # AvanceEnvSource.SUPPORTED_METHODS includes "value" (scripts/triggers
-    # only) and neither column-filtered read (a single row) — ToolSet
-    # wires up exactly what the driver supports, and never `value`.
-    env_names = _names(SourceNamespace(db, _env_automaton(db), env=Env()).tool_set(["env"], may_write_names=["env"]))
-    assert env_names == {"source_env_select_rows_containing", "source_env_update"}
-    assert not any(name.endswith("_value") for name in env_names)
 
 
 def test_an_unknown_name_anywhere_or_a_write_on_a_driver_without_update_raises(db):
@@ -165,15 +141,6 @@ def test_parameter_schemas_are_the_uniform_method_schemas_unless_the_driver_narr
     assert update["properties"]["fields"]["additionalProperties"] == {"type": "string"}
     assert update["properties"]["fields"]["minProperties"] == 1
 
-    specs = {spec.name: spec for spec in SourceNamespace(db, _env_automaton(db), env=Env()).tool_set(["env"], [], ["env"]).specs()}
-    assert specs["source_env_select_rows_containing"].parameters is METHOD_SCHEMAS["select_rows_containing"]
-    narrowed_update = specs["source_env_update"].parameters
-    assert set(narrowed_update["properties"]["fields"]["properties"]) == {"pnr"}
-    assert narrowed_update["properties"]["fields"]["properties"]["pnr"]["description"] == "The record locator."
-    assert narrowed_update["properties"]["fields"]["additionalProperties"] is False
-    assert narrowed_update["properties"]["fields"]["minProperties"] == 1
-    assert narrowed_update["required"] == ["values", "fields"]
-
 
 def test_required_specs_cover_only_the_must_sources_and_only_ever_their_reads(db):
     """`must` forces a read only — a write is never forced."""
@@ -183,10 +150,6 @@ def test_required_specs_cover_only_the_must_sources_and_only_ever_their_reads(db
     mixed = SourceNamespace(db, two).tool_set(["flights"], ["tickets"])
     assert _names(mixed) == {*_read_names("flights"), *_read_names("tickets")}
     assert {spec.name for spec in mixed.required_specs()} == set(_read_names("tickets"))
-
-    env = SourceNamespace(db, _env_automaton(db), env=Env()).tool_set([], ["env"], ["env"])
-    assert _names(env) == {"source_env_select_rows_containing", "source_env_update"}
-    assert {spec.name for spec in env.required_specs()} == {"source_env_select_rows_containing"}
 
 
 async def test_call_routes_to_the_named_sources_own_driver_passing_every_read_argument_by_keyword(file_db):
@@ -224,28 +187,6 @@ async def test_call_passes_the_optional_strings_argument_positionally_after_the_
     assert await dated.call(
         "source_flights_select_rows_where", {"column": "date", "operator": ">=", "value": "2026-06-01"},
     ) == "code,date,city\nVY3003,2026-06-01,Barcelona\nVY3003,2026-06-02,Rome\n"
-
-
-async def test_call_routes_an_update_to_the_driver_writing_the_env_with_origin_tool_injected_never_from_the_model(file_db):
-    # origin is never part of any tool's own JSON schema (the model can't
-    # see or spoof it) — ToolSet.call injects it itself, in Python, only
-    # for a write (see its own docstring).
-    env = Env()
-    tool_set = SourceNamespace(file_db, _env_automaton(file_db), env=env).tool_set(["env"], [], ["env"])
-    assert await tool_set.call("source_env_update", {"values": [], "fields": {"pnr": "ABC123"}}) == "1 row updated"
-    assert env.action_set() == {"pnr": "ABC123"}
-
-    file_db.publish_project(PROJECT_ID)
-    session_id = file_db.create_chat_session(
-        username="user", project_id=PROJECT_ID, revision=file_db.get_project_published_revision(PROJECT_ID),
-        datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1), start_state="a", end_state="a",
-    )
-    persisted = PersistedEnv(file_db, FixedProjectContext(project_id=PROJECT_ID), session_id)
-    tool_set = SourceNamespace(file_db, _env_automaton(file_db), env=persisted).tool_set(["env"], [], ["env"])
-
-    await tool_set.call("source_env_update", {"values": [], "fields": {"pnr": "ABC123"}})
-
-    assert Tracking.get(Tracking.action_env.is_null(False)).origin == "tool"
 
 
 async def test_call_turns_an_unknown_tool_or_a_driver_exception_into_an_error_string_never_an_exception(file_db):

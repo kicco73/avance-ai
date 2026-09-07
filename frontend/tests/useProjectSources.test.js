@@ -46,7 +46,7 @@ describe('useProjectSources', () => {
     expect(s.selectedSource.value).toBeNull()
   })
 
-  it('handleAddSource creates through the given driver, reloads, selects and flashes the new source', async () => {
+  it('handleAddSource creates, reloads, selects and flashes the new source', async () => {
     postAddSource.mockResolvedValue({ name: 'behaviour' })
     getProjectSources.mockResolvedValueOnce(sourceList()).mockResolvedValueOnce(
       sourceList({ name: 'behaviour', ui_label: 'behaviour', ui_description: null, url: '' })
@@ -60,18 +60,8 @@ describe('useProjectSources', () => {
     // waiting on a fixed number of microtask ticks would be fragile, so
     // this polls instead.
     await vi.waitFor(() => expect(s.currentSourceName.value).toBe('behaviour'))
-    expect(postAddSource).toHaveBeenCalledWith('proj', 'avance')
+    expect(postAddSource).toHaveBeenCalledWith('proj')
     expect(flashRecentlyAdded).toHaveBeenCalledWith('source:behaviour')
-
-    postAddSource.mockResolvedValue({ name: 'env' })
-    getProjectSources.mockResolvedValueOnce(sourceList()).mockResolvedValueOnce(
-      sourceList({ name: 'env', ui_label: 'env', ui_description: null, url: 'avance:env' })
-    )
-
-    s.handleAddSource('env')
-
-    await vi.waitFor(() => expect(s.currentSourceName.value).toBe('env'))
-    expect(postAddSource).toHaveBeenCalledWith('proj', 'env')
   })
 
   it('handleSetSourceField needs a selected source, then edits it and follows a rename', async () => {

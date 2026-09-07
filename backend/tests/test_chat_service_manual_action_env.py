@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from automaton.automaton import Action, Automaton, EnvKey, Source, State
+from automaton.automaton import Action, Automaton, EnvKey, State
 from chat.chat_service import ChatService
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
@@ -24,16 +24,12 @@ PROJECT_ID = "proj"
 
 
 def _automaton(action_env: dict, target: str = "b", model_reads_env: bool = False) -> Automaton:
-    """`model_reads_env`: exports every written key read-only and has the
-    destination state read an avance:env source — the one configuration
-    under which an env value ever reaches the model's prompt (see
-    tracking.env_prompt_block); an unexported key never does."""
+    """`model_reads_env`: exports every written key read-only — the one
+    configuration under which an env value ever reaches the model's
+    prompt (see tracking.env_prompt_block); an unexported key never does."""
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target=target, env=action_env)
     state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
-    state_b = State(
-        key="b", ui_label="B", final=target == "b", contextual_prompt="bye", actions=[],
-        ai_may_read_sources=("env",) if model_reads_env else (),
-    )
+    state_b = State(key="b", ui_label="B", final=target == "b", contextual_prompt="bye", actions=[])
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
         init_action=init_action,
@@ -44,10 +40,9 @@ def _automaton(action_env: dict, target: str = "b", model_reads_env: bool = Fals
         general_attachments={},
         autotracking_on_ai_message=False,
         env_keys=[
-            EnvKey(name=key, ai_access="readonly" if model_reads_env else "none", ai_definition=f"The {key}.")
+            EnvKey(name=key, ai_access="readonly" if model_reads_env else "none")
             for key in (action_env or {})
         ],
-        sources=[Source(name="env", url="avance:env", ui_label="Env", ai_definition="The variables.")] if model_reads_env else [],
     )
 
 
