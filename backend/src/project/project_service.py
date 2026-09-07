@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from automaton.automaton import (
     Action, ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, State, StatePayload,
 )
-from chat.session_manager import ChatSessionManager
+from chat.sessions.session_manager import ChatSessionManager
 from db import Db
 from tracking.session_export import SessionExportManager
 from tracking.session_import import SessionImportManager

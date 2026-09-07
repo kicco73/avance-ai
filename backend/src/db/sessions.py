@@ -33,7 +33,7 @@ class SessionMixin:
         closed_at: datetime | None = None, close_reason: str | None = None,
     ) -> int:
         """`revision` arrives already resolved by the caller (see
-        chat.session_type_strategy.SessionTypeStrategy.revision_for) —
+        chat.sessions.session_type_strategy.SessionTypeStrategy.revision_for) —
         published for a 'live' session, draft for a 'test' one."""
         if channel not in CHANNELS:
             raise ValueError(f"Unknown channel '{channel}' — expected one of {CHANNELS}.")

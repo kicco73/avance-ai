@@ -4,7 +4,7 @@ import json
 from typing import TYPE_CHECKING
 
 from automaton.automaton import Automaton
-from chat.env_for_session import env_for_session
+from chat.sessions.env_for_session import env_for_session
 from jobs import CancelableJob
 from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalculator
 from session import Session
@@ -133,6 +133,10 @@ class TestReplayJob(CancelableJob):
         session = db.get_chat_session(session_id)
         if session is None:
             return [], f"session {session_id}: not found, skipped"
+        # Fetched once and shared with both the processor and the signal
+        # source below, instead of each independently re-querying this
+        # same session's full message list.
+        messages = db.get_messages(session_id)
         env = self._build_seed_env(session)
         session_facts = SessionFacts(db, FixedProjectContext(project_id=self._run['project_id']))
         user_facts = UserFacts(db)
@@ -142,9 +146,10 @@ class TestReplayJob(CancelableJob):
         tracking_engine = TrackingEngine(sink, env, scope_builder)
         self._signal_source = self._signal_source_cls(
             self._service._ai_service, self._service._tracking_service, db, self._automaton, session_id,
+            env, messages,
         )
         self._processor = TestProcessor(
-            db, self._automaton, tracking_engine, env, session_facts, metrics, self._signal_source, sink,
+            db, self._automaton, tracking_engine, env, session_facts, metrics, self._signal_source, sink, messages,
         )
         message_ids, warning = self._processor.prepare(session_id)
         if warning is not None:

@@ -10,7 +10,7 @@ from automaton.automaton import Action, Automaton, EnvKey, State
 from chat.chat_service import ChatService
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
-from chat.session_manager import ChatSessionManager
+from chat.sessions.session_manager import ChatSessionManager
 from conftest import FakeAiService
 from conftest import make_test_actuator_factory, make_test_job_service
 from metrics.metric_service import MetricService

@@ -7,12 +7,16 @@ from testing.processor import TestProcessor
 pytestmark = pytest.mark.contract
 
 
+class _FakeState:
+    output: tuple = ()
+
+
 class _FakeAutomaton:
     def __init__(self, autotracking_on_ai_message):
         self.autotracking_on_ai_message = autotracking_on_ai_message
 
     def get_state(self, key):
-        return key
+        return _FakeState()
 
     def declared_env_key_names(self):
         return set()
@@ -23,16 +27,21 @@ class _FakeTrackingEngine:
         self.apply_transition_message_ids = []
         self.apply_transition_origins = []
 
-    def evaluate_triggered_action(self, automaton, state, signal_values):
+    def evaluate_triggered_action(self, automaton, state, signal_values, output_values=None):
         return None
 
-    def apply_transition(self, automaton, state, action, signal_values, session_id, message_id=None, origin=None):
+    def apply_transition(
+        self, automaton, state, action, signal_values, session_id, message_id=None, origin=None, output_values=None,
+    ):
         self.apply_transition_message_ids.append(message_id)
         self.apply_transition_origins.append(origin)
 
 
 class _FakeEnv:
     def update(self, stored_env, declared_keys=None):
+        pass
+
+    def update_action_set(self, values, origin=None):
         pass
 
 
@@ -51,7 +60,7 @@ class _FakeMetrics:
 
 class _FakeSignalSource:
     async def get_turn_data(self, message_id, current_state):
-        return {}, {}
+        return {}, {}, {}
 
 
 class _FakeDb:
@@ -78,7 +87,7 @@ def _messages():
 def _processor(autotracking_on_ai_message, engine):
     return TestProcessor(
         _FakeDb(_messages()), _FakeAutomaton(autotracking_on_ai_message), engine, _FakeEnv(),
-        _FakeSessionFacts(), _FakeMetrics(), _FakeSignalSource(), sink=None,
+        _FakeSessionFacts(), _FakeMetrics(), _FakeSignalSource(), sink=None, messages=_messages(),
     )
 
 

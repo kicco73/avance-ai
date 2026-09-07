@@ -16,8 +16,8 @@ from __future__ import annotations
 import pytest
 
 from chat.chat_service import ChatService
-from chat.session_manager import ChatSessionManager
-from chat.session_type_strategy import get_session_type_strategy
+from chat.sessions.session_manager import ChatSessionManager
+from chat.sessions.session_type_strategy import get_session_type_strategy
 from conftest import FakeAiService, make_test_actuator_factory, make_test_job_service
 from db.models import Tracking
 from metrics.metric_service import MetricService

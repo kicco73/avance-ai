@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from chat.chat_service import ChatService
-from chat.session_manager import ChatSessionManager
+from chat.sessions.session_manager import ChatSessionManager
 from conftest import FakeAiService, make_test_actuator_factory, make_test_job_service
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService

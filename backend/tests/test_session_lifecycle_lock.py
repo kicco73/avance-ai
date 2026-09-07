@@ -14,7 +14,7 @@ import pytest
 from automaton.automaton import Action, Automaton, State
 from chat.channels import NATIVE_CHAT, WHATSAPP_CHAT
 from chat.chat_service import ChatService
-from chat.session_manager import ChatSessionManager
+from chat.sessions.session_manager import ChatSessionManager
 from conftest import FakeAiService, make_test_actuator_factory, make_test_job_service
 from metrics.metric_service import MetricService
 from session import Session

@@ -9,7 +9,7 @@ from project.project_service import ProjectService
 from db import Db
 from metrics.metric_service import MetricService
 
-from chat.env_for_session import env_for_session
+from chat.sessions.env_for_session import env_for_session
 
 from .actuators import ActuatorSetFactory
 from .automaton_namespace import AutomatonNamespace

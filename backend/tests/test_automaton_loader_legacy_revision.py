@@ -17,7 +17,7 @@ import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
-from chat.session_manager import ChatSessionManager
+from chat.sessions.session_manager import ChatSessionManager
 from project.archive.automaton_loader import AutomatonLoader
 
 pytestmark = pytest.mark.regression

@@ -245,7 +245,7 @@ class ScopeHydrator(object):
         from tracking.fixed_project_context import FixedProjectContext
         from tracking.session_facts import SessionFacts
         from tracking.user_facts import UserFacts
-        from chat.env_for_session import env_for_session
+        from chat.sessions.env_for_session import env_for_session
 
         project_id: str = payload["project_id"]
         automaton = self._project_service.get_automaton(project_id, payload["project_revision"])

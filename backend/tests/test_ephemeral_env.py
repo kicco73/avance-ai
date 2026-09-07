@@ -1,11 +1,11 @@
-"""chat.env_for_session / chat.ephemeral_env_registry."""
+"""chat.sessions.env_for_session / chat.ephemeral_env_registry."""
 from __future__ import annotations
 
 import pytest
 
 from chat.chat_service import ChatService
 from chat.ephemeral_env_registry import EphemeralEnvRegistry
-from chat.session_manager import ChatSessionManager
+from chat.sessions.session_manager import ChatSessionManager
 from conftest import FakeAiService, make_test_actuator_factory, make_test_job_service
 from db.models import Tracking
 from metrics.metric_service import MetricService

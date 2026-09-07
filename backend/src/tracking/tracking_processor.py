@@ -20,7 +20,10 @@ if TYPE_CHECKING:
 from .env import Env
 from .env_prompt_block import EnvPromptBlock
 from .evaluation_scope import EvaluationScopeBuilder
-from .prompt import AudioPrompt, MemoryPrompt, OutputPrompt, Prompt, ReactionPrompt, SignalsPrompt, TextPrompt, TranslatePrompt
+from .prompt import (
+	AudioPrompt, MemoryPrompt, OutputPrompt, Prompt, ReactionPrompt, SignalsPrompt, TextPrompt, TranslatePrompt,
+	build_output_definition,
+)
 from .priming import build_priming_messages
 from .sources import SourceNamespace, ToolSet
 from .tracking_engine import DbTrackingSink, TrackingEngine
@@ -300,7 +303,7 @@ class TrackingProcessor(object):
 		"""The one trigger-evaluation pass of a turn: `signal_values` are
 		the model's own reported signals when they were requested, or the
 		empty set when they weren't (see _evaluate_signals_for) — a state
-		whose triggers reference only metric.*/env.*/source.* is evaluated
+		whose triggers reference only metric.*/env.*/tool.* is evaluated
 		every chat turn all the same, exactly as one with signal-backed
 		triggers; a signal-backed trigger evaluated against the empty set
 		simply short-circuits to false (see Automaton._eval_trigger). At this
@@ -388,7 +391,7 @@ class TrackingProcessor(object):
 		identical to before tool-calling existed. Resolved fresh per call
 		against this turn's own automaton/session/env, same SourceNamespace
 		shape a source.<name> trigger/env: reference already uses — `env`
-		given here too, so a write source (e.g. avance:env's `update`) can
+		given here too, so a write tool (e.g. avance:env's `update`) can
 		actually persist through it mid-generation."""
 		if not state.ai_source_names:
 			return None
@@ -488,7 +491,7 @@ class TrackingProcessor(object):
 		never the trigger evaluation itself: a turn with a real user
 		message that asks for nothing still runs _resolve_signals against
 		the empty set, so a trigger referencing only metric.*/env.*/
-		source.* keeps firing — except at the opening turn (see
+		tool.* keeps firing — except at the opening turn (see
 		TrackingProcessorAfterUserMessage._get_ai_reply's own has_ai_
 		started_conversation branch), which skips that evaluation outright
 		rather than let the automaton's own AI-generated opener alone fire
@@ -556,12 +559,7 @@ class TrackingProcessor(object):
 
 	@staticmethod
 	def _build_output_definition(automaton: Automaton, state: State) -> str | None:
-		if not state.output:
-			return None
-		env_keys_by_name = {env_key.name: env_key for env_key in automaton.env_keys}
-		return "- Definition of output fields:\n" + "\n\n".join(
-			f'\t- Output "{name}":\n{env_keys_by_name[name].ai_definition}' for name in state.output
-		)
+		return build_output_definition(automaton, state)
 
 	@staticmethod
 	def _build_reaction_definition(automaton: Automaton) -> str | None:

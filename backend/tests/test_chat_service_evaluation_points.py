@@ -8,7 +8,7 @@ import pytest
 
 from automaton.automaton import Action, Automaton, Signal, State
 from chat.chat_service import ChatService
-from chat.session_manager import ChatSessionManager
+from chat.sessions.session_manager import ChatSessionManager
 from db.models import Tracking
 from conftest import make_test_actuator_factory, make_test_job_service
 from metrics.metric_service import MetricService

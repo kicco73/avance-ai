@@ -3,14 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
+from chat.sessions.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from db import Db
 from logging_factory import LoggerFactory
 from project.archive.layout import CACHE_DIR
 from session import Session
 
 if TYPE_CHECKING:
-    from chat.session_report_task import SessionReportScheduler
+    from chat.sessions.session_report_task import SessionReportScheduler
     from project.project_service import ProjectService
 
 logger = LoggerFactory.get_logger(__name__)

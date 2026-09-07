@@ -21,7 +21,7 @@ class TestSignalSource(Protocol):
     # done, since a batch call can silently cover several turns at once.
     calls_made: int
 
-    async def get_turn_data(self, message_id: int, current_state: str) -> tuple[dict, dict]:
+    async def get_turn_data(self, message_id: int, current_state: str) -> tuple[dict, dict, dict]:
         ...
 
 
@@ -53,6 +53,7 @@ class TestProcessor(object):
         metrics: TestMetricsProvider,
         signal_source: TestSignalSource,
         sink: TestObservationSink,
+        messages: list[dict],
     ) -> None:
         self._db = db
         self._automaton = automaton
@@ -62,6 +63,10 @@ class TestProcessor(object):
         self._metrics = metrics
         self._signal_source = signal_source
         self._sink = sink
+        # Fetched once by the caller (TestReplayJob._prepare_session) and
+        # shared with the signal source, rather than each independently
+        # re-querying this same session's full message list.
+        self._messages = messages
         self._current_state: str | None = None
         self._ordered_ids: list[int] = []
         self._by_id: dict[int, dict] = {}
@@ -75,8 +80,7 @@ class TestProcessor(object):
         if current_state is None:
             return [], f"session {session_id}: no known starting state, skipped"
 
-        messages = self._db.get_messages(session_id)
-        self._by_id = {m['id']: m for m in messages}
+        self._by_id = {m['id']: m for m in self._messages}
         self._ordered_ids = sorted(self._by_id.keys())
         self._current_state = current_state
         return [mid for mid in self._ordered_ids if self._by_id[mid]['role'] == 'user'], None
@@ -86,11 +90,15 @@ class TestProcessor(object):
         self._session_facts.set_replay_instant(real_timestamp)
         self._metrics.advance_to(message_id, real_timestamp)
 
-        signal_values, stored_env = await self._signal_source.get_turn_data(message_id, self._current_state)
-        self._env.update(stored_env, declared_keys=self._automaton.declared_env_key_names())
+        signal_values, stored_memory, output_values = await self._signal_source.get_turn_data(
+            message_id, self._current_state,
+        )
+        self._env.update(stored_memory, declared_keys=self._automaton.declared_env_key_names())
 
         state = self._automaton.get_state(self._current_state)
-        action = self._tracking_engine.evaluate_triggered_action(self._automaton, state, signal_values)
+        action = self._tracking_engine.evaluate_triggered_action(
+            self._automaton, state, signal_values, output_values=output_values,
+        )
 
         if action is not None:
             self._session_facts.set_last_transition_instant(real_timestamp)
@@ -103,7 +111,20 @@ class TestProcessor(object):
             self._automaton, state, action, signal_values, session_id,
             message_id=observation_message_id,
             origin='trigger',
+            output_values=output_values,
         )
+
+        # This turn's own `output` values, copied onto the real env keys
+        # they name — mirrors TrackingProcessor.process's own
+        # output_for_env step (live): state.output is what makes this
+        # automatic, unlike an action's own `env:`, which stays opt-in.
+        # After the transition above, which already saw output_values
+        # transiently through the scope's own merge (see
+        # EvaluationScopeBuilder.build) — this is what makes them durable,
+        # visible to a later turn's own env-input rendering.
+        output_for_env = {name: value for name, value in output_values.items() if name in state.output}
+        if output_for_env:
+            self._env.update_action_set(output_for_env, origin="output")
 
         if action is not None:
             self._current_state = action.target

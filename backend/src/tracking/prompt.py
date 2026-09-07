@@ -3,12 +3,13 @@ from __future__ import annotations
 import csv
 import io
 import json
-from typing import Any, NoReturn
+from typing import Any, Iterable, NoReturn
 
 from logging_factory import LoggerFactory
 from try_again_error import TryAgainError
 
 from ai import SystemPrompt
+from automaton.automaton import Automaton, State
 
 from .env import Env
 
@@ -47,6 +48,27 @@ def _fail(channel: str, message: str, raw: str | None) -> NoReturn:
 	raise MetadataTurnMismatch(full_message)
 
 
+def build_output_definition_for_names(automaton: Automaton, names: Iterable[str]) -> str | None:
+	"""The `- Definition of output fields:` block for exactly `names`
+	(declaration order, deduplicated) — None once `names` is empty.
+	Shared by TrackingProcessor._build_output_definition (one state's own
+	`output`) and BatchSignalSource.prepare_batch (the union of every
+	state's own `output`, since a batch call doesn't resolve each turn's
+	individual state — see OutputBatchPrompt)."""
+	unique_names = list(dict.fromkeys(names))
+	if not unique_names:
+		return None
+	env_keys_by_name = {env_key.name: env_key for env_key in automaton.env_keys}
+	return "- Definition of output fields:\n" + "\n\n".join(
+		f'\t- Output "{name}":\n{env_keys_by_name[name].ai_definition}' for name in unique_names
+	)
+
+
+def build_output_definition(automaton: Automaton, state: State) -> str | None:
+	"""One state's own `output` fields — see build_output_definition_for_names."""
+	return build_output_definition_for_names(automaton, state.output)
+
+
 def _turns_in_order(channel: str, by_turn: dict[int, Any], expected_turns: int, terminated: bool, raw: str | None) -> list[Any]:
 	"""Shared by SignalsBatchPrompt/MemoryBatchPrompt's own decode: both
 	must demonstrably cover every turn 1..expected_turns, terminated by
@@ -60,6 +82,38 @@ def _turns_in_order(channel: str, by_turn: dict[int, Any], expected_turns: int, 
 	if actual == expected:
 		_fail(channel, f"got all {expected_turns} turns but no {BATCH_END_MARKER} marker — cannot trust it's complete", raw)
 	_fail(channel, f"expected turns {sorted(expected)}, got {sorted(actual)}", raw)
+
+
+def _decode_turn_keyed_lines(channel: str, raw: str, expected_turns: int) -> list[dict[str, str]]:
+	"""Shared by MemoryBatchPrompt/OutputBatchPrompt's own decode: both use
+	the identical "<N>:" turn-header + "key=value" line format, covering
+	every turn 1..expected_turns, terminated by BATCH_END_MARKER."""
+	by_turn: dict[int, dict[str, str]] = {}
+	terminated = False
+	current_turn: int | None = None
+	for line in (raw or "").splitlines():
+		stripped = line.strip()
+		if not stripped:
+			continue
+		if stripped.lower() == BATCH_END_MARKER:
+			terminated = True
+			current_turn = None
+			continue
+		header = stripped[:-1].strip() if stripped.endswith(":") else None
+		if header is not None and header.isdigit():
+			current_turn = int(header)
+			by_turn[current_turn] = {}
+			continue
+		if current_turn is None:
+			_fail(channel, f"line outside any turn header -- line: {line!r}", raw)
+		if "=" not in stripped:
+			_fail(channel, f"line without '=' -- line: {line!r}", raw)
+		key, _, value = stripped.partition("=")
+		key = key.strip()
+		if not key:
+			_fail(channel, f"line with an empty key -- line: {line!r}", raw)
+		by_turn[current_turn][key] = value.strip()
+	return _turns_in_order(channel, by_turn, expected_turns, terminated, raw)
 
 
 class Prompt:
@@ -473,32 +527,59 @@ class MemoryBatchPrompt(Prompt):
 		self.expected_turns = expected_turns
 
 	def decode(self, raw: str) -> list[dict[str, str]]:
-		by_turn: dict[int, dict[str, str]] = {}
-		terminated = False
-		current_turn: int | None = None
-		for line in (raw or "").splitlines():
-			stripped = line.strip()
-			if not stripped:
-				continue
-			if stripped.lower() == BATCH_END_MARKER:
-				terminated = True
-				current_turn = None
-				continue
-			header = stripped[:-1].strip() if stripped.endswith(":") else None
-			if header is not None and header.isdigit():
-				current_turn = int(header)
-				by_turn[current_turn] = {}
-				continue
-			if current_turn is None:
-				_fail(self.channel, f"line outside any turn header -- line: {line!r}", raw)
-			if "=" not in stripped:
-				_fail(self.channel, f"line without '=' -- line: {line!r}", raw)
-			key, _, value = stripped.partition("=")
-			key = key.strip()
-			if not key:
-				_fail(self.channel, f"line with an empty key -- line: {line!r}", raw)
-			by_turn[current_turn][key] = value.strip()
-		return _turns_in_order(self.channel, by_turn, self.expected_turns, terminated, raw)
+		return _decode_turn_keyed_lines(self.channel, raw, self.expected_turns)
+
+
+EMBED_OUTPUT_BATCH_TAG_PROMPT = """
+Definition of output metadata:
+	- each declared output field is an automaton env variable the model
+	  itself directly produces — see the field definitions given
+	  separately below for which fields exist and what each one means.
+	- plain text, not JSON. One line per turn holding just that turn's own
+	  number followed by a colon — the same number shown on its "[Turn N]"
+	  marker in the conversation transcript — then, on the following lines,
+	  one "key=value" pair per line for each output field this turn
+	  actually produces a value for (zero of them when none apply — not
+	  every declared field applies to every turn). The transcript's turn
+	  numbers always run 1, 2, 3, ... with no gaps, so with 3 marked turns
+	  you write exactly 3 turn headers:
+	  1:
+	  pnr=ABC123
+	  2:
+	  3:
+	  rating=4.5
+	  [eof]
+	- one header per turn marked in the transcript — never skip one, never
+	  merge two into one header.
+	- after the last turn's header (and its key=value lines, if any), write
+	  one final line containing only the text [eof], exactly as shown above —
+	  never write it before every turn has its own header above it.
+
+Always fill in the 'output' field of your structured response:
+"""
+
+
+class OutputBatchPrompt(Prompt):
+	channel = "output"
+	definition = EMBED_OUTPUT_BATCH_TAG_PROMPT
+	schema_description = (
+		"Plain text (not JSON): one '<N>:' header line per turn marked in the transcript (that turn's "
+		"own [Turn N] number, always 1, 2, 3, ... with no gaps), followed by that turn's own "
+		"'key=value' lines for whichever declared output fields this turn actually produces a value "
+		"for (none when none apply), then a final line containing only the text [eof], e.g. "
+		"\"1:\\npnr=ABC123\\n2:\\n[eof]\", rendered as text."
+	)
+
+	def __init__(self, expected_turns: int) -> None:
+		# Same convention as MemoryBatchPrompt — the field definitions
+		# text (build_output_definition_for_names) is folded into
+		# base_prompt directly (see BatchSignalSource.prepare_batch), not
+		# carried as this instance's own content.
+		super().__init__("")
+		self.expected_turns = expected_turns
+
+	def decode(self, raw: str) -> list[dict[str, str]]:
+		return _decode_turn_keyed_lines(self.channel, raw, self.expected_turns)
 
 
 EMBED_TRANSLATE_TAG_PROMPT = """

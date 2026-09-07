@@ -4,7 +4,7 @@ from db import Db
 from tracking.env import Env, PersistedEnv
 from tracking.fixed_project_context import FixedProjectContext
 
-from .ephemeral_env_registry import EphemeralEnvRegistry
+from chat.ephemeral_env_registry import EphemeralEnvRegistry
 
 EPHEMERAL_SESSION_TYPES = ("test", "preview")
 

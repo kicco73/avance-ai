@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from auth.auth_middleware import AuthMiddleware
 from auth.auth_service import AuthService
 from chat.chat_service import ChatService
-from chat.session_manager import ChatSessionManager
+from chat.sessions.session_manager import ChatSessionManager
 from chat.ws_human_relay import WsHumanRelay
 from chat.ws_notifications import WsNotifications
 from talker import HumanTalker
@@ -40,7 +40,7 @@ from talk.talk_service import TalkService
 from whatsapp.whatsapp_service import WhatsAppService
 from listen.listen_service import ListenService
 
-__version__ = "1.32.0"
+__version__ = "1.33.0"
 
 logger = LoggerFactory.get_logger(__name__)
 

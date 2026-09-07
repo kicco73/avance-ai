@@ -9,7 +9,7 @@ from automaton.automaton import Automaton
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
 from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
-from chat.session_manager import ChatSessionManager
+from chat.sessions.session_manager import ChatSessionManager
 from db import Db
 from logging_factory import LoggerFactory
 from session import Session

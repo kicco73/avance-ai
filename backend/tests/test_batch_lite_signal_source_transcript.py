@@ -13,6 +13,7 @@ import pytest
 
 from automaton.automaton import Action, Automaton, Signal, State
 from testing.signal_sources import BatchLiteSignalSource, BatchSignalSource
+from tracking.env import Env
 
 pytestmark = pytest.mark.contract
 
@@ -54,7 +55,10 @@ def _seed_conversation(db, session_id: int) -> list[int]:
 
 
 def _source(cls, db, automaton, session_id: int):
-    return cls(ai_service=None, tracking_service=None, db=db, automaton=automaton, session_id=session_id)
+    return cls(
+        ai_service=None, tracking_service=None, db=db, automaton=automaton, session_id=session_id,
+        env=Env(), messages=db.get_messages(session_id),
+    )
 
 
 def test_batch_signal_source_keeps_both_roles_labeled_at_the_user_message(db):

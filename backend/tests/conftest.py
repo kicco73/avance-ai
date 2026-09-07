@@ -17,7 +17,7 @@ from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from chat.channels import NATIVE_CHAT
 from chat.chat_service import ChatService
 from chat.ephemeral_env_registry import EphemeralEnvRegistry
-from chat.session_manager import ChatSessionManager
+from chat.sessions.session_manager import ChatSessionManager
 from chat.ws_notifications import WsNotifications
 from config import NotificationServiceConfig
 from controller import AvanceController

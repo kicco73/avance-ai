@@ -14,7 +14,7 @@ from ai.ai_service import AiService
 from ai.llm_provider import ToolCall, ToolCallsRequested
 from automaton.automaton import Action, Automaton, Source, State
 from chat.chat_service import ChatService
-from chat.session_manager import ChatSessionManager
+from chat.sessions.session_manager import ChatSessionManager
 from chat.ws_turn import WsChatTurn
 from conftest import make_test_actuator_factory, make_test_job_service
 from db.db import Db

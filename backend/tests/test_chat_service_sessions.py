@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 
 from chat.chat_service import ChatService, ChatServiceError
-from chat.session_manager import ChatSessionManager
+from chat.sessions.session_manager import ChatSessionManager
 from conftest import make_test_job_service
 from metrics.metric_service import MetricService
 from session import Session

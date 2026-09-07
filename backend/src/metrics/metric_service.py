@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from automaton.automaton import Automaton
-from chat.session_manager import DEFAULT_OPEN_WINDOW_MINUTES
+from chat.sessions.session_manager import DEFAULT_OPEN_WINDOW_MINUTES
 from db import Db
 from metrics.metric_namespace import UserMetricNamespace
 from metrics.metrics_framework import (

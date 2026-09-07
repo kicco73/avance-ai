@@ -8,7 +8,7 @@ from session import Session
 
 if TYPE_CHECKING:
     from automaton.automaton import Automaton
-    from chat.session_manager import ChatSessionManager
+    from chat.sessions.session_manager import ChatSessionManager
     from project.project_service import ProjectService
 
 

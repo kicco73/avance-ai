@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from chat.session_manager import ChatSessionManager
-from chat.session_type_strategy import get_session_type_strategy
+from chat.sessions.session_manager import ChatSessionManager
+from chat.sessions.session_type_strategy import get_session_type_strategy
 from session import Session
 
 LIVE = get_session_type_strategy('live')
@@ -85,7 +85,7 @@ def _freeze_after(monkeypatch, session, manager):
         def utcnow(cls):
             return stale_now
 
-    monkeypatch.setattr("chat.session_manager.datetime", FrozenDatetime)
+    monkeypatch.setattr("chat.sessions.session_manager.datetime", FrozenDatetime)
 
 
 @pytest.mark.contract

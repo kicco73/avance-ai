@@ -16,8 +16,8 @@ from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME
 from automaton.automaton import Action, Automaton, State
 from chat.channels import NATIVE_CHAT
-from chat.session_manager import ChatSessionManager
-from chat.session_type_strategy import get_session_type_strategy
+from chat.sessions.session_manager import ChatSessionManager
+from chat.sessions.session_type_strategy import get_session_type_strategy
 from session import Session
 
 pytestmark = pytest.mark.contract

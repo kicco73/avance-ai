@@ -25,14 +25,14 @@ from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.user_facts import UserFacts
 from chat.channels import WHATSAPP_CHAT
-from chat.env_for_session import env_for_session
+from chat.sessions.env_for_session import env_for_session
 from chat.ephemeral_env_registry import EphemeralEnvRegistry
 from chat.errors import ChatServiceError
-from chat.session_manager import ChatSessionManager, SessionNotWritable
+from chat.sessions.session_manager import ChatSessionManager, SessionNotWritable
 from chat.sessions.session_insights import SessionInsights
 from chat.sessions.session_ownership import SessionOwnership
-from chat.session_report_task import SessionReportHydrator, SessionReportScheduler, SessionReportTask
-from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
+from chat.sessions.session_report_task import SessionReportHydrator, SessionReportScheduler, SessionReportTask
+from chat.sessions.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from job import JobService
 from logging_factory import LoggerFactory
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine

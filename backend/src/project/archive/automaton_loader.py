@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     # top-level import would be safe too, but every other cross-package
     # dependency here already sits behind TYPE_CHECKING/local imports —
     # kept consistent rather than the one exception.
-    from chat.session_manager import ChatSessionManager
+    from chat.sessions.session_manager import ChatSessionManager
 
 logger = LoggerFactory.get_logger(__name__)
 
