@@ -113,7 +113,7 @@ const chatConnected = computed(() => chatConnectionState.value === 'open')
 // on its own by retrying, so it gets its own, non-"riprovo" message.
 const chatRejected = computed(() => chatConnectionState.value === 'rejected')
 
-const chatDisabled = computed(() => !state.value?.key || !state.value?.chat || !selectedSessionActive.value)
+const chatDisabled = computed(() => !state.value?.key || !state.value?.chat_enabled || !selectedSessionActive.value)
 
 // Mirrors chatDisabled's own conditions, in the same order. A state with
 // no chat has nothing generic to say here — it may have no actions

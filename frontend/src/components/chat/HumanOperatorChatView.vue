@@ -1,6 +1,6 @@
 <script setup>
 // Opened from a human_takeover notification's "Open" link (see
-// humanTakeoverStore.js, App.vue) — actuator.switch_to_human(user_id)
+// humanTakeoverStore.js, App.vue) — chat.switch_to_human(user_id)
 // handed this session to whoever is looking at this. A mirror of the
 // normal chat: same history read (getMessages), rendered inverted since
 // the operator is the one standing in for "assistant" here (MessageBubble's

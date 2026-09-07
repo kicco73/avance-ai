@@ -154,7 +154,7 @@ function openScriptDialog(tab) {
   })
 }
 
-// history-cutoff/chat: a plain instant toggle, not a typed field — no
+// history-cutoff/chat-enabled: a plain instant toggle, not a typed field — no
 // local buffer/blur dance needed.
 function commitBoolField(field, value) {
   emit('set-field', field, value)
@@ -246,7 +246,7 @@ const hasSelectedElementBadges = computed(() => {
     // this card falls back to the same read-only badge set as non-editable.
     if (showEditForm.value) return true
     const d = props.selectedElement.data
-    return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff ||
+    return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || !d.chatEnabled || d.historyCutoff ||
       (d.reactionsEnabled && d.hasReactions) || (d.aiMayQuerySources?.length > 0) || (d.aiMustQuerySources?.length > 0)
   }
   // "Trigger"/"On exit"/"Task" are always-shown clickable badges once the
@@ -318,9 +318,9 @@ function selectAttachment(fileName) {
           <template v-if="showEditForm">
             <span
               class="inspector-detail-badge inspector-detail-badge-toggle"
-              :class="!selectedElement.data.chat ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
+              :class="!selectedElement.data.chatEnabled ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
               title="Click to toggle"
-              @click.stop="commitBoolField('chat', !selectedElement.data.chat)"
+              @click.stop="commitBoolField('chat-enabled', !selectedElement.data.chatEnabled)"
             >No chat</span>
             <span
               class="inspector-detail-badge inspector-detail-badge-toggle"
@@ -367,7 +367,7 @@ function selectAttachment(fileName) {
             >{{ name }} ✎</span>
           </template>
           <template v-else>
-            <span v-if="!selectedElement.data.chat" class="inspector-detail-badge inspector-detail-badge-neutral">No chat</span>
+            <span v-if="!selectedElement.data.chatEnabled" class="inspector-detail-badge inspector-detail-badge-neutral">No chat</span>
             <span v-if="selectedElement.data.historyCutoff" class="inspector-detail-badge inspector-detail-badge-neutral">History cutoff</span>
             <span v-if="selectedElement.data.reactionsEnabled && selectedElement.data.hasReactions" class="inspector-detail-badge inspector-detail-badge-neutral">Reactions</span>
             <span

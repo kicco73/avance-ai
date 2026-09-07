@@ -68,7 +68,7 @@ Consequences worth stating plainly:
 | `init-action` | **yes** | mapping | — | Where the conversation starts. §5. |
 | `states` | **yes** | mapping (name → state) | — | Every state. §4. Must include `init-action.target`. |
 | `signals` | no | mapping (name → signal) | `{}` | Numeric values the model estimates each turn. §3. |
-| `general-prompt` | no | string | `""` | Appended to a state's `contextual-prompt` for a normal reply. Never sent to an `actuator.prompt(...)` call (§5.4), which is fully isolated. |
+| `general-prompt` | no | string | `""` | Appended to a state's `contextual-prompt` for a normal reply. Never sent to a `task.prompt(...)` call (§5.4), which is fully isolated. |
 | `attachments` | no | list of filenames | `[]` | Global attachments, sent with every call that also sends `general-prompt`. §6. |
 | `env` | no | mapping (name → fields) | `{}` | Declares every `env.<name>` a trigger/env expression may reference, and — per key — what the model may do with it (`ai-access`). An action's `env:` (§5.3) can only update a key declared here. |
 | `sources` | no | mapping (name → fields) | `{}` | Declares every `source.<name>` a trigger/env expression may reference, and the model may read/write as a tool. §5.2. |
@@ -171,7 +171,7 @@ states:
       The user is actively chatting.
     contextual-prompt: |
       Continue the conversation naturally.
-    chat: true
+    chat-enabled: true
     history-cutoff: false
     transition-log-level: WARNING
     attachments: []
@@ -185,10 +185,10 @@ states:
 | `ui-label` | no | string | the state's key | Shown in the frontend. |
 | `ui-description` | no | string | `None` | Shown in the frontend; omitted entirely when absent. |
 | `actions` | no | list of actions | `[]` | Outgoing actions — §5. **No actions ⇒ automatically `final`** (derived, never declared). |
-| `chat` | no | boolean | `true` | `false`: a chat message here is rejected outright — only `actions` can proceed the conversation. Independent of `final`/`fixed-message`. |
+| `chat-enabled` | no | boolean | `true` | `false`: a chat message here is rejected outright — only `actions` can proceed the conversation. Independent of `final`/`fixed-message`. |
 | `history-cutoff` | no | boolean | `false` | `true`: excludes every message from before the most recent transition into this state, both from the model's view and from auto-tracking. Combines (doesn't replace) the server-wide token-budget cutoff in `.config.yml`. |
 | `transition-log-level` | no | `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL` | `"WARNING"` | Log level when a transition **lands on** this state (property of the destination). Operational only. |
-| `attachments` | no | list of filenames | `[]` | Sent with every normal reply this state is "current" for. Not sent for `fixed-message`, nor to an `actuator.prompt(...)` call (§5.4), which is fully isolated. |
+| `attachments` | no | list of filenames | `[]` | Sent with every normal reply this state is "current" for. Not sent for `fixed-message`, nor to a `task.prompt(...)` call (§5.4), which is fully isolated. |
 | `ai-may-read-sources` | no | list of source names | `[]` | Sources whose `select_rows_*` reads the model may call, at its own discretion, while replying in this state — §4.2. |
 | `ai-must-read-sources` | no | list of source names | `[]` | Same, but the read is forced once per entry into this state — §4.2. A source name can appear in at most one of the two read fields. |
 | `ai-may-write-sources` | no | list of source names | `[]` | Sources whose `update` the model may call here — §4.2. Only a source whose driver implements `update` (today: `avance:env`, §5.2) may be listed; there is no `must-write`: a write is never forced. |
@@ -277,7 +277,8 @@ actions:
     target: next_state          # omit for a self-loop (stays on this state)
     trigger: "signal.mood >= 70 and engagement >= 20"
     task: |
-      actuator.notify('Nice!', actuator.prompt('Write a short celebratory one-liner.'))
+      task.send_mail(user.email, task.prompt('Write a short celebratory one-liner.'))
+    on-exit: chat.celebrate()
     env:
       reset_counter: True
       number_of_steps: env.number_of_steps + 1
@@ -289,8 +290,8 @@ actions:
 | `name` | **yes** | string | — | This action's own identifier — what a manual firing references. |
 | `target` | no | string | this action's own state | Destination state; must be a real key (or the current state itself). Omitted/self-referential ⇒ self-loop (only the action's own effects happen). |
 | `trigger` | no | string (expression) | `None` | Boolean expression over signal/metric names — §5.2. Absent ⇒ manual-only (never auto-fired). |
-| `task` | no | string | `None` | One or more `actuator.<name>(...)` calls, one per line — side effect of firing, same timing as `env:`. §5.4. Per-action, not per-destination-state: two actions landing on the same state can each carry a different (or no) value. |
-| `on-exit` | no | string | `None` | One or more `env.<key> = expression` lines, one env write per line — same timing as `env:`, and its future replacement. §5.3bis. |
+| `task` | no | string | `None` | One or more `task.<name>(...)` calls, one per line — side effect of firing, run in the background off the request (§5.4). Per-action, not per-destination-state: two actions landing on the same state can each carry a different (or no) value. |
+| `on-exit` | no | string | `None` | One or more `env.<key> = expression` lines and/or bare `chat.<method>(...)` calls, one per line — same timing as `env:` (and its future replacement for the write half), run synchronously, in this same request. §5.3bis. |
 | `env` | no | mapping key → expression | `None` | Updates the project's environment memory when this action fires. §5.3. Legacy — new actions should write the same updates as `on-exit` lines instead. |
 | `ui-label` | no | string | `name` | Shown in the frontend. |
 | `ui-button` | no | string | `ui-label`, then `name` | Manual-action button text. |
@@ -331,11 +332,13 @@ user.role == "admin"
 | `user.<name>` | Current user's account field (`email`, `name`, `picture_url`, `provider`, `provider_user_id`, `created_at`, `last_login`, `active_project`, `role`) | attribute |
 | `source.<name>.<method>(...)` | A source declared in top-level `sources:` — below | method call, e.g. `.select_rows_containing(...)`/`.update(...)` |
 | `automaton.<id>` | A different project's live state/env — below | `.state`, or `.env.<key>` |
-| `datetime.<name>` | Python's `datetime`/`timedelta`/`timezone` only, mainly for `actuator.defer`'s `when` | call, e.g. `datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc)` |
+| `datetime.<name>` | Python's `datetime`/`timedelta`/`timezone` only, mainly for `task.defer`'s `when` | call, e.g. `datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc)` |
 
 A **bare** name is only ever a core metric (§2) — nothing else may appear
-unnamespaced. `actuator.<name>(...)` is reserved but only valid inside
-`task:` (§5.4), never in `trigger:`/`env:`.
+unnamespaced. `task.<name>(...)` is reserved but only valid inside
+`task:` (§5.4); `chat.<name>(...)` is reserved but only valid inside
+`on-exit:` (§5.3bis) — neither is available in `trigger:`/`env:`, and
+each is off-limits to the other's own script.
 
 **`automaton.<id>.*`** reads a different project's live state/env for the
 same logged-in user: `automaton.<id>.state` (current state key, or `None`
@@ -598,19 +601,29 @@ store feeds a trigger's `env.<name>`. The action-set one is never
 directly editable in the Inspector — only ever a side effect of its
 action firing again, or of the model's own `update` on a `readwrite` key.
 
-**5.3bis Action `on-exit`.** The future replacement for `env:` above —
-same env-write contract (must already be declared under top-level `env:`,
-same "one bad key never blocks the rest" evaluation-time failure
-handling, same "lands before anything else that turn generates a reply"
-timing), spelled with `task`'s own statement splitting instead of a
-YAML mapping: one `env.<key> = expression` assignment per non-blank
-line, same namespaced scope/mechanics as `trigger`/`env` (§5.2, minus
-the boolean cast) — the RHS may itself reference `env.<key>` (its own
-last stored value, from *before* this action fired) exactly like a
-`env:` mapping entry could. Unlike `task` (§5.4), a line here may
-only be that one assignment shape, always targeting `env.<key>` — no
-`actuator.<name>(...)` calls, no bare local variables — `on-exit` has no
-side effect of its own besides the env writes:
+**5.3bis Action `on-exit`.** The future replacement for `env:` above,
+plus a second statement shape of its own — one or more statements, one
+per non-blank line, split with `task`'s own statement grammar
+(`TriggerExpressionAnalyzer.task_statements`: a single call may itself
+span several lines, and a `#` comment just works). Each line is
+**either**:
+
+- an `env.<key> = expression` assignment — the future replacement for
+  the `env:` mapping above: same env-write contract (the key must
+  already be declared under top-level `env:`, same "one bad key never
+  blocks the rest" evaluation-time failure handling, same "lands before
+  anything else that turn generates a reply" timing), same namespaced
+  scope/mechanics as `trigger`/`env` (§5.2, minus the boolean cast) —
+  the RHS may itself reference `env.<key>` (its own last stored value,
+  from *before* this action fired) exactly like a `env:` mapping entry
+  could; **or**
+- a bare `chat.<method>(...)` call — `on-exit`'s own side effect,
+  described below.
+
+Unlike `task` (§5.4), a line here may only be one of those two shapes
+— no bare local variables, and no `task.<name>(...)` calls: `task:`'s
+own `send_mail`/`whatsapp`/`defer`/`prompt` stay off-limits, that
+remains `task`'s own job:
 
 ```yaml
     actions:
@@ -620,88 +633,116 @@ side effect of its own besides the env writes:
         on-exit: |
           env.reset_counter = True
           env.number_of_steps = env.number_of_steps + 1
+          chat.celebrate()
+          chat.notify('Nice!', 'You reached **state B**.')
 ```
 
 An action may declare `env:` and `on-exit` at once (only already-published
 YAML predating `on-exit` should still have a reason to); should both
 write the same key, `on-exit`'s own value wins.
 
+**`chat.*`** is `on-exit`'s own namespace — reachable only here, never
+from `trigger:`/`env:`/`task:`. Unlike `task:`'s own script (§5.4),
+every `on-exit:` script — its own env writes and its own `chat.*`
+calls alike — runs **synchronously, in the same request that fired the
+action**, never hibernated as a background job: `chat.*` has no
+model/network call of its own to keep off the event-loop thread, so
+there's nothing to defer. Five methods exist:
+
+- `chat.celebrate()` / `chat.notify(title, body_md)` / `chat.show(body_md)` —
+  compile straight to `taskActions.js` locals of the same name
+  (confetti / toast / dialog). Nothing runs server-side beyond building
+  that JS snippet — the tunnel is exact, e.g. `chat.notify('Nice!', 'Well done')`
+  reaches the browser as literal `notify("Nice!", "Well done")`. `show`
+  renders `body_md` (markdown) in the app's existing generic dialog
+  (DialogHost.vue) rather than a toast — no title, closed via its × button.
+  Every `on-exit:` line's own joined snippet text reaches the browser
+  over the websocket as a single `notification` frame — the exact same
+  frame shape `task:`'s own tunneled calls use (§5.4), just pushed
+  inline instead of from a background worker.
+- `chat.switch_to_human(user_id)` — hands the session to a person:
+  `user_id` (their username/email) is pushed a notification with a link
+  to take over this session's next turns as the human, in place of the
+  AI. No JS of its own reaches the browser.
+- `chat.switch_to_ai()` — hands a session back to the AI after
+  `switch_to_human`. No JS of its own reaches the browser.
+
+`switch_to_human`/`switch_to_ai` never run for real during a draft/test
+conversation unless actuators are explicitly enabled for it — while off
+(the default there) `switch_to_human` is suppressed and reported back
+as a `notify(...)` toast describing what would have happened instead,
+same suppress-and-report contract `task:`'s own real side effects get
+(§5.4). `celebrate`/`notify`/`show`/`switch_to_ai` have no real-world
+side effect to suppress, so they always run.
+
 **5.4 Action `task`.** One or more statements, one per non-blank
 line, same namespaced scope as `trigger`/`env` (§5.2) as a firing side
-effect, same timing as `env:` — except it additionally sees `actuator`
+effect, same timing as `env:` — except it additionally sees `task`
 and does **not** see `session.*`/`session.metric.*` (a call may be
 deferred past the firing session's own lifetime, so the whole scope is
-built without a session rather than allowing it selectively). Each
-statement is either an `actuator.<name>(...)` call, or a simple
+built without a session rather than allowing it selectively) or
+`chat.*` (`on-exit`'s own namespace, §5.3bis — never `task`'s). Each
+statement is either a `task.<name>(...)` call, or a simple
 `name = <expr>` local-variable assignment — the only other shape
 allowed — making `name` usable, bare, by every *later* statement in this
 same task script (never an earlier one, never a different action's
-own task). This exists to let one `actuator.prompt(...)` call's
+own task). This exists to let one `task.prompt(...)` call's
 result reach more than one later call without re-running the model each
 time:
 
 ```yaml
 task: |
-  actuator.celebrate()
-  actuator.notify('Nice!', 'You reached **state B**.')
-  translated = actuator.prompt('Translate to Catalan: The party starts at 9pm.')
-  actuator.notify('Recap', translated)
-  actuator.send_mail(user.email, translated)
+  task.send_mail(user.email, 'You reached **state B**.')
+  translated = task.prompt('Translate to Catalan: The party starts at 9pm.')
+  task.send_mail(user.email, translated)
 ```
 
 **Every task script runs as a task, never inside the request that
 fired it.** The transition and the action's `env:` writes are applied
 synchronously (they feed the very next prompt); the script itself is
 hibernated in the database as a task due immediately and executed by a
-background worker — `actuator.prompt` is a model call and
-`actuator.send_mail` a network call, and neither belongs in a chat
-turn's own response time. Consequently whatever the script tunnels
-(`celebrate()`, `notify(...)`, `show(...)`) reaches the browser over the
-websocket as a `notification` frame, a moment after the turn's own
-response, never inside it; a script that fails to evaluate is logged
-and its task settles with nothing to push, exactly as the in-turn
-evaluation used to skip a failing line. `actuator.defer` (below) is the
-same task with a later due time.
+background worker — `task.prompt` is a model call and
+`task.send_mail` a network call, and neither belongs in a chat
+turn's own response time. Whatever the script tunnels reaches the
+browser over the websocket as a `notification` frame, a moment after
+the turn's own response, never inside it; a script that fails to
+evaluate is logged and its task settles with nothing to push, exactly
+as the in-turn evaluation used to skip a failing line. `task.defer`
+(below) is the same task with a later due time.
 
 `name` can't shadow a reserved namespace or a core metric name (§2) —
-rejected at build time. Assigning is itself never tunneled to the
-frontend, even when `<expr>` alone would have been (e.g.
-`x = actuator.celebrate()`); referencing `name` bare on a later line is
-what tunnels it, if it's still JS at that point. `name` is visible inside
-an `actuator.defer(...)` lambda too, the same way `user`/`signal`/`env`
+rejected at build time. `name` is visible inside
+a `task.defer(...)` lambda too, the same way `user`/`signal`/`env`
 are — frozen at the moment `defer` runs, not re-evaluated later.
 
-**Actuators** are code-defined plugins, not project-declared. Seven exist:
+**`task.*`** is code-defined, not project-declared. Four methods exist —
+`celebrate`/`notify`/`show`/`switch_to_human`/`switch_to_ai` used to
+live here too; they moved to `chat.*`, reachable only from `on-exit:`
+(§5.3bis), since only there does firing an action have anything left to
+tunnel to the browser synchronously:
 
-- `actuator.celebrate()` / `actuator.notify(title, body_md)` / `actuator.show(body_md)` —
-  compile straight to `taskActions.js` locals of the same name
-  (confetti / toast / dialog). Nothing runs server-side beyond building
-  that JS snippet — the tunnel is exact, e.g. `actuator.notify('Nice!', 'Well done')`
-  reaches the browser as literal `notify("Nice!", "Well done")`. `show`
-  renders `body_md` (markdown) in the app's existing generic dialog
-  (DialogHost.vue) rather than a toast — no title, closed via its × button.
-- `actuator.send_mail(to, body_md)` — queues an email on the job queue,
+- `task.send_mail(to, body_md)` — queues an email on the job queue,
   fire-and-forget, no frontend-visible effect.
-- `actuator.whatsapp(phone_number, message_md)` — sends a WhatsApp
+- `task.whatsapp(phone_number, message_md)` — sends a WhatsApp
   message to `phone_number` (E.164 digits, `+` optional) through the same
   Cloud API the WhatsApp channel itself sends replies with, markdown
   converted the same way. Unlike `send_mail` it isn't fire-and-forget:
   the task blocks on the API call and the statement's own value
   is `True` once it's accepted, `False` — nothing sent — for a
   `phone_number` with no linked user account or a failed API call, so a
-  script can react to it, e.g. `sent = actuator.whatsapp(to, body)`. Once
+  script can react to it, e.g. `sent = task.whatsapp(to, body)`. Once
   sent, `message_md` is also appended as an `assistant` message to the
   recipient's own live session on *this* action's project (the one
-  bound to the actuator set the task script is running under, not
+  bound to the task namespace the task script is running under, not
   necessarily the recipient's own active project) — the recipient's
   currently open one if there is any (any channel), or a freshly opened
   `whatsapp-chat` one otherwise. Best-effort: a failure recording it
   never turns a successful send back into `False`.
-- `actuator.defer(act, when)` — schedules another actuator call for
+- `task.defer(act, when)` — schedules another task call for
   later. `act` **must** be a zero-argument `lambda:` wrapping the real
   call; `when` **must** be `datetime.datetime(...)`/`.now(...)`,
   optionally ± one or more `datetime.timedelta(...)` — e.g.
-  `actuator.defer(lambda: actuator.send_mail(user.email, 'Reminder'), datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=env.reminder_days))`.
+  `task.defer(lambda: task.send_mail(user.email, 'Reminder'), datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=env.reminder_days))`.
   A `timedelta`'s args may reference `env.*`/`signal.*`; `when` can never
   be a bare `env.<key>` or a string. Both rules, and the lambda's arity,
   are checked at build time. A deferred call is hibernated in the DB the
@@ -709,41 +750,41 @@ are — frozen at the moment `defer` runs, not re-evaluated later.
   at that moment), keyed to the user+project's published revision, rebuilt
   only when `when` arrives — restarts/deploys/republishes don't affect it;
   deleting the project or user removes it. Inside the lambda, `user`/
-  `signal`/`env` read as snapshotted, while `actuator`/`metric`/`source`/
+  `signal`/`env` read as snapshotted, while `task`/`metric`/`source`/
   `automaton` are live at run time (a deferred call may itself defer).
-  `session.*` is unavailable throughout `task`.
-- `actuator.prompt(prompt)` — one extra synchronous model call, fully
+  `session.*`/`chat.*` are unavailable throughout `task`.
+- `task.prompt(prompt)` — one extra synchronous model call, fully
   isolated from the conversation: no system prompt beyond `prompt`
   itself, no `general-prompt`/`contextual-prompt`, no attachments, no
   signal/env context, no chat history. `prompt` is the entire request.
-  Returns its reply text for another actuator call to use (usually
-  `actuator.notify`'s `body_md`):
+  Returns its reply text for another `task.*` call to use (usually
+  `send_mail`'s `body_md`):
 
   ```yaml
   task: |
-    actuator.notify('Nice!', actuator.prompt('Translate to Catalan: Nice to reach this state!'))
+    task.send_mail(user.email, task.prompt('Translate to Catalan: Nice to reach this state!'))
   ```
 
   Nothing is persisted, and it never updates `env`/evaluates a signal/fires a
   transition — read-only, like `send_mail`, but its return value is real
   text. This is what replaced the old, removed `action-prompt` field.
 
-Every call's return value (if any) becomes wire-ready JS the frontend
-runs verbatim, **except** `actuator.prompt(...)`'s — meant only for
-another actuator call in the same line to consume (always wrap it, e.g.
-in `actuator.notify(...)`; a bare `actuator.prompt(...)` line contributes
-nothing). A call with nothing to tunnel (`send_mail`, `whatsapp`, `defer`)
-contributes nothing either, even though `whatsapp`'s own `True`/`False`
-is available to an assignment the same way `prompt`'s text is. Multiple
-lines concatenate in order.
+A call with nothing to tunnel (`send_mail`, `whatsapp`, `defer`,
+`prompt`) contributes nothing to the browser, even though `whatsapp`'s
+own `True`/`False` and `prompt`'s own reply text are both available to
+an assignment. Multiple lines concatenate in order — in practice
+`task:` no longer has anything of its own to concatenate, since every
+`task.*` member returns either `None`, a plain value for an assignment,
+or a bool, never a JsSnippet; only `on-exit`'s own `chat.*` calls tunnel
+JS to the browser now (§5.3bis).
 
-`send_mail`/`whatsapp`/`defer`/`actuator.prompt(...)` never run during a
+`send_mail`/`whatsapp`/`defer`/`task.prompt(...)` never run during a
 test replay/benchmark. A real side effect (`send_mail`, `whatsapp`,
 `defer`) also never runs in a draft/test conversation unless actuators
 are explicitly enabled for it — while off (the default there) it's
 suppressed and reported back as a `notify(...)` toast describing what
-would have happened instead. `celebrate`/`notify`/`show`/`prompt` have
-no real-world side effect to suppress, so they always run.
+would have happened instead. `prompt` has no real-world side effect to
+suppress, so it always runs.
 
 ## 6. Attachments
 
@@ -766,7 +807,7 @@ conversation.
 ```yaml
 init-action:
   target: lobby
-  task: actuator.celebrate()
+  on-exit: chat.celebrate()
 ```
 
 | Field | Required | Type | Meaning |
@@ -797,16 +838,17 @@ of how you're likely to hit them:
 - Every action's `trigger`, if given: syntactically valid and every
   reference resolves (§5.2's rules per namespace).
 - Every action's `env`, if given: a mapping, each expression validated the same way as `trigger`.
-- Every action's `task`, if given: one `actuator.<name>(...)` call (or
+- Every action's `task`, if given: one `task.<name>(...)` call (or
   `name = <expr>` assignment — §5.4) per non-blank line, validated the
   same way plus its own argument-count check; an assignment's `name` may
   not shadow a reserved namespace or core metric, and may only be
   referenced by a *later* line.
 - Every action's `on-exit`, if given: one `env.<key> = expr` assignment
-  per non-blank line — §5.3bis — each `key` already declared under
-  top-level `env:` and each expression validated the same way as
-  `env:`'s own (including its type-consistency check against that key's
-  declared default).
+  or bare `chat.<method>(...)` call per non-blank line — §5.3bis — each
+  assignment's `key` already declared under top-level `env:` and its
+  expression validated the same way as `env:`'s own (including its
+  type-consistency check against that key's declared default), each
+  `chat.*` call validated the same way plus its own argument-count check.
 - No signal named after a reserved core metric (§2).
 - Every `attachments:` entry (global/signal/state, not action) names a file actually present alongside `index.yml`.
 - Every `sources:` entry's own `url`, if set, has a recognized driver scheme, and (for `avance:<path>`) its path names a file actually present alongside `index.yml`.
@@ -843,6 +885,6 @@ extensive comment block on exercising each one.
 **Richer real-world examples**: the "default" sample (multiple signals
 with attachments, a `fixed-message` state, per-state
 `transition-log-level`); "Aprendr català" (`history-cutoff`, a
-`fixed-message` state, `task: actuator.celebrate()`,
-`actuator.notify(...)`/`actuator.prompt(...)` combos surfacing generated
-hints as toasts); "Drogodependencia" (simpler, neither).
+`fixed-message` state, `on-exit: chat.celebrate()`,
+`on-exit: chat.notify(...)` surfacing grammar hints as toasts);
+"Drogodependencia" (simpler, neither).

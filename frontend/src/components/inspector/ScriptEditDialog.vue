@@ -29,9 +29,9 @@ const props = defineProps({
 })
 
 const TAB_DEFS = [
-  { key: 'trigger', label: 'Trigger', field: 'trigger', excludeNamespaces: ['actuator'], hint: 'A Python expression, evaluated server-side, deciding whether this action is available.' },
-  { key: 'on-exit', label: 'On Exit', field: 'on-exit', excludeNamespaces: ['actuator'], hint: 'One "env.key = expression" write per line, evaluated when the action fires and before landing to next state.' },
-  { key: 'task', label: 'Task', field: 'task', excludeNamespaces: ['session'], hint: 'Script executed when running the action and before landing to next state.' }
+  { key: 'trigger', label: 'Trigger', field: 'trigger', excludeNamespaces: ['task', 'chat'], hint: 'A Python expression, evaluated server-side, deciding whether this action is available.' },
+  { key: 'on-exit', label: 'On Exit', field: 'on-exit', excludeNamespaces: ['task'], hint: 'One "env.key = expression" write per line, or a bare "chat.<method>(...)" call, evaluated when the action fires and before landing to next state.' },
+  { key: 'task', label: 'Task', field: 'task', excludeNamespaces: ['session', 'chat'], hint: 'Script executed when running the action and before landing to next state.' }
 ]
 
 const tabs = computed(() => TAB_DEFS.filter((t) => t.key !== 'trigger' || props.showTrigger))

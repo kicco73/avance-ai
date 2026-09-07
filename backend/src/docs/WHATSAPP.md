@@ -37,7 +37,7 @@ Meta ──POST /api/whatsapp/webhook──▶ WhatsAppController   (role=None, 
 - `controllers/auth_controller.py` — `PUT /api/auth/me/whatsapp-phone-number`, ProfileView.vue's own save action.
 - `auth/auth_service.py` — `register_via_whatsapp`, the WhatsApp-native signup path (shares `_register_with_invite` with the web's own `complete_registration`).
 - `project/invites.py` — `whatsapp_url` on a created invite's payload, `ShareProjectDialog.vue`'s WhatsApp QR.
-- `tracking/actuators/actuator_set.py` — `actuator.whatsapp(phone_number, message_md)`, the proactive-send entry point (see below).
+- `tracking/actuators/actuator_set.py` — `task.whatsapp(phone_number, message_md)`, the proactive-send entry point (see below).
 - `tests/test_whatsapp_channel.py` — contract tests with fake ChatService/Db/Cloud API.
 
 ## Identity

@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 
 // Pending human_takeover pushes (see chat/ws_notifications.py's
-// send_human_takeover, fired by actuator.switch_to_human) — one of this
+// send_human_takeover, fired by chat.switch_to_human) — one of this
 // account's other open tabs (see MAX_CONNECTIONS_PER_ADMIN) needs to open
 // a session and answer as the human. Unlike humanPromptStore.js's own
 // per-turn prompts, these never resolve anything by themselves — they're

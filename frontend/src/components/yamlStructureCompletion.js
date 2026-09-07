@@ -34,7 +34,7 @@ const STATE_FIELDS = [
   { name: 'ui-label' },
   { name: 'ui-description' },
   { name: 'actions', nested: true },
-  { name: 'chat' },
+  { name: 'chat-enabled' },
   { name: 'history-cutoff' },
   { name: 'transition-log-level' },
   { name: 'attachments', nested: true },

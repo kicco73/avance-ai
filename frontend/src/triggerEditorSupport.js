@@ -7,10 +7,10 @@ import { snippetCompletion } from '@codemirror/autocomplete'
 // build a fill-in-the-blanks snippet completion — the registry itself
 // only carries a free-text description, never a structured signature.
 const CALL_PARAMS = {
-  'actuator.send_mail': ['to', 'body_md'],
-  'actuator.notify': ['title', 'body_md'],
-  'actuator.show': ['body_md'],
-  'actuator.switch_to_human': ['user_id']
+  'task.send_mail': ['to', 'body_md'],
+  'chat.notify': ['title', 'body_md'],
+  'chat.show': ['body_md'],
+  'chat.switch_to_human': ['user_id']
 }
 
 const AUTOMATON_EMPTY_HINT =
@@ -26,7 +26,8 @@ export const NAMESPACE_COLORS = {
   'session.metric': '#ad1457',
   user: '#d84315',
   source: '#3949ab',
-  actuator: '#c62828',
+  task: '#c62828',
+  chat: '#f9a825',
   metric: '#2e7d32',
   automaton: '#455a64',
   datetime: '#00695c',
@@ -59,7 +60,7 @@ export function isProxyNamespace(namespace) {
 // Matches a complete namespace reference (e.g. "signal.mood") anywhere
 // in the text — group 1 is the namespace path, used to look up its color
 // (NAMESPACE_COLORS). Always construct a fresh RegExp — /g carries state via lastIndex.
-export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|session(?:\\.metric)?|user|source|actuator|metric|automaton|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'
+export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|session(?:\\.metric)?|user|source|task|chat|metric|automaton|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'
 
 export function namespaceOf(referenceText) {
   const match = new RegExp(`^${REFERENCE_PATTERN_SOURCE}`).exec(referenceText)

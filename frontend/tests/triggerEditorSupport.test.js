@@ -206,7 +206,7 @@ describe('namespaceOf (the coloring regex\'s own namespace extraction)', () => {
     expect(namespaceOf('automaton.other_project.state')).toBe('automaton')
     expect(namespaceOf('automaton.other_project.env.budget')).toBe('automaton')
 
-    for (const namespace of ['signal', 'env', 'session', 'session.metric', 'user', 'source', 'metric', 'automaton', 'datetime', 'datetime.timezone']) {
+    for (const namespace of ['signal', 'env', 'session', 'session.metric', 'user', 'source', 'task', 'chat', 'metric', 'automaton', 'datetime', 'datetime.timezone']) {
       expect(NAMESPACE_COLORS[namespace]).toMatch(/^#[0-9a-f]{6}$/)
     }
   })
@@ -218,12 +218,12 @@ describe('excludingNamespaces', () => {
     expect(excludingNamespaces(REGISTRY, [])).toBe(REGISTRY)
     expect(excludingNamespaces(REGISTRY, undefined)).toBe(REGISTRY)
 
-    const registry = { ...REGISTRY, sessionish: { x: '' }, actuator: { notify: '' } }
+    const registry = { ...REGISTRY, sessionish: { x: '' }, task: { send_mail: '' } }
     const filtered = excludingNamespaces(registry, ['session'])
     // What the task editor sees: session gone, session.metric gone
-    // with it, actuator kept — and never a mere string-prefix match.
+    // with it, task kept — and never a mere string-prefix match.
     expect(Object.keys(filtered)).toContain('sessionish')
-    expect(filtered.actuator).toBeDefined()
+    expect(filtered.task).toBeDefined()
     expect(filtered.session).toBeUndefined()
     expect(filtered['session.metric']).toBeUndefined()
   })

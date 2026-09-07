@@ -6,9 +6,10 @@ function show(body_md) {
   infoDialog({ body: body_md, markdown: true })
 }
 
-// The full set of functions an action's "task" script can call — the
-// one module every such local function lives in, so a new local only
-// ever needs adding here.
+// The full set of functions a task or on-exit script's own wire-ready
+// JS can call (celebrate()/notify(...)/show(...) — see chat.* on the
+// backend) — the one module every such local function lives in, so a
+// new local only ever needs adding here.
 export const taskLocals = { celebrate, notify, show }
 
 // Runs `script` (e.g. "celebrate()") with each of taskLocals bound as

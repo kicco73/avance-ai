@@ -30,7 +30,7 @@ states:
   b:
     ui-label: B
     contextual-prompt: bye
-    chat: false
+    chat-enabled: false
 """
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"

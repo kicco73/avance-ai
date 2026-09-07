@@ -18,7 +18,7 @@ vi.mock('../src/api.js', () => ({
 }))
 vi.mock('../src/errorStore.js', () => ({ setApiError: vi.fn(), clearApiError: vi.fn() }))
 
-const STATE = { key: 'a', ui_label: 'A', actions: [], chat: true }
+const STATE = { key: 'a', ui_label: 'A', actions: [], chat_enabled: true }
 
 describe('a turn interrupted by a dropped socket', () => {
   let chatStore

@@ -285,7 +285,7 @@ states:
   Crisis:
     ui-label: Crisis
     transition-log-level: CRITICAL
-    chat: false
+    chat-enabled: false
     ui-description: >
       An acute-risk signal has been detected. Control passes to a fixed,
       non-generative safety protocol: this state has no contextual_prompt —

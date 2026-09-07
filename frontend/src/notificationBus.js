@@ -1,10 +1,10 @@
 // The one consumer of chatClient's single notification handler.
 //
 // Every server-pushed "notification" frame carries at most a task
-// script (an action's actuator.celebrate()/notify()/show() output — which
-// the backend now always delivers this way, from the ActionTask that ran
-// it, never inside a turn's own response) and/or a state update for a
-// project (a cross-project wake-up). The script is a global UI effect —
+// script (an action's chat.celebrate()/notify()/show() output — which
+// the backend now always delivers this way, from a task script or an
+// on-exit script, never inside a turn's own response) and/or a state
+// update for a project (a cross-project wake-up). The script is a global UI effect —
 // a toast, confetti, a dialog — so it runs exactly once here, whichever
 // chat stores happen to exist; only the state part is fanned out, to
 // every store that asked, each deciding whether it is about its project.
