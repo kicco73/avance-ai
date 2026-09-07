@@ -9,6 +9,7 @@ from db.db import Db
 from ai import AiService
 from ai import MetadataCallback, content_to_text
 from automaton.automaton import Action, Automaton, State, StatePayload
+from events import EnvChanged, publish
 from logging_factory import LoggerFactory
 from session import Session
 from talker import AiTalker
@@ -47,9 +48,10 @@ class Metadata:
 	# tool, mid-generation (see tracking.sources.avance_env).
 	memory: dict[str, str]
 	signals: dict[str, float]
-	# The reply's own transient `output` field (state-scoped structured values) —
-	# available to trigger evaluation and action.env expressions in this same
-	# turn, then discarded (never persisted except where action.env copies it).
+	# The reply's own `output` field — one value per name in the state's own
+	# `output` (see automaton.State.output), available to trigger evaluation
+	# and action.env expressions this same turn, then copied onto the real
+	# env keys they name once the turn completes (see process()).
 	output: dict[str, Any] = field(default_factory=dict)
 	audio: str | None = None
 	chunk: str | None = None
@@ -206,6 +208,18 @@ class TrackingProcessor(object):
 		# self.out.tracking_id, which may already be linked to an earlier message.
 		self.env.update(self.metadata.memory, message_id=assistant_id, declared_keys=self.user.automaton.declared_env_key_names())
 
+		# This turn's own `output` values, copied onto the real env keys
+		# they name — the state's own `output` declaration is what makes
+		# this automatic (see automaton.State.output), unlike an action's
+		# own `env:`, which stays opt-in.
+		output_for_env = {
+			name: value for name, value in self.metadata.output.items() if name in self.user.state.output
+		}
+		if output_for_env:
+			self.env.update_action_set(output_for_env, origin="output")
+			for key, value in output_for_env.items():
+				publish(EnvChanged(username=Session().user, project_id=self.user.project_id, key=key, value=value))
+
 		# Every fragment this turn took is answered by the reply just saved
 		# — what keeps the next turn from picking any of them up again.
 		self.db.mark_messages_answered(self._fragment_ids, assistant_id)
@@ -307,7 +321,7 @@ class TrackingProcessor(object):
 		fired transition always does; an evaluation with no transition
 		only when the model actually reported signals worth a snapshot
 		(see TrackingEngine.apply_transition) — one against the empty set
-		has nothing new to record. A state with output_keys also earns a
+		has nothing new to record. A state with its own `output` also earns a
 		row on its own even with no signals/trigger at all — otherwise a
 		state that only ever produces output, never fires an action off
 		it, would never get its output linked to a message (see
@@ -446,7 +460,7 @@ class TrackingProcessor(object):
 		)
 		reactions_enabled = self.user.automaton.reactions_enabled_for(self.user.state)
 
-		output = OutputPrompt(output_definition) if state.output_keys else None
+		output = OutputPrompt(output_definition) if state.output else None
 		signals = SignalsPrompt(signal_definition) if self._evaluate_signals_for(state) else None
 		reaction = ReactionPrompt(reaction_definition) if reactions_enabled else None
 		audio = AudioPrompt() if talk_enabled else None
@@ -526,7 +540,7 @@ class TrackingProcessor(object):
 		# Pinned to THIS turn's own already-resolved automaton (never
 		# whatever project happens to be "active" right now, which need
 		# not be the same one this session actually belongs to).
-		output_definition = self._build_output_definition(state)
+		output_definition = self._build_output_definition(automaton, state)
 		signals = Signals(FixedProjectContext(automaton), self.db)
 		signal_names = automaton.triggerable_signal_names(state.key)
 		signal_definition = signals.get_definition(signal_names)
@@ -541,11 +555,12 @@ class TrackingProcessor(object):
 		)
 
 	@staticmethod
-	def _build_output_definition(state: State) -> str | None:
-		if not state.output_keys:
+	def _build_output_definition(automaton: Automaton, state: State) -> str | None:
+		if not state.output:
 			return None
+		env_keys_by_name = {env_key.name: env_key for env_key in automaton.env_keys}
 		return "- Definition of output fields:\n" + "\n\n".join(
-			f'\t- Output "{k.name}":\n{k.ai_definition}' for k in state.output_keys.values()
+			f'\t- Output "{name}":\n{env_keys_by_name[name].ai_definition}' for name in state.output
 		)
 
 	@staticmethod
@@ -619,7 +634,7 @@ def estimate_state_prompt(ai_service: AiService, automaton: Automaton, state: St
 		reaction_definition = None
 		turn_attachments: list = []
 	else:
-		output_definition = TrackingProcessor._build_output_definition(state)
+		output_definition = TrackingProcessor._build_output_definition(automaton, state)
 		signals = Signals(FixedProjectContext(automaton), None)
 		signal_definition = signals.get_definition(automaton.triggerable_signal_names(state.key))
 		reaction_definition = (
@@ -637,7 +652,7 @@ def estimate_state_prompt(ai_service: AiService, automaton: Automaton, state: St
 	# Output and signals always included, unlike the live build_turn_prompt — matches
 	# today's implicit evaluate_signals=True default for this
 	# no-live-session estimate. Output comes first to match live ordering.
-	output_prompt = OutputPrompt(output_definition) if state.output_keys else None
+	output_prompt = OutputPrompt(output_definition) if state.output else None
 	signals_prompt = SignalsPrompt(signal_definition)
 	reaction_prompt = ReactionPrompt(reaction_definition) if automaton.reactions_enabled_for(state) else None
 	audio_prompt = AudioPrompt() if automaton.talk_enabled else None

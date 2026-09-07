@@ -1,7 +1,7 @@
 """tracking.env_prompt_block.EnvPromptBlock — the system prompt's own env
-block: shown to every state whenever the project exports at least one
-env key (ai-access: readonly), values truncated to MAX_ENV_VALUE_CHARS,
-and nothing at all (not even an empty block) when nothing is exported.
+block: shown to a state whenever it declares at least one `input` name,
+carrying only those keys, values truncated to MAX_ENV_VALUE_CHARS, and
+nothing at all (not even an empty block) for a state with no `input`.
 The model's memory is never part of it (see Env.memory_as_text).
 """
 from __future__ import annotations
@@ -17,13 +17,14 @@ from tracking.turn_size_estimate import estimate_turn_request
 pytestmark = pytest.mark.contract
 
 ENV_KEYS = [
-    EnvKey(name="flight", ai_access="readonly"),
-    EnvKey(name="customer_email", ai_access="readonly"),
+    EnvKey(name="flight", ai_definition="The flight code."),
+    EnvKey(name="customer_email", ai_definition="The customer's email."),
     EnvKey(name="_flight_record"),
 ]
 
-STATE_A = State(key="a", ui_label="A", final=True, contextual_prompt="hi")
-STATE_B = State(key="b", ui_label="B", final=True, contextual_prompt="hi")
+STATE_A = State(key="a", ui_label="A", final=True, contextual_prompt="hi", input=("flight", "customer_email"))
+STATE_B = State(key="b", ui_label="B", final=True, contextual_prompt="hi", input=("flight", "customer_email"))
+STATE_C = State(key="c", ui_label="C", final=True, contextual_prompt="hi")
 
 
 def _automaton(*states: State) -> Automaton:
@@ -37,17 +38,24 @@ def _automaton(*states: State) -> Automaton:
     )
 
 
-def test_every_state_gets_a_block_whenever_the_project_exports_at_least_one_key_carrying_only_those_keys():
+def test_a_state_declaring_input_gets_a_block_carrying_only_those_keys():
     env = Env(memory={"note": "x"}, action_set={"flight": "VY3003", "_flight_record": "secret"})
-    automaton = _automaton(STATE_A, STATE_B)
+    automaton = _automaton(STATE_A, STATE_B, STATE_C)
 
     block = EnvPromptBlock.for_state(env, automaton, STATE_A)
     assert block is not None
     assert block.text() == f"{ENV_BLOCK_HEADER}\nflight: VY3003\ncustomer_email: "
     assert "secret" not in block.text() and "note" not in block.text()
 
-    # Not gated per state — env is project-global, every state sees it alike.
+    # Every state with the same `input` sees the same block.
     assert EnvPromptBlock.for_state(env, automaton, STATE_B) is not None
+
+
+def test_a_state_with_no_input_gets_no_block_at_all():
+    env = Env(action_set={"flight": "VY3003"})
+    automaton = _automaton(STATE_A, STATE_C)
+
+    assert EnvPromptBlock.for_state(env, automaton, STATE_C) is None
 
 
 def test_a_value_beyond_the_cap_is_cut_with_a_pointer_at_the_column_reads_while_one_exactly_at_it_is_left_alone():
@@ -79,7 +87,7 @@ def test_the_turn_size_estimate_counts_memory_and_the_blocks_own_lines_separatel
     assert {entry.kind for entry in without_block.entries} == {"prompt"}
 
 
-def test_hello_world_declares_no_env_keys_and_gets_no_block():
+def test_hello_world_declares_no_input_and_gets_no_block():
     automaton = AutomatonBuilder().build({"index.yml": """
 project:
   id: hello
@@ -92,5 +100,5 @@ states:
 """})
     state = automaton.states["Hello"]
 
-    assert automaton.exported_env_keys() == []
+    assert state.input == ()
     assert EnvPromptBlock.for_state(Env(), automaton, state) is None

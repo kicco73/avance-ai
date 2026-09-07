@@ -30,10 +30,15 @@ def test_a_key_defaults_to_an_empty_value_and_no_description_with_every_field_pa
     assert bare.name == "visits"
     assert bare.value == ""
     assert bare.ui_description is None
+    assert bare.ai_definition is None
 
-    described = _build('env:\n  visits:\n    ui-description: "How many times this fired."\n    value: "0"\n').env_keys[0]
+    described = _build(
+        'env:\n  visits:\n    ui-description: "How many times this fired."\n    value: "0"\n'
+        '    ai-definition: "How many times this state fired."\n'
+    ).env_keys[0]
     assert described.ui_description == "How many times this fired."
     assert described.value == "0"
+    assert described.ai_definition == "How many times this state fired."
 
     assert _build("env:\n  enabled:\n    value: true\n").env_keys[0].value == "True"
     assert _build("").env_keys == []

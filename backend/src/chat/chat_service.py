@@ -444,12 +444,12 @@ class ChatService(object):
 		return {
 			"memory": env.memory(until),
 			"action_set": env.action_set(until),
-			"ai_access": {env_key.name: env_key.ai_access for env_key in automaton.env_keys},
+			"ai_definition": {env_key.name: env_key.ai_definition for env_key in automaton.env_keys},
 		}
 
 	def get_output(self, session_id: int, message_id: int | None = None) -> dict:
-		"""This turn's transient State.output_keys values (see Tracking.
-		output) — kept purely for observability by the Run Inspector's
+		"""This turn's own raw structured `output` field values (see
+		Tracking.output) — kept purely for observability by the Run Inspector's
 		Output card. message_id ties it to one specific chat line, same
 		row get_env's own "until" reconstruction can't reuse: unlike env
 		(cumulative across the whole session), output is a single turn's

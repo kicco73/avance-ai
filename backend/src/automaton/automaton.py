@@ -109,12 +109,17 @@ class State:
     # Same convention as Action.line above — None for the synthetic ""
     # pseudo-state.
     line: int | None = None
-    # State-level output field declarations (name -> ui_label/ui_description/
-    # ai_definition metadata). Unlike env keys, output is transient: the model
-    # produces output values during its turn, they're available in trigger/env
-    # expressions as output.<key>, and they're discarded immediately after —
-    # never persisted unless action.env explicitly copies one to a real env key.
-    output_keys: dict[str, "OutputKey"] = field(default_factory=dict)
+    # Names of this automaton's own declared `env:` variables (see EnvKey)
+    # this state receives as input — what the model reads about the world
+    # before it replies. Every name here must also be declared in `env:`
+    # (checked at build time, see AutomatonValidator.validate_state_io).
+    input: tuple[str, ...] = ()
+    # Names of this automaton's own declared `env:` variables this state
+    # produces — the model fills each one in as part of its own structured
+    # reply (see tracking.prompt.OutputPrompt), and the resulting values are
+    # copied onto the real env keys automatically once the turn completes
+    # (see TrackingProcessor.process). Same existence requirement as `input`.
+    output: tuple[str, ...] = ()
 
     @property
     def has_triggerable_actions(self) -> bool:
@@ -153,38 +158,19 @@ class Reaction:
     ui_description: str | None = None
 
 
-AI_ACCESS_NONE = "none"
-AI_ACCESS_READONLY = "readonly"
-AI_ACCESS_VALUES = (AI_ACCESS_NONE, AI_ACCESS_READONLY)
-
-
 @dataclass
 class EnvKey:
-    """One project-level `env:` declaration. `value` is the default,
-    evaluated once whenever nothing has set the key yet. `ai_access` is
-    whether the *model* gets to see this key at all — none (the default:
-    scripts only) or readonly, always rendered in the prompt's own env
-    block (see tracking.env_prompt_block) whenever any key is exported;
-    there is no model-facing write path. Scripts (an action's own `env:`)
-    write any key regardless of ai_access."""
+    """One project-level `env:` declaration — the automaton's own variable.
+    `value` is the default, evaluated once whenever nothing has set the key
+    yet. `ai_definition` is the text the model reads to know what this
+    variable means — required for any key some state actually lists in its
+    own `input`/`output` (see AutomatonValidator.validate_state_io), unused
+    otherwise. Whether the model sees or produces a given key at all is
+    decided per state, by that state's own `input`/`output` (see
+    automaton.State) — never a property of the key itself. Scripts (an
+    action's own `env:`) write any key regardless."""
     name: str
     value: str = ""
-    ui_description: str | None = None
-    ai_access: str = AI_ACCESS_NONE
-
-    @property
-    def exported(self) -> bool:
-        return self.ai_access != AI_ACCESS_NONE
-
-
-@dataclass
-class OutputKey:
-    """One state-level `output:` field declaration. `ai_definition` is the
-    text the model reads to know what this output field means — required for
-    all output keys. Unlike env keys, output keys are transient: the model
-    produces them during its turn, they're available in action.env as
-    `output.<key>`, and they're discarded after the turn completes."""
-    name: str
     ui_description: str | None = None
     ai_definition: str | None = None
 
@@ -244,8 +230,10 @@ class StatePayload(TypedDict):
     ai_may_read_sources: list[str]
     ai_must_read_sources: list[str]
     ai_may_write_sources: list[str]
-    # State-level output field declarations — see State.output_keys.
-    output_keys: list[OutputKeyPayload]
+    # Names of this automaton's own declared `env:` variables this state
+    # reads/produces — see State.input/State.output.
+    input: list[str]
+    output: list[str]
 
 def manual_actions_for(actions: list[ActionPayload], auto_tracking_enabled: bool) -> list[ActionPayload]:
     return [a for a in actions if not a["has_trigger"] or not auto_tracking_enabled]
@@ -313,12 +301,6 @@ class EnvKeyPayload(TypedDict):
     name: str
     ui_description: str | None
     value: str
-    ai_access: str
-
-class OutputKeyPayload(TypedDict):
-    name: str
-    ui_label: str | None
-    ui_description: str | None
     ai_definition: str | None
 
 class SourcePayload(TypedDict):
@@ -467,7 +449,7 @@ class Automaton(object):
             "name": env_key.name,
             "ui_description": env_key.ui_description,
             "value": env_key.value,
-            "ai_access": env_key.ai_access,
+            "ai_definition": env_key.ai_definition,
         }
 
     @staticmethod
@@ -509,15 +491,8 @@ class Automaton(object):
             "ai_may_read_sources": list(state.ai_may_read_sources),
             "ai_must_read_sources": list(state.ai_must_read_sources),
             "ai_may_write_sources": list(state.ai_may_write_sources),
-            "output_keys": [
-                {
-                    "name": k.name,
-                    "ui_label": None,
-                    "ui_description": k.ui_description,
-                    "ai_definition": k.ai_definition,
-                }
-                for k in state.output_keys.values()
-            ],
+            "input": list(state.input),
+            "output": list(state.output),
         }
 
     def reactions_enabled_for(self, state: State) -> bool:
@@ -537,13 +512,6 @@ class Automaton(object):
         raise ValueError(
             f"Action '{action_name}' not available in state '{state.key}'"
         )
-
-    def exported_env_keys(self) -> list[EnvKey]:
-        """Every declared env key the model may see at all (ai_access
-        other than none), in declaration order — the content of the
-        prompt's own env block (see tracking.env_prompt_block), shown to
-        every state whenever this list isn't empty."""
-        return [env_key for env_key in self.env_keys if env_key.exported]
 
     def declared_env_key_names(self) -> set[str]:
         names = {env_key.name for env_key in self.env_keys}

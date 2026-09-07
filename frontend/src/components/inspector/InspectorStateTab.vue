@@ -13,7 +13,6 @@ import InspectorFileCard from './InspectorFileCard.vue'
 import InspectorSourceCard from './InspectorSourceCard.vue'
 import SessionDetailCard from './SessionDetailCard.vue'
 import ActionEnvEditor from './ActionEnvEditor.vue'
-import { outputNamespaceFor } from '../../triggerEditorSupport.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -88,7 +87,6 @@ const emit = defineEmits([
 // selection wiring, which clears currentFileName's own graph selection
 // the same way switching files already does).
 const isSourceContext = computed(() => props.selectedSource != null)
-const outputNamespace = computed(() => outputNamespaceFor(props.selectedElement, props.availableStates))
 
 // True whenever there's no active file browsing to defer to (currentFileName
 // is only ever non-null in edit mode — see EditProjectView.vue's own
@@ -217,7 +215,6 @@ onMounted(loadProjectMetadata)
       v-if="isBehaviorContext && !readOnly && open && selectedElement?.kind === 'action'"
       :env="selectedElement.data.env"
       :key-options="availableEnvKeys"
-      :extra-namespaces="{ output: outputNamespace }"
       @set-field="(field, value) => emit('set-field', field, value)"
     />
     <div v-if="isBehaviorContext && !readOnly && selectedElement?.kind !== 'action'" class="inspector-state-tab-add-row">

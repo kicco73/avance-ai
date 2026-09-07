@@ -14,7 +14,7 @@ import InspectorSignalsTab from '../../inspector/InspectorSignalsTab.vue'
 import InspectorMetricsTab from '../../inspector/InspectorMetricsTab.vue'
 import InspectorEnvTab from '../../inspector/InspectorEnvTab.vue'
 import InspectorEnvKeysTab from '../../inspector/InspectorEnvKeysTab.vue'
-import InspectorStateOutputTab from '../../inspector/InspectorStateOutputTab.vue'
+import InspectorStateIOTab from '../../inspector/InspectorStateIOTab.vue'
 import InspectorStateTab from '../../inspector/InspectorStateTab.vue'
 import ActionsOrderDialog from '../../inspector/ActionsOrderDialog.vue'
 import SessionDetailCard from '../../inspector/SessionDetailCard.vue'
@@ -198,7 +198,7 @@ const inspectorTabs = computed(() => {
     return [{ id: 'state', label: 'Info' }]
   }
   const thirdTab = selectedGraphElement.value?.kind === 'state'
-    ? { id: 'output', label: 'Output' }
+    ? { id: 'output', label: 'I/O' }
     : { id: 'env-keys', label: 'Env' }
   return [
     { id: 'state', label: 'Info' },
@@ -235,7 +235,7 @@ const { width: explorerWidth, startDrag: startExplorerDrag } = useResizablePanel
 // (only for `highlightedStateKey`, which Run/Test mode drives — see its
 // own syncSelectionToSelection). Left alone, selectedGraphElement.value
 // keeps pointing at the pre-reload node/edge object, so anything watching
-// selectedGraphElement.data (e.g. InspectorStateOutputTab's output_keys)
+// selectedGraphElement.data (e.g. InspectorStateIOTab's input/output)
 // never sees the edit that was just made. Re-resolve it here off the
 // freshly-loaded graph, by the same key, so it becomes a genuinely new object.
 function resyncSelectedGraphElement() {
@@ -275,7 +275,6 @@ const {
   handleAddState, handleAddSignal, handleAddEnvKey, handleAddAction,
   handleSetStateField, handleSetProjectField, handleSetActionField, handleSetSignalField, handleSetEnvKeyField,
   handleDeleteState, handleDeleteAction, handleDeleteSignal, handleDeleteEnvKey,
-  handleAddOutputKey, handleSetOutputKeyField, handleDeleteOutputKey,
 } = useIndexYmlEditing(
   props.projectId, guardedAction, indexYmlEditorRef, jumpToDefinition, selectedGraphElement, selectedStateKey, flashRecentlyAdded
 )
@@ -620,16 +619,14 @@ onBeforeUnmount(() => {
               />
             </template>
             <template #tab-output="{ registerTab }">
-              <InspectorStateOutputTab
+              <InspectorStateIOTab
                 v-if="selectedStateKey"
                 :ref="registerTab('output')"
                 :project-id="projectId"
                 :state-key="selectedStateKey"
                 :state-data="selectedGraphElement?.data"
-                :recently-added-key="recentlyAddedKey"
-                @set-field="(name, field, value) => handleSetOutputKeyField(selectedStateKey, name, field, value)"
-                @add-output-key="() => handleAddOutputKey(selectedStateKey)"
-                @delete="(name) => handleDeleteOutputKey(selectedStateKey, name)"
+                @set-field="(field, value) => handleSetStateField(selectedStateKey, field, value)"
+                @jump-to-definition="jumpSilently"
               />
             </template>
             <template #tab-env-keys="{ registerTab }">

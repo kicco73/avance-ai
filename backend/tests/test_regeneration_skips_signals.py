@@ -26,7 +26,7 @@ PROJECT_ID = "proj"
 
 
 def _automaton(action_env: dict[str, str] | None = None) -> Automaton:
-    """With `action_env`, `mood_score` is exported read-only — the one
+    """With `action_env`, `mood_score` is state "a"'s own `input` — the one
     configuration under which an action-set env key ever reaches the
     model's prompt at all (see tracking.env_prompt_block)."""
     mood = Signal(name="mood", ui_label="Mood", definition="0-100 mood score.")
@@ -34,8 +34,9 @@ def _automaton(action_env: dict[str, str] | None = None) -> Automaton:
         name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="signal.mood >= 50",
         env=action_env,
     )
-    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="You are in A.", actions=[action])
-    state_b = State(key="b", ui_label="B", final=True, contextual_prompt="You are in B.")
+    input_names = tuple(action_env or {})
+    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="You are in A.", actions=[action], input=input_names)
+    state_b = State(key="b", ui_label="B", final=True, contextual_prompt="You are in B.", input=input_names)
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
         init_action=init_action,
@@ -45,7 +46,7 @@ def _automaton(action_env: dict[str, str] | None = None) -> Automaton:
         attachments={},
         general_attachments={},
         autotracking_on_ai_message=False,
-        env_keys=[EnvKey(name=key, ai_access="readonly") for key in (action_env or {})],
+        env_keys=[EnvKey(name=key) for key in (action_env or {})],
     )
 
 

@@ -29,7 +29,7 @@ from .project_commit_mixin import ProjectCommitMixin
 # generated once at creation and immutable from then on.
 STATE_EDITABLE_FIELDS = {
     "ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat", "reactions-enabled",
-    "ai-may-read-sources", "ai-must-read-sources", "ai-may-write-sources",
+    "ai-may-read-sources", "ai-must-read-sources", "ai-may-write-sources", "input", "output",
 }
 ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "target", "trigger", "on-enter", "env"}
 # The init-action is an action like any other (see AutomatonYamlEditor.
@@ -43,9 +43,9 @@ INIT_ACTION_EDITABLE_FIELDS = ACTION_EDITABLE_FIELDS - {"trigger"}
 SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
 # Unlike a state/action/signal, an env key has no separate ui-label to
 # derive its name from — 'name' is itself directly editable here.
-# 'ai-access'/'ai-definition': what the model may do with the key and the
-# text it reads about it (see automaton.EnvKey).
-ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value", "ai-access"}
+# 'ai-definition': the text the model reads about this variable, whenever
+# some state actually lists it in its own input/output (see automaton.EnvKey).
+ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value", "ai-definition"}
 # Same reasoning as ENV_KEY_EDITABLE_FIELDS — a source's own id is
 # directly editable, not derived from its ui-label. 'url' is deliberately
 # absent: it's system-managed (ProjectEditor.add_source/set_source_field
@@ -698,41 +698,6 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
 
-    @post("/api/projects/{project_id}/states/{state_key}/output", role="admin")
-    async def add_output_key(self, project_id: str, state_key: str):
-        try:
-            return await self.project_service.add_output_key(project_id, state_key, self._activate_project)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        except AutomatonBuildError:
-            raise
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-
-    @put("/api/projects/{project_id}/states/{state_key}/output/{output_key_name}/{field}", role="admin")
-    async def put_output_key_field(self, project_id: str, state_key: str, output_key_name: str, field: str, req: SetProjectFieldRequest):
-        self.project_service.ensure_project_not_broken(project_id)
-        try:
-            return await self.project_service.set_output_key_field(
-                project_id, state_key, output_key_name, field, req.value, self._activate_project
-            )
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        except AutomatonBuildError:
-            raise
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-
-    @delete("/api/projects/{project_id}/states/{state_key}/output/{output_key_name}", role="admin")
-    async def delete_output_key(self, project_id: str, state_key: str, output_key_name: str):
-        try:
-            await self.project_service.delete_output_key(project_id, state_key, output_key_name, self._activate_project)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        except AutomatonBuildError:
-            raise
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
 
     @delete("/api/projects/{project_id}/sources/{source_name}", role="admin")

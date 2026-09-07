@@ -24,12 +24,20 @@ PROJECT_ID = "proj"
 
 
 def _automaton(action_env: dict, target: str = "b", model_reads_env: bool = False) -> Automaton:
-    """`model_reads_env`: exports every written key read-only — the one
-    configuration under which an env value ever reaches the model's
-    prompt (see tracking.env_prompt_block); an unexported key never does."""
+    """`model_reads_env`: declares every written key as the destination
+    state's own `input` — the one configuration under which an env value
+    ever reaches the model's prompt (see tracking.env_prompt_block); a
+    state with no `input` never sees one."""
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target=target, env=action_env)
-    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
-    state_b = State(key="b", ui_label="B", final=target == "b", contextual_prompt="bye", actions=[])
+    input_names = tuple(action_env or {}) if model_reads_env else ()
+    state_a = State(
+        key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action],
+        input=input_names if target == "a" else (),
+    )
+    state_b = State(
+        key="b", ui_label="B", final=target == "b", contextual_prompt="bye", actions=[],
+        input=input_names if target == "b" else (),
+    )
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
         init_action=init_action,
@@ -39,10 +47,7 @@ def _automaton(action_env: dict, target: str = "b", model_reads_env: bool = Fals
         attachments={},
         general_attachments={},
         autotracking_on_ai_message=False,
-        env_keys=[
-            EnvKey(name=key, ai_access="readonly" if model_reads_env else "none")
-            for key in (action_env or {})
-        ],
+        env_keys=[EnvKey(name=key) for key in (action_env or {})],
     )
 
 
@@ -158,8 +163,8 @@ async def test_env_update_happens_before_the_transitions_own_prompt_is_built(db)
 
 
 async def test_an_unexported_env_key_never_reaches_the_prompt(db):
-    """ai-access: none (the default) — the automaton's env stays out of
-    the model's prompt entirely, whatever the destination state declares."""
+    """No state declares it in its own `input` (the default) — the
+    automaton's env stays out of the model's prompt entirely."""
     chat_service = _chat_service(db, _automaton({"reset_counter": "True"}))
     ai_service = chat_service._ai_service
     session = await chat_service.get_current_session_if_any_or_create_new(None)

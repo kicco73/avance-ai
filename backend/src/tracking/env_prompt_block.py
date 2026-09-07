@@ -1,13 +1,11 @@
-"""The system prompt's own env block — the automaton's declared variables
-the model is allowed to see, rendered as `key: value` lines. Its
-perimeter is decided entirely here: the block exists for every state
-whenever the project exports at least one env key (`ai-access: readonly`
-— see Automaton.exported_env_keys), and truncates every value to
-MAX_ENV_VALUE_CHARS. Anywhere else (nothing exported) the block simply
-doesn't exist — not even empty. The model's own memory is a separate
-block with its own heading (see TurnProtocol), never merged with this
-one. Read-only, full stop: there is no model-facing write path for these
-— an action's own `env:` script is the only thing that ever changes one."""
+"""The system prompt's own env block — this state's own `input` variables
+(see automaton.State.input), rendered as `key: value` lines, truncated to
+MAX_ENV_VALUE_CHARS. A state that declares no `input` gets no block at
+all — not even empty. The model's own memory is a separate block with its
+own heading (see TurnProtocol), never merged with this one. Read-only,
+full stop: there is no model-facing write path for these — an action's
+own `env:` script (or this same state's own `output`, copied back once
+the turn completes — see TrackingProcessor.process) is what changes one."""
 from __future__ import annotations
 
 from typing import Any
@@ -29,15 +27,13 @@ class EnvPromptBlock:
 
     @classmethod
     def for_state(cls, env: Env, automaton: Automaton, state: State) -> "EnvPromptBlock | None":
-        """None — no block at all — only when the project exports no env
-        key whatsoever. Every state gets the same block otherwise: env is
-        project-global, not scoped per state. A key never set yet renders
-        with an empty value, the same row a read would return."""
-        exported = automaton.exported_env_keys()
-        if not exported:
+        """None — no block at all — only when `state` declares no `input`.
+        A key never set yet renders with an empty value, the same row a
+        read would return."""
+        if not state.input:
             return None
         current = env.action_set()
-        return cls({env_key.name: current.get(env_key.name, "") for env_key in exported})
+        return cls({name: current.get(name, "") for name in state.input})
 
     @staticmethod
     def _render_value(value: Any) -> str:

@@ -12,10 +12,6 @@ import TriggerEditor from './TriggerEditor.vue'
 const props = defineProps({
   env: { type: Object, default: () => ({}) },
   keyOptions: { type: Array, default: () => [] }, // string[] — every valid <select> choice
-  // Forwarded as-is to every row's own TriggerEditor — see
-  // InspectorStateTab.vue's own outputNamespaceFor (output.<key> is
-  // state-scoped, so this action's containing state's output_keys).
-  extraNamespaces: { type: Object, default: () => ({}) }
 })
 const emit = defineEmits(['set-field'])
 
@@ -88,7 +84,7 @@ function handleValueBlur(row) {
         <span class="inspector-py-field-icon" title="Python expression">PY</span>
         Value
       </label>
-      <TriggerEditor v-model="row.value" :exclude-namespaces="['actuator']" :extra-namespaces="extraNamespaces" @click.stop @blur="handleValueBlur(row)" />
+      <TriggerEditor v-model="row.value" :exclude-namespaces="['actuator']" @click.stop @blur="handleValueBlur(row)" />
     </div>
     <button type="button" class="inspector-signals-add-btn" @click="addRow">+ Add env key</button>
   </div>

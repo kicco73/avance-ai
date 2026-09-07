@@ -13,11 +13,11 @@ export function getIdentifiers(projectId) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/identifiers`)
 }
 
-// `sessionId`'s own store: {memory, action_set, ai_access} — `memory` is
+// `sessionId`'s own store: {memory, action_set, ai_definition} — `memory` is
 // the model's own free-form notes (editable here), `action_set` the
 // automaton's declared env keys as currently set (read-only, written by
-// actions or by the model's own `update` tool), `ai_access` each declared
-// key's own ai-access so the Env section can badge what the model sees.
+// an action's own env:, a state's own output, or by the model's own
+// `update` tool), `ai_definition` each declared key's own ai-definition text.
 // `messageId` restricts to values as of that message (a test/preview
 // session is always current — it keeps no history to look back through).
 export function getEnv(sessionId, messageId) {
@@ -25,7 +25,7 @@ export function getEnv(sessionId, messageId) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/env${query}`)
 }
 
-// This turn's transient State.output_keys values — {output: {...}}. Unlike
+// This turn's own raw structured `output` field values — {output: {...}}. Unlike
 // getEnv (cumulative across the whole session), output is a single turn's
 // own snapshot: `messageId` picks the one turn linked to that chat line;
 // omitted, the session's latest. Read-only — output is never edited here.
@@ -35,7 +35,7 @@ export function getOutput(sessionId, messageId) {
 }
 
 // Edits (or adds) one memory key — always current, there's no editing
-// history. Returns the same {memory, action_set, ai_access} shape as getEnv.
+// history. Returns the same {memory, action_set, ai_definition} shape as getEnv.
 export function putEnvValue(sessionId, key, value) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/env/${encodeURIComponent(key)}`, {
     method: 'PUT',
@@ -51,7 +51,7 @@ export function deleteEnvValue(sessionId, key) {
 }
 
 // Wipes every memory and action-set env key at once. Returns the same
-// {memory, action_set, ai_access} shape as getEnv.
+// {memory, action_set, ai_definition} shape as getEnv.
 export function clearEnv(sessionId) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/env`, {
     method: 'DELETE'

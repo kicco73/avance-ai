@@ -30,12 +30,6 @@ import { NAMESPACE_COLORS, REFERENCE_PATTERN_SOURCE, completeIdentifiers as comp
 const model = defineModel({ type: String, default: '' })
 const props = defineProps({
   excludeNamespaces: { type: Array, default: () => [] },
-  // Namespaces merged into the global registry for THIS editor instance
-  // only — never written back to identifierRegistry.js. output is
-  // state-scoped (unlike every other namespace, project-global), so its
-  // {name: description} entries come from the caller's own already-loaded
-  // graph data (the containing action's state), not a project-wide fetch.
-  extraNamespaces: { type: Object, default: () => ({}) },
   // Taller CodeMirror content area — for a caller editing a real
   // multi-line script (e.g. OnEnterDialog.vue) rather than the usual
   // one-line trigger/env expression.
@@ -58,8 +52,7 @@ let view = null
 // snapshot, so an identifier added elsewhere while this editor is open is
 // visible on the very next keystroke.
 function completeIdentifiers(context) {
-  const registry = { ...identifierRegistry.value, ...props.extraNamespaces }
-  return completeIdentifiersFor(context, excludingNamespaces(registry, props.excludeNamespaces))
+  return completeIdentifiersFor(context, excludingNamespaces(identifierRegistry.value, props.excludeNamespaces))
 }
 
 // Matches a namespace reference (e.g. "signal.mood") — group 1 is the

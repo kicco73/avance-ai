@@ -12,7 +12,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from automaton.automaton import (
-    AI_ACCESS_NONE, ActionPayload, EnvKeyPayload, OutputKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload,
+    ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload,
 )
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 
@@ -175,6 +175,8 @@ class AutomatonYamlEditor:
             "ai_may_read_sources": list(raw_state.get("ai-may-read-sources") or []),
             "ai_must_read_sources": list(raw_state.get("ai-must-read-sources") or []),
             "ai_may_write_sources": list(raw_state.get("ai-may-write-sources") or []),
+            "input": list(raw_state.get("input") or []),
+            "output": list(raw_state.get("output") or []),
         }
 
     @staticmethod
@@ -223,11 +225,12 @@ class AutomatonYamlEditor:
     def _env_key_payload(self, name: str) -> EnvKeyPayload:
         raw_env_key = self._env_key(name)
         ui_description = raw_env_key.get("ui-description")
+        ai_definition = raw_env_key.get("ai-definition")
         return {
             "name": name,
             "ui_description": ui_description.strip() if ui_description else None,
             "value": raw_env_key.get("value") or "",
-            "ai_access": raw_env_key.get("ai-access") or AI_ACCESS_NONE,
+            "ai_definition": ai_definition.strip() if ai_definition else None,
         }
 
     def _source_payload(self, name: str) -> SourcePayload:
@@ -361,13 +364,7 @@ class AutomatonYamlEditor:
                 return self.rename_env_key(name, derived_name)
             return self._env_key_payload(name)
         raw_env_key = self._env_key(name)
-        # The default access (none) removes the key rather than storing
-        # the default explicitly — AutomatonBuilder reads a missing key
-        # exactly the same way.
-        if field == "ai-access" and value == AI_ACCESS_NONE:
-            raw_env_key.pop(field, None)
-        else:
-            raw_env_key[field] = value
+        raw_env_key[field] = value
         return self._env_key_payload(name)
 
     def set_source_field(self, name: str, field: str, value) -> SourcePayload:
@@ -525,129 +522,6 @@ class AutomatonYamlEditor:
         self._transform_triggers_referencing(
             "env", name, lambda tree: self._strip_namespaced_ref_from_trigger(tree, "env", name)
         )
-
-    def _output_key(self, state_name: str, name: str) -> CommentedMap:
-        state = self._state(state_name)
-        output = state.setdefault("output", CommentedMap())
-        if name not in output:
-            output[name] = CommentedMap()
-        return output[name]
-
-    def _output_key_payload(self, state_name: str, name: str) -> OutputKeyPayload:
-        raw_output_key = self._output_key(state_name, name)
-        return {
-            "name": name,
-            "ui_label": raw_output_key.get("ui-label"),
-            "ui_description": raw_output_key.get("ui-description"),
-            "ai_definition": raw_output_key.get("ai-definition"),
-        }
-
-    def add_output_key(self, state_name: str) -> OutputKeyPayload:
-        output = self._state(state_name).setdefault("output", CommentedMap())
-        name = self._unique_signal_name("new_output_key", set(output.keys()))
-        output[name] = CommentedMap()
-        output[name]["ai-definition"] = "The output field value."
-        return self._output_key_payload(state_name, name)
-
-    def set_output_key_field(self, state_name: str, name: str, field: str, value) -> OutputKeyPayload:
-        # Same "editing this field renames the entry" convention as
-        # set_signal_field's 'ui-label' case — the card only ever exposes
-        # ui-label as the editable identity; the underlying snake_case key
-        # is derived from it, same as a signal's own name never is edited
-        # directly. 'name' is kept too for direct/programmatic renames.
-        if field == "ui_label":
-            raw_output_key = self._output_key(state_name, name)
-            if value:
-                raw_output_key["ui-label"] = value
-            else:
-                raw_output_key.pop("ui-label", None)
-            derived_name = self.to_snake_case(value) if value else None
-            if derived_name and derived_name != name:
-                return self.rename_output_key(state_name, name, derived_name)
-            return self._output_key_payload(state_name, name)
-        if field == "name":
-            derived_name = self.to_snake_case(value)
-            if derived_name and derived_name != name:
-                return self.rename_output_key(state_name, name, derived_name)
-            return self._output_key_payload(state_name, name)
-        raw_output_key = self._output_key(state_name, name)
-        yaml_field = field.replace("_", "-")
-        if value is None or value == "":
-            raw_output_key.pop(yaml_field, None)
-        else:
-            raw_output_key[yaml_field] = value
-        return self._output_key_payload(state_name, name)
-
-    def rename_output_key(self, state_name: str, old_name: str, new_name: str) -> OutputKeyPayload:
-        output = self._state(state_name).setdefault("output", CommentedMap())
-        if old_name not in output:
-            raise ValueError(f"Output key '{old_name}' not found in state '{state_name}'.")
-        existing_names = set(output.keys()) - {old_name}
-        unique_new_name = self._unique_signal_name(new_name, existing_names)
-
-        self._rename_key_preserving_comments(output, old_name, unique_new_name)
-        self._rename_output_ref_in_state_actions(state_name, old_name, unique_new_name)
-
-        return self._output_key_payload(state_name, unique_new_name)
-
-    def delete_output_key(self, state_name: str, name: str) -> None:
-        output = self._state(state_name).get("output", {})
-        if name in output:
-            del output[name]
-        self._strip_output_ref_from_state_actions(state_name, name)
-
-    def _state_action_fields_referencing_output(self, state_name: str, name: str):
-        """Yields (raw_action, field_name, expression) for every `trigger`
-        string and every `env` dict-value expression, of every action of
-        `state_name`, that references `output.<name>` — output is
-        state-scoped (unlike signal/env), so this only ever walks that
-        one state's own actions, never the whole automaton."""
-        raw_state = self._state(state_name)
-        for raw_action in raw_state.get("actions") or []:
-            trigger = raw_action.get("trigger")
-            if trigger:
-                tree = ast.parse(trigger, mode="eval").body
-                if name in TriggerExpressionAnalyzer.namespace_attrs(tree, "output"):
-                    yield raw_action, "trigger", trigger
-            env = raw_action.get("env") or {}
-            for env_key, expression in env.items():
-                if not isinstance(expression, str):
-                    continue
-                tree = ast.parse(expression, mode="eval").body
-                if name in TriggerExpressionAnalyzer.namespace_attrs(tree, "output"):
-                    yield raw_action, f"env:{env_key}", expression
-
-    def _rename_output_ref_in_state_actions(self, state_name: str, old_name: str, new_name: str) -> None:
-        def transform(tree: ast.AST) -> ast.AST:
-            for node in ast.walk(tree):
-                if (
-                    isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
-                    and node.value.id == "output" and node.attr == old_name
-                ):
-                    node.attr = new_name
-            return tree
-
-        for raw_action, field, expression in list(self._state_action_fields_referencing_output(state_name, old_name)):
-            tree = ast.parse(expression, mode="eval").body
-            new_node = transform(tree)
-            new_expression = ast.unparse(new_node)
-            if field == "trigger":
-                raw_action["trigger"] = new_expression
-            else:
-                raw_action["env"][field.removeprefix("env:")] = new_expression
-
-    def _strip_output_ref_from_state_actions(self, state_name: str, name: str) -> None:
-        for raw_action, field, expression in list(self._state_action_fields_referencing_output(state_name, name)):
-            tree = ast.parse(expression, mode="eval").body
-            if field == "trigger":
-                new_node = self._strip_namespaced_ref_from_trigger(tree, "output", name)
-                if new_node is None:
-                    del raw_action["trigger"]
-                else:
-                    raw_action["trigger"] = ast.unparse(new_node)
-            else:
-                env_key = field.removeprefix("env:")
-                del raw_action["env"][env_key]
 
     def delete_source(self, name: str) -> None:
         sources = self._sources()

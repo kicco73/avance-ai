@@ -18,7 +18,6 @@ const props = defineProps({
 const envLoading = ref(false)
 const memory = ref({})
 const actionSet = ref({})
-const aiAccess = ref({})
 const isLive = computed(() => props.editable)
 
 // Output is a single turn's own transient snapshot (see Tracking.output),
@@ -45,26 +44,20 @@ async function loadOutput() {
 
 // Memory entries are the model's own free-form notes — editable; env
 // (action-set) entries are the automaton's declared keys, written by an
-// action's own env: or by the model's `update` tool — read-only here,
-// each badged with its own ai-access (what the model may do with it).
+// action's own env:, by a state's own output, or by the model's `update`
+// tool — read-only here.
 const memoryEntries = computed(() => Object.entries(memory.value))
 const envEntries = computed(() => Object.entries(actionSet.value))
 
 function applyResult(result) {
   memory.value = result.memory
   actionSet.value = result.action_set
-  aiAccess.value = result.ai_access ?? {}
-}
-
-function accessLabel(key) {
-  return aiAccess.value[key] ?? 'none'
 }
 
 async function loadEnv() {
   if (props.sessionId == null) {
     memory.value = {}
     actionSet.value = {}
-    aiAccess.value = {}
     return
   }
   envLoading.value = true
@@ -173,15 +166,6 @@ defineExpose({ loadEnv, refresh })
         <div v-for="[key, value] in envEntries" :key="key" class="inspector-env-row">
           <strong class="inspector-env-key">{{ key }}:</strong>
           <span class="inspector-env-value">{{ value === null ? '—' : value }}</span>
-          <span
-            class="inspector-env-access"
-            :class="'inspector-env-access-' + accessLabel(key)"
-            :title="
-              accessLabel(key) === 'readonly'
-                ? 'The model can read this key (ai-access: readonly)'
-                : 'Scripts only — the model never sees this key (ai-access: none)'
-            "
-          >{{ accessLabel(key) }}</span>
         </div>
       </div>
 
@@ -253,6 +237,4 @@ defineExpose({ loadEnv, refresh })
 .inspector-env-delete-btn:hover { background: #fdecea; color: #c62828; }
 .inspector-env-clear-btn { margin-left: auto; flex-shrink: 0; border: 1px solid #c62828; border-radius: 6px; background: white; color: #c62828; cursor: pointer; font-size: 0.7rem; padding: 0.15rem 0.5rem; }
 .inspector-env-clear-btn:hover { background: #c62828; color: white; }
-.inspector-env-access { flex-shrink: 0; font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.1rem 0.4rem; border-radius: 999px; color: white; background: #9e9e9e; }
-.inspector-env-access-readonly { background: #4a6fa5; }
 </style>

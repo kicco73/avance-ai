@@ -1,8 +1,8 @@
 """GET/PUT/DELETE /api/chat/sessions/{session_id}/env — returns
-{"memory": ..., "action_set": ..., "ai_access": ...}. `action_set` (the
-automaton's env keys, written by an action's `env:` field or the model's
-own `update` tool) has no PUT/DELETE endpoint; `ai_access` maps every
-declared key to its own ai-access so the Inspector can badge it.
+{"memory": ..., "action_set": ..., "ai_definition": ...}. `action_set`
+(the automaton's env keys, written by an action's `env:` field or a
+state's own `output`) has no PUT/DELETE endpoint; `ai_definition` maps
+every declared key to its own ai-definition text.
 `message_id`, when given, restricts to values as of that message.
 """
 from __future__ import annotations
@@ -25,7 +25,7 @@ def test_env_endpoint_reports_stored_and_action_set_only(client, hello_project):
 
     assert response.status_code == 200
     body = response.json()
-    assert body == {"memory": {}, "action_set": {}, "ai_access": {}}
+    assert body == {"memory": {}, "action_set": {}, "ai_definition": {}}
 
 
 def test_put_env_value_stores_it(client, hello_project):

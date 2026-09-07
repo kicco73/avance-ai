@@ -174,18 +174,9 @@ class AutomatonValidator:
     ) -> None:
         registry_without_actuator = IdentifierRegistry.for_triggers(registry)
         registry_without_session = IdentifierRegistry.for_actuators(registry)
-        # Augment registry with this state's output keys for validation of both
-        # trigger and env expressions in the state's actions.
-        registry_with_output = {
-            **registry_without_actuator,
-            "output": {k.name: k.ai_definition or "" for k in state.output_keys.values()}
-        }
-        registry_with_output_no_actuator_no_session = {
-            **registry_without_session,
-            "output": registry_with_output["output"]
-        }
         self._cursor.at(state.line, f"states.{key}")
         self.validate_state_sources(state, sources)
+        self.validate_state_io(state, env_keys)
         for action in state.actions:
             self._cursor.at(action.line, f"states.{key}.actions.{action.name}")
             action_context = f"State {key}, action '{action.name}'"
@@ -196,7 +187,7 @@ class AutomatonValidator:
                 )
             if action.trigger:
                 self.validate_namespaced_expression(
-                    action.trigger, f"{action_context}: trigger", registry_with_output, sources,
+                    action.trigger, f"{action_context}: trigger", registry_without_actuator, sources,
                 )
                 self.validate_trigger_types(action.trigger, f"{action_context}: trigger")
                 referenced_projects = TriggerExpressionAnalyzer.automaton_project_refs(action.trigger)
@@ -219,11 +210,26 @@ class AutomatonValidator:
                         )
                     self.validate_namespaced_expression(
                         expression, f"{action_context}: env expression for '{env_key}'",
-                        registry_with_output, sources,
+                        registry_without_actuator, sources,
                     )
                     self.validate_env_key_type(env_keys[env_key], expression, action_context)
             if action.on_enter:
-                self.validate_on_enter(action.on_enter, action_context, registry_with_output_no_actuator_no_session, sources, all_archives)
+                self.validate_on_enter(action.on_enter, action_context, registry_without_session, sources, all_archives)
+
+    def validate_state_io(self, state: State, env_keys: dict[str, EnvKey]) -> None:
+        for field_name, names in (("input", state.input), ("output", state.output)):
+            for name in names:
+                env_key = env_keys.get(name)
+                if env_key is None:
+                    raise ValueError(
+                        f"State '{state.key}': {field_name} '{name}' — 'env.{name}' is not "
+                        "declared in the project's own 'env' section."
+                    )
+                if not env_key.ai_definition:
+                    raise ValueError(
+                        f"State '{state.key}': {field_name} '{name}' — env key '{name}' has no own "
+                        "'ai-definition', required for a variable exposed to the model as input/output."
+                    )
 
     def validate_state_sources(self, state: State, sources: dict[str, Source]) -> None:
         by_field = {

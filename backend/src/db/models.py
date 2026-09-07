@@ -176,7 +176,10 @@ class Message(BaseModel):
 # 'tool': an action_env row the model itself wrote through an avance:env
 # source's `update` (see tracking.sources.avance_env) — what
 # Db.link_tool_env_writes_to_message binds to the turn's assistant message.
-TRACKING_ORIGINS = ('trigger', 'manual', 'system', 'init-action', 'tool')
+# 'output': an action_env row copied automatically from this turn's own
+# `output` field values onto the env keys a state's own `output` names
+# (see TrackingProcessor.process).
+TRACKING_ORIGINS = ('trigger', 'manual', 'system', 'init-action', 'tool', 'output')
 
 
 class Tracking(BaseModel):
@@ -186,11 +189,11 @@ class Tracking(BaseModel):
     values = TextField(null=True)
     env = TextField(null=True)
     action_env = TextField(null=True)
-    # This turn's transient State.output_keys values (see automaton's own
-    # `output:` field) — kept here purely for observability (the Run
-    # Inspector's Output card, keyed off a selected chat message), never
-    # read back into a later turn's evaluation scope the way `values`
-    # (the signal snapshot) is.
+    # This turn's own raw structured `output` field values (see
+    # automaton's own `State.output`) — kept here purely for observability
+    # (the Run Inspector's Output card, keyed off a selected chat
+    # message); separately, TrackingProcessor.process copies these onto
+    # the real env keys they name.
     output = TextField(null=True)
     # JSON list of {name, arguments, result} — one entry per tool call
     # the model made this turn (see ai.ai_service.AiService's own

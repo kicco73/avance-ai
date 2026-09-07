@@ -83,7 +83,7 @@ class ChatController(BaseController):
 
     @get("/api/chat/sessions/{session_id}/output")
     def get_output(self, session_id: int, message_id: int | None = None):
-        """{"output": {...}} — the transient State.output_keys values
+        """{"output": {...}} — the raw structured `output` field values
         produced by the turn linked to message_id (or, with none given,
         the session's latest), for the Run Inspector's own Output card."""
         return self.chat_service.get_output(session_id, message_id)

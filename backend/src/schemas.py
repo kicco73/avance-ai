@@ -148,8 +148,8 @@ class SetProjectFieldRequest(BaseModel):
     # Editable fields are free text (ui-label, contextual-prompt, etc.), a
     # plain boolean (a state's history-cutoff/chat), a mapping of
     # env-key -> expression source (an action's own 'env' field only), or
-    # a list of source names (a state's own 'ai-may-read-sources'/
-    # 'ai-must-read-sources'/'ai-may-write-sources' fields only).
+    # a list of names (a state's own 'ai-may-read-sources'/
+    # 'ai-must-read-sources'/'ai-may-write-sources'/'input'/'output' fields only).
     value: str | bool | dict[str, str] | list[str]
 
     @field_validator("value")

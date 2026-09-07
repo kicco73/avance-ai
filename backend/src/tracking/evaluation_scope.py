@@ -68,10 +68,14 @@ class EvaluationScopeBuilder(object):
         session_id: int | None = None, output_values: dict[str, Any] | None = None,
     ) -> EvaluationScope:
         """`raw_signal_values` is always re-coerced against every declared
-        signal, never assumed pre-validated. `output_values` is a transient,
-        per-turn structured output dict (consumed by trigger evaluation and
-        action.env expressions, then discarded). env/session/user/source/
-        attachment/metric are cheap, lazy proxies included unconditionally
+        signal, never assumed pre-validated. `output_values` is this turn's
+        own freshly generated structured output (see tracking.prompt.
+        OutputPrompt) — filtered here to `state_key`'s own declared
+        `output` names and merged onto the `env` namespace, so a trigger
+        evaluated the same turn a state produces output already sees the
+        new value, ahead of TrackingProcessor.process's own persisted
+        copy-back. env/session/user/source/attachment/metric are cheap,
+        lazy proxies included unconditionally
         (attachment.read is only ever reachable from on-enter — see
         IdentifierRegistry.TRIGGER_SCOPE_EXCLUDES — but nothing stops it
         being present for trigger/env too, the same as `actuator` already
@@ -90,10 +94,13 @@ class EvaluationScopeBuilder(object):
         # The same Env this scope's own `env` namespace snapshots below —
         # what an avance:env source reads and (for a readwrite key) writes.
         source_namespace = SourceNamespace(self._db, automaton, session_id, env=self._env)
+        state = automaton.states.get(state_key)
+        output_for_env = {
+            name: value for name, value in (output_values or {}).items() if state is not None and name in state.output
+        }
         scope: dict[str, Any] = {
             "signal": signal_values,
-            "env": self._env.action_set(),
-            "output": output_values or {},
+            "env": {**self._env.action_set(), **output_for_env},
             "session": self._session,
             "user": self._user.as_dict(),
             "source": source_namespace,
@@ -118,7 +125,6 @@ class EvaluationScopeBuilder(object):
             # single isolated request, not part of a state's own
             # multi-round chat turn, so "first turn in this state" has no
             # meaning for it.
-            state = automaton.states.get(state_key)
             tool_set = (
                 source_namespace.tool_set(
                     state.ai_may_read_sources, state.ai_must_read_sources, state.ai_may_write_sources,

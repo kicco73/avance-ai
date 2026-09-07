@@ -18,11 +18,10 @@ const AUTOMATON_EMPTY_HINT =
 
 // Fixed per-namespace colors — frontend-only, the identifier registry
 // never transports styling. "session.metric" gets its own distinct
-// color, not session's — it's its own registry key. "output" is state-scoped.
+// color, not session's.
 export const NAMESPACE_COLORS = {
   signal: '#1565c0',
   env: '#00838f',
-  output: '#004d40',
   session: '#6a1b9a',
   'session.metric': '#ad1457',
   user: '#d84315',
@@ -52,29 +51,15 @@ export function excludingNamespaces(registry, excluded) {
   return Object.fromEntries(Object.entries(registry).filter(([ns]) => !isExcluded(ns)))
 }
 
-// output is state-scoped (unlike every other namespace, project-global) —
-// an action's trigger/env can only ever reference its own containing
-// state's output_keys, so this is never folded into identifierRegistry.js.
-// Derived from availableStates (useProjectCatalog's own outputKeys, off
-// already-loaded graph data — no extra fetch), falling back to the state
-// card's own selectedElement.data when editing a state directly.
-export function outputNamespaceFor(selectedElement, availableStates) {
-  if (!selectedElement) return {}
-  const stateKey = selectedElement.kind === 'state' ? selectedElement.data.id : selectedElement.data.matchStateKey
-  const fromCatalog = availableStates.find((s) => s.key === stateKey)?.outputKeys
-  const keys = fromCatalog ?? (selectedElement.kind === 'state' ? selectedElement.data.output_keys : null) ?? []
-  return Object.fromEntries(keys.map((k) => [k.name, k.ai_definition || '']))
-}
-
 export function isProxyNamespace(namespace) {
-  return namespace !== 'signal' && namespace !== 'env' && namespace !== 'output' && namespace !== 'user' &&
+  return namespace !== 'signal' && namespace !== 'env' && namespace !== 'user' &&
     namespace !== 'automaton' && namespace !== 'datetime.timezone' && !namespace.startsWith('automaton.')
 }
 
 // Matches a complete namespace reference (e.g. "signal.mood") anywhere
 // in the text — group 1 is the namespace path, used to look up its color
 // (NAMESPACE_COLORS). Always construct a fresh RegExp — /g carries state via lastIndex.
-export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|output|session(?:\\.metric)?|user|source|actuator|metric|automaton|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'
+export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|session(?:\\.metric)?|user|source|actuator|metric|automaton|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'
 
 export function namespaceOf(referenceText) {
   const match = new RegExp(`^${REFERENCE_PATTERN_SOURCE}`).exec(referenceText)

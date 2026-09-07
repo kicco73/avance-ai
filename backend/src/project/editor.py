@@ -507,19 +507,6 @@ class ProjectEditor:
     async def delete_env_key(self, project_id: str, env_key_name: str, commit: CommitCallback) -> None:
         await self._edit_index_yml(project_id, commit, lambda editor: editor.delete_env_key(env_key_name))
 
-    async def add_output_key(self, project_id: str, state_key: str, commit: CommitCallback) -> OutputKeyPayload:
-        return await self._edit_index_yml(project_id, commit, lambda editor: editor.add_output_key(state_key))
-
-    async def set_output_key_field(
-        self, project_id: str, state_key: str, output_key_name: str, field: str, value, commit: CommitCallback
-    ) -> OutputKeyPayload:
-        return await self._edit_index_yml(
-            project_id, commit, lambda editor: editor.set_output_key_field(state_key, output_key_name, field, value)
-        )
-
-    async def delete_output_key(self, project_id: str, state_key: str, output_key_name: str, commit: CommitCallback) -> None:
-        await self._edit_index_yml(project_id, commit, lambda editor: editor.delete_output_key(state_key, output_key_name))
-
     @staticmethod
     def _source_archive(source_name: str) -> str:
         """Where a source's own backing content lives — one `<id>.csv`
