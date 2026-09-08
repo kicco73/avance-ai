@@ -4,6 +4,7 @@ import LiveChatWindow from './components/chat/LiveChatWindow.vue'
 import HumanOperatorChatView from './components/chat/HumanOperatorChatView.vue'
 import EditProjectView from './components/project/edit/EditProjectView.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
+import BuildProjectView from './components/project/build/BuildProjectView.vue'
 import LoginView from './components/LoginView.vue'
 import TermsView from './components/TermsView.vue'
 import InviteRequiredView from './components/InviteRequiredView.vue'
@@ -34,6 +35,7 @@ const hasSharedInvite = !!peekInviteCode()
 const editProjectId = ref(null)
 const editProjectBuildError = ref(null)
 const labelProjectId = ref(null)
+const buildProjectId = ref(null)
 const liveChatProjectId = ref(null)
 const operatorSessionId = ref(null)
 const currentUserProfile = ref(null)
@@ -78,6 +80,11 @@ async function handleModelEdit(projectId, buildError = null) {
 function handleSelectLabelSessions(projectId) {
   labelProjectId.value = projectId
   pushView('label')
+}
+
+function handleSelectBuild(projectId) {
+  buildProjectId.value = projectId
+  pushView('build')
 }
 
 function handleManageProjectsChat(projectId) {
@@ -151,6 +158,7 @@ const manageProjectsListeners = {
   edit: handleModelEdit,
   label: handleSelectLabelSessions,
   download: handleModelDownload,
+  build: handleSelectBuild,
   'manage-users': handleSettingsManageUsers,
   'manage-services': handleSettingsManageServices,
   'app-store': handleSettingsAppStore,
@@ -296,6 +304,14 @@ onBeforeUnmount(() => {
               :profile="currentUserProfile"
               @close="popPushedView"
               @project-select="handleLabelProjectSwitch"
+              v-on="profileMenuListeners"
+            />
+            <BuildProjectView
+              v-else-if="pushedView === 'build'"
+              :key="buildProjectId"
+              :project-id="buildProjectId"
+              :profile="currentUserProfile"
+              @close="popPushedView"
               v-on="profileMenuListeners"
             />
             <ManageUsersView

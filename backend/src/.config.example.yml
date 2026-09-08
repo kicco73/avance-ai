@@ -169,6 +169,15 @@ notification-service:
   # Optional, defaults to 10.
   timeout-seconds: 10
 
+build-service:
+  # Optional, the whole section can be omitted entirely — shown read-only
+  # in Settings > Manage services > Build (editing from the UI is a
+  # separate, later change). Credentials for the git remote (e.g. GitHub)
+  # a project's Build wizard pushes to.
+  repo-url: <https://github.com/org/repo.git>
+  username: <git username>
+  token: <personal access token>
+
 whatsapp-service:
   # Optional, defaults to false (and the whole section can be omitted
   # entirely). If true, WhatsApp becomes one more chat client of the very

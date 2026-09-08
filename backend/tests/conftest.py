@@ -293,6 +293,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
         "talk": {"enabled": False, "providers": []},
         "listen": {"enabled": False, "providers": []},
         "database": {"url": "sqlite:///test.db", "migration-strategy": "stop"},
+        "build": {"repo-url": None, "username": None, "token": None},
     }
 
     fastapi_app = FastAPI(title="Avance State Engine (test)")

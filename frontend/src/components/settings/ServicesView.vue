@@ -37,7 +37,8 @@ const TABS = [
   { id: 'talk', label: 'Talk' },
   { id: 'listen', label: 'Listen' },
   { id: 'whatsapp', label: 'WhatsApp' },
-  { id: 'database', label: 'Data' }
+  { id: 'database', label: 'Data' },
+  { id: 'build', label: 'Build' }
 ]
 
 const WHATSAPP_MASKED_FIELDS = ['verify-token', 'app-secret', 'access-token']
@@ -110,6 +111,10 @@ async function loadTasks() {
 }
 
 watch([taskStatus, taskOrder], loadTasks)
+
+const BUILD_MASKED_FIELDS = ['token']
+const BUILD_PLAIN_FIELDS = ['repo-url', 'username']
+const revealedBuildFields = ref(Object.fromEntries(BUILD_MASKED_FIELDS.map((key) => [key, false])))
 
 onMounted(() => {
   load()
@@ -398,6 +403,30 @@ async function selectCleanUnusedRevisions() {
               </label>
               <button type="button" class="services-action-btn services-action-btn-danger" @click="selectWipeAllLiveSessions">Wipe all live sessions</button>
               <button type="button" class="services-action-btn" @click="selectCleanUnusedRevisions">Clean unused revisions</button>
+            </div>
+          </div>
+        </div>
+
+        <div v-show="activeTab === 'build'" class="services-panel">
+          <div v-for="key in BUILD_PLAIN_FIELDS" :key="key" class="services-field">
+            <label class="services-field-label">{{ fieldLabel(key) }}</label>
+            <input class="services-field-input" type="text" :value="services.build[key]" disabled />
+          </div>
+          <div v-for="key in BUILD_MASKED_FIELDS" :key="key" class="services-field">
+            <label class="services-field-label">{{ fieldLabel(key) }}</label>
+            <div class="services-field-masked-row">
+              <input
+                class="services-field-input"
+                :type="revealedBuildFields[key] ? 'text' : 'password'"
+                :value="services.build[key]"
+                disabled
+              />
+              <button
+                type="button"
+                class="services-reveal-btn"
+                :title="revealedBuildFields[key] ? 'Hide' : 'Show'"
+                @click="revealedBuildFields[key] = !revealedBuildFields[key]"
+              >{{ revealedBuildFields[key] ? 'Hide' : 'Show' }}</button>
             </div>
           </div>
         </div>

@@ -64,6 +64,17 @@ class WhatsAppServiceConfig:
 
 
 @dataclass(frozen=True)
+class BuildServiceConfig:
+    """The optional `build-service` section: credentials for the git
+    remote (e.g. GitHub) the Build wizard pushes/pulls a project's
+    source from. Every field optional — the wizard can be opened and
+    the repository step filled in before any credential exists."""
+    repo_url: str | None
+    username: str | None
+    token: str | None
+
+
+@dataclass(frozen=True)
 class AuthProviderConfig:
     driver: str
     # Mandatory here — Google always requires a client ID; revisit whether
@@ -371,6 +382,19 @@ class AppConfig:
             timeout_seconds=timeout_seconds,
         )
 
+    @classmethod
+    def _parse_build_service_config(cls, raw: dict, path: Path) -> BuildServiceConfig:
+        sub = cls._get_optional_section(raw, "build-service", path)
+        for field in ("repo-url", "username", "token"):
+            value = sub.get(field)
+            if value is not None and not isinstance(value, str):
+                raise ConfigError(f"{path}: 'build-service.{field}' must be a string if present.")
+        return BuildServiceConfig(
+            repo_url=(sub.get("repo-url") or "").strip() or None,
+            username=(sub.get("username") or "").strip() or None,
+            token=(sub.get("token") or "").strip() or None,
+        )
+
     _AI_SERVICE_MODES = ("live", "test")
     # A modifier, not a cascade of its own — applied alongside "live"
     # and/or "test" (e.g. modes: [live, no-auto]) to keep an entry in that
@@ -545,6 +569,8 @@ class AppConfig:
 
         self.whatsapp_service_config = self._parse_whatsapp_service_config(raw, path)
 
+        self.build_service_config = self._parse_build_service_config(raw, path)
+
     @staticmethod
     def _public_provider_fields(entry) -> dict:
         return {
@@ -613,4 +639,13 @@ class AppConfig:
                 "url": _redact_database_url(self.database_url),
                 "migration-strategy": self.database_migration_strategy,
             },
+            "build": self._public_build_service_fields(),
+        }
+
+    def _public_build_service_fields(self) -> dict:
+        b = self.build_service_config
+        return {
+            "repo-url": b.repo_url,
+            "username": b.username,
+            "token": b.token,
         }

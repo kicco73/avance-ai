@@ -11,7 +11,7 @@ const props = defineProps({
   publishedRevision: { type: Number, default: null }
 })
 
-const emit = defineEmits(['edit', 'label', 'download', 'share', 'delete'])
+const emit = defineEmits(['edit', 'label', 'download', 'share', 'delete', 'build'])
 
 const previewing = ref(false)
 
@@ -121,6 +121,7 @@ onBeforeUnmount(async () => {
     <button type="button" class="project-detail-secondary-btn" @click="emit('label', app.id)">Label</button>
     <button type="button" class="project-detail-secondary-btn" @click="emit('download', app.id)">Export</button>
     <button type="button" class="project-detail-secondary-btn" @click="emit('share', app.id)">Invite</button>
+    <button type="button" class="project-detail-secondary-btn" @click="emit('build', app.id)">Build</button>
   </div>
 
   <div class="project-detail-try-panel">

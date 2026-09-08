@@ -30,7 +30,7 @@ const props = defineProps({
 
 // Emits events only; App.vue owns the actual new/upload/delete actions.
 const emit = defineEmits([
-  'new-project', 'upload', 'delete', 'edit', 'label', 'download',
+  'new-project', 'upload', 'delete', 'edit', 'label', 'download', 'build',
   'manage-users', 'manage-services', 'app-store', 'about',
   'home', 'profile', 'logout'
 ])
@@ -192,6 +192,10 @@ function selectShare(id) {
   customDialog({ component: ShareProjectDialog, props: { projectId: id, uiLabel: projectTitle(id) } })
 }
 
+function selectBuild(id) {
+  emit('build', id)
+}
+
 function statusTitle(row) {
   if (row.status === 'running') return 'Running'
   if (row.status === 'manually_paused') return 'Manually paused'
@@ -316,6 +320,7 @@ defineExpose({ refresh })
           @download="selectDownload"
           @share="selectShare"
           @delete="selectDelete"
+          @build="selectBuild"
         />
         <p v-else-if="selectedProjectId" class="manage-projects-status">This project hasn't been published yet — no preview available.</p>
         <p v-else class="manage-projects-status">Select a project to see its details.</p>
