@@ -11,6 +11,7 @@ import sys
 
 import pytest
 
+from automaton.automaton import CompiledAutomaton
 from build.apps import PackageError, import_automaton, package_dir, staging_dir
 from build.build_service import BuildService, module_name_for
 from build.compiler import CompileError, compile_contents
@@ -59,7 +60,7 @@ def test_the_published_revision_is_served_from_the_package_when_one_matches(db, 
 
     automaton = _loader(db, tmp_path).load_at_revision(PROJECT_ID, revision)
 
-    assert type(automaton).__name__ == "CompiledAutomaton"
+    assert isinstance(automaton, CompiledAutomaton)
     assert automaton.archives_dir is not None
     # The one thing a package does not know about itself.
     assert automaton.revision == revision
@@ -84,7 +85,7 @@ def test_a_revision_that_is_not_the_published_one_is_never_served_compiled(db, t
     assert draft != published
 
     assert type(_loader(db, tmp_path).load_at_revision(PROJECT_ID, draft)).__name__ == "Automaton"
-    assert type(_loader(db, tmp_path).load_at_revision(PROJECT_ID, published)).__name__ == "CompiledAutomaton"
+    assert isinstance(_loader(db, tmp_path).load_at_revision(PROJECT_ID, published), CompiledAutomaton)
 
 
 def test_a_package_compiled_from_another_revision_is_refused_and_the_project_still_loads(db, tmp_path, caplog):

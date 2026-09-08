@@ -55,7 +55,7 @@ const { onChatBeforeEnter, onChatEnter, onChatBeforeLeave, onChatLeave } = useCh
 const {
   modelUploadInput, uploadingProject, uploadProgress, uploadProjectId, uploadIconReady,
   triggerModelUpload, handleNewProject, handleModelUploadChange, handleModelEditSaved, handleProjectSwitch,
-  activateAndRefresh, handleModelDownload, handleModelDelete, handleWipeAllLiveSessions,
+  activateAndRefresh, handleModelDownload, handleModelDelete, handleCompileProject, handleWipeAllLiveSessions,
   handleCleanUnusedRevisions, handleDownloadBackup, handleRestoreBackup, handleShowAbout,
 } = useProjectAdminActions(chatWindowRef, manageProjectsView)
 
@@ -158,6 +158,7 @@ const manageProjectsListeners = {
   edit: handleModelEdit,
   label: handleSelectLabelSessions,
   download: handleModelDownload,
+  compile: handleCompileProject,
   build: handleSelectBuild,
   'manage-users': handleSettingsManageUsers,
   'manage-services': handleSettingsManageServices,

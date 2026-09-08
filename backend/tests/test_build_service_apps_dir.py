@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pytest
 
+from automaton.automaton import CompiledAutomaton
 from build.apps import package_dir, staging_dir
 from build.build_service import BuildService, module_name_for
 from build.compiler import CompileError
@@ -73,7 +74,7 @@ def test_a_build_leaves_exactly_one_package_where_the_loader_looks(db, tmp_path)
 
     # And the loader picks it up without being told anything.
     automaton = CompiledAutomatonLoader(db, tmp_path).load_at_revision(PROJECT_ID, revision)
-    assert type(automaton).__name__ == "CompiledAutomaton"
+    assert isinstance(automaton, CompiledAutomaton)
 
 
 def test_building_again_at_a_new_revision_replaces_the_old_package(db, tmp_path):

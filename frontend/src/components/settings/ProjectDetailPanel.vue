@@ -15,7 +15,7 @@ const props = defineProps({
   revision: { type: Number, default: null }
 })
 
-const emit = defineEmits(['edit', 'label', 'download', 'share', 'delete', 'build'])
+const emit = defineEmits(['edit', 'label', 'download', 'share', 'delete', 'compile', 'build'])
 
 const previewing = ref(false)
 
@@ -122,6 +122,7 @@ onBeforeUnmount(async () => {
   <div class="project-detail-badges">
     <span class="project-detail-badge">MULTILINGUAL</span>
     <span v-if="app.reactions_enabled" class="project-detail-badge">REACTIONS</span>
+    <span v-if="app.compiled" class="project-detail-badge">COMPILED</span>
   </div>
   <p class="project-detail-desc">{{ app.ui_description }}</p>
 
@@ -137,6 +138,14 @@ onBeforeUnmount(async () => {
     <button type="button" class="project-detail-secondary-btn" @click="emit('label', app.id)">Label</button>
     <button type="button" class="project-detail-secondary-btn" @click="emit('download', app.id)">Export</button>
     <button type="button" class="project-detail-secondary-btn" @click="emit('share', app.id)">Invite</button>
+    <button
+      v-if="!app.compiled"
+      type="button"
+      class="project-detail-secondary-btn"
+      :disabled="!!buildBlockedReason"
+      :title="buildBlockedReason || 'Compile the published revision into a local module'"
+      @click="emit('compile', app.id)"
+    >Compile</button>
     <button
       type="button"
       class="project-detail-secondary-btn"

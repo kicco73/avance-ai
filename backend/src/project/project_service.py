@@ -12,7 +12,8 @@ import re
 from typing import TYPE_CHECKING
 
 from automaton.automaton import (
-    Action, ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, State, StatePayload,
+    Action, ActionPayload, Automaton, CompiledAutomaton, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload,
+    State, StatePayload,
 )
 from chat.sessions.session_manager import ChatSessionManager
 from db import Db
@@ -378,7 +379,9 @@ class ProjectService(object):
         apps = self._db.list_projects_for_app_store(username, search)
         for app in apps:
             app["icon_file"] = self._find_app_icon_file(app["id"])
-            app["reactions_enabled"] = self._project_has_reactions(app["id"])
+            automaton = self.get_automaton(app["id"], self.get_published_revision(app["id"]))
+            app["reactions_enabled"] = any(automaton.reactions_enabled_for(s) for s in automaton.states.values())
+            app["compiled"] = isinstance(automaton, CompiledAutomaton)
         return apps
 
     def _find_app_icon_file(self, project_id: str) -> str | None:
@@ -387,10 +390,6 @@ class ProjectService(object):
             if _ICON_FILE_RE.match(name):
                 return name
         return None
-
-    def _project_has_reactions(self, project_id: str) -> bool:
-        automaton = self.get_automaton(project_id, self.get_published_revision(project_id))
-        return any(automaton.reactions_enabled_for(state) for state in automaton.states.values())
 
     def install_app(self, username: str, project_id: str) -> None:
         if not self._db.project_exists(project_id):

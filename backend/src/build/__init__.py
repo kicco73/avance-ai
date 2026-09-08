@@ -8,9 +8,9 @@ package lives and how it is imported back.
 """
 from .apps import PackageError, import_automaton, package_dir, staging_dir
 from .build_service import BUILD_DIR, BuildService, module_name_for
-from .compiler import CompileError, compile_contents, compile_module, compile_package, verify_package
+from .compiler import Compiler, CompileError, compile_contents, compile_package, verify_package
 
 __all__ = [
-    "BUILD_DIR", "BuildService", "CompileError", "PackageError", "compile_contents", "compile_module",
+    "BUILD_DIR", "BuildService", "CompileError", "Compiler", "PackageError", "compile_contents",
     "compile_package", "import_automaton", "module_name_for", "package_dir", "staging_dir", "verify_package",
 ]

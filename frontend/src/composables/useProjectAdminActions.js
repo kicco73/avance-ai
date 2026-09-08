@@ -3,6 +3,7 @@ import {
   getState, putProject, postNewProject, activateProject, deleteProject, postWipeAllLiveSessions,
   postCleanUnusedRevisions, downloadProject, getBackup, postRestoreBackup, getAbout
 } from '../api.js'
+import { postBuildLocalModule } from '../api/build.js'
 import { aboutDialog, confirmDialog, infoDialog } from '../dialogStore.js'
 import { handleStateChange, loadMessages, clearChatUi } from '../chatStore.js'
 
@@ -118,6 +119,20 @@ export function useProjectAdminActions(chatWindowRef, manageProjectsView) {
     }
   }
 
+  async function handleCompileProject(projectId) {
+    let result
+    try {
+      result = await postBuildLocalModule(projectId)
+    } catch {
+      return
+    }
+    await refreshStateAndProjects()
+    await infoDialog({
+      title: 'Compile',
+      body: `Compiled revision ${result.revision} into ${result.module}.`,
+    })
+  }
+
   async function handleWipeAllLiveSessions() {
     try {
       await postWipeAllLiveSessions()
@@ -176,7 +191,7 @@ export function useProjectAdminActions(chatWindowRef, manageProjectsView) {
   return {
     modelUploadInput, uploadingProject, uploadProgress, uploadProjectId, uploadIconReady,
     triggerModelUpload, handleNewProject, handleModelUploadChange, handleModelEditSaved, handleProjectSwitch,
-    activateAndRefresh, handleModelDownload, handleModelDelete, handleWipeAllLiveSessions,
+    activateAndRefresh, handleModelDownload, handleModelDelete, handleCompileProject, handleWipeAllLiveSessions,
     handleCleanUnusedRevisions, handleDownloadBackup, handleRestoreBackup, handleShowAbout,
   }
 }

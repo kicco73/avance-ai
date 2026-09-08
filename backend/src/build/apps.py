@@ -74,29 +74,41 @@ def import_automaton(directory: Path, project_id: str, revision: int) -> Any:
     # says which project it came from.
     slug = "".join(character if character.isalnum() else "_" for character in project_id)
     module_name = f"_avance_app_{slug}_{revision}"
+
+    def forget() -> None:
+        # __init__.py's own relative import (of its <name>.py, which
+        # itself does `from . import prompt`) resolves its submodules
+        # through sys.modules under module_name's own dotted prefix — a
+        # stale one there (a past call with this same (project, revision)
+        # key, since two different builds can share it across calls) would
+        # otherwise be reused instead of re-imported, silently serving
+        # old content. The outer entry alone isn't enough to purge.
+        for cached in [name for name in sys.modules if name == module_name or name.startswith(f"{module_name}.")]:
+            del sys.modules[cached]
+
+    forget()
     spec = importlib.util.spec_from_file_location(
         module_name, init, submodule_search_locations=[str(directory)],
     )
     if spec is None or spec.loader is None:
         raise PackageError(f"{directory}: cannot be imported as a package.")
     module = importlib.util.module_from_spec(spec)
-    # Registered before exec_module: the generated __init__.py does
-    # `from . import prompt`, and a relative import resolves through
-    # sys.modules under exactly this name.
+    # Registered before exec_module: see forget()'s own docstring above —
+    # the same reasoning applies going forward, not just on purge.
     sys.modules[module_name] = module
     try:
         spec.loader.exec_module(module)
     except Exception as exc:
-        sys.modules.pop(module_name, None)
+        forget()
         raise PackageError(f"{directory}: failed to import — {exc}") from exc
 
     automaton = getattr(module, "AUTOMATON", None)
     if automaton is None:
-        sys.modules.pop(module_name, None)
+        forget()
         raise PackageError(f"{directory}: imports, but declares no AUTOMATON.")
     declared = getattr(module, "STORAGE_REVISION", None)
     if declared != revision:
-        sys.modules.pop(module_name, None)
+        forget()
         raise PackageError(
             f"{directory}: compiled from revision {declared!r}, loaded for revision {revision}."
         )

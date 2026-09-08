@@ -1,15 +1,15 @@
 <script setup>
-// The "Build" button's own wizard (see ProjectDetailPanel.vue). Step 1
-// (Compile) is still a placeholder; step 2 (Target) picks where the
-// output goes and, for "Local module", actually builds it — the only
-// target with a backend behind it so far (see build_controller.py). The
-// target buttons stay selectable but do not change what Build does yet.
+// The "Build" button's own wizard (see ProjectDetailPanel.vue). Both
+// steps are placeholders — compiling a project's published revision into
+// a local module now happens directly from the "Compile" button next to
+// this one (see ProjectDetailPanel.vue's own @compile, and
+// useProjectAdminActions.js's handleCompileProject), not through this
+// wizard.
 import { ref } from 'vue'
 import AppHeader from '../../AppHeader.vue'
 import ProfileMenu from '../../ProfileMenu.vue'
-import { postBuildLocalModule } from '../../../api/build.js'
 
-const props = defineProps({
+defineProps({
   projectId: { type: String, required: true },
   profile: { type: Object, default: null }
 })
@@ -21,31 +21,7 @@ const STEPS = [
   { id: 'target', label: 'Target' }
 ]
 
-const TARGET_OPTIONS = [
-  { id: 'zip', label: 'Zip file' },
-  { id: 'repository', label: 'Push to repository' },
-  { id: 'module', label: 'Local module' }
-]
-
 const currentStep = ref(0)
-const targetOption = ref(null)
-const repositoryName = ref('')
-const building = ref(false)
-const buildResult = ref(null)
-const buildError = ref('')
-
-async function build() {
-  building.value = true
-  buildResult.value = null
-  buildError.value = ''
-  try {
-    buildResult.value = await postBuildLocalModule(props.projectId)
-  } catch (error) {
-    buildError.value = error?.message || 'Build failed.'
-  } finally {
-    building.value = false
-  }
-}
 
 function goToStep(index) {
   if (index > currentStep.value + 1) return
@@ -100,41 +76,9 @@ function goBack() {
       </div>
 
       <div v-show="currentStep === 1" class="build-panel">
-        <label class="build-field-label">Target</label>
-        <div class="build-target-options">
-          <button
-            v-for="option in TARGET_OPTIONS"
-            :key="option.id"
-            type="button"
-            class="build-target-option"
-            :class="{ 'build-target-option-active': targetOption === option.id }"
-            @click="targetOption = option.id"
-          >{{ option.label }}</button>
-        </div>
-
-        <template v-if="targetOption === 'repository'">
-          <label class="build-field-label">Repository name</label>
-          <input
-            class="build-field-input"
-            type="text"
-            v-model="repositoryName"
-            placeholder="org/repo"
-          />
-        </template>
-
-        <p v-if="buildResult" class="build-status build-status-ok">
-          Built <code>{{ buildResult.module }}</code> from revision {{ buildResult.revision }}.
-        </p>
-        <p v-else-if="buildError" class="build-status build-status-error">{{ buildError }}</p>
-
+        <p class="build-status">Nothing here yet.</p>
         <div class="build-actions-row">
           <button type="button" class="build-action-btn" @click="goBack">Back</button>
-          <button
-            type="button"
-            class="build-action-btn build-action-btn-primary"
-            :disabled="building"
-            @click="build"
-          >{{ building ? 'Building…' : 'Build' }}</button>
         </div>
       </div>
     </div>
@@ -142,14 +86,6 @@ function goBack() {
 </template>
 
 <style scoped>
-.build-status-ok {
-  color: #1a7f37;
-}
-
-.build-status-error {
-  color: #b42318;
-}
-
 .build-overlay {
   position: fixed;
   top: 0;
@@ -243,59 +179,10 @@ function goBack() {
   gap: 0.35rem;
 }
 
-.build-field-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: #777;
-}
-
-.build-field-input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 0.4rem 0.6rem;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: white;
-  color: #333;
-  font: inherit;
-  font-size: 0.85rem;
-}
-
 .build-status {
   margin: 0;
   font-size: 0.9rem;
   color: #666;
-}
-
-.build-target-options {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-
-.build-target-option {
-  padding: 0.55rem 0.8rem;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: white;
-  color: #333;
-  text-align: left;
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-
-.build-target-option:hover {
-  border-color: #4a6fa5;
-}
-
-.build-target-option-active {
-  border-color: #4a6fa5;
-  background: #eef3fa;
-  color: #2c4d7a;
-  font-weight: 600;
 }
 
 .build-actions-row {

@@ -41,8 +41,8 @@ from .model import (
 from .payloads import PayloadsMixin, manual_actions_for
 
 __all__ = [
-    "Action", "ActionPayload", "Automaton", "CoreAutomaton", "DeferredExpression", "EnvKey",
-    "EnvKeyPayload", "IntrospectionMixin", "JsSnippet", "MemoryArchive", "PayloadsMixin",
+    "Action", "ActionPayload", "Automaton", "CompiledAutomaton", "CoreAutomaton", "DeferredExpression",
+    "EnvKey", "EnvKeyPayload", "IntrospectionMixin", "JsSnippet", "MemoryArchive", "PayloadsMixin",
     "ProjectPayload", "Reaction", "ReactionOptionPayload", "Signal", "SignalPayload", "Source",
     "SourceDict", "SourcePayload", "State", "StatePayload", "manual_actions_for",
 ]
@@ -51,3 +51,12 @@ __all__ = [
 class Automaton(CoreAutomaton, PayloadsMixin, IntrospectionMixin):
     """A project's automaton with every platform contract composed onto
     it — what AutomatonBuilder builds and every service here expects."""
+
+
+class CompiledAutomaton(CoreAutomaton):
+    """Common base every compiled package's own generated automaton class
+    subclasses (see build.compiler, which names that class after the
+    project and composes PayloadsMixin/IntrospectionMixin onto it) —
+    carries no mixins or compiled behaviour of its own, only what
+    isinstance(automaton, CompiledAutomaton) checks against, regardless
+    of which package produced the instance."""

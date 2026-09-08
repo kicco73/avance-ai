@@ -17,6 +17,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from automaton.automaton import CompiledAutomaton
 from build.apps import package_dir
 from build.build_service import module_name_for
 
@@ -49,10 +50,24 @@ def test_a_project_serves_interpreted_until_it_is_built_and_compiled_after(
         package_dir(tmp_path / "apps", module_name_for(hello_project), built["revision"])
     )
 
-    assert type(_served_automaton(app, hello_project)).__name__ == "CompiledAutomaton"
+    assert isinstance(_served_automaton(app, hello_project), CompiledAutomaton)
     after = chat_turn(client, client.get("/api/chat/session").json()["id"], "hello")
     assert after["reply"][0]["content"] == before["reply"][0]["content"]
     assert after["state"] == before["state"], "the same turn, the same answer, from a package"
+
+
+def test_the_app_store_listing_reports_whether_the_project_is_served_compiled(
+    client: TestClient, app, hello_project,
+):
+    def _compiled_flag() -> bool:
+        apps = client.get("/api/app-store/apps").json()["apps"]
+        return next(a for a in apps if a["id"] == hello_project)["compiled"]
+
+    assert _compiled_flag() is False
+
+    assert client.post(f"/api/projects/{hello_project}/build/local-module").status_code == 200
+
+    assert _compiled_flag() is True
 
 
 def test_the_design_view_reads_a_compiled_project_like_any_other(client: TestClient, app, hello_project):
@@ -63,7 +78,7 @@ def test_the_design_view_reads_a_compiled_project_like_any_other(client: TestCli
     signals_before = client.get(f"/api/projects/{hello_project}/signals").json()
 
     assert client.post(f"/api/projects/{hello_project}/build/local-module").status_code == 200
-    assert type(_served_automaton(app, hello_project)).__name__ == "CompiledAutomaton"
+    assert isinstance(_served_automaton(app, hello_project), CompiledAutomaton)
 
     assert client.get(f"/api/projects/{hello_project}/graph").json() == graph_before
     assert client.get(f"/api/projects/{hello_project}/signals").json() == signals_before
@@ -76,7 +91,7 @@ def test_editing_the_project_again_takes_it_back_to_the_interpreted_automaton(
     """A draft is never served compiled — the package belongs to the
     published revision, and an edit creates a revision that has none."""
     assert client.post(f"/api/projects/{hello_project}/build/local-module").status_code == 200
-    assert type(_served_automaton(app, hello_project)).__name__ == "CompiledAutomaton"
+    assert isinstance(_served_automaton(app, hello_project), CompiledAutomaton)
 
     db = app.state.db
     published = db.get_project_published_revision(hello_project)
@@ -92,7 +107,7 @@ def test_editing_the_project_again_takes_it_back_to_the_interpreted_automaton(
 
     loader = app.state.project_service._automaton_loader
     assert type(loader.load_at_revision(hello_project, draft)).__name__ == "Automaton"
-    assert type(loader.load_at_revision(hello_project, published)).__name__ == "CompiledAutomaton"
+    assert isinstance(loader.load_at_revision(hello_project, published), CompiledAutomaton)
 
 
 def test_a_project_with_unpublished_changes_cannot_be_built_through_the_panel(client: TestClient, app, hello_project):
