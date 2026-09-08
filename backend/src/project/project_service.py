@@ -1,5 +1,6 @@
-"""Composition root for the project subsystem — wires AutomatonLoader
-(project/archive/automaton_loader.py), ProjectInspector (project/inspector.py),
+"""Composition root for the project subsystem — wires whichever automaton
+loader the caller injected (project/archive/automaton_loader.py by
+default), ProjectInspector (project/inspector.py),
 ProjectManager (project/manager/), and ProjectEditor (project/editor.py),
 then exposes every one of their public methods under a single facade so no
 external caller (chat/, tracking/, controllers/) needs to know which
@@ -13,7 +14,7 @@ from typing import TYPE_CHECKING
 from automaton.automaton import (
     Action, ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, State, StatePayload,
 )
-from chat.sessions.session_manager import ChatSessionManager
+from chat.session_manager import ChatSessionManager
 from db import Db
 from tracking.session_export import SessionExportManager
 from tracking.session_import import SessionImportManager
@@ -32,6 +33,10 @@ from .web_import_job import WebImportJob
 if TYPE_CHECKING:
     from ai import AiService
 
+    # Type-only: naming it here costs this module no runtime dependency on
+    # the compiled-automaton path, which it never chooses (see main.py).
+    from .archive.compiled_automaton_loader import CompiledAutomatonLoader
+
 __all__ = ["ProjectService", "CommitCallback"]
 
 _ICON_FILE_RE = re.compile(r'^aspect/icon\.(png|jpe?g|gif|webp|svg)$', re.IGNORECASE)
@@ -39,23 +44,24 @@ _ICON_FILE_RE = re.compile(r'^aspect/icon\.(png|jpe?g|gif|webp|svg)$', re.IGNORE
 
 class ProjectService(object):
     def __init__(
-        self, db: Db, ai_service: "AiService | None" = None,
+        self, 
+        db: Db, 
+        automaton_loader: AutomatonLoader,
+        session_manager: ChatSessionManager,
+        ai_service: "AiService | None" = None,
         invite_valid_days: int = 7, invite_max_shares: int = 3, whatsapp_number: str | None = None,
         whatsapp_invite_prefix: str = "Invitation code: ",
-        session_manager: ChatSessionManager | None = None,
     ) -> None:
         self._db = db
         self._ai_service = ai_service
         self._web_crawler = WebCrawler()
-        if session_manager is None:
-            session_manager = ChatSessionManager(db)
         session_export_manager = SessionExportManager(db)
         session_import_manager = SessionImportManager(db)
-        self._automaton_loader = AutomatonLoader(db, session_manager=session_manager)
+        self._automaton_loader = automaton_loader
         self._inspector = ProjectInspector(db, self._automaton_loader, ai_service)
         self._manager = ProjectManager(
             db, self._automaton_loader, self._inspector, session_export_manager, session_import_manager,
-            session_manager,
+            session_manager
         )
         self._editor = ProjectEditor(db, self._automaton_loader, self._inspector, self._manager, ai_service)
         self._invites = InviteManager(db, invite_valid_days, invite_max_shares, whatsapp_number, whatsapp_invite_prefix)

@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING, TypeVar
 
-from automaton.automaton import Action, Automaton, DeferredExpression, JsSnippet
+from automaton.automaton import Action, DeferredExpression, JsSnippet
 from automaton.scope import EvaluationScope
 from job import JobService
 from logging_factory import LoggerFactory
@@ -84,7 +84,12 @@ class TaskNamespace(ABC):
         if not action.task:
             return
         if self._dispatcher is None:
-            Automaton.render_task(action, scope)
+            # XXX Compiled automaton requirement - do not touch.
+            # XXX Dispatched on the scope's own automaton, not on the
+            # Automaton class: a compiled automaton runs a task without
+            # interpreting `action.task` text, and a hardcoded class name
+            # would bypass its override entirely.
+            scope.automaton.render_task(action, scope)
             return
         self._dispatcher.schedule_now(action, scope, session_id=session_id)
 

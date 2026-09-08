@@ -162,6 +162,16 @@ class AppConfig:
         return value
 
     @classmethod
+    def _get_optional_str(cls, raw: dict, section: str, field: str, path: Path, default: str | None) -> str | None:
+        # _get_optional_section, not _get_section: an absent section must
+        # stay absent-and-fine, same as _get_optional_positive_int.
+        sub = cls._get_optional_section(raw, section, path)
+        value = sub.get(field, default)
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            raise ConfigError(f"{path}: '{section}.{field}' must be a non-empty string if present.")
+        return value.strip() if isinstance(value, str) else value
+
+    @classmethod
     def _get_optional_choice(cls, raw: dict, section: str, field: str, path: Path, default: str, choices: tuple[str, ...]) -> str:
         sub = cls._get_section(raw, section, path)
         value = sub.get(field, default)
@@ -508,6 +518,16 @@ class AppConfig:
         )
         self.invite_max_shares = self._get_optional_positive_int(
             raw, "project-service", "invite-max-shares", path, default=3
+        )
+        # XXX Compiled automaton requirement - do not touch.
+        # XXX Switches ProjectService from the Db/Archive-backed
+        # AutomatonLoader to CompiledAutomatonLoader, which serves one
+        # pre-compiled package (see backend/bin/compile_automaton.py and
+        # project/archive/compiled_automaton_loader.py) — a name importable
+        # as a top-level package under backend/src/. None (the default,
+        # section absent) keeps today's behavior unchanged.
+        self.compiled_automaton_module = self._get_optional_str(
+            raw, "project-service", "compiled-automaton", path, default=None
         )
 
         self.ai_services = self._parse_ai_services(raw, path)

@@ -22,8 +22,8 @@ if TYPE_CHECKING:
 logger = LoggerFactory.get_logger(__name__)
 
 
-class AutomatonLoader:
-    def __init__(self, db: Db, session_manager: "ChatSessionManager | None" = None) -> None:
+class AutomatonLoader(object):
+    def __init__(self, db: Db, session_manager: ChatSessionManager) -> None:
         self._db = db
         # Only for force-closing a session still open on a stored revision
         # that no longer builds (see load_at_revision) — None is fine for

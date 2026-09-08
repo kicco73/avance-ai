@@ -51,7 +51,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
 
-from automaton.automaton import Action, Automaton, DeferredExpression
+from automaton.automaton import Action, DeferredExpression
 from automaton.scope import EvaluationScope
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from jobs import CancelableJob, Task
@@ -290,4 +290,10 @@ class ScopeHydrator(object):
     def run(self, username: str, payload: dict[str, Any]) -> str | None:
         with Session().impersonate(username):
             scope = self.build_scope(username, payload)
-            return Automaton.render_task_script(payload["script"], scope)
+            # XXX Compiled automaton requirement - do not touch.
+            # XXX Dispatched on the automaton the scope carries
+            # (EvaluationScope.automaton, preserved across for_task), not
+            # on the Automaton class: scope.state_key/scope.action_name
+            # let a compiled automaton resolve this task without
+            # re-parsing `script`.
+            return scope.automaton.render_task_script(payload["script"], scope)

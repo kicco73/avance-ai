@@ -26,6 +26,8 @@ from jobs.throttled_job_queue import ThrottledJobQueue
 from logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from notification.notification_service import NotificationService
+from project.archive.automaton_loader import AutomatonLoader
+from project.archive.compiled_automaton_loader import CompiledAutomatonLoader
 from project.health_notifications import ProjectHealthNotifications
 from project.project_service import ProjectService
 from ai import AiService
@@ -122,12 +124,24 @@ def create_app() -> FastAPI:
         # InviteManager), so it needs this constructed first.
         session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
 
+        # XXX Compiled automaton requirement - do not touch.
+        # XXX The one place the compiled/interpreted choice is made (see
+        # config.py's project-service.compiled-automaton). First cut: it
+        # proves the config -> loader-choice plumbing only, not a working
+        # compiled runtime — everything downstream that assumes the generic
+        # Automaton shape still breaks when this branch is taken.
+        automaton_loader = (
+            CompiledAutomatonLoader(db, config.compiled_automaton_module, session_manager=session_manager)
+            if config.compiled_automaton_module
+            else AutomatonLoader(db, session_manager=session_manager)
+        )
+
         project_service = ProjectService(
-            db, ai_live_service,
+            db, automaton_loader, session_manager,
+            ai_live_service, 
             invite_valid_days=config.invite_valid_days, invite_max_shares=config.invite_max_shares,
             whatsapp_number=config.whatsapp_service_config.phone_number if config.whatsapp_service_config else None,
             whatsapp_invite_prefix=config.whatsapp_service_config.invite_prefix if config.whatsapp_service_config else "Invitation code: ",
-            session_manager=session_manager,
         )
 
         # After ProjectService (a hibernated task.defer is rebuilt
