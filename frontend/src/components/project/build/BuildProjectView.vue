@@ -1,11 +1,13 @@
 <script setup>
-// The "Build" button's own wizard (see ProjectDetailPanel.vue) — dummy
-// scaffolding for now: step 1 (Compile) is an empty placeholder for the
-// actual compile step, step 2 (Target) picks where the compiled output
-// goes.
+// The "Build" button's own wizard (see ProjectDetailPanel.vue). Step 1
+// (Compile) is still a placeholder; step 2 (Target) picks where the
+// output goes and, for "Local module", actually builds it — the only
+// target with a backend behind it so far (see build_controller.py). The
+// target buttons stay selectable but do not change what Build does yet.
 import { ref } from 'vue'
 import AppHeader from '../../AppHeader.vue'
 import ProfileMenu from '../../ProfileMenu.vue'
+import { postBuildLocalModule } from '../../../api/build.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -28,6 +30,22 @@ const TARGET_OPTIONS = [
 const currentStep = ref(0)
 const targetOption = ref(null)
 const repositoryName = ref('')
+const building = ref(false)
+const buildResult = ref(null)
+const buildError = ref('')
+
+async function build() {
+  building.value = true
+  buildResult.value = null
+  buildError.value = ''
+  try {
+    buildResult.value = await postBuildLocalModule(props.projectId)
+  } catch (error) {
+    buildError.value = error?.message || 'Build failed.'
+  } finally {
+    building.value = false
+  }
+}
 
 function goToStep(index) {
   if (index > currentStep.value + 1) return
@@ -104,8 +122,19 @@ function goBack() {
           />
         </template>
 
+        <p v-if="buildResult" class="build-status build-status-ok">
+          Built <code>{{ buildResult.module }}</code> from revision {{ buildResult.revision }}.
+        </p>
+        <p v-else-if="buildError" class="build-status build-status-error">{{ buildError }}</p>
+
         <div class="build-actions-row">
           <button type="button" class="build-action-btn" @click="goBack">Back</button>
+          <button
+            type="button"
+            class="build-action-btn build-action-btn-primary"
+            :disabled="building"
+            @click="build"
+          >{{ building ? 'Building…' : 'Build' }}</button>
         </div>
       </div>
     </div>
@@ -113,6 +142,14 @@ function goBack() {
 </template>
 
 <style scoped>
+.build-status-ok {
+  color: #1a7f37;
+}
+
+.build-status-error {
+  color: #b42318;
+}
+
 .build-overlay {
   position: fixed;
   top: 0;

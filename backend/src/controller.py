@@ -22,6 +22,8 @@ from tracking.tracking_service import TrackingService
 from controllers.app_store_controller import AppStoreController
 from controllers.auth_controller import AuthController
 from controllers.chat_controller import ChatController
+from build import BuildService
+from controllers.build_controller import BuildController
 from controllers.edit_project_controller import EditProjectController
 from controllers.label_project_controller import LabelProjectController
 from controllers.settings_controller import SettingsController
@@ -62,6 +64,9 @@ class AvanceController(object):
 
         self.chat = ChatController(chat_service, project_service, talk_service, listen_service)
         self.edit_project = EditProjectController(chat_service, project_service, job_service)
+        # XXX Compiled automaton requirement - do not touch.
+        # XXX The Build view's Target step, wired to a real compile.
+        self.build = BuildController(BuildService(db, project_service))
         self.label_project = LabelProjectController(
             chat_service, project_service, tracking_service, test_service, test_event_broadcaster, job_service,
         )
@@ -73,7 +78,8 @@ class AvanceController(object):
         self.app_store = AppStoreController(chat_service, project_service)
 
         controllers = [
-            self.chat, self.edit_project, self.label_project, self.settings, self.auth, self.user, self.app_store,
+            self.chat, self.edit_project, self.build, self.label_project, self.settings, self.auth,
+            self.user, self.app_store,
         ]
         # Opt-in channel (see docs/WHATSAPP.md): no service, no routes.
         self.whatsapp = WhatsAppController(whatsapp_service) if whatsapp_service is not None else None

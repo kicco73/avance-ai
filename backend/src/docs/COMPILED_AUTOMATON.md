@@ -229,12 +229,16 @@ Done:
   *Drogodependencia*, *Hello world*, *Lluna*, *Metrics Playground
   (states)* and *TTM prototype* samples
 
+- the seams compiled: every trigger, `env:` expression, on-exit line and
+  task statement emitted as a real function, the three primitives
+  overridden, nothing in a generated package evaluating a string
+- `bin/verify_compiled_seam.py`, which runs every expression of every
+  sample through both automata on the same scope: 303 comparisons across
+  8 projects, 0 divergences
+- the Build view's Target step wired to a real "Local module" build
+
 Not done yet:
 
-- **compiling the seams.** A generated automaton currently inherits all
-  four, so triggers, `env:`, on-exit and task still run through
-  `simpleeval` on the text each `Action` carries. This is the next step,
-  and the only one that actually removes the interpreter from a product.
 - `task.defer(lambda: …, when)`, which hibernates a *fragment* of a task
   script and needs a generated function per defer site.
 
@@ -251,3 +255,54 @@ Open points:
   which lives in the builder chain a stripped product is supposed to drop.
   It is a small pure utility (extension → media type, base64); moving it
   out of `builder/` would cut the dependency.
+
+## Anomalies found on the way
+
+Things this work surfaced that are *not* about the compiled automaton and
+were left alone, recorded here so they are not rediscovered from scratch.
+
+- **`ai-access` is documented but not implemented.** `PROJECT_SPECS.md`
+  §5.3 describes a per-env-key `ai-access` field, and in one place says
+  that omitting it is a build error. `AutomatonBuilder._build_env_key`
+  reads only `value`, `ui-description` and `ai-definition`; the key is
+  inert. What a state exposes to the model is decided by its own
+  `input`/`output`. Either the docs or the builder is wrong — the *Vueling
+  Refund* sample was written against the docs, which is why it declared
+  fields nothing read.
+- **`avance:env` does not exist.** `State.ai_may_write_sources`' own
+  comment says "today, just `avance:env`, see tracking.sources.avance_env",
+  and `PROJECT_SPECS.md` describes the driver. There is no such module:
+  `tracking/sources/` has `avance_archive` and nothing else. A project
+  declaring `url: avance:env` resolves it as an *archive* named "env",
+  archives support no `update`, and the build fails with
+  "ai-may-write-sources 'env' references undefined name(s):
+  source.env.update". This is what kept *Vueling Refund* unbuildable.
+- **`test_controller_settings_services.py::test_get_services_returns_the_configured_snapshot_verbatim`
+  fails on master**, unrelated to any of this: the services snapshot does
+  not include the `build-service` section the test now expects.
+- **`test_all_signals_shared_observations.py::test_all_signals_aggregation_builds_each_runs_observations_only_once`
+  is flaky** — observed failing once and passing five consecutive runs
+  afterwards, including twice in the same subset that had failed.
+- **A hardcoded `Automaton.` dispatch shipped as a live bug.**
+  `CoreAutomaton.render_task` called `Automaton.render_task_script`
+  through a name `core.py` does not import, so it raised `NameError`. No
+  test caught it because the only route there is
+  `ActuatorSet.schedule_task`'s dispatcher-less fallback. Fixed, but worth
+  remembering: this is the *fourth* occurrence of the same pattern, and
+  the only one that was not just an obstacle to a second implementation.
+
+## Known asymmetries of the compiled seam
+
+Two, both declared rather than hidden:
+
+- **A bare name is bound eagerly.** A compiled function binds every name
+  its expression reads before evaluating it. If a bare name (a core
+  metric, or a local a task's earlier statement assigned) were missing,
+  an expression that would have short-circuited past it now fails
+  instead. Core metrics are always present since `values_dict` stopped
+  omitting `None` ones, so the reachable case is a task whose earlier
+  assignment failed.
+- **A table miss is a configuration error.** If a package is generated
+  from one revision and handed text from another, the lookup logs an
+  error naming the text before the seam swallows it as an ordinary
+  evaluation failure.
