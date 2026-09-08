@@ -32,7 +32,8 @@ from jobs.job_queue import JobQueue
 from jobs.task import Task
 from logging_factory import LoggerFactory
 
-from .persisted_scheduler import Hydrator, PersistedScheduler
+from scheduler import SchedulerService
+from scheduler.scheduler_service import Hydrator
 
 if TYPE_CHECKING:
     from db import Db
@@ -56,8 +57,7 @@ class JobService:
     ) -> None:
         self._broadcaster = broadcaster
         self._queue = JobQueue(max_concurrent=max_concurrent, broadcaster=broadcaster)
-        self._hydrators: dict[str, Hydrator] = {}
-        self._scheduler = PersistedScheduler(self._queue, db, self._hydrators, lease_seconds=task_lease_seconds)
+        self._scheduler = SchedulerService(self._queue, db, lease_seconds=task_lease_seconds)
         self._started = False
 
     def register_task_type(self, task_type: str, hydrator: Hydrator) -> None:
@@ -67,9 +67,7 @@ class JobService:
         that must be impossible by construction, not by luck."""
         if self._started:
             raise RuntimeError(f"register_task_type('{task_type}') after start() — register every task type first.")
-        if task_type in self._hydrators:
-            raise ValueError(f"Task type '{task_type}' is already registered.")
-        self._hydrators[task_type] = hydrator
+        self._scheduler.register_task_type(task_type, hydrator)
 
     def start(self) -> None:
         """Starts claiming due tasks. Once, at the end of wiring."""
@@ -94,6 +92,11 @@ class JobService:
         and only rebuilt when due. A `when` already in the past runs as
         soon as the scheduler gets to it."""
         self._scheduler.submit(task, timestamp=when)
+
+    def list_scheduled_tasks(self, *, status: str | None = None, order: str = 'asc') -> list[dict]:
+        """Settings > Manage services > Scheduler's own table — see
+        scheduler.SchedulerService.list_tasks."""
+        return self._scheduler.list_tasks(status=status, order=order)
 
     def cancel(self, job: CancelableJob) -> None:
         """Drops `job` whether it is still waiting for its time, queued,

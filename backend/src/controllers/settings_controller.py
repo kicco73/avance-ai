@@ -142,11 +142,11 @@ class SettingsController(BaseController, ProjectCommitMixin):
     def get_scheduled_tasks(self, status: str | None = None, order: str = "asc"):
         """Settings > Manage services > Scheduler — Task rows for one
         status at a time (the frontend's own segmented control), by
-        run_at per `order` (see db/tasks.py's list_tasks). `payload` is
-        omitted: it's the task type's own internal hydration data, not
-        meant for display."""
+        run_at per `order` (see scheduler.SchedulerService.list_tasks).
+        `payload` is omitted: it's the task type's own internal
+        hydration data, not meant for display."""
         try:
-            tasks = self.db.list_tasks(status=status, order=order)
+            tasks = self.job_service.list_scheduled_tasks(status=status, order=order)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {

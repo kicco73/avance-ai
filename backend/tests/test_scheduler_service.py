@@ -1,4 +1,4 @@
-"""PersistedScheduler's own contract, with a stub Task: the Task table is
+"""SchedulerService's own contract, with a stub Task: the Task table is
 its queue — submit inserts, the loop claims atomically, settlement and
 cancel update the row — and a new scheduler over the same database
 just continues: pending rows at their time, rows a dead process left
@@ -14,7 +14,7 @@ import pytest
 from conftest import NullBroadcaster
 from db import Db
 from db.models import Task as TaskRow
-from job.persisted_scheduler import PersistedScheduler
+from scheduler.scheduler_service import SchedulerService
 from jobs import CancelableJob, Task
 from jobs.job_queue import JobQueue
 
@@ -83,7 +83,7 @@ def file_db(tmp_path) -> Db:
     return instance
 
 
-_live_schedulers: list[PersistedScheduler] = []
+_live_schedulers: list[SchedulerService] = []
 
 
 @pytest.fixture(autouse=True)
@@ -98,12 +98,11 @@ def _stop_schedulers():
 
 def _make(
     file_db: Db, sink: list, *, start: bool = True, hydrators: dict | None = None, lease_seconds: float = 600.0,
-) -> PersistedScheduler:
+) -> SchedulerService:
     queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-    scheduler = PersistedScheduler(
-        queue, file_db, hydrators if hydrators is not None else _hydrators(sink),
-        poll_interval_seconds=0.2, lease_seconds=lease_seconds,
-    )
+    scheduler = SchedulerService(queue, file_db, poll_interval_seconds=0.2, lease_seconds=lease_seconds)
+    for task_type, hydrator in (hydrators if hydrators is not None else _hydrators(sink)).items():
+        scheduler.register_task_type(task_type, hydrator)
     _live_schedulers.append(scheduler)
     if start:
         scheduler.start()

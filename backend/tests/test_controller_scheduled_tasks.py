@@ -1,5 +1,5 @@
-"""GET /api/settings/tasks (Db.list_tasks, Settings > Manage services >
-Scheduler)."""
+"""GET /api/settings/tasks (JobService.list_scheduled_tasks, Settings >
+Manage services > Scheduler)."""
 from __future__ import annotations
 
 from datetime import datetime, timezone

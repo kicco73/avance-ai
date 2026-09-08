@@ -17,7 +17,7 @@ def _to_naive_utc(when: datetime) -> datetime:
 
 
 class TaskMixin:
-    """The Task table as a queue — see job/persisted_scheduler.py, its
+    """The Task table as a queue — see scheduler/scheduler_service.py, its
     only writer. Nothing here knows what a task *does*, only its row;
     the two operations that matter for correctness are claim_due_task
     (an atomic pending -> dispatched hand-off, so two schedulers over

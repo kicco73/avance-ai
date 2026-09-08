@@ -9,7 +9,7 @@ from .job import CancelableJob, DependentJob
 class Scheduler(ABC):
     """Holds a job until its timestamp, then hands it to a JobQueue. Two
     implementations: InMemScheduler (a sorted list and a thread — gone
-    with the process) and job.persisted_scheduler.PersistedScheduler
+    with the process) and scheduler.scheduler_service.SchedulerService
     (the Task table *is* the queue; nothing lives in memory). Both are
     private to the service that owns them, never handed to consumers."""
 

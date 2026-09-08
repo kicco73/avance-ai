@@ -18,7 +18,7 @@ class InMemScheduler(Scheduler):
     """A sorted pending list and one thread that sleeps until the
     earliest entry is due. Nothing survives the process: what is still
     pending when it exits is simply lost — fine for a test, never for a
-    platform job (see PersistedScheduler)."""
+    platform job (see SchedulerService)."""
 
     def __init__(self, queue: AbstractJobQueue) -> None:
         self.__queue = queue
