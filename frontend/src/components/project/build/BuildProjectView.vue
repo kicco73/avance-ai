@@ -1,7 +1,8 @@
 <script setup>
 // The "Build" button's own wizard (see ProjectDetailPanel.vue) — dummy
-// scaffolding for now: step 1 picks a repository name, step 2 is an
-// empty placeholder for the actual build step.
+// scaffolding for now: step 1 (Compile) is an empty placeholder for the
+// actual compile step, step 2 (Target) picks where the compiled output
+// goes.
 import { ref } from 'vue'
 import AppHeader from '../../AppHeader.vue'
 import ProfileMenu from '../../ProfileMenu.vue'
@@ -14,11 +15,18 @@ const props = defineProps({
 const emit = defineEmits(['close', 'home', 'profile', 'logout'])
 
 const STEPS = [
-  { id: 'repository', label: 'Repository' },
-  { id: 'build', label: 'Build' }
+  { id: 'compile', label: 'Compile' },
+  { id: 'target', label: 'Target' }
+]
+
+const TARGET_OPTIONS = [
+  { id: 'zip', label: 'Zip file' },
+  { id: 'repository', label: 'Push to repository' },
+  { id: 'module', label: 'Local module' }
 ]
 
 const currentStep = ref(0)
+const targetOption = ref(null)
 const repositoryName = ref('')
 
 function goToStep(index) {
@@ -67,20 +75,35 @@ function goBack() {
 
     <div class="build-body">
       <div v-show="currentStep === 0" class="build-panel">
-        <label class="build-field-label">Repository name</label>
-        <input
-          class="build-field-input"
-          type="text"
-          v-model="repositoryName"
-          placeholder="org/repo"
-        />
+        <p class="build-status">Nothing here yet.</p>
         <div class="build-actions-row">
-          <button type="button" class="build-action-btn build-action-btn-primary" :disabled="!repositoryName" @click="goNext">Next</button>
+          <button type="button" class="build-action-btn build-action-btn-primary" @click="goNext">Next</button>
         </div>
       </div>
 
       <div v-show="currentStep === 1" class="build-panel">
-        <p class="build-status">Nothing here yet.</p>
+        <label class="build-field-label">Target</label>
+        <div class="build-target-options">
+          <button
+            v-for="option in TARGET_OPTIONS"
+            :key="option.id"
+            type="button"
+            class="build-target-option"
+            :class="{ 'build-target-option-active': targetOption === option.id }"
+            @click="targetOption = option.id"
+          >{{ option.label }}</button>
+        </div>
+
+        <template v-if="targetOption === 'repository'">
+          <label class="build-field-label">Repository name</label>
+          <input
+            class="build-field-input"
+            type="text"
+            v-model="repositoryName"
+            placeholder="org/repo"
+          />
+        </template>
+
         <div class="build-actions-row">
           <button type="button" class="build-action-btn" @click="goBack">Back</button>
         </div>
@@ -207,6 +230,35 @@ function goBack() {
   margin: 0;
   font-size: 0.9rem;
   color: #666;
+}
+
+.build-target-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.build-target-option {
+  padding: 0.55rem 0.8rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: white;
+  color: #333;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.build-target-option:hover {
+  border-color: #4a6fa5;
+}
+
+.build-target-option-active {
+  border-color: #4a6fa5;
+  background: #eef3fa;
+  color: #2c4d7a;
+  font-weight: 600;
 }
 
 .build-actions-row {
