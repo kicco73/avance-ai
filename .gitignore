@@ -8,6 +8,7 @@ __pycache__/
 *.pyc
 .venv
 backend/src/_version.py
+backend/apps/
 
 
 frontend/dist/

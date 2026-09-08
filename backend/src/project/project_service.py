@@ -86,6 +86,13 @@ class ProjectService(object):
     def get_automaton(self, project_id: str, revision: int) -> Automaton:
         return self._inspector.get_automaton(project_id, revision)
 
+    # XXX Compiled automaton requirement - do not touch.
+    # XXX BuildService has just replaced this revision's package on disk,
+    # and whatever is cached for it is the interpreted automaton it
+    # supersedes — the loader itself is not a collaborator BuildService has.
+    def invalidate_automaton(self, project_id: str, revision: int) -> None:
+        self._automaton_loader.invalidate(project_id, revision)
+
     def get_active_automaton(self) -> Automaton:
         return self._inspector.get_active_automaton()
 

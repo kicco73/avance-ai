@@ -4,6 +4,8 @@ in the list order below — see each controller's own module docstring
 for which FE screen it maps to."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter
 
 from auth.auth_service import AuthService
@@ -23,6 +25,7 @@ from controllers.app_store_controller import AppStoreController
 from controllers.auth_controller import AuthController
 from controllers.chat_controller import ChatController
 from build import BuildService
+from config import DEFAULT_APPS_DIR
 from controllers.build_controller import BuildController
 from controllers.edit_project_controller import EditProjectController
 from controllers.label_project_controller import LabelProjectController
@@ -49,6 +52,7 @@ class AvanceController(object):
         services_config: dict,
         whatsapp_service: WhatsAppService | None = None,
         ws_notifications: WsNotifications | None = None,
+        apps_dir: Path | None = None,
     ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
@@ -65,8 +69,10 @@ class AvanceController(object):
         self.chat = ChatController(chat_service, project_service, talk_service, listen_service)
         self.edit_project = EditProjectController(chat_service, project_service, scheduler_service)
         # XXX Compiled automaton requirement - do not touch.
-        # XXX The Build view's Target step, wired to a real compile.
-        self.build = BuildController(BuildService(db, project_service))
+        # XXX The Build view's Target step, wired to a real compile. The
+        # directory it writes into is the one CompiledAutomatonLoader
+        # reads from — one setting (build-service.apps-dir), never two.
+        self.build = BuildController(BuildService(db, project_service, apps_dir or DEFAULT_APPS_DIR))
         self.label_project = LabelProjectController(
             chat_service, project_service, tracking_service, test_service, test_event_broadcaster, scheduler_service,
         )

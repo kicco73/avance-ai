@@ -74,6 +74,14 @@ project-service:
   # AuthService.complete_registration starts refusing it (self-
   # registration is invite-only — see AcceptTermsRequest).
   invite-max-shares: 3
+  # Optional, defaults to false. If true, a project's *published*
+  # revision is served from a compiled package under build-service.
+  # apps-dir whenever one matches, and from the ordinary Db/Archive
+  # loader whenever it doesn't (see project/archive/
+  # compiled_automaton_loader.py). Nothing else changes: a compiled
+  # automaton is the same object, drafts and older revisions always come
+  # from the database. An on/off switch, not a module name.
+  compiled-automaton: false
 
 ai-service:
   # Optional. Passed as max_tokens/max_output_tokens to
@@ -183,6 +191,11 @@ build-service:
   repo-url: <https://github.com/org/repo.git>
   username: <git username>
   token: <personal access token>
+  # Optional, defaults to backend/apps. Where the Build view writes a
+  # compiled package and where CompiledAutomatonLoader reads one back —
+  # one directory, one setting, both halves. Never on sys.path: a
+  # package there is imported by file path. Typically /var/lib/avance/apps.
+  apps-dir: /var/lib/avance/apps
 
 whatsapp-service:
   # Optional, defaults to false (and the whole section can be omitted

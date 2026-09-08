@@ -180,17 +180,20 @@ and reaction, plus the derived answers.
 
 ```yaml
 project-service:
-  compiled-automaton: <package name>   # default: absent
+  compiled-automaton: true             # default: false
+
+build-service:
+  apps-dir: /var/lib/avance/apps       # default: backend/apps
 ```
 
-`main.py` reads it and builds either the ordinary `AutomatonLoader` or
-`CompiledAutomatonLoader` (`project/archive/compiled_automaton_loader.py`),
-then injects it into `ProjectService`. `ProjectService` no longer builds a
-loader itself: which one this subsystem runs on is the caller's choice.
+`main.py` reads the switch and builds either the ordinary
+`AutomatonLoader` or `CompiledAutomatonLoader`
+(`project/archive/compiled_automaton_loader.py`), then injects it into
+`ProjectService`. `ProjectService` no longer builds a loader itself:
+which one this subsystem runs on is the caller's choice.
 
-`CompiledAutomatonLoader` serves one pre-compiled package and nothing
-else. It has no revisions and no cross-project family scan, so the methods
-that exist only for those are fixed answers rather than caches.
+What the compiled loader then does with `apps-dir` is below, under
+"Loading a compiled package".
 
 ## Platform changes made for this
 
@@ -283,24 +286,69 @@ Open points:
   the field cannot be rebound, what it points at can still be edited.
   Turning those into tuples and a read-only mapping is the second step,
   and it does touch the builder and the compiler.
-- **A package has no revision, and the platform asks for one first.**
-  `CompiledAutomatonLoader` replaces `load`/`load_at_revision`, but the
-  *revision resolution* sits upstream of the loader and is not part of its
-  interface: `ProjectInspector.get_active_automaton` calls
-  `get_published_revision(project_id)`, which reads the Db, and a package
-  has neither a published revision nor a `Project` row — `db.list_projects()`
-  comes back empty. Measured, not assumed: a compiled *Hello world*
-  mounted under a real `ProjectService` answers `get_project_graph`,
-  `get_project_signals` and `get_runtime_status` correctly, and fails
-  `get_active_automaton` with "Project 'hello_world' has never been
-  published." Three shapes were considered and none chosen yet — the
-  loader answering the revision too; the package registering itself in the
-  Db at boot; a separate identity/registry collaborator with two
-  implementations. This is what stands between here and a compiled product
-  actually serving a turn.
-- **No test covers the compiled path at all.** The two verifications live
-  in `bin/` and never run in the suite, and nothing anywhere exercises
-  `CompiledAutomatonLoader`.
+- **A compiled product still cannot serve *alone*.** What works, proven
+  end to end, is the platform serving a project from a package: upload,
+  publish, build, and the same deployment answers the same turn with the
+  same reply and the same state payload, reading a compiled package
+  instead of Archive rows. But the loader is a platform component — it
+  prefers a package and falls back to the database, so the platform is
+  always there. A package running with no Db, no Project row and no
+  published revision is a different question, and untouched.
+
+## Loading a compiled package
+
+`CompiledAutomatonLoader` subclasses `AutomatonLoader` and overrides one
+method. That is possible because a compiled automaton is already a
+drop-in: attribute for attribute, method for method, the same object an
+`AutomatonBuilder` produces, except that it reads its files from its own
+`data/` rather than a database. No wrapper, no compatibility mixin.
+
+`load_at_revision`, under a lock because check-then-import is not atomic
+while the cache dicts are: cache hit wins; a revision that is not the
+project's *published* one goes straight to the base class (a draft
+changes under the editor's hands, an older pinned revision had a build at
+most in the past); no matching package directory goes to the base class
+too. Only then is a package imported, stamped with
+`set_storage_location(revision)` — the one thing it does not know about
+itself — and cached like any other automaton.
+
+Nothing here is fatal. A package that is missing, unimportable, or built
+from a different revision degrades with a line in the log: a product that
+stops answering because a build went wrong is worse than one running
+interpreted.
+
+Two conventions, both in `build/apps.py` so the writer and the reader
+cannot disagree:
+
+- **One directory per `(project, revision)`**, `<module>.<revision>`. Not
+  tidiness: a package imported once stays in `sys.modules`, so replacing
+  the files under a stable name keeps serving the module already
+  imported, and `reload` on a generated package is fragile. A new
+  revision is a new directory, so a new module.
+- **Imported by file path, never by name**, under a name unique to its
+  `(project, revision)`, with the module registered in `sys.modules`
+  before `exec_module` so the generated `from . import prompt` resolves.
+  `apps-dir` never goes on `sys.path`.
+
+The package states which revision it was compiled from, as
+`STORAGE_REVISION`, and the loader checks it. The directory name says the
+same number, but that is a convenience; the claim the package makes about
+itself is the one trusted.
+
+A build writes into `.building.<module>.<revision>/`, proves the result
+imports there, and then makes it visible with a single rename. Only after
+that does it drop the cache entry for that revision — whatever is cached
+is the interpreted automaton the package supersedes — and delete older
+builds. The staging directory is not about replacing anything: without
+it, a directory exists under the name the loader reads with half its
+files in it.
+
+Which loader is composed is `project-service.compiled-automaton`, now a
+boolean rather than the module name it used to be — a module name means
+nothing when the choice is made per project and per revision. It stays a
+switch rather than being inferred from `apps-dir`'s contents, so the
+interpreted path can be forced for debugging and a forgotten `apps-dir`
+cannot quietly take over.
 
 ## Sources and attachments: one collaborator, chosen once
 
@@ -457,9 +505,11 @@ were left alone, recorded here so they are not rediscovered from scratch.
   and intermittently red in the full suite:
   `test_all_signals_shared_observations.py::test_all_signals_aggregation_builds_each_runs_observations_only_once`
   and `::test_all_signals_aggregation_coalesces_concurrent_observation_building`,
-  and `test_controller_tests.py::test_whole_project_run_scopes_to_labeled_sessions_only`.
-  All three are about work shared between concurrent callers, which is one
-  mechanism and probably one defect, not three flaky tests. Not chased
+  and `test_controller_tests.py`'s own
+  `::test_whole_project_run_scopes_to_labeled_sessions_only` and
+  `::test_turn_by_turn_run_completes_and_produces_results`.
+  All of them are about work shared between concurrent callers, which is
+  one mechanism and probably one defect, not four flaky tests. Not chased
   test by test: flagged as a review to run on its own.
 - **A signal's own `attachments:` never reach the model.** `PROJECT_SPECS.md`
   §3 says they are "sent only with this signal's own computation call",

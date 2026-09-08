@@ -143,6 +143,20 @@ secrets). Top-level sections:
   than the whole bound is served without being kept. Entries are dropped
   by the bound, and explicitly whenever a project is saved, renamed or
   deleted.
+- **`project-service.compiled-automaton`** — optional, defaults to
+  `false`. With it on, a project's *published* revision is served from a
+  compiled package under `build-service.apps-dir` whenever one matches
+  that exact revision, and from the ordinary Db/Archive loader whenever
+  one doesn't — a missing, unimportable or mismatched package degrades to
+  the interpreted automaton with a line in the log, never an error. Drafts
+  and older pinned revisions always come from the database. An on/off
+  switch, not a module name.
+- **`build-service.apps-dir`** — optional, defaults to `backend/apps`
+  (typically `/var/lib/avance/apps` in a deployment). The one directory
+  the Build view writes a compiled package into and
+  `CompiledAutomatonLoader` reads one back from. One package directory per
+  `(project, published revision)`; it is never put on `sys.path`, since a
+  package there is imported by file path.
 - **`ai-service.providers`** — a non-empty, ordered list, backing *two*
   independent cascades — live chat and the test panel/batch runs (see
   `AiService.for_live`/`for_test` in `ai/ai_service.py`) — rather than

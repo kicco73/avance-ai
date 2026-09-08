@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import ChatView from '../chat/ChatView.vue'
 import AppStoreFrozenPreview from '../appStore/AppStoreFrozenPreview.vue'
 import { appStoreFileContentUrl } from '../../api.js'
@@ -8,12 +8,28 @@ import { setPreviewApp, appStorePreviewStore, historyLoaded, restartPreviewSessi
 
 const props = defineProps({
   app: { type: Object, required: true },
-  publishedRevision: { type: Number, default: null }
+  publishedRevision: { type: Number, default: null },
+  // The project's own current (draft) revision. A build compiles the
+  // *published* revision, so a project carrying unpublished changes has
+  // nothing to build yet — see buildBlockedReason below.
+  revision: { type: Number, default: null }
 })
 
 const emit = defineEmits(['edit', 'label', 'download', 'share', 'delete', 'build'])
 
 const previewing = ref(false)
+
+// Empty string when Build is allowed; otherwise why it isn't, shown as
+// the button's own title. The backend refuses the same case on its own
+// (BuildService raises a CompileError) — this only keeps the panel from
+// offering a button that cannot work.
+const buildBlockedReason = computed(() => {
+  if (props.publishedRevision === null) return 'This project has never been published.'
+  if (props.revision !== null && props.revision !== props.publishedRevision) {
+    return `Draft revision ${props.revision} is not published yet — publish it first.`
+  }
+  return ''
+})
 
 function appTitle(app) {
   return app?.ui_label || app?.id || ''
@@ -121,7 +137,13 @@ onBeforeUnmount(async () => {
     <button type="button" class="project-detail-secondary-btn" @click="emit('label', app.id)">Label</button>
     <button type="button" class="project-detail-secondary-btn" @click="emit('download', app.id)">Export</button>
     <button type="button" class="project-detail-secondary-btn" @click="emit('share', app.id)">Invite</button>
-    <button type="button" class="project-detail-secondary-btn" @click="emit('build', app.id)">Build</button>
+    <button
+      type="button"
+      class="project-detail-secondary-btn"
+      :disabled="!!buildBlockedReason"
+      :title="buildBlockedReason || 'Compile the published revision'"
+      @click="emit('build', app.id)"
+    >Build</button>
   </div>
 
   <div class="project-detail-try-panel">

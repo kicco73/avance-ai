@@ -7,6 +7,12 @@ from ruamel.yaml import YAML
 
 from ai import AIServiceConfig
 
+# Default home for compiled packages: backend/apps, beside src/ rather
+# than inside it — a built package is generated data, not source, and it
+# is imported by path, so it must never be importable by accident. In a
+# real deployment this is set to something like /var/lib/avance/apps.
+DEFAULT_APPS_DIR = Path(__file__).resolve().parent.parent / "apps"
+
 
 
 def _redact_database_url(url: str) -> str:
@@ -67,11 +73,17 @@ class WhatsAppServiceConfig:
 class BuildServiceConfig:
     """The optional `build-service` section: credentials for the git
     remote (e.g. GitHub) the Build wizard pushes/pulls a project's
-    source from. Every field optional — the wizard can be opened and
-    the repository step filled in before any credential exists."""
+    source from, plus where built packages live. Every credential
+    optional — the wizard can be opened and the repository step filled in
+    before any credential exists."""
     repo_url: str | None
     username: str | None
     token: str | None
+    # Where compiled packages are written and read from — the one
+    # setting shared by BuildService (which writes them) and
+    # CompiledAutomatonLoader (which reads them). Never on sys.path: a
+    # package there is imported by file path.
+    apps_dir: Path
 
 
 @dataclass(frozen=True)
@@ -170,6 +182,14 @@ class AppConfig:
         value = sub.get(field, default)
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ConfigError(f"{path}: '{section}.{field}' must be a non-negative integer if present.")
+        return value
+
+    @classmethod
+    def _get_optional_bool(cls, raw: dict, section: str, field: str, path: Path, default: bool) -> bool:
+        sub = cls._get_optional_section(raw, section, path)
+        value = sub.get(field, default)
+        if not isinstance(value, bool):
+            raise ConfigError(f"{path}: '{section}.{field}' must be true or false if present.")
         return value
 
     @classmethod
@@ -385,14 +405,16 @@ class AppConfig:
     @classmethod
     def _parse_build_service_config(cls, raw: dict, path: Path) -> BuildServiceConfig:
         sub = cls._get_optional_section(raw, "build-service", path)
-        for field in ("repo-url", "username", "token"):
+        for field in ("repo-url", "username", "token", "apps-dir"):
             value = sub.get(field)
             if value is not None and not isinstance(value, str):
                 raise ConfigError(f"{path}: 'build-service.{field}' must be a string if present.")
+        apps_dir = (sub.get("apps-dir") or "").strip()
         return BuildServiceConfig(
             repo_url=(sub.get("repo-url") or "").strip() or None,
             username=(sub.get("username") or "").strip() or None,
             token=(sub.get("token") or "").strip() or None,
+            apps_dir=Path(apps_dir) if apps_dir else DEFAULT_APPS_DIR,
         )
 
     _AI_SERVICE_MODES = ("live", "test")
@@ -558,13 +580,18 @@ class AppConfig:
         )
         # XXX Compiled automaton requirement - do not touch.
         # XXX Switches ProjectService from the Db/Archive-backed
-        # AutomatonLoader to CompiledAutomatonLoader, which serves one
-        # pre-compiled package (see backend/bin/compile_automaton.py and
-        # project/archive/compiled_automaton_loader.py) — a name importable
-        # as a top-level package under backend/src/. None (the default,
-        # section absent) keeps today's behavior unchanged.
-        self.compiled_automaton_module = self._get_optional_str(
-            raw, "project-service", "compiled-automaton", path, default=None
+        # AutomatonLoader to CompiledAutomatonLoader, which prefers a
+        # compiled package under build-service.apps-dir whenever one
+        # matches the project's published revision and falls back to the
+        # ordinary loader otherwise (see project/archive/
+        # compiled_automaton_loader.py). An on/off switch and nothing
+        # more: which package is used for what is decided per project and
+        # per revision, at load time, never here. It stays configurable
+        # rather than inferred from apps-dir's contents so the
+        # interpreted path can be forced for debugging, and so a
+        # forgotten apps-dir cannot quietly take over.
+        self.use_compiled_automata = self._get_optional_bool(
+            raw, "project-service", "compiled-automaton", path, default=False
         )
 
         self.ai_services = self._parse_ai_services(raw, path)
@@ -662,4 +689,5 @@ class AppConfig:
             "repo-url": b.repo_url,
             "username": b.username,
             "token": b.token,
+            "apps-dir": str(b.apps_dir),
         }

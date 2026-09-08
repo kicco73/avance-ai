@@ -315,6 +315,7 @@ defineExpose({ refresh })
           :key="selectedAppStoreApp.id"
           :app="selectedAppStoreApp"
           :published-revision="selectedRow?.published_revision ?? null"
+          :revision="selectedRow?.revision ?? null"
           @edit="selectEdit"
           @label="selectLabelSessions"
           @download="selectDownload"

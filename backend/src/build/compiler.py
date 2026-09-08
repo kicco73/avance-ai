@@ -284,12 +284,19 @@ AUTOMATON.archives_dir = _DATA_DIR
 '''
 
 
-def compile_module(automaton: Any) -> tuple[str, str]:
+def compile_module(automaton: Any, storage_revision: int | None = None) -> tuple[str, str]:
     """(source of __init__.py, source of prompt.py)."""
     prompts = PromptTable()
     prompts.add_named("GENERAL_PROMPT", automaton.general_prompt or "")
 
     parts: list[str] = [_PREAMBLE.format(project_id=automaton.project_id)]
+    # Which stored revision this package was compiled from — what the
+    # loader checks before serving it (see project.archive.
+    # compiled_automaton_loader). The directory a package sits in names
+    # the same number, but that is a convenience: this is the claim the
+    # package itself makes, and the only one trusted. None for a build
+    # from a directory or zip on disk, which has no stored revision.
+    parts.append(f"STORAGE_REVISION = {storage_revision!r}")
 
     state_names: dict[str, str] = {}
     state_blocks: list[str] = []
@@ -357,14 +364,17 @@ def _refuse_index_yml_as_attachment(automaton: Any) -> None:
 
 
 def compile_package(project_path: Path, module_name: str, backend_src: Path) -> Path:
-    """From a project directory or zip on disk — the CLI's own entry."""
+    """From a project directory or zip on disk — the CLI's own entry.
+    No stored revision: nothing on disk has one."""
     contents = read_project_contents(project_path)
     if "index.yml" not in contents:
         raise CompileError(f"{project_path}: no index.yml at the top level — not a project.")
     return compile_contents(contents, module_name, backend_src)
 
 
-def compile_contents(contents: dict[str, str | bytes], module_name: str, target_dir: Path) -> Path:
+def compile_contents(
+    contents: dict[str, str | bytes], module_name: str, target_dir: Path, storage_revision: int | None = None,
+) -> Path:
     """From the project's files already in hand — what the Build view
     uses, since a stored project lives in Archive rows, not on disk."""
     # Unlike a project's own keys, the package name is chosen by whoever
@@ -376,7 +386,7 @@ def compile_contents(contents: dict[str, str | bytes], module_name: str, target_
     automaton = AutomatonBuilder().build(contents)
     _refuse_index_yml_as_attachment(automaton)
 
-    module_source, prompt_source = compile_module(automaton)
+    module_source, prompt_source = compile_module(automaton, storage_revision)
     package_dir = target_dir / module_name
     package_dir.mkdir(parents=True, exist_ok=True)
     (package_dir / "__init__.py").write_text(module_source, encoding="utf-8")

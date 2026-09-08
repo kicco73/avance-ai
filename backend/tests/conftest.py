@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import fcntl
 import json
 import socket
+import subprocess
 from contextlib import contextmanager
+from datetime import datetime, timezone
 import threading
 import time
 from pathlib import Path
@@ -31,6 +34,7 @@ from scheduler import SchedulerService
 from metrics.metric_service import MetricService
 from notification.notification_service import NotificationService
 from project.archive.automaton_loader import AutomatonLoader
+from project.archive.compiled_automaton_loader import CompiledAutomatonLoader
 from project.project_service import ProjectService
 from session import Session
 from testing.test_service import TestService
@@ -41,6 +45,8 @@ from tracking.project_files import PROJECT_FILE_CACHE
 from tracking.tracking_service import TrackingService
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
+TEST_STATS_PATH = Path(__file__).resolve().parent.parent / "test_stats.json"
+_test_outcomes: dict[str, str] = {}
 
 
 def parse_sse_result(response) -> dict:
@@ -263,11 +269,25 @@ def make_test_namespace_factory(
 
 
 @pytest.fixture
-def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
+def compiled_automata() -> bool:
+    """Whether `app` below runs on CompiledAutomatonLoader — what
+    `project-service.compiled-automaton` switches in a real deployment. A
+    test module that wants the compiled path overrides this fixture with
+    one returning True; everything else gets today's loader. The compiled
+    loader falls back to the interpreted one whenever no package matches,
+    so it is safe from the first request, before anything is built."""
+    return False
+
+
+@pytest.fixture
+def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata: bool) -> FastAPI:
     """The real controller/routing wiring, but against an isolated
     file-backed Db and a FakeAiService, so tests never touch the
     developer's real avance.db or make costly AI calls."""
-    project_service = ProjectService(app_db, AutomatonLoader(app_db), ChatSessionManager(app_db), fake_ai_service)
+    automaton_loader = (
+        CompiledAutomatonLoader(app_db, tmp_path / "apps") if compiled_automata else AutomatonLoader(app_db)
+    )
+    project_service = ProjectService(app_db, automaton_loader, ChatSessionManager(app_db), fake_ai_service)
     session_manager = ChatSessionManager(app_db)
     metric_service = MetricService(app_db, project_service)
     test_event_broadcaster = LastStatusBroadcaster(QueueProgressBroadcaster(fake_ai_service))
@@ -307,7 +327,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
         "talk": {"enabled": False, "providers": []},
         "listen": {"enabled": False, "providers": []},
         "database": {"url": "sqlite:///test.db", "migration-strategy": "stop"},
-        "build": {"repo-url": None, "username": None, "token": None},
+        "build": {"repo-url": None, "username": None, "token": None, "apps-dir": str(tmp_path / "apps")},
     }
 
     fastapi_app = FastAPI(title="Avance State Engine (test)")
@@ -316,6 +336,9 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
         chat_service, project_service, None, None, app_db, tracking_service, test_service,
         auth_service, test_event_broadcaster, scheduler_service, "test-version", services_config,
         ws_notifications=WsNotifications(auth_service, chat_service),
+        # Never backend/apps: a test that builds must not write into the
+        # developer's own working tree.
+        apps_dir=tmp_path / "apps",
     )
     fastapi_app.include_router(controller.router)
     fastapi_app.state.test_service = test_service
@@ -442,3 +465,95 @@ def hello_project(client: TestClient) -> str:
     response = client.post(f"/api/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
     return project_id
+
+
+def pytest_runtest_logreport(report) -> None:
+    if report.when == "call":
+        _test_outcomes[report.nodeid] = "failed" if report.failed else "passed"
+    elif report.when in ("setup", "teardown") and report.failed:
+        _test_outcomes[report.nodeid] = "failed"
+    elif report.when == "setup" and report.skipped and report.nodeid not in _test_outcomes:
+        _test_outcomes[report.nodeid] = "skipped"
+
+
+def _git_renamed_test_files() -> dict[str, str]:
+    repo_dir = TEST_STATS_PATH.parent
+    try:
+        last_commit = subprocess.run(
+            ["git", "log", "-1", "--format=%H", "--", TEST_STATS_PATH.name],
+            cwd=repo_dir, capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+        if not last_commit:
+            return {}
+        diff = subprocess.run(
+            ["git", "diff", "--relative", "--name-status", "-M", "--diff-filter=R", last_commit, "--", "tests/"],
+            cwd=repo_dir, capture_output=True, text=True, timeout=5,
+        ).stdout
+    except (subprocess.SubprocessError, OSError):
+        return {}
+    renamed = {}
+    for line in diff.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 3:
+            renamed[parts[1]] = parts[2]
+    return renamed
+
+
+def _remap_renamed_files(stats: dict, renamed_files: dict[str, str]) -> dict:
+    if not renamed_files:
+        return stats
+    remapped = {}
+    for nodeid, entry in stats.items():
+        file_path, sep, rest = nodeid.partition("::")
+        remapped[f"{renamed_files.get(file_path, file_path)}{sep}{rest}"] = entry
+    return remapped
+
+
+def _is_full_test_run(session) -> bool:
+    """True only for an unfiltered, unrestricted run over the whole
+    `testpaths` — the one case where "not in this run's own outcomes"
+    unambiguously means "no longer exists" rather than "wasn't selected
+    this time". --lf/--ff/--stepwise pass no path/-k/-m of their own
+    either, so they need their own exclusion."""
+    option = session.config.option
+    return (
+        session.config.args == ["tests"]
+        and not option.keyword
+        and not option.markexpr
+        and not option.lf
+        and not option.failedfirst
+        and not option.stepwise
+    )
+
+
+def pytest_sessionfinish(session, exitstatus) -> None:
+    if not _test_outcomes:
+        return
+    TEST_STATS_PATH.touch(exist_ok=True)
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with open(TEST_STATS_PATH, "r+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            raw = f.read()
+            stats = _remap_renamed_files(json.loads(raw) if raw else {}, _git_renamed_test_files())
+            if _is_full_test_run(session):
+                stats = {nodeid: entry for nodeid, entry in stats.items() if nodeid in _test_outcomes}
+            for nodeid, outcome in _test_outcomes.items():
+                entry = stats.setdefault(
+                    nodeid,
+                    {"runs": 0, "failures": 0, "skips": 0, "last_outcome": None, "last_run": None, "last_failed": None},
+                )
+                if outcome == "skipped":
+                    entry["skips"] += 1
+                else:
+                    entry["runs"] += 1
+                    entry["failures"] += int(outcome == "failed")
+                entry["last_outcome"] = outcome
+                entry["last_run"] = now
+                if outcome == "failed":
+                    entry["last_failed"] = now
+            f.seek(0)
+            f.truncate()
+            json.dump(stats, f, indent=2, sort_keys=True)
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)

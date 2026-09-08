@@ -131,16 +131,14 @@ def create_app() -> FastAPI:
 
         # XXX Compiled automaton requirement - do not touch.
         # XXX The one place the compiled/interpreted choice is made (see
-        # config.py's project-service.compiled-automaton). A compiled
-        # automaton now has the same interface as any other — the design
-        # view's graph, signals and runtime status all answer off one — but
-        # this branch still does not serve a chat turn: revision resolution
-        # sits upstream of the loader and reads the Db, which a package has
-        # no rows in (see docs/COMPILED_AUTOMATON.md, "A package has no
-        # revision").
+        # config.py's project-service.compiled-automaton). On/off and
+        # nothing more: which package answers for which project and
+        # revision is decided per load, against build-service.apps-dir.
         automaton_loader = (
-            CompiledAutomatonLoader(db, config.compiled_automaton_module, session_manager=session_manager)
-            if config.compiled_automaton_module
+            CompiledAutomatonLoader(
+                db, config.build_service_config.apps_dir, session_manager=session_manager,
+            )
+            if config.use_compiled_automata
             else AutomatonLoader(db, session_manager=session_manager)
         )
 
@@ -256,6 +254,7 @@ def create_app() -> FastAPI:
             chat_service, project_service, talk_service, listen_service, db, tracking_service, test_service,
             auth_service, test_event_broadcaster, scheduler_service, __version__, config.public_services_snapshot(),
             whatsapp_service=whatsapp_service, ws_notifications=ws_notifications,
+            apps_dir=config.build_service_config.apps_dir,
         )
         app.include_router(controller.router)
 

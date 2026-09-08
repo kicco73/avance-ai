@@ -1,30 +1,38 @@
-"""Loads a project's automaton from a pre-compiled package (see
-backend/bin/compile_automaton.py) instead of building it from Archive rows
-via AutomatonBuilder — selected by `project-service.compiled-automaton` in
-.config.yml (see config.py, AppConfig.compiled_automaton_module); None
-there (the default) keeps ProjectService on the generic AutomatonLoader.
+"""Serves a project's automaton from a compiled package when there is
+one, and from Archive rows when there isn't.
 
-WHAT IT DOES AND DOES NOT COVER. The object load()/load_at_revision()
-return is the compiled module's own AUTOMATON singleton, which does share
-Automaton's interface: it is CoreAutomaton plus the platform mixins the
-product enables, so eval_action_env, eval_action_on_exit,
-evaluate_triggers_action, get_state_payload, `states` as a dict and
-`Action` instances are all there, and the design view's graph, signals and
-runtime status answer off one correctly.
+A component of the platform, never of the compiled product: it is what
+*chooses*, and a built package knows nothing about it.
 
-What is still missing is upstream of this class: ProjectInspector resolves
-a *revision* from the Db before it ever asks a loader for anything, and a
-package has neither a published revision nor a Project row. Until that is
-settled (see docs/COMPILED_AUTOMATON.md, "A package has no revision"),
-selecting this loader gives a project the panel can inspect but not a chat
-turn it can serve.
+It is a subclass rather than a parallel implementation because a
+compiled automaton is already a drop-in — attribute for attribute, method
+for method, the same object an AutomatonBuilder produces, except that it
+reads its files from its own data/ directory instead of a database. So
+there is exactly one thing to override, `load_at_revision`, and
+everything else — the caches, set_cached/invalidate, the cross-project
+family scan, the broken-revision handling — is inherited and unchanged.
+
+Only a project's *published* revision is ever served compiled. A draft
+changes under the editor's hands and has no build; an older revision some
+session is still pinned to had one at most in the past. Both go straight
+to the ordinary loader.
+
+Nothing here is fatal. A package that is missing, unimportable, or built
+from a different revision degrades to the interpreted automaton with a
+line in the log: a product that stops answering because a build went
+wrong is worse than one running interpreted.
 """
 from __future__ import annotations
 
-import importlib
-from typing import TYPE_CHECKING, Any
+import threading
+from pathlib import Path
+from typing import TYPE_CHECKING
 
+from automaton.automaton import Automaton
+from build.apps import PackageError, import_automaton, package_dir
+from build.build_service import module_name_for
 from db import Db
+from logging_factory import LoggerFactory
 
 from .automaton_loader import AutomatonLoader
 
@@ -32,59 +40,51 @@ if TYPE_CHECKING:
     # Type-only, same reason as AutomatonLoader's own TYPE_CHECKING import.
     from chat.sessions.session_manager import ChatSessionManager
 
+logger = LoggerFactory.get_logger(__name__)
 
-class CompiledAutomatonLoader:
-    """Same public method names as AutomatonLoader, backed by one
-    pre-compiled package instead of Db-stored Archive rows. A compiled
-    package has no revisions and no cross-project family scan — every
-    method that exists only to serve those concepts here is a no-op or a
-    fixed answer, not a real cache: there is exactly one automaton, for
-    exactly one project, chosen once at construction time."""
 
-    def __init__(self, db: Db, module_name: str, session_manager: "ChatSessionManager | None" = None) -> None:
-        self._db = db
-        # Unused today (no cache to invalidate, no session to force-close
-        # on a broken revision — a compiled module either imports or it
-        # doesn't) — kept only so this constructor accepts the same
-        # keyword ProjectService already passes to AutomatonLoader.
-        self._session_manager = session_manager
-        self._module_name = module_name
-        self._automaton = self._import_automaton(module_name)
+class CompiledAutomatonLoader(AutomatonLoader):
 
-    @staticmethod
-    def _import_automaton(module_name: str) -> Any:
-        module = importlib.import_module(module_name)
-        automaton = getattr(module, "AUTOMATON", None)
-        if automaton is None:
-            raise ImportError(f"Compiled automaton module {module_name!r} has no AUTOMATON attribute.")
+    def __init__(
+        self, db: Db, apps_dir: Path, session_manager: "ChatSessionManager | None" = None,
+    ) -> None:
+        super().__init__(db, session_manager=session_manager)
+        self._apps_dir = apps_dir
+        # The check-then-import below is not atomic, while the cache dicts
+        # it reads and writes are. Held for the whole decision so two
+        # requests for the same project cannot both import the package.
+        self._compiled_lock = threading.Lock()
+
+    def load_at_revision(self, project_id: str, revision: int) -> Automaton:
+        with self._compiled_lock:
+            cached = self._automaton_cache.get((project_id, revision))
+            if cached is not None:
+                return cached
+            compiled = self._compiled_automaton(project_id, revision)
+            if compiled is not None:
+                return compiled
+        return super().load_at_revision(project_id, revision)
+
+    def _compiled_automaton(self, project_id: str, revision: int) -> Automaton | None:
+        """The compiled package for this exact (project, revision), or
+        None for every reason there might not be one — which is a normal
+        answer, not a failure."""
+        if revision != self._db.get_project_published_revision(project_id):
+            return None
+        directory = package_dir(self._apps_dir, module_name_for(project_id), revision)
+        if not directory.is_dir():
+            return None
+        try:
+            automaton = import_automaton(directory, project_id, revision)
+        except PackageError as exc:
+            logger.error("Compiled package unusable, falling back to the interpreted automaton: %s", exc)
+            return None
+        # The one thing a compiled automaton does not know about itself:
+        # it is built with revision None, and whoever loads it says which
+        # stored revision it stands for — exactly as AutomatonLoader does
+        # for an interpreted one. Its package directory is per-revision,
+        # so this is stamped once and never changes under anyone.
+        automaton.set_storage_location(revision)
+        self.set_cached(project_id, revision, automaton)
+        logger.info("Serving project '%s' revision %s from %s.", project_id, revision, directory)
         return automaton
-
-    # Pure path-safety logic, nothing to do with how the automaton is
-    # built — reused as-is rather than duplicated.
-    is_safe_project_name = staticmethod(AutomatonLoader.is_safe_project_name)
-
-    def known_projects_env_keys(self, project_id: str, family: str | None) -> dict[str, frozenset[str]]:
-        # Cross-project automaton.<id> references aren't supported for a
-        # compiled package yet — it only ever knows about itself.
-        return {}
-
-    def declared_family(self, project_id: str) -> str | None:
-        return None
-
-    def invalidate_cache(self, project_id: str) -> None:
-        pass
-
-    def clear_all_build_failures(self) -> None:
-        pass
-
-    def invalidate(self, project_id: str, revision: int) -> None:
-        pass
-
-    def set_cached(self, project_id: str, revision: int, automaton: Any) -> None:
-        pass
-
-    def load_at_revision(self, project_id: str, revision: int) -> Any:
-        return self._automaton
-
-    def load(self, project_id: str) -> Any:
-        return self._automaton
