@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING
 from .trigger_expression_analyzer import TriggerExpressionAnalyzer
 
 if TYPE_CHECKING:
-    from .automaton import Action, EnvKey, State
+    from .model import Action, EnvKey, State
 
 
 def on_exit_assigned_keys(on_exit: str | None) -> set[str]:
