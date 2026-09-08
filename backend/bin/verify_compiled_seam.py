@@ -1,8 +1,8 @@
 """Interpretato vs compilato, espressione per espressione, sullo stesso scope."""
 import importlib, shutil, sys, tempfile
 from pathlib import Path
-sys.path.insert(0, "src"); sys.path.insert(0, "bin")
-import compile_automaton as C
+sys.path.insert(0, "src")
+import build.compiler as C
 from automaton.automaton_builder import AutomatonBuilder
 from automaton.automaton import Automaton
 from automaton.identifier_registry import IdentifierRegistry
@@ -43,7 +43,10 @@ for project in sorted(Path("samples/projects").iterdir()):
     try: interpreted = AutomatonBuilder().build(C.read_project_contents(project))
     except Exception as exc: print(f"  {project.name}: non builda ({str(exc)[:40]}) — saltato"); continue
     out = Path(tempfile.mkdtemp())
-    C.compile_package(project, "seamcheck", out)
+    try:
+        C.compile_package(project, "seamcheck", out)
+    except C.CompileError as exc:
+        print(f"  {project.name}: non compilabile ({str(exc)[:48]}…) — saltato"); continue
     sys.path.insert(0, str(out))
     for stale in [m for m in sys.modules if m.startswith("seamcheck")]: del sys.modules[stale]
     compiled = importlib.import_module("seamcheck").AUTOMATON

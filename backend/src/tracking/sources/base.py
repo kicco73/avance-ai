@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from automaton.automaton import Automaton
     from db import Db
     from tracking.env import Env
+    from tracking.project_files import ProjectFiles
 
 # A driver's own raw result can be arbitrarily large (a multi-megabyte
 # archive); nothing downstream — a trigger expression, an env: write, a
@@ -35,14 +36,26 @@ MAX_SOURCE_RESULT_CHARS = 8_000
 class SourceContext:
     """Everything a driver may need from the world it runs in, handed to
     every driver alike by SourceNamespace — a driver picks what it uses
-    (AvanceArchiveSource reads `db` at `automaton`'s pinned revision,
-    through a per-`session_id` cache). `env` is unused by every driver
-    today. `session_id` is None outside a real chat session (a wake-up
-    re-evaluation, a test replay, a task deferred call)."""
+    (AvanceArchiveSource reads through `files`). `env` is unused by every
+    driver today. `session_id` is None outside a real chat session (a
+    wake-up re-evaluation, a test replay, a task deferred call).
+
+    `files` is where a project's own files come from — the database at
+    this automaton's revision, or the automaton's own attachments for one
+    that has no storage location (see tracking.project_files). Chosen once
+    by SourceNamespace; a driver never asks which it got. Defaulted here
+    so a context built by hand still works: it resolves to the same choice
+    project_files_for would have made."""
     db: "Db | None"
     automaton: "Automaton"
     session_id: int | None
     env: "Env"
+    files: "ProjectFiles" = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.files is None:
+            from tracking.project_files import project_files_for
+            object.__setattr__(self, "files", project_files_for(self.db, self.automaton, self.session_id))
 
 
 class SourceDriver:

@@ -236,6 +236,10 @@ Done:
   sample through both automata on the same scope: 303 comparisons across
   8 projects, 0 divergences
 - the Build view's Target step wired to a real "Local module" build
+- the Sources/tool-calling skill "out": every declared source embedded as
+  a project-level attachment, dropped from the states' own
+  `ai-may-read-sources`/`ai-must-read-sources`/`ai-may-write-sources`,
+  with a build warning saying what that costs per turn
 
 Not done yet:
 
@@ -255,6 +259,41 @@ Open points:
   which lives in the builder chain a stripped product is supposed to drop.
   It is a small pure utility (extension → media type, base64); moving it
   out of `builder/` would cut the dependency.
+
+## Sources and attachments: one collaborator, chosen once
+
+Both ways a project reads its own files went to the database at the
+automaton's pinned revision — `AvanceArchiveSource` for `source.*`,
+`AttachmentNamespace` for `attachment.read` — which is the one thing a
+compiled automaton cannot do: it has no storage location.
+
+Both now ask a `ProjectFiles` (`tracking/project_files.py`) the same two
+questions: resolve a name to a stored path, and give me that file's raw
+bytes and its media type. Bytes rather than text, because both callers
+refuse a binary file with a message of their own and can only do that if
+the media type reaches them before anything has tried to decode.
+
+Three implementations, composed:
+
+- `DbProjectFiles` — the Archive rows of this automaton's revision, what
+  the platform has always done
+- `SessionCachedProjectFiles` — a decorator, not part of the database
+  implementation: the per-session frozen copy is a *source's* policy, and
+  `attachment.read` never had it and still does not. It guards against a
+  draft revision being rewritten while a test session runs on it, not
+  against a republish, so it has nothing to do for a compiled product
+- `AutomatonProjectFiles` — what the automaton itself carries
+
+`project_files_for(db, automaton, session_id)` is the only selection
+point: an automaton with no storage location has nothing to read from a
+database, whatever database it is handed. `SourceNamespace.__init__` and
+`EvaluationScopeBuilder.build` call it once each; no driver ever asks.
+
+Nothing about the URL, the project YAML or the design view changes: a
+compiled Vueling Refund answers
+`source.tickets_sold.value('julien.fernandez@hotmail.com', key='codice_volo')`
+with `VY6008`, and `attachment.read('tickets.csv')` with the file, with
+no database at all.
 
 ## Anomalies found on the way
 

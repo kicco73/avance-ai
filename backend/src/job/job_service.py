@@ -12,8 +12,8 @@ wiring and handed to whoever needs it, same as every other service.
 
 A job that must run *later* is a jobs.Task, and schedule() hibernates
 it in the Task table rather than holding it in memory (see
-persisted_scheduler.py): a restart, a deploy, a crash change nothing
-about when it runs.
+scheduler/scheduler_service.py): a restart, a deploy, a crash change
+nothing about when it runs.
 
 Test runs are the deliberate exception: TestService owns its own
 ThrottledJobQueue (see testing/test_service.py), a separate pool with

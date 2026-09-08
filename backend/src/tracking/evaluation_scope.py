@@ -17,6 +17,7 @@ from db import Db
 from metrics.metric_service import MetricService
 from tracking.actuators import AttachmentNamespace, ChatNamespace, FakeChatNamespace, FakeTaskNamespace, TaskNamespace
 from tracking.env import Env
+from tracking.project_files import project_files_for
 from tracking.evaluator import SignalEvaluator
 from tracking.session_facts import SessionFacts
 from tracking.sources import SourceNamespace
@@ -96,6 +97,11 @@ class EvaluationScopeBuilder(object):
         # The same Env this scope's own `env` namespace snapshots below —
         # what an avance:env source reads and (for a readwrite key) writes.
         source_namespace = SourceNamespace(self._db, automaton, session_id, env=self._env)
+        # The attachment namespace reads the same project files, but never
+        # through a session cache copy: attachment.read is a whole-file
+        # read validated at build time, not a repeated query like a
+        # source's own select_rows_*.
+        project_files = project_files_for(self._db, automaton)
         state = automaton.states.get(state_key)
         output_for_env = {
             name: value for name, value in (output_values or {}).items() if state is not None and name in state.output
@@ -106,7 +112,7 @@ class EvaluationScopeBuilder(object):
             "session": self._session,
             "user": self._user.as_dict(),
             "source": source_namespace,
-            "attachment": AttachmentNamespace(self._db, automaton),
+            "attachment": AttachmentNamespace(project_files, automaton),
             "metric": self._metrics.for_turn(),
             # FIXME: simpleeval rejects a raw module ("modules are not allowed") — ModuleWrapper is its
             # sanctioned opt-in; don't replace this with the bare `datetime` module.

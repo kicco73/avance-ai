@@ -14,9 +14,13 @@ is simply what the scheduler sees next. A task is hydrated only when
 it is about to run, never at boot, so no live object waits for days.
 
 The scheduler is ignorant of what a task *does*: it only knows a
-TYPE -> hydrator mapping. What "the environment the task carries"
-means, and how to rebuild it faithfully, is the hydrator's problem
-(see tracking/actuators/action_task.py for the actuator.defer one).
+TYPE -> hydrator mapping, registered here (register_task_type) rather
+than handed in from outside — this is the one object that owns the
+Task table end to end, both the write side (submit/reschedule/cancel,
+below) and the read side (list_tasks, Settings > Manage services'
+own Scheduler tab). What "the environment the task carries" means, and
+how to rebuild it faithfully, is the hydrator's problem (see
+tracking/actuators/action_task.py for the actuator.defer one).
 
 Delivery semantics: the claim is an atomic UPDATE guarded on
 status='pending', so two schedulers over the same database (two
@@ -49,16 +53,15 @@ logger = LoggerFactory.get_logger(__name__)
 Hydrator = Callable[[str, str, dict[str, Any]], Task]
 
 
-class PersistedScheduler(Scheduler):
+class SchedulerService(Scheduler):
 
     def __init__(
-        self, queue: AbstractJobQueue, db: "Db", hydrators: dict[str, Hydrator], *,
+        self, queue: AbstractJobQueue, db: "Db", *,
         poll_interval_seconds: float = 60.0, lease_seconds: float = 600.0,
     ) -> None:
         self._queue = queue
         self._db = db
-        # Shared with the owner, which may keep registering types until start().
-        self._hydrators = hydrators
+        self._hydrators: dict[str, Hydrator] = {}
         self._poll_interval = poll_interval_seconds
         # How long a claimed row may stay unsettled before it is presumed
         # orphaned. Longer than any task honestly takes to run.
@@ -67,13 +70,21 @@ class PersistedScheduler(Scheduler):
         self._thread: threading.Thread | None = None
         self._stopping = False
 
+    def register_task_type(self, task_type: str, hydrator: Hydrator) -> None:
+        """Teaches this scheduler how to rebuild a hibernated Task row of
+        `task_type` (a jobs.Task subclass's TYPE) once it's due. A row
+        claimed with no hydrator for it is marked failed (see _dispatch)."""
+        if task_type in self._hydrators:
+            raise ValueError(f"Task type '{task_type}' is already registered.")
+        self._hydrators[task_type] = hydrator
+
     def start(self) -> None:
         """Begins claiming due rows. Before this, submit() only ever
         adds rows — a process still wiring itself up claims nothing."""
         if self._thread is not None:
             return
         self._recover_stale_claims()
-        self._thread = threading.Thread(target=self._run, name="persisted-scheduler", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="scheduler-service", daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
@@ -128,7 +139,7 @@ class PersistedScheduler(Scheduler):
     def _validate(self, job: DependentJob) -> None:
         if not isinstance(job, Task):
             raise TypeError(
-                f"PersistedScheduler only schedules jobs.Task instances (got {type(job).__name__}) — "
+                f"SchedulerService only schedules jobs.Task instances (got {type(job).__name__}) — "
                 "anything scheduled here must survive a restart."
             )
         if job.TYPE not in self._hydrators:
@@ -139,6 +150,14 @@ class PersistedScheduler(Scheduler):
         caller that changed rows behind the scheduler's back."""
         with self._wakeup:
             self._wakeup.notify()
+
+    # --- reads -------------------------------------------------------------
+
+    def list_tasks(self, *, status: str | None = None, order: str = 'asc') -> list[dict[str, Any]]:
+        """Settings > Manage services > Scheduler's own table — a
+        snapshot of the Task table, one status at a time (see
+        db.tasks.TaskMixin.list_tasks)."""
+        return self._db.list_tasks(status=status, order=order)
 
     # --- the loop --------------------------------------------------------
 
@@ -156,7 +175,7 @@ class PersistedScheduler(Scheduler):
                 self._recover_stale_claims()
                 row = self._db.claim_due_task(datetime.now(timezone.utc))
             except Exception as exc:  # the database being briefly unavailable must not kill the loop
-                logger.exception("PersistedScheduler could not read the Task table: %s", exc)
+                logger.exception("SchedulerService could not read the Task table: %s", exc)
                 row = None
                 due = None
             else:

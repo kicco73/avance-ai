@@ -16,6 +16,7 @@ from automaton.automaton import Automaton, Source
 from db import Db
 from ai import ToolSpec
 from tracking.env import Env
+from tracking.project_files import project_files_for
 
 from .avance_archive import SCHEME as AVANCE_SCHEME, AvanceArchiveSource
 from .base import SourceContext, SourceDriver
@@ -302,7 +303,15 @@ class SourceNamespace:
         # session's own Env, what an avance:env source reads and writes —
         # a throwaway in-memory one when the caller has none (a namespace
         # built only to resolve archive sources).
-        self._context = SourceContext(db=db, automaton=automaton, session_id=session_id, env=env if env is not None else Env())
+        #
+        # The one place a driver's file access is decided: from here on no
+        # driver asks where a project's files live (see
+        # tracking.project_files.project_files_for).
+        self._context = SourceContext(
+            db=db, automaton=automaton, session_id=session_id,
+            env=env if env is not None else Env(),
+            files=project_files_for(db, automaton, session_id),
+        )
 
     @property
     def session_id(self) -> int | None:

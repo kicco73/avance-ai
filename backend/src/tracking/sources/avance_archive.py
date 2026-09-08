@@ -21,15 +21,15 @@ tracking.actuators.attachment_namespace) — SourceDriver itself has no
 such method at all: every method here must return a bounded result, and
 a whole file is exactly what bounding a result doesn't make sense for.
 
-Every read goes through a per-chat-session cache copy under
-`{CACHE_DIR}/sessions/<session id>/<archive path>` rather than the
-canonical archive directly — see _read_text's own docstring for why."""
+Where the bytes come from is not this driver's business: it asks the
+ProjectFiles it was handed (see tracking.project_files), which is the
+database at this automaton's pinned revision — through a per-session
+cache copy — or, for an automaton with no storage location, the
+attachments the automaton itself carries."""
 from __future__ import annotations
 
 import csv
 import io
-
-from project.archive.layout import CACHE_DIR
 
 from .base import SourceContext, SourceDriver
 from .comparison import OPERATORS, ColumnComparison, ColumnRange
@@ -69,64 +69,27 @@ class AvanceArchiveSource(SourceDriver):
 
     def __init__(self, context: SourceContext, name: str, archive_path: str) -> None:
         super().__init__(context, name, archive_path)
-        assert context.db is not None
-        self._db = context.db
         self._automaton = context.automaton
         self._archive_path = archive_path
-        # None outside a real chat session (a wake-up re-evaluation, a
-        # test replay, a task deferred call with no session recorded)
-        # — _read_text falls back to the canonical archive directly then,
-        # since there's no session of its own for a cache copy to belong to.
-        self._session_id = context.session_id
+        # Where this project's files come from, chosen once by whoever
+        # built the context (see tracking.project_files) — the database at
+        # a pinned revision through this session's own cache copy, or the
+        # automaton's own attachments when it has no storage location.
+        self._files = context.files
 
-    def _cache_archive_path(self) -> str:
-        return f"{CACHE_DIR}/sessions/{self._session_id}/{self._archive_path}"
-
-    def _read_canonical(self) -> tuple[str, str]:
-        """(content, content_type) straight off the canonical archive, at
-        this automaton's own pinned revision — never Db's own "current"
-        default, wrong for a session pinned to an older one."""
-        content_type = self._db.get_archive_content_type(
-            self._automaton.project_id, self._archive_path, revision=self._automaton.revision,
-        )
-        if content_type is None:
+    def _read_text(self) -> str:
+        found = self._files.read(self._archive_path)
+        if found is None:
             raise ValueError(
                 f"source.{self._name}: '{self._archive_path}' not found in project '{self._automaton.project_id}'."
             )
-        if not content_type.startswith("text/"):
+        content, media_type = found
+        if not media_type.startswith("text/"):
             raise ValueError(
-                f"source.{self._name}: '{self._archive_path}' is a binary file ({content_type}) — "
+                f"source.{self._name}: '{self._archive_path}' is a binary file ({media_type}) — "
                 "only text files can be read this way."
             )
-        content = self._db.get_archive(self._automaton.project_id, self._archive_path, revision=self._automaton.revision)
-        assert content is not None  # same Archive row get_archive_content_type just found this content_type on
-        return content.decode("utf-8"), content_type
-
-    def _read_text(self) -> str:
-        """Reads through this session's own cache copy of the archive
-        (see _cache_archive_path), duplicating it from the canonical one
-        on a miss — first read of a session (only) pays for a second Db
-        round trip; a session-scoped copy also means the rest of a
-        conversation keeps seeing the same content even if the project
-        gets edited/republished underneath it mid-session."""
-        if self._automaton.revision is None:
-            raise ValueError(f"source.{self._name}: this automaton has no known storage location to read from.")
-        # project_id is always set by the time revision is (see
-        # Automaton.set_storage_location's own docstring) — revision alone
-        # is the "no known storage location" signal checked above.
-        assert self._automaton.project_id is not None
-        if self._session_id is None:
-            content, _ = self._read_canonical()
-            return content
-        cache_path = self._cache_archive_path()
-        cached = self._db.get_archive(self._automaton.project_id, cache_path, revision=self._automaton.revision)
-        if cached is not None:
-            return cached.decode("utf-8")
-        content, content_type = self._read_canonical()
-        self._db.write_archive_at_revision(
-            self._automaton.project_id, cache_path, self._automaton.revision, content.encode("utf-8"), content_type,
-        )
-        return content
+        return content.decode("utf-8")
 
     @staticmethod
     def _delimiter(header: str) -> str:

@@ -493,6 +493,14 @@ def verify_package(project_path: Path, module_name: str) -> None:
     )
 
 
+# --- sources ---------------------------------------------------------------
+# Nothing to do here any more. A source reads through the ProjectFiles it
+# is handed (see tracking.project_files), and an automaton with no storage
+# location gets the one that reads the attachments the automaton itself
+# carries — which, for a generated package, is every file under data/,
+# loaded at import. The same goes for attachment.read.
+
+
 # --- the seam, compiled ----------------------------------------------------
 # Everything below turns the expression text an Action carries into real
 # Python, so a compiled automaton never evaluates a string. It replaces
