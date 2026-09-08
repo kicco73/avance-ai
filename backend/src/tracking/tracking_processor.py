@@ -45,6 +45,33 @@ FIXED_MESSAGE_INSTRUCTIONS = (
 	"Fixed message:\n{fixed_message}"
 )
 
+
+def _turn_attachment_paths(automaton: Automaton, state: State, include_signal_attachments: bool) -> list[str]:
+	"""Resolved attachment paths a turn in `state` sends, in order:
+	global, then `state`'s own, then — only when `include_signal_attachments`
+	(the request is actually asking the model for 'signals', see
+	_evaluate_signals_for) — each triggerable signal's own, in the same
+	declaration order Signals.get_definition already uses for that
+	signal's definition text, so a signal's attachments always travel
+	with its definition. Deduplicated by resolved path: a file declared
+	both globally and on a signal is sent once. Shared by the live turn
+	(TrackingProcessor.__build_turn_prompt_parts) and the static
+	per-state estimate (estimate_state_prompt) — they must stay
+	identical."""
+	paths = [*automaton.general_attachments, *state.attachments]
+	if include_signal_attachments:
+		signal_names = automaton.triggerable_signal_names(state.key)
+		for signal in automaton.signals:
+			if signal.name in signal_names:
+				paths.extend(signal.attachments)
+	seen: set[str] = set()
+	deduped = []
+	for path in paths:
+		if path not in seen:
+			seen.add(path)
+			deduped.append(path)
+	return deduped
+
 @dataclass
 class Metadata:
 	on_metadata: MetadataCallback
@@ -335,7 +362,9 @@ class TrackingProcessor(object):
 		return bool(self.metadata.signals) or bool(self.metadata.output) or self.out.action is not None
 
 	def generate_reply(self, state: State, on_metadata: MetadataCallback) -> AsyncIterator[str]:
-		base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
+		base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(
+			self.user.automaton, state, self._evaluate_signals_for(state),
+		)
 		prompt = self.build_turn_prompt(state, base_prompt, output_definition, signal_definition, reaction_definition)
 		env_block = EnvPromptBlock.for_state(self.env, self.user.automaton, state)
 		remaining_history_budget = self._enforce_input_budget(
@@ -428,8 +457,14 @@ class TrackingProcessor(object):
 		one generate_reply would use.
 		`env_block` is handed back rather than recomputed by the caller —
 		EnvPromptBlock.for_state reads through self.env/automaton, no
-		reason to do that twice for one regeneration call."""
-		base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
+		reason to do that twice for one regeneration call.
+		Signal attachments are never included here: build_regeneration_prompt
+		never composes SignalsPrompt (signals are already known from the
+		first call), so nothing in this call's own request references
+		them."""
+		base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(
+			self.user.automaton, state, False,
+		)
 		prompt = self.build_regeneration_prompt(state, base_prompt)
 		env_block = EnvPromptBlock.for_state(self.env, self.user.automaton, state)
 		remaining_history_budget = self._enforce_input_budget(
@@ -536,7 +571,9 @@ class TrackingProcessor(object):
 			if (a.trigger is None or not auto_tracking_enabled) and a.ui_button
 		}
 
-	def __build_turn_prompt_parts(self, automaton: Automaton, state: State) -> tuple[str, str | None, str | None, str | None, list]:
+	def __build_turn_prompt_parts(
+		self, automaton: Automaton, state: State, include_signal_attachments: bool,
+	) -> tuple[str, str | None, str | None, str | None, list]:
 
 		if state.fixed_message:
 			logger.warning("Translating fixed_message for state '%s'.", state.key)
@@ -560,7 +597,10 @@ class TrackingProcessor(object):
 		# other project-file read goes through (see tracking.attachments).
 		return (
 			base_prompt, output_definition, signal_definition, reaction_definition,
-			load_attachments(project_files_for(self.db, automaton), [*automaton.general_attachments, *state.attachments]),
+			load_attachments(
+				project_files_for(self.db, automaton),
+				_turn_attachment_paths(automaton, state, include_signal_attachments),
+			),
 		)
 
 	@staticmethod
@@ -630,13 +670,16 @@ def estimate_state_prompt(
 	"""The system_prompt TrackingProcessor.generate_reply would actually
 	send for `state`, plus a synthetic one-turn history standing in for a
 	real conversation — a single '...' placeholder user message, preceded
-	by the state's own attachments (see build_priming_messages). Renders
-	with no live session/Db needed, for ProjectInspector.get_state_input_tokens'
-	own per-state input-token estimate. `files` comes from the caller
-	rather than from a Db this function doesn't have: the estimate counts
-	the attachment bytes a real turn would actually send, so it needs the
-	same reader that turn would use (ProjectInspector.get_state_input_tokens
-	has one)."""
+	by this state's own attachments, global attachments, and (since
+	signals_prompt below is always composed) every triggerable signal's
+	own attachments too — see _turn_attachment_paths, the same
+	composition a real turn's own __build_turn_prompt_parts uses.
+	Renders with no live session/Db needed, for ProjectInspector.
+	get_state_input_tokens' own per-state input-token estimate. `files`
+	comes from the caller rather than from a Db this function doesn't
+	have: the estimate counts the attachment bytes a real turn would
+	actually send, so it needs the same reader that turn would use
+	(ProjectInspector.get_state_input_tokens has one)."""
 	if state.fixed_message:
 		base_prompt = FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message)
 		output_definition = None
@@ -651,7 +694,7 @@ def estimate_state_prompt(
 			TrackingProcessor._build_reaction_definition(automaton) if automaton.reactions_enabled_for(state) else None
 		)
 		base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"
-		turn_attachments = load_attachments(files, [*automaton.general_attachments, *state.attachments])
+		turn_attachments = load_attachments(files, _turn_attachment_paths(automaton, state, True))
 
 	# memory empty — this is a static, no-live-session estimate with no
 	# real model-reported notes to seed it with; action_set carries the

@@ -347,10 +347,6 @@ def _refuse_index_yml_as_attachment(automaton: Any) -> None:
         [("the project itself", automaton.general_attachments)]
         + [(f"signal {s.name!r}", s.attachments) for s in automaton.signals]
         + [(f"state {key!r}", state.attachments) for key, state in automaton.states.items()]
-        + [
-            (f"action {action.name!r} of state {key!r}", action.attachments)
-            for key, state in automaton.states.items() for action in state.actions
-        ]
         if "index.yml" in names
     ]
     if declaring:

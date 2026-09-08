@@ -116,7 +116,6 @@ class AutomatonBuilder(object):
             ui_button=raw_action.get("ui-button") or raw_action.get("ui-label") or raw_action["name"],
             target=raw_action.get("target", key),
             trigger=raw_action.get("trigger"),
-            attachments=archives.require(raw_action.get("attachments", []), f"action {raw_action['name']}"),
             task=task,
             on_exit=on_exit,
             env=self._build_action_env(raw_action.get("env"), raw_action["name"]),

@@ -95,7 +95,7 @@ class CoreAutomaton(object):
         general_prompt: str,
         signals: list[Signal],
         # Stored paths of the project's own top-level `attachments:`,
-        # resolved at build time — see model.Action.attachments.
+        # resolved at build time — see model.State.attachments.
         general_attachments: tuple[str, ...],
         autotracking_on_ai_message: bool,
         # Only AutomatonBuilder.build parses a project's declared env:

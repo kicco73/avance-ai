@@ -39,8 +39,6 @@ states:
       - name: go_on
         ui-label: On
         target: start
-        attachments:
-          - notes.txt
 """
 
 
@@ -71,7 +69,6 @@ def test_a_declared_basename_becomes_the_stored_path_everywhere_it_is_declared()
     assert automaton.general_attachments == ("behaviour/notes.txt",)
     assert automaton.signals[0].attachments == ("behaviour/notes.txt",)
     assert automaton.states["start"].attachments == ("logo.png",)
-    assert automaton.states["start"].actions[0].attachments == ("behaviour/notes.txt",)
 
 
 def test_the_automaton_carries_no_file_content_at_all():
@@ -80,7 +77,6 @@ def test_the_automaton_carries_no_file_content_at_all():
         automaton.general_attachments,
         automaton.signals[0].attachments,
         automaton.states["start"].attachments,
-        automaton.states["start"].actions[0].attachments,
     ]
     assert all(isinstance(name, str) for names in every_declaration for name in names)
 

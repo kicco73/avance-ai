@@ -146,15 +146,21 @@ signals:
 | `definition` | **yes** | string | — | Instruction sent to the model when computing this signal (§3.1). Free-form; convention is integer 0–100 or binary 0/100. |
 | `ui-label` | no | string | the signal's name | Shown in the frontend. |
 | `ui-description` | no | string | `definition` | Shown in the frontend. |
-| `attachments` | no | list of filenames | `[]` | Sent only with this signal's own computation call. |
+| `attachments` | no | list of filenames | `[]` | Sent with any turn that requests this signal's value (§3.1, §6) — never a call of its own. |
 
-**3.1 Computation.** Only during auto-tracking (gated by
-`project.signal-tracking-on-ai-message`, §1.1): every declared signal is
-evaluated in **one model call** — system prompt lists every `name`+
-`definition`, user turn is a recent-conversation transcript (+ each
-signal's own attachments), model replies with one JSON object mapping
-name → value. A value that fails to parse (or a failed call) leaves that
-signal `None` for this pass — a runtime concern, never build-time.
+**3.1 Computation.** Signals are requested inline, as part of the same
+structured reply a normal chat turn already produces — there is no
+separate model call for them. A turn requests a signal's value only when
+the current state's own triggers can actually reach it (a state with no
+such triggers asks for none); when it does, the system prompt lists every
+requested signal's `name`+`definition`, and that signal's own
+`attachments` (deduplicated against global/state attachments already
+being sent, §6) ride along with the very same turn. The model's reply
+includes one JSON object mapping name → value for whatever was requested.
+A value that fails to parse (or a failed call) leaves that signal `None`
+for this pass — a runtime concern, never build-time. `signal-tracking-on-ai-message`
+(§1.1) only controls whether this request happens before or after the
+user-facing reply is generated, not whether it is a separate call.
 
 **3.2 Inline reporting.** A model reply can self-report signal values via a
 reserved `<avance>...</avance>` JSON tag — a prompting convention, not an
@@ -308,7 +314,6 @@ actions:
     env:
       reset_counter: True
       number_of_steps: env.number_of_steps + 1
-    attachments: []
 ```
 
 | Field | Required | Type | Default | Meaning |
@@ -322,7 +327,9 @@ actions:
 | `ui-label` | no | string | `name` | Shown in the frontend. |
 | `ui-button` | no | string | `ui-label`, then `name` | Manual-action button text. |
 | `ui-description` | no | string | `None` | Shown in the frontend. |
-| `attachments` | no | list of filenames | `[]` | Validated to exist — **never sent to the model**. To reach the model on firing, list it on the destination state's or the top-level `attachments:` instead. |
+
+An action has no `attachments:` of its own — list attachments on the
+destination state's or the top-level `attachments:` instead (§6).
 
 **5.1 Manual vs. triggered.** Any action can be fired manually, by name —
 its trigger (if any) is never evaluated for a manual firing. Actions
@@ -798,8 +805,8 @@ suppress, so it always runs.
 ## 6. Attachments
 
 A filename under any `attachments:` (global, a signal's, or a state's —
-**not** an action's, §5) must be present alongside `index.yml` — missing
-files fail validation by name.
+actions have no `attachments:` of their own, §5) must be present
+alongside `index.yml` — missing files fail validation by name.
 
 | Extension | Sent as | Guaranteed to reach the model? |
 | --- | --- | --- |
@@ -827,7 +834,7 @@ init-action:
 | `env` | no | mapping key → expression | Same mechanics as any action's (§5.3), applied on top of every declared key's own default the one time init-action fires — the place to reset a key a previous case left behind. |
 
 A mapping, not a list item — otherwise a regular action with no
-`name`/`ui-label`/`trigger`/`attachments` (fixed internally).
+`name`/`ui-label`/`trigger` (fixed internally).
 
 ## 8. Validation checklist
 
@@ -859,7 +866,7 @@ of how you're likely to hit them:
   type-consistency check against that key's declared default), each
   `chat.*` call validated the same way plus its own argument-count check.
 - No signal named after a reserved core metric (§2).
-- Every `attachments:` entry (global/signal/state, not action) names a file actually present alongside `index.yml`.
+- Every `attachments:` entry (global/signal/state — actions have none) names a file actually present alongside `index.yml`.
 - Every `sources:` entry's own `url`, if set, has a recognized driver scheme, and (for `avance:<path>`) its path names a file actually present alongside `index.yml`.
 - Every name in a state's own `input`/`output` (§4.3) names a key actually declared in `env:`, and that env key declares its own `ai-definition`.
 - Every name in a state's own `ai-may-read-sources`/`ai-must-read-sources`/`ai-may-write-sources` (§4.2) names a source actually declared in `sources:`, that source declares its own `ai-definition`, its driver implements the method the field exposes (`select_rows_containing`/`update`), and no name appears in both read fields for the same state. The old names `tools`, `ai-may-query-sources`, `ai-must-query-sources` are rejected with a message naming their replacement.
