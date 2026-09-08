@@ -4,23 +4,20 @@ via AutomatonBuilder — selected by `project-service.compiled-automaton` in
 .config.yml (see config.py, AppConfig.compiled_automaton_module); None
 there (the default) keeps ProjectService on the generic AutomatonLoader.
 
-FIRST CUT, deliberately narrow: this only proves the config ->
-ProjectService plumbing that picks this loader instead of AutomatonLoader.
-The object load()/load_at_revision() return is the compiled module's own
-AUTOMATON singleton, which does NOT share Automaton's interface — no
-eval_action_env/eval_action_on_exit/evaluate_triggers_action/
-get_state_payload, states as attributes rather than a `states` dict,
-actions as methods rather than `Action` dataclass instances, one call
-(`evaluate_triggers`/`apply_manual_action`) that does on-exit and task-
-posting itself and returns only the next state (see compile_automaton.py's
-own module docstring for the full list of what's compiled away). Every
-caller downstream of ProjectService that assumes the generic Automaton
-shape — ProjectInspector, chat_service, TrackingEngine, the design-view
-editor, metrics — is expected to break until it's taught to recognize a
-compiled automaton and take a different path. That reconciliation is
-separate, not-yet-started work; this class is not a full AutomatonLoader
-replacement yet, just the switch that decides which one ProjectService
-builds.
+WHAT IT DOES AND DOES NOT COVER. The object load()/load_at_revision()
+return is the compiled module's own AUTOMATON singleton, which does share
+Automaton's interface: it is CoreAutomaton plus the platform mixins the
+product enables, so eval_action_env, eval_action_on_exit,
+evaluate_triggers_action, get_state_payload, `states` as a dict and
+`Action` instances are all there, and the design view's graph, signals and
+runtime status answer off one correctly.
+
+What is still missing is upstream of this class: ProjectInspector resolves
+a *revision* from the Db before it ever asks a loader for anything, and a
+package has neither a published revision nor a Project row. Until that is
+settled (see docs/COMPILED_AUTOMATON.md, "A package has no revision"),
+selecting this loader gives a project the panel can inspect but not a chat
+turn it can serve.
 """
 from __future__ import annotations
 

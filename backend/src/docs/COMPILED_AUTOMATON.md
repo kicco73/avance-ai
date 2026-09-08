@@ -238,10 +238,16 @@ Done:
   sample through both automata on the same scope: 303 comparisons across
   8 projects, 0 divergences
 - the Build view's Target step wired to a real "Local module" build
-- the Sources/tool-calling skill "out": every declared source embedded as
-  a project-level attachment, dropped from the states' own
-  `ai-may-read-sources`/`ai-must-read-sources`/`ai-may-write-sources`,
-  with a build warning saying what that costs per turn
+- sources made compilable by swapping *where a driver reads from*, not by
+  rewriting the project: the `ProjectFiles` collaborator below. (An
+  earlier attempt embedded every declared source as a project-level
+  attachment and rewrote the states' own `ai-may-*-sources`; it was rolled
+  back, because a source's bounded `select_rows_*` and a whole-file
+  `attachment.read` are not the same value and `attachment` is excluded
+  from the trigger and on-exit scopes anyway.)
+- the automaton carrying no project file at all: `attachments:` resolved
+  to stored paths at build time, read per turn through `ProjectFiles`,
+  behind one byte-bounded process-wide LRU
 
 Not done yet:
 
@@ -257,10 +263,24 @@ Open points:
   fields. To revisit.
 - **`State`/`Action` are not frozen**, so the immutability the caching now
   relies on is convention rather than structure.
-- **The generated package imports `automaton.builder.archive_resolver`**,
-  which lives in the builder chain a stripped product is supposed to drop.
-  It is a small pure utility (extension → media type, base64); moving it
-  out of `builder/` would cut the dependency.
+- **A package has no revision, and the platform asks for one first.**
+  `CompiledAutomatonLoader` replaces `load`/`load_at_revision`, but the
+  *revision resolution* sits upstream of the loader and is not part of its
+  interface: `ProjectInspector.get_active_automaton` calls
+  `get_published_revision(project_id)`, which reads the Db, and a package
+  has neither a published revision nor a `Project` row — `db.list_projects()`
+  comes back empty. Measured, not assumed: a compiled *Hello world*
+  mounted under a real `ProjectService` answers `get_project_graph`,
+  `get_project_signals` and `get_runtime_status` correctly, and fails
+  `get_active_automaton` with "Project 'hello_world' has never been
+  published." Three shapes were considered and none chosen yet — the
+  loader answering the revision too; the package registering itself in the
+  Db at boot; a separate identity/registry collaborator with two
+  implementations. This is what stands between here and a compiled product
+  actually serving a turn.
+- **No test covers the compiled path at all.** The two verifications live
+  in `bin/` and never run in the suite, and nothing anywhere exercises
+  `CompiledAutomatonLoader`.
 
 ## Sources and attachments: one collaborator, chosen once
 
@@ -422,16 +442,23 @@ were left alone, recorded here so they are not rediscovered from scratch.
 - **`test_all_signals_shared_observations.py::test_all_signals_aggregation_builds_each_runs_observations_only_once`
   is flaky** — observed failing once and passing five consecutive runs
   afterwards, including twice in the same subset that had failed.
-- **Two of the four attachment declarations are never read.** A signal's
-  own `attachments:` is documented as "sent only with the signals
-  computation call" and an action's as its own; neither reaches a
-  provider anywhere. The signals call builds its priming messages from
-  the *state's* attachments (`TrackingProcessor.__build_turn_prompt_parts`),
-  and nothing whatsoever reads `Action.attachments`. The signal one does
-  reach the design view's Signals tab, as a list of filenames; the action
-  one reaches nothing at all. Left as they are — they are declarations
-  the YAML accepts and projects use — but a project author has no way to
-  know they do nothing.
+- **A signal's own `attachments:` never reach the model.** `PROJECT_SPECS.md`
+  §3 says they are "sent only with this signal's own computation call",
+  and §3.1 describes that call as a separate request with a transcript as
+  its user turn. That call no longer exists — signals were folded into the
+  ordinary turn as a channel of the same request — and the attachments did
+  not follow: `build_priming_messages` has exactly one caller, which
+  passes `general_attachments + state.attachments` and nothing else. Not a
+  regression of this work; it is that way on master. The exposure is real:
+  *Lluna* and *Drogodependencia* attach a scoring-instructions file to
+  every one of their 9 and 8 signals, and none of them has ever been sent.
+  Being fixed separately (`claude/prompt-signal-attachments.md`).
+  `Signals.history_window` and `SIGNALS_HISTORY_WINDOW` are the leftovers
+  of the removed call and have no callers; `priming.py`'s own docstring
+  still cites a `Signals.compute()` that does not exist. An *action's*
+  `attachments:`, by contrast, is not a bug: §5 documents it as validated
+  but deliberately never sent, with the instruction to declare it on the
+  destination state instead.
 - **The design view showed two different names for the same thing.**
   `get_project_signals` listed a signal's attachments as their resolved
   stored paths, `get_project_graph` listed a state's as the names the

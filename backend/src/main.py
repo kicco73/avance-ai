@@ -131,10 +131,13 @@ def create_app() -> FastAPI:
 
         # XXX Compiled automaton requirement - do not touch.
         # XXX The one place the compiled/interpreted choice is made (see
-        # config.py's project-service.compiled-automaton). First cut: it
-        # proves the config -> loader-choice plumbing only, not a working
-        # compiled runtime — everything downstream that assumes the generic
-        # Automaton shape still breaks when this branch is taken.
+        # config.py's project-service.compiled-automaton). A compiled
+        # automaton now has the same interface as any other — the design
+        # view's graph, signals and runtime status all answer off one — but
+        # this branch still does not serve a chat turn: revision resolution
+        # sits upstream of the loader and reads the Db, which a package has
+        # no rows in (see docs/COMPILED_AUTOMATON.md, "A package has no
+        # revision").
         automaton_loader = (
             CompiledAutomatonLoader(db, config.compiled_automaton_module, session_manager=session_manager)
             if config.compiled_automaton_module

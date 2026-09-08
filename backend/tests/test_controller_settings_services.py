@@ -22,7 +22,7 @@ def test_get_services_returns_the_configured_snapshot_verbatim(client):
 
     assert response.status_code == 200
     body = response.json()
-    assert set(body.keys()) == {"chat", "testing", "ai", "talk", "listen", "database"}
+    assert set(body.keys()) == {"chat", "testing", "ai", "talk", "listen", "database", "build"}
     assert body["database"]["url"] == "sqlite:///test.db"
     assert body["ai"]["providers"][0]["driver"] == "fake"
 
