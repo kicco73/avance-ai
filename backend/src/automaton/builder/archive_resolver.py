@@ -4,13 +4,7 @@ import base64
 from pathlib import Path
 
 from automaton.automaton import MemoryArchive, SourceDict
-
-EXTENSION_TO_MEDIA_TYPE = {
-    ".yml": "text/plain",
-    ".md": "text/plain",
-    ".txt": "text/plain",
-    ".csv": "text/plain",
-}
+from automaton.media_types import EXTENSION_TO_MEDIA_TYPE  # re-exported: project/editor.py imports it from here
 
 
 class ArchiveResolver:

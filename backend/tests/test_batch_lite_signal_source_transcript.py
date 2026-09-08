@@ -28,7 +28,6 @@ def _automaton(autotracking_on_ai_message: bool) -> Automaton:
         states={"": State(key="", ui_label="", final=False, actions=[init_action])},
         general_prompt="general",
         signals=[Signal(name="mood", ui_label="Mood", definition="whatever")],
-        attachments={},
         general_attachments={},
         autotracking_on_ai_message=autotracking_on_ai_message,
     )

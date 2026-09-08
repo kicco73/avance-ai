@@ -21,7 +21,6 @@ def _automaton(*triggers: str | None) -> Automaton:
         },
         general_prompt="",
         signals=[],
-        attachments={},
         general_attachments={},
         autotracking_on_ai_message=False,
     )

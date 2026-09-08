@@ -21,7 +21,7 @@ from config import AppConfig
 from controller import AvanceController
 from db import Db
 from error_handlers import ApiErrorHandlers
-from job import JobService
+from scheduler import SchedulerService
 from jobs.throttled_job_queue import ThrottledJobQueue
 from logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
@@ -100,7 +100,7 @@ def create_app() -> FastAPI:
         test_event_broadcaster = LastStatusBroadcaster(QueueProgressBroadcaster(ai_test_service))
         # Started last (see the end of this block): until then its Task
         # table only gains rows, nothing is claimed.
-        job_service = JobService(max_concurrent=config.jobs_shared_max_concurrent, broadcaster=test_event_broadcaster, db=db)
+        scheduler_service = SchedulerService(max_concurrent=config.jobs_shared_max_concurrent, broadcaster=test_event_broadcaster, db=db)
 
         # Always constructed, even with no notification-service section in
         # .config.yml — task.send_mail (see tracking/actuators/
@@ -109,7 +109,7 @@ def create_app() -> FastAPI:
         # that point instead of blocking startup for a feature nothing may ever use.
         if config.notification_service_config is None:
             logger.critical("No 'notification-service' section in .config.yml — task.send_mail will fail if used.")
-        notification_service = NotificationService(config.notification_service_config, job_service)
+        notification_service = NotificationService(config.notification_service_config, scheduler_service)
         app.state.notification_service = notification_service
 
         # Bridged onto app.state for the same reason auth_service is below:
@@ -145,9 +145,9 @@ def create_app() -> FastAPI:
         )
 
         # After ProjectService (a hibernated task.defer is rebuilt
-        # against a project revision through it) and before the JobService
+        # against a project revision through it) and before the SchedulerService
         # is started: this registers the task type the scheduler hydrates.
-        namespace_factory = TaskNamespaceFactory(notification_service, db, job_service, project_service, ai_live_service)
+        namespace_factory = TaskNamespaceFactory(notification_service, db, scheduler_service, project_service, ai_live_service)
 
         # Built once here (not a global singleton — see auth/auth_service.py's
         # own module docstring), passed explicitly to whatever needs it.
@@ -181,7 +181,7 @@ def create_app() -> FastAPI:
         )
         chat_service = ChatService(
             db, ai_live_service, ai_test_service, project_service, session_manager,
-            tracking_service, metric_service, job_service, namespace_factory,
+            tracking_service, metric_service, scheduler_service, namespace_factory,
         )
 
         # Single shared /ws/notifications connection per user (see
@@ -216,7 +216,7 @@ def create_app() -> FastAPI:
         # healthy again (see project/health_notifications.py) — registered
         # before the boot-time sweep below, so a project already broken
         # when this process starts is logged/warned/pushed exactly once.
-        ProjectHealthNotifications(db, job_service, ws_notifications).register()
+        ProjectHealthNotifications(db, scheduler_service, ws_notifications).register()
 
         # Every project's own build health (published/draft) is unknown
         # to this fresh process until checked — a framework change since
@@ -228,7 +228,7 @@ def create_app() -> FastAPI:
         # Cross-project wake-up (see tracking/wakeup_service.py) —
         # subscribes once for the process lifetime.
         WakeupService(
-            db, project_service, job_service, namespace_factory, ws_notifications=ws_notifications, tracking_service=tracking_service,
+            db, project_service, scheduler_service, namespace_factory, ws_notifications=ws_notifications, tracking_service=tracking_service,
             ai_service=ai_live_service,
         ).register()
 
@@ -246,14 +246,14 @@ def create_app() -> FastAPI:
 
         controller = AvanceController(
             chat_service, project_service, talk_service, listen_service, db, tracking_service, test_service,
-            auth_service, test_event_broadcaster, job_service, __version__, config.public_services_snapshot(),
+            auth_service, test_event_broadcaster, scheduler_service, __version__, config.public_services_snapshot(),
             whatsapp_service=whatsapp_service, ws_notifications=ws_notifications,
         )
         app.include_router(controller.router)
 
         # Last: everything a due task may reach (the websocket adapter
         # above all) now exists, and every task type is registered.
-        job_service.start()
+        scheduler_service.start()
 
         logger.info("Boot completed - server ready.")
 

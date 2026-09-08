@@ -9,11 +9,11 @@ from automaton.automaton import manual_actions_for
 from chat.ws_notifications import WsNotifications
 from db.db import Db
 from events import EnvChanged, StateChanged, subscribe
-from job import JobService
 from jobs import CancelableJob
 from logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
+from scheduler import SchedulerService
 from session import Session
 from tracking.actuators import TaskNamespaceFactory
 from tracking.automaton_namespace import AutomatonNamespace
@@ -53,13 +53,13 @@ class WakeupJob(CancelableJob):
 
 class WakeupService:
     def __init__(
-        self, db: Db, project_service: ProjectService, job_service: JobService, namespace_factory: TaskNamespaceFactory,
+        self, db: Db, project_service: ProjectService, scheduler_service: SchedulerService, namespace_factory: TaskNamespaceFactory,
         ws_notifications: WsNotifications | None = None, tracking_service: TrackingService | None = None,
         ai_service: AiService | None = None,
     ) -> None:
         self._db = db
         self._project_service = project_service
-        self._job_service = job_service
+        self._scheduler_service = scheduler_service
         self._namespace_factory = namespace_factory
         # None whenever no websocket transport is configured — push is
         # simply skipped in that case; a re-evaluated self-loop is still
@@ -160,4 +160,4 @@ class WakeupService:
                     })
 
     def _wake(self, username: str, observer_project_id: str) -> None:
-        self._job_service.submit(WakeupJob(self, username, observer_project_id))
+        self._scheduler_service.submit(WakeupJob(self, username, observer_project_id))

@@ -7,8 +7,9 @@ from datetime import datetime, timezone
 
 from logging_factory import LoggerFactory
 
-from .job import CancelableJob, DependentJob
-from .job_queue import AbstractJobQueue
+from jobs.job import CancelableJob, DependentJob
+from jobs.job_queue import AbstractJobQueue
+
 from .scheduler import Scheduler
 
 logger = LoggerFactory.get_logger(__name__)
@@ -18,7 +19,7 @@ class InMemScheduler(Scheduler):
     """A sorted pending list and one thread that sleeps until the
     earliest entry is due. Nothing survives the process: what is still
     pending when it exits is simply lost — fine for a test, never for a
-    platform job (see SchedulerService)."""
+    platform job (see PersistedScheduler)."""
 
     def __init__(self, queue: AbstractJobQueue) -> None:
         self.__queue = queue

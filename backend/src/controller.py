@@ -10,9 +10,9 @@ from auth.auth_service import AuthService
 from chat.chat_service import ChatService
 from chat.ws_notifications import WsNotifications
 from db import Db
-from job import JobService
 from listen.listen_service import ListenService
 from project.project_service import ProjectService
+from scheduler import SchedulerService
 from talk.talk_service import TalkService
 from testing.test_service import TestService
 from testing.last_status_broadcaster import LastStatusBroadcaster
@@ -44,7 +44,7 @@ class AvanceController(object):
         test_service: TestService,
         auth_service: AuthService,
         test_event_broadcaster: QueueProgressBroadcaster | LastStatusBroadcaster,
-        job_service: JobService,
+        scheduler_service: SchedulerService,
         version: str,
         services_config: dict,
         whatsapp_service: WhatsAppService | None = None,
@@ -59,19 +59,19 @@ class AvanceController(object):
         self.tracking_service = tracking_service
         self.auth_service = auth_service
         self.test_event_broadcaster = test_event_broadcaster
-        self.job_service = job_service
+        self.scheduler_service = scheduler_service
         self.version = version
 
         self.chat = ChatController(chat_service, project_service, talk_service, listen_service)
-        self.edit_project = EditProjectController(chat_service, project_service, job_service)
+        self.edit_project = EditProjectController(chat_service, project_service, scheduler_service)
         # XXX Compiled automaton requirement - do not touch.
         # XXX The Build view's Target step, wired to a real compile.
         self.build = BuildController(BuildService(db, project_service))
         self.label_project = LabelProjectController(
-            chat_service, project_service, tracking_service, test_service, test_event_broadcaster, job_service,
+            chat_service, project_service, tracking_service, test_service, test_event_broadcaster, scheduler_service,
         )
         self.settings = SettingsController(
-            chat_service, project_service, db, version, test_event_broadcaster, job_service, services_config,
+            chat_service, project_service, db, version, test_event_broadcaster, scheduler_service, services_config,
         )
         self.auth = AuthController(auth_service)
         self.user = UserController(auth_service)

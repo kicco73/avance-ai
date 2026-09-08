@@ -295,6 +295,43 @@ compiled Vueling Refund answers
 with `VY6008`, and `attachment.read('tickets.csv')` with the file, with
 no database at all.
 
+## The automaton no longer carries its project's files
+
+`Automaton.attachments` held every file of the project, converted once,
+in every automaton the loader kept cached. Exactly one thing read it at
+run time — and only since the collaborator above existed. Before that it
+was carried and never read: a build-time pool the subsets were extracted
+from, kept alive for the life of the automaton for nothing.
+
+It is gone. What replaces it is one field, `archives_dir`: None on the
+platform, where `revision` already says where to read, and its own `data/`
+directory in a compiled package. `project_files_for` reads that field and
+nothing else to choose between `PackageProjectFiles` (real files, with a
+traversal guard), `DbProjectFiles` and `NoProjectFiles` — an automaton
+built in memory by a test, which has neither, now says "not found"
+plainly instead of raising from inside a driver.
+
+`EXTENSION_TO_MEDIA_TYPE` moved to `automaton/media_types.py`: the
+builder that converts archives and the reader that serves them have to
+agree on it, and the reader must not drag in the YAML-building chain a
+compiled product does not ship.
+
+### Still to do
+
+The per-declaration attachments — `general_attachments`, and each
+state's, signal's and action's own — still hold `MemoryArchive` objects.
+Turning those into names resolved per turn needs three things settled:
+a byte-bounded LRU (an entry count does not bound memory when entries are
+files), living long enough to be worth having, so owned by
+`TrackingService` and threaded to the two places that build readers; its
+invalidation, which belongs in `ProjectManager.finalize_update`, the
+single funnel every save goes through and where the automaton's own cache
+entry is already replaced — a draft revision is rewritten in place, so
+its number does not change when its bytes do; and one open point,
+`estimate_state_prompt`, a module-level function with no session, no Db
+and no collaborators, which today reads `state.attachments` directly to
+size the design view's per-state token estimate.
+
 ## Anomalies found on the way
 
 Things this work surfaced that are *not* about the compiled automaton and

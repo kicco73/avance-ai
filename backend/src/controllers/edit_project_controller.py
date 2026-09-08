@@ -13,8 +13,8 @@ from fastapi import HTTPException, Request, Response
 from automaton.automaton_yaml_editor import InitActionTargetError
 from automaton.build_error import AutomatonBuildError
 from chat.chat_service import ChatService
-from job import JobService
 from project.project_service import ProjectService
+from scheduler import SchedulerService
 from schemas import (
     AiEditRequest, PublishProjectRequest, RenameProjectFileRequest, ReorderActionRequest, SetProjectFieldRequest,
     WebImportRequest,
@@ -63,11 +63,11 @@ PROJECT_EDITABLE_FIELDS = {"id", "ui-label", "ui-description", "talk-enabled", "
 class EditProjectController(BaseController, ProjectCommitMixin):
 
     def __init__(
-        self, chat_service: ChatService, project_service: ProjectService, job_service: JobService,
+        self, chat_service: ChatService, project_service: ProjectService, scheduler_service: SchedulerService,
     ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
-        self.job_service = job_service
+        self.scheduler_service = scheduler_service
 
     @post("/api/projects/{project_id}/test-sessions", role="admin")
     async def post_create_test_session(self, project_id: str):
@@ -479,7 +479,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return self.job_service.stream_progress(job)
+        return self.scheduler_service.stream_progress(job)
 
     @post("/api/projects/{project_id}/states/{state_name}/actions", role="admin")
     async def add_action(self, project_id: str, state_name: str):

@@ -14,7 +14,7 @@ import pytest
 from automaton.automaton_builder import AutomatonBuilder
 from chat.ws_notifications import WsNotifications
 from events import StateChanged, publish
-from conftest import make_test_namespace_factory, make_test_job_service
+from conftest import make_test_namespace_factory, make_test_scheduler_service
 from chat.sessions.session_manager import ChatSessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
@@ -118,7 +118,7 @@ def _both_projects(db, project_service, *, observed_moved: bool = True) -> dict:
 
 
 def _wake(db, project_service, **kwargs) -> None:
-    service = WakeupService(db, project_service, make_test_job_service(db), _namespace_factory(db), **kwargs)
+    service = WakeupService(db, project_service, make_test_scheduler_service(db), _namespace_factory(db), **kwargs)
     asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
 
@@ -223,7 +223,7 @@ def test_publishing_state_changed_wakes_up_every_observer_that_has_a_session(app
     project_service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
     watcher_session = _both_projects(db, project_service)
 
-    service = WakeupService(db, project_service, make_test_job_service(db), _namespace_factory(db))
+    service = WakeupService(db, project_service, make_test_scheduler_service(db), _namespace_factory(db))
     service.register()
 
     publish(StateChanged(username=USERNAME, project_id="observed", from_state="a", to_state="b"))
@@ -247,7 +247,7 @@ def test_a_user_with_no_session_in_the_observer_project_is_never_woken(app_db):
     # No chat session created in "watcher" at all for this user.
     db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
 
-    service = WakeupService(db, project_service, make_test_job_service(db), _namespace_factory(db))
+    service = WakeupService(db, project_service, make_test_scheduler_service(db), _namespace_factory(db))
     service.register()
 
     publish(StateChanged(username=USERNAME, project_id="observed", from_state="a", to_state="b"))

@@ -456,8 +456,8 @@ class Settings(BaseModel):
         table_name = 'Settings'
 
 class Task(BaseModel):
-    """A hibernated scheduled task (see jobs/task.py and
-    scheduler/scheduler_service.py) — this table *is* the persisted
+    """A hibernated scheduled task (see scheduler/task.py and
+    scheduler/persisted_scheduler.py) — this table *is* the persisted
     scheduler's queue: one row per task still owed to the future, plus
     a terminal row once it settled (kept as an audit trail, never run
     again). `type` selects the hydrator that turns `payload` (JSON, the

@@ -9,12 +9,11 @@ and both answered them by going to `Db` at the automaton's own pinned
 revision.
 
 That is the one thing a compiled automaton cannot do: it has no storage
-location, and no database to have one in. It does, however, already carry
-every file of its project in memory, converted once, each with its own
-media type (`AutomatonBuilder` hands `attachments=all_archives` to every
-Automaton alike, and a generated module hands it exactly the same). So
-reading from a compiled package is a lookup in what the automaton is
-already holding, not a filesystem access and not a new attribute.
+location, and no database to have one in. What it has is its own files,
+sitting in the package's `data/` directory — so it reads them, and says
+where they are through `Automaton.archives_dir`, the one field that
+distinguishes an automaton carrying its project from one pointing at a
+database.
 
 Which implementation a caller gets is decided once, where it is
 constructed (SourceNamespace for sources, EvaluationScopeBuilder for the
@@ -30,10 +29,10 @@ compiled product, which has no draft.
 """
 from __future__ import annotations
 
-import base64
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from automaton.media_types import media_type_for
 from project.archive.layout import CACHE_DIR
 
 if TYPE_CHECKING:
@@ -64,27 +63,41 @@ class ProjectFiles:
         return matches[0] if len(matches) == 1 else None
 
 
-class AutomatonProjectFiles(ProjectFiles):
-    """From what the automaton itself carries. The only implementation a
-    compiled product ever composes, and the one anything without a
-    storage location falls back to."""
+class PackageProjectFiles(ProjectFiles):
+    """From a directory of real files — a compiled package's own `data/`.
+    The only implementation such a product ever composes."""
 
-    def __init__(self, automaton: "Automaton") -> None:
-        self._attachments = automaton.attachments
+    def __init__(self, directory: Path) -> None:
+        self._directory = directory.resolve()
+
+    def _names(self) -> list[str]:
+        return [
+            path.relative_to(self._directory).as_posix()
+            for path in sorted(self._directory.rglob("*")) if path.is_file()
+        ]
 
     def resolve(self, name: str) -> str | None:
-        return self._resolve_among(name, list(self._attachments))
+        return self._resolve_among(name, self._names())
 
     def read(self, path: str) -> tuple[bytes, str] | None:
-        archive = self._attachments.get(path)
-        if archive is None:
+        candidate = (self._directory / path).resolve()
+        # A declared path never escapes the package; a malformed one is
+        # simply not found rather than reaching outside it.
+        if not candidate.is_file() or self._directory not in candidate.parents:
             return None
-        # Text came in as text and binary as base64 (see
-        # ArchiveResolver.convert_contents_to_archives) — undone here so
-        # every implementation hands back the same thing.
-        data, media_type = archive.source["data"], archive.source["media_type"]
-        raw = data.encode("utf-8") if archive.source["type"] == "text" else base64.b64decode(data)
-        return raw, media_type
+        return candidate.read_bytes(), media_type_for(path)
+
+
+class NoProjectFiles(ProjectFiles):
+    """An automaton that neither points at a database nor carries its own
+    files — one built in memory by a test. Nothing to find, said plainly
+    rather than by raising somewhere further down."""
+
+    def resolve(self, name: str) -> str | None:
+        return None
+
+    def read(self, path: str) -> tuple[bytes, str] | None:
+        return None
 
 
 class DbProjectFiles(ProjectFiles):
@@ -149,11 +162,13 @@ class SessionCachedProjectFiles(ProjectFiles):
 
 
 def project_files_for(db: "Db | None", automaton: "Automaton", session_id: int | None = None) -> ProjectFiles:
-    """The one selection point. An automaton with no storage location —
-    a compiled one, or one built in memory — has nothing to read from a
-    database, whatever database it is handed."""
+    """The one selection point. An automaton that carries its own files
+    reads them; one pinned to a stored revision reads those; one with
+    neither has nothing to read, whatever database it is handed."""
+    if automaton.archives_dir is not None:
+        return PackageProjectFiles(automaton.archives_dir)
     if db is None or automaton.revision is None:
-        return AutomatonProjectFiles(automaton)
+        return NoProjectFiles()
     files = DbProjectFiles(db, automaton)
     if session_id is None:
         return files

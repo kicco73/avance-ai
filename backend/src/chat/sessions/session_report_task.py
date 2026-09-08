@@ -4,12 +4,13 @@ import json
 from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
 
-from jobs import CancelableJob, Task
+from jobs import CancelableJob
+from scheduler import Task
 
 if TYPE_CHECKING:
     from ai import AiService
     from db import Db
-    from job import JobService
+    from scheduler import SchedulerService
 
 SESSION_REPORT_INSTRUCTIONS = (
     "You are given the full transcript of a closed chat session, turn by turn, "
@@ -127,8 +128,8 @@ class SessionReportHydrator:
 
 class SessionReportScheduler:
 
-    def __init__(self, job_service: "JobService", hydrator: SessionReportHydrator) -> None:
-        self._job_service = job_service
+    def __init__(self, scheduler_service: "SchedulerService", hydrator: SessionReportHydrator) -> None:
+        self._scheduler_service = scheduler_service
         self._hydrator = hydrator
 
     def schedule(self, session: dict) -> None:
@@ -138,4 +139,4 @@ class SessionReportScheduler:
             session_id=session["id"], project_id=session["project_id"], username=session["username"],
             hydrator=self._hydrator,
         )
-        self._job_service.schedule(task, datetime.now(timezone.utc))
+        self._scheduler_service.schedule(task, datetime.now(timezone.utc))

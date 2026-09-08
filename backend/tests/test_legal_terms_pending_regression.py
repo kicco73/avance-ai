@@ -11,7 +11,7 @@ import pytest
 
 from chat.chat_service import ChatService
 from chat.sessions.session_manager import ChatSessionManager
-from conftest import FakeAiService, make_test_namespace_factory, make_test_job_service
+from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
@@ -51,8 +51,8 @@ def project_service(db) -> ProjectService:
 def _chat_service_for(db, project_service: ProjectService) -> ChatService:
     ai_service = FakeAiService()
     metric_service = MetricService(db, project_service)
-    job_service = make_test_job_service(db)
-    namespace_factory = make_test_namespace_factory(db, job_service)
+    scheduler_service = make_test_scheduler_service(db)
+    namespace_factory = make_test_namespace_factory(db, scheduler_service)
     tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
     return ChatService(
         ai_service=ai_service,
@@ -62,7 +62,7 @@ def _chat_service_for(db, project_service: ProjectService) -> ChatService:
         session_manager=ChatSessionManager(db),
         tracking_service=tracking_service,
         metric_service=metric_service,
-        job_service=job_service,
+        scheduler_service=scheduler_service,
         namespace_factory=namespace_factory,
     )
 

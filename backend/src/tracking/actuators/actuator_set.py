@@ -11,9 +11,9 @@ from typing import Any, TYPE_CHECKING, TypeVar
 
 from automaton.automaton import Action, DeferredExpression, JsSnippet
 from automaton.scope import EvaluationScope
-from job import JobService
 from logging_factory import LoggerFactory
 from notification.notification_service import NotificationService
+from scheduler import SchedulerService
 from session import Session
 
 from .action_task import ActionTask, ScopeHydrator
@@ -62,7 +62,7 @@ class TaskNamespace(ABC):
         # ai-must-read-sources declared.
         self._tool_set: "ToolSet | None" = None
         # How this namespace gets a task script run as a Task. None only
-        # for a bare namespace nobody wired to a JobService (a test
+        # for a bare namespace nobody wired to a SchedulerService (a test
         # replay's own FakeTaskNamespace default): the script then runs
         # inline and its output is dropped, since no browser is listening anyway.
         self._dispatcher = dispatcher
@@ -144,14 +144,14 @@ class TaskNamespace(ABC):
 
 class TaskDispatcher(object):
     """What turns a task (now) or a deferred lambda (later) into an
-    ActionTask on the JobService, under (the current user, one project)
-    — the two things a Task row keys on (see jobs/task.py) — and marked
+    ActionTask on the SchedulerService, under (the current user, one project)
+    — the two things a Task row keys on (see scheduler/task.py) — and marked
     with which task namespace (live or fake) must be rebuilt to run it."""
 
     def __init__(
-        self, job_service: JobService, hydrator: ScopeHydrator, *, project_id: str, namespace_kind: str,
+        self, scheduler_service: SchedulerService, hydrator: ScopeHydrator, *, project_id: str, namespace_kind: str,
     ) -> None:
-        self._job_service = job_service
+        self._scheduler_service = scheduler_service
         self._hydrator = hydrator
         self._project_id = project_id
         self._namespace_kind = namespace_kind
@@ -173,14 +173,14 @@ class TaskDispatcher(object):
             action, scope, username=Session().user, namespace_kind=self._namespace_kind, session_id=session_id,
             hydrator=self._hydrator,
         )
-        self._job_service.schedule(task, datetime.now(timezone.utc))
+        self._scheduler_service.schedule(task, datetime.now(timezone.utc))
 
     def schedule_later(self, act: DeferredExpression, when: datetime) -> None:
         self._check_project(act.scope)
         task = ActionTask.later(
             act, when, username=Session().user, namespace_kind=self._namespace_kind, hydrator=self._hydrator,
         )
-        self._job_service.schedule(task, when)
+        self._scheduler_service.schedule(task, when)
 
 
 class LiveTaskNamespace(TaskNamespace):

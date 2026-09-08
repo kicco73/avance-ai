@@ -1,4 +1,4 @@
-"""GET /api/settings/tasks (JobService.list_scheduled_tasks, Settings >
+"""GET /api/settings/tasks (SchedulerService.list_tasks, Settings >
 Manage services > Scheduler)."""
 from __future__ import annotations
 

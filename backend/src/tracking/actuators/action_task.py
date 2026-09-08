@@ -3,7 +3,7 @@
 Every `task:` script runs outside the request that fired it: the
 transition and its `env:` writes are applied synchronously (they feed
 the very next prompt), then the script is hibernated as an ActionTask
-due *now* and executed by a JobService worker. task.prompt is a
+due *now* and executed by a SchedulerService worker. task.prompt is a
 model call, task.send_mail a network call — neither belongs on the
 event-loop thread of a chat turn. What the browser gets from a `task:`
 script's own JsSnippet-producing calls arrives over the websocket as a
@@ -54,8 +54,9 @@ from typing import Any, TYPE_CHECKING
 from automaton.automaton import Action, DeferredExpression
 from automaton.scope import EvaluationScope
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
-from jobs import CancelableJob, Task
+from jobs import CancelableJob
 from logging_factory import LoggerFactory
+from scheduler import Task
 from session import Session
 
 if TYPE_CHECKING:
@@ -228,7 +229,7 @@ class ScopeHydrator(object):
         return self._namespace_factory.ws_notifications
 
     def hydrate(self, key: str, username: str, payload: dict[str, Any]) -> ActionTask:
-        """JobService's hydrator for ActionTask.TYPE. Cheap and
+        """SchedulerService's hydrator for ActionTask.TYPE. Cheap and
         side-effect free: the project is only resolved when the task
         actually runs."""
         for field in ("script", "project_id", "project_revision", "state_key", "snapshot", "namespace_kind"):

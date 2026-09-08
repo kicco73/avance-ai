@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from db import Db
-from job import JobService
 from notification.notification_service import NotificationService
+from scheduler import SchedulerService
 
 from .actuator_set import FakeTaskNamespace, LiveTaskNamespace, TaskDispatcher, TaskNamespace
 from .action_task import TASK_NAMESPACE_FAKE, TASK_NAMESPACE_LIVE, ActionTask, ScopeHydrator
@@ -18,13 +18,13 @@ if TYPE_CHECKING:
 
 
 class TaskNamespaceFactory:
-    """Registers the task type with the JobService at
+    """Registers the task type with the SchedulerService at
     construction — before the service is started (main.py starts it
     last), so a hibernated row can never be claimed with nobody to
     hydrate it. The websocket adapter is the one late binding left
     (WsAdapter needs ChatService, which needs this factory): a task
     reads it through the hydrator at run time, and no task runs before
-    main.py has bound it and started the JobService. `ai_service` is
+    main.py has bound it and started the SchedulerService. `ai_service` is
     what a rehydrated task.prompt runs against. Builds both a task
     namespace (`.live`/`.fake`/`.for_session`) and a chat namespace
     (`.chat_live`/`.chat_fake`/`.chat_for_session`) — the two share the
@@ -33,12 +33,12 @@ class TaskNamespaceFactory:
     into a second class."""
 
     def __init__(
-        self, notification_service: NotificationService, db: Db, job_service: JobService,
+        self, notification_service: NotificationService, db: Db, scheduler_service: SchedulerService,
         project_service: "ProjectService", ai_service: "AiService | None" = None,
     ) -> None:
         self._notification_service = notification_service
         self._db = db
-        self._job_service = job_service
+        self._scheduler_service = scheduler_service
         self._enabled_test_sessions: set[int] = set()
         # session_id -> the username chat.switch_to_human(user_id)
         # last targeted for it (see chat_namespace.py) — cleared by
@@ -49,7 +49,7 @@ class TaskNamespaceFactory:
         self._ws_notifications: "WsNotifications | None" = None
         self._whatsapp_service: "WhatsAppService | None" = None
         self._hydrator = ScopeHydrator(db, project_service, self, ai_service)
-        job_service.register_task_type(ActionTask.TYPE, self._hydrator.hydrate)
+        scheduler_service.register_task_type(ActionTask.TYPE, self._hydrator.hydrate)
 
     def get_human_operator(self, session_id: int) -> str | None:
         return self._human_operators.get(session_id)
@@ -71,7 +71,7 @@ class TaskNamespaceFactory:
         self._whatsapp_service = whatsapp_service
 
     def _dispatcher(self, project_id: str, namespace_kind: str) -> TaskDispatcher:
-        return TaskDispatcher(self._job_service, self._hydrator, project_id=project_id, namespace_kind=namespace_kind)
+        return TaskDispatcher(self._scheduler_service, self._hydrator, project_id=project_id, namespace_kind=namespace_kind)
 
     # --- task namespace ---------------------------------------------------
 

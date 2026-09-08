@@ -33,7 +33,7 @@ def _automaton(*states: State) -> Automaton:
     all_states.update({state.key: state for state in states})
     return Automaton(
         init_action=init_action, states=all_states,
-        general_prompt="", signals=[], attachments={}, general_attachments={},
+        general_prompt="", signals=[], general_attachments={},
         autotracking_on_ai_message=False, sources=[], env_keys=ENV_KEYS,
     )
 

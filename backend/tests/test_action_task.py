@@ -1,7 +1,7 @@
 """An action's task runs as an ActionTask, now or deferred — never
 inline in the request that fired it — and what it produces reaches the
 browser over the websocket. The task is hibernated as script + frozen
-scope under (user, project, revision), so a brand-new JobService/factory
+scope under (user, project, revision), so a brand-new SchedulerService/factory
 over the same database runs it against an equivalent environment: the
 frozen part (user/signal/env) exactly as the in-turn evaluation would
 have seen it, the live part (task.*, metric.*, ...) rebuilt for that
@@ -29,14 +29,14 @@ import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
 from chat.ws_notifications import WsNotifications
-from conftest import FakeAiService, make_test_namespace_factory, make_test_job_service
+from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from db import Db
 from db.models import Task as TaskRow, User
-from job import JobService
 from metrics.metric_service import MetricService
 from chat.sessions.session_manager import ChatSessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
+from scheduler import SchedulerService
 from tracking.actuators.action_task import TASK_NAMESPACE_LIVE, ActionTask, ScopeHydrator
 from tracking.env import Env, PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
@@ -115,7 +115,7 @@ class _FakeWebSocket:
         self.sent.append(payload)
 
 
-_live_services: list[JobService] = []
+_live_services: list[SchedulerService] = []
 
 
 @pytest.fixture(autouse=True)
@@ -147,21 +147,21 @@ def _publish(db: Db, project_service: ProjectService, index_yml: str) -> None:
 
 
 def _process(db: Db, websocket: _FakeWebSocket | None = None, *, start: bool = False, ai_service=None):
-    """One "process": a JobService, a ProjectService and a namespace
+    """One "process": a SchedulerService, a ProjectService and a namespace
     factory over `db`, wired the way main.py does — started only when
     asked, since a not-yet-started service is exactly what a process
     still wiring itself up looks like."""
-    job_service = make_test_job_service(db)
-    _live_services.append(job_service)
+    scheduler_service = make_test_scheduler_service(db)
+    _live_services.append(scheduler_service)
     project_service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
-    factory = make_test_namespace_factory(db, job_service, project_service, ai_service)
+    factory = make_test_namespace_factory(db, scheduler_service, project_service, ai_service)
     if websocket is not None:
         ws_notifications = WsNotifications(auth_service=None)
         ws_notifications._connections[USERNAME] = [websocket]
         factory.set_ws_notifications(ws_notifications)
     if start:
-        job_service.start()
-    return job_service, project_service, factory
+        scheduler_service.start()
+    return scheduler_service, project_service, factory
 
 
 def _fire_go(

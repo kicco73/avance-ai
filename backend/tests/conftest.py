@@ -25,9 +25,9 @@ from db import Db
 from db.models import User
 from error_handlers import ApiErrorHandlers
 from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
-from job import JobService
 from jobs import NullBroadcaster
 from jobs.job_queue import JobQueue
+from scheduler import SchedulerService
 from metrics.metric_service import MetricService
 from notification.notification_service import NotificationService
 from project.archive.automaton_loader import AutomatonLoader
@@ -220,16 +220,16 @@ def app_db(tmp_path) -> Db:
     return Db(f"sqlite:///{tmp_path / 'test.db'}")
 
 
-def make_test_job_service(db: Db, broadcaster=None) -> JobService:
-    """A real JobService over a one-worker pool — what every test that
+def make_test_scheduler_service(db: Db, broadcaster=None) -> SchedulerService:
+    """A real SchedulerService over a one-worker pool — what every test that
     needs platform jobs (never a TestService's own throttled pool) shares.
     Not started: nothing here claims hibernated tasks unless a test
     calls start() itself (see test_task_defer.py)."""
-    return JobService(max_concurrent=1, broadcaster=broadcaster if broadcaster is not None else NullBroadcaster(), db=db)
+    return SchedulerService(max_concurrent=1, broadcaster=broadcaster if broadcaster is not None else NullBroadcaster(), db=db)
 
 
 def make_test_namespace_factory(
-    db: Db, job_service: JobService | None = None, project_service: ProjectService | None = None,
+    db: Db, scheduler_service: SchedulerService | None = None, project_service: ProjectService | None = None,
     ai_service=None,
 ) -> TaskNamespaceFactory:
     """A real TaskNamespaceFactory, wired the same way main.py does — every
@@ -237,15 +237,15 @@ def make_test_namespace_factory(
     never task.send_mail, so the dummy SMTP config below is never
     actually dialed. Shared by every fixture/helper across the test suite
     that needs to construct a TrackingService/ChatService/WakeupService."""
-    job_service = job_service if job_service is not None else make_test_job_service(db)
+    scheduler_service = scheduler_service if scheduler_service is not None else make_test_scheduler_service(db)
     project_service = project_service if project_service is not None else ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
     notification_service = NotificationService(
         NotificationServiceConfig(
             url="smtp://localhost", username="test@example.com", password="", from_name=None, timeout_seconds=5,
         ),
-        job_service,
+        scheduler_service,
     )
-    return TaskNamespaceFactory(notification_service, db, job_service, project_service, ai_service)
+    return TaskNamespaceFactory(notification_service, db, scheduler_service, project_service, ai_service)
 
 
 @pytest.fixture
@@ -257,16 +257,16 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     session_manager = ChatSessionManager(app_db)
     metric_service = MetricService(app_db, project_service)
     test_event_broadcaster = LastStatusBroadcaster(QueueProgressBroadcaster(fake_ai_service))
-    job_service = make_test_job_service(app_db, test_event_broadcaster)
-    # TestService's own pool, as in main.py — never the platform JobService's.
+    scheduler_service = make_test_scheduler_service(app_db, test_event_broadcaster)
+    # TestService's own pool, as in main.py — never the platform SchedulerService's.
     test_job_queue = JobQueue(max_concurrent=1, broadcaster=test_event_broadcaster)
-    namespace_factory = make_test_namespace_factory(app_db, job_service, project_service, fake_ai_service)
+    namespace_factory = make_test_namespace_factory(app_db, scheduler_service, project_service, fake_ai_service)
     tracking_service = TrackingService(
         app_db, project_service, metric_service, namespace_factory,
     )
     chat_service = ChatService(
         app_db, fake_ai_service, fake_ai_service, project_service, session_manager,
-        tracking_service, metric_service, job_service, namespace_factory,
+        tracking_service, metric_service, scheduler_service, namespace_factory,
     )
     test_service = TestService(
         app_db, fake_ai_service, tracking_service, test_job_queue, project_service, test_event_broadcaster,
@@ -300,7 +300,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     ApiErrorHandlers.register(fastapi_app)
     controller = AvanceController(
         chat_service, project_service, None, None, app_db, tracking_service, test_service,
-        auth_service, test_event_broadcaster, job_service, "test-version", services_config,
+        auth_service, test_event_broadcaster, scheduler_service, "test-version", services_config,
         ws_notifications=WsNotifications(auth_service, chat_service),
     )
     fastapi_app.include_router(controller.router)
@@ -313,7 +313,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     # service and register a fake websocket on the factory (see
     # run_pending_tasks below). Never started here — most tests only
     # ever assert on the Task rows a task leaves behind.
-    fastapi_app.state.job_service = job_service
+    fastapi_app.state.scheduler_service = scheduler_service
     fastapi_app.state.namespace_factory = namespace_factory
     return fastapi_app
 
@@ -330,7 +330,7 @@ class FakeWebSocket:
 
 
 def run_pending_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0) -> list[dict]:
-    """Starts the app fixture's JobService (once), attaches a FakeWebSocket
+    """Starts the app fixture's SchedulerService (once), attaches a FakeWebSocket
     for `username`, waits until no task is pending or dispatched,
     and returns the frames the browser would have received. Stops the
     service afterwards so its thread never outlives the test."""
@@ -340,8 +340,8 @@ def run_pending_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0
     ws_notifications = WsNotifications(auth_service=None)
     ws_notifications._connections[username] = [websocket]
     factory.set_ws_notifications(ws_notifications)
-    job_service = app.state.job_service
-    job_service.start()
+    scheduler_service = app.state.scheduler_service
+    scheduler_service.start()
     try:
         from db.models import Task as TaskRow
         deadline = time.monotonic() + timeout
@@ -350,7 +350,7 @@ def run_pending_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0
                 break
             time.sleep(0.02)
     finally:
-        job_service.stop()
+        scheduler_service.stop()
     return websocket.sent
 
 

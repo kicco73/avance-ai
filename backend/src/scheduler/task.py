@@ -5,9 +5,9 @@ from abc import abstractmethod
 from collections.abc import Callable
 from typing import Any, ClassVar
 
-from .job import CancelableJob
+from jobs.job import CancelableJob
 
-# What a SchedulerService hears back once a task has settled (see
+# What a PersistedScheduler hears back once a task has settled (see
 # Task.run_next_step): the task, its terminal status ('done'|'failed')
 # and, on failure, the error text.
 SettlementListener = Callable[["Task", str, "str | None"], None]
@@ -39,7 +39,7 @@ class Task(CancelableJob):
     @classmethod
     def make_key(cls, id: str | int | None = None) -> str:
         """A stable "ClassName.<id>" key when a caller names one — the
-        same id addresses the same row again later (SchedulerService's
+        same id addresses the same row again later (PersistedScheduler's
         db.get_task/reschedule_task/cancel_task), so a follow-up "touch"
         can find and reschedule it instead of leaving a random duplicate
         behind. With no id, today's untraceable-by-design key."""

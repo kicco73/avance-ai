@@ -1,4 +1,4 @@
-"""SchedulerService's own contract, with a stub Task: the Task table is
+"""PersistedScheduler's own contract, with a stub Task: the Task table is
 its queue — submit inserts, the loop claims atomically, settlement and
 cancel update the row — and a new scheduler over the same database
 just continues: pending rows at their time, rows a dead process left
@@ -14,9 +14,10 @@ import pytest
 from conftest import NullBroadcaster
 from db import Db
 from db.models import Task as TaskRow
-from scheduler.scheduler_service import SchedulerService
-from jobs import CancelableJob, Task
+from scheduler.persisted_scheduler import PersistedScheduler
+from jobs import CancelableJob
 from jobs.job_queue import JobQueue
+from scheduler import Task
 
 pytestmark = pytest.mark.contract
 
@@ -83,7 +84,7 @@ def file_db(tmp_path) -> Db:
     return instance
 
 
-_live_schedulers: list[SchedulerService] = []
+_live_schedulers: list[PersistedScheduler] = []
 
 
 @pytest.fixture(autouse=True)
@@ -98,9 +99,9 @@ def _stop_schedulers():
 
 def _make(
     file_db: Db, sink: list, *, start: bool = True, hydrators: dict | None = None, lease_seconds: float = 600.0,
-) -> SchedulerService:
+) -> PersistedScheduler:
     queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-    scheduler = SchedulerService(queue, file_db, poll_interval_seconds=0.2, lease_seconds=lease_seconds)
+    scheduler = PersistedScheduler(queue, file_db, poll_interval_seconds=0.2, lease_seconds=lease_seconds)
     for task_type, hydrator in (hydrators if hydrators is not None else _hydrators(sink)).items():
         scheduler.register_task_type(task_type, hydrator)
     _live_schedulers.append(scheduler)
@@ -192,7 +193,7 @@ def test_a_non_task_job_or_a_task_of_an_unregistered_type_is_refused_leaving_no_
         TYPE = "other"
 
     scheduler = _make(file_db, [])
-    with pytest.raises(TypeError, match="jobs.Task"):
+    with pytest.raises(TypeError, match="scheduler.Task"):
         scheduler.submit(Plain())
     with pytest.raises(ValueError, match="no hydrator is registered"):
         scheduler.submit(Other("other:1", "user", {"value": 1}, []))

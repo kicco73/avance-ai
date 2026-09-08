@@ -42,7 +42,6 @@ def _automaton_with_env(trigger_expr: str, action_env: dict | None, target: str 
         states=states,
         general_prompt="",
         signals=[Signal(name="mySignal", ui_label="My signal", definition="whatever")],
-        attachments={},
         general_attachments={},
         autotracking_on_ai_message=True,
     )

@@ -14,7 +14,7 @@ from ai.ai_service import AiService
 from chat.chat_service import ChatService
 from chat.sessions.session_manager import ChatSessionManager
 from chat.ws_turn import WsChatTurn
-from conftest import make_test_namespace_factory, make_test_job_service
+from conftest import make_test_namespace_factory, make_test_scheduler_service
 from db.db import Db
 from metrics.metric_service import MetricService
 from talker.base_talker import BaseTalker
@@ -82,8 +82,8 @@ def chat_service_for(tmp_path):
         ai_service = AiService(_FakeProvider())
         project_service = FakeProjectService(automaton)
         metric_service = MetricService(db, project_service)
-        job_service = make_test_job_service(db)
-        namespace_factory = make_test_namespace_factory(db, job_service)
+        scheduler_service = make_test_scheduler_service(db)
+        namespace_factory = make_test_namespace_factory(db, scheduler_service)
         tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
         calls = {"count": 0}
 
@@ -99,7 +99,7 @@ def chat_service_for(tmp_path):
         service = ChatService(
             ai_service=ai_service, ai_test_service=ai_service, project_service=project_service, db=db,
             session_manager=ChatSessionManager(db), tracking_service=tracking_service,
-            metric_service=metric_service, job_service=job_service, namespace_factory=namespace_factory,
+            metric_service=metric_service, scheduler_service=scheduler_service, namespace_factory=namespace_factory,
         )
         return service, namespace_factory
 

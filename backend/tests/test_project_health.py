@@ -312,11 +312,11 @@ def test_a_broken_published_revision_reports_where_it_broke(db, project_service)
 def test_project_health_notifications_submits_a_job_on_the_event(db):
     submitted = []
 
-    class FakeJobService:
+    class FakeSchedulerService:
         def submit(self, job) -> None:
             submitted.append(job)
 
-    notifications = ProjectHealthNotifications(db, FakeJobService(), FakeWsAdapter())
+    notifications = ProjectHealthNotifications(db, FakeSchedulerService(), FakeWsAdapter())
     notifications.register()
 
     publish(ProjectPublishedHealthChanged(project_id="broken", revision=1, error="nope", file="index.yml", line=3))
@@ -468,7 +468,7 @@ def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_fiel
 
     _make_admin(db, "admin1")
     ws_notifications = FakeWsAdapter()
-    notifications = ProjectHealthNotifications(db, _SyncJobService(), ws_notifications)
+    notifications = ProjectHealthNotifications(db, _SyncSchedulerService(), ws_notifications)
     notifications.register()
     project_service.register_availability_cascade()
 
@@ -488,9 +488,9 @@ def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_fiel
     assert len(ws_notifications.pushed) == 1
 
 
-class _SyncJobService:
+class _SyncSchedulerService:
     """submit() runs the job's single step inline — the boot sweep above
-    has no running JobService/event loop to hand it to."""
+    has no running SchedulerService/event loop to hand it to."""
 
     def submit(self, job) -> None:
         job.prepare()

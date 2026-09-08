@@ -24,7 +24,6 @@ def _automaton() -> Automaton:
         states={"a": state},
         general_prompt="General instructions.",
         signals=[Signal(name="mood", ui_label="Mood", definition="How positive the tone is.")],
-        attachments={},
         general_attachments={},
         autotracking_on_ai_message=False,
     )

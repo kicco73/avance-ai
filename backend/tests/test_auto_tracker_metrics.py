@@ -42,7 +42,6 @@ def _automaton_with_trigger(trigger_expr: str, target: str = "b") -> Automaton:
         # A real declared signal — signal_values are coerced against
         # exactly this list, dropping anything not declared here.
         signals=[Signal(name="mySignal", ui_label="My signal", definition="whatever")],
-        attachments={},
         general_attachments={},
         autotracking_on_ai_message=True,
     )

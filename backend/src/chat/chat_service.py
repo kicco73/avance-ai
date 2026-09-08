@@ -33,12 +33,12 @@ from chat.sessions.session_insights import SessionInsights
 from chat.sessions.session_ownership import SessionOwnership
 from chat.sessions.session_report_task import SessionReportHydrator, SessionReportScheduler, SessionReportTask
 from chat.sessions.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
-from job import JobService
 from logging_factory import LoggerFactory
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 from tracking.turn_callbacks import OnMetadata
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
+from scheduler import SchedulerService
 from tracking.tracking_service import TrackingService
 
 logger = LoggerFactory.get_logger(__name__)
@@ -53,7 +53,7 @@ class ChatService(object):
 		session_manager: ChatSessionManager,
 		tracking_service: TrackingService,
 		metric_service: MetricService,
-		job_service: JobService,
+		scheduler_service: SchedulerService,
 		namespace_factory: TaskNamespaceFactory,
 	) -> None:
 		self._db = db
@@ -65,8 +65,8 @@ class ChatService(object):
 		self.metric_service = metric_service
 		self._namespace_factory = namespace_factory
 		session_report_hydrator = SessionReportHydrator(db, ai_service)
-		job_service.register_task_type(SessionReportTask.TYPE, session_report_hydrator.hydrate)
-		session_manager.set_session_report_scheduler(SessionReportScheduler(job_service, session_report_hydrator))
+		scheduler_service.register_task_type(SessionReportTask.TYPE, session_report_hydrator.hydrate)
+		session_manager.set_session_report_scheduler(SessionReportScheduler(scheduler_service, session_report_hydrator))
 		self._ownership = SessionOwnership(db)
 		self._insights = SessionInsights(db, metric_service, tracking_service, self._ownership)
 		self._session_facts = SessionFacts(db, project_service)

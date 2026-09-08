@@ -42,7 +42,7 @@ def _automaton(project_id: str, revision: int, sources: list[Source] | None = No
     automaton = Automaton(
         init_action=init_action,
         states={"": State(key="", ui_label="", final=False, actions=[init_action])},
-        general_prompt="", signals=[], attachments={}, general_attachments={},
+        general_prompt="", signals=[], general_attachments={},
         autotracking_on_ai_message=False, project_id=project_id, sources=sources,
     )
     automaton.set_storage_location(revision)

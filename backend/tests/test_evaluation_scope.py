@@ -34,8 +34,7 @@ def _builder(db) -> EvaluationScopeBuilder:
 
 
 def _automaton_with_trigger(
-    trigger_expr: str, attachments: dict[str, MemoryArchive] | None = None, env: dict | None = None,
-    sources: list[Source] | None = None,
+    trigger_expr: str, env: dict | None = None, sources: list[Source] | None = None,
 ) -> Automaton:
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger=trigger_expr, env=env)
     state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
@@ -46,7 +45,6 @@ def _automaton_with_trigger(
         states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
         general_prompt="",
         signals=[],
-        attachments=attachments or {},
         general_attachments={},
         autotracking_on_ai_message=False,
         project_id=PROJECT_ID,

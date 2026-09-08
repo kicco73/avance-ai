@@ -16,7 +16,7 @@ from automaton.automaton import Action, Automaton, State
 from chat.chat_service import ChatService
 from chat.errors import ChatServiceError
 from chat.sessions.session_manager import ChatSessionManager
-from conftest import FakeAiService, make_test_namespace_factory, make_test_job_service
+from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService
 
@@ -30,7 +30,7 @@ def _automaton() -> Automaton:
     return Automaton(
         init_action=init_action,
         states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
-        general_prompt="", signals=[], attachments={}, general_attachments={}, autotracking_on_ai_message=False,
+        general_prompt="", signals=[], general_attachments={}, autotracking_on_ai_message=False,
     )
 
 
@@ -85,8 +85,8 @@ def _chat_service(db) -> tuple[ChatService, _FakeProjectService]:
     ai_service = FakeAiService()
     project_service = _FakeProjectService(_automaton())
     metric_service = MetricService(db, project_service)
-    job_service = make_test_job_service(db)
-    namespace_factory = make_test_namespace_factory(db, job_service)
+    scheduler_service = make_test_scheduler_service(db)
+    namespace_factory = make_test_namespace_factory(db, scheduler_service)
     tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
     chat_service = ChatService(
         ai_service=ai_service,
@@ -96,7 +96,7 @@ def _chat_service(db) -> tuple[ChatService, _FakeProjectService]:
         session_manager=ChatSessionManager(db),
         tracking_service=tracking_service,
         metric_service=metric_service,
-        job_service=job_service,
+        scheduler_service=scheduler_service,
         namespace_factory=namespace_factory,
     )
     return chat_service, project_service

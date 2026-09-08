@@ -11,7 +11,7 @@ import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
 from chat.ws_notifications import WsNotifications
-from conftest import make_test_namespace_factory, make_test_job_service
+from conftest import make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
 from chat.sessions.session_manager import ChatSessionManager
 from project.archive.automaton_loader import AutomatonLoader
@@ -93,9 +93,9 @@ def _fire_go(db, factory, project_service: ProjectService, session_id: int, *, f
 
 @pytest.fixture
 def wired(db):
-    job_service = make_test_job_service(db)
+    scheduler_service = make_test_scheduler_service(db)
     project_service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
-    factory = make_test_namespace_factory(db, job_service, project_service)
+    factory = make_test_namespace_factory(db, scheduler_service, project_service)
     ws_notifications = WsNotifications(auth_service=None)
     factory.set_ws_notifications(ws_notifications)
     return db, project_service, factory, ws_notifications

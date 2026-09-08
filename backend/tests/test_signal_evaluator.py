@@ -19,7 +19,6 @@ def _automaton(*names: str) -> Automaton:
         states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
         general_prompt="",
         signals=[Signal(name=name, ui_label=name.upper(), definition="d") for name in names],
-        attachments={},
         general_attachments={},
         autotracking_on_ai_message=False,
     )

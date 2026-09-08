@@ -34,7 +34,6 @@ def _automaton(contextual_prompt: str = "hi") -> Automaton:
         states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
         general_prompt="",
         signals=[],
-        attachments={},
         general_attachments={},
         autotracking_on_ai_message=False,
     )

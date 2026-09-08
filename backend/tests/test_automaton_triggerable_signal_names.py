@@ -29,7 +29,7 @@ def _automaton(signals: list[Signal], actions_a: list[Action], actions_b: list[A
         states["b"] = State(key="b", ui_label="B", final=not actions_b, contextual_prompt="bye", actions=actions_b)
     return Automaton(
         init_action=init_action, states=states, general_prompt="", signals=signals,
-        attachments={}, general_attachments={}, autotracking_on_ai_message=False,
+        general_attachments={}, autotracking_on_ai_message=False,
     )
 
 

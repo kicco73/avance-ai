@@ -12,9 +12,9 @@ from auth.roles import role_satisfies
 from chat.ws_notifications import WsNotifications
 from db import Db
 from events import ProjectPublishedHealthChanged, subscribe
-from job import JobService
 from jobs.job import CancelableJob
 from logging_factory import LoggerFactory
+from scheduler import SchedulerService
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -77,9 +77,9 @@ class ProjectHealthNotificationJob(CancelableJob):
 
 
 class ProjectHealthNotifications:
-    def __init__(self, db: Db, job_service: JobService, ws_notifications: WsNotifications) -> None:
+    def __init__(self, db: Db, scheduler_service: SchedulerService, ws_notifications: WsNotifications) -> None:
         self._db = db
-        self._job_service = job_service
+        self._scheduler_service = scheduler_service
         self._ws_notifications = ws_notifications
 
     def register(self) -> None:
@@ -87,7 +87,7 @@ class ProjectHealthNotifications:
 
     def _on_event(self, event: ProjectPublishedHealthChanged) -> None:
         try:
-            self._job_service.submit(
+            self._scheduler_service.submit(
                 ProjectHealthNotificationJob(
                     self._db, self._ws_notifications, event.project_id, event.revision, event.error,
                     file=event.file, line=event.line,

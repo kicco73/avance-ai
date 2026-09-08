@@ -29,7 +29,6 @@ def _automaton_with_trigger(trigger_expr: str) -> Automaton:
         states=states,
         general_prompt="",
         signals=[],
-        attachments={},
         general_attachments={},
         autotracking_on_ai_message=False,
     )

@@ -284,7 +284,6 @@ AUTOMATON = CompiledAutomaton(
     states=_STATES,
     general_prompt=prompt.GENERAL_PROMPT,
     signals=_SIGNALS,
-    attachments=_ARCHIVES,
     general_attachments=_GENERAL_ATTACHMENTS,
     autotracking_on_ai_message={autotracking!r},
     env_keys=_ENV_KEYS,
@@ -299,6 +298,10 @@ AUTOMATON = CompiledAutomaton(
     new_session_strategy={new_session_strategy!r},
     build_warnings={build_warnings!r},
 )
+
+# Where this product's own files are: read from here, not from a database
+# it does not have (see tracking.project_files.project_files_for).
+AUTOMATON.archives_dir = _DATA_DIR
 '''
 
 
@@ -456,16 +459,6 @@ def verify_package(project_path: Path, module_name: str) -> None:
     problems += _compare("reactions", compiled.reactions, interpreted.reactions)
     problems += _compare("env_keys", compiled.env_keys, interpreted.env_keys)
     problems += _compare("sources", compiled.sources, interpreted.sources)
-    # index.yml aside: the interpreted automaton carries it in `attachments`
-    # only because convert_contents_to_archives is handed the whole project,
-    # and the compiled package deliberately does not ship it (it has been
-    # compiled away in full). compile_package refuses to compile a project
-    # that actually declares it as an attachment, so this is the only
-    # difference between the two, and it is one nothing reads.
-    problems += _compare(
-        "attachment names",
-        sorted(compiled.attachments), sorted(set(interpreted.attachments) - {"index.yml"}),
-    )
     problems += _compare(
         "general attachment names", sorted(compiled.general_attachments), sorted(interpreted.general_attachments),
     )

@@ -43,7 +43,6 @@ def _automaton(action_env: dict[str, str] | None = None) -> Automaton:
         states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
         general_prompt="",
         signals=[mood],
-        attachments={},
         general_attachments={},
         autotracking_on_ai_message=False,
         env_keys=[EnvKey(name=key) for key in (action_env or {})],

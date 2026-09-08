@@ -17,6 +17,7 @@ top, and automaton.py for the composition itself."""
 from __future__ import annotations
 
 import ast
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import simpleeval
@@ -93,7 +94,6 @@ class CoreAutomaton(object):
         states: dict[str, State],
         general_prompt: str,
         signals: list[Signal],
-        attachments: dict[str, MemoryArchive],
         general_attachments: dict[str, MemoryArchive],
         autotracking_on_ai_message: bool,
         # Only AutomatonBuilder.build parses a project's declared env:
@@ -154,7 +154,6 @@ class CoreAutomaton(object):
         self.project_ui_label = project_ui_label
         self.project_ui_description = project_ui_description
         self.general_attachments = general_attachments
-        self.attachments = attachments
         # The two auto-tracking modes (before/after the AI reply) are
         # mutually exclusive — this flag selects between them.
         self.autotracking_on_ai_message = autotracking_on_ai_message
@@ -170,6 +169,13 @@ class CoreAutomaton(object):
         # set_storage_location below. project_id above already carries
         # this project's own identity, so there's nothing left to pass in.
         self.revision: int | None = None
+        # Where this automaton's own project files live, for an automaton
+        # that carries them rather than pointing at a database: a compiled
+        # package sets it to its own data/ directory (see
+        # tracking.project_files.project_files_for, the one place it is
+        # read). None on the platform, where `revision` above says where
+        # to read instead.
+        self.archives_dir: "Path | None" = None
         # Answers derived from this automaton's own expression text (see
         # analysis.py), each computed on first use and kept: they are
         # fixed the moment the project is written, and `states`/`actions`

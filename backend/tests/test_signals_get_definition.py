@@ -21,7 +21,6 @@ def _automaton(signals: list[Signal]) -> Automaton:
                 "a": State(key="a", ui_label="A", final=True, contextual_prompt="hi")},
         general_prompt="",
         signals=signals,
-        attachments={},
         general_attachments={},
         autotracking_on_ai_message=False,
     )

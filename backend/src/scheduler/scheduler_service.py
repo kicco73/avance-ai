@@ -1,217 +1,140 @@
-"""A Scheduler whose queue is the Task table — nothing lives in memory.
+"""The one owner of the process's shared background work.
 
-    submit(task, when) ──> INSERT Task row (pending, run_at=when) ──> notify
-    thread loop        ──> claim_due_task(now)  [atomic pending -> dispatched]
-                            └──> hydrator[type](key, username, payload) ──> JobQueue.submit
-                       ──> else sleep until next_task_due_at (capped by poll_interval)
-    task settles       ──> settle_task(key, done|failed)
-    cancel(task)       ──> cancel_task(key) if still pending, else JobQueue.cancel
+Every job the platform runs outside a test run — a session import, a
+project upload, a session summary, an outgoing mail, a cross-project
+wake-up, a task.defer — goes through this service: it holds the
+shared JobQueue (worker pool) and the PersistedScheduler (time-based
+hand-off into that queue) as private members, and nothing else in the
+codebase constructs or touches either. Consumers get four verbs —
+submit now, schedule for later, cancel, wait — plus stream_progress
+for the "run a job, watch it inline" endpoints, plus list_tasks for
+Settings > Manage services' own Scheduler tab. Built once in main.py's
+own wiring and handed to whoever needs it, same as every other service.
 
-Every decision reads the table at the moment it is taken, so whatever
-happened to a row in between — a project deleted (its rows cascade
-away), a user erased, a manual UPDATE, another process claiming it —
-is simply what the scheduler sees next. A task is hydrated only when
-it is about to run, never at boot, so no live object waits for days.
+A job that must run *later* is a scheduler.Task, and schedule()
+hibernates it in the Task table rather than holding it in memory (see
+persisted_scheduler.py): a restart, a deploy, a crash change nothing
+about when it runs.
 
-The scheduler is ignorant of what a task *does*: it only knows a
-TYPE -> hydrator mapping, registered here (register_task_type) rather
-than handed in from outside — this is the one object that owns the
-Task table end to end, both the write side (submit/reschedule/cancel,
-below) and the read side (list_tasks, Settings > Manage services'
-own Scheduler tab). What "the environment the task carries" means, and
-how to rebuild it faithfully, is the hydrator's problem (see
-tracking/actuators/action_task.py for the actuator.defer one).
-
-Delivery semantics: the claim is an atomic UPDATE guarded on
-status='pending', so two schedulers over the same database (two
-threads, two backend instances) never claim the same row. A row still
-`dispatched` after `lease_seconds` with no settlement belongs to a
-process that died mid-run: it goes back to pending and runs again
-(at-least-once), logged as such — checked at start and on every poll,
-never by blindly requeueing whatever is dispatched at boot, which
-would re-run a task another live instance is executing right now. A
-row whose type has no hydrator, or whose hydrator refuses it, is
-marked failed with the reason, never silently dropped."""
+Test runs are the deliberate exception: TestService owns its own
+ThrottledJobQueue (see testing/test_service.py), a separate pool with
+its own rate limits, so a batch of test replays can never starve an
+interactive job here."""
 from __future__ import annotations
 
-import threading
-from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
-from typing import Any, TYPE_CHECKING
+import json
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from fastapi.responses import StreamingResponse
 
 from jobs.job import CancelableJob, DependentJob
-from jobs.job_queue import AbstractJobQueue
-from jobs.scheduler import Scheduler
-from jobs.task import Task
+from jobs.job_queue import JobQueue
 from logging_factory import LoggerFactory
+
+from .persisted_scheduler import Hydrator, PersistedScheduler
+from .task import Task
 
 if TYPE_CHECKING:
     from db import Db
+    from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 
 logger = LoggerFactory.get_logger(__name__)
 
-Hydrator = Callable[[str, str, dict[str, Any]], Task]
 
-
-class SchedulerService(Scheduler):
+class SchedulerService:
+    """Two-phase, like every service that owns a thread here: constructed
+    early (everything else is handed it), started last (main.py's own
+    wiring calls start() once every task type has registered its
+    hydrator and everything a running task may reach — the websocket
+    adapter above all — exists). Until start() the scheduler's queue,
+    the Task table, only ever *gains* rows: nothing is claimed, so a
+    task can never run against a half-built process."""
 
     def __init__(
-        self, queue: AbstractJobQueue, db: "Db", *,
-        poll_interval_seconds: float = 60.0, lease_seconds: float = 600.0,
+        self, max_concurrent: int, broadcaster: "QueueProgressBroadcaster", db: "Db", *,
+        task_lease_seconds: float = 600.0,
     ) -> None:
-        self._queue = queue
-        self._db = db
-        self._hydrators: dict[str, Hydrator] = {}
-        self._poll_interval = poll_interval_seconds
-        # How long a claimed row may stay unsettled before it is presumed
-        # orphaned. Longer than any task honestly takes to run.
-        self._lease = timedelta(seconds=lease_seconds)
-        self._wakeup = threading.Condition(threading.Lock())
-        self._thread: threading.Thread | None = None
-        self._stopping = False
+        self._broadcaster = broadcaster
+        self._queue = JobQueue(max_concurrent=max_concurrent, broadcaster=broadcaster)
+        self._scheduler = PersistedScheduler(self._queue, db, lease_seconds=task_lease_seconds)
+        self._started = False
 
     def register_task_type(self, task_type: str, hydrator: Hydrator) -> None:
-        """Teaches this scheduler how to rebuild a hibernated Task row of
-        `task_type` (a jobs.Task subclass's TYPE) once it's due. A row
-        claimed with no hydrator for it is marked failed (see _dispatch)."""
-        if task_type in self._hydrators:
-            raise ValueError(f"Task type '{task_type}' is already registered.")
-        self._hydrators[task_type] = hydrator
+        """Teaches the scheduler how to rebuild a hibernated Task row of
+        `task_type` (a scheduler.Task subclass's TYPE). Only before start():
+        a row claimed with no hydrator for it is marked failed, and
+        that must be impossible by construction, not by luck."""
+        if self._started:
+            raise RuntimeError(f"register_task_type('{task_type}') after start() — register every task type first.")
+        self._scheduler.register_task_type(task_type, hydrator)
 
     def start(self) -> None:
-        """Begins claiming due rows. Before this, submit() only ever
-        adds rows — a process still wiring itself up claims nothing."""
-        if self._thread is not None:
+        """Starts claiming due tasks. Once, at the end of wiring."""
+        if self._started:
             return
-        self._recover_stale_claims()
-        self._thread = threading.Thread(target=self._run, name="scheduler-service", daemon=True)
-        self._thread.start()
+        self._started = True
+        self._scheduler.start()
 
     def stop(self) -> None:
-        """Stops claiming (the loop exits at its next wake-up). Rows are
-        untouched — another scheduler, or this process restarted, picks
-        them up. Tests need this: the process-global database proxy is
-        rebound per test, and a still-polling thread would claim the
-        next test's rows."""
-        with self._wakeup:
-            self._stopping = True
-            self._wakeup.notify_all()
-        if self._thread is not None:
-            self._thread.join(timeout=5.0)
+        """Stops claiming scheduled tasks (rows are untouched). For a
+        clean shutdown, and for tests that start a service per test."""
+        self._scheduler.stop()
 
-    # --- Scheduler -------------------------------------------------------
+    def submit(self, job: DependentJob, parent: DependentJob | None = None) -> None:
+        """Runs `job` as soon as a worker is free (its own dependencies
+        first — see JobQueue.submit). `parent`: the job waiting on this one."""
+        self._queue.submit(job, parent)
 
-    def submit(self, job: DependentJob, *, timestamp: datetime | None = None) -> None:
-        self._validate(job)
-        when = self._as_utc(timestamp) or datetime.now(timezone.utc)
-        self._db.create_task(
-            job.key, job.TYPE, job.username, job.project_id, when, job.dehydrate(), job.ui_label, job.ui_description,
-        )
-        with self._wakeup:
-            self._wakeup.notify()
+    def schedule(self, task: Task, when: datetime) -> None:
+        """Runs `task` no earlier than `when` (naive is read as UTC),
+        restart or not: it is hibernated in the Task table right here
+        and only rebuilt when due. A `when` already in the past runs as
+        soon as the scheduler gets to it."""
+        self._scheduler.submit(task, timestamp=when)
+
+    def list_tasks(self, *, status: str | None = None, order: str = 'asc') -> list[dict]:
+        """Settings > Manage services > Scheduler's own table — see
+        PersistedScheduler.list_tasks."""
+        return self._scheduler.list_tasks(status=status, order=order)
 
     def cancel(self, job: CancelableJob) -> None:
-        if self._db.cancel_task(job.key):
-            return
-        # No longer pending: already handed to the queue (or settled, in
-        # which case this is a harmless no-op there too).
-        self._queue.cancel(job)
+        """Drops `job` whether it is still waiting for its time, queued,
+        or running (a running job stops at its next step)."""
+        self._scheduler.cancel(job)
 
-    def reschedule(self, job: DependentJob, *, timestamp: datetime | None = None) -> None:
-        """submit(), but addressed by job.key: moves an already-pending
-        row of that key to the new time in place instead of adding a
-        second row — only meaningful for a job created with an explicit
-        id (see Task.make_key), since a random key never matches a prior
-        row. With nothing pending under this key, upserts instead of a
-        plain submit(): the key may belong to a settled/canceled row from
-        an earlier cycle of the same deterministic id, and create_task()'s
-        insert would fail on that row's still-there UNIQUE key."""
-        self._validate(job)
-        when = self._as_utc(timestamp) or datetime.now(timezone.utc)
-        if not self._db.reschedule_task(job.key, when):
-            self._db.upsert_task(
-                job.key, job.TYPE, job.username, job.project_id, when, job.dehydrate(),
-                job.ui_label, job.ui_description,
-            )
-        with self._wakeup:
-            self._wakeup.notify()
+    def reschedule(self, task: Task, when: datetime) -> None:
+        """schedule(), but in place: a task created with an explicit id
+        (Task.make_key) moves its own still-pending row to `when` instead
+        of piling up a second one — the "touch" a repeated action (e.g.
+        each new chat message) uses to keep pushing the same task's due
+        time out. Falls back to a plain schedule() the first time, or
+        whenever the row already ran/settled."""
+        self._scheduler.reschedule(task, timestamp=when)
 
-    def _validate(self, job: DependentJob) -> None:
-        if not isinstance(job, Task):
-            raise TypeError(
-                f"SchedulerService only schedules jobs.Task instances (got {type(job).__name__}) — "
-                "anything scheduled here must survive a restart."
-            )
-        if job.TYPE not in self._hydrators:
-            raise ValueError(f"Task {job.key} is of type '{job.TYPE}' but no hydrator is registered for it.")
+    async def wait_for(self, job: DependentJob) -> None:
+        await self._queue.wait_for(job)
 
-    def poke(self) -> None:
-        """Re-read the table now rather than at the next poll — for a
-        caller that changed rows behind the scheduler's back."""
-        with self._wakeup:
-            self._wakeup.notify()
+    def stream_progress(self, job: DependentJob) -> StreamingResponse:
+        """Submits `job` (already carrying its own key/username, see
+        Job.__init__) and streams its progress back as SSE on this same
+        response — one connection per request, closed the moment the job
+        completes or fails. Shared by every "run a job, watch it inline"
+        endpoint (session import, project upload)."""
+        connection = self._broadcaster.connect(job.username)
+        self.submit(job)
 
-    # --- reads -------------------------------------------------------------
-
-    def list_tasks(self, *, status: str | None = None, order: str = 'asc') -> list[dict[str, Any]]:
-        """Settings > Manage services > Scheduler's own table — a
-        snapshot of the Task table, one status at a time (see
-        db.tasks.TaskMixin.list_tasks)."""
-        return self._db.list_tasks(status=status, order=order)
-
-    # --- the loop --------------------------------------------------------
-
-    def _recover_stale_claims(self) -> None:
-        requeued = self._db.requeue_stale_dispatched_tasks(datetime.now(timezone.utc) - self._lease)
-        if requeued:
-            logger.warning(
-                "%d task(s) were claimed over %s ago and never settled — presumed orphaned by a dead process, "
-                "running them again: %s", len(requeued), self._lease, ", ".join(requeued),
-            )
-
-    def _run(self) -> None:
-        while not self._stopping:
+        async def stream():
             try:
-                self._recover_stale_claims()
-                row = self._db.claim_due_task(datetime.now(timezone.utc))
-            except Exception as exc:  # the database being briefly unavailable must not kill the loop
-                logger.exception("SchedulerService could not read the Task table: %s", exc)
-                row = None
-                due = None
-            else:
-                if row is not None:
-                    self._dispatch(row)
-                    continue
-                due = self._db.next_task_due_at()
-            wait = self._poll_interval
-            if due is not None:
-                wait = max(0.0, min(wait, (due - datetime.now(timezone.utc)).total_seconds()))
-            with self._wakeup:
-                if not self._stopping:
-                    self._wakeup.wait(wait)
+                while True:
+                    message = await connection.get()
+                    if message["queue_status"] == "exited":
+                        if message["job_status"] == "completed" and job.result:
+                            message = {**message, "result": json.loads(job.result)}
+                        yield f"data: {json.dumps(message)}\n\n"
+                        return
+                    yield f"data: {json.dumps(message)}\n\n"
+            finally:
+                self._broadcaster.disconnect(job.username, connection)
 
-    def _dispatch(self, row: dict[str, Any]) -> None:
-        key = row["key"]
-        hydrator = self._hydrators.get(row["type"])
-        if hydrator is None:
-            self._db.settle_task(key, "failed", f"no hydrator registered for task type '{row['type']}'")
-            logger.error("Task %s: no hydrator registered for type '%s' — marked failed.", key, row["type"])
-            return
-        try:
-            task = hydrator(key, row["username"], row["payload"])
-        except Exception as exc:
-            self._db.settle_task(key, "failed", f"hydration failed: {exc}")
-            logger.exception("Task %s could not be hydrated — marked failed: %s", key, exc)
-            return
-        task.set_settlement_listener(self._on_settled)
-        try:
-            self._queue.submit(task)
-        except Exception as exc:
-            self._db.settle_task(key, "failed", f"could not be queued: {exc}")
-            logger.exception("Task %s could not be queued — marked failed: %s", key, exc)
-
-    def _on_settled(self, task: Task, status: str, error: str | None) -> None:
-        try:
-            self._db.settle_task(task.key, status, error)
-        except Exception as exc:
-            logger.exception("Task %s settled (%s) but its row could not be updated: %s", task.key, status, exc)
+        return StreamingResponse(stream(), media_type="text/event-stream")

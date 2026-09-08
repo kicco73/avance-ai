@@ -3,15 +3,15 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import datetime
 
-from .job import CancelableJob, DependentJob
+from jobs.job import CancelableJob, DependentJob
 
 
 class Scheduler(ABC):
     """Holds a job until its timestamp, then hands it to a JobQueue. Two
     implementations: InMemScheduler (a sorted list and a thread — gone
-    with the process) and scheduler.scheduler_service.SchedulerService
-    (the Task table *is* the queue; nothing lives in memory). Both are
-    private to the service that owns them, never handed to consumers."""
+    with the process) and PersistedScheduler (the Task table *is* the
+    queue; nothing lives in memory). Both are private to the service
+    that owns them, never handed to consumers."""
 
     @abstractmethod
     def submit(self, job: DependentJob, *, timestamp: datetime | None = None) -> None:

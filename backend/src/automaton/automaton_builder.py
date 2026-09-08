@@ -404,7 +404,6 @@ class AutomatonBuilder(object):
             env_keys=list(env_keys.values()),
             sources=list(sources.values()),
             general_attachments=general_attachments,
-            attachments=all_archives,
             autotracking_on_ai_message=metadata.autotracking_on_ai_message,
             project_id=metadata.project_id,
             project_family=metadata.family,
