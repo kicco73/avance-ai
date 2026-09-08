@@ -119,7 +119,8 @@ platform should not depend on its own source being available at run time.
 The caching relies on an `Automaton` being immutable after construction.
 The platform already depended on that — `AutomatonLoader` caches one
 instance per `(project_id, revision)` and shares it across requests — but
-nothing enforces it. Making `State` and `Action` frozen would.
+nothing enforced it. `State` and `Action` are frozen now, which does (as
+far as rebinding a field goes: see the open point on their interiors).
 
 ## The compiled package
 
@@ -251,8 +252,22 @@ Done:
 
 Not done yet:
 
-- `task.defer(lambda: …, when)`, which hibernates a *fragment* of a task
-  script and needs a generated function per defer site.
+- `task.defer(lambda: …, when)`. The feature itself works: `_TaskEval`
+  turns the zero-argument lambda into a `DeferredExpression`,
+  `ActionTask.later` hibernates the lambda's own source plus a frozen
+  scope, and `render_task_script` re-runs it when it comes due. What is
+  missing is the compiled half, and it is two things, not one. The
+  compiler emits a function per *statement*, so the whole
+  `task.defer(lambda: …, when)` is in the table but the lambda's body —
+  a sub-expression — is not, and it is the body that comes back later.
+  And inside a generated function that lambda is a real Python lambda,
+  not a `DeferredExpression`, so nothing hands `ActionTask.later` a
+  source to hibernate. Both point the same way: a generated function per
+  defer site, keyed by a stable identifier.
+  *Queued, not yet examined:* a Task row carries the script as text,
+  which a compiled deploy would have to key on instead — so a row written
+  by one kind of deploy and read by the other may not resolve. Nobody has
+  looked at what that means for an upgrade.
 
 Open points:
 
@@ -261,8 +276,13 @@ Open points:
   keeping it is a regression accepted to keep moving, because
   `get_action_payload`, `move` and `manual_actions_for` all read its
   fields. To revisit.
-- **`State`/`Action` are not frozen**, so the immutability the caching now
-  relies on is convention rather than structure.
+- **`State`/`Action` are frozen, their interiors are not.** `frozen=True`
+  landed with no other change — nothing assigned to one, and the single
+  place that alters an action already used `dataclasses.replace`. What it
+  does not cover is `Action.env` (a dict) and `State.actions` (a list):
+  the field cannot be rebound, what it points at can still be edited.
+  Turning those into tuples and a read-only mapping is the second step,
+  and it does touch the builder and the compiler.
 - **A package has no revision, and the platform asks for one first.**
   `CompiledAutomatonLoader` replaces `load`/`load_at_revision`, but the
   *revision resolution* sits upstream of the loader and is not part of its
@@ -420,28 +440,27 @@ estimate still counts the attachment bytes a real turn would send.
 Things this work surfaced that are *not* about the compiled automaton and
 were left alone, recorded here so they are not rediscovered from scratch.
 
-- **`ai-access` is documented but not implemented.** `PROJECT_SPECS.md`
-  §5.3 describes a per-env-key `ai-access` field, and in one place says
-  that omitting it is a build error. `AutomatonBuilder._build_env_key`
-  reads only `value`, `ui-description` and `ai-definition`; the key is
-  inert. What a state exposes to the model is decided by its own
-  `input`/`output`. Either the docs or the builder is wrong — the *Vueling
-  Refund* sample was written against the docs, which is why it declared
-  fields nothing read.
-- **`avance:env` does not exist.** `State.ai_may_write_sources`' own
-  comment says "today, just `avance:env`, see tracking.sources.avance_env",
-  and `PROJECT_SPECS.md` describes the driver. There is no such module:
-  `tracking/sources/` has `avance_archive` and nothing else. A project
-  declaring `url: avance:env` resolves it as an *archive* named "env",
-  archives support no `update`, and the build fails with
-  "ai-may-write-sources 'env' references undefined name(s):
-  source.env.update". This is what kept *Vueling Refund* unbuildable.
+- **A whole write path with no driver under it.** `AvanceArchiveSource`
+  is the only registered driver and does not declare `update`, so nothing
+  reachable can write: a project declaring `ai-may-write-sources` fails
+  the build ("not supported by this source"), and with it `ToolSet`'s
+  write branch, `METHOD_SCHEMAS["update"]`, the `origin: "tool"` env rows
+  and `Db.link_tool_env_writes_to_message` have nothing behind them.
+  Whether that chain gets a driver or gets removed is undecided; either
+  way it is one decision, so no part of it should be tidied on its own.
+  (Comments across the codebase used to name a driver module as the one
+  that writes "today". No such module ever existed; they are gone.)
 - **`test_controller_settings_services.py::test_get_services_returns_the_configured_snapshot_verbatim`
   fails on master**, unrelated to any of this: the services snapshot does
   not include the `build-service` section the test now expects.
-- **`test_all_signals_shared_observations.py::test_all_signals_aggregation_builds_each_runs_observations_only_once`
-  is flaky** — observed failing once and passing five consecutive runs
-  afterwards, including twice in the same subset that had failed.
+- **Concurrency needs a review of its own.** Three tests are green alone
+  and intermittently red in the full suite:
+  `test_all_signals_shared_observations.py::test_all_signals_aggregation_builds_each_runs_observations_only_once`
+  and `::test_all_signals_aggregation_coalesces_concurrent_observation_building`,
+  and `test_controller_tests.py::test_whole_project_run_scopes_to_labeled_sessions_only`.
+  All three are about work shared between concurrent callers, which is one
+  mechanism and probably one defect, not three flaky tests. Not chased
+  test by test: flagged as a review to run on its own.
 - **A signal's own `attachments:` never reach the model.** `PROJECT_SPECS.md`
   §3 says they are "sent only with this signal's own computation call",
   and §3.1 describes that call as a separate request with a transcript as

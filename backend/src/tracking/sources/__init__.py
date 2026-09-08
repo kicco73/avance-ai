@@ -300,7 +300,7 @@ class SourceNamespace:
         # EvaluationScopeBuilder.build) — passed straight through to every
         # driver so it can decide for itself whether/how to use it
         # (AvanceArchiveSource's own per-session read cache). `env`: the
-        # session's own Env, what an avance:env source reads and writes —
+        # session's own Env, what a source driver would read and write —
         # a throwaway in-memory one when the caller has none (a namespace
         # built only to resolve archive sources).
         #

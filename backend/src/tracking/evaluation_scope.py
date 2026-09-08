@@ -95,7 +95,7 @@ class EvaluationScopeBuilder(object):
         driver just reads its canonical archive directly instead."""
         signal_values = SignalEvaluator().validate(automaton, raw_signal_values)
         # The same Env this scope's own `env` namespace snapshots below —
-        # what an avance:env source reads and (for a readwrite key) writes.
+        # what a source driver would read and (for a readwrite key) write.
         source_namespace = SourceNamespace(self._db, automaton, session_id, env=self._env)
         # The attachment namespace reads the same project files, but never
         # through a session cache copy: attachment.read is a whole-file

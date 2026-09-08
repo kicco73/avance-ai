@@ -77,8 +77,8 @@ class Metadata:
 	on_metadata: MetadataCallback
 	# The reply's own `memory` field, parsed — the model's free-form notes
 	# delta (see Env.update). The automaton's env is never reported here:
-	# the model writes it only through an avance:env source's `update`
-	# tool, mid-generation (see tracking.sources.avance_env).
+	# the model writes it only through a source's `update` tool,
+	# mid-generation.
 	memory: dict[str, str]
 	signals: dict[str, float]
 	# The reply's own `output` field — one value per name in the state's own
@@ -259,7 +259,7 @@ class TrackingProcessor(object):
 
 		if self.metadata.tool_calls:
 			self.db.record_tool_calls(self.user.session_id, self.metadata.tool_calls, message_id=assistant_id)
-		# Binds any avance:env `update` tool call this turn made to the
+		# Binds any source `update` tool call this turn made to the
 		# assistant's own message, same reasoning as record_tool_calls
 		# above — a no-op when nothing wrote through that tool this turn.
 		self.db.link_tool_env_writes_to_message(self.user.session_id, assistant_id, since=self._turn_started_at)
@@ -423,7 +423,7 @@ class TrackingProcessor(object):
 		identical to before tool-calling existed. Resolved fresh per call
 		against this turn's own automaton/session/env, same SourceNamespace
 		shape a source.<name> trigger/env: reference already uses — `env`
-		given here too, so a write tool (e.g. avance:env's `update`) can
+		given here too, so a write tool (a source's `update`) can
 		actually persist through it mid-generation."""
 		if not state.ai_source_names:
 			return None

@@ -166,7 +166,7 @@ function commitBoolField(field, value) {
 // the live-refreshed source of truth ModelMenu/TriggerEditor's own
 // autocomplete uses, so no separate fetch is needed here. A source whose
 // driver implements `update` (registry key "source.<name>" lists it —
-// today only avance:env) additionally gets a separate write toggle
+// no registered driver supports one today) additionally gets a separate write toggle
 // (ai-may-write-sources): reading and writing are independent grants.
 const availableSourceNames = computed(() => Object.keys(identifierRegistry.value.source ?? {}))
 function sourceSupportsWrite(name) {

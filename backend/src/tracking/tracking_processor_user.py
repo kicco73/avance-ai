@@ -86,7 +86,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			# is scheduled as a task from here, once.
 			#
 			# Note: with signal-tracking-on-ai-message false (the case that
-			# actually reaches this branch), any avance:env `update` tool
+			# actually reaches this branch), any source `update` tool
 			# call the optimistic reply above already made is a real,
 			# persisted write the instant it happened — it's never rolled
 			# back just because that reply itself gets discarded here for a

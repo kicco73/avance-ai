@@ -173,8 +173,8 @@ class Message(BaseModel):
     class Meta:
         table_name = 'Message'
 
-# 'tool': an action_env row the model itself wrote through an avance:env
-# source's `update` (see tracking.sources.avance_env) — what
+# 'tool': an action_env row the model itself wrote through a source's
+# own `update` write tool — what
 # Db.link_tool_env_writes_to_message binds to the turn's assistant message.
 # 'output': an action_env row copied automatically from this turn's own
 # `output` field values onto the env keys a state's own `output` names

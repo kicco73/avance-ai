@@ -268,8 +268,8 @@ class TrackingMixin:
 
     def set_action_env(self, session_id: int, action_env: dict, origin: str | None = None) -> int:
         """`origin`: None for an action's own `env:` write; 'tool' for one
-        the model made through an avance:env source's `update` (see
-        tracking.sources.avance_env), so link_tool_env_writes_to_message
+        the model made through a source's own `update` write tool, so
+        link_tool_env_writes_to_message
         below can find it once the turn's assistant message exists."""
         if origin is not None and origin not in TRACKING_ORIGINS:
             raise ValueError(f"Unknown origin '{origin}' — expected one of {TRACKING_ORIGINS}.")

@@ -22,7 +22,14 @@ class MemoryArchive:
     filename: str
     source: SourceDict
 
-@dataclass
+# Frozen: an automaton is built once and never edited in place — a change
+# to a project builds a new one — and both the derived answers cached on
+# CoreAutomaton and the compiled automaton's own literal tables rely on
+# that. Structure rather than convention, now that nothing assigns to one.
+# Note the interiors are still mutable: `env` here and `actions` on State
+# are a dict and a list, so frozen stops rebinding the field, not editing
+# what it points at.
+@dataclass(frozen=True)
 class Action:
     name: str
     ui_label: str
@@ -57,7 +64,7 @@ class Action:
     # it happened (see AutomatonBuildError).
     line: int | None = None
 
-@dataclass
+@dataclass(frozen=True)
 class State:
     key: str
     ui_label: str
@@ -111,7 +118,7 @@ class State:
     ai_must_read_sources: tuple[str, ...] = ()
     # Names of this project's own `sources:` whose `update` the model may
     # call here — only a source whose driver actually supports update
-    # (today, just `avance:env`, see tracking.sources.avance_env) may be
+    # (no registered driver declares `update` today) may be
     # listed, checked at build time. A write is never forced: there is no
     # must-write counterpart.
     ai_may_write_sources: tuple[str, ...] = ()

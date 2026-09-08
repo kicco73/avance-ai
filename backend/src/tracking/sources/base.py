@@ -106,7 +106,7 @@ class SourceDriver:
         satisfying the filter is the one case where even the header is
         dropped — "" means "not found," full stop, so
         `source.x.select_rows_containing(...) != ''` is a real existence
-        check (see tracking.sources.avance_archive/avance_env's own
+        check (see tracking.sources.avance_archive's own
         select_rows_containing())."""
         raise self._unsupported("select_rows_containing")
 

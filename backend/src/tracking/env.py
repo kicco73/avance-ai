@@ -5,7 +5,7 @@ structured reply) and read only by the model (the prompt's own "Current
 memory" block); no script or trigger ever sees it — and `action_set()` —
 the automaton's declared env keys, deterministic, written by an action's
 own YAML `env:` field (or, for a readwrite key, by the model through an
-`avance:env` source's `update`, see tracking.sources.avance_env) and read
+a source's own `update` write tool) and read
 by triggers, scripts and the prompt's own env block alike. `Env` is a
 plain in-memory store; `PersistedEnv` reads/writes through `db`."""
 from __future__ import annotations
@@ -42,14 +42,14 @@ class Env(object):
 
     def action_set(self, until: datetime | None = None) -> dict[str, Any]:
         """Just the persisted values an action's own YAML `env:` field (or
-        the model's own `update` on an avance:env source) set — kept
+        the model's own `update` on a source) set — kept
         separate from memory()'s model-reported notes so the `env`
         evaluation-scope namespace can deliberately exclude those."""
         return dict(self._action_set)
 
     def update_action_set(self, values: dict[str, Any], origin: str | None = None) -> int | None:
         """action_set()'s own update — fired by an action's `env:`, or by
-        the model's `update` on an avance:env source (origin "tool", so
+        the model's `update` on a source (origin "tool", so
         TrackingProcessor can later bind that write to the turn's own
         assistant message — see Db.link_tool_env_writes_to_message);
         never the reply's own memory field (that's update()). Merges onto
