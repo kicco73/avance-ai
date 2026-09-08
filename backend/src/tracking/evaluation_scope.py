@@ -102,7 +102,21 @@ class EvaluationScopeBuilder(object):
         }
         scope: dict[str, Any] = {
             "signal": signal_values,
-            "env": {**self._env.action_set(), **output_for_env},
+            # XXX Compiled automaton requirement - do not touch.
+            # XXX Seeded with every declared env key, so a name an
+            # XXX expression is allowed to reference is never absent. A key
+            # XXX declared without a default was never written at session
+            # XXX open (AutomatonBuilder._build_init_action folds in only
+            # XXX keys with a truthy default), so reading it raised
+            # XXX KeyError through simpleeval's attribute-to-item fallback
+            # XXX and silently failed the whole expression. That accident
+            # XXX has no equivalent in generated Python, and a compiled
+            # XXX automaton must not have to imitate it.
+            "env": {
+                **{env_key.name: env_key.value for env_key in automaton.env_keys},
+                **self._env.action_set(),
+                **output_for_env,
+            },
             "session": self._session,
             "user": self._user.as_dict(),
             "source": source_namespace,

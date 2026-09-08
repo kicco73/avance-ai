@@ -71,7 +71,9 @@ def test_go_to_locate_booking_env_produces_scalars_not_tables(db, automaton):
     action = next(a for a in automaton.states["intake"].actions if a.name == "go_to_locate_booking")
     scope = _scope(db, automaton, "intake", CUSTOMER_EMAIL)
 
-    result = automaton.eval_action_env(action, scope)
+    # The action writes these through on-exit, not through the
+    # declarative `env:` map — eval_action_env would see nothing.
+    result, _chat_snippets = automaton.eval_action_on_exit(action, scope)
 
     # value(...) reads one cell, straight off the sample's own tickets.csv
     # (the first row for this email) — no header, no comma-joined table.
@@ -87,7 +89,7 @@ def test_go_to_locate_booking_env_produces_scalars_not_tables(db, automaton):
 def test_the_exit_trigger_is_a_real_existence_check_against_env_and_the_source(db, automaton):
     action = next(a for a in automaton.states["intake"].actions if a.name == "go_to_locate_booking")
     intake_scope = _scope(db, automaton, "intake", CUSTOMER_EMAIL)
-    defaults = automaton.eval_action_env(action, intake_scope)
+    defaults, _chat_snippets = automaton.eval_action_on_exit(action, intake_scope)
 
     persisted_env = Env(action_set=defaults)
     verify_action = next(

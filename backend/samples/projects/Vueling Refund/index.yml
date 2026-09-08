@@ -32,8 +32,9 @@ states:
     ui-description: "Request the PNR or flight details."
     contextual-prompt: |-
       The environment holds what our records say about this customer: `flight` and `flight_date` were filled from the tickets sold to their email (they may hold several rows — pick the one the customer actually means), `pnr` is empty until the customer gives it. Present the booking details and ask the customer to confirm they're right. If the customer corrects the flight or the date, update `flight`/`flight_date` with the values they give you. Once the booking is confirmed, ask for the PNR code (6-character record locator) for security reasons and, when they give it, write it into `pnr` — the verification against our records happens on our side, never assume it passed.
-    ai-must-read-sources: [env, flight_records]
-    ai-may-write-sources: [env]
+    ai-must-read-sources: [flight_records]
+    input: [flight, flight_date, pnr, customer_email]
+    output: [flight, flight_date, pnr]
     actions:
       - name: go_to_verify_entitlement
         ui-label: "Booking found"
@@ -73,7 +74,8 @@ states:
     ui-description: "Check the cause and fare conditions."
     contextual-prompt: |
       Determine whether the cancellation was caused by the carrier or whether it is a voluntary withdrawal, checking for any vouchers or chargebacks. The environment gives you the confirmed `flight`, `flight_date` and `pnr`; look the flight up in the flight records for its actual departure and arrival times to judge the delay.
-    ai-may-read-sources: [env, flight_records]
+    ai-may-read-sources: [flight_records]
+    input: [flight, flight_date, pnr]
     actions:
       - name: go_to_compute_amount
         ui-label: "Eligible"
@@ -212,7 +214,6 @@ env:
     value: ""
   flight:
     ui-description: "The flight code of the booking under discussion — pre-filled from the tickets sold, correctable by the model."
-    ai-access: readwrite
     ai-definition: |
       The flight code (e.g. VY3003) of the booking the customer is asking about. Pre-filled from
       the tickets sold to their email — a column of one or more rows; if the customer names a
@@ -220,7 +221,6 @@ env:
     value: ""
   flight_date:
     ui-description: "The departure date/time of that flight — pre-filled from the tickets sold, correctable by the model."
-    ai-access: readwrite
     ai-definition: |
       The departure date and time of that flight, as YYYY-MM-DD HH:MM. Pre-filled from the tickets
       sold to the customer's email; if the customer gives a different travel date, set it to the
@@ -228,28 +228,18 @@ env:
     value: ""
   pnr:
     ui-description: "The 6-character record locator, empty until the customer provides it."
-    ai-access: readwrite
     ai-definition: |
       The booking's 6-character record locator (PNR). Empty until the customer gives it to you —
       write it here as soon as they do; whether it matches our records is verified on our side.
     value: ""
   customer_email:
     ui-description: "The logged-in customer's email (read-only for the model)."
-    ai-access: readonly
     ai-definition: The email address the customer is logged in with — the one their tickets are registered to.
     value: 'user.email'
   _flight_record:
     ui-description: "The flight-records row matching the confirmed flight and date (scripts only)."
     value: ""
 sources:
-  env:
-    ui-label: "Env"
-    ui-description: "The automaton's own variables, exposed to the model as a one-row table."
-    ai-definition: |
-      The variables of this refund case: the flight code and date under discussion, the PNR the
-      customer gave you, and the customer's own email. Update `flight`/`flight_date` only with
-      values the customer explicitly gives you, and `pnr` as soon as they provide it.
-    url: avance:env
   tickets_sold:
     ui-label: "Tickets sold"
     ui-description: "Customer ticket records, looked up by email."

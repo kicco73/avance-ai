@@ -51,12 +51,18 @@ class MetricsProvider(Protocol):
         ...
 
 
-def values_dict(pairs: list[tuple[MetricCalculator, MetricResult]]) -> dict[str, float]:
-    """Flat {name: value}, omitting any metric whose value is None — a
-    trigger referencing an omitted name evaluates False, like any
-    signal never estimated. Public: also used by
-    testing.metrics_provider.TestMetricsProvider."""
-    return {metric.name: result.value for metric, result in pairs if result.value is not None}
+def values_dict(pairs: list[tuple[MetricCalculator, MetricResult]]) -> dict[str, float | None]:
+    """Flat {name: value}, one entry per metric — a metric with no value
+    is None, not absent. A trigger reading it still evaluates False, the
+    same as before and for the same reason as a signal never estimated
+    (`None > 3` raises, and a failed trigger is False), but now by
+    comparing a value rather than by failing to resolve a name. Public:
+    also used by testing.metrics_provider.TestMetricsProvider."""
+    # XXX Compiled automaton requirement - do not touch.
+    # XXX Absence is what generated Python cannot reproduce without
+    # XXX imitating simpleeval's own name resolution; a name that is
+    # XXX always there, sometimes None, behaves identically in both.
+    return {metric.name: result.value for metric, result in pairs}
 
 
 class MetricService(object):
