@@ -13,6 +13,7 @@ from chat.chat_service import ChatService
 from chat.sessions.session_manager import ChatSessionManager
 from conftest import FakeAiService, make_test_namespace_factory, make_test_job_service
 from metrics.metric_service import MetricService
+from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 from tracking.tracking_service import TrackingService
 
@@ -44,7 +45,7 @@ def project_service(db) -> ProjectService:
         {"index.yml": "text/yaml", "legal/terms.md": "text/markdown"},
     )
     db.publish_project(PROJECT_ID)  # published_revision = 0
-    return ProjectService(db)
+    return ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
 
 
 def _chat_service_for(db, project_service: ProjectService) -> ChatService:

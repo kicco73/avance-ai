@@ -21,6 +21,7 @@ from chat.sessions.session_type_strategy import get_session_type_strategy
 from conftest import FakeAiService, make_test_namespace_factory, make_test_job_service
 from db.models import Tracking
 from metrics.metric_service import MetricService
+from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 from session import Session
 from tracking.env import PersistedEnv
@@ -88,7 +89,7 @@ def two_projects(db) -> tuple[ProjectService, ChatService]:
     _publish(db, ACTIVE_PROJECT, _index_yml(ACTIVE_PROJECT, "active_key", "active-default"))
     _publish(db, OTHER_PROJECT, _index_yml(OTHER_PROJECT, "other_key", "other-default"))
     db.set_active_project_id(ACTIVE_PROJECT, USERNAME)
-    project_service = ProjectService(db)
+    project_service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
     return project_service, _chat_service(db, project_service)
 
 

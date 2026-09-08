@@ -11,6 +11,7 @@ from chat.sessions.session_type_strategy import get_session_type_strategy
 from conftest import FakeAiService, make_test_namespace_factory, make_test_job_service
 from db.models import Tracking
 from metrics.metric_service import MetricService
+from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 from tracking.tracking_service import TrackingService
 
@@ -66,7 +67,7 @@ async def test_a_new_live_sessions_bootstrap_drops_a_key_its_own_revision_no_lon
     _publish(db, ["old_key", "keep_key"])
     _seed_older_session_with_action_env(db, {"old_key": 1, "keep_key": 2})
     _publish(db, ["keep_key"])
-    project_service = ProjectService(db)
+    project_service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
     chat_service = _chat_service(db, project_service)
     new_session_id = chat_service._session_manager.create_session(
         get_session_type_strategy("live"), project_service, USERNAME, PROJECT_ID
@@ -81,7 +82,7 @@ async def test_the_cleanup_only_writes_once_not_on_every_later_open(db):
     _publish(db, ["old_key", "keep_key"])
     _seed_older_session_with_action_env(db, {"old_key": 1, "keep_key": 2})
     _publish(db, ["keep_key"])
-    project_service = ProjectService(db)
+    project_service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
     chat_service = _chat_service(db, project_service)
     new_session_id = chat_service._session_manager.create_session(
         get_session_type_strategy("live"), project_service, USERNAME, PROJECT_ID
@@ -97,7 +98,7 @@ async def test_the_cleanup_only_writes_once_not_on_every_later_open(db):
 async def test_no_cleanup_write_when_nothing_is_orphaned(db):
     _publish(db, ["keep_key"])
     _seed_older_session_with_action_env(db, {"keep_key": 2})
-    project_service = ProjectService(db)
+    project_service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
     chat_service = _chat_service(db, project_service)
     new_session_id = chat_service._session_manager.create_session(
         get_session_type_strategy("live"), project_service, USERNAME, PROJECT_ID

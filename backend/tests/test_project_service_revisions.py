@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import pytest
 
+from chat.sessions.session_manager import ChatSessionManager
+from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 from session import Session
 
@@ -59,7 +61,7 @@ def _session(db, revision: int, start_state: str, type: str = "live") -> int:
 def project_service(db) -> ProjectService:
     db.ensure_project(PROJECT_ID)
     db.set_active_project_id(PROJECT_ID, Session().user)
-    return ProjectService(db)
+    return ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
 
 
 def test_load_at_revision_caches_by_project_and_revision(db, project_service):

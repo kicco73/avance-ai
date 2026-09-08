@@ -34,6 +34,8 @@ from db import Db
 from db.models import Task as TaskRow, User
 from job import JobService
 from metrics.metric_service import MetricService
+from chat.sessions.session_manager import ChatSessionManager
+from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 from tracking.actuators.action_task import TASK_NAMESPACE_LIVE, ActionTask, ScopeHydrator
 from tracking.env import Env, PersistedEnv
@@ -151,7 +153,7 @@ def _process(db: Db, websocket: _FakeWebSocket | None = None, *, start: bool = F
     still wiring itself up looks like."""
     job_service = make_test_job_service(db)
     _live_services.append(job_service)
-    project_service = ProjectService(db)
+    project_service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
     factory = make_test_namespace_factory(db, job_service, project_service, ai_service)
     if websocket is not None:
         ws_notifications = WsNotifications(auth_service=None)

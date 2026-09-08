@@ -30,6 +30,7 @@ from jobs import NullBroadcaster
 from jobs.job_queue import JobQueue
 from metrics.metric_service import MetricService
 from notification.notification_service import NotificationService
+from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 from session import Session
 from testing.test_service import TestService
@@ -237,7 +238,7 @@ def make_test_namespace_factory(
     actually dialed. Shared by every fixture/helper across the test suite
     that needs to construct a TrackingService/ChatService/WakeupService."""
     job_service = job_service if job_service is not None else make_test_job_service(db)
-    project_service = project_service if project_service is not None else ProjectService(db)
+    project_service = project_service if project_service is not None else ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
     notification_service = NotificationService(
         NotificationServiceConfig(
             url="smtp://localhost", username="test@example.com", password="", from_name=None, timeout_seconds=5,
@@ -252,7 +253,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     """The real controller/routing wiring, but against an isolated
     file-backed Db and a FakeAiService, so tests never touch the
     developer's real avance.db or make costly AI calls."""
-    project_service = ProjectService(app_db, fake_ai_service)
+    project_service = ProjectService(app_db, AutomatonLoader(app_db), ChatSessionManager(app_db), fake_ai_service)
     session_manager = ChatSessionManager(app_db)
     metric_service = MetricService(app_db, project_service)
     test_event_broadcaster = LastStatusBroadcaster(QueueProgressBroadcaster(fake_ai_service))

@@ -10,6 +10,7 @@ from automaton.scope import EvaluationScope
 
 from logging_factory import LoggerFactory
 
+from . import analysis
 from .trigger_expression_analyzer import TriggerExpressionAnalyzer
 
 logger = LoggerFactory.get_logger(__name__)
@@ -421,6 +422,16 @@ class Automaton(object):
         # set_storage_location below. project_id above already carries
         # this project's own identity, so there's nothing left to pass in.
         self.revision: int | None = None
+        # Answers derived from this automaton's own expression text (see
+        # analysis.py), each computed on first use and kept: they are
+        # fixed the moment the project is written, and `states`/`actions`
+        # are never mutated after construction — a change to a project
+        # builds a new Automaton (AutomatonBuilder.build), it never edits
+        # one in place. Kept per part rather than as one bundle so each
+        # keeps raising, or not raising, exactly where it used to.
+        self._declared_env_key_names: set[str] | None = None
+        self._triggerable_signal_names: dict[str, set[str]] = {}
+        self._trigger_bare_names: dict[str, set[str]] = {}
 
     def set_storage_location(self, revision: int) -> None:
         """tracking.sources.avance_archive's own AvanceArchiveSource reads
@@ -537,63 +548,33 @@ class Automaton(object):
             f"Action '{action_name}' not available in state '{state.key}'"
         )
 
-    @staticmethod
-    def _on_exit_assigned_keys(on_exit: str | None) -> set[str]:
-        """The env key names an `on-exit` script writes — statically, by
-        parsing its `env.<key> = expr` lines (TriggerExpressionAnalyzer.
-        task_statements/on_exit_assignment), never by evaluating
-        them. A malformed script (build-time validation already rules
-        this out for anything reaching here) or a non-assignment line
-        contributes nothing rather than raising."""
-        if not on_exit:
-            return set()
-        try:
-            statements = TriggerExpressionAnalyzer.task_statements(on_exit)
-        except SyntaxError:
-            return set()
-        keys: set[str] = set()
-        for _line_number, statement in statements:
-            assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
-            if assignment is not None:
-                keys.add(assignment[0])
-        return keys
-
     def declared_env_key_names(self) -> set[str]:
-        names = {env_key.name for env_key in self.env_keys}
-        if self.init_action.env:
-            names |= set(self.init_action.env)
-        names |= self._on_exit_assigned_keys(self.init_action.on_exit)
-        for state in self.states.values():
-            for action in state.actions:
-                if action.env:
-                    names |= set(action.env)
-                names |= self._on_exit_assigned_keys(action.on_exit)
-        return names
+        if self._declared_env_key_names is None:
+            self._declared_env_key_names = analysis.declared_env_key_names(
+                self.env_keys, self.init_action, self.states,
+            )
+        # A copy: callers get a set of their own to mutate, exactly as
+        # when this was recomputed from scratch on every call.
+        return set(self._declared_env_key_names)
 
     def triggers_reference(self, state_key: str, names: set[str]) -> bool:
         """Whether any triggerable action leaving `state_key` references
         one of `names` as a *bare* identifier — in practice a metric
         name. Lets a caller skip resolving an expensive value set when nothing needs it."""
-        state = self.states[state_key]
-        return any(
-            action.trigger and TriggerExpressionAnalyzer.bare_names(action.trigger) & names for action in state.actions
-        )
+        cached = self._trigger_bare_names.get(state_key)
+        if cached is None:
+            cached = analysis.trigger_bare_names(self.states[state_key])
+            self._trigger_bare_names[state_key] = cached
+        return bool(cached & names)
 
     def triggerable_signal_names(self, state_key: str) -> set[str]:
-        state = self.states[state_key]
-        referenced: set[str] = set()
-        for action in state.actions:
-            if action.trigger:
-                referenced |= TriggerExpressionAnalyzer.signal_names(action.trigger)
-            if action.env:
-                for expression in action.env.values():
-                    referenced |= TriggerExpressionAnalyzer.signal_names(expression)
-            if action.on_exit:
-                for _line_number, statement in TriggerExpressionAnalyzer.task_statements(action.on_exit):
-                    assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
-                    if assignment is not None:
-                        referenced |= TriggerExpressionAnalyzer.signal_names(assignment[1])
-        return referenced & {s.name for s in self.signals}
+        cached = self._triggerable_signal_names.get(state_key)
+        if cached is None:
+            cached = analysis.triggerable_signal_names(
+                self.states[state_key], {signal.name for signal in self.signals},
+            )
+            self._triggerable_signal_names[state_key] = cached
+        return set(cached)
 
     def all_triggerable_signal_names(self) -> set[str]:
         """triggerable_signal_names, unioned across every state — the

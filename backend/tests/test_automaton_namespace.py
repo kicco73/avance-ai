@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import pytest
 
+from chat.sessions.session_manager import ChatSessionManager
+from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 from tracking.automaton_namespace import AutomatonNamespace
 
@@ -56,7 +58,7 @@ states:
 
 
 def _namespace(db, family=FAMILY):
-    return AutomatonNamespace(db, ProjectService(db)).scoped_to(family)
+    return AutomatonNamespace(db, ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))).scoped_to(family)
 
 
 def _session(db, project_id="observed") -> int:

@@ -17,6 +17,8 @@ import pytest
 from automaton.automaton_builder import AutomatonBuilder
 from events import ProjectPublishedHealthChanged, publish, subscribe
 from project.health_notifications import ProjectHealthNotificationJob, ProjectHealthNotifications
+from chat.sessions.session_manager import ChatSessionManager
+from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 from service_error import ServiceError
 
@@ -71,7 +73,7 @@ def _corrupt_published_revision(db, project_service: ProjectService, project_id:
 
 @pytest.fixture
 def project_service(db) -> ProjectService:
-    return ProjectService(db)
+    return ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
 
 
 class FakeWsAdapter:

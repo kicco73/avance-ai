@@ -9,6 +9,7 @@ from chat.sessions.session_manager import ChatSessionManager
 from conftest import FakeAiService, make_test_namespace_factory, make_test_job_service
 from db.models import Tracking
 from metrics.metric_service import MetricService
+from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 from tracking.tracking_service import TrackingService
 
@@ -62,7 +63,7 @@ def _chat_service(db, project_service: ProjectService) -> ChatService:
 @pytest.fixture
 def service(db) -> ChatService:
     _publish(db)
-    return _chat_service(db, ProjectService(db))
+    return _chat_service(db, ProjectService(db, AutomatonLoader(db), ChatSessionManager(db)))
 
 
 def _env_tracking_row_count(session_id: int) -> int:
