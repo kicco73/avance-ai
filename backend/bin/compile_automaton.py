@@ -25,12 +25,13 @@ of a diff inside generated control flow. prompt.py is generated like
 everything else — recompiling overwrites it, and nothing stops anyone
 from editing it in the meantime.
 
-THIS STEP COMPILES THE DATA, NOT YET THE BEHAVIOUR. The generated
-automaton inherits CoreAutomaton's four seams unchanged, so triggers,
-`env:`, on-exit and task still run through simpleeval on the text each
-Action carries. Replacing those four with literal Python is the next
-step; the point of this one is a compiled package that actually boots
-the platform and answers identically to the interpreted automaton.
+Behaviour is compiled too: every trigger, `env:` expression, on-exit
+line and task statement is emitted as a real Python function, and the
+generated automaton overrides the three primitives CoreAutomaton isolates
+for the purpose. Nothing in the package evaluates a string. What it does
+NOT override is everything around those primitives — the loops, the
+ordering, the try/except, the warnings — which stays the platform's own
+code, so a compiled automaton cannot drift from the interpreted one.
 
 The emission is driven by dataclasses.fields(), never by a hand-written
 list of field names: a field added to State or Action tomorrow is
@@ -61,7 +62,10 @@ _BACKEND_SRC = Path(__file__).resolve().parent.parent / "src"
 if str(_BACKEND_SRC) not in sys.path:
     sys.path.insert(0, str(_BACKEND_SRC))
 
+import ast  # noqa: E402
 from automaton.automaton_builder import AutomatonBuilder  # noqa: E402
+from automaton.identifier_registry import IdentifierRegistry  # noqa: E402
+from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer  # noqa: E402
 from automaton.model import Action, EnvKey, MemoryArchive, Reaction, Signal, Source, State  # noqa: E402
 from project.archive.layout import BUNDLE_FILE_NAMES  # noqa: E402
 from project.archive.zip_importer import ZipImporter  # noqa: E402
@@ -242,11 +246,14 @@ from pathlib import Path
 
 from automaton.builder.archive_resolver import ArchiveResolver
 from automaton.core import CoreAutomaton
+from logging_factory import LoggerFactory
 from automaton.introspection import IntrospectionMixin
 from automaton.model import Action, EnvKey, Reaction, Signal, Source, State
 from automaton.payloads import PayloadsMixin
 
 from . import prompt
+
+_logger = LoggerFactory.get_logger(__name__)
 
 _DATA_DIR = Path(__file__).resolve().parent / "data"
 
@@ -276,7 +283,7 @@ class CompiledAutomaton(CoreAutomaton, PayloadsMixin, IntrospectionMixin):
     it enables. A product that serves no design view drops PayloadsMixin,
     one with no metrics or Inspector drops IntrospectionMixin — the base
     class alone is enough to run a chat."""
-
+{seam_overrides}
 
 AUTOMATON = CompiledAutomaton(
     init_action=_INIT_ACTION,
@@ -344,7 +351,9 @@ def compile_module(automaton: Any) -> tuple[str, str]:
         )
         + "}"
     )
+    parts.append(compile_seam(automaton))
     parts.append(_AUTOMATON_CLASS.format(
+        seam_overrides=_SEAM_OVERRIDES,
         autotracking=automaton.autotracking_on_ai_message,
         project_id=automaton.project_id,
         family=automaton.family,
@@ -504,6 +513,200 @@ def main() -> None:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
 
+
+
+# --- the seam, compiled ----------------------------------------------------
+# Everything below turns the expression text an Action carries into real
+# Python, so a compiled automaton never evaluates a string. It replaces
+# exactly the three primitives CoreAutomaton isolates for the purpose —
+# _evaluate_expression, _evaluate_statement, _referenced_signal_names — and
+# nothing else: every loop, every try/except, every warning around them
+# stays the platform's own code, so an interpreted and a compiled automaton
+# cannot drift apart on ordering, on what a failure means, or on what is
+# collected and what is skipped.
+
+# The only scope entries that are plain dicts (see tracking/
+# evaluation_scope.py). An expression reads them as attributes thanks to
+# simpleeval's attribute-to-item fallback, so a compiled module needs a
+# real object with those attributes for `signal.progress` to stay
+# `signal.progress`. Everything else in the scope is already an object and
+# is bound straight through.
+_ADAPTERS = {"signal": "_Signals", "env": "_Env", "user": "_User"}
+
+
+def _roots(source: str, mode: str) -> set[str]:
+    """Every free name `source` reads — the root of an attribute chain
+    (`source.tickets_sold.x` -> `source`) and any bare name, minus
+    whatever the expression binds itself."""
+    tree = ast.parse(source, mode=mode)
+    bound: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Lambda):
+            bound |= {a.arg for a in node.args.args}
+        elif isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            for generator in node.generators:
+                bound |= {t.id for t in ast.walk(generator.target) if isinstance(t, ast.Name)}
+    return {
+        node.id for node in ast.walk(tree)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+    } - bound
+
+
+def _collect_sources(automaton: Any) -> tuple[list[str], list[str]]:
+    """(expressions, statements) — every distinct piece of text this
+    automaton would otherwise hand to an evaluator, split by which
+    primitive receives it. In encounter order, so a regenerated module
+    diffs cleanly against the one before it."""
+    expressions: dict[str, None] = {}
+    statements: dict[str, None] = {}
+    actions = [automaton.init_action] + [a for state in automaton.states.values() for a in state.actions]
+    for action in actions:
+        if action.trigger:
+            expressions[action.trigger] = None
+        for expression in (action.env or {}).values():
+            expressions[expression] = None
+        # on-exit: an `env.<key> = expr` line's right-hand side goes to
+        # _evaluate_expression, a bare `chat.<method>(...)` line to
+        # _evaluate_statement (see CoreAutomaton.eval_action_on_exit).
+        for _line, statement in TriggerExpressionAnalyzer.task_statements(action.on_exit or ""):
+            assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
+            if assignment is not None:
+                expressions[assignment[1]] = None
+            else:
+                statements[statement] = None
+        # task: both halves go to _evaluate_statement, an assignment as its
+        # right-hand side alone (see CoreAutomaton.render_task_script).
+        for _line, statement in TriggerExpressionAnalyzer.task_statements(action.task or ""):
+            assignment = TriggerExpressionAnalyzer.task_assignment(statement)
+            statements[assignment[1] if assignment is not None else statement] = None
+    return list(expressions), list(statements)
+
+
+def _namespace_class(class_name: str, docstring: str, keys: list[str]) -> str:
+    """A view over one of the scope's plain dicts, with one property per
+    name this project declares.
+
+    Properties rather than values copied in a constructor, deliberately:
+    reading a key that is not there must raise where the expression reads
+    it, exactly as the interpreted path does. A value copied up front
+    would turn that into None, and quietly change what a boolean
+    short-circuit does."""
+    lines = [
+        f"class {class_name}:",
+        f'    """{docstring}"""',
+        "    __slots__ = ('_v',)",
+        "",
+        "    def __init__(self, values):",
+        "        object.__setattr__(self, '_v', values)",
+    ]
+    for key in keys:
+        lines += ["", "    @property", f"    def {key}(self):", f"        return self._v[{key!r}]"]
+    if not keys:
+        lines += ["", "    # This project declares none."]
+    return "\n".join(lines)
+
+
+def _compiled_function(name: str, source: str) -> str:
+    """`source` as a real function of the scope: one binding line per name
+    it actually reads, then the text verbatim — which is the whole point
+    of compiling it.
+
+    Everything that reaches either primitive is an expression, never a
+    statement: simpleeval only ever evaluates expressions, and the two
+    callers that look like they pass a statement (an on-exit line, a task
+    line) pass either a bare call or an assignment's right-hand side. So
+    every generated function returns its value — a task line's JsSnippet
+    reaches render_task_script exactly as before.
+
+    The text is indented into a parenthesised return rather than inlined
+    on one line, so a source spanning several lines, or carrying a
+    trailing '#' comment, stays valid."""
+    bindings = "\n".join(
+        f"    {root} = {_ADAPTERS[root]}(_scope[{root!r}])" if root in _ADAPTERS
+        else f"    {root} = _scope[{root!r}]"
+        for root in sorted(_roots(source, "eval"))
+    )
+    indented = "\n".join(f"        {line}" for line in source.splitlines())
+    return f"def {name}(_scope):\n" + (f"{bindings}\n" if bindings else "") + f"    return (\n{indented}\n    )\n"
+
+
+_SEAM_LOOKUP = '''
+def _compiled(table, text, kind):
+    """The compiled callable for `text`, or a loud failure. A miss means
+    this package was generated from a different revision of the project
+    than the one that produced the text — the seams above would otherwise
+    swallow it as an ordinary evaluation failure, so it is logged as the
+    configuration error it is before it gets there."""
+    compiled = table.get(text)
+    if compiled is None:
+        _logger.error(
+            "COMPILED AUTOMATON: no compiled %s for %r — this package is out of sync "
+            "with the project it was built from.", kind, text,
+        )
+        raise KeyError(text)
+    return compiled
+'''
+
+_SEAM_OVERRIDES = '''
+    # --- the seam ---------------------------------------------------------
+    # The three primitives CoreAutomaton isolates, and nothing else. Every
+    # loop, every try/except and every warning around them is inherited
+    # unchanged, which is what keeps this automaton's behaviour identical
+    # to the interpreted one rather than merely similar.
+
+    @classmethod
+    def _evaluate_expression(cls, expression, scope):
+        return _compiled(_EXPRESSIONS, expression, "expression")(scope)
+
+    @classmethod
+    def _evaluate_statement(cls, statement, scope):
+        return _compiled(_STATEMENTS, statement, "statement")(scope)
+
+    @classmethod
+    def _referenced_signal_names(cls, expression):
+        return _SIGNAL_REFS[expression]
+'''
+
+
+def compile_seam(automaton: Any) -> str:
+    """The whole compiled-behaviour section of __init__.py."""
+    expressions, statements = _collect_sources(automaton)
+    blocks = [
+        _namespace_class(
+            "_Signals", "This project's declared signals, as real attributes.",
+            [signal.name for signal in automaton.signals],
+        ),
+        _namespace_class(
+            "_Env", "This project's declared env variables, as real attributes.",
+            [env_key.name for env_key in automaton.env_keys],
+        ),
+        _namespace_class(
+            "_User", "The user fields an expression may read, as real attributes.",
+            sorted(IdentifierRegistry.USER),
+        ),
+    ]
+
+    functions: list[str] = []
+    expression_table: list[str] = []
+    statement_table: list[str] = []
+    signal_refs: list[str] = []
+    for index, source in enumerate(expressions):
+        function_name = f"_expr_{index}"
+        functions.append(_compiled_function(function_name, source))
+        expression_table.append(f"    {source!r}: {function_name},")
+        signal_refs.append(f"    {source!r}: frozenset({sorted(TriggerExpressionAnalyzer.signal_names(source))!r}),")
+    for index, source in enumerate(statements):
+        function_name = f"_stmt_{index}"
+        functions.append(_compiled_function(function_name, source))
+        statement_table.append(f"    {source!r}: {function_name},")
+
+    blocks.append("\n\n".join(functions) if functions else "# This project has nothing to evaluate.")
+    for variable, rows in (
+        ("_EXPRESSIONS", expression_table), ("_STATEMENTS", statement_table), ("_SIGNAL_REFS", signal_refs),
+    ):
+        blocks.append(f"{variable} = {{\n" + "\n".join(rows) + "\n}" if rows else f"{variable} = {{}}")
+    blocks.append(_SEAM_LOOKUP.strip())
+    return "\n\n\n".join(blocks)
 
 if __name__ == "__main__":
     main()

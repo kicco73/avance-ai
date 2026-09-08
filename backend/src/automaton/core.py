@@ -240,8 +240,8 @@ class CoreAutomaton(object):
                 return action
         return None
 
-    @staticmethod
-    def eval_action_env(action: Action, scope: dict[str, Any]) -> dict[str, Any]:
+    @classmethod
+    def eval_action_env(cls, action: "Action", scope: dict[str, Any]) -> dict[str, Any]:
         """`action`'s `env` expressions evaluated against `scope`. Unlike
         _eval_trigger, a None/missing reference fails and logs rather
         than being a no-op; only successfully evaluated keys are returned."""
@@ -250,7 +250,7 @@ class CoreAutomaton(object):
         result: dict[str, Any] = {}
         for key, expression in action.env.items():
             try:
-                result[key] = simpleeval.EvalWithCompoundTypes(names=scope).eval(expression)
+                result[key] = cls._evaluate_expression(expression, scope)
             except Exception as exc:
                 logger.warning(
                     "env expression evaluation failed for action '%s', key '%s' ('%s'): %s",
@@ -258,8 +258,8 @@ class CoreAutomaton(object):
                 )
         return result
 
-    @staticmethod
-    def eval_action_on_exit(action: Action, scope: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
+    @classmethod
+    def eval_action_on_exit(cls, action: "Action", scope: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
         """`action.on_exit`'s own mixed grammar, evaluated against
         `scope` and split into statements with task's own grammar
         (TriggerExpressionAnalyzer.task_statements) so on-exit reads
@@ -295,7 +295,7 @@ class CoreAutomaton(object):
             if assignment is not None:
                 key, expression = assignment
                 try:
-                    result[key] = simpleeval.EvalWithCompoundTypes(names=scope).eval(expression)
+                    result[key] = cls._evaluate_expression(expression, scope)
                 except Exception as exc:
                     logger.warning(
                         "on-exit expression evaluation failed for action '%s', key '%s' ('%s'): %s",
@@ -303,7 +303,7 @@ class CoreAutomaton(object):
                     )
                 continue
             try:
-                value = _TaskEval(names=scope).eval(statement)
+                value = cls._evaluate_statement(statement, scope)
             except Exception as exc:
                 logger.warning(
                     "on-exit expression evaluation failed for action '%s' ('%s'): %s",
@@ -320,8 +320,8 @@ class CoreAutomaton(object):
                 )
         return result, ("\n".join(snippets) if snippets else None)
 
-    @staticmethod
-    def render_task(action: Action, scope: EvaluationScope) -> str | None:
+    @classmethod
+    def render_task(cls, action: "Action", scope: EvaluationScope) -> str | None:
         """Evaluates `action.task` — the same namespaced-expression
         grammar as `trigger`/`env` (one `task.<name>(...)` call per
         top-level statement, e.g. `task.send_mail(user.email, "Hi!")`,
@@ -352,10 +352,10 @@ class CoreAutomaton(object):
         runs against."""
         if not action.task:
             return None
-        return Automaton.render_task_script(action.task, scope.for_task(action_name=action.name))
+        return cls.render_task_script(action.task, scope.for_task(action_name=action.name))
 
-    @staticmethod
-    def render_task_script(script: str, task_scope: EvaluationScope) -> str | None:
+    @classmethod
+    def render_task_script(cls, script: str, task_scope: EvaluationScope) -> str | None:
         """render_task's own engine, on a bare script and an already
         task-view scope — also what an ActionTask runs, later and
         possibly in another process, against a rehydrated scope (see
@@ -372,7 +372,7 @@ class CoreAutomaton(object):
             assignment = TriggerExpressionAnalyzer.task_assignment(statement)
             target, expression = assignment if assignment is not None else (None, statement)
             try:
-                result = _TaskEval(names=task_scope).eval(expression)
+                result = cls._evaluate_statement(expression, task_scope)
             except Exception as exc:
                 logger.warning(
                     "task expression evaluation failed for action '%s' ('%s'): %s",
@@ -385,16 +385,46 @@ class CoreAutomaton(object):
                 snippets.append(result)
         return "\n".join(snippets) if snippets else None
 
-    @staticmethod
-    def _eval_trigger(expression: str, scope: dict[str, Any]) -> bool:
+    # --- the seam ---------------------------------------------------------
+    # Every expression this automaton evaluates goes through one of the
+    # three below, and nothing else here ever touches an evaluator. They
+    # are the entire behavioural surface a compiled automaton replaces:
+    # override these and the loops above — their ordering, their
+    # try/except, their warnings, what they collect and what they skip —
+    # stay literally the same code, which is the only way to be sure an
+    # interpreted and a compiled automaton cannot drift apart.
+
+    @classmethod
+    def _evaluate_expression(cls, expression: str, scope: dict[str, Any]) -> Any:
+        """One `trigger`/`env:`/on-exit-assignment expression, evaluated
+        against `scope`. Raises whatever evaluation raises; every caller
+        above decides for itself what a failure means."""
+        return simpleeval.EvalWithCompoundTypes(names=scope).eval(expression)
+
+    @classmethod
+    def _evaluate_statement(cls, statement: str, scope: dict[str, Any]) -> Any:
+        """One task or on-exit statement — the same as
+        _evaluate_expression except that a zero-argument lambda is
+        allowed, which is what task.defer(...) is built out of."""
+        return _TaskEval(names=scope).eval(statement)
+
+    @classmethod
+    def _referenced_signal_names(cls, expression: str) -> set[str]:
+        """Which declared signals `expression` reads — asked before
+        evaluating a trigger, so that one still None short-circuits to
+        False silently instead of raising."""
+        return TriggerExpressionAnalyzer.signal_names(expression)
+
+    @classmethod
+    def _eval_trigger(cls, expression: str, scope: dict[str, Any]) -> bool:
         """A malformed expression never crashes the caller: failures
         return False with a warning. A `signal.*` still None (not
         computed yet) short-circuits to False silently instead."""
         try:
             signal_values = scope.get("signal", {})
-            if any(signal_values.get(name) is None for name in TriggerExpressionAnalyzer.signal_names(expression)):
+            if any(signal_values.get(name) is None for name in cls._referenced_signal_names(expression)):
                 return False
-            return bool(simpleeval.EvalWithCompoundTypes(names=scope).eval(expression))
+            return bool(cls._evaluate_expression(expression, scope))
         except Exception as exc:
             logger.warning("Trigger evaluation failed for expression '%s': %s", expression, exc)
             return False

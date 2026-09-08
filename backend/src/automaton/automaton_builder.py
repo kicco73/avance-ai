@@ -233,7 +233,19 @@ class AutomatonBuilder(object):
                 "'init-action' is required and must be a mapping with at least a 'target' "
                 "field — the project's real starting state."
             )
-        env = {name: env_key.value for name, env_key in env_keys.items() if env_key.value}
+        # XXX Compiled automaton requirement - do not touch.
+        # XXX Every declared key, not just the ones with a default: a
+        # XXX key left out here is never written at session open (see
+        # XXX ChatService._apply_declared_env_defaults), so it is absent
+        # XXX from the evaluation scope and reading it raised KeyError
+        # XXX through simpleeval's attribute-to-item fallback, silently
+        # XXX failing the whole expression — a trigger like
+        # XXX `env.pnr != ''` could never fire. Generated Python has no
+        # XXX equivalent of that accident and must not imitate it. A key
+        # XXX with no declared default gets "''", the expression for an
+        # XXX empty string: these are expression sources, evaluated once
+        # XXX at session open, never literals.
+        env = {name: (env_key.value or "''") for name, env_key in env_keys.items()}
         env.update(self._build_action_env(raw_init_action.get("env"), "init-action") or {})
         return Action(
             name="init-action",
