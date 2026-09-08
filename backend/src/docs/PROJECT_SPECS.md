@@ -70,7 +70,7 @@ Consequences worth stating plainly:
 | `signals` | no | mapping (name → signal) | `{}` | Numeric values the model estimates each turn. §3. |
 | `general-prompt` | no | string | `""` | Appended to a state's `contextual-prompt` for a normal reply. Never sent to a `task.prompt(...)` call (§5.4), which is fully isolated. |
 | `attachments` | no | list of filenames | `[]` | Global attachments, sent with every call that also sends `general-prompt`. §6. |
-| `env` | no | mapping (name → fields) | `{}` | Declares every `env.<name>` a trigger/env expression may reference, and — per key — what the model may do with it (`ai-access`). An action's `env:` (§5.3) can only update a key declared here. |
+| `env` | no | mapping (name → fields) | `{}` | Declares every `env.<name>` a trigger/env expression may reference. Whether/how the model sees or sets a given key is decided per state, by that state's own `input`/`output` (§4.3) — never a property of the key itself. An action's `env:` (§5.3) can only update a key declared here. |
 | `sources` | no | mapping (name → fields) | `{}` | Declares every `source.<name>` a trigger/env expression may reference, and the model may read/write as a tool. §5.2. |
 | `project` | no | mapping | — | Identity/display metadata + auto-tracking mode. §1.1. |
 
@@ -191,7 +191,9 @@ states:
 | `attachments` | no | list of filenames | `[]` | Sent with every normal reply this state is "current" for. Not sent for `fixed-message`, nor to a `task.prompt(...)` call (§5.4), which is fully isolated. |
 | `ai-may-read-sources` | no | list of source names | `[]` | Sources whose `select_rows_*` reads the model may call, at its own discretion, while replying in this state — §4.2. |
 | `ai-must-read-sources` | no | list of source names | `[]` | Same, but the read is forced once per entry into this state — §4.2. A source name can appear in at most one of the two read fields. |
-| `ai-may-write-sources` | no | list of source names | `[]` | Sources whose `update` the model may call here — §4.2. Only a source whose driver implements `update` (today: `avance:env`, §5.2) may be listed; there is no `must-write`: a write is never forced. |
+| `ai-may-write-sources` | no | list of source names | `[]` | Sources whose `update` the model may call here — §4.2. There is no `must-write`: a write is never forced. No driver implements `update` today, so this field currently has no effect — reserved for a future writable source. |
+| `input` | no | list of `env:` key names | `[]` | Env keys read into this turn's own system prompt, as a read-only "Current environment" block — §4.3. |
+| `output` | no | list of `env:` key names | `[]` | Env keys the model may set this turn, through its own structured reply — merged onto the automaton's env once the turn completes — §4.3. |
 
 **4.1 `fixed-message` states.** The model is never asked for free-form
 content: every reply is a translation of `fixed-message` into the user's
@@ -207,8 +209,7 @@ replying in this state — one tool per (source, method): a source named
 `flight_records` in a read field becomes one callable per read method its
 driver supports (`source_flight_records_select_rows_containing`,
 `source_flight_records_select_rows_where`,
-`source_flight_records_select_rows_in_range`), one named
-`env` in the write field becomes `source_env_update`. Reading and writing are independent grants; the two
+`source_flight_records_select_rows_in_range`). Reading and writing are independent grants; the two
 read fields differ only in how much the model is trusted to decide for itself:
 
 - **`ai-may-read-sources`** — the model sees the source's reads and
@@ -226,24 +227,21 @@ read fields differ only in how much the model is trusted to decide for itself:
   the session's own transition/message history — **never left to the
   model to decide, and never re-askable by prompting alone.** Its purpose
   is to make the model *observe* the source's current values before it
-  answers — for an `avance:env` source, to read the automaton's
-  variables as this turn's own observation.
+  answers.
 - **`ai-may-write-sources`** — the source's `update` (§5.2), at the
   model's discretion. Never forced: there is no `must-write` counterpart,
   and `update` is never in the forced set even when the same source is
-  also in `ai-must-read-sources`.
+  also in `ai-must-read-sources`. No driver implements `update` today
+  (the only driver, `avance:<path>`, is read-only — §5.2), so this field
+  currently has no effect.
 
 A source named in any field must declare its own `ai-definition` (§5.2) —
 a build error otherwise, the same requirement a signal's own `definition`
 gets. The same source name can't appear in both read fields for one
 state. A source in `ai-may-write-sources` whose driver has no `update`
 fails the build with the same "undefined name(s): source.<name>.update"
-message a script calling it would get. An `avance:env` source in
-`ai-may-write-sources` but in neither read field of the same state builds
-with a **warning** (the model would write variables it never sees), not
-an error. An `avance:env` source in `ai-may-write-sources` with **no**
-`ai-access: readwrite` key at all *is* a build error — the model's
-`update` tool would have nothing it could ever write.
+message a script calling it would get — today, that's every entry in
+this field, since no driver implements `update` yet.
 
 No field has a project-wide default, deliberately: a tool catalog costs
 real tokens on **every** turn in that state, whether or not the model
@@ -264,8 +262,36 @@ own `values`, further narrowing the match); `select_rows_in_range` takes
 `update` takes `values` and `fields` (column → new value, at least one).
 Every read returns whole rows — there is no column projection in the
 model's own interface. A driver may *narrow* one of those schemas for the
-model — `avance:env` restricts `fields` to the writable variables, each
-described by its own `ai-definition` — but never changes their shape.
+model (`SourceDriver.parameter_schema`) — never changes their shape; no
+driver does today.
+
+**4.3 Model-visible env: `input`/`output`.** Whether the model reads or
+sets a given top-level `env:` key (§5.3) is decided entirely by *this
+state's own* `input`/`output` lists — not a property of the key itself,
+and independent of `ai-may-read-sources`/`ai-may-write-sources` above
+(those gate `sources:`, never `env:`).
+
+- **`input`** — read-only. A state with a non-empty `input` gets its
+  system prompt's own "Current environment" block appended, one
+  `key: value` line per name in `input` (declaration order, each value
+  truncated to 200 characters), placed last so its per-turn changes never
+  invalidate the cacheable prefix. A state with an empty `input` gets no
+  block at all — not even empty. There is no model-facing write path
+  through this block: the model is told to change these only through
+  `output` below (or wait for an action's own `env:` script), never by
+  restating them in its `memory` field — a *declared* key named there is
+  discarded outright.
+- **`output`** — the model's own structured reply carries a separate
+  `output` field, one value per name in this state's `output`; each name
+  is described to the model from its own env key's `ai-definition` (§5.3).
+  Once the turn completes, every reported name that's actually in this
+  state's `output` is copied onto the real env key — anything else the
+  model reports under `output` is ignored.
+
+An `input`/`output` name must be declared in the project's own `env:`
+section, and that env key must declare its own `ai-definition` — a build
+error otherwise, the same requirement `ai-may-read-sources`/
+`ai-may-write-sources` place on a source's own `ai-definition`.
 
 ## 5. `actions:` (nested under a state)
 
@@ -433,7 +459,7 @@ exception. Every driver implements `select_rows_containing`; the
 column-filtered reads, `value` and `update` only where they make sense
 for that driver (its own `SUPPORTED_METHODS`).
 
-Two drivers exist today, both under the scheme `avance`:
+One driver exists today, under the scheme `avance`:
 
 **`avance:<path>` — an archive file.** Read-only access to one of this
 project's own files, addressed by `url`'s own path (exact path or unique
@@ -446,25 +472,9 @@ detected). Implements every `select_rows_*` read and `value` — never
 whole-file read is `attachment.read(name)`'s job (task only), not a
 `source.*` capability.
 
-**`avance:env` — the project's own env keys.** A one-row table whose
-columns are the env keys with `ai-access` other than `none` (§5.3) — the
-model's *only* channel for reading and, for a `readwrite` key, writing an
-automaton variable. `url: avance:env`, no other parameter; `ui-label`/
-`ai-definition` as for any source. `select_rows_containing()` returns the
-header and the row (the column-filtered reads make no sense for a single
-row and aren't implemented); `update(fields={...})`
-writes the `readwrite` keys into the session's own env exactly as an
-action's `env:` script would (persisted for a live session, ephemeral for
-a test one), and refuses a `readonly` or unexported key as error text,
-writing nothing. `value(key=...)` reads one exported key's value as a
-scalar, script/trigger-only like every other source's `value`. Its
-`update` schema is narrowed for the model: `fields` to the writable
-variables, each described by its own `ai-definition`.
-Declaring an `avance:env` source when no key has `ai-access` other than
-`none` is a build error (an empty table); exported keys without an
-`avance:env` source are fine (the key still serves scripts). A script may
-call it too (`source.env.select_rows_containing()`, `source.env.value(key='pnr')`),
-and is subject to the same `readwrite` check on `update`.
+The automaton's own `env:` keys are never reached through a `sources:`
+driver — the model reads/sets them through a state's own `input`/`output`
+instead (§4.3), independent of `sources:` entirely.
 
 New drivers are a code change, not something a project author adds.
 
@@ -489,10 +499,10 @@ with two different owners, and the names are load-bearing:
   ever sees it; the Inspector's Memory section shows and edits it.
 - **env** — the automaton's declared variables: the project's top-level
   `env:` keys, deterministic, written by an action's own `env:` field
-  (below) — or, for a `readwrite` key, by the model through an
-  `avance:env` source's `update` (§5.2) — and read by triggers, scripts
-  (`env.<name>`) and, where a state allows it, the model. `session` facts
-  (§5.2) are never part of either.
+  (below) — or, for a key some state lists in its own `output` (§4.3), by
+  the model's own structured reply — and read by triggers, scripts
+  (`env.<name>`) and, where a state's own `input` lists it (§4.3), the
+  model. `session` facts (§5.2) are never part of either.
 
 ```yaml
 env:
@@ -503,7 +513,6 @@ env:
     value: "0"
   pnr:
     ui-description: "The booking's record locator."
-    ai-access: readwrite
     ai-definition: The 6-character record locator the customer gives you; empty until they do.
     value: ""
 ```
@@ -512,34 +521,33 @@ env:
 | --- | --- | --- | --- | --- |
 | `value` | no | string (expression) | `""` | The default, applied once (top-to-bottom order) the first time a session opens — a later default may reference an earlier key. |
 | `ui-description` | no | string | `None` | Shown in the frontend — never sent to the model. |
-| `ai-access` | no | `none`/`readonly`/`readwrite` | `none` | What the *model* may do with this key, in absolute terms — through an `avance:env` source (§5.2) and only in a state that lists that source (§4.2). `none`: the model never sees it. `readonly`: it appears in the prompt's env block and in `select_rows_containing`. `readwrite`: it may also be written with `update`. Scripts are never subject to this: an action's `env:` writes any key. |
-| `ai-definition` | conditionally | string | `None` | Written *for the model*: what this variable means. **Required** (build error) whenever `ai-access` isn't `none` — same requirement a source exposed to the model gets; optional otherwise. Becomes the field's own description in the `update` tool's schema. |
+| `ai-definition` | conditionally | string | `None` | Written *for the model*: what this variable means. **Required** (build error) whenever some state lists this key in its own `input`/`output` (§4.3) — same requirement a source exposed to the model gets; optional otherwise. Becomes that field's own description in the prompt's env block / output schema. |
 
 An action's `env:` can only update a key declared here, never invent one
 (fails build validation otherwise). Declaring a key here doesn't by
-itself update it on any turn. Existing projects need no change: every
-key keeps `ai-access: none` until its author decides otherwise.
+itself update it on any turn. Whether the model ever sees or sets a given
+key is decided entirely per state, by that state's own `input`/`output`
+(§4.3) — never a property of the key itself.
 
 **The prompt's env block.** The model sees the automaton's env only in a
-state whose `ai-may-read-sources`/`ai-must-read-sources` lists an
-`avance:env` source; there, the system prompt ends with a "Current
-environment" block — one `key: value` line per key with `ai-access` other
-than `none`, every value cut to 200 characters with a
+state whose own `input` is non-empty (§4.3); there, the system prompt
+ends with a "Current environment" block — one `key: value` line per name
+in `input`, every value cut to 200 characters with a
 `[response too long — provide more specific filters via a select_rows_* read]` pointer,
 placed last so its per-turn changes never invalidate the cacheable prefix. Anywhere else the
 block does not exist, not even empty. The memory block is a separate
 block with its own heading, and the model is told to change variables
-only with `update`, never in the `memory` field — a *declared* key
-named there is discarded outright (`Env.update`'s own `declared_keys`
+only through `output` (§4.3), never in the `memory` field — a *declared*
+key named there is discarded outright (`Env.update`'s own `declared_keys`
 filter), whether or not that key has been set yet: the model reporting
-`pnr` as a memory note before ever calling `update` on it must not let
+`pnr` as a memory note before ever reporting it as `output` must not let
 it leak into memory instead of being silently dropped. A project that
 declares nothing (the Hello world sample) has no tools and no env
 block: just the memory.
 
 **The model proposes, the script verifies.** The intended way to use the
-binding: give the model `readwrite` keys for the facts it has to collect
-from the user (`pnr`, a corrected `flight`), let it `update` them, and
+binding: give the model `output` keys for the facts it has to collect
+from the user (`pnr`, a corrected `flight`), let it report them, and
 make the transition a **trigger** that checks those values against the
 project's own data —
 
@@ -554,16 +562,16 @@ transition belongs to the script. (See the "Vueling Refund" sample's
 
 **Optimistic reply and writes.** With `signal-tracking-on-ai-message:
 false`, the reply is generated first and regenerated if a signal fires a
-transition. An `update` the model made during the discarded reply is
-already persisted when the regeneration starts, is **not** rolled back,
-and the regeneration in the new state sees it as the current value. This
-is deliberate: the write was the model's decision on the user's message,
-not on its own discarded wording.
+transition. An `output` value the model reported during the discarded
+reply is already persisted when the regeneration starts, is **not**
+rolled back, and the regeneration in the new state sees it as the current
+value. This is deliberate: the write was the model's decision on the
+user's message, not on its own discarded wording.
 
-**Persistence and reset.** `readwrite` keys persist per (project, user)
-like every other env key — across sessions. To start a case afresh, reset
-them on the initial action (`init-action`'s own `env:`, §7) or on the
-action that opens the case.
+**Persistence and reset.** Every env key persists per (project, user) —
+across sessions. To start a case afresh, reset them on the initial
+action (`init-action`'s own `env:`, §7) or on the action that opens the
+case.
 
 **Action `env`.**
 
@@ -599,7 +607,8 @@ very next prompt already reflects it.
 Persisted separately from the model's own memory; only this action-set
 store feeds a trigger's `env.<name>`. The action-set one is never
 directly editable in the Inspector — only ever a side effect of its
-action firing again, or of the model's own `update` on a `readwrite` key.
+action firing again, or of the model's own `output` report on a key some
+state lists (§4.3).
 
 **5.3bis Action `on-exit`.** The future replacement for `env:` above,
 plus a second statement shape of its own — one or more statements, one
@@ -815,7 +824,7 @@ init-action:
 | `target` | **yes** | string | Starting state — must be a real key under `states:`. |
 | `task` | no | string | Same mechanics as any action's (§5.4), fired (as a task, delivered over the websocket) the one time init-action fires. |
 | `on-exit` | no | string | Same mechanics as any action's (§5.3bis), applied the one time init-action fires. |
-| `env` | no | mapping key → expression | Same mechanics as any action's (§5.3), applied on top of every declared key's own default the one time init-action fires — the place to reset a `readwrite` key a previous case left behind. |
+| `env` | no | mapping key → expression | Same mechanics as any action's (§5.3), applied on top of every declared key's own default the one time init-action fires — the place to reset a key a previous case left behind. |
 
 A mapping, not a list item — otherwise a regular action with no
 `name`/`ui-label`/`trigger`/`attachments` (fixed internally).
@@ -852,8 +861,7 @@ of how you're likely to hit them:
 - No signal named after a reserved core metric (§2).
 - Every `attachments:` entry (global/signal/state, not action) names a file actually present alongside `index.yml`.
 - Every `sources:` entry's own `url`, if set, has a recognized driver scheme, and (for `avance:<path>`) its path names a file actually present alongside `index.yml`.
-- Every `env:` key's `ai-access`, if given, is `none`/`readonly`/`readwrite`, and one that isn't `none` declares its own `ai-definition`.
-- An `avance:env` source (§5.2) is only declared when at least one env key has `ai-access` other than `none`.
+- Every name in a state's own `input`/`output` (§4.3) names a key actually declared in `env:`, and that env key declares its own `ai-definition`.
 - Every name in a state's own `ai-may-read-sources`/`ai-must-read-sources`/`ai-may-write-sources` (§4.2) names a source actually declared in `sources:`, that source declares its own `ai-definition`, its driver implements the method the field exposes (`select_rows_containing`/`update`), and no name appears in both read fields for the same state. The old names `tools`, `ai-may-query-sources`, `ai-must-query-sources` are rejected with a message naming their replacement.
 
 A stored revision that fails this checklist because the format moved on
