@@ -14,6 +14,7 @@ from automaton.automaton_yaml_editor import AutomatonYamlEditor
 from db import ContentRestored, Db, FileRenamed
 from logging_factory import LoggerFactory
 from session import Session
+from tracking.project_files import PROJECT_FILE_CACHE
 
 from .inspector import ProjectInspector
 from .manager import ProjectManager
@@ -564,6 +565,9 @@ class ProjectEditor:
         await self._edit_index_yml(project_id, commit, lambda editor: editor.delete_source(source_name))
         if archive_name in self._db.list_archives(project_id):
             self._db.delete_archive(project_id, archive_name)
+            # The archive goes after the index.yml edit that funnels
+            # through finalize_update, so its own invalidation is here.
+            PROJECT_FILE_CACHE.forget_project(project_id)
 
     async def reorder_actions(
         self, project_id: str, state_name: str, action_name: str, position: int, commit: CommitCallback

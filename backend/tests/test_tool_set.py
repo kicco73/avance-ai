@@ -13,6 +13,7 @@ import pytest
 from automaton.automaton import Action, Automaton, EnvKey, Source, State
 from db.db import Db
 from tracking.sources import METHOD_SCHEMAS, READ_METHODS, SourceNamespace
+from tracking.project_files import PROJECT_FILE_CACHE
 
 pytestmark = pytest.mark.contract
 
@@ -32,6 +33,10 @@ def file_db(tmp_path) -> Db:
 def _seed(db, files: dict[str, bytes], content_types: dict[str, str]) -> int:
     db.ensure_project(PROJECT_ID)
     db.save_project_files(PROJECT_ID, files, content_types)
+    # A draft revision is rewritten in place, so seeding twice in one test
+    # leaves the same (project, revision, path) holding new bytes — what
+    # ProjectManager.finalize_update forgets for a real save.
+    PROJECT_FILE_CACHE.forget_project(PROJECT_ID)
     return db.get_project_revision(PROJECT_ID)
 
 

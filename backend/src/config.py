@@ -516,6 +516,19 @@ class AppConfig:
         self.total_token_budget_per_session = self._get_optional_positive_int(
             raw, "chat-service", "total-token-budget-per-session", path, default=200000
         )
+        # How much of the projects' own files (a state's attachments, an
+        # `avance:` source's CSV, whatever attachment.read reads) is kept
+        # in memory across turns — see tracking.project_files.
+        # ProjectFileCache. Bounded in bytes, not in files: it holds
+        # whatever a turn actually reads, and one project's CSV is not
+        # the size of another's footer note. Lives here because it is a
+        # per-turn budget like the two above, and because chat-service is
+        # a section a compiled product still has.
+        # FIXME: the default is mirrored in tracking/project_files.py's
+        # own DEFAULT_PROJECT_FILE_CACHE_BYTES — keep in sync.
+        self.project_file_cache_bytes = self._get_optional_positive_int(
+            raw, "chat-service", "project-file-cache-bytes", path, default=8 * 1024 * 1024
+        )
 
         # Two separate worker pools (see jobs/job_queue.py's JobQueue and
         # jobs/throttled_job_queue.py's ThrottledJobQueue) — optional, and
@@ -596,6 +609,7 @@ class AppConfig:
                 "max-session-duration-in-minutes": self.max_session_duration_in_minutes,
                 "input-token-budget-per-turn": self.input_token_budget_per_turn,
                 "total-token-budget-per-session": self.total_token_budget_per_session,
+                "project-file-cache-bytes": self.project_file_cache_bytes,
             },
             "testing": {
                 "max-concurrent-tests": self.test_service_max_concurrent_tests,

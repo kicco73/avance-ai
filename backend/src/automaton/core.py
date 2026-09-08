@@ -94,7 +94,9 @@ class CoreAutomaton(object):
         states: dict[str, State],
         general_prompt: str,
         signals: list[Signal],
-        general_attachments: dict[str, MemoryArchive],
+        # Stored paths of the project's own top-level `attachments:`,
+        # resolved at build time — see model.Action.attachments.
+        general_attachments: tuple[str, ...],
         autotracking_on_ai_message: bool,
         # Only AutomatonBuilder.build parses a project's declared env:
         # section and passes a real list; other construction sites have none.
@@ -153,7 +155,7 @@ class CoreAutomaton(object):
         self.project_revision = project_revision
         self.project_ui_label = project_ui_label
         self.project_ui_description = project_ui_description
-        self.general_attachments = general_attachments
+        self.general_attachments = tuple(general_attachments)
         # The two auto-tracking modes (before/after the AI reply) are
         # mutually exclusive — this flag selects between them.
         self.autotracking_on_ai_message = autotracking_on_ai_message
@@ -188,13 +190,12 @@ class CoreAutomaton(object):
         self._trigger_bare_names: dict[str, set[str]] = {}
 
     def set_storage_location(self, revision: int) -> None:
-        """tracking.sources.avance_archive's own AvanceArchiveSource reads
-        straight from Db at this exact (project_id, revision) — never
-        this Automaton's own in-memory `attachments` (see that module's
-        docstring for why: a large file no state/action/signal ever
-        declared under its own `attachments:` would otherwise still get
-        eagerly loaded/converted on every build just because it's in the
-        project, whether any source ever reads it or not)."""
+        """Which stored revision this automaton's own files are read at.
+        Everything that reads one — a source with an `avance:` url,
+        attachment.read, a turn's own attachments — goes through
+        tracking.project_files.ProjectFiles, and this is what tells it
+        where to look when the automaton points at a database rather than
+        carrying its files (see archives_dir above)."""
         self.revision = revision
 
     def get_state(self, state_key: str) -> State:

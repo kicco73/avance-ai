@@ -156,17 +156,19 @@ overwrites it, and nothing stops anyone from editing it in the meantime.
 `fixed_message` stays inline; it is a canned reply for the user, not
 something the model reads.
 
-**`data/`** holds the archive files, read back at import time through the
-platform's own `ArchiveResolver.convert_contents_to_archives`, so whether
-an archive is text or base64 and what its media type is stays decided in
-one place for both kinds of automaton. `index.yml` is *not* shipped — it
+**`data/`** holds the archive files, verbatim. Nothing is loaded at
+import: `AUTOMATON.archives_dir` points here, and the platform's own
+reader opens a file when a turn actually asks for one — whether it comes
+back as text or as base64, and what its media type is, decided in one
+place for both kinds of automaton. `index.yml` is *not* shipped — it
 has been compiled away in full, and a copy would only be a stale
 duplicate. A project that declares `index.yml` as an attachment is refused
 at compile time rather than losing it silently at run time.
 
 Note that an attachment is looked up by the archive's real path, not by
-the name the project declared for it: `ArchiveResolver` resolves a bare
-`general_prompt.txt` against a file stored at `behaviour/general_prompt.txt`.
+the name the project declared for it: the builder resolved a bare
+`general_prompt.txt` against the file stored at
+`behaviour/general_prompt.txt`, and it is that path the package carries.
 
 **`--verify`** re-imports the package it just wrote and compares it,
 field by field, against the automaton the ordinary `AutomatonBuilder`
@@ -282,7 +284,7 @@ Three implementations, composed:
   `attachment.read` never had it and still does not. It guards against a
   draft revision being rewritten while a test session runs on it, not
   against a republish, so it has nothing to do for a compiled product
-- `AutomatonProjectFiles` — what the automaton itself carries
+- `PackageProjectFiles` — the real files under a package's own `data/`
 
 `project_files_for(db, automaton, session_id)` is the only selection
 point: an automaton with no storage location has nothing to read from a
@@ -316,21 +318,82 @@ builder that converts archives and the reader that serves them have to
 agree on it, and the reader must not drag in the YAML-building chain a
 compiled product does not ship.
 
-### Still to do
+### The declarations carry names, not files
 
-The per-declaration attachments — `general_attachments`, and each
-state's, signal's and action's own — still hold `MemoryArchive` objects.
-Turning those into names resolved per turn needs three things settled:
-a byte-bounded LRU (an entry count does not bound memory when entries are
-files), living long enough to be worth having, so owned by
-`TrackingService` and threaded to the two places that build readers; its
-invalidation, which belongs in `ProjectManager.finalize_update`, the
-single funnel every save goes through and where the automaton's own cache
-entry is already replaced — a draft revision is rewritten in place, so
-its number does not change when its bytes do; and one open point,
-`estimate_state_prompt`, a module-level function with no session, no Db
-and no collaborators, which today reads `state.attachments` directly to
-size the design view's per-state token estimate.
+`general_attachments` and each state's, signal's and action's own held
+`MemoryArchive` objects — the file, converted, inside the automaton. They
+now hold the *stored paths* those declarations resolved to, and nothing
+else.
+
+Where each half of that happens:
+
+- **Build time verifies and resolves.** `ProjectArchives`
+  (`automaton/builder/archive_resolver.py`) is the project's files as the
+  builder sees them: it answers which stored path a declared name means —
+  an exact match, or a unique basename — raises where the name is
+  ambiguous or absent, and hands out the text of a file for the two
+  checks that must look inside one (`attachment.read`'s text-only and
+  size limits). It replaces the old dict of `MemoryArchive` that every
+  `_build_*` method was threaded. Nothing converts a file any more just
+  because a project carries it.
+- **Run time reads.** `tracking/attachments.py` turns those paths into
+  the `MemoryArchive` objects a turn actually sends, through the same
+  `ProjectFiles` every other project-file read goes through. Text or
+  base64 is decided from the media type — the same rule, in the same
+  place, for both worlds.
+
+What a file *becomes* is decided from its name and nothing else
+(`automaton/media_types.py`), never from the media type the reader
+reports. That is not tidiness: a stored project's Archive row carries the
+type the uploader stamped on it — `text/csv` for a CSV — while a
+package's `data/` carries only the file, so a reader-decided split would
+send the same attachment as text in one world and as base64 in the other.
+The table is the one the builder already used when the automaton carried
+the converted files, so what reaches the provider is byte-for-byte what
+it was. `test_attachment_resolution.py` pins the two against each other.
+
+Resolution is a build-time question, so it gets a build-time answer: a
+turn reads the path it was given and does not look for it again. That is
+also what keeps the payloads honest — the design view's per-state
+attachment list used to show declared names while the per-signal one
+showed resolved paths, and the frontend checks both against the project's
+real file list.
+
+### The cache
+
+Carrying every file made assembling a turn free; reading them per turn
+only stays free if something remembers them. `ProjectFileCache`
+(`tracking/project_files.py`) is one process-wide LRU bounded in **bytes**
+— an entry count is not a bound on memory when the entries are files — and
+both real readers sit behind it as `CachedProjectFiles`. Only `read` goes
+through it: resolution answers a name, not a file, and the bound is about
+files. A file bigger than the whole bound is served and not kept, rather
+than evicting everything for something that still would not fit.
+
+The key comes from the reader, never from the cache: `DbProjectFiles`
+identifies a file as `(project id, revision, path)`, `PackageProjectFiles`
+as its own `data/` path. Neither carries a slot the other leaves empty —
+the packaged product has no revision, and so no field where one would go.
+
+Its size is `chat-service: project-file-cache-bytes` (default 8 MiB),
+configured once at boot from `main.py`. That section rather than
+`project-service`, which does nothing in a package, or `database`, which
+says where bytes are stored and not how a turn budgets them: this is a
+per-turn budget beside the two token budgets already there, in a section a
+compiled product still has.
+
+Entries used to be dropped for free when the automaton holding them left
+`AutomatonLoader`'s cache. Now they are dropped by the bound, plus one
+explicit invalidation: `ProjectManager.finalize_update`, the single funnel
+every project save goes through — a draft revision is rewritten in place,
+so its number does not change when its bytes do — and the two archive
+mutations that happen outside it, deleting a project and deleting a
+source's own CSV.
+
+The open point on `estimate_state_prompt` is closed the way it was put:
+it takes a `ProjectFiles` from its caller (`ProjectInspector.
+get_state_input_tokens`, which has the db), so the design view's per-state
+estimate still counts the attachment bytes a real turn would send.
 
 ## Anomalies found on the way
 
@@ -359,6 +422,23 @@ were left alone, recorded here so they are not rediscovered from scratch.
 - **`test_all_signals_shared_observations.py::test_all_signals_aggregation_builds_each_runs_observations_only_once`
   is flaky** — observed failing once and passing five consecutive runs
   afterwards, including twice in the same subset that had failed.
+- **Two of the four attachment declarations are never read.** A signal's
+  own `attachments:` is documented as "sent only with the signals
+  computation call" and an action's as its own; neither reaches a
+  provider anywhere. The signals call builds its priming messages from
+  the *state's* attachments (`TrackingProcessor.__build_turn_prompt_parts`),
+  and nothing whatsoever reads `Action.attachments`. The signal one does
+  reach the design view's Signals tab, as a list of filenames; the action
+  one reaches nothing at all. Left as they are — they are declarations
+  the YAML accepts and projects use — but a project author has no way to
+  know they do nothing.
+- **The design view showed two different names for the same thing.**
+  `get_project_signals` listed a signal's attachments as their resolved
+  stored paths, `get_project_graph` listed a state's as the names the
+  YAML declared, and the frontend checks both against the project's real
+  file list — so a state attachment declared by basename came back not
+  editable. Both are stored paths now, as a side effect of resolving at
+  build time rather than a fix aimed at it.
 - **A hardcoded `Automaton.` dispatch shipped as a live bug.**
   `CoreAutomaton.render_task` called `Automaton.render_task_script`
   through a name `core.py` does not import, so it raised `NameError`. No

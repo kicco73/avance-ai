@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import inspect
 
-from automaton.builder.archive_resolver import ArchiveResolver
-from automaton.automaton import EnvKey, MemoryArchive, Source, State
+from automaton.builder.archive_resolver import ProjectArchives
+from automaton.automaton import EnvKey, Source, State
 from automaton.builder.build_cursor import BuildCursor
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
@@ -106,18 +106,19 @@ class AutomatonValidator:
         cls._validate_namespace_call_arity(expression, context, "chat", ChatNamespace)
 
     @staticmethod
-    def validate_attachment_read(expression: str, context: str, all_archives: dict[str, MemoryArchive]) -> None:
+    def validate_attachment_read(expression: str, context: str, archives: ProjectArchives) -> None:
         violations = TriggerExpressionAnalyzer.attachment_read_violations(expression)
         if violations:
             raise ValueError(f"{context} ('{expression}'): {'; '.join(violations)}")
         for name in TriggerExpressionAnalyzer.attachment_read_names(expression):
-            archive = ArchiveResolver.extract_required_archives([name], all_archives, context)[name]
-            if archive.source["type"] != "text":
+            path = archives.require([name], context)[0]
+            text = archives.text(path)
+            if text is None:
                 raise ValueError(
                     f"{context} ('{expression}'): attachment.read('{name}') targets a binary file — "
                     "only text files can be read this way."
                 )
-            size = len(archive.source["data"].encode("utf-8"))
+            size = len(text.encode("utf-8"))
             if size > MAX_ATTACHMENT_READ_BYTES:
                 raise ValueError(
                     f"{context} ('{expression}'): attachment.read('{name}') is {size} bytes, over the "
@@ -127,7 +128,7 @@ class AutomatonValidator:
     @classmethod
     def validate_task(
         cls, task: str | None, context: str, registry: dict[str, dict[str, str]], sources: dict[str, Source],
-        all_archives: dict[str, MemoryArchive],
+        archives: ProjectArchives,
     ) -> None:
         if not task:
             return
@@ -147,7 +148,7 @@ class AutomatonValidator:
                 )
             cls.validate_namespaced_expression(expression, line_context, registry, sources, frozenset(known_locals))
             cls.validate_task_arity(expression, line_context)
-            cls.validate_attachment_read(expression, line_context, all_archives)
+            cls.validate_attachment_read(expression, line_context, archives)
             violations = TriggerExpressionAnalyzer.defer_violations(expression)
             if violations:
                 raise ValueError(f"{line_context} ('{statement}'): {'; '.join(violations)}")
@@ -230,7 +231,7 @@ class AutomatonValidator:
 
     def check_state(
         self, key: str, state: State, declared_states: set[str], registry: dict[str, dict[str, str]],
-        env_keys: dict[str, EnvKey], sources: dict[str, Source], all_archives: dict[str, MemoryArchive],
+        env_keys: dict[str, EnvKey], sources: dict[str, Source], archives: ProjectArchives,
         known_projects: dict[str, frozenset[str]] | None = None,
     ) -> None:
         registry_for_triggers = IdentifierRegistry.for_triggers(registry)
@@ -276,7 +277,7 @@ class AutomatonValidator:
                     )
                     self.validate_env_key_type(env_keys[env_key], expression, action_context)
             if action.task:
-                self.validate_task(action.task, action_context, registry_for_task, sources, all_archives)
+                self.validate_task(action.task, action_context, registry_for_task, sources, archives)
             if action.on_exit:
                 self.validate_on_exit(action.on_exit, action_context, registry_for_on_exit, sources, env_keys)
 

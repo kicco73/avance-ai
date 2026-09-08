@@ -24,8 +24,8 @@ a whole file is exactly what bounding a result doesn't make sense for.
 Where the bytes come from is not this driver's business: it asks the
 ProjectFiles it was handed (see tracking.project_files), which is the
 database at this automaton's pinned revision — through a per-session
-cache copy — or, for an automaton with no storage location, the
-attachments the automaton itself carries."""
+cache copy — or, for an automaton that carries its own files, the
+package's own data/ directory."""
 from __future__ import annotations
 
 import csv
@@ -74,7 +74,7 @@ class AvanceArchiveSource(SourceDriver):
         # Where this project's files come from, chosen once by whoever
         # built the context (see tracking.project_files) — the database at
         # a pinned revision through this session's own cache copy, or the
-        # automaton's own attachments when it has no storage location.
+        # package's own data/ for an automaton that carries its files.
         self._files = context.files
 
     def _read_text(self) -> str:

@@ -41,8 +41,8 @@ class SourceContext:
     wake-up re-evaluation, a test replay, a task deferred call).
 
     `files` is where a project's own files come from — the database at
-    this automaton's revision, or the automaton's own attachments for one
-    that has no storage location (see tracking.project_files). Chosen once
+    this automaton's revision, or a package's own data/ for an automaton
+    that carries its files (see tracking.project_files). Chosen once
     by SourceNamespace; a driver never asks which it got. Defaulted here
     so a context built by hand still works: it resolves to the same choice
     project_files_for would have made."""

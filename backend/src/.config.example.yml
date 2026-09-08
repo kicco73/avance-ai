@@ -38,6 +38,12 @@ chat-service:
   # SessionDetailCard.vue) — nothing in the backend trims history
   # against it.
   total-token-budget-per-session: 200000
+  # Optional, defaults to 8388608 (8 MiB). How much of the projects' own
+  # files (a state's attachments, an `avance:` source's CSV, whatever
+  # attachment.read reads) is kept in memory across turns — one LRU
+  # shared by every project, bounded in bytes rather than in files (see
+  # tracking/project_files.py's ProjectFileCache).
+  project-file-cache-bytes: 8388608
 
 jobs:
   # Optional section — can be omitted entirely. Sizes the general

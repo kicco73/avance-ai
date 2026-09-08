@@ -202,7 +202,7 @@ class ProjectInspector:
                 "relevant": signal.name in relevant_names,
                 # Not part of SignalPayload itself — filenames only, never
                 # full content.
-                "attachments": [a.filename for a in signal.attachments.values()],
+                "attachments": list(signal.attachments),
             }
             for signal in automaton.signals
         ]
@@ -289,8 +289,13 @@ class ProjectInspector:
         # Deferred: tracking.tracking_processor imports tracking.definitions,
         # which imports project.project_service, which imports this very
         # module — a top-level import here would be circular.
+        from tracking.project_files import project_files_for
         from tracking.tracking_processor import estimate_state_prompt
-        prompt = estimate_state_prompt(self._ai_service, automaton, state)
+        # The estimate counts what a real turn would send, attachments
+        # included — so it reads them the same way a turn does.
+        prompt = estimate_state_prompt(
+            self._ai_service, automaton, state, project_files_for(self._db, automaton),
+        )
         return self._ai_service.get_input_tokens(prompt)
 
     def get_project_graph(self, project_id: str, session_id: int | None = None) -> dict:
@@ -307,7 +312,7 @@ class ProjectInspector:
                 "history_cutoff": state.history_cutoff,
                 "reactions_enabled": state.reactions_enabled,
                 "transition_log_level": state.transition_log_level,
-                "attachments": list(state.attachments.keys()),
+                "attachments": list(state.attachments),
                 # Not part of StatePayload — a state's system-prompt text
                 # never reaches a live chat client, only this Inspect panel.
                 "contextual_prompt": state.contextual_prompt,

@@ -134,6 +134,15 @@ secrets). Top-level sections:
   sessions"' own session detail panel can show a burnt-vs-budget bar
   (input tokens summed across the session's `user` messages) with the
   exact numbers on hover. Nothing in the backend trims history against it.
+- **`chat-service.project-file-cache-bytes`** — optional, defaults to
+  `8388608` (8 MiB). Sizes the one in-memory LRU every project file is
+  read through (a state's or the project's own `attachments:`, an
+  `avance:` source's CSV, whatever `attachment.read` reads — see
+  `tracking/project_files.py`). Bounded in bytes, not in files, since one
+  project's CSV is not the size of another's footer note; a file larger
+  than the whole bound is served without being kept. Entries are dropped
+  by the bound, and explicitly whenever a project is saved, renamed or
+  deleted.
 - **`ai-service.providers`** — a non-empty, ordered list, backing *two*
   independent cascades — live chat and the test panel/batch runs (see
   `AiService.for_live`/`for_test` in `ai/ai_service.py`) — rather than

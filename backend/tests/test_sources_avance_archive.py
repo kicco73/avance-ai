@@ -22,6 +22,7 @@ from tracking.sources import SourceNamespace
 from tracking.sources.avance_archive import AvanceArchiveSource
 from tracking.sources.base import MAX_SOURCE_RESULT_CHARS, SourceContext
 from tracking.sources.url import parse_source_url
+from tracking.project_files import PROJECT_FILE_CACHE
 
 pytestmark = pytest.mark.contract
 
@@ -34,6 +35,10 @@ FLIGHTS = "codice_volo,data_partenza,datetime_partenza_reale\nVY3003,2026-08-16,
 def _seed(db, files: dict[str, bytes], content_types: dict[str, str]) -> int:
     db.ensure_project(PROJECT_ID)
     db.save_project_files(PROJECT_ID, files, content_types)
+    # A draft revision is rewritten in place, so seeding twice in one test
+    # leaves the same (project, revision, path) holding new bytes — what
+    # ProjectManager.finalize_update forgets for a real save.
+    PROJECT_FILE_CACHE.forget_project(PROJECT_ID)
     return db.get_project_revision(PROJECT_ID)
 
 
@@ -275,6 +280,7 @@ class TestPerSessionReadCache:
         # session — the canonical archive now reads differently, but this
         # session's own cached copy keeps seeing exactly what it first read.
         db.save_project_files(PROJECT_ID, {"notes.txt": b"note\nedited\n"}, {"notes.txt": "text/plain"})
+        PROJECT_FILE_CACHE.forget_project(PROJECT_ID)  # what a real save does through finalize_update
         assert _driver(automaton, db, "notes.txt", session_id=42).select_rows_containing("original") == "note\noriginal\n"
         assert _driver(automaton, db, "notes.txt", session_id=None).select_rows_containing("edited") == "note\nedited\n"
 

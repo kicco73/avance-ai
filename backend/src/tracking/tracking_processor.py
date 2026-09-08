@@ -16,6 +16,7 @@ from talker import AiTalker
 
 if TYPE_CHECKING:
 	from talker import BaseTalker
+	from .project_files import ProjectFiles
 
 from .env import Env
 from .env_prompt_block import EnvPromptBlock
@@ -24,7 +25,9 @@ from .prompt import (
 	AudioPrompt, MemoryPrompt, OutputPrompt, Prompt, ReactionPrompt, SignalsPrompt, TextPrompt, TranslatePrompt,
 	build_output_definition,
 )
+from .attachments import load_attachments
 from .priming import build_priming_messages
+from .project_files import project_files_for
 from .sources import SourceNamespace, ToolSet
 from .tracking_engine import DbTrackingSink, TrackingEngine
 from .turn_size_estimate import TurnSizeEstimate, estimate_turn_request
@@ -552,9 +555,12 @@ class TrackingProcessor(object):
 		# State.reactions_enabled), never a partial vocabulary.
 		reaction_definition = self._build_reaction_definition(automaton) if automaton.reactions_enabled_for(state) else None
 		base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"
+		# The automaton carries the paths, not the files: this turn's own
+		# attachments are read here, once, through the same reader every
+		# other project-file read goes through (see tracking.attachments).
 		return (
 			base_prompt, output_definition, signal_definition, reaction_definition,
-			list(automaton.general_attachments.values()) + list(state.attachments.values()),
+			load_attachments(project_files_for(self.db, automaton), [*automaton.general_attachments, *state.attachments]),
 		)
 
 	@staticmethod
@@ -618,13 +624,19 @@ class TrackingProcessor(object):
 		return payload
 
 
-def estimate_state_prompt(ai_service: AiService, automaton: Automaton, state: State) -> str:
+def estimate_state_prompt(
+	ai_service: AiService, automaton: Automaton, state: State, files: "ProjectFiles",
+) -> str:
 	"""The system_prompt TrackingProcessor.generate_reply would actually
 	send for `state`, plus a synthetic one-turn history standing in for a
 	real conversation — a single '...' placeholder user message, preceded
 	by the state's own attachments (see build_priming_messages). Renders
 	with no live session/Db needed, for ProjectInspector.get_state_input_tokens'
-	own per-state input-token estimate."""
+	own per-state input-token estimate. `files` comes from the caller
+	rather than from a Db this function doesn't have: the estimate counts
+	the attachment bytes a real turn would actually send, so it needs the
+	same reader that turn would use (ProjectInspector.get_state_input_tokens
+	has one)."""
 	if state.fixed_message:
 		base_prompt = FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message)
 		output_definition = None
@@ -639,7 +651,7 @@ def estimate_state_prompt(ai_service: AiService, automaton: Automaton, state: St
 			TrackingProcessor._build_reaction_definition(automaton) if automaton.reactions_enabled_for(state) else None
 		)
 		base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"
-		turn_attachments = list(automaton.general_attachments.values()) + list(state.attachments.values())
+		turn_attachments = load_attachments(files, [*automaton.general_attachments, *state.attachments])
 
 	# memory empty — this is a static, no-live-session estimate with no
 	# real model-reported notes to seed it with; action_set carries the

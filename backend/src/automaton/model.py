@@ -30,7 +30,11 @@ class Action:
     target: str
     ui_description: str | None = None
     trigger: str | None = None
-    attachments: dict[str, MemoryArchive] = field(default_factory=dict[str, MemoryArchive])
+    # Stored paths of this action's own declared `attachments:`, resolved
+    # against the project's files once at build time (see
+    # ArchiveResolver.require) — never the bytes: those are read per turn
+    # through tracking.project_files.ProjectFiles.
+    attachments: tuple[str, ...] = ()
     # Not state-level: two different actions landing on the same target
     # state can each carry their own value (or none), since it describes
     # *how you got there*, not the destination itself.
@@ -76,7 +80,8 @@ class State:
     fixed_message: str | None = None
     # Log level (name) used when logging a transition landing on this state.
     transition_log_level: str = "WARNING"
-    attachments: dict[str, MemoryArchive] = field(default_factory=dict[str, MemoryArchive])
+    # Stored paths, resolved at build time — see Action.attachments.
+    attachments: tuple[str, ...] = ()
     # If true, messages from before the transition into this state are kept
     # out of both the AI reply and auto-tracking's signal evaluation.
     history_cutoff: bool = False
@@ -150,9 +155,11 @@ class Signal:
     name: str
     ui_label: str
     definition: str
-    # Attachments for this signal's definition, sent only with the signals
-    # computation call (never with normal chat turns).
-    attachments: dict[str, MemoryArchive] = field(default_factory=dict[str, MemoryArchive])
+    # Stored paths of the attachments for this signal's definition, sent
+    # only with the signals computation call (never with normal chat
+    # turns) — resolved at build time, read per turn (see
+    # Action.attachments).
+    attachments: tuple[str, ...] = ()
     ui_description: str | None = None
 
 

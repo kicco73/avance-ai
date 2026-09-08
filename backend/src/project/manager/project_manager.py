@@ -13,6 +13,7 @@ from chat.sessions.session_manager import ChatSessionManager
 from db import Db
 from logging_factory import LoggerFactory
 from session import Session
+from tracking.project_files import PROJECT_FILE_CACHE
 from tracking.session_export import SessionExportManager
 from tracking.session_import import SessionImportManager
 
@@ -129,6 +130,7 @@ class ProjectManager:
             old_project_id = project_id
             self._db.rename_project_id(old_project_id, automaton.project_id)
             self._automaton_loader.invalidate_cache(old_project_id)
+            PROJECT_FILE_CACHE.forget_project(old_project_id)
             project_id = automaton.project_id
             self._availability.recheck_dependents_of_changed_id(project_id, old_project_id, project_id)
         elif is_new_project or (old_family is not FAMILY_NOT_CHECKED and old_family != automaton.family):
@@ -139,6 +141,10 @@ class ProjectManager:
         revision = self._db.get_project_revision(project_id)
         automaton.set_storage_location(revision)
         self._automaton_loader.set_cached(project_id, revision, automaton)
+        # Every project save comes through here, and a draft revision is
+        # rewritten in place — so a file cached under (project, revision,
+        # path) can now hold the bytes of the version just replaced.
+        PROJECT_FILE_CACHE.forget_project(project_id)
         observed_project_ids = self._availability.filter_resolvable_project_ids(ProjectAvailability.automaton_project_refs(automaton))
         self._db.set_project_observers(project_id, observed_project_ids)
         self._availability.recompute(project_id)
@@ -255,6 +261,7 @@ class ProjectManager:
         self._db.reset_project(project_id)
         self._db.delete_archives(project_id)
         self._automaton_loader.invalidate_cache(project_id)
+        PROJECT_FILE_CACHE.forget_project(project_id)
         self._availability.recheck_dependents_of_changed_id(project_id, project_id, None)
 
         if was_active:

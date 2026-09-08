@@ -1,7 +1,7 @@
 from automaton.automaton import (
-    Action, EnvKey, MemoryArchive, Automaton, Reaction, Signal, Source, State,
+    Action, EnvKey, Automaton, Reaction, Signal, Source, State,
 )
-from automaton.builder.archive_resolver import ArchiveResolver
+from automaton.builder.archive_resolver import ProjectArchives
 from automaton.builder.automaton_validator import AutomatonValidator, STATE_SOURCE_FIELDS
 from automaton.builder.build_cursor import BuildCursor
 from automaton.build_error import AutomatonBuildError
@@ -38,15 +38,13 @@ class AutomatonBuilder(object):
     def _line_of(parent, key: str) -> int | None:
         return BuildCursor.line_of(parent, key)
 
-    def _build_signal(self, name, raw_signal: dict, all_archives: dict[str, MemoryArchive]) -> Signal:
+    def _build_signal(self, name, raw_signal: dict, archives: ProjectArchives) -> Signal:
         return Signal(
             name=name,
             ui_label=raw_signal.get("ui-label", name),
             ui_description=raw_signal["ui-description"].strip() if raw_signal.get("ui-description") else raw_signal["definition"].strip(),
             definition=raw_signal["definition"].strip(),
-            attachments=ArchiveResolver.extract_required_archives(
-                raw_signal.get("attachments", []), all_archives, f"signal '{name}'"
-            )
+            attachments=archives.require(raw_signal.get("attachments", []), f"signal '{name}'"),
         )
 
     @staticmethod
@@ -72,7 +70,7 @@ class AutomatonBuilder(object):
             ai_definition=raw_ai_definition.strip() if isinstance(raw_ai_definition, str) and raw_ai_definition.strip() else None,
         )
 
-    def _build_source(self, name: str, raw_source: dict, all_archives: dict[str, MemoryArchive]) -> Source:
+    def _build_source(self, name: str, raw_source: dict, archives: ProjectArchives) -> Source:
         raw_source = raw_source or {}
         url = raw_source.get("url") or ""
         if url:
@@ -84,11 +82,8 @@ class AutomatonBuilder(object):
                 raise ValueError(
                     f"Source '{name}': url scheme '{scheme}' must be one of: {', '.join(sorted(SOURCE_DRIVERS))}."
                 )
-            if scheme == "avance" and ArchiveResolver.find_archive(path, all_archives, f"source '{name}'") is None:
-                all_archives[path] = MemoryArchive(
-                    filename=path,
-                    source={"type": "text", "media_type": "text/plain", "data": ""},
-                )
+            if scheme == "avance" and archives.find(path, f"source '{name}'") is None:
+                archives.declare_missing(path)
         raw_ai_definition = raw_source.get("ai-definition")
         return Source(
             name=name,
@@ -109,7 +104,7 @@ class AutomatonBuilder(object):
             )
         return {key: value if isinstance(value, str) else str(value) for key, value in raw_env.items()}
 
-    def _build_action(self, key: str, raw_action: dict, all_archives: dict[str, MemoryArchive]) -> Action:
+    def _build_action(self, key: str, raw_action: dict, archives: ProjectArchives) -> Action:
         task = raw_action.get("task")
         on_exit = raw_action.get("on-exit")
         line = BuildCursor.own_line(raw_action)
@@ -121,9 +116,7 @@ class AutomatonBuilder(object):
             ui_button=raw_action.get("ui-button") or raw_action.get("ui-label") or raw_action["name"],
             target=raw_action.get("target", key),
             trigger=raw_action.get("trigger"),
-            attachments=ArchiveResolver.extract_required_archives(
-                raw_action.get("attachments", []), all_archives, f"action {raw_action['name']}"
-            ),
+            attachments=archives.require(raw_action.get("attachments", []), f"action {raw_action['name']}"),
             task=task,
             on_exit=on_exit,
             env=self._build_action_env(raw_action.get("env"), raw_action["name"]),
@@ -165,12 +158,12 @@ class AutomatonBuilder(object):
             raise ValueError(f"State '{key}': '{field_name}' must be a list of env variable names if present.")
         return tuple(raw_list)
 
-    def _build_state(self, key: str, raw_state: dict, all_archives: dict[str, MemoryArchive], line: int | None = None) -> State:
+    def _build_state(self, key: str, raw_state: dict, archives: ProjectArchives, line: int | None = None) -> State:
         self._at(line, f"states.{key}")
         actions: list[Action] = []
         action_names_by_ui_label: dict[str, str] = {}
         for raw_action in raw_state.get("actions", []):
-            action = self._build_action(key, raw_action, all_archives)
+            action = self._build_action(key, raw_action, archives)
             existing_name = action_names_by_ui_label.get(action.ui_label)
             if existing_name is not None:
                 raise ValueError(
@@ -212,7 +205,7 @@ class AutomatonBuilder(object):
             actions=actions,
             fixed_message=fixed_message.strip() if fixed_message else None,
             transition_log_level=transition_log_level,
-            attachments=ArchiveResolver.extract_required_archives(raw_state.get("attachments", []), all_archives, f"state '{key}'"),
+            attachments=archives.require(raw_state.get("attachments", []), f"state '{key}'"),
             history_cutoff=raw_state.get("history-cutoff", False),
             chat_enabled=raw_state.get("chat-enabled", True),
             reactions_enabled=raw_state.get("reactions-enabled", False),
@@ -305,7 +298,7 @@ class AutomatonBuilder(object):
         self, contents: dict, known_projects: dict[str, frozenset[str]] | None, *,
         legacy_project_id: str | None,
     ) -> Automaton:
-        all_archives = ArchiveResolver.convert_contents_to_archives(contents=contents)
+        archives = ProjectArchives(contents)
 
         raw = load_yaml(contents['index.yml'])
         if not isinstance(raw, dict):
@@ -318,7 +311,7 @@ class AutomatonBuilder(object):
         signals: dict[str, Signal] = {}
         for name, raw_signal in raw_signals.items():
             self._at(self._line_of(raw_signals, name), f"signals.{name}")
-            signals[name] = self._build_signal(name, raw_signal, all_archives)
+            signals[name] = self._build_signal(name, raw_signal, archives)
         self._check_unique_ui_labels(signals, raw_signals, "signals", "Signals")
 
         reserved_names = set(signals.keys()) & metric_names()
@@ -346,7 +339,7 @@ class AutomatonBuilder(object):
         sources: dict[str, Source] = {}
         for name, raw_source in raw_sources.items():
             self._at(self._line_of(raw_sources, name), f"sources.{name}")
-            sources[name] = self._build_source(name, raw_source, all_archives)
+            sources[name] = self._build_source(name, raw_source, archives)
         self._validator.validate_env_key_default_order(env_keys, raw_env_keys)
 
         raw_states = raw["states"]
@@ -377,7 +370,7 @@ class AutomatonBuilder(object):
                     "so YAML parsed it as its own separate state."
                 )
 
-            states[key] = self._build_state(key, raw_state, all_archives, line=state_line)
+            states[key] = self._build_state(key, raw_state, archives, line=state_line)
             existing_key = state_keys_by_ui_label.get(states[key].ui_label)
             if existing_key is not None:
                 raise ValueError(
@@ -390,10 +383,10 @@ class AutomatonBuilder(object):
         for key, state in states.items():
             context_key = init_action.name if key == "" else key
             self._validator.check_state(
-                context_key, state, set(raw_states.keys()), registry, env_keys, sources, all_archives, known_projects,
+                context_key, state, set(raw_states.keys()), registry, env_keys, sources, archives, known_projects,
             )
 
-        general_attachments = ArchiveResolver.extract_required_archives(raw.get('attachments', []), all_archives, for_field="global")
+        general_attachments = archives.require(raw.get('attachments', []), for_field="global")
 
         return Automaton(
             init_action=init_action,

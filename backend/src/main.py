@@ -18,6 +18,7 @@ from chat.ws_human_relay import WsHumanRelay
 from chat.ws_notifications import WsNotifications
 from talker import HumanTalker
 from config import AppConfig
+from tracking.project_files import configure_project_file_cache
 from controller import AvanceController
 from db import Db
 from error_handlers import ApiErrorHandlers
@@ -85,6 +86,10 @@ def create_app() -> FastAPI:
         # tap and db/ai_usage.py) is written straight through it, the same
         # `db` every other service here depends on.
         db = Db(config.database_url, migration_strategy=config.database_migration_strategy)
+
+        # Process-wide, and so configured here rather than handed to each
+        # of the readers that share it (see tracking.project_files).
+        configure_project_file_cache(config.project_file_cache_bytes)
 
         migrate_env_rows(db)
 

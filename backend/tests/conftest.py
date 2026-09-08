@@ -37,6 +37,7 @@ from testing.test_service import TestService
 from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from testing.last_status_broadcaster import LastStatusBroadcaster
 from tracking.actuators import TaskNamespaceFactory
+from tracking.project_files import PROJECT_FILE_CACHE
 from tracking.tracking_service import TrackingService
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
@@ -120,6 +121,19 @@ def _reset_ephemeral_env_registry():
     EphemeralEnvRegistry._reset_for_tests()
     yield
     EphemeralEnvRegistry._reset_for_tests()
+
+
+@pytest.fixture(autouse=True)
+def _reset_project_file_cache():
+    """tracking.project_files' own PROJECT_FILE_CACHE is a process-global
+    too, keyed by (project id, revision, path) — and every test starts
+    from a fresh :memory: database where those three say nothing about
+    which test wrote them. In a real process the same key really does
+    mean the same bytes, and ProjectManager.finalize_update invalidates
+    the one case where it doesn't."""
+    PROJECT_FILE_CACHE.clear()
+    yield
+    PROJECT_FILE_CACHE.clear()
 
 
 @pytest.fixture(autouse=True)
