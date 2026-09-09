@@ -13,12 +13,12 @@ from fastapi import HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 import bus
-from bus import POINT_API_STATE
+from bus import POINT_API_STATE, POINT_TALK_PROVIDER
 
 from chat.chat_service import ChatService
 from project.project_service import ProjectService
-from talk.talk_service import TalkService, TalkServiceNotAvailableError
 from talker import AiTalker
+from talker.base_talker import TalkServiceNotAvailableError
 from schemas import (
     ActionRequest,
     ActuatorsRequest,
@@ -50,12 +50,10 @@ class ChatController(BaseController):
         self,
         chat_service: ChatService,
         project_service: ProjectService,
-        talk_service: TalkService | None,
     ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
-        self.talk_service = talk_service
-        self.assistant_talker = AiTalker(talk_service=talk_service)
+        self.assistant_talker = AiTalker()
 
     @get("/api/docs/{name}")
     def get_doc(self, name: str):
@@ -160,8 +158,8 @@ class ChatController(BaseController):
         bus.POINT_API_STATE). No `-> StatePayload` annotation:
         with no active project/state the payload lacks those fields.
         talk_enabled here is the AND of two independent things: whether
-        the server has any TTS provider configured at all (talk_service),
-        and whether the active project itself opted in (its own
+        the talk skill is installed and configured at all, and whether
+        the active project itself opted in (its own
         project.talk-enabled, defaulting true) — the chat toolbar's
         audio/spoken-text icons read this one combined flag rather than
         checking the project's own setting separately."""
@@ -176,7 +174,8 @@ class ChatController(BaseController):
         except:
             project_talk_enabled = True
 
-        payload["talk_enabled"] = self.talk_service is not None and project_talk_enabled
+        talk_available = bus.collect(POINT_TALK_PROVIDER, {}).get("generate") is not None
+        payload["talk_enabled"] = talk_available and project_talk_enabled
         payload["input_token_budget_per_turn"] = self.chat_service.get_input_token_budget_per_turn()
         payload["total_token_budget_per_session"] = self.chat_service.get_total_token_budget_per_session()
         # Whatever else is running adds its own field: listen_enabled
@@ -297,25 +296,21 @@ class ChatController(BaseController):
         """Generates (or replays a cached/in-flight) audio for message_id,
         streaming-compatible. 404 if the message had no [audio] tag — the
         frontend treats that as "no audio available", not a failure."""
-        if self.talk_service is None:
-            raise HTTPException(
-                status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(TalkServiceNotAvailableError())
-            )
         audio_text = self.chat_service.get_message_audio_text(message_id)
         if not audio_text:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No audio available for this message.")
+        try:
+            generation = self.assistant_talker.talk(audio_text)
+        except TalkServiceNotAvailableError as exc:
+            raise HTTPException(status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(exc)) from exc
         return StreamingResponse(
-            self._stream_audio_until_disconnected(request, audio_text), media_type="audio/wav"
+            self._stream_audio_until_disconnected(request, generation), media_type="audio/wav"
         )
 
-    async def _stream_audio_until_disconnected(self, request: Request, audio_text: str):
+    async def _stream_audio_until_disconnected(self, request: Request, generation):
         # A dropped/aborted fetch doesn't reliably surface as a send()
         # failure — polling is_disconnected() stops the provider's work
         # immediately instead of wasting a full synthesis.
-        if self.talk_service is None:
-            raise TalkServiceNotAvailableError("Talk service is not available")
-
-        generation = self.assistant_talker.talk(audio_text)
         try:
             async for chunk in generation:
                 if await request.is_disconnected():

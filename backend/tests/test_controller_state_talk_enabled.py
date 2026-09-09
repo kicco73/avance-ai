@@ -1,13 +1,15 @@
 """GET /api/state's own talk_enabled — the AND of "does the server have
-a TTS provider configured at all" (talk_service is not None) and "does
-the active project itself opt in" (its own automaton.talk_enabled,
-defaulting true) — the chat toolbar's audio/spoken-text icons
-(ChatInput.vue) read this one combined flag.
+a TTS provider configured at all" (a talk skill contributing to
+bus.POINT_TALK_PROVIDER) and "does the active project itself opt in"
+(its own automaton.talk_enabled, defaulting true) — the chat toolbar's
+audio/spoken-text icons (ChatInput.vue) read this one combined flag.
 """
 from __future__ import annotations
 
 import pytest
 
+import bus
+from bus import POINT_TALK_PROVIDER
 from controllers.chat_controller import ChatController
 
 pytestmark = pytest.mark.contract
@@ -46,10 +48,11 @@ class _FakeChatService:
 
 
 def _controller(*, talk_service_configured: bool, project_talk_enabled: bool) -> ChatController:
+    if talk_service_configured:
+        bus.contribute(POINT_TALK_PROVIDER, lambda registry: registry.update({"generate": object()}))
     return ChatController(
         chat_service=_FakeChatService(),
         project_service=_FakeProjectService(project_talk_enabled),
-        talk_service=object() if talk_service_configured else None,
     )
 
 
@@ -69,9 +72,9 @@ def test_talk_disabled_when_the_server_has_no_provider_even_if_the_project_opts_
 
 
 def test_defaults_to_the_server_flag_when_there_is_no_active_project():
+    bus.contribute(POINT_TALK_PROVIDER, lambda registry: registry.update({"generate": object()}))
     controller = ChatController(
         chat_service=_FakeChatService(),
         project_service=_NoActiveProjectService(),
-        talk_service=object(),
     )
     assert controller.get_state()["talk_enabled"] is True

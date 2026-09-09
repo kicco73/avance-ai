@@ -331,7 +331,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
     fastapi_app = FastAPI(title="Avance State Engine (test)")
     ApiErrorHandlers.register(fastapi_app)
     controller = AvanceController(
-        chat_service, project_service, None, app_db, tracking_service, test_service,
+        chat_service, project_service, app_db, tracking_service, test_service,
         auth_service, test_event_broadcaster, scheduler_service, "test-version", services_config,
         ws_notifications=WsNotifications(auth_service, chat_service),
         # Never backend/apps: a test that builds must not write into the

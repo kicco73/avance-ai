@@ -13,6 +13,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from auth.auth_middleware import AuthMiddleware
+import bus
+from bus import POINT_TALK_PROVIDER
 from config import WhatsAppServiceConfig
 from controllers.whatsapp_controller import WhatsAppController
 from service_error import ServiceError
@@ -318,7 +320,9 @@ def _build(config=None, talk=None, listen=None):
         # Listen reaches this channel through the Bus now, never as a
         # constructor argument: the service does not know it exists.
         SpeechDecoder(listen).register()
-    service = WhatsAppService(config or _config(), chat, db, auth, client=api, talk_service=talk)
+    if talk is not None:
+        bus.contribute(POINT_TALK_PROVIDER, lambda registry: registry.update({"generate": talk.generate}))
+    service = WhatsAppService(config or _config(), chat, db, auth, client=api)
     app = FastAPI()
     # The real app's login wall sits in front of these routes too — they
     # must be reachable with no cookie at all (role=None).

@@ -34,17 +34,6 @@ class ConfigError(Exception):
     """Raised when backend/.config.yml is missing or structurally invalid."""
 
 @dataclass(frozen=True)
-class TalkServiceConfig:
-    driver: str
-    model: str
-    # Optional: a future local provider (e.g. Piper) won't need one.
-    key: str | None
-    # Optional: falls back to `driver` (see AppConfig._parse_talk_services).
-    ui_label: str
-    ui_description: str | None = None
-
-
-@dataclass(frozen=True)
 class WhatsAppServiceConfig:
     """The optional `whatsapp-service` section (see docs/WHATSAPP.md):
     Meta Cloud API credentials plus the phone -> account mapping."""
@@ -230,32 +219,6 @@ class AppConfig:
         if not isinstance(entries, list) or not entries:
             raise ConfigError(f"{path}: '{section}.providers' must be a non-empty list.")
         return entries
-
-    @classmethod
-    def _parse_talk_services(cls, raw: dict, path: Path) -> list[TalkServiceConfig] | None:
-        entries = cls._get_optional_providers(raw, "talk-service", path)
-        if entries is None:
-            return None
-
-        services = []
-        for i, entry in enumerate(entries):
-            if not isinstance(entry, dict):
-                raise ConfigError(f"{path}: 'talk-service.providers[{i}]' must be a mapping.")
-            driver = entry.get("driver")
-            model = entry.get("model")
-            key = entry.get("key")
-            if not isinstance(driver, str) or not driver.strip():
-                raise ConfigError(f"{path}: 'talk-service.providers[{i}].driver' is missing or empty.")
-            if not isinstance(model, str) or not model.strip():
-                raise ConfigError(f"{path}: 'talk-service.providers[{i}].model' is missing or empty.")
-            if key is not None and not isinstance(key, str):
-                raise ConfigError(f"{path}: 'talk-service.providers[{i}].key' must be a string if present.")
-            driver = driver.strip()
-            ui_label, ui_description = cls._parse_ui_fields(entry, driver, "talk-service", i, path)
-            services.append(TalkServiceConfig(
-                driver=driver, model=model.strip(), key=key, ui_label=ui_label, ui_description=ui_description,
-            ))
-        return services
 
     @classmethod
     def _parse_auth_providers(cls, raw: dict, path: Path) -> list[AuthProviderConfig]:
@@ -530,7 +493,6 @@ class AppConfig:
         )
 
         self.ai_services = self._parse_ai_services(raw, path)
-        self.talk_services = self._parse_talk_services(raw, path)
 
         # Not provider-specific — needed regardless of which auth provider
         # actually authenticated the user.
@@ -584,10 +546,6 @@ class AppConfig:
                     }
                     for p in self.ai_services
                 ],
-            },
-            "talk": {
-                "enabled": self.talk_services is not None,
-                "providers": [self._public_provider_fields(p) for p in (self.talk_services or [])],
             },
             "whatsapp": {
                 "enabled": wa is not None,

@@ -22,6 +22,12 @@ if TYPE_CHECKING:
 	from tracking.sources import ToolSet
 
 
+class TalkServiceNotAvailableError(Exception):
+
+	def __init__(self, message: str = "Audio generation is not enabled on this server.") -> None:
+		super().__init__(message)
+
+
 class BaseTalker(ABC):
 	@abstractmethod
 	def chat(

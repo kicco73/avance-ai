@@ -43,7 +43,6 @@ import hmac
 import re
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import httpx
 
@@ -55,13 +54,10 @@ from db import Db
 from logging_factory import LoggerFactory
 from service_error import ServiceError
 import bus
-from bus import INPUT_AUDIO, INPUT_TEXT, Message
+from bus import INPUT_AUDIO, INPUT_TEXT, POINT_TALK_PROVIDER, Message
 from session import Session
 from talker import AiTalker
 from whatsapp.cloud_api_client import WhatsAppCloudApiClient
-
-if TYPE_CHECKING:
-    from talk.talk_service import TalkService
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -133,20 +129,19 @@ class WhatsAppService(object):
         db: Db,
         auth_service: AuthService,
         client: WhatsAppCloudApiClient | None = None,
-        talk_service: "TalkService | None" = None,
     ) -> None:
         self._config = config
         self._chat_service = chat_service
         self._db = db
         self._auth_service = auth_service
-        self._talk_service = talk_service
-        self._assistant_talker = AiTalker(talk_service=talk_service)
+        self._assistant_talker = AiTalker()
         self._client = client or WhatsAppCloudApiClient(
             config.access_token, config.phone_number_id, config.graph_version
         )
         self._seen = _SeenMessages()
         self._sender_locks: dict[str, asyncio.Lock] = {}
-        self._voice_notes = VoiceNoteSynthesizer(self._assistant_talker) if talk_service is not None else None
+        talk_available = bus.collect(POINT_TALK_PROVIDER, {}).get("generate") is not None
+        self._voice_notes = VoiceNoteSynthesizer(self._assistant_talker) if talk_available else None
 
     async def close(self) -> None:
         if self._voice_notes is not None:
@@ -537,7 +532,7 @@ class WhatsAppService(object):
         return True
 
     def _wants_voice(self, spoken: bool) -> bool:
-        if self._talk_service is None:
+        if self._voice_notes is None:
             return False
         policy = self._config.voice_replies
         return policy == "always" or (policy == "when-spoken-to" and spoken)

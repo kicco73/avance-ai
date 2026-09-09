@@ -67,12 +67,13 @@ MAIL_SEND = "mail.send"
 # Named places the core assembles something and anything may add to it.
 # Not messages: nothing is delivered and nobody is notified — the core
 # asks, synchronously, and whoever registered fills in its part. They
-# exist because the three things a skill has to reach are all built
-# before or outside any turn: the boot-time router, a request's own
-# response, a read of the configuration.
+# exist because the things a skill has to reach are all built before or
+# outside any turn: the boot-time router, a request's own response, a
+# read of the configuration.
 POINT_API_STATE = "api.state"
 POINT_CONFIG_SERVICES = "config.services"
 POINT_HTTP_CONTROLLERS = "http.controllers"
+POINT_TALK_PROVIDER = "talk.provider"
 
 # What a client connected over a socket is allowed to put on the Bus.
 # The wire uses these very names — a frame is not translated into

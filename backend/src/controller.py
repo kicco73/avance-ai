@@ -14,7 +14,6 @@ from chat.ws_notifications import WsNotifications
 from db import Db
 from project.project_service import ProjectService
 from scheduler import SchedulerService
-from talk.talk_service import TalkService
 from testing.test_service import TestService
 from broadcaster import Broadcaster
 from tracking.tracking_service import TrackingService
@@ -40,7 +39,6 @@ class AvanceController(object):
         self,
         chat_service: ChatService,
         project_service: ProjectService,
-        talk_service: TalkService | None,
         db: Db,
         tracking_service: TrackingService,
         test_service: TestService,
@@ -55,7 +53,6 @@ class AvanceController(object):
     ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
-        self.talk_service = talk_service
         self.db = db
         self.test_service = test_service
         self.tracking_service = tracking_service
@@ -64,7 +61,7 @@ class AvanceController(object):
         self.scheduler_service = scheduler_service
         self.version = version
 
-        self.chat = ChatController(chat_service, project_service, talk_service)
+        self.chat = ChatController(chat_service, project_service)
         self.edit_project = EditProjectController(chat_service, project_service, scheduler_service)
         # XXX Compiled automaton requirement - do not touch.
         # XXX The Build view's Target step, wired to a real compile. The

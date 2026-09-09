@@ -7,21 +7,22 @@ substitution (a different chat()/talk() implementation, e.g. a human
 answering instead of the model) has a single seam instead of two
 scattered ones.
 
-Both services are optional: a caller that only ever needs talk()
-(ChatController, WhatsAppService) builds an AiTalker without an
-ai_service, and one that only ever needs chat() (TrackingProcessor)
-builds one without a talk_service. Calling a method whose service wasn't
-supplied raises the same *NotAvailableError the direct call would have
-raised.
+ai_service is optional: a caller that only ever needs talk()
+(ChatController, WhatsAppService) builds an AiTalker without one.
+talk() itself is always available or not depending on whether a talk
+skill is installed/configured, checked fresh on every call rather than
+supplied at construction; calling chat() without an ai_service raises
+the same *NotAvailableError the direct call would have raised.
 """
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, AsyncIterator
 
-from talk.talk_service import TalkService, TalkServiceNotAvailableError
+import bus
+from bus import POINT_TALK_PROVIDER
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 
-from .base_talker import BaseTalker
+from .base_talker import BaseTalker, TalkServiceNotAvailableError
 
 if TYPE_CHECKING:
 	from ai import AiService, MetadataCallback
@@ -33,10 +34,8 @@ class AiTalker(BaseTalker):
 	def __init__(
 		self,
 		ai_service: "AiService | None" = None,
-		talk_service: TalkService | None = None,
 	) -> None:
 		self._ai_service = ai_service
-		self._talk_service = talk_service
 
 	def chat(
 		self,
@@ -60,8 +59,9 @@ class AiTalker(BaseTalker):
 	def talk(self, text: str) -> AsyncIterator[bytes]:
 		"""Text-to-speech for one reply — same call as talk_service.
 		generate(text) always made. Raises TalkServiceNotAvailableError if
-		no TalkService was supplied, same as a caller checking
+		no talk skill is installed/configured, same as a caller checking
 		`talk_service is None` itself used to."""
-		if self._talk_service is None:
+		generate = bus.collect(POINT_TALK_PROVIDER, {}).get("generate")
+		if generate is None:
 			raise TalkServiceNotAvailableError()
-		return self._talk_service.generate(text)
+		return generate(text)

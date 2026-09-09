@@ -6,9 +6,9 @@ from __future__ import annotations
 import hashlib
 from typing import AsyncIterator
 
-from config import TalkServiceConfig
 from cascade import ProviderError
 from logging_factory import LoggerFactory
+from talk.config import TalkServiceConfig
 from talk.talk_provider import TalkProvider
 from talk.cascading_talk_provider import CascadingTalkProvider
 from talk.gemini_talk_provider import GeminiTalkProvider
@@ -17,14 +17,6 @@ from talk.talk_store import TalkStore
 from talk.talk_format import PcmWavCodec
 
 logger = LoggerFactory.get_logger(__name__)
-
-
-class TalkServiceNotAvailableError(Exception):
-    """Raised by the controller when talk-service.enabled is false in
-    .config.yml — there is no TalkService instance to call at all."""
-
-    def __init__(self, message: str = "Audio generation is not enabled on this server.") -> None:
-        super().__init__(message)
 
 
 class TalkService(TalkProvider):

@@ -17,6 +17,8 @@ from chat.sessions.session_manager import ChatSessionManager
 from chat.ws_human_relay import WsHumanRelay
 from chat.ws_notifications import WsNotifications
 from talker import HumanTalker
+import bus
+from bus import POINT_TALK_PROVIDER
 import skills
 from config import AppConfig
 from tracking.project_files import configure_project_file_cache
@@ -38,7 +40,6 @@ from tracking.actuators import TaskNamespaceFactory
 from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
-from talk.talk_service import TalkService
 from whatsapp.whatsapp_service import WhatsAppService
 
 __version__ = "1.33.0"
@@ -97,7 +98,6 @@ def create_app() -> FastAPI:
         ai_test_service = AiService.for_test(
             config.ai_services, db=db, input_token_budget_per_turn=config.input_token_budget_per_turn,
         )
-        talk_service = TalkService.from_config(config.talk_services) if config.talk_services is not None else None
 
         test_event_broadcaster = Broadcaster(ai_test_service, batch_window_seconds=DEFAULT_BATCH_WINDOW_SECONDS)
         # Started last (see the end of this block): until then its Task
@@ -173,7 +173,8 @@ def create_app() -> FastAPI:
         # tracking/tracking_service.py's own module docstring). Both this and
         # ChatService depend on ai_service/metric_service directly, never each other.
         tracking_service = TrackingService(
-            db, project_service, metric_service, namespace_factory, talk_enabled=talk_service is not None,
+            db, project_service, metric_service, namespace_factory,
+            talk_enabled=bus.collect(POINT_TALK_PROVIDER, {}).get("generate") is not None,
             input_token_budget_per_turn=config.input_token_budget_per_turn,
             total_token_budget_per_session=config.total_token_budget_per_session,
         )
@@ -232,16 +233,13 @@ def create_app() -> FastAPI:
         # client of ChatService.process_turn, beside the SPA — see
         # whatsapp/whatsapp_service.py's own module docstring.
         whatsapp_service = (
-            WhatsAppService(
-                config.whatsapp_service_config, chat_service, db, auth_service,
-                talk_service=talk_service,
-            )
+            WhatsAppService(config.whatsapp_service_config, chat_service, db, auth_service)
             if config.whatsapp_service_config is not None else None
         )
         namespace_factory.set_whatsapp_service(whatsapp_service)
 
         controller = AvanceController(
-            chat_service, project_service, talk_service, db, tracking_service, test_service,
+            chat_service, project_service, db, tracking_service, test_service,
             auth_service, test_event_broadcaster, scheduler_service, __version__, config.public_services_snapshot(),
             whatsapp_service=whatsapp_service, ws_notifications=ws_notifications,
             apps_dir=config.build_service_config.apps_dir,
@@ -260,7 +258,7 @@ def create_app() -> FastAPI:
         logger.info("Shutting down - cleaning up resources...")
         
         skills.stop_all()
-        for service in [db, talk_service, ai_live_service, ai_test_service, whatsapp_service]:
+        for service in [db, ai_live_service, ai_test_service, whatsapp_service]:
             if service is not None and hasattr(service, "close") and callable(getattr(service, "close")):
                 close_fn = getattr(service, "close")
                 if inspect.iscoroutinefunction(close_fn):
