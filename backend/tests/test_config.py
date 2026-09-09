@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from config import DEFAULT_APPS_DIR, AppConfig, ConfigError
+from config import AppConfig, ConfigError
 
 pytestmark = pytest.mark.contract
 
@@ -213,31 +213,3 @@ class TestAiServiceProvidersModes:
             _load(monkeypatch, tmp_path, _sole_provider_modes(modes))
 
 
-class TestCompiledAutomatonSwitch:
-    """`project-service.compiled-automaton` used to name a module. It is
-    an on/off switch now — which package answers for which project and
-    revision is decided per load, never here — so the old string form must
-    be refused rather than accepted and quietly ignored."""
-
-    def test_defaults_to_off_with_the_default_apps_dir(self, monkeypatch, tmp_path):
-        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.use_compiled_automata is False
-        assert config.build_service_config.apps_dir == DEFAULT_APPS_DIR
-
-    def test_reads_the_switch_and_the_shared_apps_dir(self, monkeypatch, tmp_path):
-        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG + """
-project-service:
-  compiled-automaton: true
-
-build-service:
-  apps-dir: /var/lib/avance/apps
-""")
-        assert config.use_compiled_automata is True
-        assert str(config.build_service_config.apps_dir) == "/var/lib/avance/apps"
-
-    def test_a_module_name_is_a_configuration_error(self, monkeypatch, tmp_path):
-        with pytest.raises(ConfigError, match="true or false"):
-            _load(monkeypatch, tmp_path, MINIMAL_CONFIG + """
-project-service:
-  compiled-automaton: vueling_refund
-""")

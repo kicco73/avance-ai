@@ -19,7 +19,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from system import bus
-from system.bus import POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
+from system.bus import POINT_AUTOMATON_LOADER, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
+from avance_platform import config as platform_config
 from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
@@ -30,6 +31,21 @@ LABEL = "Platform — editor, benchmark, admin"
 
 def start(raw: dict, path: Path) -> None:
     bus.contribute(POINT_HTTP_CONTROLLERS, _install)
+    if platform_config.serves_compiled(raw, path):
+        bus.contribute(POINT_AUTOMATON_LOADER, _choose_compiled_loader)
+
+
+def _choose_compiled_loader(choice) -> None:
+    """Compiled when there is a package for the published revision,
+    interpreted otherwise — the choosing is the platform's, which is why
+    the class that does it lives here (see
+    avance_platform/compiled_automaton_loader.py)."""
+    from avance_platform.compiled_automaton_loader import CompiledAutomatonLoader
+
+    choice.replace(
+        CompiledAutomatonLoader(choice.db, choice.apps_dir, session_manager=choice.session_manager),
+        KEY,
+    )
 
 
 def _install(controllers: list) -> None:

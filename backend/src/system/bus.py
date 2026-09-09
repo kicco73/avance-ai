@@ -100,6 +100,14 @@ POINT_HTTP_CONTROLLERS = "http.controllers"
 # which is what "later" means here.
 POINT_CORE_SERVICES = "core.services"
 
+# Which loader answers "give me this project's automaton". The core
+# builds the Db/Archive-backed one and offers the choice here; a package
+# that knows better replaces it (see project/archive/loader_choice.py).
+# A point rather than a branch in main.py because the alternatives live
+# in packages a build may not contain at all: the platform's
+# compiled-or-interpreted loader, and a product's single-package one.
+POINT_AUTOMATON_LOADER = "automaton.loader"
+
 # What a client connected over a socket is allowed to put on the Bus.
 # The wire uses these very names — a frame is not translated into
 # something else on the way in — so without this list the socket would

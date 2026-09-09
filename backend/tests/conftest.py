@@ -36,7 +36,7 @@ from jobs.job_queue import JobQueue
 from scheduler import SchedulerService
 from metrics.metric_service import MetricService
 from project.archive.automaton_loader import AutomatonLoader
-from project.archive.compiled_automaton_loader import CompiledAutomatonLoader
+from avance_platform.compiled_automaton_loader import CompiledAutomatonLoader
 from project.project_service import ProjectService
 from system.session import Session
 from testing.test_service import TestService

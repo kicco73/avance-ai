@@ -15,7 +15,7 @@ from auth.auth_service import AuthService
 from turn.turn_service import TurnService
 from turn.sessions.session_manager import SessionManager
 from system import bus
-from system.bus import OUTPUT_SPEECH, POINT_CORE_SERVICES
+from system.bus import OUTPUT_SPEECH, POINT_AUTOMATON_LOADER, POINT_CORE_SERVICES
 from system.ws_notifications import WsNotifications
 from system import skills
 from config import AppConfig
@@ -27,7 +27,7 @@ from scheduler import SchedulerService
 from system.logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.archive.automaton_loader import AutomatonLoader
-from project.archive.compiled_automaton_loader import CompiledAutomatonLoader
+from project.archive.loader_choice import AutomatonLoaderChoice
 from project.health_notifications import ProjectHealthNotifications
 from project.project_service import ProjectService
 from ai import AiService
@@ -37,7 +37,7 @@ from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
 
-__version__ = "1.33.0"
+__version__ = "2.0.0-alpha.1"  # also in package.json, Dockerfile, and CHANGELOG.md
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -117,17 +117,21 @@ def create_app() -> FastAPI:
         session_manager = SessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
 
         # XXX Compiled automaton requirement - do not touch.
-        # XXX The one place the compiled/interpreted choice is made (see
-        # config.py's project-service.compiled-automaton). On/off and
-        # nothing more: which package answers for which project and
-        # revision is decided per load, against build-service.apps-dir.
-        automaton_loader = (
-            CompiledAutomatonLoader(
-                db, config.build_service_config.apps_dir, session_manager=session_manager,
-            )
-            if config.use_compiled_automata
-            else AutomatonLoader(db, session_manager=session_manager)
-        )
+        # XXX The one place the loader is settled, and the only reason
+        # this block changed shape: the alternatives live in packages a
+        # build may not contain — the platform's compiled-or-interpreted
+        # loader, a product's single-package one — so main.py cannot name
+        # either of them. It builds the one loader that always works and
+        # offers the choice; whoever knows better has already replaced it
+        # by the time this returns (see bus.POINT_AUTOMATON_LOADER and
+        # project/archive/loader_choice.py). Nothing installed means the
+        # Db/Archive-backed loader, which is what a bare backend is.
+        automaton_loader = bus.collect(POINT_AUTOMATON_LOADER, AutomatonLoaderChoice(
+            db=db,
+            session_manager=session_manager,
+            apps_dir=config.build_service_config.apps_dir,
+            loader=AutomatonLoader(db, session_manager=session_manager),
+        )).loader
 
         project_service = ProjectService(
             db, automaton_loader, session_manager,

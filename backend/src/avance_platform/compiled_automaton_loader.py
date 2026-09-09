@@ -34,7 +34,7 @@ from build.build_service import module_name_for
 from db import Db
 from system.logging_factory import LoggerFactory
 
-from .automaton_loader import AutomatonLoader
+from project.archive.automaton_loader import AutomatonLoader
 
 if TYPE_CHECKING:
     # Type-only, same reason as AutomatonLoader's own TYPE_CHECKING import.

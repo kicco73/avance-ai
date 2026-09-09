@@ -398,22 +398,6 @@ class AppConfig:
         self.invite_max_shares = self._get_optional_positive_int(
             raw, "project-service", "invite-max-shares", path, default=3
         )
-        # XXX Compiled automaton requirement - do not touch.
-        # XXX Switches ProjectService from the Db/Archive-backed
-        # AutomatonLoader to CompiledAutomatonLoader, which prefers a
-        # compiled package under build-service.apps-dir whenever one
-        # matches the project's published revision and falls back to the
-        # ordinary loader otherwise (see project/archive/
-        # compiled_automaton_loader.py). An on/off switch and nothing
-        # more: which package is used for what is decided per project and
-        # per revision, at load time, never here. It stays configurable
-        # rather than inferred from apps-dir's contents so the
-        # interpreted path can be forced for debugging, and so a
-        # forgotten apps-dir cannot quietly take over.
-        self.use_compiled_automata = self._get_optional_bool(
-            raw, "project-service", "compiled-automaton", path, default=False
-        )
-
         self.ai_services = self._parse_ai_services(raw, path)
 
         # Not provider-specific — needed regardless of which auth provider
