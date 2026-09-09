@@ -39,7 +39,7 @@ from logging_factory import LoggerFactory
 
 if TYPE_CHECKING:
     from ai import AiService
-    from chat.ws_notifications import WsNotifications
+    from turn.ws_notifications import WsNotifications
 
 logger = LoggerFactory.get_logger(__name__)
 

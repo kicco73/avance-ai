@@ -1,7 +1,7 @@
 """process()'s own turn response now carries the turn's persisted
 assistant message in "reply" — the same {id, content, audio_text,
 timestamp} shape apply_manual_action's own "reply" already sends (see
-ChatService._messages_for_transition) — so a live SSE/WS turn's frontend
+TurnService._messages_for_transition) — so a live SSE/WS turn's frontend
 can reconcile its streaming bubble against the persisted row on `done`
 instead of trusting every chunk to have arrived (see
 chatStoreFactory.js's submitMessage). Previously this was always [].

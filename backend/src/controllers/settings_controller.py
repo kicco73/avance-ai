@@ -13,7 +13,7 @@ from urllib.parse import quote
 from fastapi import HTTPException, Request, Response
 
 from auth.roles import role_satisfies
-from chat.chat_service import ChatService
+from turn.turn_service import TurnService
 from db import Db
 from broadcaster import Broadcaster
 from project.project_service import ProjectService
@@ -30,11 +30,11 @@ APP_NAME = "Avance"
 class SettingsController(BaseController, ProjectCommitMixin):
 
     def __init__(
-        self, chat_service: ChatService, project_service: ProjectService, db: Db, version: str,
+        self, turn_service: TurnService, project_service: ProjectService, db: Db, version: str,
         test_event_broadcaster: Broadcaster, scheduler_service: SchedulerService,
         services_config: dict,
     ) -> None:
-        self.chat_service = chat_service
+        self.turn_service = turn_service
         self.project_service = project_service
         self.db = db
         self.version = version
@@ -69,7 +69,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         """Downloads the whole working SQLite database file — every
         project, session, message, and signal — as a restorable backup
         (see POST /api/settings/backup)."""
-        async with self.chat_service.global_exclusive_access():
+        async with self.turn_service.global_exclusive_access():
             content = self.db.export_backup()
         filename = Path(self.db.backup_file_path()).stem + ".sqlite"
         return Response(
@@ -84,12 +84,12 @@ class SettingsController(BaseController, ProjectCommitMixin):
         file, replacing it in place. Wipes whatever the server currently
         has (all projects, sessions, messages)."""
         content = await request.body()
-        async with self.chat_service.global_exclusive_access():
+        async with self.turn_service.global_exclusive_access():
             try:
                 self.db.restore_backup(content)
             except ValueError as exc:
                 raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-            self.chat_service.clear_auto_tracking_overrides()
+            self.turn_service.clear_auto_tracking_overrides()
         return {"success": True}
 
     @post("/api/settings/database/wipe-live-sessions", role="admin")
@@ -97,7 +97,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         """Settings > Manage services > Database — deletes every live
         conversation across every project (not just the active one), same
         global scope as the backup endpoints above."""
-        async with self.chat_service.global_exclusive_access():
+        async with self.turn_service.global_exclusive_access():
             self.project_service.wipe_all_live_sessions()
         return {"success": True}
 
@@ -107,7 +107,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         revision, across every project, that's neither published, the
         current draft, nor pinned by any session (see
         ProjectService.clean_unused_revisions)."""
-        async with self.chat_service.global_exclusive_access():
+        async with self.turn_service.global_exclusive_access():
             deleted = self.project_service.clean_unused_revisions()
         return {"success": True, "deleted": deleted}
 

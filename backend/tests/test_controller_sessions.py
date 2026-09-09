@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from chat.channels import NATIVE_CHAT, WHATSAPP_CHAT
+from turn.channels import NATIVE_CHAT, WHATSAPP_CHAT
 from conftest import chat_turn, chat_turn_error
 from conftest import parse_sse_result
 from db import Db
@@ -220,17 +220,17 @@ def test_a_turn_from_another_channel_or_on_a_superseded_session_exposes_the_matc
     older = client.get("/api/chat/session").json()
 
     # The websocket is the native chat by definition — a turn from another
-    # channel only ever reaches ChatService.process_turn directly, the
+    # channel only ever reaches TurnService.process_turn directly, the
     # way WhatsAppService does.
     Session().channel = WHATSAPP_CHAT
     try:
         with pytest.raises(ServiceError) as raised:
-            asyncio.run(client.app.state.chat_service.process_turn(older["id"], "hi"))
+            asyncio.run(client.app.state.turn_service.process_turn(older["id"], "hi"))
     finally:
         Session().channel = NATIVE_CHAT
     assert raised.value.code == "session_channel_mismatch"
 
-    # A second live session appearing outside ChatService's own
+    # A second live session appearing outside TurnService's own
     # close-before-create flow (e.g. an import) — `older` is still open,
     # just no longer the active one.
     app_db.create_chat_session(
@@ -244,8 +244,8 @@ def test_a_turn_from_another_channel_or_on_a_superseded_session_exposes_the_matc
 async def test_manual_action_exposes_turn_in_progress_code(client, app_db):
     _setup_channel_codes_project(app_db)
     session = client.get("/api/chat/session").json()
-    chat_service = client.app.state.chat_service
-    lock = chat_service._session_locks.get(str(session["id"]))
+    turn_service = client.app.state.turn_service
+    lock = turn_service._session_locks.get(str(session["id"]))
     await lock.acquire()
     try:
         response = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "advance"})

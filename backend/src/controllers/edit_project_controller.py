@@ -12,7 +12,7 @@ from fastapi import HTTPException, Request, Response
 
 from automaton.automaton_yaml_editor import InitActionTargetError
 from automaton.build_error import AutomatonBuildError
-from chat.chat_service import ChatService
+from turn.turn_service import TurnService
 from project.project_service import ProjectService
 from scheduler import SchedulerService
 from schemas import (
@@ -63,9 +63,9 @@ PROJECT_EDITABLE_FIELDS = {"id", "ui-label", "ui-description", "talk-enabled", "
 class EditProjectController(BaseController, ProjectCommitMixin):
 
     def __init__(
-        self, chat_service: ChatService, project_service: ProjectService, scheduler_service: SchedulerService,
+        self, turn_service: TurnService, project_service: ProjectService, scheduler_service: SchedulerService,
     ) -> None:
-        self.chat_service = chat_service
+        self.turn_service = turn_service
         self.project_service = project_service
         self.scheduler_service = scheduler_service
 
@@ -74,24 +74,24 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         """The embedded "Test" chat's explicit "start a new session"
         action — the one place a session may exist against an unpublished
         revision."""
-        return await self.chat_service.create_draft_session(project_id)
+        return await self.turn_service.create_draft_session(project_id)
 
     @get("/api/projects/{project_id}/test-sessions/current", role="admin")
     async def get_current_test_session(self, project_id: str, session_id: int | None = None):
         """The embedded "Test" chat's bootstrap endpoint — the
         draft-session equivalent of GET /api/chat/session."""
-        return await self.chat_service.get_current_draft_session_if_any_or_create_new(session_id, project_id)
+        return await self.turn_service.get_current_draft_session_if_any_or_create_new(session_id, project_id)
 
     @get("/api/projects/{project_id}/test-sessions", role="admin")
     def get_test_sessions(self, project_id: str):
         """The embedded "Test" chat's own "Sessions" panel listing — the
         draft-session equivalent of GET .../sessions. The two pools never mix."""
-        return self.chat_service.list_test_sessions(project_id)
+        return self.turn_service.list_test_sessions(project_id)
 
     @post("/api/projects/{project_id}/test-sessions/reset", role="admin")
     async def post_reset_test_sessions(self, project_id: str):
-        async with self.chat_service.acquire_write(project_id):
-            return self.chat_service.reset_test_sessions(project_id)
+        async with self.turn_service.acquire_write(project_id):
+            return self.turn_service.reset_test_sessions(project_id)
 
     @get("/api/projects/{project_id}/states", role="admin")
     def get_project_states(self, project_id: str):

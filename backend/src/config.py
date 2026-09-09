@@ -117,7 +117,7 @@ class AppConfig:
     def _get_optional_section(raw: dict, section: str, path: Path) -> dict:
         """Like _get_section, but an absent section is treated as empty
         rather than an error — for optional sections (e.g. `jobs`) that may
-        be omitted entirely, unlike required sections such as chat-service."""
+        be omitted entirely, unlike required sections such as turn-service."""
         sub = raw.get(section, {})
         if not isinstance(sub, dict):
             raise ConfigError(f"{path}: '{section}' section is not a mapping.")
@@ -419,22 +419,22 @@ class AppConfig:
             raw, "database", "migration-strategy", path, default="stop", choices=("stop", "upgrade", "drop")
         )
         # The single source of truth for how long a chat session stays
-        # "open" (see chat/session_manager.py's ChatSessionManager) — never
+        # "open" (see turn/sessions/session_manager.py's SessionManager) — never
         # hardcoded elsewhere.
         self.max_session_duration_in_minutes = self._get_optional_positive_float(
-            raw, "chat-service", "max-session-duration-in-minutes", path, default=60.0
+            raw, "turn-service", "max-session-duration-in-minutes", path, default=60.0
         )
         # FIXME: 16000 mirrored in TrackingService/TrackingProcessor's own
         # constructor defaults — keep in sync.
         self.input_token_budget_per_turn = self._get_optional_positive_int(
-            raw, "chat-service", "input-token-budget-per-turn", path, default=16000
+            raw, "turn-service", "input-token-budget-per-turn", path, default=16000
         )
         # FIXME: 200000 mirrored in TrackingService's own constructor
         # default — keep in sync. Display-only (see SessionDetailCard.vue's
         # tokens bar): the max reference the bar is drawn against, nothing
         # in the backend trims history against it.
         self.total_token_budget_per_session = self._get_optional_positive_int(
-            raw, "chat-service", "total-token-budget-per-session", path, default=200000
+            raw, "turn-service", "total-token-budget-per-session", path, default=200000
         )
         # How much of the projects' own files (a state's attachments, an
         # `avance:` source's CSV, whatever attachment.read reads) is kept
@@ -442,19 +442,19 @@ class AppConfig:
         # ProjectFileCache. Bounded in bytes, not in files: it holds
         # whatever a turn actually reads, and one project's CSV is not
         # the size of another's footer note. Lives here because it is a
-        # per-turn budget like the two above, and because chat-service is
+        # per-turn budget like the two above, and because turn-service is
         # a section a compiled product still has.
         # FIXME: the default is mirrored in tracking/project_files.py's
         # own DEFAULT_PROJECT_FILE_CACHE_BYTES — keep in sync.
         self.project_file_cache_bytes = self._get_optional_positive_int(
-            raw, "chat-service", "project-file-cache-bytes", path, default=8 * 1024 * 1024
+            raw, "turn-service", "project-file-cache-bytes", path, default=8 * 1024 * 1024
         )
 
         # Two separate worker pools (see jobs/job_queue.py's JobQueue and
         # jobs/throttled_job_queue.py's ThrottledJobQueue) — optional, and
-        # so is the whole `jobs` section.
+        # so is the whole `scheduler-service` section.
         self.jobs_shared_max_concurrent = self._get_optional_positive_int(
-            raw, "jobs", "shared-max-concurrent", path, default=2
+            raw, "scheduler-service", "shared-max-concurrent", path, default=2
         )
         self.test_service_max_concurrent_tests = self._get_optional_positive_int(
             raw, "test-service", "max-concurrent-tests", path, default=4

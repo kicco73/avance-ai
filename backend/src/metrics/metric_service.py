@@ -1,14 +1,14 @@
 """MetricService covers a project's metrics: metrics_framework's core
 always-on metrics and its benchmark metrics. A leaf service — depends
 only on `db`, `project_service`, and metrics_framework, never on
-ChatService/TrackingService."""
+TurnService/TrackingService."""
 from __future__ import annotations
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from automaton.automaton import Automaton
-from chat.sessions.session_manager import DEFAULT_OPEN_WINDOW_MINUTES
+from turn.sessions.session_manager import DEFAULT_OPEN_WINDOW_MINUTES
 from db import Db
 from metrics.metric_namespace import UserMetricNamespace
 from metrics.metrics_framework import (
@@ -70,9 +70,9 @@ class MetricService(object):
         self,
         db: Db,
         project_service: "ProjectService",
-        # Same source of truth as ChatSessionManager's own open-session
+        # Same source of truth as SessionManager's own open-session
         # window default — reused rather than duplicated, and never taken
-        # from a live ChatSessionManager instance (no other reason to depend on chat/).
+        # from a live SessionManager instance (no other reason to depend on chat/).
         # A static value, unlike project_service/Session — known once at
         # boot from config.py, never needs to be "read fresh".
         max_session_duration_in_minutes: float = DEFAULT_OPEN_WINDOW_MINUTES,

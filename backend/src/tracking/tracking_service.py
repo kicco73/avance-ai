@@ -9,7 +9,7 @@ from project.project_service import ProjectService
 from db import Db
 from metrics.metric_service import MetricService
 
-from chat.sessions.env_for_session import env_for_session
+from turn.sessions.env_for_session import env_for_session
 
 from .actuators import TaskNamespaceFactory
 from .automaton_namespace import AutomatonNamespace
@@ -76,7 +76,7 @@ class TrackingService(object):
 		self._human_talker_factory = factory
 
 	def build_human_talker(self, operator: str, session_id: int, session_type: str, project_id: str) -> "BaseTalker":
-		"""ChatService._process_human_turn's own seam into the factory
+		"""TurnService._process_human_turn's own seam into the factory
 		set_human_talker_factory bound above — the only caller now that a
 		session with an operator never reaches _process below at all."""
 		if self._human_talker_factory is None:
@@ -256,7 +256,7 @@ class TrackingService(object):
 		if row is not None:
 			return row
 		message = self._db.get_message(message_id)
-		assert message is not None  # ownership/existence already checked by ChatService._require_own_message
+		assert message is not None  # ownership/existence already checked by TurnService._require_own_message
 		self._db.save_transition(
 			None, None, None, message["session_id"], transition_log_level="INFO", message_id=message_id
 		)
@@ -321,7 +321,7 @@ class TrackingService(object):
 		)
 
 		# A session with an operator (see TaskNamespaceFactory.
-		# get_human_operator) never reaches here at all — ChatService.
+		# get_human_operator) never reaches here at all — TurnService.
 		# process_turn routes it to _process_human_turn before ever
 		# calling this method, so this is always the plain AiTalker path.
 		tracking_processor = TrackingProcessor(

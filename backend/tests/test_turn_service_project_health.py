@@ -1,5 +1,5 @@
-"""ChatService's own two guards against a broken/paused project (see
-ChatService._ensure_project_available/_get_automaton_and_state_or_raise_unsupported):
+"""TurnService's own two guards against a broken/paused project (see
+TurnService._ensure_project_available/_get_automaton_and_state_or_raise_unsupported):
 an already-open session must reject a turn/manual action on a project
 that's since gone unavailable (code="project_unavailable"), and a session
 pinned to a stored revision that no longer builds must degrade to a 409
@@ -13,9 +13,9 @@ from http import HTTPStatus
 import pytest
 
 from automaton.automaton import Action, Automaton, State
-from chat.chat_service import ChatService
-from chat.errors import ChatServiceError
-from chat.sessions.session_manager import ChatSessionManager
+from turn.turn_service import TurnService
+from turn.errors import TurnServiceError
+from turn.sessions.session_manager import SessionManager
 from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService
@@ -35,7 +35,7 @@ def _automaton() -> Automaton:
 
 
 class _FakeProjectService:
-    """Same shape as test_chat_service_manual_actions.py's own fake, plus
+    """Same shape as test_turn_service_manual_actions.py's own fake, plus
     two knobs this file's tests actually flip mid-test: `available`
     (get_project_availability's own return) and `session_lookup_error`
     (get_automaton_and_state_for_session raises this instead of resolving)."""
@@ -79,7 +79,7 @@ class _FakeProjectService:
         return state_payload, self._automaton.states["a"].actions[0], "a"
 
 
-def _chat_service(db) -> tuple[ChatService, _FakeProjectService]:
+def _turn_service(db) -> tuple[TurnService, _FakeProjectService]:
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
     ai_service = FakeAiService()
@@ -88,27 +88,27 @@ def _chat_service(db) -> tuple[ChatService, _FakeProjectService]:
     scheduler_service = make_test_scheduler_service(db)
     namespace_factory = make_test_namespace_factory(db, scheduler_service)
     tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
-    chat_service = ChatService(
+    turn_service = TurnService(
         ai_service=ai_service,
         ai_test_service=ai_service,
         project_service=project_service,
         db=db,
-        session_manager=ChatSessionManager(db),
+        session_manager=SessionManager(db),
         tracking_service=tracking_service,
         metric_service=metric_service,
         scheduler_service=scheduler_service,
         namespace_factory=namespace_factory,
     )
-    return chat_service, project_service
+    return turn_service, project_service
 
 
 async def test_process_turn_rejects_a_turn_on_a_now_paused_project(db):
-    chat_service, project_service = _chat_service(db)
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    turn_service, project_service = _turn_service(db)
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
     project_service.available = (True, "index.yml no longer builds — nope")
 
-    with pytest.raises(ChatServiceError) as exc_info:
-        await chat_service.process_turn(session["id"], "hi")
+    with pytest.raises(TurnServiceError) as exc_info:
+        await turn_service.process_turn(session["id"], "hi")
 
     assert exc_info.value.status_code == HTTPStatus.CONFLICT
     assert exc_info.value.code == "project_unavailable"
@@ -116,26 +116,26 @@ async def test_process_turn_rejects_a_turn_on_a_now_paused_project(db):
 
 
 async def test_apply_manual_action_rejects_on_a_now_paused_project(db):
-    chat_service, project_service = _chat_service(db)
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    turn_service, project_service = _turn_service(db)
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
     project_service.available = (True, "Manually paused.")
 
-    with pytest.raises(ChatServiceError) as exc_info:
-        await chat_service.apply_manual_action("advance", session["id"])
+    with pytest.raises(TurnServiceError) as exc_info:
+        await turn_service.apply_manual_action("advance", session["id"])
 
     assert exc_info.value.status_code == HTTPStatus.CONFLICT
     assert exc_info.value.code == "project_unavailable"
 
 
 async def test_get_state_for_session_reports_an_unsupported_pinned_revision(db):
-    chat_service, project_service = _chat_service(db)
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    turn_service, project_service = _turn_service(db)
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
     # The project itself is fine (published builds) — only *this* session's
     # own pinned revision (an old, since-superseded one) doesn't anymore.
     project_service.session_lookup_error = ValueError("Project 'proj', stored revision 0: index.yml no longer builds — nope")
 
-    with pytest.raises(ChatServiceError) as exc_info:
-        chat_service.get_state_for_session(session["id"])
+    with pytest.raises(TurnServiceError) as exc_info:
+        turn_service.get_state_for_session(session["id"])
 
     assert exc_info.value.status_code == HTTPStatus.CONFLICT
     assert exc_info.value.code == "session_revision_unsupported"
@@ -143,9 +143,9 @@ async def test_get_state_for_session_reports_an_unsupported_pinned_revision(db):
 
 
 async def test_a_healthy_session_on_an_available_project_is_unaffected(db):
-    chat_service, project_service = _chat_service(db)
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    turn_service, project_service = _turn_service(db)
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
 
-    state = chat_service.get_state_for_session(session["id"])
+    state = turn_service.get_state_for_session(session["id"])
 
     assert state["key"] == "a"

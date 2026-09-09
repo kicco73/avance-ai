@@ -142,7 +142,7 @@ class CoreAutomaton(object):
         build_warnings: list[str] | None = None,
     ):
         # A real Action (not just a target state string) so it can also
-        # carry its own task/env — see ChatService._ensure_project_bootstrap.
+        # carry its own task/env — see TurnService._ensure_project_bootstrap.
         self.init_action = init_action
         self.states = states
         self.general_prompt = general_prompt

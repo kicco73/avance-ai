@@ -4,7 +4,7 @@ from datetime import datetime
 from http import HTTPStatus
 
 from auth.roles import role_satisfies
-from chat.errors import ChatServiceError
+from turn.errors import TurnServiceError
 from db import Db
 from session import Session
 
@@ -22,13 +22,13 @@ class SessionOwnership:
     def require_session(self, session_id: int) -> dict:
         session = self._db.get_chat_session(session_id)
         if session is None:
-            raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
+            raise TurnServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
         return session
 
     def require_own_session(self, session_id: int) -> dict:
         session = self._db.get_chat_session(session_id)
         if session is None or not self.owns_session(session["username"]):
-            raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
+            raise TurnServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
         return session
 
     def require_own_message(self, message_id: int) -> dict:
@@ -37,7 +37,7 @@ class SessionOwnership:
             session = self._db.get_chat_session(message["session_id"])
             if session is not None and self.owns_session(session["username"]):
                 return message
-        raise ChatServiceError("Message not found.", status_code=HTTPStatus.NOT_FOUND)
+        raise TurnServiceError("Message not found.", status_code=HTTPStatus.NOT_FOUND)
 
     def until_from_message(self, message_id: int | None) -> datetime | None:
         if message_id is None:

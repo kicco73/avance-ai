@@ -9,7 +9,7 @@ from auth.auth_provider import AuthenticatedUser, AuthProvider
 from auth.auth_service import AuthService
 from auth.errors import AuthError
 from config import AuthProviderConfig
-from chat.sessions.session_manager import ChatSessionManager
+from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 
@@ -58,7 +58,7 @@ def provider(identity) -> _FakeProvider:
 
 @pytest.fixture
 def project_service(db) -> ProjectService:
-    return ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
+    return ProjectService(db, AutomatonLoader(db), SessionManager(db))
 
 
 @pytest.fixture
@@ -173,7 +173,7 @@ class TestCompleteRegistration:
         """A second identity trying the same one-share invite after the
         first already redeemed it."""
         db.ensure_project("maxed-project")
-        maxed_service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db), invite_max_shares=1)
+        maxed_service = ProjectService(db, AutomatonLoader(db), SessionManager(db), invite_max_shares=1)
         invite = maxed_service.create_invite("maxed-project", created_by=None)
         service = _auth_service(db, provider, maxed_service)
         first_token = service.login("google", "good-credential")

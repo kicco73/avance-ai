@@ -1,5 +1,5 @@
 """Integration tests for GET /api/projects/{project_name}/users/{username}/timeline,
-exercising ChatService.get_timeline end to end: every real signal
+exercising TurnService.get_timeline end to end: every real signal
 snapshot and state transition for a user across their whole session
 history, chronological — Manage Users' Timeline tab.
 """

@@ -1,11 +1,11 @@
-"""chat.sessions.env_for_session / chat.ephemeral_env_registry."""
+"""turn.sessions.env_for_session / turn.ephemeral_env_registry."""
 from __future__ import annotations
 
 import pytest
 
-from chat.chat_service import ChatService
-from chat.ephemeral_env_registry import EphemeralEnvRegistry
-from chat.sessions.session_manager import ChatSessionManager
+from turn.turn_service import TurnService
+from turn.ephemeral_env_registry import EphemeralEnvRegistry
+from turn.sessions.session_manager import SessionManager
 from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from db.models import Tracking
 from metrics.metric_service import MetricService
@@ -47,23 +47,23 @@ def _publish(db) -> None:
     db.set_active_project_id(PROJECT_ID, USERNAME)
 
 
-def _chat_service(db, project_service: ProjectService) -> ChatService:
+def _turn_service(db, project_service: ProjectService) -> TurnService:
     ai_service = FakeAiService()
     metric_service = MetricService(db, project_service)
     scheduler_service = make_test_scheduler_service(db)
     namespace_factory = make_test_namespace_factory(db, scheduler_service)
     tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
-    return ChatService(
+    return TurnService(
         ai_service=ai_service, ai_test_service=ai_service, project_service=project_service, db=db,
-        session_manager=ChatSessionManager(db), tracking_service=tracking_service, metric_service=metric_service,
+        session_manager=SessionManager(db), tracking_service=tracking_service, metric_service=metric_service,
         scheduler_service=scheduler_service, namespace_factory=namespace_factory,
     )
 
 
 @pytest.fixture
-def service(db) -> ChatService:
+def service(db) -> TurnService:
     _publish(db)
-    return _chat_service(db, ProjectService(db, AutomatonLoader(db), ChatSessionManager(db)))
+    return _turn_service(db, ProjectService(db, AutomatonLoader(db), SessionManager(db)))
 
 
 def _env_tracking_row_count(session_id: int) -> int:

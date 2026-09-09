@@ -38,7 +38,7 @@ from .automaton_loader import AutomatonLoader
 
 if TYPE_CHECKING:
     # Type-only, same reason as AutomatonLoader's own TYPE_CHECKING import.
-    from chat.sessions.session_manager import ChatSessionManager
+    from turn.sessions.session_manager import SessionManager
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -46,7 +46,7 @@ logger = LoggerFactory.get_logger(__name__)
 class CompiledAutomatonLoader(AutomatonLoader):
 
     def __init__(
-        self, db: Db, apps_dir: Path, session_manager: "ChatSessionManager | None" = None,
+        self, db: Db, apps_dir: Path, session_manager: "SessionManager | None" = None,
     ) -> None:
         super().__init__(db, session_manager=session_manager)
         self._apps_dir = apps_dir

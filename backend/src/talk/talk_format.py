@@ -28,7 +28,7 @@ class PcmWavCodec:
     def to_wav(pcm_data: bytes, sample_rate: int) -> bytes:
         """A complete, correctly-sized WAV file for `pcm_data` — used once all
         of it is known: the non-streaming path, and the on-disk copy written
-        once a streamed generation finishes (see ChatService)."""
+        once a streamed generation finishes (see TurnService)."""
         buffer = io.BytesIO()
         with wave.open(buffer, "wb") as wav_file:
             wav_file.setnchannels(1)

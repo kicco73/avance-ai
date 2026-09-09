@@ -9,10 +9,10 @@ SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
 ALLOWED_DATETIME_END_READERS = {
     "db/models.py",
     "db/sessions.py",
-    "chat/chat_service.py",
-    "chat/sessions/session_insights.py",
-    "chat/sessions/session_manager.py",
-    "chat/sessions/session_type_strategy.py",
+    "turn/turn_service.py",
+    "turn/sessions/session_insights.py",
+    "turn/sessions/session_manager.py",
+    "turn/sessions/session_type_strategy.py",
     "schemas.py",
     "tracking/session_export.py",
     "tracking/session_import.py",
@@ -34,7 +34,7 @@ def test_datetime_end_is_only_read_by_the_allowlisted_files():
     )
     assert not offenders, (
         f"'datetime_end' referenced outside the allowlist in: {offenders}. "
-        "Every openness decision must go through ChatSessionManager.is_open "
+        "Every openness decision must go through SessionManager.is_open "
         "(see its docstring) — either use is_open/has_open_sessions_for_revision "
         "instead, or, for a genuine temporal read, add the file to "
         "ALLOWED_DATETIME_END_READERS in this test."

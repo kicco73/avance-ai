@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from chat.sessions.session_manager import ChatSessionManager
-from chat.sessions.session_type_strategy import get_session_type_strategy
+from turn.sessions.session_manager import SessionManager
+from turn.sessions.session_type_strategy import get_session_type_strategy
 from session import Session
 
 LIVE = get_session_type_strategy('live')
@@ -50,11 +50,11 @@ def project_service() -> _FakeProjectService:
 
 
 @pytest.fixture
-def manager(db) -> ChatSessionManager:
+def manager(db) -> SessionManager:
     for project in ("proj", "proj-a", "proj-b"):
         db.ensure_project(project)
         db.publish_project(project)
-    return ChatSessionManager(db)
+    return SessionManager(db)
 
 
 def _create(manager, project_service, username, project_name, current_state):
@@ -85,20 +85,20 @@ def _freeze_after(monkeypatch, session, manager):
         def utcnow(cls):
             return stale_now
 
-    monkeypatch.setattr("chat.sessions.session_manager.datetime", FrozenDatetime)
+    monkeypatch.setattr("turn.sessions.session_manager.datetime", FrozenDatetime)
 
 
 @pytest.mark.contract
 def test_open_window_defaults_to_60_minutes_and_is_configurable(manager, db):
     assert manager.open_window == timedelta(minutes=60)
-    assert ChatSessionManager(db, open_window_minutes=5).open_window == timedelta(minutes=5)
+    assert SessionManager(db, open_window_minutes=5).open_window == timedelta(minutes=5)
 
 
 @pytest.mark.contract
 def test_has_open_sessions_for_revision_counts_only_live_sessions_still_within_the_window(db):
     db.ensure_project("proj")
     db.publish_project("proj")
-    manager = ChatSessionManager(db, open_window_minutes=5)
+    manager = SessionManager(db, open_window_minutes=5)
 
     _raw_session(db, "test")
     _raw_session(db, "imported")

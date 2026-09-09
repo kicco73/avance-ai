@@ -1,6 +1,6 @@
 """Integration tests for the backend pieces the "Label sessions" view
 relies on: the session-scoped Tracking timeline endpoint, and point-in-time
-(message_id-scoped) metrics — see chat/chat_service.py's
+(message_id-scoped) metrics — see chat/turn_service.py's
 get_session_signals/get_metrics.
 """
 from __future__ import annotations

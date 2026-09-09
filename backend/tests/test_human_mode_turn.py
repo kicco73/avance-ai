@@ -1,5 +1,5 @@
 """chat.switch_to_human(user_id) takes a session out of the automaton
-entirely (see ChatService._process_human_turn): no _session_scope lock, no
+entirely (see TurnService._process_human_turn): no _session_scope lock, no
 TrackingEngine, no auto-generated opening message — the operator's own
 reply is the only thing that produces the assistant message, delivered
 through the exact same 'chunk'/'turn.ended' frames a normal turn uses.
@@ -11,9 +11,9 @@ import asyncio
 import pytest
 
 from ai.ai_service import AiService
-from chat.chat_service import ChatService
-from chat.sessions.session_manager import ChatSessionManager
-from chat.ws_turn import WsChatTurn
+from turn.turn_service import TurnService
+from turn.sessions.session_manager import SessionManager
+from turn.ws_turn import WsChatTurn
 from conftest import make_test_namespace_factory, make_test_scheduler_service
 from db.db import Db
 from metrics.metric_service import MetricService
@@ -72,7 +72,7 @@ class _RecordingConnection:
 
 
 @pytest.fixture
-def chat_service_for(tmp_path):
+def turn_service_for(tmp_path):
     db = Db(f"sqlite:///{tmp_path / 'human_mode.db'}")
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
@@ -96,9 +96,9 @@ def chat_service_for(tmp_path):
             return _FakeHumanTalker(reply_text, delay=delay_first if is_first else None)
 
         tracking_service.set_human_talker_factory(build_talker)
-        service = ChatService(
+        service = TurnService(
             ai_service=ai_service, ai_test_service=ai_service, project_service=project_service, db=db,
-            session_manager=ChatSessionManager(db), tracking_service=tracking_service,
+            session_manager=SessionManager(db), tracking_service=tracking_service,
             metric_service=metric_service, scheduler_service=scheduler_service, namespace_factory=namespace_factory,
         )
         return service, namespace_factory
@@ -107,22 +107,22 @@ def chat_service_for(tmp_path):
     return make
 
 
-async def _run_turn(chat_service: ChatService, session_id: int, turn_id: str, text: str) -> list[tuple[str, dict]]:
+async def _run_turn(turn_service: TurnService, session_id: int, turn_id: str, text: str) -> list[tuple[str, dict]]:
     connection = _RecordingConnection()
-    turn = WsChatTurn(chat_service, connection, turn_id, session_id, text)
+    turn = WsChatTurn(turn_service, connection, turn_id, session_id, text)
     assert turn.accept()
     await turn.run()
     return [(frame["type"], frame) for frame in connection.frames]
 
 
-async def test_a_human_operators_reply_arrives_as_the_turns_own_done_frame(chat_service_for):
-    chat_service, namespace_factory = chat_service_for(
+async def test_a_human_operators_reply_arrives_as_the_turns_own_done_frame(turn_service_for):
+    turn_service, namespace_factory = turn_service_for(
         _automaton(with_sources=False, autotracking_on_ai_message=True)
     )
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
     namespace_factory.set_human_operator(session["id"], OPERATOR)
 
-    events = await _run_turn(chat_service, session["id"], "turn-1", "hello, is anyone there?")
+    events = await _run_turn(turn_service, session["id"], "turn-1", "hello, is anyone there?")
 
     kinds = [event for event, _ in events]
     # _FakeHumanTalker always yields an empty string first (standing in
@@ -135,20 +135,20 @@ async def test_a_human_operators_reply_arrives_as_the_turns_own_done_frame(chat_
     assert events[-1][1]["new_state"] is None
 
 
-async def test_a_human_mode_turn_never_holds_the_session_lock(chat_service_for):
+async def test_a_human_mode_turn_never_holds_the_session_lock(turn_service_for):
     """A second turn on the same session must not wait for the first —
     the whole point of dropping _session_scope for human mode."""
     started = asyncio.Event()
     finish = asyncio.Event()
-    chat_service, namespace_factory = chat_service_for(
+    turn_service, namespace_factory = turn_service_for(
         _automaton(with_sources=False, autotracking_on_ai_message=True), delay_first=finish,
     )
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
     namespace_factory.set_human_operator(session["id"], OPERATOR)
 
     async def first_turn():
         started.set()
-        return await _run_turn(chat_service, session["id"], "turn-1", "first message")
+        return await _run_turn(turn_service, session["id"], "turn-1", "first message")
 
     task = asyncio.create_task(first_turn())
     await started.wait()
@@ -156,7 +156,7 @@ async def test_a_human_mode_turn_never_holds_the_session_lock(chat_service_for):
 
     # The second turn completes without waiting on the first's own reply.
     second_events = await asyncio.wait_for(
-        _run_turn(chat_service, session["id"], "turn-2", "second message, sent before the first is answered"),
+        _run_turn(turn_service, session["id"], "turn-2", "second message, sent before the first is answered"),
         timeout=1.0,
     )
     assert [event for event, _ in second_events][-1] == "turn.ended"
@@ -166,13 +166,13 @@ async def test_a_human_mode_turn_never_holds_the_session_lock(chat_service_for):
     assert [event for event, _ in first_events][-1] == "turn.ended"
 
 
-async def test_a_human_mode_session_never_auto_generates_an_opening_message(chat_service_for):
-    chat_service, namespace_factory = chat_service_for(
+async def test_a_human_mode_session_never_auto_generates_an_opening_message(turn_service_for):
+    turn_service, namespace_factory = turn_service_for(
         _automaton(with_sources=False, autotracking_on_ai_message=True)
     )
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
     namespace_factory.set_human_operator(session["id"], OPERATOR)
 
-    messages = await chat_service.get_messages(session["id"])
+    messages = await turn_service.get_messages(session["id"])
 
     assert messages == []

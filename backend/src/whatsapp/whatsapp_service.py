@@ -1,7 +1,7 @@
 """WhatsApp as an alternative chat client (see docs/WHATSAPP.md).
 
 Sits beside ChatWindow.vue/WsAdapter as one more front to the very same
-ChatService.process_turn: an inbound text from a linked number becomes a
+TurnService.process_turn: an inbound text from a linked number becomes a
 turn on that account's own current live session (its active project,
 its sessions, its Terms acceptance — nothing WhatsApp-specific is
 persisted), and every assistant message the turn produced goes back out
@@ -32,7 +32,7 @@ either, or an unregistered one, only ever gets a canned reply.
 
 Ordering: Meta may deliver two messages from the same person back to
 back; a per-sender asyncio.Lock keeps their turns sequential (on top of
-ChatService's own per-session lock, which would otherwise just make the
+TurnService's own per-session lock, which would otherwise just make the
 second one wait in whichever order the event loop picked).
 """
 from __future__ import annotations
@@ -47,8 +47,8 @@ from dataclasses import dataclass
 import httpx
 
 from auth.auth_service import AuthService
-from chat.channels import WHATSAPP_CHAT
-from chat.chat_service import ChatService
+from turn.channels import WHATSAPP_CHAT
+from turn.turn_service import TurnService
 from config import WhatsAppServiceConfig
 from db import Db
 from logging_factory import LoggerFactory
@@ -125,13 +125,13 @@ class WhatsAppService(object):
     def __init__(
         self,
         config: WhatsAppServiceConfig,
-        chat_service: ChatService,
+        turn_service: TurnService,
         db: Db,
         auth_service: AuthService,
         client: WhatsAppCloudApiClient | None = None,
     ) -> None:
         self._config = config
-        self._chat_service = chat_service
+        self._turn_service = turn_service
         self._db = db
         self._auth_service = auth_service
         self._assistant_talker = AiTalker()
@@ -335,7 +335,7 @@ class WhatsAppService(object):
         user message to run, just whatever opening message the project
         itself produces (if any), same as a fresh web registration seeing
         it immediately on landing rather than only after its first reply."""
-        session_payload = await self._chat_service.acquire_exclusive_session()
+        session_payload = await self._turn_service.acquire_exclusive_session()
         if session_payload.get("paused"):
             return [], None, None
         if session_payload.get("legal_terms_pending"):
@@ -348,15 +348,15 @@ class WhatsAppService(object):
         """The project's own legal/terms.md plus an Accept button — the
         WhatsApp equivalent of TermsView.vue, in place of the plain "go
         accept it on the web" notice this used to send."""
-        status = self._chat_service.get_legal_terms_status(project_id)
+        status = self._turn_service.get_legal_terms_status(project_id)
         manual_actions = [{"name": _ACCEPT_TERMS_ACTION, "ui_button": REPLY_ACCEPT_TERMS_LABEL, "ui_description": None}]
         return [Reply(to_whatsapp_markdown(status["content"] or ""))], manual_actions, None
 
     async def _accept_terms_action(self) -> tuple[list[Reply], list[dict] | None, int | None]:
-        session_payload = await self._chat_service.acquire_exclusive_session()
+        session_payload = await self._turn_service.acquire_exclusive_session()
         if session_payload.get("legal_terms_pending"):
-            self._chat_service.accept_legal_terms(session_payload["project_id"])
-            session_payload = await self._chat_service.acquire_exclusive_session()
+            self._turn_service.accept_legal_terms(session_payload["project_id"])
+            session_payload = await self._turn_service.acquire_exclusive_session()
         if session_payload.get("paused"):
             return [Reply(REPLY_PAUSED)], None, None
         if session_payload.get("legal_terms_pending"):
@@ -372,15 +372,15 @@ class WhatsAppService(object):
         accepting terms mid-conversation, where the baseline is whatever
         the session already had before this call)."""
         last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
-        await self._chat_service.get_messages(session_id)
-        state = self._chat_service.get_state_for_session(session_id)
+        await self._turn_service.get_messages(session_id)
+        state = self._turn_service.get_state_for_session(session_id)
         return self._new_assistant_replies(session_id, last_seen_id), state["manual_actions"]
 
     async def _bootstrap_exclusive_session(self) -> tuple[int | None, tuple[list[Reply], list[dict] | None, int | None] | None]:
         """(session_id, None) once resolved, or (None, early_result) for
         the caller to return as-is (paused/terms-pending) without ever
         reaching a session_id at all."""
-        session_payload = await self._chat_service.acquire_exclusive_session()
+        session_payload = await self._turn_service.acquire_exclusive_session()
         if session_payload.get("paused"):
             return None, ([Reply(REPLY_PAUSED)], None, None)
         if session_payload.get("legal_terms_pending"):
@@ -395,16 +395,16 @@ class WhatsAppService(object):
         caller to acquire a fresh session and attempt once more.
         `answered` is False when this turn produced no reply of its own
         because a turn already running had taken this message along with
-        its own fragments (see ChatService's own coalescing): the reply
+        its own fragments (see TurnService's own coalescing): the reply
         that covers it has already been sent by that turn, so this one
         must stay silent rather than send it twice."""
         try:
-            await self._chat_service.prepare_user_initiated_turn(session_id)
-            reply = await self._chat_service.process_turn(session_id, text, on_metadata=on_metadata)
+            await self._turn_service.prepare_user_initiated_turn(session_id)
+            reply = await self._turn_service.process_turn(session_id, text, on_metadata=on_metadata)
             return None, reply["state"]["manual_actions"], None, reply.get("assistant_message_id") is not None
         except ServiceError as exc:
             if exc.code == "state_not_chat":
-                state = self._chat_service.get_state_for_session(session_id)
+                state = self._turn_service.get_state_for_session(session_id)
                 return REPLY_NO_CHAT_STATE, state["manual_actions"], None, False
             if exc.code in ("session_channel_mismatch", "session_superseded"):
                 return REPLY_SESSION_TAKEN_OVER, None, None, False
@@ -420,7 +420,7 @@ class WhatsAppService(object):
     async def _run_turn(self, text: str, spoken: bool = False) -> tuple[list[Reply], list[dict] | None, int | None]:
         """Unlike ChatWindow.vue's own bootstrap, it's the user's text
         that starts or continues the conversation here — no AI-initiated
-        opening message runs ahead of it (see ChatService.
+        opening message runs ahead of it (see TurnService.
         prepare_user_initiated_turn). Rather than reassembling the reply
         from process_turn's streaming-oriented result, every assistant
         message persisted since we started is what gets sent — that also
@@ -458,10 +458,10 @@ class WhatsAppService(object):
         action attempt — `result` is apply_manual_action's own return
         value, set only on success."""
         try:
-            result = await self._chat_service.apply_manual_action(action_id, session_id)
+            result = await self._turn_service.apply_manual_action(action_id, session_id)
         except ValueError as exc:
             logger.info(f"WhatsApp: action '{action_id}' rejected for session {session_id}: {exc}")
-            state = self._chat_service.get_state_for_session(session_id)
+            state = self._turn_service.get_state_for_session(session_id)
             return REPLY_INVALID_ACTION, state["manual_actions"], None, None
         except ServiceError as exc:
             if exc.code in ("session_channel_mismatch", "session_superseded"):
@@ -526,7 +526,10 @@ class WhatsAppService(object):
             logger.warning(f"WhatsApp: task.whatsapp to {phone_number} failed: {exc}")
             return False
         try:
-            await self._chat_service.record_whatsapp_send(user["id"], project_id, message_md)
+            # The turn service opens a session on whatever channel is
+            # current if this user has none; naming it is ours to do.
+            Session().channel = WHATSAPP_CHAT
+            await self._turn_service.record_unsolicited_reply(user["id"], project_id, message_md)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"WhatsApp: task.whatsapp sent to {phone_number} but session logging failed: {exc}")
         return True

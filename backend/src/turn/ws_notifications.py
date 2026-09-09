@@ -13,7 +13,7 @@ from bus import CLIENT_INJECTABLE, UI_HUMAN_TAKEOVER, UI_NOTIFICATION, Message
 from auth.roles import role_satisfies
 from session import Session
 from .channels import NATIVE_CHAT
-from .chat_service import ChatService
+from .turn_service import TurnService
 from .ws_turn import WsChatTurn
 
 logger = logging.getLogger(__name__)
@@ -109,9 +109,9 @@ class WsNotifications(object):
     replacing an older one: the tab that goes quiet with no explanation
     is exactly the failure mode this is meant to avoid."""
 
-    def __init__(self, auth_service: AuthService, chat_service: ChatService | None = None) -> None:
+    def __init__(self, auth_service: AuthService, turn_service: TurnService | None = None) -> None:
         self._auth_service = auth_service
-        self._chat_service = chat_service
+        self._turn_service = turn_service
         # The only thing in the process that writes to these sockets, and
         # so the only thing that subscribes on their behalf: a producer
         # publishes a nudge and never holds a connection (see
@@ -218,10 +218,10 @@ class WsNotifications(object):
             event.set()
 
     def _start_turn(self, connection: WsConnection, frame: dict) -> None:
-        if self._chat_service is None:
+        if self._turn_service is None:
             return
         turn = WsChatTurn(
-            self._chat_service, connection, str(frame.get("stream_id", "")), frame.get("session_id"),
+            self._turn_service, connection, str(frame.get("stream_id", "")), frame.get("session_id"),
             str(frame.get("body", "")),
         )
         if not turn.accept():
@@ -273,7 +273,7 @@ class WsNotifications(object):
         exclude_connection_id: str | None = None,
     ) -> str:
         """The WsHumanRelay.notify() primitive (see talker.human_talker.
-        HumanRelay and chat.ws_human_relay.WsHumanRelay): broadcasts a
+        HumanRelay and turn.ws_human_relay.WsHumanRelay): broadcasts a
         human_prompt frame carrying a fresh prompt_id to every one of
         `username`'s connections other than `exclude_connection_id` (the
         tab that just sent the message being answered — it already knows
@@ -282,7 +282,7 @@ class WsNotifications(object):
         matching human_reply resolves await_human_reply() below.
         `session_type`/`project_id` are display-only context for
         whichever tab answers, carried on the frame since answering
-        doesn't require navigating there first (see chat.ws_human_relay).
+        doesn't require navigating there first (see turn.ws_human_relay).
         Returns the prompt_id — the caller must pass it straight to
         await_human_reply()/wait_for_typing(). Raises HumanNotConnectedError
         if `username` has no *other* open connection — nobody could

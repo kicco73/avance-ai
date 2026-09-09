@@ -1,5 +1,5 @@
 """Integration tests for GET /api/projects/{project_name}/users/{username}/latest-signals,
-exercising ChatService.get_latest_signal_values end to end: the user's own
+exercising TurnService.get_latest_signal_values end to end: the user's own
 last live session (for the current-state card), and the last valid,
 non-null signal snapshot found anywhere across their session history —
 searching further back when the most recent session never captured one.

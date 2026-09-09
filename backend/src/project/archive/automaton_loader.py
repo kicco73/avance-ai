@@ -13,17 +13,17 @@ from logging_factory import LoggerFactory
 from .layout import ArchiveLayout
 
 if TYPE_CHECKING:
-    # Type-only: ChatSessionManager doesn't import this module, so a real
+    # Type-only: SessionManager doesn't import this module, so a real
     # top-level import would be safe too, but every other cross-package
     # dependency here already sits behind TYPE_CHECKING/local imports —
     # kept consistent rather than the one exception.
-    from chat.sessions.session_manager import ChatSessionManager
+    from turn.sessions.session_manager import SessionManager
 
 logger = LoggerFactory.get_logger(__name__)
 
 
 class AutomatonLoader(object):
-    def __init__(self, db: Db, session_manager: "ChatSessionManager | None" = None) -> None:
+    def __init__(self, db: Db, session_manager: "SessionManager | None" = None) -> None:
         self._db = db
         # Only for force-closing a session still open on a stored revision
         # that no longer builds (see load_at_revision) — None is fine for

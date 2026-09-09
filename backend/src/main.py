@@ -12,10 +12,10 @@ from fastapi.responses import JSONResponse
 
 from auth.auth_middleware import AuthMiddleware
 from auth.auth_service import AuthService
-from chat.chat_service import ChatService
-from chat.sessions.session_manager import ChatSessionManager
-from chat.ws_human_relay import WsHumanRelay
-from chat.ws_notifications import WsNotifications
+from turn.turn_service import TurnService
+from turn.sessions.session_manager import SessionManager
+from turn.ws_human_relay import WsHumanRelay
+from turn.ws_notifications import WsNotifications
 from talker import HumanTalker
 import bus
 from bus import POINT_TALK_PROVIDER
@@ -119,7 +119,7 @@ def create_app() -> FastAPI:
         # delegates every invite rule (exists/not expired/under its
         # max-shares budget) to ProjectService (see project/invites.py's
         # InviteManager), so it needs this constructed first.
-        session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
+        session_manager = SessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
 
         # XXX Compiled automaton requirement - do not touch.
         # XXX The one place the compiled/interpreted choice is made (see
@@ -162,33 +162,33 @@ def create_app() -> FastAPI:
         )
 
         # A leaf service (see metrics/metric_service.py's own module
-        # docstring) — never depends on ChatService/TrackingService, so
+        # docstring) — never depends on TurnService/TrackingService, so
         # it's built first and handed to whoever needs it, never the
         # other way around.
         metric_service = MetricService(
             db, project_service, max_session_duration_in_minutes=config.max_session_duration_in_minutes,
         )
         
-        # Instantiated once here, not built by ChatService itself (see
+        # Instantiated once here, not built by TurnService itself (see
         # tracking/tracking_service.py's own module docstring). Both this and
-        # ChatService depend on ai_service/metric_service directly, never each other.
+        # TurnService depend on ai_service/metric_service directly, never each other.
         tracking_service = TrackingService(
             db, project_service, metric_service, namespace_factory,
             talk_enabled=bus.collect(POINT_TALK_PROVIDER, {}).get("generate") is not None,
             input_token_budget_per_turn=config.input_token_budget_per_turn,
             total_token_budget_per_session=config.total_token_budget_per_session,
         )
-        chat_service = ChatService(
+        turn_service = TurnService(
             db, ai_live_service, ai_test_service, project_service, session_manager,
             tracking_service, metric_service, scheduler_service, namespace_factory,
         )
 
         # Single shared /ws/notifications connection per user (see
-        # chat/ws_notifications.py) — the chat channel itself, both
+        # turn/ws_notifications.py) — the chat channel itself, both
         # directions, also handed to whatever needs to push onto an
         # already-open connection (WakeupService, namespace_factory's own
         # deferred calls).
-        ws_notifications = WsNotifications(auth_service, chat_service)
+        ws_notifications = WsNotifications(auth_service, turn_service)
         test_event_broadcaster.set_ws_notifications(ws_notifications)
 
         # Manual-testing seam for HumanTalker (see talker.human_talker and
@@ -230,16 +230,16 @@ def create_app() -> FastAPI:
         ).register()
 
         # Opt-in (whatsapp-service.enabled in .config.yml): one more
-        # client of ChatService.process_turn, beside the SPA — see
+        # client of TurnService.process_turn, beside the SPA — see
         # whatsapp/whatsapp_service.py's own module docstring.
         whatsapp_service = (
-            WhatsAppService(config.whatsapp_service_config, chat_service, db, auth_service)
+            WhatsAppService(config.whatsapp_service_config, turn_service, db, auth_service)
             if config.whatsapp_service_config is not None else None
         )
         namespace_factory.set_whatsapp_service(whatsapp_service)
 
         controller = AvanceController(
-            chat_service, project_service, db, tracking_service, test_service,
+            turn_service, project_service, db, tracking_service, test_service,
             auth_service, test_event_broadcaster, scheduler_service, __version__, config.public_services_snapshot(),
             whatsapp_service=whatsapp_service, ws_notifications=ws_notifications,
             apps_dir=config.build_service_config.apps_dir,

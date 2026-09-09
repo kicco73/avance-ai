@@ -1,4 +1,4 @@
-"""ChatService._apply_declared_env_defaults — every project-level env
+"""TurnService._apply_declared_env_defaults — every project-level env
 key's own declared default (folded into init_action.env by
 AutomatonBuilder) gets applied once a session opens, one key at a time
 in declaration order, so a later key's default can reference an
@@ -9,10 +9,10 @@ from __future__ import annotations
 import pytest
 
 from automaton.automaton import Action, Automaton, State
-from chat.chat_service import ChatService
+from turn.turn_service import TurnService
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
-from chat.sessions.session_manager import ChatSessionManager
+from turn.sessions.session_manager import SessionManager
 from conftest import FakeAiService
 from conftest import make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
@@ -62,7 +62,7 @@ class FakeProjectService:
         return (False, None)
 
 
-def _chat_service(db, automaton: Automaton) -> ChatService:
+def _turn_service(db, automaton: Automaton) -> TurnService:
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
     ai_service = FakeAiService()
@@ -71,12 +71,12 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
     scheduler_service = make_test_scheduler_service(db)
     namespace_factory = make_test_namespace_factory(db, scheduler_service)
     tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
-    return ChatService(
+    return TurnService(
         ai_service=ai_service,
         ai_test_service=ai_service,
         project_service=project_service,
         db=db,
-        session_manager=ChatSessionManager(db),
+        session_manager=SessionManager(db),
         tracking_service=tracking_service,
         metric_service=metric_service,
         scheduler_service=scheduler_service,
@@ -95,31 +95,31 @@ async def test_a_later_keys_default_sees_an_earlier_keys_freshly_applied_value(d
     references a, so this only passes if a is actually applied before
     b's expression is evaluated (the bug: a single batched eval
     evaluated every key against the same stale, pre-open snapshot)."""
-    chat_service = _chat_service(db, _automaton({"a": "2", "b": "env.a + 1"}))
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    turn_service = _turn_service(db, _automaton({"a": "2", "b": "env.a + 1"}))
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
 
-    await chat_service.open_if_needed(session["id"])
+    await turn_service.open_if_needed(session["id"])
 
     assert _env_for(db).action_set() == {"a": 2, "b": 3}
 
 
 async def test_a_chain_of_three_resolves_in_declaration_order(db):
-    chat_service = _chat_service(
+    turn_service = _turn_service(
         db, _automaton({"first": "1", "second": "env.first + 1", "third": "env.second + 1"})
     )
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
 
-    await chat_service.open_if_needed(session["id"])
+    await turn_service.open_if_needed(session["id"])
 
     assert _env_for(db).action_set() == {"first": 1, "second": 2, "third": 3}
 
 
 async def test_a_key_that_already_has_a_value_is_never_recomputed(db):
-    chat_service = _chat_service(db, _automaton({"a": "2"}))
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    turn_service = _turn_service(db, _automaton({"a": "2"}))
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
     _env_for(db, session["id"]).update_action_set({"a": 99})
 
-    await chat_service.open_if_needed(session["id"])
+    await turn_service.open_if_needed(session["id"])
 
     assert _env_for(db).action_set() == {"a": 99}
 
@@ -128,10 +128,10 @@ async def test_a_key_present_only_in_memory_is_not_already_set_the_default_still
     # memory() and action_set() are different stores with different
     # owners (see Env's own docstring) — a same-named memory note must
     # never count as "already set" for the automaton's own env default.
-    chat_service = _chat_service(db, _automaton({"a": "2"}))
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    turn_service = _turn_service(db, _automaton({"a": "2"}))
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
     _env_for(db, session["id"]).update({"a": "stale note"})
 
-    await chat_service.open_if_needed(session["id"])
+    await turn_service.open_if_needed(session["id"])
 
     assert _env_for(db).action_set() == {"a": 2}

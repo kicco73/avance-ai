@@ -9,8 +9,8 @@ from __future__ import annotations
 import pytest
 
 from automaton.automaton import Action, Automaton, Source, State
-from chat.chat_service import ChatService
-from chat.sessions.session_manager import ChatSessionManager
+from turn.turn_service import TurnService
+from turn.sessions.session_manager import SessionManager
 from conftest import make_test_namespace_factory, make_test_scheduler_service
 from db.db import Db
 from metrics.metric_service import MetricService
@@ -20,7 +20,7 @@ PROJECT_ID = "proj"
 
 
 class FakeToolAwareAiService:
-    """Like test_chat_service_evaluation_points.py's own
+    """Like test_turn_service_evaluation_points.py's own
     FakeSchemaAiService, but — when handed a real ToolSet — actually
     calls it once before "answering", the way a real provider asking for
     exactly one tool and then completing the turn would. Proves the
@@ -119,12 +119,12 @@ def _automaton_with_a_tool() -> Automaton:
 
 
 @pytest.fixture
-def chat_service_for(file_db):
+def turn_service_for(file_db):
     file_db.ensure_project(PROJECT_ID)
     file_db.save_project_files(PROJECT_ID, {"flights.csv": b"city,country\nParis,France\n"}, {"flights.csv": "text/csv"})
     file_db.publish_project(PROJECT_ID)
 
-    def make(automaton: Automaton, *, ai_service) -> ChatService:
+    def make(automaton: Automaton, *, ai_service) -> TurnService:
         # AvanceArchiveSource needs to know where to actually read from
         # (see Automaton.set_storage_location) — a hand-built Automaton
         # in a test has no revision until told, unlike one AutomatonLoader
@@ -135,29 +135,29 @@ def chat_service_for(file_db):
         scheduler_service = make_test_scheduler_service(file_db)
         namespace_factory = make_test_namespace_factory(file_db, scheduler_service)
         tracking_service = TrackingService(file_db, project_service, metric_service, namespace_factory)
-        return ChatService(
+        return TurnService(
             ai_service=ai_service, ai_test_service=ai_service, project_service=project_service, db=file_db,
-            session_manager=ChatSessionManager(file_db), tracking_service=tracking_service,
+            session_manager=SessionManager(file_db), tracking_service=tracking_service,
             metric_service=metric_service, scheduler_service=scheduler_service, namespace_factory=namespace_factory,
         )
 
     return make
 
 
-async def _bootstrap_session(chat_service: ChatService) -> int:
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+async def _bootstrap_session(turn_service: TurnService) -> int:
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
     return session["id"]
 
 
 @pytest.mark.regression
-async def test_a_real_chat_turn_resolves_a_tool_call_against_the_state_s_own_declared_source(chat_service_for):
+async def test_a_real_chat_turn_resolves_a_tool_call_against_the_state_s_own_declared_source(turn_service_for):
     ai_service = FakeToolAwareAiService(
         [{"memory": "stage: greeted"}], tool_call=("source_flights_select_rows_containing", {"values": ["paris"]}),
     )
-    chat_service = chat_service_for(_automaton_with_a_tool(), ai_service=ai_service)
-    session_id = await _bootstrap_session(chat_service)
+    turn_service = turn_service_for(_automaton_with_a_tool(), ai_service=ai_service)
+    session_id = await _bootstrap_session(turn_service)
 
-    result = await chat_service.process_turn(session_id, "where's my flight to Paris?")
+    result = await turn_service.process_turn(session_id, "where's my flight to Paris?")
 
     # The turn's own persisted assistant message (see
     # TrackingProcessor._build_turn_response) — "Hi!" is
@@ -167,14 +167,14 @@ async def test_a_real_chat_turn_resolves_a_tool_call_against_the_state_s_own_dec
 
 
 @pytest.mark.regression
-async def test_a_real_chat_turn_persists_its_own_tool_calls_onto_the_assistant_message(chat_service_for, file_db):
+async def test_a_real_chat_turn_persists_its_own_tool_calls_onto_the_assistant_message(turn_service_for, file_db):
     ai_service = FakeToolAwareAiService(
         [{"memory": "stage: greeted"}], tool_call=("source_flights_select_rows_containing", {"values": ["paris"]}),
     )
-    chat_service = chat_service_for(_automaton_with_a_tool(), ai_service=ai_service)
-    session_id = await _bootstrap_session(chat_service)
+    turn_service = turn_service_for(_automaton_with_a_tool(), ai_service=ai_service)
+    session_id = await _bootstrap_session(turn_service)
 
-    result = await chat_service.process_turn(session_id, "where's my flight to Paris?")
+    result = await turn_service.process_turn(session_id, "where's my flight to Paris?")
 
     tool_calls_by_message = file_db.get_tool_calls_by_message(session_id)
     assert tool_calls_by_message[result["assistant_message_id"]] == [
@@ -187,16 +187,16 @@ async def test_a_real_chat_turn_persists_its_own_tool_calls_onto_the_assistant_m
 
 
 @pytest.mark.regression
-async def test_get_messages_surfaces_the_persistent_tool_call_record_on_reload(chat_service_for, file_db):
+async def test_get_messages_surfaces_the_persistent_tool_call_record_on_reload(turn_service_for, file_db):
     """A tool call's own persisted {name, arguments, result, label, rows,
     error, duration_ms} record (see ToolSet.tool_event and
     TrackingProcessor.on_receiving_metadata's own 'tool' branch) rides
     along in Tracking.tool_calls with no separate storage of its own —
-    ChatService.get_messages must surface it again on every reload, keyed
+    TurnService.get_messages must surface it again on every reload, keyed
     to the right message."""
     ai_service = FakeToolAwareAiService([{"memory": "stage: greeted"}])
-    chat_service = chat_service_for(_automaton_with_a_tool(), ai_service=ai_service)
-    session_id = await _bootstrap_session(chat_service)
+    turn_service = turn_service_for(_automaton_with_a_tool(), ai_service=ai_service)
+    session_id = await _bootstrap_session(turn_service)
     assistant_message_id = file_db.save_message("assistant", "Paris it is.", session_id)
     tool_call_entry = {
         "name": "source_flights_select_rows_containing", "arguments": {"values": ["paris"]},
@@ -204,20 +204,20 @@ async def test_get_messages_surfaces_the_persistent_tool_call_record_on_reload(c
     }
     file_db.record_tool_calls(session_id, [tool_call_entry], message_id=assistant_message_id)
 
-    messages = await chat_service.get_messages(session_id)
+    messages = await turn_service.get_messages(session_id)
 
     reloaded = next(m for m in messages if m["id"] == assistant_message_id)
     assert reloaded["tool_calls"] == [tool_call_entry]
 
 
 @pytest.mark.regression
-async def test_get_messages_omits_tool_calls_for_a_message_with_none(chat_service_for, file_db):
+async def test_get_messages_omits_tool_calls_for_a_message_with_none(turn_service_for, file_db):
     ai_service = FakeToolAwareAiService([{"memory": "stage: greeted"}])
-    chat_service = chat_service_for(_automaton_with_a_tool(), ai_service=ai_service)
-    session_id = await _bootstrap_session(chat_service)
+    turn_service = turn_service_for(_automaton_with_a_tool(), ai_service=ai_service)
+    session_id = await _bootstrap_session(turn_service)
     plain_message_id = file_db.save_message("assistant", "no tools here", session_id)
 
-    messages = await chat_service.get_messages(session_id)
+    messages = await turn_service.get_messages(session_id)
 
     reloaded = next(m for m in messages if m["id"] == plain_message_id)
     assert "tool_calls" not in reloaded

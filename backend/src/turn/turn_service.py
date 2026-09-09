@@ -24,15 +24,14 @@ from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.user_facts import UserFacts
-from chat.channels import WHATSAPP_CHAT
-from chat.sessions.env_for_session import env_for_session
-from chat.ephemeral_env_registry import EphemeralEnvRegistry
-from chat.errors import ChatServiceError
-from chat.sessions.session_manager import ChatSessionManager, SessionNotWritable
-from chat.sessions.session_insights import SessionInsights
-from chat.sessions.session_ownership import SessionOwnership
-from chat.sessions.session_report_task import SessionReportHydrator, SessionReportScheduler, SessionReportTask
-from chat.sessions.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
+from turn.sessions.env_for_session import env_for_session
+from turn.ephemeral_env_registry import EphemeralEnvRegistry
+from turn.errors import TurnServiceError
+from turn.sessions.session_manager import SessionManager, SessionNotWritable
+from turn.sessions.session_insights import SessionInsights
+from turn.sessions.session_ownership import SessionOwnership
+from turn.sessions.session_report_task import SessionReportHydrator, SessionReportScheduler, SessionReportTask
+from turn.sessions.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from logging_factory import LoggerFactory
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 from tracking.turn_callbacks import OnMetadata
@@ -43,14 +42,14 @@ from tracking.tracking_service import TrackingService
 
 logger = LoggerFactory.get_logger(__name__)
 
-class ChatService(object):
+class TurnService(object):
 	def __init__(
 		self,
 		db: Db,
 		ai_service: AiService,
 		ai_test_service: AiService,
 		project_service: ProjectService,
-		session_manager: ChatSessionManager,
+		session_manager: SessionManager,
 		tracking_service: TrackingService,
 		metric_service: MetricService,
 		scheduler_service: SchedulerService,
@@ -179,7 +178,7 @@ class ChatService(object):
 	def _ensure_project_available(self, project_id: str) -> None:
 		is_paused, paused_reason = self._project_service.get_project_availability(project_id)
 		if is_paused:
-			raise ChatServiceError(
+			raise TurnServiceError(
 				paused_reason or "This project is currently paused.",
 				status_code=HTTPStatus.CONFLICT, code="project_unavailable",
 			)
@@ -190,7 +189,7 @@ class ChatService(object):
 		except (AutomatonBuildError, FileNotFoundError, ValueError) as exc:
 			if session["type"] == "test":
 				raise
-			raise ChatServiceError(
+			raise TurnServiceError(
 				f"This session is pinned to revision {session['project_revision']}, which this version of "
 				"Avance can no longer run.",
 				status_code=HTTPStatus.CONFLICT, code="session_revision_unsupported",
@@ -202,7 +201,7 @@ class ChatService(object):
 				self._username, project_id, session_id, current_state
 			)
 		except SessionNotWritable as exc:
-			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT, code=exc.code) from exc
+			raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT, code=exc.code) from exc
 
 	def get_legal_terms_status(self, project_id: str) -> dict:
 		return self._project_service.get_legal_terms_status(self._username, project_id)
@@ -236,7 +235,7 @@ class ChatService(object):
 					strategy, self._project_service, self._username, project_id, session_id, state.key
 				)
 			except ValueError as exc:
-				raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		return self._session_response(session, active=session["channel"] == Session().channel)
 
 	async def get_current_session_if_any_or_create_new(self, session_id: int | None) -> dict:
@@ -268,14 +267,18 @@ class ChatService(object):
 					get_session_type_strategy('live'), self._project_service, self._username, project_id, state.key
 				)
 			except ValueError as exc:
-				raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		return self._session_response(session, active=True)
 
-	async def record_whatsapp_send(self, username: str, project_id: str, content: str) -> None:
+	async def record_unsolicited_reply(self, username: str, project_id: str, content: str) -> None:
+		"""An assistant message a channel sent on its own initiative,
+		written to that user's session so the transcript still holds it.
+		The session it lands on is the active one, or a new one opened on
+		whatever channel the caller has set — this service does not know
+		which channels exist, let alone which one is speaking."""
 		async with self._session_lifecycle_scope(username, project_id):
 			session = self._session_manager.get_active_session(username, project_id)
 			if session is None:
-				Session().channel = WHATSAPP_CHAT
 				session = self._session_manager.create_session(
 					get_session_type_strategy('live'), self._project_service, username, project_id,
 				)
@@ -295,7 +298,7 @@ class ChatService(object):
 					strategy, self._project_service, self._username, project_id
 				)
 			except ValueError as exc:
-				raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		automaton = self._project_service.get_automaton_for_session(session["id"])
 		payload = self._session_payload(session, active=True)
 		if strategy.task_for_new_session(automaton) is not None:
@@ -640,7 +643,7 @@ class ChatService(object):
 	) -> tuple[Automaton, State] | tuple[None, None]:
 		session = self._db.get_chat_session(session_id)
 		if session is None:
-			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
+			raise TurnServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
 		if session["type"] == "imported":
 			return None, None
 
@@ -713,7 +716,7 @@ class ChatService(object):
 		project_id = self._project_id_for_session(session_id)
 		self._ensure_project_available(project_id)
 		if self._session_locks.get(str(session_id)).locked():
-			raise ChatServiceError(
+			raise TurnServiceError(
 				"A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT, code="turn_in_progress",
 			)
 		async with self._session_scope(project_id, session_id):
@@ -747,13 +750,13 @@ class ChatService(object):
 		paused session is refused rather than stored."""
 		session = self._db.get_chat_session(session_id)
 		if session is None:
-			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND, code="session_not_found")
+			raise TurnServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND, code="session_not_found")
 		project_id = session["project_id"]
 		self._ensure_project_available(project_id)
 		_, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 		self._require_active_session(session_id, project_id, state.key)
 		if not state.chat_enabled:
-			raise ChatServiceError(
+			raise TurnServiceError(
 				"This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT,
 				code="state_not_chat",
 			)
@@ -794,7 +797,7 @@ class ChatService(object):
 		holding _session_scope's lock here would do."""
 		session = self._db.get_chat_session(session_id)
 		if session is None:
-			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
+			raise TurnServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
 		project_id = session["project_id"]
 		self._ensure_project_available(project_id)
 		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
@@ -842,7 +845,7 @@ class ChatService(object):
 	) -> dict:
 		session = self._db.get_chat_session(session_id)
 		if session is None:
-			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
+			raise TurnServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
 		project_id = session["project_id"]
 		self._ensure_project_available(project_id)
 		ai_service = self._ai_test_service if session["type"] == "test" else self._ai_service

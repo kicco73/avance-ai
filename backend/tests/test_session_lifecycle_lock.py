@@ -1,4 +1,4 @@
-"""ChatService's own per-(username, project_name) lock over the session
+"""TurnService's own per-(username, project_name) lock over the session
 lifecycle (resolve/close/create — see _session_lifecycle_scope): two
 concurrent callers for the same user+project must never race each other
 into two open sessions. Forces the interleaving deterministically (same
@@ -12,9 +12,9 @@ import asyncio
 import pytest
 
 from automaton.automaton import Action, Automaton, State
-from chat.channels import NATIVE_CHAT, WHATSAPP_CHAT
-from chat.chat_service import ChatService
-from chat.sessions.session_manager import ChatSessionManager
+from turn.channels import NATIVE_CHAT, WHATSAPP_CHAT
+from turn.turn_service import TurnService
+from turn.sessions.session_manager import SessionManager
 from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
 from session import Session
@@ -72,7 +72,7 @@ class _FakeProjectService:
         return (False, None)
 
 
-def _chat_service(db) -> ChatService:
+def _turn_service(db) -> TurnService:
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
     ai_service = FakeAiService()
@@ -81,9 +81,9 @@ def _chat_service(db) -> ChatService:
     scheduler_service = make_test_scheduler_service(db)
     namespace_factory = make_test_namespace_factory(db, scheduler_service)
     tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
-    return ChatService(
+    return TurnService(
         ai_service=ai_service, ai_test_service=ai_service, project_service=project_service, db=db,
-        session_manager=ChatSessionManager(db, open_window_minutes=5),
+        session_manager=SessionManager(db, open_window_minutes=5),
         tracking_service=tracking_service, metric_service=metric_service,
         scheduler_service=scheduler_service, namespace_factory=namespace_factory,
     )
@@ -112,25 +112,25 @@ class _PausableLock:
         self._real_lock.release()
 
 
-def _install_pausable_lock(chat_service: ChatService) -> _PausableLock:
+def _install_pausable_lock(turn_service: TurnService) -> _PausableLock:
     lock = _PausableLock()
-    chat_service._session_lifecycle_locks.get = lambda key: lock
+    turn_service._session_lifecycle_locks.get = lambda key: lock
     return lock
 
 
 async def test_concurrent_acquire_exclusive_session_from_different_channels_serializes(db):
-    chat_service = _chat_service(db)
-    lock = _install_pausable_lock(chat_service)
+    turn_service = _turn_service(db)
+    lock = _install_pausable_lock(turn_service)
     lock.task = asyncio.Event()
     lock.hold = asyncio.Event()
 
     async def native_call():
         Session().channel = NATIVE_CHAT
-        return await chat_service.acquire_exclusive_session()
+        return await turn_service.acquire_exclusive_session()
 
     async def whatsapp_call():
         Session().channel = WHATSAPP_CHAT
-        return await chat_service.acquire_exclusive_session()
+        return await turn_service.acquire_exclusive_session()
 
     first = asyncio.create_task(native_call())
     await asyncio.wait_for(lock.task.wait(), timeout=5.0)
@@ -154,18 +154,18 @@ async def test_concurrent_acquire_exclusive_session_from_different_channels_seri
 
 
 async def test_get_current_session_concurrent_with_acquire_exclusive_session_never_double_creates(db):
-    chat_service = _chat_service(db)
-    lock = _install_pausable_lock(chat_service)
+    turn_service = _turn_service(db)
+    lock = _install_pausable_lock(turn_service)
     lock.task = asyncio.Event()
     lock.hold = asyncio.Event()
 
     async def bootstrap_call():
         Session().channel = NATIVE_CHAT
-        return await chat_service.get_current_session_if_any_or_create_new(None)
+        return await turn_service.get_current_session_if_any_or_create_new(None)
 
     async def exclusive_call():
         Session().channel = NATIVE_CHAT
-        return await chat_service.acquire_exclusive_session()
+        return await turn_service.acquire_exclusive_session()
 
     first = asyncio.create_task(bootstrap_call())
     await asyncio.wait_for(lock.task.wait(), timeout=5.0)

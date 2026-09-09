@@ -384,7 +384,7 @@ async def test_impersonation_does_not_leak_past_the_turn(env):
 
 def test_a_second_inbound_answered_by_the_turn_already_running_sends_nothing(env):
     """Two messages arriving close together are answered together by
-    whichever turn got there first (see ChatService's own coalescing).
+    whichever turn got there first (see TurnService's own coalescing).
     The reply went out with that turn, so the second inbound must stay
     silent rather than send it a second time."""
     client, _, chat, _, api = env

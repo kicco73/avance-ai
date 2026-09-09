@@ -28,7 +28,7 @@ import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
 from db.models import Archive
-from chat.sessions.session_manager import ChatSessionManager
+from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 
@@ -84,7 +84,7 @@ async def _commit(_project_id, _automaton) -> None:
 
 @pytest.fixture
 def project_service(db) -> ProjectService:
-    return ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
+    return ProjectService(db, AutomatonLoader(db), SessionManager(db))
 
 
 def _upload(db, project_service: ProjectService, project_id: str, yml: str | None = None) -> None:

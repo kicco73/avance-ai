@@ -228,7 +228,7 @@ class AutomatonBuilder(object):
         # XXX Compiled automaton requirement - do not touch.
         # XXX Every declared key, not just the ones with a default: a
         # XXX key left out here is never written at session open (see
-        # XXX ChatService._apply_declared_env_defaults), so it is absent
+        # XXX TurnService._apply_declared_env_defaults), so it is absent
         # XXX from the evaluation scope and reading it raised KeyError
         # XXX through simpleeval's attribute-to-item fallback, silently
         # XXX failing the whole expression — a trigger like

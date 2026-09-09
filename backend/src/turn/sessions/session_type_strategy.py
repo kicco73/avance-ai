@@ -8,7 +8,7 @@ from session import Session
 
 if TYPE_CHECKING:
     from automaton.automaton import Automaton
-    from chat.sessions.session_manager import ChatSessionManager
+    from turn.sessions.session_manager import SessionManager
     from project.project_service import ProjectService
 
 
@@ -27,7 +27,7 @@ class SessionTypeStrategy(ABC):
     # here to stay reachable: writing to it directly (is_valid_write_target)
     # never depends on it being the one resolve() would pick.
     @abstractmethod
-    def resolve_session(self, session_manager: "ChatSessionManager", username: str, project_id: str) -> dict | None: ...
+    def resolve_session(self, session_manager: "SessionManager", username: str, project_id: str) -> dict | None: ...
 
     # Whether this specific session may currently be written to (a chat
     # turn or manual action applied to it) — `active_session` is whatever
@@ -75,7 +75,7 @@ class LiveSessionStrategy(SessionTypeStrategy):
             return False
         return now - session["datetime_end"] >= open_window
 
-    def resolve_session(self, session_manager: "ChatSessionManager", username: str, project_id: str) -> dict | None:
+    def resolve_session(self, session_manager: "SessionManager", username: str, project_id: str) -> dict | None:
         return session_manager.get_active_session(username, project_id, type=self.type_name)
 
     def is_valid_write_target(self, session: dict, active_session: dict | None) -> bool:
@@ -114,7 +114,7 @@ class TestSessionStrategy(SessionTypeStrategy):
             return False
         return now - session["datetime_end"] >= self.OPEN_WINDOW
 
-    def resolve_session(self, session_manager: "ChatSessionManager", username: str, project_id: str) -> dict | None:
+    def resolve_session(self, session_manager: "SessionManager", username: str, project_id: str) -> dict | None:
         return session_manager.get_active_session(username, project_id, type=self.type_name)
 
     def is_valid_write_target(self, session: dict, active_session: dict | None) -> bool:
@@ -138,7 +138,7 @@ class PreviewSessionStrategy(SessionTypeStrategy):
     def is_expired(self, session: dict, now: datetime, open_window: timedelta) -> bool:
         return False
 
-    def resolve_session(self, session_manager: "ChatSessionManager", username: str, project_id: str) -> dict | None:
+    def resolve_session(self, session_manager: "SessionManager", username: str, project_id: str) -> dict | None:
         return session_manager.get_active_session(username, project_id, type=self.type_name)
 
     def is_valid_write_target(self, session: dict, active_session: dict | None) -> bool:
@@ -162,7 +162,7 @@ class ImportedSessionStrategy(SessionTypeStrategy):
     def is_expired(self, session: dict, now: datetime, open_window: timedelta) -> bool:
         return True
 
-    def resolve_session(self, session_manager: "ChatSessionManager", username: str, project_id: str) -> dict | None:
+    def resolve_session(self, session_manager: "SessionManager", username: str, project_id: str) -> dict | None:
         raise NotImplementedError(
             "An imported session is never resolved-or-created — it only ever exists via import."
         )

@@ -61,7 +61,7 @@ if TYPE_CHECKING:
 # under a running process.
 DB_CACHE_KEY_PREFIX = "db:"
 
-# Mirrors AppConfig's own default (config.py, chat-service.
+# Mirrors AppConfig's own default (config.py, turn-service.
 # project-file-cache-bytes) — for a process that never calls
 # configure_project_file_cache: a test, a CLI script.
 DEFAULT_PROJECT_FILE_CACHE_BYTES = 8 * 1024 * 1024

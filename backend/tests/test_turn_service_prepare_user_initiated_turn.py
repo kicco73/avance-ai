@@ -1,4 +1,4 @@
-"""ChatService.prepare_user_initiated_turn — WhatsApp's own turns (invite
+"""TurnService.prepare_user_initiated_turn — WhatsApp's own turns (invite
 welcome excluded): the project bootstrap still runs, but no AI-initiated
 opening message is generated ahead of the user's own text unless the
 current state can't take a real turn at all (final, or chat=False),
@@ -9,10 +9,10 @@ from __future__ import annotations
 import pytest
 
 from automaton.automaton import Action, Automaton, State
-from chat.chat_service import ChatService
+from turn.turn_service import TurnService
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
-from chat.sessions.session_manager import ChatSessionManager
+from turn.sessions.session_manager import SessionManager
 from conftest import FakeAiService
 from conftest import make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
@@ -63,7 +63,7 @@ class FakeProjectService:
         return (False, None)
 
 
-def _chat_service(db, automaton: Automaton) -> ChatService:
+def _turn_service(db, automaton: Automaton) -> TurnService:
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
     ai_service = FakeAiService()
@@ -72,12 +72,12 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
     scheduler_service = make_test_scheduler_service(db)
     namespace_factory = make_test_namespace_factory(db, scheduler_service)
     tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
-    return ChatService(
+    return TurnService(
         ai_service=ai_service,
         ai_test_service=ai_service,
         project_service=project_service,
         db=db,
-        session_manager=ChatSessionManager(db),
+        session_manager=SessionManager(db),
         tracking_service=tracking_service,
         metric_service=metric_service,
         scheduler_service=scheduler_service,
@@ -86,28 +86,28 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
 
 
 async def test_skips_the_opening_message_for_a_chat_enabled_state(db):
-    chat_service = _chat_service(db, _automaton(final=False))
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    turn_service = _turn_service(db, _automaton(final=False))
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
 
-    await chat_service.prepare_user_initiated_turn(session["id"])
+    await turn_service.prepare_user_initiated_turn(session["id"])
 
     assert db.get_messages(session["id"]) == []
 
 
 async def test_still_generates_the_wrap_up_message_for_a_chat_blocked_state(db):
-    chat_service = _chat_service(db, _automaton(final=True))
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    turn_service = _turn_service(db, _automaton(final=True))
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
 
-    await chat_service.prepare_user_initiated_turn(session["id"])
+    await turn_service.prepare_user_initiated_turn(session["id"])
 
     assert db.get_messages(session["id"]) != []
 
 
 async def test_still_applies_declared_env_defaults(db):
-    chat_service = _chat_service(db, _automaton(final=False, env={"a": "2"}))
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    turn_service = _turn_service(db, _automaton(final=False, env={"a": "2"}))
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
 
-    await chat_service.prepare_user_initiated_turn(session["id"])
+    await turn_service.prepare_user_initiated_turn(session["id"])
 
     env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id=0)
     assert env.action_set() == {"a": 2}

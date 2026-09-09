@@ -1,6 +1,6 @@
 """GET /api/chat/messages for an imported session must not 409, even when
 the live conversation's current state is final/chat:false —
-ChatService.open_if_needed returns immediately for imported sessions.
+TurnService.open_if_needed returns immediately for imported sessions.
 """
 from __future__ import annotations
 

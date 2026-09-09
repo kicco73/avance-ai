@@ -51,7 +51,7 @@ def test_a_still_open_session_has_no_summary(client, app, app_db, hello_project)
 
 def test_a_session_merely_expired_by_the_open_window_is_never_queued(client, app, app_db, hello_project):
     """Expiring past the open window is not the same as being closed —
-    only an explicit close (ChatSessionManager.close_session) schedules
+    only an explicit close (SessionManager.close_session) schedules
     a report, so a session nobody ever closed must never get one even
     once it reads as closed via is_open()."""
     session = client.get("/api/chat/session").json()

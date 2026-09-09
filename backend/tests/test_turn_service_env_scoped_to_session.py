@@ -2,7 +2,7 @@
 *session's own* project's (and user's) — never the request user's
 active project's.
 
-Production bug: ChatService.env was one PersistedEnv keyed on
+Production bug: TurnService.env was one PersistedEnv keyed on
 ProjectService.get_active_project_id() + Session().user. Opening a
 session of any *other* project (the Sessions panel, a supervisor
 reading someone's session, WhatsApp) made _apply_declared_env_defaults
@@ -15,9 +15,9 @@ from __future__ import annotations
 
 import pytest
 
-from chat.chat_service import ChatService
-from chat.sessions.session_manager import ChatSessionManager
-from chat.sessions.session_type_strategy import get_session_type_strategy
+from turn.turn_service import TurnService
+from turn.sessions.session_manager import SessionManager
+from turn.sessions.session_type_strategy import get_session_type_strategy
 from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from db.models import Tracking
 from metrics.metric_service import MetricService
@@ -57,18 +57,18 @@ def _publish(db, project_id: str, yml: str) -> None:
     db.publish_project(project_id)
 
 
-def _chat_service(db, project_service: ProjectService) -> ChatService:
+def _turn_service(db, project_service: ProjectService) -> TurnService:
     ai_service = FakeAiService()
     metric_service = MetricService(db, project_service)
     scheduler_service = make_test_scheduler_service(db)
     namespace_factory = make_test_namespace_factory(db, scheduler_service)
     tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
-    return ChatService(
+    return TurnService(
         ai_service=ai_service,
         ai_test_service=ai_service,
         project_service=project_service,
         db=db,
-        session_manager=ChatSessionManager(db),
+        session_manager=SessionManager(db),
         tracking_service=tracking_service,
         metric_service=metric_service,
         scheduler_service=scheduler_service,
@@ -79,46 +79,46 @@ def _chat_service(db, project_service: ProjectService) -> ChatService:
 def _env(db, project_id: str, username: str = USERNAME) -> PersistedEnv:
     # Read-only in every test here (assertions read action_set()/memory()
     # straight off project+user; the real writes under test go through
-    # ChatService's own, properly session-scoped PersistedEnv) — session_id
+    # TurnService's own, properly session-scoped PersistedEnv) — session_id
     # is now required (PersistedEnv(None) raises), so any real id will do.
     return PersistedEnv(db, FixedProjectContext(project_id=project_id), session_id=0, username=username)
 
 
 @pytest.fixture
-def two_projects(db) -> tuple[ProjectService, ChatService]:
+def two_projects(db) -> tuple[ProjectService, TurnService]:
     _publish(db, ACTIVE_PROJECT, _index_yml(ACTIVE_PROJECT, "active_key", "active-default"))
     _publish(db, OTHER_PROJECT, _index_yml(OTHER_PROJECT, "other_key", "other-default"))
     db.set_active_project_id(ACTIVE_PROJECT, USERNAME)
-    project_service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
-    return project_service, _chat_service(db, project_service)
+    project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
+    return project_service, _turn_service(db, project_service)
 
 
 async def test_opening_another_projects_session_writes_that_projects_env_not_the_active_ones(db, two_projects):
-    project_service, chat_service = two_projects
+    project_service, turn_service = two_projects
     # The active project's own session, bootstrapped the normal way.
-    active_session = await chat_service.get_current_session_if_any_or_create_new(None)
-    await chat_service.open_if_needed(active_session["id"])
+    active_session = await turn_service.get_current_session_if_any_or_create_new(None)
+    await turn_service.open_if_needed(active_session["id"])
     assert _env(db, ACTIVE_PROJECT).action_set() == {"active_key": "active-default"}
 
     # A session of the *other* project (still ACTIVE_PROJECT active) —
     # what the Sessions panel or WhatsApp does.
-    other_session_id = chat_service._session_manager.create_session(
+    other_session_id = turn_service._session_manager.create_session(
         get_session_type_strategy("live"), project_service, USERNAME, OTHER_PROJECT
     )["id"]
-    await chat_service.open_if_needed(other_session_id)
+    await turn_service.open_if_needed(other_session_id)
 
     assert _env(db, OTHER_PROJECT).action_set() == {"other_key": "other-default"}
     assert _env(db, ACTIVE_PROJECT).action_set() == {"active_key": "active-default"}
 
 
 async def test_reopening_another_projects_session_is_a_no_op_once_its_defaults_are_set(db, two_projects):
-    project_service, chat_service = two_projects
-    other_session_id = chat_service._session_manager.create_session(
+    project_service, turn_service = two_projects
+    other_session_id = turn_service._session_manager.create_session(
         get_session_type_strategy("live"), project_service, USERNAME, OTHER_PROJECT
     )["id"]
 
     for _ in range(3):
-        await chat_service.open_if_needed(other_session_id)
+        await turn_service.open_if_needed(other_session_id)
 
     assert _env(db, OTHER_PROJECT).action_set() == {"other_key": "other-default"}
     assert db.get_action_env(ACTIVE_PROJECT, USERNAME) == {}
@@ -130,10 +130,10 @@ async def test_reopening_another_projects_session_is_a_no_op_once_its_defaults_a
 
 
 async def test_a_supervisor_opening_someone_elses_session_touches_that_users_env(db, two_projects):
-    project_service, chat_service = two_projects
+    project_service, turn_service = two_projects
     db.get_or_create_user("test", "sub-alice", "alice", "alice", None)
     db.set_active_project_id(ACTIVE_PROJECT, "alice")
-    alice_session_id = chat_service._session_manager.create_session(
+    alice_session_id = turn_service._session_manager.create_session(
         get_session_type_strategy("live"), project_service, "alice", ACTIVE_PROJECT
     )["id"]
 
@@ -141,7 +141,7 @@ async def test_a_supervisor_opening_someone_elses_session_touches_that_users_env
     # bootstrap half of open_if_needed: the opening-message half is a
     # real turn, which a supervisor rightly can't run on alice's session.
     assert Session().user == USERNAME
-    await chat_service._ensure_project_bootstrap(alice_session_id)
+    await turn_service._ensure_project_bootstrap(alice_session_id)
 
     assert _env(db, ACTIVE_PROJECT, username="alice").action_set() == {"active_key": "active-default"}
     assert db.get_action_env(ACTIVE_PROJECT, USERNAME) == {}

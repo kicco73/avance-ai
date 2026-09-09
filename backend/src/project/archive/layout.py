@@ -72,7 +72,7 @@ SOURCES_DIR = "sources"
 # thing living under it is AvanceArchiveSource's own per-session read
 # cache, at `{CACHE_DIR}/sessions/<chat session id>/{SOURCES_DIR}/<id>.csv`
 # (Db.write_archive_at_revision writes it, Db.delete_archives_with_prefix
-# — called from ChatSessionManager.close_session/ChatService.
+# — called from SessionManager.close_session/TurnService.
 # delete_session — cleans up everything under a closed/deleted session's
 # own subtree).
 CACHE_DIR = "cache"

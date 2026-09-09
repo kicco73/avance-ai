@@ -206,7 +206,7 @@ class ProjectMixin:
     def delete_archives_with_prefix(self, project_id: str, prefix: str) -> None:
         """Deletes every Archive row (any revision) whose name starts with
         `prefix` — cache/sessions/<id>/'s own cleanup on session close
-        (ChatSessionManager.close_session) or delete (ChatService.
+        (SessionManager.close_session) or delete (TurnService.
         delete_session): a revision-agnostic scratch namespace written by
         write_archive_at_revision above, never touched by the normal
         draft/publish machinery, so it's cleaned up on its own schedule too."""

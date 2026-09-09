@@ -1,4 +1,4 @@
-"""ChatService's own manual_actions field on every state payload reaching
+"""TurnService's own manual_actions field on every state payload reaching
 a client with a known session (see automaton.manual_actions_for) — a live
 session always excludes triggered actions, a test session only while its
 own auto-tracking toggle is on.
@@ -6,8 +6,8 @@ own auto-tracking toggle is on.
 from __future__ import annotations
 
 from automaton.automaton import Action, Automaton, State
-from chat.chat_service import ChatService
-from chat.sessions.session_manager import ChatSessionManager
+from turn.turn_service import TurnService
+from turn.sessions.session_manager import SessionManager
 from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService
@@ -56,7 +56,7 @@ class _FakeProjectService:
         return (False, None)
 
 
-def _chat_service(db) -> ChatService:
+def _turn_service(db) -> TurnService:
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
     ai_service = FakeAiService()
@@ -65,12 +65,12 @@ def _chat_service(db) -> ChatService:
     scheduler_service = make_test_scheduler_service(db)
     namespace_factory = make_test_namespace_factory(db, scheduler_service)
     tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
-    return ChatService(
+    return TurnService(
         ai_service=ai_service,
         ai_test_service=ai_service,
         project_service=project_service,
         db=db,
-        session_manager=ChatSessionManager(db),
+        session_manager=SessionManager(db),
         tracking_service=tracking_service,
         metric_service=metric_service,
         scheduler_service=scheduler_service,
@@ -79,40 +79,40 @@ def _chat_service(db) -> ChatService:
 
 
 async def test_live_session_always_excludes_triggered_actions(db):
-    chat_service = _chat_service(db)
+    turn_service = _turn_service(db)
 
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
 
     names = {a["name"] for a in session["state"]["manual_actions"]}
     assert names == {"manual"}
 
 
 async def test_test_session_excludes_triggered_actions_while_auto_tracking_is_on(db):
-    chat_service = _chat_service(db)
+    turn_service = _turn_service(db)
 
-    session = await chat_service.get_current_draft_session_if_any_or_create_new(None, PROJECT_ID)
+    session = await turn_service.get_current_draft_session_if_any_or_create_new(None, PROJECT_ID)
 
-    assert chat_service.is_auto_tracking_enabled(session["id"]) is True
+    assert turn_service.is_auto_tracking_enabled(session["id"]) is True
     names = {a["name"] for a in session["state"]["manual_actions"]}
     assert names == {"manual"}
 
 
 async def test_test_session_includes_triggered_actions_once_auto_tracking_is_off(db):
-    chat_service = _chat_service(db)
-    session = await chat_service.get_current_draft_session_if_any_or_create_new(None, PROJECT_ID)
+    turn_service = _turn_service(db)
+    session = await turn_service.get_current_draft_session_if_any_or_create_new(None, PROJECT_ID)
     session_id = session["id"]
 
-    chat_service.set_auto_tracking_enabled(session_id, False)
-    state = chat_service.get_state_for_session(session_id)
+    turn_service.set_auto_tracking_enabled(session_id, False)
+    state = turn_service.get_state_for_session(session_id)
 
     names = {a["name"] for a in state["manual_actions"]}
     assert names == {"manual", "auto"}
 
 
 async def test_actions_field_itself_is_never_filtered(db):
-    chat_service = _chat_service(db)
+    turn_service = _turn_service(db)
 
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
 
     names = {a["name"] for a in session["state"]["actions"]}
     assert names == {"manual", "auto"}

@@ -1,4 +1,4 @@
-"""chat-service.input-token-budget-per-turn."""
+"""turn-service.input-token-budget-per-turn."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -8,7 +8,7 @@ import pytest
 from ai import AiService
 from ai.llm_provider import ToolCall, ToolCallsRequested, ToolSpec
 from automaton.automaton import Action, Automaton, State
-from chat.errors import ChatServiceError
+from turn.errors import TurnServiceError
 from conftest import make_test_namespace_factory
 from metrics.metric_service import MetricService
 from tracking.env import PersistedEnv
@@ -85,7 +85,7 @@ async def test_a_turn_whose_system_prompt_alone_exceeds_the_budget_is_rejected_b
         db, project_service, metrics, make_test_namespace_factory(db), input_token_budget_per_turn=10,
     )
 
-    with pytest.raises(ChatServiceError) as exc_info:
+    with pytest.raises(TurnServiceError) as exc_info:
         await service._process(session_id, "hello", ai_service)
 
     assert exc_info.value.status_code == 413
@@ -164,7 +164,7 @@ async def test_ai_services_own_tool_loop_rejects_a_round_that_exceeds_the_budget
     provider = _FakeToolProvider()
     ai_service = AiService(provider, input_token_budget_per_turn=50)
 
-    with pytest.raises(ChatServiceError) as exc_info:
+    with pytest.raises(TurnServiceError) as exc_info:
         async for _ in ai_service.generate_stream_with_metadata(
             "sys", [], on_metadata=lambda k, v: None, schema={"text": "..."}, tool_set=_FakeToolSet(),
         ):

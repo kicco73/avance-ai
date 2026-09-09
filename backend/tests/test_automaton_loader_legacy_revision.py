@@ -17,7 +17,7 @@ import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
-from chat.sessions.session_manager import ChatSessionManager
+from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 
 pytestmark = pytest.mark.regression
@@ -135,7 +135,7 @@ def _open_session_on(db, revision: int) -> int:
 def test_a_broken_revision_force_closes_its_own_open_sessions(db):
     broken = _store(db, BROKEN_TASK_YML)
     session_id = _open_session_on(db, broken)
-    loader = AutomatonLoader(db, session_manager=ChatSessionManager(db))
+    loader = AutomatonLoader(db, session_manager=SessionManager(db))
 
     with pytest.raises(AutomatonBuildError):
         loader.load_at_revision(PROJECT_ID, broken)
@@ -149,7 +149,7 @@ def test_a_broken_revision_never_touches_a_different_revisions_session(db):
     broken = _store(db, BROKEN_TASK_YML)
     other_revision = _store(db, CURRENT_YML)
     other_session_id = _open_session_on(db, other_revision)
-    loader = AutomatonLoader(db, session_manager=ChatSessionManager(db))
+    loader = AutomatonLoader(db, session_manager=SessionManager(db))
 
     with pytest.raises(AutomatonBuildError):
         loader.load_at_revision(PROJECT_ID, broken)
@@ -176,7 +176,7 @@ def test_the_close_sweep_only_runs_once_per_broken_revision(db, monkeypatch):
     (ProjectInspector) — a revision under active use must not re-run the
     close sweep (a DB query) on every single failed load."""
     broken = _store(db, BROKEN_TASK_YML)
-    loader = AutomatonLoader(db, session_manager=ChatSessionManager(db))
+    loader = AutomatonLoader(db, session_manager=SessionManager(db))
     calls = []
     original = db.list_live_sessions_for_revision
 

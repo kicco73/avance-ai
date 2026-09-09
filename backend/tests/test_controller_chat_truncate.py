@@ -1,5 +1,5 @@
 """POST /api/chat/sessions/{id}/truncate ("Restart from here",
-ChatService.truncate_session) — exercises the HTTP surface: ownership,
+TurnService.truncate_session) — exercises the HTTP surface: ownership,
 response shape, and an end-to-end scenario against a real automaton.
 """
 from __future__ import annotations
@@ -30,7 +30,7 @@ def test_truncate_rejects_someone_elses_session(client, hello_project):
     ChatSession.update(username="someone-else").where(ChatSession.id == session["id"]).execute()
 
     # Only a plain "user" is denied — a supervisor owns every session (see
-    # ChatService._owns_session), so this must downgrade the default fixture role.
+    # TurnService._owns_session), so this must downgrade the default fixture role.
     Session().role = "user"
     response = client.post(f"/api/chat/sessions/{session['id']}/truncate", json={"timestamp": "2026-01-01T00:00:00+00:00"})
     assert response.status_code == 404

@@ -1,4 +1,4 @@
-"""ChatService.apply_manual_action's end of the action-level `env`
+"""TurnService.apply_manual_action's end of the action-level `env`
 feature — a manually fired (button click) action updates env exactly
 like an auto-tracking-fired one does, without any signal_values.
 """
@@ -7,10 +7,10 @@ from __future__ import annotations
 import pytest
 
 from automaton.automaton import Action, Automaton, EnvKey, State
-from chat.chat_service import ChatService
+from turn.turn_service import TurnService
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
-from chat.sessions.session_manager import ChatSessionManager
+from turn.sessions.session_manager import SessionManager
 from conftest import FakeAiService
 from conftest import make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
@@ -84,7 +84,7 @@ class FakeProjectService:
         return automaton.get_state_payload(new_state), action, state.key
 
 
-def _chat_service(db, automaton: Automaton) -> ChatService:
+def _turn_service(db, automaton: Automaton) -> TurnService:
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
     ai_service = FakeAiService()
@@ -95,12 +95,12 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
     tracking_service = TrackingService(
         db, project_service, metric_service, namespace_factory,
     )
-    return ChatService(
+    return TurnService(
         ai_service=ai_service,
         ai_test_service=ai_service,
         project_service=project_service,
         db=db,
-        session_manager=ChatSessionManager(db),
+        session_manager=SessionManager(db),
         tracking_service=tracking_service,
         metric_service=metric_service,
         scheduler_service=scheduler_service,
@@ -115,10 +115,10 @@ def _env_for(db, session_id: int = 0) -> PersistedEnv:
 
 
 async def test_a_manually_fired_actions_env_is_persisted(db):
-    chat_service = _chat_service(db, _automaton({"reset_counter": "True"}))
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    turn_service = _turn_service(db, _automaton({"reset_counter": "True"}))
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
 
-    await chat_service.apply_manual_action("advance", session["id"])
+    await turn_service.apply_manual_action("advance", session["id"])
 
     env = _env_for(db)
     assert env.action_set() == {"reset_counter": True}
@@ -126,10 +126,10 @@ async def test_a_manually_fired_actions_env_is_persisted(db):
 
 
 async def test_an_action_with_no_env_field_never_touches_env(db):
-    chat_service = _chat_service(db, _automaton(None))
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    turn_service = _turn_service(db, _automaton(None))
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
 
-    await chat_service.apply_manual_action("advance", session["id"])
+    await turn_service.apply_manual_action("advance", session["id"])
 
     env = _env_for(db)
     assert env.memory() == {}
@@ -137,12 +137,12 @@ async def test_an_action_with_no_env_field_never_touches_env(db):
 
 
 async def test_manual_actions_env_can_self_reference_a_previously_stored_value(db):
-    chat_service = _chat_service(db, _automaton({"number_of_steps": "env.number_of_steps + 1"}, target="a"))
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    turn_service = _turn_service(db, _automaton({"number_of_steps": "env.number_of_steps + 1"}, target="a"))
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
     env = _env_for(db, session["id"])
     env.update_action_set({"number_of_steps": 3})
 
-    await chat_service.apply_manual_action("advance", session["id"])
+    await turn_service.apply_manual_action("advance", session["id"])
 
     assert env.action_set()["number_of_steps"] == 4
 
@@ -151,11 +151,11 @@ async def test_env_update_happens_before_the_transitions_own_prompt_is_built(db)
     """The destination state's own opening-message prompt must already
     see the updated env value, not last turn's — in its env block, which
     that state gets because it reads the avance:env source."""
-    chat_service = _chat_service(db, _automaton({"reset_counter": "True"}, model_reads_env=True))
-    ai_service = chat_service._ai_service
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    turn_service = _turn_service(db, _automaton({"reset_counter": "True"}, model_reads_env=True))
+    ai_service = turn_service._ai_service
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
 
-    await chat_service.apply_manual_action("advance", session["id"])
+    await turn_service.apply_manual_action("advance", session["id"])
 
     system_prompt, _ = ai_service.calls[0]
     assert "reset_counter: True" in system_prompt.full_text()
@@ -164,11 +164,11 @@ async def test_env_update_happens_before_the_transitions_own_prompt_is_built(db)
 async def test_an_unexported_env_key_never_reaches_the_prompt(db):
     """No state declares it in its own `input` (the default) — the
     automaton's env stays out of the model's prompt entirely."""
-    chat_service = _chat_service(db, _automaton({"reset_counter": "True"}))
-    ai_service = chat_service._ai_service
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+    turn_service = _turn_service(db, _automaton({"reset_counter": "True"}))
+    ai_service = turn_service._ai_service
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
 
-    await chat_service.apply_manual_action("advance", session["id"])
+    await turn_service.apply_manual_action("advance", session["id"])
 
     system_prompt, _ = ai_service.calls[0]
     assert "reset_counter" not in system_prompt.full_text()

@@ -15,7 +15,7 @@ from automaton.automaton import (
     Action, ActionPayload, Automaton, CompiledAutomaton, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload,
     State, StatePayload,
 )
-from chat.sessions.session_manager import ChatSessionManager
+from turn.sessions.session_manager import SessionManager
 from db import Db
 from tracking.session_export import SessionExportManager
 from tracking.session_import import SessionImportManager
@@ -48,7 +48,7 @@ class ProjectService(object):
         self, 
         db: Db, 
         automaton_loader: AutomatonLoader,
-        session_manager: ChatSessionManager,
+        session_manager: SessionManager,
         ai_service: "AiService | None" = None,
         invite_valid_days: int = 7, invite_max_shares: int = 3, whatsapp_number: str | None = None,
         whatsapp_invite_prefix: str = "Invitation code: ",

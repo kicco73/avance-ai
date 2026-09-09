@@ -3,20 +3,20 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from chat.sessions.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
+from turn.sessions.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from db import Db
 from logging_factory import LoggerFactory
 from project.archive.layout import CACHE_DIR
 from session import Session
 
 if TYPE_CHECKING:
-    from chat.sessions.session_report_task import SessionReportScheduler
+    from turn.sessions.session_report_task import SessionReportScheduler
     from project.project_service import ProjectService
 
 logger = LoggerFactory.get_logger(__name__)
 
 # Default open window, in minutes, when the caller doesn't supply one —
-# matches config.yml's chat-service.max-session-duration-in-minutes
+# matches config.yml's turn-service.max-session-duration-in-minutes
 # default, kept here too so tests/direct constructions don't need it.
 DEFAULT_OPEN_WINDOW_MINUTES = 60.0
 
@@ -27,7 +27,7 @@ class SessionNotWritable(ValueError):
         self.code = code
 
 
-class ChatSessionManager(object):
+class SessionManager(object):
     def __init__(self, db: Db, open_window_minutes: float = DEFAULT_OPEN_WINDOW_MINUTES) -> None:
         self._db = db
         self._open_window = timedelta(minutes=open_window_minutes)

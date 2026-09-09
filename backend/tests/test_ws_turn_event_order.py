@@ -13,9 +13,9 @@ import pytest
 from ai.ai_service import AiService
 from ai.llm_provider import ToolCall, ToolCallsRequested
 from automaton.automaton import Action, Automaton, Source, State
-from chat.chat_service import ChatService
-from chat.sessions.session_manager import ChatSessionManager
-from chat.ws_turn import WsChatTurn
+from turn.turn_service import TurnService
+from turn.sessions.session_manager import SessionManager
+from turn.ws_turn import WsChatTurn
 from conftest import make_test_namespace_factory, make_test_scheduler_service
 from db.db import Db
 from metrics.metric_service import MetricService
@@ -71,13 +71,13 @@ def _automaton(*, with_sources: bool, autotracking_on_ai_message: bool) -> Autom
 
 
 @pytest.fixture
-def chat_service_for(tmp_path):
+def turn_service_for(tmp_path):
     db = Db(f"sqlite:///{tmp_path / 'ws_turn_order.db'}")
     db.ensure_project(PROJECT_ID)
     db.save_project_files(PROJECT_ID, {"flights.csv": b"city,country\nParis,France\n"}, {"flights.csv": "text/csv"})
     db.publish_project(PROJECT_ID)
 
-    def make(automaton: Automaton, provider) -> ChatService:
+    def make(automaton: Automaton, provider) -> TurnService:
         automaton.set_storage_location(db.get_project_revision(PROJECT_ID))
         ai_service = AiService(provider)
         project_service = FakeProjectService(automaton)
@@ -85,9 +85,9 @@ def chat_service_for(tmp_path):
         scheduler_service = make_test_scheduler_service(db)
         namespace_factory = make_test_namespace_factory(db, scheduler_service)
         tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
-        return ChatService(
+        return TurnService(
             ai_service=ai_service, ai_test_service=ai_service, project_service=project_service, db=db,
-            session_manager=ChatSessionManager(db), tracking_service=tracking_service,
+            session_manager=SessionManager(db), tracking_service=tracking_service,
             metric_service=metric_service, scheduler_service=scheduler_service, namespace_factory=namespace_factory,
         )
 
@@ -105,10 +105,10 @@ class _RecordingConnection:
         self.frames.append(payload)
 
 
-async def _streamed_events(chat_service: ChatService, text: str) -> list[tuple[str, dict]]:
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+async def _streamed_events(turn_service: TurnService, text: str) -> list[tuple[str, dict]]:
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
     connection = _RecordingConnection()
-    turn = WsChatTurn(chat_service, connection, "turn-1", session["id"], text)
+    turn = WsChatTurn(turn_service, connection, "turn-1", session["id"], text)
     assert turn.accept()
     await turn.run()
     assert {frame["stream_id"] for frame in connection.frames} == {"turn-1"}
@@ -126,12 +126,12 @@ def _streamed_text(events: list[tuple[str, dict]]) -> str:
     return "".join(data["body"] for event, data in events if event == "output.text")
 
 
-async def test_with_declared_sources_every_chunk_of_the_replayed_final_round_precedes_done(chat_service_for):
-    chat_service = chat_service_for(
+async def test_with_declared_sources_every_chunk_of_the_replayed_final_round_precedes_done(turn_service_for):
+    turn_service = turn_service_for(
         _automaton(with_sources=True, autotracking_on_ai_message=True), _FakeProvider(tool_rounds=1),
     )
 
-    events = await _streamed_events(chat_service, "where's my flight?")
+    events = await _streamed_events(turn_service, "where's my flight?")
 
     kinds = _kinds(events)
     # "turn.started" always precedes generation (see tracking_processor.py's
@@ -145,12 +145,12 @@ async def test_with_declared_sources_every_chunk_of_the_replayed_final_round_pre
     assert events[-1][1]["reply"][0]["content"] == "Your flight is on time."
 
 
-async def test_without_sources_and_tracking_after_the_user_message_every_chunk_precedes_done(chat_service_for):
-    chat_service = chat_service_for(
+async def test_without_sources_and_tracking_after_the_user_message_every_chunk_precedes_done(turn_service_for):
+    turn_service = turn_service_for(
         _automaton(with_sources=False, autotracking_on_ai_message=False), _FakeProvider(tool_rounds=0),
     )
 
-    events = await _streamed_events(chat_service, "hello")
+    events = await _streamed_events(turn_service, "hello")
 
     kinds = _kinds(events)
     assert kinds[-1] == "turn.ended"
@@ -159,12 +159,12 @@ async def test_without_sources_and_tracking_after_the_user_message_every_chunk_p
     assert _streamed_text(events) == "Your flight is on time."
 
 
-async def test_with_declared_sources_but_no_tool_call_the_answer_streams_then_done(chat_service_for):
-    chat_service = chat_service_for(
+async def test_with_declared_sources_but_no_tool_call_the_answer_streams_then_done(turn_service_for):
+    turn_service = turn_service_for(
         _automaton(with_sources=True, autotracking_on_ai_message=True), _FakeProvider(tool_rounds=0),
     )
 
-    events = await _streamed_events(chat_service, "hello")
+    events = await _streamed_events(turn_service, "hello")
 
     kinds = _kinds(events)
     assert kinds[-1] == "turn.ended"

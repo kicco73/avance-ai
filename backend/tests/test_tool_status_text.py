@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from chat.tool_status_text import tool_status_text
+from turn.tool_status_text import tool_status_text
 
 pytestmark = pytest.mark.contract
 

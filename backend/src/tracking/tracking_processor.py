@@ -4,7 +4,7 @@ from datetime import datetime
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, AsyncIterator
 
-from chat.errors import ChatServiceError
+from turn.errors import TurnServiceError
 from db.db import Db
 from ai import AiService
 from ai import MetadataCallback, content_to_text
@@ -178,7 +178,7 @@ class TrackingProcessor(object):
 
 	def _open_turn(self, fragments: list[str], user_message_ids: list[int] | None) -> None:
 		"""Binds this turn to the user message that closes it — the LAST
-		fragment (see ChatService's own coalescing): its Tracking row, the
+		fragment (see TurnService's own coalescing): its Tracking row, the
 		bot's reaction and the input tokens all land there. Every fragment
 		is already persisted by then, in arrival order, so nothing is saved
 		here — except the '...' placeholder of an AI-initiated turn, which
@@ -358,7 +358,7 @@ class TrackingProcessor(object):
 		row on its own even with no signals/trigger at all — otherwise a
 		state that only ever produces output, never fires an action off
 		it, would never get its output linked to a message (see
-		ChatService.get_output's own message_id lookup)."""
+		TurnService.get_output's own message_id lookup)."""
 		return bool(self.metadata.signals) or bool(self.metadata.output) or self.out.action is not None
 
 	def generate_reply(self, state: State, on_metadata: MetadataCallback) -> AsyncIterator[str]:
@@ -410,7 +410,7 @@ class TrackingProcessor(object):
 		)
 		logger.warning(message)
 		self.db.save_system_warning(Session().user, self.user.project_id, "input_budget_exceeded", message)
-		raise ChatServiceError(
+		raise TurnServiceError(
 			f"This turn's own system prompt alone is ~{estimate.total_tokens} tokens, over the "
 			f"{budget}-token cap.",
 			status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE, code="input_budget_exceeded",
@@ -628,7 +628,7 @@ class TrackingProcessor(object):
 		action = self.out.action
 		# The turn's own persisted assistant message, same shape
 		# apply_manual_action's own "reply" already sends (see
-		# ChatService._messages_for_transition) — lets a live SSE/WS turn's
+		# TurnService._messages_for_transition) — lets a live SSE/WS turn's
 		# frontend reconcile its streaming bubble against the persisted
 		# row on `done`, instead of trusting the stream to have delivered
 		# every chunk. Empty exactly when there's no such message

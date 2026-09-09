@@ -3,7 +3,7 @@ from __future__ import annotations
 from bus import OUTPUT_SPEECH, OUTPUT_TEXT, TURN_ENDED, TURN_FAILED, TURN_STARTED, TURN_TOOL
 from logging_factory import LoggerFactory
 from service_error import ServiceError
-from .chat_service import ChatService
+from .turn_service import TurnService
 from .tool_status_text import tool_status_text
 
 logger = LoggerFactory.get_logger(__name__)
@@ -15,8 +15,8 @@ class WsChatTurn(object):
     its own task (run), every frame it produces sent on the connection
     with this turn's own stream_id — the only correlation there is."""
 
-    def __init__(self, chat_service: ChatService, connection, turn_id: str, session_id, text: str) -> None:
-        self._chat_service = chat_service
+    def __init__(self, turn_service: TurnService, connection, turn_id: str, session_id, text: str) -> None:
+        self._turn_service = turn_service
         self._connection = connection
         self._turn_id = turn_id
         self._session_id = session_id
@@ -45,7 +45,7 @@ class WsChatTurn(object):
             # right before real generation starts for the model (see
             # TrackingProcessor.process), or only once an operator's own
             # human_typing frame arrives for a human-answered turn (see
-            # ChatService._process_human_turn, talker.human_talker.
+            # TurnService._process_human_turn, talker.human_talker.
             # HumanTalker.chat). Never inferred client-side from an empty
             # message any more (see MessageBubble.vue's own awaitingReply).
             self._send(TURN_STARTED, {"session_id": self._session_id})
@@ -65,7 +65,7 @@ class WsChatTurn(object):
                 raise ServiceError("Session not found.", status_code=404, code="session_not_found")
             if not text:
                 raise ServiceError("Message cannot be empty.", status_code=400, code="empty_message")
-            self._user_message_id = self._chat_service.accept_user_message(self._session_id, text)
+            self._user_message_id = self._turn_service.accept_user_message(self._session_id, text)
         except ServiceError as exc:
             self._send_error(exc)
             return False
@@ -74,7 +74,7 @@ class WsChatTurn(object):
 
     async def run(self) -> None:
         try:
-            result = await self._chat_service.process_turn(
+            result = await self._turn_service.process_turn(
                 self._session_id, self._text, on_metadata=self.on_metadata, user_message_id=self._user_message_id,
             )
             self._send(TURN_ENDED, result)

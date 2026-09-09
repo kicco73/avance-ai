@@ -5,7 +5,7 @@ from http import HTTPStatus
 
 from peewee import fn
 
-from chat.channels import CHANNELS, NATIVE_CHAT
+from turn.channels import CHANNELS, NATIVE_CHAT
 from logging_factory import LoggerFactory
 from tracking.errors import TrackingServiceError
 
@@ -33,7 +33,7 @@ class SessionMixin:
         closed_at: datetime | None = None, close_reason: str | None = None,
     ) -> int:
         """`revision` arrives already resolved by the caller (see
-        chat.sessions.session_type_strategy.SessionTypeStrategy.revision_for) —
+        turn.sessions.session_type_strategy.SessionTypeStrategy.revision_for) —
         published for a 'live' session, draft for a 'test' one."""
         if channel not in CHANNELS:
             raise ValueError(f"Unknown channel '{channel}' — expected one of {CHANNELS}.")
@@ -107,7 +107,7 @@ class SessionMixin:
         """The session immediately before `before_session_id` in this
         (username, project_id)'s own history, ordered by id — unlike
         get_latest_chat_session, the answer never changes on a later call
-        against the same still-current session. ChatService's own
+        against the same still-current session. TurnService's own
         legal/terms.md re-notice check relies on exactly that stability."""
         query = ChatSession.select().where(
             (ChatSession.project == project_id) & (ChatSession.username == username)

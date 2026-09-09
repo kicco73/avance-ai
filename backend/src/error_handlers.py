@@ -62,7 +62,7 @@ class ApiErrorHandlers:
 
     @classmethod
     async def service_error(cls, request: Request, exc: ServiceError) -> JSONResponse:
-        """Covers every service-layer error — ChatServiceError, TrackingServiceError,
+        """Covers every service-layer error — TurnServiceError, TrackingServiceError,
         any future subclass — in one handler, since Starlette resolves handlers
         by walking the exception's MRO rather than requiring an exact type match."""
         logger.exception("Service error on %s %s", request.method, request.url.path)

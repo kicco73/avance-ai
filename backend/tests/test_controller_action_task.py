@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from chat.ws_notifications import WsNotifications
+from turn.ws_notifications import WsNotifications
 from conftest import parse_sse_result
 
 pytestmark = pytest.mark.contract

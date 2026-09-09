@@ -10,7 +10,7 @@ MINIMAL_CONFIG = """
 database:
   url: "sqlite:///:memory:"
 
-chat-service: {}
+turn-service: {}
 
 ai-service:
   providers:
@@ -44,19 +44,19 @@ def _load(monkeypatch, tmp_path, content: str) -> AppConfig:
 
 class TestGetOptionalPositiveFloat:
     def _get(self, raw):
-        return AppConfig._get_optional_positive_float(raw, "chat-service", "max-session-duration-in-minutes", "cfg", default=60.0)
+        return AppConfig._get_optional_positive_float(raw, "turn-service", "max-session-duration-in-minutes", "cfg", default=60.0)
 
     def test_returns_the_default_when_absent_and_the_configured_int_or_float_when_present(self):
-        assert self._get({"chat-service": {"transport": "rest"}}) == 60.0
-        assert self._get({"chat-service": {"max-session-duration-in-minutes": 30}}) == 30.0
-        assert self._get({"chat-service": {"max-session-duration-in-minutes": 12.5}}) == 12.5
+        assert self._get({"turn-service": {"transport": "rest"}}) == 60.0
+        assert self._get({"turn-service": {"max-session-duration-in-minutes": 30}}) == 30.0
+        assert self._get({"turn-service": {"max-session-duration-in-minutes": 12.5}}) == 12.5
 
     @pytest.mark.parametrize("raw", [
-        {"chat-service": {"max-session-duration-in-minutes": 0}},
-        {"chat-service": {"max-session-duration-in-minutes": -5}},
-        {"chat-service": {"max-session-duration-in-minutes": "60"}},
-        {"chat-service": {"max-session-duration-in-minutes": True}},
-        {"chat-service": {"max-session-duration-in-minutes": None}},
+        {"turn-service": {"max-session-duration-in-minutes": 0}},
+        {"turn-service": {"max-session-duration-in-minutes": -5}},
+        {"turn-service": {"max-session-duration-in-minutes": "60"}},
+        {"turn-service": {"max-session-duration-in-minutes": True}},
+        {"turn-service": {"max-session-duration-in-minutes": None}},
         {},
     ])
     def test_rejects_non_positive_non_numeric_values_and_a_missing_section(self, raw):
@@ -125,7 +125,7 @@ class TestGetOptionalNonNegativeInt:
 
 
 def _chat(field: str, value) -> str:
-    return MINIMAL_CONFIG.replace("chat-service: {}", f"chat-service:\n  {field}: {value}")
+    return MINIMAL_CONFIG.replace("turn-service: {}", f"turn-service:\n  {field}: {value}")
 
 
 def _database(field: str, value) -> str:
@@ -148,7 +148,7 @@ SETTINGS = [
     ("total_token_budget_per_session", 200000, _chat("total-token-budget-per-session", 50000), 50000, _chat("total-token-budget-per-session", 0)),
     ("database_migration_strategy", "stop", _database("migration-strategy", "upgrade"), "upgrade", _database("migration-strategy", "wipe")),
     ("auth_token_ttl_in_hours", 24 * 7, _auth("token-ttl-in-hours", 12), 12, _auth("token-ttl-in-hours", 0)),
-    ("jobs_shared_max_concurrent", 2, _section("jobs", "shared-max-concurrent", 3), 3, _section("jobs", "shared-max-concurrent", 0)),
+    ("jobs_shared_max_concurrent", 2, _section("scheduler-service", "shared-max-concurrent", 3), 3, _section("scheduler-service", "shared-max-concurrent", 0)),
     ("test_service_max_concurrent_tests", 4, _section("test-service", "max-concurrent-tests", 5), 5, _section("test-service", "max-concurrent-tests", 0)),
     ("test_service_max_tests_per_minute", 1_000_000, _section("test-service", "max-tests-per-minute", 30), 30, _section("test-service", "max-tests-per-minute", 0)),
     ("test_service_min_test_interval_ms", 0, _section("test-service", "min-test-interval-ms", 500), 500, _section("test-service", "min-test-interval-ms", -1)),

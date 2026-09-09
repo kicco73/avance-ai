@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from chat.sessions.session_manager import ChatSessionManager
+from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 
@@ -70,7 +70,7 @@ class TestInstallUninstallProject:
         assert db.user_has_project_access("user", published_project) is False
 
     def test_uninstalling_an_app_erases_that_users_own_sessions_for_it_and_nobody_elses(self, db, published_project):
-        service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
+        service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
         other = _other_user(db)
         db.install_project("user", published_project)
         db.install_project(other, published_project)
@@ -85,7 +85,7 @@ class TestInstallUninstallProject:
 
 
 def test_session_summaries_list_most_recently_closed_first_omitting_sessions_with_no_summary(db, published_project):
-    service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
+    service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     older = _create_session(db, published_project, type="live")
     newer = _create_session(db, published_project, type="live")
     unsummarized = _create_session(db, published_project, type="live")

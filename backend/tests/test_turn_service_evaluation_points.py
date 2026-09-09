@@ -7,8 +7,8 @@ from __future__ import annotations
 import pytest
 
 from automaton.automaton import Action, Automaton, Signal, State
-from chat.chat_service import ChatService
-from chat.sessions.session_manager import ChatSessionManager
+from turn.turn_service import TurnService
+from turn.sessions.session_manager import SessionManager
 from db.models import Tracking
 from conftest import make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
@@ -40,7 +40,7 @@ def _automaton(*, autotracking_on_ai_message=False, trigger="signal.foo >= 0") -
 
 
 class FakeProjectService:
-    """Stands in for ProjectService — just enough for ChatService to run
+    """Stands in for ProjectService — just enough for TurnService to run
     a real turn against a fixed, hand-built automaton, no file/YAML
     involved."""
 
@@ -106,11 +106,11 @@ class FakeSchemaAiService:
 
 
 @pytest.fixture
-def chat_service_for(db):
+def turn_service_for(db):
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
 
-    def make(automaton: Automaton, *, ai_service=None) -> ChatService:
+    def make(automaton: Automaton, *, ai_service=None) -> TurnService:
         ai_service = ai_service or FakeSchemaAiService([{"signals": '{"foo": 1}'}])
         project_service = FakeProjectService(automaton)
         metric_service = MetricService(db, project_service)
@@ -119,12 +119,12 @@ def chat_service_for(db):
         tracking_service = TrackingService(
             db, project_service, metric_service, namespace_factory,
         )
-        service = ChatService(
+        service = TurnService(
             ai_service=ai_service,
             ai_test_service=ai_service,
             project_service=project_service,
             db=db,
-            session_manager=ChatSessionManager(db),
+            session_manager=SessionManager(db),
             tracking_service=tracking_service,
             metric_service=metric_service,
             scheduler_service=scheduler_service,
@@ -135,22 +135,22 @@ def chat_service_for(db):
     return make
 
 
-async def _bootstrap_session(chat_service: ChatService) -> int:
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
+async def _bootstrap_session(turn_service: TurnService) -> int:
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
     return session["id"]
 
 
 @pytest.mark.regression
-async def test_transition_from_optimistic_guess_links_the_causing_user_message(db, chat_service_for):
+async def test_transition_from_optimistic_guess_links_the_causing_user_message(db, turn_service_for):
     # "before" mode generates a reply once against the current state's
     # context; here foo=1 satisfies "foo >= 0", so the guess turns out
     # wrong and a second, regenerated reply (against state "b") is used.
     ai_service = FakeSchemaAiService([{"signals": '{"foo": 1}'}, {"signals": '{"foo": 1}'}])
-    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
-    session_id = await _bootstrap_session(chat_service)
+    turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
+    session_id = await _bootstrap_session(turn_service)
     ai_service.call_count = 0  # bootstrap's own init-action opening message doesn't count
 
-    result = await chat_service.process_turn(session_id, "hello")
+    result = await turn_service.process_turn(session_id, "hello")
 
     assert ai_service.call_count == 2
     assert result["new_state"] == "b"
@@ -164,16 +164,16 @@ async def test_transition_from_optimistic_guess_links_the_causing_user_message(d
 
 
 @pytest.mark.regression
-async def test_user_message_autotracking_makes_a_single_ai_call_when_the_optimistic_guess_is_right(db, chat_service_for):
+async def test_user_message_autotracking_makes_a_single_ai_call_when_the_optimistic_guess_is_right(db, turn_service_for):
     # The common case: foo=-1 never satisfies "foo >= 0", so no transition
     # fires and the one reply already generated (with the current state's
     # own context) is simply used as-is — no second, wasted call.
     ai_service = FakeSchemaAiService([{"signals": '{"foo": -1}'}])
-    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
-    session_id = await _bootstrap_session(chat_service)
+    turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
+    session_id = await _bootstrap_session(turn_service)
     ai_service.call_count = 0  # bootstrap's own init-action opening message doesn't count
 
-    result = await chat_service.process_turn(session_id, "hello")
+    result = await turn_service.process_turn(session_id, "hello")
 
     assert ai_service.call_count == 1
     assert result["state_changed"] is False
@@ -187,11 +187,11 @@ async def test_user_message_autotracking_makes_a_single_ai_call_when_the_optimis
 
 
 @pytest.mark.regression
-async def test_ai_message_evaluation_is_linked_to_the_assistant_message(db, chat_service_for):
-    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=True))
-    session_id = await _bootstrap_session(chat_service)
+async def test_ai_message_evaluation_is_linked_to_the_assistant_message(db, turn_service_for):
+    turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True))
+    session_id = await _bootstrap_session(turn_service)
 
-    result = await chat_service.process_turn(session_id, "hello")
+    result = await turn_service.process_turn(session_id, "hello")
 
     stored = db.get_message(result["assistant_message_id"])
     assert stored["role"] == "assistant"
@@ -202,86 +202,86 @@ async def test_ai_message_evaluation_is_linked_to_the_assistant_message(db, chat
 
 
 @pytest.mark.regression
-async def test_set_message_expected_state_on_a_real_evaluation_point(db, chat_service_for):
-    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=True))
-    session_id = await _bootstrap_session(chat_service)
-    result = await chat_service.process_turn(session_id, "hello")
+async def test_set_message_expected_state_on_a_real_evaluation_point(db, turn_service_for):
+    turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True))
+    session_id = await _bootstrap_session(turn_service)
+    result = await turn_service.process_turn(session_id, "hello")
     message_id = result["assistant_message_id"]
 
-    updated = chat_service.set_message_expected_state(message_id, "a")
+    updated = turn_service.set_message_expected_state(message_id, "a")
     assert updated["expected_state"] == "a"
 
-    cleared = chat_service.set_message_expected_state(message_id, None)
+    cleared = turn_service.set_message_expected_state(message_id, None)
     assert cleared["expected_state"] is None
 
 
 @pytest.mark.regression
-async def test_set_message_expected_state_rejects_an_unknown_state(db, chat_service_for):
-    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=True))
-    session_id = await _bootstrap_session(chat_service)
-    result = await chat_service.process_turn(session_id, "hello")
+async def test_set_message_expected_state_rejects_an_unknown_state(db, turn_service_for):
+    turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True))
+    session_id = await _bootstrap_session(turn_service)
+    result = await turn_service.process_turn(session_id, "hello")
     message_id = result["assistant_message_id"]
 
     with pytest.raises(TrackingServiceError):
-        chat_service.set_message_expected_state(message_id, "not-a-real-state")
+        turn_service.set_message_expected_state(message_id, "not-a-real-state")
 
 
 @pytest.mark.contract
-async def test_set_message_expected_state_rejects_a_non_evaluation_point_message(db, chat_service_for):
+async def test_set_message_expected_state_rejects_a_non_evaluation_point_message(db, turn_service_for):
     # A message only becomes an evaluation point when signals were
     # reported for its turn at all, so this needs a turn where the model
     # reports no signals whatsoever.
     ai_service = FakeSchemaAiService([{}])
-    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=True), ai_service=ai_service)
-    session_id = await _bootstrap_session(chat_service)
-    result = await chat_service.process_turn(session_id, "hello")
+    turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True), ai_service=ai_service)
+    session_id = await _bootstrap_session(turn_service)
+    result = await turn_service.process_turn(session_id, "hello")
     message_id = result["assistant_message_id"]
     assert db.get_signal_row_by_message(message_id) is None
 
     with pytest.raises(TrackingServiceError):
-        chat_service.set_message_expected_state(message_id, "a")
+        turn_service.set_message_expected_state(message_id, "a")
 
 
 @pytest.mark.regression
-async def test_set_message_expected_signals_on_a_real_evaluation_point(db, chat_service_for):
-    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=True))
-    session_id = await _bootstrap_session(chat_service)
-    result = await chat_service.process_turn(session_id, "hello")
+async def test_set_message_expected_signals_on_a_real_evaluation_point(db, turn_service_for):
+    turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True))
+    session_id = await _bootstrap_session(turn_service)
+    result = await turn_service.process_turn(session_id, "hello")
     message_id = result["assistant_message_id"]
 
-    updated = chat_service.set_message_expected_signals(message_id, {"foo": 75})
+    updated = turn_service.set_message_expected_signals(message_id, {"foo": 75})
     assert updated["expected_values"] == '{"foo": 75}'
     # The actually-observed values must stay untouched.
     assert updated["values"] is not None
 
-    cleared = chat_service.set_message_expected_signals(message_id, None)
+    cleared = turn_service.set_message_expected_signals(message_id, None)
     assert cleared["expected_values"] is None
 
 
 @pytest.mark.regression
-async def test_set_message_expected_signals_rejects_an_unknown_signal_name(db, chat_service_for):
-    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=True))
-    session_id = await _bootstrap_session(chat_service)
-    result = await chat_service.process_turn(session_id, "hello")
+async def test_set_message_expected_signals_rejects_an_unknown_signal_name(db, turn_service_for):
+    turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True))
+    session_id = await _bootstrap_session(turn_service)
+    result = await turn_service.process_turn(session_id, "hello")
     message_id = result["assistant_message_id"]
 
     with pytest.raises(TrackingServiceError):
-        chat_service.set_message_expected_signals(message_id, {"not-a-real-signal": 50})
+        turn_service.set_message_expected_signals(message_id, {"not-a-real-signal": 50})
 
 
 @pytest.mark.regression
-async def test_set_message_expected_signals_rejects_an_out_of_range_value(db, chat_service_for):
-    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=True))
-    session_id = await _bootstrap_session(chat_service)
-    result = await chat_service.process_turn(session_id, "hello")
+async def test_set_message_expected_signals_rejects_an_out_of_range_value(db, turn_service_for):
+    turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True))
+    session_id = await _bootstrap_session(turn_service)
+    result = await turn_service.process_turn(session_id, "hello")
     message_id = result["assistant_message_id"]
 
     with pytest.raises(TrackingServiceError):
-        chat_service.set_message_expected_signals(message_id, {"foo": 150})
+        turn_service.set_message_expected_signals(message_id, {"foo": 150})
 
 
 @pytest.mark.regression
-async def test_opening_message_never_evaluates_signals_in_before_mode(db, chat_service_for):
+async def test_opening_message_never_evaluates_signals_in_before_mode(db, turn_service_for):
     # In "before" mode, an AI-started turn (opening message, or a new
     # state's own opening line) has no real user text — just the "..."
     # placeholder — so there is nothing genuine to evaluate a trigger
@@ -290,19 +290,19 @@ async def test_opening_message_never_evaluates_signals_in_before_mode(db, chat_s
     # schema-constrained provider can't emit 'signals' it was never asked
     # for, and this turn must never ask for it in the first place.
     ai_service = FakeSchemaAiService([{"signals": '{"foo": 1}'}])
-    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
-    session_id = await _bootstrap_session(chat_service)
+    turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
+    session_id = await _bootstrap_session(turn_service)
 
-    await chat_service.open_if_needed(session_id)
+    await turn_service.open_if_needed(session_id)
 
     assert db.get_current_state(PROJECT_ID) == "a", "opening message must not have fired a transition"
-    messages = await chat_service.get_messages(session_id)
+    messages = await turn_service.get_messages(session_id)
     assert len(messages) == 1
     assert db.get_signal_row_by_message(messages[0]["id"]) is None
 
 
 @pytest.mark.regression
-async def test_message_linking_end_to_end_bootstrap_and_one_real_turn(db, chat_service_for):
+async def test_message_linking_end_to_end_bootstrap_and_one_real_turn(db, turn_service_for):
     """Regression, covering a bootstrap plus one real user turn that fires
     a transition: every Tracking row must link to the message that
     actually caused it, never a temporally-adjacent one, and every real
@@ -321,14 +321,14 @@ async def test_message_linking_end_to_end_bootstrap_and_one_real_turn(db, chat_s
         {"signals": '{"foo": 1}', "memory": "stage: guessed"},  # optimistic guess — fires "foo >= 0"
         {"memory": "stage: crisis"},  # regenerated reply — signals never re-requested
     ])
-    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
-    session_id = await _bootstrap_session(chat_service)
+    turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
+    session_id = await _bootstrap_session(turn_service)
 
-    messages = await chat_service.get_messages(session_id)  # triggers open_if_needed
+    messages = await turn_service.get_messages(session_id)  # triggers open_if_needed
     assert len(messages) == 1
     opening_message_id = messages[0]["id"]
 
-    result = await chat_service.process_turn(session_id, "hello")
+    result = await turn_service.process_turn(session_id, "hello")
     assert result["new_state"] == "b"
     user_message_id = result["user_message_id"]
     assistant_message_id = result["assistant_message_id"]
@@ -351,14 +351,14 @@ async def test_message_linking_end_to_end_bootstrap_and_one_real_turn(db, chat_s
 
 
 @pytest.mark.regression
-async def test_process_turn_touches_the_session_with_the_plain_state_key_not_the_payload(db, chat_service_for):
+async def test_process_turn_touches_the_session_with_the_plain_state_key_not_the_payload(db, turn_service_for):
     # Regression: touch_session's ChatSession.end_state is a CharField —
     # passing the full StatePayload dict instead of its "key" silently
     # stores a Python repr there instead of the state key.
-    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=True))
-    session_id = await _bootstrap_session(chat_service)
+    turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True))
+    session_id = await _bootstrap_session(turn_service)
 
-    result = await chat_service.process_turn(session_id, "hello")
+    result = await turn_service.process_turn(session_id, "hello")
 
     assert result["new_state"] == "b"
     session = db.get_chat_session(session_id)

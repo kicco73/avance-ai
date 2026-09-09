@@ -17,11 +17,11 @@ from fastapi.testclient import TestClient
 
 from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
-from chat.channels import NATIVE_CHAT
-from chat.chat_service import ChatService
-from chat.ephemeral_env_registry import EphemeralEnvRegistry
-from chat.sessions.session_manager import ChatSessionManager
-from chat.ws_notifications import WsNotifications
+from turn.channels import NATIVE_CHAT
+from turn.turn_service import TurnService
+from turn.ephemeral_env_registry import EphemeralEnvRegistry
+from turn.sessions.session_manager import SessionManager
+from turn.ws_notifications import WsNotifications
 from controller import AvanceController
 from db import Db
 from db.models import User
@@ -100,7 +100,7 @@ def chat_turn(client: TestClient, session_id: int, text: str = "hi") -> dict:
 
 def chat_turn_error(client: TestClient, session_id: int, text: str = "hi") -> dict:
     final = chat_turn_frames(client, session_id, text)[-1]
-    assert final["type"] == "error", final
+    assert final["type"] == "turn.failed", final
     return final
 
 
@@ -177,7 +177,7 @@ def db() -> Db:
 
 class FakeAiService:
     """Stands in for ai.ai_service.AiService in integration tests — same
-    interface ChatService actually calls (get_models_info/select_model/
+    interface TurnService actually calls (get_models_info/select_model/
     generate/generate_stream), but never touches a real provider: no
     network calls, no cost, no flakiness, deterministic replies."""
 
@@ -221,7 +221,7 @@ class FakeAiService:
         # What TurnProtocolUsingSchema actually calls — this fake reports
         # no metadata of its own (no test here cares about signals/audio/
         # env extraction; see FakeSchemaAiService in
-        # test_chat_service_evaluation_points.py for that), just the same
+        # test_turn_service_evaluation_points.py for that), just the same
         # plain reply text generate_stream above always returned.
         self.calls.append((system_prompt, history))
         yield "Fake AI reply."
@@ -260,9 +260,9 @@ def make_test_namespace_factory(
 ) -> TaskNamespaceFactory:
     """A real TaskNamespaceFactory, wired the same way main.py does. Shared
     by every fixture/helper across the test suite that needs to construct
-    a TrackingService/ChatService/WakeupService."""
+    a TrackingService/TurnService/WakeupService."""
     scheduler_service = scheduler_service if scheduler_service is not None else make_test_scheduler_service(db)
-    project_service = project_service if project_service is not None else ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
+    project_service = project_service if project_service is not None else ProjectService(db, AutomatonLoader(db), SessionManager(db))
     return TaskNamespaceFactory(db, scheduler_service, project_service, ai_service)
 
 
@@ -285,8 +285,8 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
     automaton_loader = (
         CompiledAutomatonLoader(app_db, tmp_path / "apps") if compiled_automata else AutomatonLoader(app_db)
     )
-    project_service = ProjectService(app_db, automaton_loader, ChatSessionManager(app_db), fake_ai_service)
-    session_manager = ChatSessionManager(app_db)
+    project_service = ProjectService(app_db, automaton_loader, SessionManager(app_db), fake_ai_service)
+    session_manager = SessionManager(app_db)
     metric_service = MetricService(app_db, project_service)
     test_event_broadcaster = Broadcaster(fake_ai_service, batch_window_seconds=DEFAULT_BATCH_WINDOW_SECONDS)
     scheduler_service = make_test_scheduler_service(app_db, test_event_broadcaster)
@@ -296,7 +296,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
     tracking_service = TrackingService(
         app_db, project_service, metric_service, namespace_factory,
     )
-    chat_service = ChatService(
+    turn_service = TurnService(
         app_db, fake_ai_service, fake_ai_service, project_service, session_manager,
         tracking_service, metric_service, scheduler_service, namespace_factory,
     )
@@ -331,9 +331,9 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
     fastapi_app = FastAPI(title="Avance State Engine (test)")
     ApiErrorHandlers.register(fastapi_app)
     controller = AvanceController(
-        chat_service, project_service, app_db, tracking_service, test_service,
+        turn_service, project_service, app_db, tracking_service, test_service,
         auth_service, test_event_broadcaster, scheduler_service, "test-version", services_config,
-        ws_notifications=WsNotifications(auth_service, chat_service),
+        ws_notifications=WsNotifications(auth_service, turn_service),
         # Never backend/apps: a test that builds must not write into the
         # developer's own working tree.
         apps_dir=tmp_path / "apps",
@@ -341,7 +341,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
     fastapi_app.include_router(controller.router)
     fastapi_app.state.test_service = test_service
     fastapi_app.state.project_service = project_service
-    fastapi_app.state.chat_service = chat_service
+    fastapi_app.state.turn_service = turn_service
     fastapi_app.state.db = app_db
     fastapi_app.state.auth_service = auth_service
     # For tests that need to watch a task run: start the

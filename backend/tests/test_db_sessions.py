@@ -41,7 +41,7 @@ def test_create_and_get_chat_session_with_the_channel_defaulting_to_native_chat_
 @pytest.mark.regression
 def test_create_chat_session_rejects_a_nonexistent_project_and_stamps_whatever_revision_the_caller_resolved(db):
     # Revision resolution (published vs. draft) lives one layer up now —
-    # see chat.sessions.session_type_strategy.SessionTypeStrategy.revision_for —
+    # see turn.sessions.session_type_strategy.SessionTypeStrategy.revision_for —
     # create_chat_session itself just stamps whatever it's given.
     with pytest.raises(ValueError, match="does not exist"):
         db.create_chat_session("user", "no-such-project", 0, start_state="start")

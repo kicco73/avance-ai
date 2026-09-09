@@ -10,11 +10,11 @@ from datetime import datetime, timedelta
 import pytest
 
 from automaton.automaton import Action, Automaton, State
-from chat.channels import NATIVE_CHAT, WHATSAPP_CHAT
-from chat.chat_service import ChatService
-from chat.errors import ChatServiceError
-from chat.sessions.session_manager import ChatSessionManager
-from chat.sessions.session_type_strategy import get_session_type_strategy
+from turn.channels import NATIVE_CHAT, WHATSAPP_CHAT
+from turn.turn_service import TurnService
+from turn.errors import TurnServiceError
+from turn.sessions.session_manager import SessionManager
+from turn.sessions.session_type_strategy import get_session_type_strategy
 from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
 from session import Session
@@ -90,7 +90,7 @@ def _setup_project(db) -> None:
     db.publish_project(PROJECT_ID)
 
 
-def _chat_service(db, *, session_manager: ChatSessionManager | None = None) -> ChatService:
+def _turn_service(db, *, session_manager: SessionManager | None = None) -> TurnService:
     _setup_project(db)
     automaton = _automaton()
     ai_service = FakeAiService()
@@ -99,9 +99,9 @@ def _chat_service(db, *, session_manager: ChatSessionManager | None = None) -> C
     scheduler_service = make_test_scheduler_service(db)
     namespace_factory = make_test_namespace_factory(db, scheduler_service)
     tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
-    return ChatService(
+    return TurnService(
         ai_service=ai_service, ai_test_service=ai_service, project_service=project_service, db=db,
-        session_manager=session_manager or ChatSessionManager(db, open_window_minutes=5),
+        session_manager=session_manager or SessionManager(db, open_window_minutes=5),
         tracking_service=tracking_service, metric_service=metric_service,
         scheduler_service=scheduler_service, namespace_factory=namespace_factory,
     )
@@ -116,7 +116,7 @@ def _make_open_session(db, channel: str, *, now=None) -> dict:
     return db.get_chat_session(session_id)
 
 
-def _make_expired_session(db, manager: ChatSessionManager, *, now=None) -> dict:
+def _make_expired_session(db, manager: SessionManager, *, now=None) -> dict:
     now = now or datetime.utcnow()
     stale = now - manager.open_window - timedelta(seconds=1)
     session_id = db.create_chat_session(
@@ -136,7 +136,7 @@ def _make_closed_session(db, *, now=None) -> dict:
     return db.get_chat_session(session_id)
 
 
-def _build_existing(db, manager: ChatSessionManager, channel: str, state_name: str) -> dict | None:
+def _build_existing(db, manager: SessionManager, channel: str, state_name: str) -> dict | None:
     if state_name == "same_channel_open":
         return _make_open_session(db, channel)
     if state_name == "other_channel_open":
@@ -155,7 +155,7 @@ def _build_existing(db, manager: ChatSessionManager, channel: str, state_name: s
 @pytest.mark.parametrize("state_name", EXISTING_STATES)
 def test_get_current_session_if_any_or_create_new_matrix(db, channel, state_name):
     _setup_project(db)
-    manager = ChatSessionManager(db, open_window_minutes=5)
+    manager = SessionManager(db, open_window_minutes=5)
     project_service = _FakeProjectService(_automaton())
     Session().channel = channel
     existing = _build_existing(db, manager, channel, state_name)
@@ -194,7 +194,7 @@ def test_get_current_session_if_any_or_create_new_matrix(db, channel, state_name
 @pytest.mark.parametrize("state_name", EXISTING_STATES)
 def test_acquire_exclusive_session_matrix(db, channel, state_name):
     _setup_project(db)
-    manager = ChatSessionManager(db, open_window_minutes=5)
+    manager = SessionManager(db, open_window_minutes=5)
     project_service = _FakeProjectService(_automaton())
     Session().channel = channel
     existing = _build_existing(db, manager, channel, state_name)
@@ -227,18 +227,18 @@ def test_acquire_exclusive_session_matrix(db, channel, state_name):
         assert result["channel"] == channel
 
 
-# -- ChatService.create_session ("New session") -----------------------------
+# -- TurnService.create_session ("New session") -----------------------------
 
 @pytest.mark.parametrize("channel", CHANNELS)
 @pytest.mark.parametrize("state_name", EXISTING_STATES)
 async def test_create_session_matrix(db, channel, state_name):
     _setup_project(db)
-    manager = ChatSessionManager(db, open_window_minutes=5)
+    manager = SessionManager(db, open_window_minutes=5)
     Session().channel = channel
     existing = _build_existing(db, manager, channel, state_name)
-    chat_service = _chat_service(db, session_manager=manager)
+    turn_service = _turn_service(db, session_manager=manager)
 
-    payload = await chat_service.create_session()
+    payload = await turn_service.create_session()
 
     assert existing is None or payload["id"] != existing["id"]
     assert payload["channel"] == channel
@@ -271,42 +271,42 @@ _REJECTION_MESSAGES = {
 @pytest.mark.parametrize("state_name", EXISTING_STATES)
 async def test_process_turn_with_explicit_session_id_matrix(db, channel, state_name):
     _setup_project(db)
-    manager = ChatSessionManager(db, open_window_minutes=5)
+    manager = SessionManager(db, open_window_minutes=5)
     Session().channel = channel
     existing = _build_existing(db, manager, channel, state_name)
-    chat_service = _chat_service(db, session_manager=manager)
+    turn_service = _turn_service(db, session_manager=manager)
 
     if state_name == "absent":
-        with pytest.raises(ChatServiceError, match="Session not found."):
-            await chat_service.process_turn(999999, "hi")
+        with pytest.raises(TurnServiceError, match="Session not found."):
+            await turn_service.process_turn(999999, "hi")
         return
     if state_name == "same_channel_open":
-        result = await chat_service.process_turn(existing["id"], "hi")
+        result = await turn_service.process_turn(existing["id"], "hi")
         assert result["session_id"] == existing["id"]
         return
-    with pytest.raises(ChatServiceError, match=_REJECTION_MESSAGES[state_name]):
-        await chat_service.process_turn(existing["id"], "hi")
+    with pytest.raises(TurnServiceError, match=_REJECTION_MESSAGES[state_name]):
+        await turn_service.process_turn(existing["id"], "hi")
 
 
 @pytest.mark.parametrize("channel", CHANNELS)
 @pytest.mark.parametrize("state_name", EXISTING_STATES)
 async def test_apply_manual_action_matrix(db, channel, state_name):
     _setup_project(db)
-    manager = ChatSessionManager(db, open_window_minutes=5)
+    manager = SessionManager(db, open_window_minutes=5)
     Session().channel = channel
     existing = _build_existing(db, manager, channel, state_name)
-    chat_service = _chat_service(db, session_manager=manager)
+    turn_service = _turn_service(db, session_manager=manager)
 
     if state_name == "absent":
-        with pytest.raises(ChatServiceError, match="Session not found."):
-            await chat_service.apply_manual_action("go", 999999)
+        with pytest.raises(TurnServiceError, match="Session not found."):
+            await turn_service.apply_manual_action("go", 999999)
         return
     if state_name == "same_channel_open":
-        result = await chat_service.apply_manual_action("go", existing["id"])
+        result = await turn_service.apply_manual_action("go", existing["id"])
         assert result["session_id"] == existing["id"]
         return
-    with pytest.raises(ChatServiceError, match=_REJECTION_MESSAGES[state_name]):
-        await chat_service.apply_manual_action("go", existing["id"])
+    with pytest.raises(TurnServiceError, match=_REJECTION_MESSAGES[state_name]):
+        await turn_service.apply_manual_action("go", existing["id"])
 
 
 # -- End to end: takeover in both directions --------------------------------
@@ -315,12 +315,12 @@ async def test_takeover_whatsapp_to_web_via_new_session_then_open_if_needed(db):
     """WhatsApp starts a session; the web calls "New session" while it's
     still open, taking it over — the fresh web session is genuinely new,
     so open_if_needed's own AI bootstrap fires for it."""
-    chat_service = _chat_service(db)
+    turn_service = _turn_service(db)
     Session().channel = WHATSAPP_CHAT
-    whatsapp_session = await chat_service.acquire_exclusive_session()
+    whatsapp_session = await turn_service.acquire_exclusive_session()
 
     Session().channel = NATIVE_CHAT
-    web_payload = await chat_service.create_session()
+    web_payload = await turn_service.create_session()
 
     assert web_payload["id"] != whatsapp_session["id"]
     assert web_payload["channel"] == NATIVE_CHAT
@@ -328,7 +328,7 @@ async def test_takeover_whatsapp_to_web_via_new_session_then_open_if_needed(db):
     assert closed["closed_at"] is not None
     assert closed["close_reason"] == "channel-switch"
 
-    await chat_service.open_if_needed(web_payload["id"])
+    await turn_service.open_if_needed(web_payload["id"])
     assert db.get_messages(web_payload["id"]) != []
 
 
@@ -337,12 +337,12 @@ async def test_takeover_web_to_whatsapp_via_run_turn_then_prepare_user_initiated
     (acquire_exclusive_session, standing in for _run_turn's own call)
     takes it over — prepare_user_initiated_turn never opens with an
     AI-initiated message of its own, unlike the takeover above."""
-    chat_service = _chat_service(db)
+    turn_service = _turn_service(db)
     Session().channel = NATIVE_CHAT
-    web_session = await chat_service.get_current_session_if_any_or_create_new(None)
+    web_session = await turn_service.get_current_session_if_any_or_create_new(None)
 
     Session().channel = WHATSAPP_CHAT
-    whatsapp_payload = await chat_service.acquire_exclusive_session()
+    whatsapp_payload = await turn_service.acquire_exclusive_session()
 
     assert whatsapp_payload["id"] != web_session["id"]
     assert whatsapp_payload["channel"] == WHATSAPP_CHAT
@@ -350,5 +350,5 @@ async def test_takeover_web_to_whatsapp_via_run_turn_then_prepare_user_initiated
     assert closed["closed_at"] is not None
     assert closed["close_reason"] == "channel-switch"
 
-    await chat_service.prepare_user_initiated_turn(whatsapp_payload["id"])
+    await turn_service.prepare_user_initiated_turn(whatsapp_payload["id"])
     assert db.get_messages(whatsapp_payload["id"]) == []

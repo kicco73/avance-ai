@@ -9,7 +9,7 @@ where there is no running event loop to push over a websocket from directly."""
 from __future__ import annotations
 
 from auth.roles import role_satisfies
-from chat.ws_notifications import WsNotifications
+from turn.ws_notifications import WsNotifications
 from db import Db
 from events import ProjectPublishedHealthChanged, subscribe
 from jobs.job import CancelableJob

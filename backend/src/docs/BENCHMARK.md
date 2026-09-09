@@ -18,7 +18,7 @@ All metric values use `0..100`, where **100 means perfect behavior**.
 `BenchmarkConfiguration.max_session_duration_in_minutes` is the single temporal reference. The application should supply it from:
 
 ```yaml
-chat-service:
+turn-service:
   max-session-duration-in-minutes: 60
 ```
 

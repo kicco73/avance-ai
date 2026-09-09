@@ -102,7 +102,7 @@ of automaton it has. Two call sites had to be fixed to make that true
 `declared_env_key_names`, `triggerable_signal_names`, `triggers_reference`
 and `all_triggerable_signal_names` used to call `TriggerExpressionAnalyzer`
 on every invocation — `tracking_processor.py` calls the first once per turn
-and the second up to three times per turn, `chat_service.py` the first once
+and the second up to three times per turn, `turn_service.py` the first once
 per turn. Their answers are fixed when the project is written.
 
 They are now computed on first use and kept, with the parsing itself in
@@ -463,7 +463,7 @@ identifies a file as `(project id, revision, path)`, `PackageProjectFiles`
 as its own `data/` path. Neither carries a slot the other leaves empty —
 the packaged product has no revision, and so no field where one would go.
 
-Its size is `chat-service: project-file-cache-bytes` (default 8 MiB),
+Its size is `turn-service: project-file-cache-bytes` (default 8 MiB),
 configured once at boot from `main.py`. That section rather than
 `project-service`, which does nothing in a package, or `database`, which
 says where bytes are stored and not how a turn budgets them: this is a

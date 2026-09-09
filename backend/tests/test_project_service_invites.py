@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from chat.sessions.session_manager import ChatSessionManager
+from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 
@@ -27,7 +27,7 @@ def project(db) -> str:
 
 @pytest.fixture
 def project_service(db) -> ProjectService:
-    return ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
+    return ProjectService(db, AutomatonLoader(db), SessionManager(db))
 
 
 def _user(db, letter: str) -> str:
@@ -62,7 +62,7 @@ class TestCreateInvite:
             project_service.create_invite("does-not-exist", created_by=None)
 
     def test_uses_the_configured_valid_days_max_shares_and_whatsapp_number(self, db, project):
-        service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db), invite_valid_days=14, invite_max_shares=10, whatsapp_number="15552052260")
+        service = ProjectService(db, AutomatonLoader(db), SessionManager(db), invite_valid_days=14, invite_max_shares=10, whatsapp_number="15552052260")
 
         invite = service.create_invite(project, created_by=None)
 

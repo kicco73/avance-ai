@@ -12,10 +12,10 @@ import time
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from chat.ws_notifications import WsNotifications
+from turn.ws_notifications import WsNotifications
 from events import StateChanged, publish
 from conftest import make_test_namespace_factory, make_test_scheduler_service
-from chat.sessions.session_manager import ChatSessionManager
+from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 from tracking.wakeup_service import WakeupService
@@ -76,7 +76,7 @@ def _publish_project(db, project_service: ProjectService, project_name: str, ind
 
 @pytest.fixture
 def project_service(db) -> ProjectService:
-    return ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
+    return ProjectService(db, AutomatonLoader(db), SessionManager(db))
 
 
 _namespace_factory = make_test_namespace_factory
@@ -220,7 +220,7 @@ def test_publishing_state_changed_wakes_up_every_observer_that_has_a_session(app
     # separate thread, and a second thread opening its own connection to a
     # ":memory:" database would get a distinct, empty one.
     db = app_db
-    project_service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
+    project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     watcher_session = _both_projects(db, project_service)
 
     service = WakeupService(db, project_service, make_test_scheduler_service(db), _namespace_factory(db))
@@ -241,7 +241,7 @@ def test_publishing_state_changed_wakes_up_every_observer_that_has_a_session(app
 
 def test_a_user_with_no_session_in_the_observer_project_is_never_woken(app_db):
     db = app_db  # see the JobQueue test above for why
-    project_service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
+    project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     _publish_project(db, project_service, "observed", OBSERVED_YML)
     _publish_project(db, project_service, "watcher", WATCHER_YML)
     # No chat session created in "watcher" at all for this user.

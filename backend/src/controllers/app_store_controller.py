@@ -5,7 +5,7 @@ from http import HTTPStatus
 
 from fastapi import HTTPException, Request, Response
 
-from chat.chat_service import ChatService
+from turn.turn_service import TurnService
 from project.project_service import ProjectService
 from session import Session
 
@@ -14,8 +14,8 @@ from .base_controller import BaseController, delete, get, post
 
 class AppStoreController(BaseController):
 
-    def __init__(self, chat_service: ChatService, project_service: ProjectService) -> None:
-        self.chat_service = chat_service
+    def __init__(self, turn_service: TurnService, project_service: ProjectService) -> None:
+        self.turn_service = turn_service
         self.project_service = project_service
 
     @get("/api/app-store/apps")
@@ -56,13 +56,13 @@ class AppStoreController(BaseController):
 
     @post("/api/app-store/apps/{app_id}/preview-sessions")
     async def post_create_preview_session(self, app_id: str):
-        return await self.chat_service.create_preview_session(app_id)
+        return await self.turn_service.create_preview_session(app_id)
 
     @get("/api/app-store/apps/{app_id}/preview-sessions/current")
     async def get_current_preview_session(self, app_id: str, session_id: int | None = None):
-        return await self.chat_service.get_current_preview_session_if_any_or_create_new(session_id, app_id)
+        return await self.turn_service.get_current_preview_session_if_any_or_create_new(session_id, app_id)
 
     @delete("/api/app-store/preview-sessions/{session_id}/env")
     async def delete_preview_session_env(self, session_id: int):
-        self.chat_service.clear_session_env(session_id)
+        self.turn_service.clear_session_env(session_id)
         return {"success": True}

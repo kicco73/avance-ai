@@ -123,7 +123,7 @@ class _FakeChatService:
         self.db = db
         self.session_payload: dict = {"id": 7}
         # What acquire_exclusive_session returns once accept_legal_terms
-        # has been called — the resolved shape a real ChatService would
+        # has been called — the resolved shape a real TurnService would
         # reach once the pending gate no longer applies.
         self.resolved_session_payload: dict = {"id": 7}
         self.turn_error: ServiceError | None = None
@@ -144,7 +144,7 @@ class _FakeChatService:
         self.in_turn = False
         # When True, process_turn persists the user message but reports no
         # reply of its own — a turn already in flight took this message
-        # along with its own fragments (see ChatService's own coalescing).
+        # along with its own fragments (see TurnService's own coalescing).
         self.turn_already_answered = False
         self.announces_audio = True
         self.announced_audio_text: str | None = None

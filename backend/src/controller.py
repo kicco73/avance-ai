@@ -9,8 +9,8 @@ from pathlib import Path
 from fastapi import APIRouter
 
 from auth.auth_service import AuthService
-from chat.chat_service import ChatService
-from chat.ws_notifications import WsNotifications
+from turn.turn_service import TurnService
+from turn.ws_notifications import WsNotifications
 from db import Db
 from project.project_service import ProjectService
 from scheduler import SchedulerService
@@ -37,7 +37,7 @@ from whatsapp.whatsapp_service import WhatsAppService
 class AvanceController(object):
     def __init__(
         self,
-        chat_service: ChatService,
+        turn_service: TurnService,
         project_service: ProjectService,
         db: Db,
         tracking_service: TrackingService,
@@ -51,7 +51,7 @@ class AvanceController(object):
         ws_notifications: WsNotifications | None = None,
         apps_dir: Path | None = None,
     ) -> None:
-        self.chat_service = chat_service
+        self.turn_service = turn_service
         self.project_service = project_service
         self.db = db
         self.test_service = test_service
@@ -61,22 +61,22 @@ class AvanceController(object):
         self.scheduler_service = scheduler_service
         self.version = version
 
-        self.chat = ChatController(chat_service, project_service)
-        self.edit_project = EditProjectController(chat_service, project_service, scheduler_service)
+        self.chat = ChatController(turn_service, project_service)
+        self.edit_project = EditProjectController(turn_service, project_service, scheduler_service)
         # XXX Compiled automaton requirement - do not touch.
         # XXX The Build view's Target step, wired to a real compile. The
         # directory it writes into is the one CompiledAutomatonLoader
         # reads from — one setting (build-service.apps-dir), never two.
         self.build = BuildController(BuildService(db, project_service, apps_dir or DEFAULT_APPS_DIR))
         self.label_project = LabelProjectController(
-            chat_service, project_service, tracking_service, test_service, test_event_broadcaster, scheduler_service,
+            turn_service, project_service, tracking_service, test_service, test_event_broadcaster, scheduler_service,
         )
         self.settings = SettingsController(
-            chat_service, project_service, db, version, test_event_broadcaster, scheduler_service, services_config,
+            turn_service, project_service, db, version, test_event_broadcaster, scheduler_service, services_config,
         )
         self.auth = AuthController(auth_service)
         self.user = UserController(auth_service)
-        self.app_store = AppStoreController(chat_service, project_service)
+        self.app_store = AppStoreController(turn_service, project_service)
 
         controllers = [
             self.chat, self.edit_project, self.build, self.label_project, self.settings, self.auth,

@@ -9,7 +9,7 @@ from automaton.automaton import Automaton
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
 from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
-from chat.sessions.session_manager import ChatSessionManager
+from turn.sessions.session_manager import SessionManager
 from db import Db
 from logging_factory import LoggerFactory
 from session import Session
@@ -34,7 +34,7 @@ class ProjectManager:
     def __init__(
         self, db: Db, automaton_loader: AutomatonLoader, inspector: ProjectInspector,
         session_export_manager: SessionExportManager, session_import_manager: SessionImportManager,
-        session_manager: ChatSessionManager,
+        session_manager: SessionManager,
     ) -> None:
         self._db = db
         self._automaton_loader = automaton_loader

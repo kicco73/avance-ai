@@ -15,9 +15,9 @@ from auth.auth_middleware import AuthMiddleware
 from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME
 from automaton.automaton import Action, Automaton, State
-from chat.channels import NATIVE_CHAT
-from chat.sessions.session_manager import ChatSessionManager
-from chat.sessions.session_type_strategy import get_session_type_strategy
+from turn.channels import NATIVE_CHAT
+from turn.sessions.session_manager import SessionManager
+from turn.sessions.session_type_strategy import get_session_type_strategy
 from session import Session
 
 pytestmark = pytest.mark.contract
@@ -96,7 +96,7 @@ def test_create_chat_session_from_a_job_without_a_channel_set_fails(db):
     ContextVar default this used to fall back on."""
     db.ensure_project("proj")
     db.publish_project("proj")
-    manager = ChatSessionManager(db)
+    manager = SessionManager(db)
     project_service = _FakeProjectService(_automaton())
     ctx = contextvars.Context()
 

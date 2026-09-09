@@ -81,7 +81,7 @@ Core benchmark metrics:
 The application should supply the unified system setting:
 
 ```yaml
-chat-service:
+turn-service:
   max_session_duration_in_minutes: 60
 ```
 

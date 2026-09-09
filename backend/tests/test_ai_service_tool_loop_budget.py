@@ -22,7 +22,7 @@ import pytest
 
 from ai.ai_service import AiService
 from ai.llm_provider import ToolCall, ToolCallsRequested, ToolSpec
-from chat.errors import ChatServiceError
+from turn.errors import TurnServiceError
 
 _SELECT_SPEC = ToolSpec(
     name="source_flights_select",
@@ -117,7 +117,7 @@ async def test_round_2_over_budget_raises_413_and_saves_a_system_warning(db):
     # blows past.
     tool_set = _FakeToolSet(result="x" * 3000)
 
-    with pytest.raises(ChatServiceError) as exc_info:
+    with pytest.raises(TurnServiceError) as exc_info:
         await _run(_TwoRoundProvider(assistant_content=None), tool_set, budget=50, db=db)
 
     assert exc_info.value.status_code == HTTPStatus.REQUEST_ENTITY_TOO_LARGE

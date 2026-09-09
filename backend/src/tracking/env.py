@@ -135,7 +135,7 @@ class PersistedEnv(Env):
         session being operated on isn't necessarily the request user's
         active-project session — a supervisor opening someone else's
         session, or any session of a non-active project (see
-        ChatService._env_for_session): keyed on the active project, an
+        TurnService._env_for_session): keyed on the active project, an
         env read here answers for one project and a write lands in
         another's Tracking rows.
 
@@ -143,7 +143,7 @@ class PersistedEnv(Env):
         ValueError on None rather than silently accepting it and only
         failing later, on the first _write_memory/_write_action_set call
         (Tracking.session is a real FK): a caller with no real session
-        must use a plain Env() instead (see ChatService._schedule_task/
+        must use a plain Env() instead (see TurnService._schedule_task/
         tracking.actuators.action_task.ScopeHydrator, both of which
         branch on session_id before ever constructing one of these)."""
         if session_id is None:
@@ -163,7 +163,7 @@ class PersistedEnv(Env):
     def memory(self, until: datetime | None = None) -> dict[str, Any]:
         """`until` (naive-but-UTC): as they stood at or before that
         point, for the "Label sessions" view's point-in-time Inspector
-        (see ChatService.get_env); omitted (None) means live/current."""
+        (see TurnService.get_env); omitted (None) means live/current."""
         return self._db.get_env(self._project_id(), self._user(), until=until)
 
     def action_set(self, until: datetime | None = None) -> dict[str, Any]:

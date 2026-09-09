@@ -248,7 +248,7 @@ class ScopeHydrator(object):
         from tracking.fixed_project_context import FixedProjectContext
         from tracking.session_facts import SessionFacts
         from tracking.user_facts import UserFacts
-        from chat.sessions.env_for_session import env_for_session
+        from turn.sessions.env_for_session import env_for_session
 
         project_id: str = payload["project_id"]
         automaton = self._project_service.get_automaton(project_id, payload["project_revision"])
@@ -266,7 +266,7 @@ class ScopeHydrator(object):
         firing_session = self._db.get_chat_session(firing_session_id) if firing_session_id is not None else None
         # No real session to persist through (e.g. reset_test_sessions' own
         # project-wide reset, scheduled with session_id=None) — the same
-        # ephemeral, in-memory fallback ChatService._schedule_task
+        # ephemeral, in-memory fallback TurnService._schedule_task
         # already uses for this exact case, never a live PersistedEnv:
         # that would read/write the *live* persisted env instead, and
         # crash on its first write (Tracking.session is a real FK).

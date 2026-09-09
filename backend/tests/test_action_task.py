@@ -28,12 +28,12 @@ from datetime import datetime, timedelta
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from chat.ws_notifications import WsNotifications
+from turn.ws_notifications import WsNotifications
 from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from db import Db
 from db.models import Task as TaskRow, User
 from metrics.metric_service import MetricService
-from chat.sessions.session_manager import ChatSessionManager
+from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 from scheduler import SchedulerService
@@ -152,7 +152,7 @@ def _process(db: Db, websocket: _FakeWebSocket | None = None, *, start: bool = F
     still wiring itself up looks like."""
     scheduler_service = make_test_scheduler_service(db)
     _live_services.append(scheduler_service)
-    project_service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
+    project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     factory = make_test_namespace_factory(db, scheduler_service, project_service, ai_service)
     if websocket is not None:
         # Constructing it is the wiring: WsNotifications subscribes to
@@ -200,7 +200,7 @@ def test_persisted_env_cannot_be_constructed_without_a_session_id(db):
 
 def test_build_scope_with_no_session_never_constructs_a_persisted_env(file_db):
     """reset_test_sessions' own project-wide reset schedules an ActionTask
-    with session_id=None (see ChatService._schedule_task) — build_scope
+    with session_id=None (see TurnService._schedule_task) — build_scope
     must fall back to a plain, ephemeral Env() for that, never PersistedEnv
     (which now requires a real session_id — see its own constructor): this
     used to fall through to PersistedEnv(db, context) with none at all,

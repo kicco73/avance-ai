@@ -4,7 +4,7 @@ from datetime import datetime
 
 from peewee import AutoField, BlobField, BooleanField, CharField, CompositeKey, DateTimeField, ForeignKeyField, IntegerField, Model, Proxy, TextField
 
-from chat.channels import NATIVE_CHAT
+from turn.channels import NATIVE_CHAT
 
 database = Proxy()
 
@@ -160,7 +160,7 @@ class Message(BaseModel):
     cache_read_tokens = IntegerField(null=True)
     # On a user message: the assistant message whose turn consumed it.
     # A turn answers every user message still unanswered when it opens
-    # (see ChatService's own coalescing), so this is what makes "which
+    # (see TurnService's own coalescing), so this is what makes "which
     # messages is the next turn about?" a fact in the database rather than
     # a queue in memory — a restart loses nothing, and a message that
     # arrived while the previous turn was generating is still correctly

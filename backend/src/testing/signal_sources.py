@@ -5,7 +5,7 @@ BatchLiteSignalSource is the same batching with an even lighter,
 one-sided transcript (see its own docstring)."""
 from __future__ import annotations
 
-from chat.sessions.env_for_session import env_for_session
+from turn.sessions.env_for_session import env_for_session
 from db import Db
 from ai import AiService
 from automaton.automaton import Automaton

@@ -44,7 +44,7 @@ class AiModelSelectionRequest(BaseModel):
 
 
 class ExpectedStateRequest(BaseModel):
-    # None clears the annotation — see ChatService.set_message_expected_state.
+    # None clears the annotation — see TurnService.set_message_expected_state.
     expected_state: str | None = None
 
 
@@ -52,23 +52,23 @@ class ExpectedSignalsRequest(BaseModel):
     # The whole replacement dict — a signal name missing from it is
     # annotation-cleared for that signal alone; None/{} clears every
     # signal's annotation for this message. See
-    # ChatService.set_message_expected_signals.
+    # TurnService.set_message_expected_signals.
     expected_values: dict[str, int | float] | None = None
 
 
 class CommentRequest(BaseModel):
     # None (or empty/whitespace-only) clears the comment — see
-    # ChatService.set_message_comment.
+    # TurnService.set_message_comment.
     comment: str | None = None
 
 
 class ReactionRequest(BaseModel):
-    # None clears the reaction — see ChatService.set_message_reaction.
+    # None clears the reaction — see TurnService.set_message_reaction.
     reaction: str | None = None
 
 
 class SetSessionLabeledRequest(BaseModel):
-    # See ChatService.mark_session_labeled — the "Label sessions" view's
+    # See TurnService.mark_session_labeled — the "Label sessions" view's
     # own "Mark done" button, a domain expert's explicit, toggleable
     # verdict on whether a session's been reviewed.
     labeled: bool
@@ -76,7 +76,7 @@ class SetSessionLabeledRequest(BaseModel):
 
 class SetSessionTitleRequest(BaseModel):
     # None (or empty/whitespace-only) clears it back to unset — see
-    # ChatService.set_session_title.
+    # TurnService.set_session_title.
     title: str | None = None
 
 
@@ -138,7 +138,7 @@ class SetWhatsAppPhoneNumberRequest(BaseModel):
 
 
 class SetEnvValueRequest(BaseModel):
-    # See ChatService.set_env_value/tracking.env.Env.set_value — the
+    # See TurnService.set_env_value/tracking.env.Env.set_value — the
     # Inspector's Memory section's own "click a value to edit it".
     value: str
 

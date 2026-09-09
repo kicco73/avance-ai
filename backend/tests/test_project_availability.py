@@ -12,7 +12,7 @@ import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
 from events import AvailabilityChanged, publish, subscribe
-from chat.sessions.session_manager import ChatSessionManager
+from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 
@@ -87,7 +87,7 @@ def _dependency_pair(db, project_service, cascade: bool = False) -> None:
 
 @pytest.fixture
 def project_service(db) -> ProjectService:
-    return ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
+    return ProjectService(db, AutomatonLoader(db), SessionManager(db))
 
 
 def test_a_valid_project_with_no_dependencies_is_available_while_one_whose_saved_content_fails_to_build_is_paused(db, project_service):

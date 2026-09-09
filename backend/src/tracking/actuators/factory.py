@@ -20,7 +20,7 @@ class TaskNamespaceFactory:
     construction — before the service is started (main.py starts it
     last), so a hibernated row can never be claimed with nobody to
     hydrate it. The websocket adapter is the one late binding left
-    (WsAdapter needs ChatService, which needs this factory): a task
+    (WsAdapter needs TurnService, which needs this factory): a task
     reads it through the hydrator at run time, and no task runs before
     main.py has bound it and started the SchedulerService. `ai_service` is
     what a rehydrated task.prompt runs against. Builds both a task

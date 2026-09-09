@@ -9,7 +9,7 @@ from http import HTTPStatus
 from typing import Any, AsyncIterator, Sequence, TYPE_CHECKING, overload
 
 import partial_json_parser
-from chat.errors import ChatServiceError
+from turn.errors import TurnServiceError
 from ai.llm_provider import (
 	AIServiceConfig,
 	AIServiceProviderOutputTruncatedError,
@@ -425,7 +425,7 @@ class AiService(object):
 			)
 			logger.warning(warning_message)
 			self._db.save_system_warning(Session().user, tool_set.project_id, "input_budget_exceeded", warning_message)
-		raise ChatServiceError(
+		raise TurnServiceError(
 			message, status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE, code="input_budget_exceeded",
 		)
 

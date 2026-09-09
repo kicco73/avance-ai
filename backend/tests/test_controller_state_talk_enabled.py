@@ -51,7 +51,7 @@ def _controller(*, talk_service_configured: bool, project_talk_enabled: bool) ->
     if talk_service_configured:
         bus.contribute(POINT_TALK_PROVIDER, lambda registry: registry.update({"generate": object()}))
     return ChatController(
-        chat_service=_FakeChatService(),
+        turn_service=_FakeChatService(),
         project_service=_FakeProjectService(project_talk_enabled),
     )
 
@@ -74,7 +74,7 @@ def test_talk_disabled_when_the_server_has_no_provider_even_if_the_project_opts_
 def test_defaults_to_the_server_flag_when_there_is_no_active_project():
     bus.contribute(POINT_TALK_PROVIDER, lambda registry: registry.update({"generate": object()}))
     controller = ChatController(
-        chat_service=_FakeChatService(),
+        turn_service=_FakeChatService(),
         project_service=_NoActiveProjectService(),
     )
     assert controller.get_state()["talk_enabled"] is True

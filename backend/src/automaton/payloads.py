@@ -86,7 +86,7 @@ class PayloadsMixin(object):
     def get_state_payload(self, state: State) -> StatePayload:
         """Serializes `state` for the frontend. Safety barrier: the
         reserved implicit state ("") must never reach a caller outside
-        ChatService.open_if_needed. Not static, unlike its siblings above:
+        TurnService.open_if_needed. Not static, unlike its siblings above:
         `reactions` is this automaton's own whole vocabulary, not
         something `state` itself carries."""
         if state.key == "":

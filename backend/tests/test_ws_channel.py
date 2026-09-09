@@ -14,10 +14,10 @@ from fastapi import WebSocketDisconnect
 
 from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME
-from chat.ws_notifications import ALREADY_CONNECTED_CLOSE_CODE, HumanNotConnectedError, WsNotifications
+from turn.ws_notifications import ALREADY_CONNECTED_CLOSE_CODE, HumanNotConnectedError, WsNotifications
 from conftest import chat_socket, chat_turn_frames
 from session import Session
-from test_ws_turn_event_order import _automaton, chat_service_for  # noqa: F401 — a pytest fixture, used by name
+from test_ws_turn_event_order import _automaton, turn_service_for  # noqa: F401 — a pytest fixture, used by name
 
 pytestmark = pytest.mark.contract
 
@@ -225,7 +225,7 @@ class TestConnectionCap:
 
 
 class TestHumanPrompt:
-    """send_human_prompt/await_human_reply (see chat.ws_human_relay.
+    """send_human_prompt/await_human_reply (see turn.ws_human_relay.
     WsHumanRelay): the HumanTalker manual-testing seam."""
 
     def test_raises_when_the_user_has_no_open_connection(self):
@@ -372,19 +372,19 @@ def _frames_of(frames: list[dict], turn_id: str) -> list[dict]:
 
 @pytest.mark.regression
 async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_order_even_when_the_first_turn_is_slower(
-    chat_service_for,
+    turn_service_for,
 ):
     """The ordering guarantee itself: both user messages are on disk, in
     the order their frames arrived, before the first turn has produced
     any reply at all — so it is the socket's own read order that fixes
     the conversation, never how long a turn happens to take."""
     provider = _GatedProvider()
-    chat_service = chat_service_for(
+    turn_service = turn_service_for(
         _automaton(with_sources=False, autotracking_on_ai_message=False), provider,
     )
-    db = chat_service_for.db
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
-    channel = WsNotifications(_FakeAuthService(), chat_service)
+    db = turn_service_for.db
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    channel = WsNotifications(_FakeAuthService(), turn_service)
     websocket = _ScriptedWebSocket(
         [
             json.dumps({"type": "input.text", "stream_id": "first", "session_id": session["id"], "body": "I have a problem"}),
@@ -418,14 +418,14 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
 
 
 @pytest.mark.regression
-async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(chat_service_for):
+async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(turn_service_for):
     provider = _GatedProvider()
-    chat_service = chat_service_for(
+    turn_service = turn_service_for(
         _automaton(with_sources=False, autotracking_on_ai_message=False), provider,
     )
-    db = chat_service_for.db
-    session = await chat_service.get_current_session_if_any_or_create_new(None)
-    channel = WsNotifications(_FakeAuthService(), chat_service)
+    db = turn_service_for.db
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    channel = WsNotifications(_FakeAuthService(), turn_service)
     websocket = _ScriptedWebSocket(
         [json.dumps({"type": "input.text", "stream_id": "dropped", "session_id": session["id"], "body": "hello?"})],
     )

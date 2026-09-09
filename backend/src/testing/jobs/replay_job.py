@@ -4,7 +4,7 @@ import json
 from typing import TYPE_CHECKING
 
 from automaton.automaton import Automaton
-from chat.sessions.env_for_session import env_for_session
+from turn.sessions.env_for_session import env_for_session
 from jobs import CancelableJob
 from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalculator
 from session import Session
