@@ -14,13 +14,15 @@ from http import HTTPStatus
 
 import pytest
 
+from system import bus
+from system.bus import UI_SYSTEM_WARNING
 from automaton.automaton_builder import AutomatonBuilder
 from events import ProjectPublishedHealthChanged, publish, subscribe
 from project.health_notifications import ProjectHealthNotificationJob, ProjectHealthNotifications
 from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
-from service_error import ServiceError
+from system.service_error import ServiceError
 
 pytestmark = pytest.mark.contract
 
@@ -76,13 +78,17 @@ def project_service(db) -> ProjectService:
     return ProjectService(db, AutomatonLoader(db), SessionManager(db))
 
 
-class FakeWsAdapter:
+class RecordedWarnings:
+    """Whatever an interface would have shown, taken off the Bus instead
+    of off a socket: health notifications publish bus.UI_SYSTEM_WARNING
+    and never learn who — if anyone — was listening."""
+
     def __init__(self) -> None:
         self.pushed: list[tuple[str, dict]] = []
+        bus.subscribe(UI_SYSTEM_WARNING, self._record)
 
-    async def push(self, username: str, payload: dict) -> bool:
-        self.pushed.append((username, payload))
-        return True
+    async def _record(self, message) -> None:
+        self.pushed.append((message.username, message.body))
 
 
 def _make_admin(db, user_id: str) -> None:
@@ -255,10 +261,10 @@ def test_broken_notification_job_warns_every_admin_and_pushes_to_connected_ones(
     _make_admin(db, "admin2")
     # "user" already exists (see conftest.py's own db fixture) with the
     # default non-admin role — must never get a warning.
-    ws_notifications = FakeWsAdapter()
+    ws_notifications = RecordedWarnings()
 
     job = ProjectHealthNotificationJob(
-        db, ws_notifications, "broken", 3, "index.yml no longer builds — nope", file="index.yml", line=7,
+        db, "broken", 3, "index.yml no longer builds — nope", file="index.yml", line=7,
     )
     job.prepare()
     asyncio.run(job.run_next_step())
@@ -282,9 +288,9 @@ def test_recovery_notification_job_clears_the_projects_own_warnings_and_tells_ev
     db.save_system_warning("admin1", "flaky", "project_broken", "nope")
     db.save_system_warning("admin2", "flaky", "project_broken", "nope")
     db.save_system_warning("admin1", "other", "project_broken", "still broken")
-    ws_notifications = FakeWsAdapter()
+    ws_notifications = RecordedWarnings()
 
-    job = ProjectHealthNotificationJob(db, ws_notifications, "flaky", 4, None)
+    job = ProjectHealthNotificationJob(db, "flaky", 4, None)
     job.prepare()
     asyncio.run(job.run_next_step())
 
@@ -293,7 +299,7 @@ def test_recovery_notification_job_clears_the_projects_own_warnings_and_tells_ev
     assert len(db.get_system_warnings("admin1", "other")) == 1
     assert {username for username, _ in ws_notifications.pushed} == {"admin1", "admin2"}
     assert all(
-        payload == {"type": "system_warning", "kind": "project_fixed", "project_id": "flaky"}
+        payload == {"kind": "project_fixed", "project_id": "flaky"}
         for _, payload in ws_notifications.pushed
     )
 
@@ -316,7 +322,8 @@ def test_project_health_notifications_submits_a_job_on_the_event(db):
         def submit(self, job) -> None:
             submitted.append(job)
 
-    notifications = ProjectHealthNotifications(db, FakeSchedulerService(), FakeWsAdapter())
+    RecordedWarnings()
+    notifications = ProjectHealthNotifications(db, FakeSchedulerService())
     notifications.register()
 
     publish(ProjectPublishedHealthChanged(project_id="broken", revision=1, error="nope", file="index.yml", line=3))
@@ -467,8 +474,8 @@ def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_fiel
     before = db.get_archive("old_format", "index.yml", revision=revision)
 
     _make_admin(db, "admin1")
-    ws_notifications = FakeWsAdapter()
-    notifications = ProjectHealthNotifications(db, _SyncSchedulerService(), ws_notifications)
+    ws_notifications = RecordedWarnings()
+    notifications = ProjectHealthNotifications(db, _SyncSchedulerService())
     notifications.register()
     project_service.register_availability_cascade()
 

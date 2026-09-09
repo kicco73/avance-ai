@@ -3,7 +3,7 @@ implementations as a single one — same contract, same exceptions — with
 retry, backoff, and fallback (see cascade.py's ProviderCascade) underneath."""
 from __future__ import annotations
 
-from cascade import ProviderCascade, ProviderRateLimitedError, ProviderUnavailableError
+from system.cascade import ProviderCascade, ProviderRateLimitedError, ProviderUnavailableError
 from listen.listen_provider import ListenProvider
 
 

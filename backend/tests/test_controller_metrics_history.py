@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 
 from conftest import chat_turn
-from session import Session
+from system.session import Session
 
 pytestmark = pytest.mark.contract
 

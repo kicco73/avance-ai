@@ -23,7 +23,7 @@ from typing import Iterable, TYPE_CHECKING
 
 from automaton.media_types import media_type_for
 from automaton.model import MemoryArchive, SourceDict
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 if TYPE_CHECKING:
     from tracking.project_files import ProjectFiles

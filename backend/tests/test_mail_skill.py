@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-import bus
-from bus import MAIL_SEND, Message
+from system import bus
+from system.bus import MAIL_SEND, Message
 from mail.config import parse as parse_mail_config
 from tracking.actuators.actuator_set import LiveTaskNamespace
 

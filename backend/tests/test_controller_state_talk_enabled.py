@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-import bus
-from bus import POINT_TALK_PROVIDER
+from system import bus
+from system.bus import POINT_TALK_PROVIDER
 from controllers.chat_controller import ChatController
 
 pytestmark = pytest.mark.contract

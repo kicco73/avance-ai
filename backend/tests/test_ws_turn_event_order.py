@@ -15,7 +15,7 @@ from ai.llm_provider import ToolCall, ToolCallsRequested
 from automaton.automaton import Action, Automaton, Source, State
 from turn.turn_service import TurnService
 from turn.sessions.session_manager import SessionManager
-from turn.ws_turn import WsChatTurn
+from system.ws_turn import WsChatTurn
 from conftest import make_test_namespace_factory, make_test_scheduler_service
 from db.db import Db
 from metrics.metric_service import MetricService

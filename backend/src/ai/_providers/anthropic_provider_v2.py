@@ -31,7 +31,7 @@ from ai.llm_provider import (
 	content_to_text,
 	is_text_fragments,
 )
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 

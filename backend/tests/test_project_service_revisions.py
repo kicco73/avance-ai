@@ -9,7 +9,7 @@ import pytest
 from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
-from session import Session
+from system.session import Session
 
 pytestmark = pytest.mark.regression
 

@@ -5,7 +5,7 @@ import uuid
 
 from db import Db
 from jobs import CancelableJob
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 from tracking.session_import import SessionImportManager
 
 logger = LoggerFactory.get_logger(__name__)

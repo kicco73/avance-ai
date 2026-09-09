@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from http import HTTPStatus
 
-from service_error import ServiceError
+from system.service_error import ServiceError
 
 
 class AuthError(ServiceError):

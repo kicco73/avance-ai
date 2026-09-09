@@ -1,6 +1,6 @@
 """The main chat window's own backend surface (ChatWindow.vue) — live
 session bootstrap/messaging, env/identifiers/metrics as the Inspector
-shows them there, AI model selection, talk, and the handful of
+shows them there, AI model selection, and the handful of
 cross-screen utilities (GET /api/docs/{name}, GET /api/state) that don't
 belong to any one screen more than another.
 """
@@ -9,15 +9,13 @@ from __future__ import annotations
 from http import HTTPStatus
 from pathlib import Path
 
-from fastapi import HTTPException, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import HTTPException
 
-import bus
-from bus import POINT_API_STATE, POINT_TALK_PROVIDER
+from system import bus
+from system.bus import POINT_API_STATE, POINT_TALK_PROVIDER
 
 from turn.turn_service import TurnService
 from project.project_service import ProjectService
-from talker import AiTalker, TalkServiceNotAvailableError
 from schemas import (
     ActionRequest,
     ActuatorsRequest,
@@ -52,7 +50,6 @@ class ChatController(BaseController):
     ) -> None:
         self.turn_service = turn_service
         self.project_service = project_service
-        self.assistant_talker = AiTalker()
 
     @get("/api/docs/{name}")
     def get_doc(self, name: str):
@@ -289,34 +286,3 @@ class ChatController(BaseController):
         message_id — a bot message, chosen from the active project's
         `reactions` dict. TurnServiceError (404) is handled globally."""
         return self.turn_service.set_message_reaction(message_id, req.reaction)
-
-    @get("/api/chat/messages/{message_id}/audio")
-    def get_message_audio(self, message_id: int, request: Request):
-        """Generates (or replays a cached/in-flight) audio for message_id,
-        streaming-compatible. 404 if the message had no [audio] tag — the
-        frontend treats that as "no audio available", not a failure."""
-        audio_text = self.turn_service.get_message_audio_text(message_id)
-        if not audio_text:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No audio available for this message.")
-        try:
-            generation = self.assistant_talker.talk(audio_text)
-        except TalkServiceNotAvailableError as exc:
-            raise HTTPException(status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-        return StreamingResponse(
-            self._stream_audio_until_disconnected(request, generation), media_type="audio/wav"
-        )
-
-    async def _stream_audio_until_disconnected(self, request: Request, generation):
-        # A dropped/aborted fetch doesn't reliably surface as a send()
-        # failure — polling is_disconnected() stops the provider's work
-        # immediately instead of wasting a full synthesis.
-        try:
-            async for chunk in generation:
-                if await request.is_disconnected():
-                    break
-                yield chunk
-        finally:
-            aclose = getattr(generation, "aclose", None)
-            if aclose and callable(aclose):
-                aclose()
-

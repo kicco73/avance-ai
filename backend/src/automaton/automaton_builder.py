@@ -8,7 +8,7 @@ from automaton.build_error import AutomatonBuildError
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.builder.project_metadata import ProjectMetadata, load_yaml, peek_declared_revision, read_declared_env_keys
 from typing import Any
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 from metrics.metrics_framework import metric_names
 from tracking.sources import SOURCE_DRIVERS
 from tracking.sources.url import parse_source_url

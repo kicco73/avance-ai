@@ -6,7 +6,7 @@ from http import HTTPStatus
 from auth.roles import role_satisfies
 from turn.errors import TurnServiceError
 from db import Db
-from session import Session
+from system.session import Session
 
 
 class SessionOwnership:

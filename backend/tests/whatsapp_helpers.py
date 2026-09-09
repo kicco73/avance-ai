@@ -13,12 +13,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from auth.auth_middleware import AuthMiddleware
-import bus
-from bus import POINT_TALK_PROVIDER
+from system import bus
+from system.bus import POINT_TALK_PROVIDER
 from config import WhatsAppServiceConfig
 from controllers.whatsapp_controller import WhatsAppController
-from service_error import ServiceError
-from session import Session
+from system.service_error import ServiceError
+from system.session import Session
 from listen.decoder import SpeechDecoder
 from listen.listen_service import ListenServiceError
 from talk.talk_format import PcmWavCodec

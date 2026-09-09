@@ -28,7 +28,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from turn.ws_notifications import WsNotifications
+from system.ws_notifications import WsNotifications
 from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from db import Db
 from db.models import Task as TaskRow, User

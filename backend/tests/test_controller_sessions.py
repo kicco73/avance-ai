@@ -10,8 +10,8 @@ from turn.channels import NATIVE_CHAT, WHATSAPP_CHAT
 from conftest import chat_turn, chat_turn_error
 from conftest import parse_sse_result
 from db import Db
-from service_error import ServiceError
-from session import Session
+from system.service_error import ServiceError
+from system.session import Session
 
 CHANNEL_CODES_PROJECT_YAML = """
 project:

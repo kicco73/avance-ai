@@ -7,7 +7,7 @@ from fastapi import HTTPException, Request, Response
 
 from turn.turn_service import TurnService
 from project.project_service import ProjectService
-from session import Session
+from system.session import Session
 
 from .base_controller import BaseController, delete, get, post
 

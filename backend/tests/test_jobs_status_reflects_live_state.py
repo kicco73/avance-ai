@@ -15,7 +15,7 @@ from conftest import chat_turn
 from jobs import CancelableJob
 from testing.jobs import AllStatesAggregationJob
 from testing.jobs.state_aggregation_job import StateAggregationJob
-from broadcaster import Broadcaster
+from system.broadcaster import Broadcaster
 
 pytestmark = pytest.mark.contract
 

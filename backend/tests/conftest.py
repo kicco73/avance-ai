@@ -21,21 +21,21 @@ from turn.channels import NATIVE_CHAT
 from turn.turn_service import TurnService
 from turn.ephemeral_env_registry import EphemeralEnvRegistry
 from turn.sessions.session_manager import SessionManager
-from turn.ws_notifications import WsNotifications
+from system.ws_notifications import WsNotifications
 from controller import AvanceController
 from db import Db
 from db.models import User
 from error_handlers import ApiErrorHandlers
 from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
-import bus
-from broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
+from system import bus
+from system.broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
 from jobs.job_queue import JobQueue
 from scheduler import SchedulerService
 from metrics.metric_service import MetricService
 from project.archive.automaton_loader import AutomatonLoader
 from project.archive.compiled_automaton_loader import CompiledAutomatonLoader
 from project.project_service import ProjectService
-from session import Session
+from system.session import Session
 from testing.test_service import TestService
 from tracking.actuators import TaskNamespaceFactory
 from tracking.project_files import PROJECT_FILE_CACHE

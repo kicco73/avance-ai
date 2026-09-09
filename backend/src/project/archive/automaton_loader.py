@@ -8,7 +8,7 @@ from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
 from db import Db
 from events import ProjectRevisionBuildFailed, publish
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 from .layout import ArchiveLayout
 

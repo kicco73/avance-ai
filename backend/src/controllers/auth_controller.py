@@ -11,7 +11,7 @@ from fastapi import HTTPException, Request, Response
 
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from schemas import AcceptTermsRequest, LoginRequest, SetWhatsAppPhoneNumberRequest
-from session import Session
+from system.session import Session
 
 from .base_controller import BaseController, get, post, put
 

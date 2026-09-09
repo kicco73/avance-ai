@@ -14,10 +14,10 @@ from __future__ import annotations
 
 from typing import Awaitable, Callable
 
-import bus
-from bus import INPUT_AUDIO, INPUT_TEXT, Message
+from system import bus
+from system.bus import INPUT_AUDIO, INPUT_TEXT, Message
 from listen.listen_service import ListenService, ListenServiceError
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 

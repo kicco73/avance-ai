@@ -8,12 +8,12 @@ import uuid
 from fastapi import WebSocket, WebSocketDisconnect
 
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
-import bus
-from bus import CLIENT_INJECTABLE, UI_HUMAN_TAKEOVER, UI_NOTIFICATION, Message
+from system import bus
+from system.bus import CLIENT_INJECTABLE, UI_HUMAN_TAKEOVER, UI_NOTIFICATION, UI_SYSTEM_WARNING, UI_TEST_UPDATE, Message
 from auth.roles import role_satisfies
-from session import Session
-from .channels import NATIVE_CHAT
-from .turn_service import TurnService
+from system.session import Session
+from turn.channels import NATIVE_CHAT
+from turn.turn_service import TurnService
 from .ws_turn import WsChatTurn
 
 logger = logging.getLogger(__name__)
@@ -118,6 +118,8 @@ class WsNotifications(object):
         # _forward_notification).
         bus.subscribe(UI_NOTIFICATION, self._forward_notification)
         bus.subscribe(UI_HUMAN_TAKEOVER, self._forward_human_takeover)
+        bus.subscribe(UI_SYSTEM_WARNING, self._forward_system_warning)
+        bus.subscribe(UI_TEST_UPDATE, self._forward_test_update)
         # username -> every open connection of that identity, oldest
         # first — see the class docstring for the cap.
         self._connections: dict[str, list[WsConnection]] = {}
@@ -238,6 +240,17 @@ class WsNotifications(object):
         if message.username:
             await self.push(message.username, {"type": "notification", **(message.body or {})})
 
+    async def _forward_system_warning(self, message: Message) -> None:
+        """Addressed to a role rather than to a person, so the publisher
+        names each recipient and this only delivers (see
+        bus.UI_SYSTEM_WARNING)."""
+        if message.username:
+            await self.push(message.username, {"type": "system_warning", **(message.body or {})})
+
+    async def _forward_test_update(self, message: Message) -> None:
+        if message.username:
+            await self.push(message.username, {"type": "test_update", **(message.body or {})})
+
     async def _forward_human_takeover(self, message: Message) -> None:
         body = message.body or {}
         if message.username:
@@ -273,7 +286,7 @@ class WsNotifications(object):
         exclude_connection_id: str | None = None,
     ) -> str:
         """The WsHumanRelay.notify() primitive (see talker.human_talker.
-        HumanRelay and turn.ws_human_relay.WsHumanRelay): broadcasts a
+        HumanRelay and system.ws_human_relay.WsHumanRelay): broadcasts a
         human_prompt frame carrying a fresh prompt_id to every one of
         `username`'s connections other than `exclude_connection_id` (the
         tab that just sent the message being answered — it already knows
@@ -282,7 +295,7 @@ class WsNotifications(object):
         matching human_reply resolves await_human_reply() below.
         `session_type`/`project_id` are display-only context for
         whichever tab answers, carried on the frame since answering
-        doesn't require navigating there first (see turn.ws_human_relay).
+        doesn't require navigating there first (see system.ws_human_relay).
         Returns the prompt_id — the caller must pass it straight to
         await_human_reply()/wait_for_typing(). Raises HumanNotConnectedError
         if `username` has no *other* open connection — nobody could

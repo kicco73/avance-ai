@@ -32,7 +32,7 @@ from automaton.automaton import Automaton
 from build.apps import PackageError, import_automaton, package_dir
 from build.build_service import module_name_for
 from db import Db
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 from .automaton_loader import AutomatonLoader
 

@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from broadcaster import Broadcaster
+from system.broadcaster import Broadcaster
 from db import Db
 from db.models import Task as TaskRow
 from scheduler.persisted_scheduler import PersistedScheduler

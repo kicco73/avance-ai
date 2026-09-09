@@ -6,7 +6,7 @@ import pytest
 
 from turn.sessions.session_manager import SessionManager
 from turn.sessions.session_type_strategy import get_session_type_strategy
-from session import Session
+from system.session import Session
 
 LIVE = get_session_type_strategy('live')
 

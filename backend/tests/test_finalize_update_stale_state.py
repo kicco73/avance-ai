@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 
 from conftest import parse_sse_result
-from session import Session
+from system.session import Session
 
 pytestmark = pytest.mark.regression
 

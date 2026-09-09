@@ -9,7 +9,7 @@ import io
 
 from faster_whisper import WhisperModel
 
-from cascade import ProviderError
+from system.cascade import ProviderError
 from listen.listen_provider import ListenProvider
 
 

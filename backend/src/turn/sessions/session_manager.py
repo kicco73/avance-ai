@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING
 
 from turn.sessions.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from db import Db
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 from project.archive.layout import CACHE_DIR
-from session import Session
+from system.session import Session
 
 if TYPE_CHECKING:
     from turn.sessions.session_report_task import SessionReportScheduler

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from session import Session
+from system.session import Session
 
 from conftest import chat_turn
 

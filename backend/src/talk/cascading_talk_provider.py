@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from cascade import ProviderCascade, ProviderError, ProviderRateLimitedError, ProviderUnavailableError
+from system.cascade import ProviderCascade, ProviderError, ProviderRateLimitedError, ProviderUnavailableError
 from talk.talk_provider import TalkProvider
 
 

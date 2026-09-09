@@ -6,10 +6,10 @@ import time
 
 import pytest
 
-from broadcaster import Broadcaster
+from system.broadcaster import Broadcaster
 from jobs import CancelableJob
 from jobs.job_queue import JobQueue
-from try_again_error import TryAgainError
+from system.try_again_error import TryAgainError
 
 pytestmark = pytest.mark.contract
 

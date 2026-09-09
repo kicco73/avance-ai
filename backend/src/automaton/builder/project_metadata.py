@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from ruamel.yaml import YAML
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 

@@ -12,7 +12,7 @@ from typing import Any
 
 from db.db import Db
 from project.project_service import ProjectService
-from session import Session
+from system.session import Session
 
 
 class AutomatonNamespace:

@@ -11,7 +11,7 @@ per-item loop with a YAML node still in scope (see AutomatonBuilder's own
 _at/_line_of); that's graceful degradation, not a bug."""
 from __future__ import annotations
 
-from service_error import ServiceError
+from system.service_error import ServiceError
 
 
 class AutomatonBuildError(ServiceError, ValueError):

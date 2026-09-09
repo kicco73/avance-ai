@@ -19,7 +19,7 @@ from metrics.metrics_framework import (
     MetricResult,
 )
 from metrics.metrics_framework import metric_names as _metric_names
-from session import Session
+from system.session import Session
 
 if TYPE_CHECKING:
     # Deferred: project.project_service -> tracking.tracking_engine ->

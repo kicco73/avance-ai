@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from session import Session
+from system.session import Session
 
 if TYPE_CHECKING:
     from automaton.automaton import Automaton

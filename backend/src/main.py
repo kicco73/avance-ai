@@ -14,12 +14,12 @@ from auth.auth_middleware import AuthMiddleware
 from auth.auth_service import AuthService
 from turn.turn_service import TurnService
 from turn.sessions.session_manager import SessionManager
-from turn.ws_human_relay import WsHumanRelay
-from turn.ws_notifications import WsNotifications
+from system import bus
+from system.bus import POINT_CORE_SERVICES, POINT_TALK_PROVIDER
+from system.ws_human_relay import WsHumanRelay
+from system.ws_notifications import WsNotifications
 from talker import HumanTalker
-import bus
-from bus import POINT_TALK_PROVIDER
-import skills
+from system import skills
 from config import AppConfig
 from tracking.project_files import configure_project_file_cache
 from controller import AvanceController
@@ -27,7 +27,7 @@ from db import Db
 from error_handlers import ApiErrorHandlers
 from scheduler import SchedulerService
 from jobs.throttled_job_queue import ThrottledJobQueue
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.archive.automaton_loader import AutomatonLoader
 from project.archive.compiled_automaton_loader import CompiledAutomatonLoader
@@ -35,7 +35,7 @@ from project.health_notifications import ProjectHealthNotifications
 from project.project_service import ProjectService
 from ai import AiService
 from testing.test_service import TestService
-from broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
+from system.broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
 from tracking.actuators import TaskNamespaceFactory
 from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
@@ -107,7 +107,7 @@ def create_app() -> FastAPI:
         # Whatever is installed, started with the configuration file as it
         # was read: nothing here names a skill, and a build that leaves a
         # package out simply has one fewer (see skills.py).
-        skills.start_all(config.raw, config.path, scheduler_service)
+        skills.start_all(config.raw, config.path)
 
         # Bridged onto app.state for the same reason auth_service is below:
         # AuthMiddleware was already registered before this existed, and
@@ -183,13 +183,28 @@ def create_app() -> FastAPI:
             tracking_service, metric_service, scheduler_service, namespace_factory,
         )
 
-        # Single shared /ws/notifications connection per user (see
-        # turn/ws_notifications.py) — the chat channel itself, both
-        # directions, also handed to whatever needs to push onto an
-        # already-open connection (WakeupService, namespace_factory's own
-        # deferred calls).
+        # The composed core, offered to whoever asks for it. Everything
+        # a skill could need exists by now; nothing is handed to anyone,
+        # and a skill that is not in this build asks for nothing (see
+        # bus.POINT_CORE_SERVICES, skills.py).
+        bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({
+            "db": db,
+            "auth_service": auth_service,
+            "turn_service": turn_service,
+            "project_service": project_service,
+            "tracking_service": tracking_service,
+            "scheduler_service": scheduler_service,
+        }))
+
+        # A flush runs on a job-worker thread, and a listener that ends
+        # up writing to a socket needs this loop rather than that one.
+        test_event_broadcaster.bind_loop()
+
+        # One shared connection per identity, and not the chat's: the
+        # whole SPA reads it (see system/__init__.py). It subscribes to
+        # the Bus's ui.* messages in its own constructor — nothing here
+        # hands it to a producer any more.
         ws_notifications = WsNotifications(auth_service, turn_service)
-        test_event_broadcaster.set_ws_notifications(ws_notifications)
 
         # Manual-testing seam for HumanTalker (see talker.human_talker and
         # TrackingService.set_human_talker_factory): reaches the person
@@ -213,7 +228,7 @@ def create_app() -> FastAPI:
         # healthy again (see project/health_notifications.py) — registered
         # before the boot-time sweep below, so a project already broken
         # when this process starts is logged/warned/pushed exactly once.
-        ProjectHealthNotifications(db, scheduler_service, ws_notifications).register()
+        ProjectHealthNotifications(db, scheduler_service).register()
 
         # Every project's own build health (published/draft) is unknown
         # to this fresh process until checked — a framework change since

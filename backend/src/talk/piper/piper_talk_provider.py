@@ -9,7 +9,7 @@ from typing import Iterator
 from piper import PiperVoice
 
 from talk.talk_provider import StreamingTalkProvider
-from cascade import ProviderError
+from system.cascade import ProviderError
 
 
 class PiperTalkProvider(StreamingTalkProvider):

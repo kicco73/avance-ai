@@ -5,7 +5,7 @@ from typing import Any
 
 from peewee import fn
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 from .models import Message
 from .utils import _utc_iso

@@ -10,8 +10,8 @@ from fastapi.responses import JSONResponse
 
 from ai import AIServiceError
 from automaton.build_error import AutomatonBuildError
-from logging_factory import LoggerFactory
-from service_error import ServiceError
+from system.logging_factory import LoggerFactory
+from system.service_error import ServiceError
 
 logger = LoggerFactory.get_logger(__name__)
 

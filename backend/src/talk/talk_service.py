@@ -6,8 +6,8 @@ from __future__ import annotations
 import hashlib
 from typing import AsyncIterator
 
-from cascade import ProviderError
-from logging_factory import LoggerFactory
+from system.cascade import ProviderError
+from system.logging_factory import LoggerFactory
 from talk.config import TalkServiceConfig
 from talk.talk_provider import TalkProvider
 from talk.cascading_talk_provider import CascadingTalkProvider

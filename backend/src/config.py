@@ -5,9 +5,9 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from ruamel.yaml import YAML
 
-import bus
+from system import bus
 from ai import AIServiceConfig
-from bus import POINT_CONFIG_SERVICES
+from system.bus import POINT_CONFIG_SERVICES
 
 # Default home for compiled packages: backend/apps, beside src/ rather
 # than inside it — a built package is generated data, not source, and it

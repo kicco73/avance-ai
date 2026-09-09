@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from conftest import parse_sse_result
-from session import Session
+from system.session import Session
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
 

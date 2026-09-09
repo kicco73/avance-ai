@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from session import Session
+from system.session import Session
 
 from .ws_notifications import WsNotifications
 

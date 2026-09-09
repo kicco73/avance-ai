@@ -21,7 +21,7 @@ import urllib.request
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 from .apps import PackageError, discard_other_revisions, import_automaton, package_dir, staging_dir
 from .compiler import CompileError, compile_contents

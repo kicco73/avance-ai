@@ -18,8 +18,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, AsyncIterator
 
-import bus
-from bus import POINT_TALK_PROVIDER
+from system import bus
+from system.bus import POINT_TALK_PROVIDER
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 
 from .base_talker import BaseTalker, TalkServiceNotAvailableError

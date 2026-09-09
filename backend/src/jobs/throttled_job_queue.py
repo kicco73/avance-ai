@@ -5,7 +5,7 @@ import time
 from collections import deque
 from typing import ClassVar, TYPE_CHECKING
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 from .job import DependentJob
 from .job_queue import JobQueue

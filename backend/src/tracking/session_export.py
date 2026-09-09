@@ -9,7 +9,7 @@ import json
 from auth.roles import role_satisfies
 from db import Db
 from db.utils import _utc_iso
-from session import Session
+from system.session import Session
 
 
 class SessionExportManager:

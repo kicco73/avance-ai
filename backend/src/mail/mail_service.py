@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 import markdown
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 from mail.config import MailServiceConfig
 from mail.errors import MailError
 from mail.send_mail_job import SendMailJob

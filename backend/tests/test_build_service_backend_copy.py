@@ -148,7 +148,7 @@ def test_the_installed_skills_are_read_off_the_source_tree():
     """Nothing maintains this list: a package with a skill.py is a skill,
     and its package name is the directory a build either copies or does
     not."""
-    import skills
+    from system import skills
 
     installed = skills.installed()
 
@@ -196,7 +196,7 @@ def test_a_backend_without_listen_still_imports_its_own_entry_point(tmp_path):
     shutil.copytree(BACKEND_DIR, copy, ignore=_ignore_for(["listen"]))
 
     result = subprocess.run(
-        [sys.executable, "-c", "import sys; sys.path.insert(0, 'src'); import main; import skills; print(skills.installed())"],
+        [sys.executable, "-c", "import sys; sys.path.insert(0, 'src'); import main; from system import skills; print(skills.installed())"],
         cwd=copy, capture_output=True, text=True, timeout=180,
     )
 
@@ -220,12 +220,25 @@ def test_a_backend_without_talk_still_imports_its_own_entry_point(tmp_path):
     shutil.copytree(BACKEND_DIR, copy, ignore=_ignore_for(["talk"]))
 
     result = subprocess.run(
-        [sys.executable, "-c", "import sys; sys.path.insert(0, 'src'); import main; import skills; print(skills.installed())"],
+        [sys.executable, "-c", "import sys; sys.path.insert(0, 'src'); import main; from system import skills; print(skills.installed())"],
         cwd=copy, capture_output=True, text=True, timeout=180,
     )
 
     assert result.returncode == 0, result.stderr[-2000:]
     assert "'package': 'talk'" not in result.stdout
+
+
+def test_every_installed_skill_starts_with_the_configuration_and_nothing_else(tmp_path):
+    """A skill's start() takes the configuration, and only that. A core
+    object it needs is collected later from POINT_CORE_SERVICES, which
+    is what stops this signature from growing a parameter every time one
+    skill needs one more thing (see bus.POINT_CORE_SERVICES)."""
+    import inspect
+
+    from system import skills
+
+    for module in skills.discover():
+        assert list(inspect.signature(module.start).parameters) == ["raw", "path"], module.__name__
 
 
 def _build_service_for(tmp_path, monkeypatch, build_root):

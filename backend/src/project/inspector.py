@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from automaton.automaton import Action, Automaton, ProjectPayload, State, StatePayload
 from automaton.identifier_registry import IdentifierRegistry
 from db import Db
-from session import Session
+from system.session import Session
 from tracking.sources import driver_class_for
 from tracking.tracking_engine import TrackingEngine
 

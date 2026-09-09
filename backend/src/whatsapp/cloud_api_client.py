@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import httpx
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 

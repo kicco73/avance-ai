@@ -7,7 +7,7 @@ from automaton.automaton import Action, Automaton, State
 from db.db import Db
 from db.models import TestObservation
 from events import EnvChanged, StateChanged, publish
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 from tracking.env import Env
 from tracking.evaluation_scope import EvaluationScopeBuilder
 

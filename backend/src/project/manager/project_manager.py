@@ -11,8 +11,8 @@ from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
 from turn.sessions.session_manager import SessionManager
 from db import Db
-from logging_factory import LoggerFactory
-from session import Session
+from system.logging_factory import LoggerFactory
+from system.session import Session
 from tracking.project_files import PROJECT_FILE_CACHE
 from tracking.session_export import SessionExportManager
 from tracking.session_import import SessionImportManager

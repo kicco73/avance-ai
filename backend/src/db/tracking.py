@@ -6,7 +6,7 @@ from datetime import datetime
 
 from peewee import fn
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 from .models import TRACKING_ORIGINS, ChatSession, Tracking
 from .utils import _utc_iso

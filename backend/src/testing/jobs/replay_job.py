@@ -7,7 +7,7 @@ from automaton.automaton import Automaton
 from turn.sessions.env_for_session import env_for_session
 from jobs import CancelableJob
 from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalculator
-from session import Session
+from system.session import Session
 from testing.data import TestDataBuilder
 from testing.metrics_provider import TestMetricsProvider
 from testing.processor import TestProcessor

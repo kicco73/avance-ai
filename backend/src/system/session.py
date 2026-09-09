@@ -71,12 +71,12 @@ class Session(object):
 
     @property
     def connection_id(self) -> str | None:
-        """Which WsConnection (see turn.ws_notifications) the current
+        """Which WsConnection (see system.ws_notifications) the current
         context is running on, if any. Unlike user/role/channel this is
         lenient — most request contexts (HTTP, tests, WhatsApp) never go
         through a websocket at all, and have no connection to identify.
         It exists solely so a human_prompt broadcast (see
-        turn.ws_human_relay.WsHumanRelay) can best-effort exclude the tab
+        system.ws_human_relay.WsHumanRelay) can best-effort exclude the tab
         that triggered the turn from also seeing its own prompt."""
         return _connection_id.get(None)
 

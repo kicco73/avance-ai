@@ -4,7 +4,7 @@ either one importing the other just for this.
 """
 from __future__ import annotations
 
-from service_error import ServiceError
+from system.service_error import ServiceError
 
 
 class TurnServiceError(ServiceError):

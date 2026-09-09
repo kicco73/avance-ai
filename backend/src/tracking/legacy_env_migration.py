@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from db import Db
 from db.models import ChatSession, Tracking
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 from project.archive.automaton_loader import AutomatonLoader
 
 logger = LoggerFactory.get_logger(__name__)

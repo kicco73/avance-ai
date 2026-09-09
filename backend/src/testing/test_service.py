@@ -19,7 +19,7 @@ from jobs.job_queue import JobQueue
 from project.project_service import ProjectService
 from testing.errors import TestServiceError
 from testing.cache import TestCache
-from broadcaster import Broadcaster
+from system.broadcaster import Broadcaster
 from testing.signal_sources import BatchLiteSignalSource, BatchSignalSource, TurnByTurnSignalSource, estimate_max_turns_per_call
 from testing.jobs import (
     AllSignalsAggregationJob,
@@ -33,7 +33,7 @@ from testing.jobs import (
 )
 from tracking.tracking_service import TrackingService
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 logger = LoggerFactory.get_logger(__name__)
 
 VALID_STRATEGIES = ('batch_lite', 'batch', 'turn_by_turn')

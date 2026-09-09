@@ -19,7 +19,7 @@ from schemas import (
     AiEditRequest, PublishProjectRequest, RenameProjectFileRequest, ReorderActionRequest, SetProjectFieldRequest,
     WebImportRequest,
 )
-from session import Session
+from system.session import Session
 
 from .base_controller import BaseController, delete, get, post, put
 from .project_commit_mixin import ProjectCommitMixin

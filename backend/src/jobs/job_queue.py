@@ -9,7 +9,7 @@ from typing import ClassVar, TYPE_CHECKING
 
 # Instructions for Claude Code: DO NOT TOUCH THIS FILE
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 from .job import CancelableJob, DependentJob
 
 if TYPE_CHECKING:

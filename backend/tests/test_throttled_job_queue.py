@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from broadcaster import Broadcaster
+from system.broadcaster import Broadcaster
 from jobs import CancelableJob
 from jobs.throttled_job_queue import ThrottledJobQueue
 from jobs import throttled_job_queue as throttled_job_queue_module

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from bus import OUTPUT_SPEECH, OUTPUT_TEXT, TURN_ENDED, TURN_FAILED, TURN_STARTED, TURN_TOOL
-from logging_factory import LoggerFactory
-from service_error import ServiceError
-from .turn_service import TurnService
-from .tool_status_text import tool_status_text
+from system.bus import OUTPUT_SPEECH, OUTPUT_TEXT, TURN_ENDED, TURN_FAILED, TURN_STARTED, TURN_TOOL
+from system.logging_factory import LoggerFactory
+from system.service_error import ServiceError
+from turn.turn_service import TurnService
+from turn.tool_status_text import tool_status_text
 
 logger = LoggerFactory.get_logger(__name__)
 

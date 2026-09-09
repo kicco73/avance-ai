@@ -4,8 +4,8 @@ from abc import ABC, abstractmethod
 import threading
 from dataclasses import dataclass
 from typing import cast, ClassVar
-from logging_factory import LoggerFactory
-from try_again_error import TryAgainError
+from system.logging_factory import LoggerFactory
+from system.try_again_error import TryAgainError
 
 logger = LoggerFactory.get_logger(__name__)
 

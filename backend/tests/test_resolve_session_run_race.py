@@ -7,7 +7,7 @@ import pytest
 
 from conftest import chat_turn
 
-from session import Session
+from system.session import Session
 from testing.test_service import PooledAggregationJob, TestService
 
 pytestmark = pytest.mark.contract

@@ -1,19 +1,20 @@
 """Admin-facing side effect of a published revision's build health
 flipping broken<->healthy (see ProjectManager.recompute_availability,
 which is the only publisher of ProjectPublishedHealthChanged) — one log
-line, one SystemWarning row per admin, one best-effort ws push to every
-connected admin. Split into a job (same "sync event -> async work" bridge
+line, one SystemWarning row per admin, one best-effort
+bus.UI_SYSTEM_WARNING per admin for whatever interface is listening. Split into a job (same "sync event -> async work" bridge
 WakeupService uses for its own ws push) since publish() itself is
 synchronous and may run from a plain (threadpool-executed) route handler,
 where there is no running event loop to push over a websocket from directly."""
 from __future__ import annotations
 
+from system import bus
 from auth.roles import role_satisfies
-from turn.ws_notifications import WsNotifications
+from system.bus import UI_SYSTEM_WARNING, Message
 from db import Db
 from events import ProjectPublishedHealthChanged, subscribe
 from jobs.job import CancelableJob
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 from scheduler import SchedulerService
 
 logger = LoggerFactory.get_logger(__name__)
@@ -21,12 +22,11 @@ logger = LoggerFactory.get_logger(__name__)
 
 class ProjectHealthNotificationJob(CancelableJob):
     def __init__(
-        self, db: Db, ws_notifications: WsNotifications, project_id: str, revision: int, error: str | None, *,
+        self, db: Db, project_id: str, revision: int, error: str | None, *,
         file: str | None = None, line: int | None = None,
     ) -> None:
         super().__init__(key=f"project-health:{project_id}:{revision}:{error is not None}", username="system")
         self._db = db
-        self._ws_notifications = ws_notifications
         self._project_id = project_id
         self._revision = revision
         self._error = error
@@ -54,9 +54,7 @@ class ProjectHealthNotificationJob(CancelableJob):
     async def _report_recovered(self, admin_ids: list[str]) -> None:
         logger.info("Project '%s' revision %s builds again.", self._project_id, self._revision)
         self._db.delete_project_system_warnings(self._project_id, "project_broken")
-        await self._push_to_admins(
-            admin_ids, {"type": "system_warning", "kind": "project_fixed", "project_id": self._project_id},
-        )
+        await self._push_to_admins(admin_ids, {"kind": "project_fixed", "project_id": self._project_id})
 
     async def _report_broken(self, admin_ids: list[str]) -> None:
         logger.error(
@@ -67,20 +65,19 @@ class ProjectHealthNotificationJob(CancelableJob):
                 admin_id, self._project_id, "project_broken", self._error, file=self._file, line=self._line,
             )
         await self._push_to_admins(admin_ids, {
-            "type": "system_warning", "kind": "project_broken",
+            "kind": "project_broken",
             "project_id": self._project_id, "message": self._error, "file": self._file, "line": self._line,
         })
 
-    async def _push_to_admins(self, admin_ids: list[str], payload: dict) -> None:
+    async def _push_to_admins(self, admin_ids: list[str], body: dict) -> None:
         for admin_id in admin_ids:
-            await self._ws_notifications.push(admin_id, payload)
+            await bus.publish(Message(type=UI_SYSTEM_WARNING, body=body, username=admin_id))
 
 
 class ProjectHealthNotifications:
-    def __init__(self, db: Db, scheduler_service: SchedulerService, ws_notifications: WsNotifications) -> None:
+    def __init__(self, db: Db, scheduler_service: SchedulerService) -> None:
         self._db = db
         self._scheduler_service = scheduler_service
-        self._ws_notifications = ws_notifications
 
     def register(self) -> None:
         subscribe(ProjectPublishedHealthChanged, self._on_event)
@@ -89,7 +86,7 @@ class ProjectHealthNotifications:
         try:
             self._scheduler_service.submit(
                 ProjectHealthNotificationJob(
-                    self._db, self._ws_notifications, event.project_id, event.revision, event.error,
+                    self._db, event.project_id, event.revision, event.error,
                     file=event.file, line=event.line,
                 )
             )

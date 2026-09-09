@@ -31,7 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any, Awaitable, Callable
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -56,6 +56,18 @@ UI_NOTIFICATION = "ui.notification"
 # what it can act on, and paging an operator is not showing a nudge.
 UI_HUMAN_TAKEOVER = "ui.human_takeover"
 
+# An administrator-facing warning about the installation itself — a
+# published revision that stopped building, and whatever joins it later.
+# Its own type because an interface may well show a nudge and not this:
+# it is addressed to a role, not to a person doing something.
+UI_SYSTEM_WARNING = "ui.system_warning"
+
+# Progress of a benchmark run, as the broadcaster batches it. Published
+# rather than pushed so the broadcaster — which is core, and on which
+# every JobQueue depends — holds no reference to whatever interface
+# happens to be watching (see broadcaster.Broadcaster).
+UI_TEST_UPDATE = "ui.test_update"
+
 # Facts about a turn that are not its content.
 TURN_STARTED = "turn.started"
 TURN_ENDED = "turn.ended"
@@ -65,14 +77,28 @@ TURN_TOOL = "turn.tool"
 MAIL_SEND = "mail.send"
 
 # Named places the core assembles something and anything may add to it.
-# Not messages: nothing is delivered and nobody is notified — the core
-# asks, synchronously, and whoever registered fills in its part. They
-# exist because the things a skill has to reach are all built before or
-# outside any turn: the boot-time router, a request's own response, a
-# read of the configuration.
+# Not messages: nothing is delivered and nobody is notified — someone
+# asks, synchronously, and whoever registered fills in its part. Mostly
+# that someone is the core, because the things a skill has to reach are
+# all built before or outside any turn: the boot-time router, a
+# request's own response, a read of the configuration. POINT_CORE_
+# SERVICES runs the other way and is the reason this says "someone"
+# rather than "the core".
 POINT_API_STATE = "api.state"
 POINT_CONFIG_SERVICES = "config.services"
 POINT_HTTP_CONTROLLERS = "http.controllers"
+
+# The composed core, offered to whoever asks for it. A skill starts at
+# boot, long before db/TurnService/SchedulerService exist, so it cannot
+# be handed them as arguments — which is why every skill's start() was
+# growing a parameter for each core object any one of them happened to
+# need. Instead the core contributes itself here once it is composed,
+# and a skill collects it from inside work that runs later: a
+# POINT_HTTP_CONTROLLERS contributor, or the first message it handles.
+# Nothing declares a dependency and nothing orders anything — the only
+# rule is that a collect must not run before main.py has contributed,
+# which is what "later" means here.
+POINT_CORE_SERVICES = "core.services"
 POINT_TALK_PROVIDER = "talk.provider"
 
 # What a client connected over a socket is allowed to put on the Bus.

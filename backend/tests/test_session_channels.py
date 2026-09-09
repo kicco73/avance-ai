@@ -17,7 +17,7 @@ from turn.sessions.session_manager import SessionManager
 from turn.sessions.session_type_strategy import get_session_type_strategy
 from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
-from session import Session
+from system.session import Session
 from tracking.tracking_service import TrackingService
 
 pytestmark = pytest.mark.contract

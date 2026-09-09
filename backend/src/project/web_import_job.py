@@ -9,7 +9,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from jobs import CancelableJob
-from session import Session
+from system.session import Session
 
 from .types import CommitCallback
 from .web_import_crawler import CrawledPage

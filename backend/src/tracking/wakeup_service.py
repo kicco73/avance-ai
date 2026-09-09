@@ -9,13 +9,13 @@ from automaton.automaton import manual_actions_for
 from db.db import Db
 from events import EnvChanged, StateChanged, subscribe
 from jobs import CancelableJob
-import bus
-from bus import UI_NOTIFICATION, Message
-from logging_factory import LoggerFactory
+from system import bus
+from system.bus import UI_NOTIFICATION, Message
+from system.logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from scheduler import SchedulerService
-from session import Session
+from system.session import Session
 from tracking.actuators import TaskNamespaceFactory
 from tracking.automaton_namespace import AutomatonNamespace
 from tracking.env import PersistedEnv

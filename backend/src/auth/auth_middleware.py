@@ -29,7 +29,7 @@ from starlette.routing import Match
 from auth.auth_service import SESSION_COOKIE_NAME
 from auth.roles import role_satisfies
 from turn.channels import NATIVE_CHAT
-from session import Session
+from system.session import Session
 
 # FastAPI's own default doc routes (main.py never disables them) — they
 # never go through a controller's get/post decorators, so they can never

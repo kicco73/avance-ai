@@ -20,13 +20,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import bus
-from bus import INPUT_AUDIO, POINT_API_STATE, POINT_CONFIG_SERVICES, POINT_HTTP_CONTROLLERS
+from system import bus
+from system.bus import INPUT_AUDIO, POINT_API_STATE, POINT_CONFIG_SERVICES, POINT_HTTP_CONTROLLERS
 from listen import config as listen_config
 from listen.decoder import SpeechDecoder
 from listen.listen_controller import ListenController
 from listen.listen_service import ListenService
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -34,7 +34,7 @@ KEY = "listen"
 LABEL = "Listen — speech to text"
 
 
-def start(raw: dict, path: Path, scheduler_service) -> None:
+def start(raw: dict, path: Path) -> None:
     """Called once at boot with the configuration file as it was read.
     Absent or disabled section: nothing registers, and every question
     about speech-to-text answers "nobody" from then on."""

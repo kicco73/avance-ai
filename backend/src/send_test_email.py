@@ -5,7 +5,7 @@ import asyncio
 
 from config import AppConfig
 from db import Db
-from broadcaster import Broadcaster
+from system.broadcaster import Broadcaster
 from mail import config as mail_config
 from mail.mail_service import MailService
 from scheduler import SchedulerService

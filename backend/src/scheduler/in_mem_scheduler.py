@@ -5,7 +5,7 @@ import itertools
 import threading
 from datetime import datetime, timezone
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 from jobs.job import CancelableJob, DependentJob
 from jobs.job_queue import AbstractJobQueue

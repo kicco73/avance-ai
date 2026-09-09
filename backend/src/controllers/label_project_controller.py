@@ -13,9 +13,9 @@ from fastapi import HTTPException, Response, UploadFile
 from turn.turn_service import TurnService
 from project.project_service import ProjectService
 from scheduler import SchedulerService
-from session import Session
+from system.session import Session
 from testing.test_service import TestService
-from broadcaster import Broadcaster
+from system.broadcaster import Broadcaster
 from tracking.tracking_service import TrackingService
 from schemas import (
     CommentRequest,

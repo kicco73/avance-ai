@@ -11,8 +11,8 @@ from automaton.automaton_yaml_editor import AutomatonYamlEditor
 from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
 from db import Db
-from logging_factory import LoggerFactory
-from session import Session
+from system.logging_factory import LoggerFactory
+from system.session import Session
 from tracking.session_import import SessionImportManager
 
 from ..archive.automaton_loader import AutomatonLoader

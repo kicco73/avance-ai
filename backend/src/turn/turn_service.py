@@ -12,10 +12,10 @@ from automaton.automaton import Action, Automaton, SignalPayload, State, manual_
 from automaton.build_error import AutomatonBuildError
 from db import Db, _utc_iso
 from ai import AiService
-from keyed_lock_registry import KeyedLockRegistry
+from system.keyed_lock_registry import KeyedLockRegistry
 from project.archive.layout import CACHE_DIR
-from project_rw_lock import ProjectRwLock
-from session import Session
+from system.project_rw_lock import ProjectRwLock
+from system.session import Session
 
 from tracking.actuators import TaskNamespace, TaskNamespaceFactory
 from tracking.automaton_namespace import AutomatonNamespace
@@ -32,7 +32,7 @@ from turn.sessions.session_insights import SessionInsights
 from turn.sessions.session_ownership import SessionOwnership
 from turn.sessions.session_report_task import SessionReportHydrator, SessionReportScheduler, SessionReportTask
 from turn.sessions.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 from tracking.turn_callbacks import OnMetadata
 from metrics.metric_service import MetricService

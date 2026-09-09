@@ -3,7 +3,7 @@ register since error_handlers.py's ServiceError handler already covers it.
 """
 from __future__ import annotations
 
-from service_error import ServiceError
+from system.service_error import ServiceError
 
 
 class TestServiceError(ServiceError):

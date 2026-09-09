@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from project.archive.automaton_loader import AutomatonLoader
-from session import Session
+from system.session import Session
 from tracking.env import Env
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext

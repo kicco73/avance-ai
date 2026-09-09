@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 

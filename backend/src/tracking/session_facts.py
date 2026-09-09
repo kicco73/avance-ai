@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from db import Db, _utc_iso
 from metrics.metric_namespace import SessionMetricNamespace
 from metrics.metrics_framework import AnalyticsCalculator
-from session import Session
+from system.session import Session
 
 if TYPE_CHECKING:
     # Deferred: project.project_service -> tracking.tracking_engine ->

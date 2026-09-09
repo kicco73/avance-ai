@@ -22,9 +22,9 @@ from ai.llm_provider import (
 from ai._providers.cascading_llm_provider import AutoLiveLLMProvider, AutoTestLLMProvider
 from ai._providers import gemini_provider_v2, openai_provider_v2, anthropic_provider_v2
 from db import Db
-from session import Session
+from system.session import Session
 from token_estimate import estimate_tokens
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 if TYPE_CHECKING:
 	# Import guarded: tracking.sources -> ai.llm_provider (for ToolSpec)

@@ -18,7 +18,7 @@ import pkgutil
 from pathlib import Path
 from types import ModuleType
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -31,7 +31,9 @@ def discover(source_root: Path | None = None) -> list[ModuleType]:
     """Every `<package>.skill` importable under the source root, in
     alphabetical order. A package whose skill module fails to import is
     logged and skipped: one broken skill must not stop the others."""
-    root = source_root or Path(__file__).resolve().parent
+    # src/, not this package: this module lives in system/, and what
+    # it walks is the tree of packages beside system/.
+    root = source_root or Path(__file__).resolve().parent.parent
     found = []
     for entry in sorted(pkgutil.iter_modules([str(root)])):
         if not entry.ispkg or not (root / entry.name / f"{SKILL_MODULE}.py").is_file():
@@ -58,13 +60,17 @@ def installed(source_root: Path | None = None) -> list[dict]:
     ]
 
 
-def start_all(raw: dict, path: Path, scheduler_service, source_root: Path | None = None) -> list[ModuleType]:
+def start_all(raw: dict, path: Path, source_root: Path | None = None) -> list[ModuleType]:
     """Starts every discovered skill with the configuration file as it
-    was read. Each reads the section that belongs to it; one that finds
-    its section absent registers nothing and says so."""
+    was read — nothing else, because nothing else exists yet. A skill
+    that needs a core object collects it later from
+    bus.POINT_CORE_SERVICES, which is what keeps this signature from
+    growing a parameter per skill. Each reads the section that belongs
+    to it; one that finds its section absent registers nothing and says
+    so."""
     for module in discover(source_root):
         try:
-            module.start(raw, path, scheduler_service)
+            module.start(raw, path)
             _started.append(module)
         except Exception as exc:  # noqa: BLE001
             logger.exception("Skill %r failed to start: %s", module.__name__, exc)

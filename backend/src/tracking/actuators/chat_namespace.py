@@ -6,10 +6,10 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 from automaton.automaton import JsSnippet
-from logging_factory import LoggerFactory
-import bus
-from bus import UI_HUMAN_TAKEOVER, UI_NOTIFICATION, Message
-from session import Session
+from system.logging_factory import LoggerFactory
+from system import bus
+from system.bus import UI_HUMAN_TAKEOVER, UI_NOTIFICATION, Message
+from system.session import Session
 
 from .actuator_set import _run_sync
 

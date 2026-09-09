@@ -8,7 +8,7 @@ from turn.turn_service import TurnService, TurnServiceError
 from turn.sessions.session_manager import SessionManager
 from conftest import make_test_scheduler_service
 from metrics.metric_service import MetricService
-from session import Session
+from system.session import Session
 from tracking.tracking_service import TrackingService
 
 

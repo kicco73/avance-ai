@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from jobs import CancelableJob
 from metrics.metrics_framework.benchmark_metrics.dto import BenchmarkConfiguration
 from metrics.metrics_framework.benchmark_metrics.observations import BenchmarkObservationBuilder
-from session import Session
+from system.session import Session
 from testing.data import TestDataBuilder
 
 if TYPE_CHECKING:

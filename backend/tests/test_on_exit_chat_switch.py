@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from turn.ws_notifications import WsNotifications
+from system.ws_notifications import WsNotifications
 from conftest import make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
 from turn.sessions.session_manager import SessionManager

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from jobs import CancelableJob
-from session import Session
+from system.session import Session
 
 if TYPE_CHECKING:
     from testing.test_service import TestService

@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 import httpx
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 

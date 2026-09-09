@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from auth.auth_middleware import AuthMiddleware
 from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME
-from session import Session
+from system.session import Session
 
 pytestmark = pytest.mark.contract
 

@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 
 from automaton.automaton import State
-from logging_factory import LoggerFactory
-from session import Session
+from system.logging_factory import LoggerFactory
+from system.session import Session
 from tracking.tracking_processor import OutVariables, TrackingProcessor
 
 

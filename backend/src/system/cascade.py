@@ -12,7 +12,7 @@ import threading
 from http import HTTPStatus
 from typing import Awaitable, Callable, Generic, NamedTuple, TypeVar
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 

@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 from datetime import datetime, timezone
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 from .ai_usage import AiUsageMixin
 from .test_aggregates import TestAggregateMixin

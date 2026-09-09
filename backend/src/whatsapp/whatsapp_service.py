@@ -51,11 +51,11 @@ from turn.channels import WHATSAPP_CHAT
 from turn.turn_service import TurnService
 from config import WhatsAppServiceConfig
 from db import Db
-from logging_factory import LoggerFactory
-from service_error import ServiceError
-import bus
-from bus import INPUT_AUDIO, INPUT_TEXT, POINT_TALK_PROVIDER, Message
-from session import Session
+from system.logging_factory import LoggerFactory
+from system.service_error import ServiceError
+from system import bus
+from system.bus import INPUT_AUDIO, INPUT_TEXT, POINT_TALK_PROVIDER, Message
+from system.session import Session
 from talker import AiTalker
 from whatsapp.cloud_api_client import WhatsAppCloudApiClient
 

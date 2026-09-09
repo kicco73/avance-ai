@@ -13,7 +13,7 @@ import pytest
 from ai.ai_service import AiService
 from turn.turn_service import TurnService
 from turn.sessions.session_manager import SessionManager
-from turn.ws_turn import WsChatTurn
+from system.ws_turn import WsChatTurn
 from conftest import make_test_namespace_factory, make_test_scheduler_service
 from db.db import Db
 from metrics.metric_service import MetricService

@@ -12,7 +12,7 @@ import zipfile
 import pytest
 
 from conftest import parse_sse_result, chat_turn
-from session import Session
+from system.session import Session
 
 pytestmark = pytest.mark.contract
 

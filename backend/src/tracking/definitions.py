@@ -8,9 +8,9 @@ from datetime import datetime
 
 from automaton.automaton import Automaton, SignalPayload
 from db import Db
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 from project.project_service import ProjectService
-from session import Session
+from system.session import Session
 
 logger = LoggerFactory.get_logger(__name__)
 

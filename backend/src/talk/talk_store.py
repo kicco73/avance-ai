@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import AsyncIterator
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 

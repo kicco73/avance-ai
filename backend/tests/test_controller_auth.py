@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from session import Session
+from system.session import Session
 
 pytestmark = pytest.mark.contract
 

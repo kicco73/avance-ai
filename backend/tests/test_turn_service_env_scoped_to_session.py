@@ -23,7 +23,7 @@ from db.models import Tracking
 from metrics.metric_service import MetricService
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
-from session import Session
+from system.session import Session
 from tracking.env import PersistedEnv
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.tracking_service import TrackingService

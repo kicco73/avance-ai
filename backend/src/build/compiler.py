@@ -182,7 +182,7 @@ class Compiler(object):
 from pathlib import Path
 
 from automaton.automaton import CompiledAutomaton, PayloadsMixin, IntrospectionMixin
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 from automaton.model import Action, EnvKey, Reaction, Signal, Source, State
 
 from . import prompt

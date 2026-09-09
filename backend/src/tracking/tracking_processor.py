@@ -10,8 +10,8 @@ from ai import AiService
 from ai import MetadataCallback, content_to_text
 from automaton.automaton import Action, Automaton, State, StatePayload
 from events import EnvChanged, publish
-from logging_factory import LoggerFactory
-from session import Session
+from system.logging_factory import LoggerFactory
+from system.session import Session
 from talker import AiTalker
 
 if TYPE_CHECKING:

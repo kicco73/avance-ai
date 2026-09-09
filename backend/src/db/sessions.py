@@ -6,7 +6,7 @@ from http import HTTPStatus
 from peewee import fn
 
 from turn.channels import CHANNELS, NATIVE_CHAT
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 from tracking.errors import TrackingServiceError
 
 from .models import SESSION_CLOSE_REASONS, ChatSession, Message, Project, Tracking, User

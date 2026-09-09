@@ -14,9 +14,9 @@ from fastapi import WebSocketDisconnect
 
 from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME
-from turn.ws_notifications import ALREADY_CONNECTED_CLOSE_CODE, HumanNotConnectedError, WsNotifications
+from system.ws_notifications import ALREADY_CONNECTED_CLOSE_CODE, HumanNotConnectedError, WsNotifications
 from conftest import chat_socket, chat_turn_frames
-from session import Session
+from system.session import Session
 from test_ws_turn_event_order import _automaton, turn_service_for  # noqa: F401 — a pytest fixture, used by name
 
 pytestmark = pytest.mark.contract
@@ -225,7 +225,7 @@ class TestConnectionCap:
 
 
 class TestHumanPrompt:
-    """send_human_prompt/await_human_reply (see turn.ws_human_relay.
+    """send_human_prompt/await_human_reply (see system.ws_human_relay.
     WsHumanRelay): the HumanTalker manual-testing seam."""
 
     def test_raises_when_the_user_has_no_open_connection(self):

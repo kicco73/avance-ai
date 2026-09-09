@@ -6,8 +6,8 @@ from automaton.automaton import Automaton
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from db import Db
 from events import AvailabilityChanged, ProjectPublishedHealthChanged, ProjectRevisionBuildFailed, publish, subscribe
-from logging_factory import LoggerFactory
-from service_error import ServiceError
+from system.logging_factory import LoggerFactory
+from system.service_error import ServiceError
 
 from ..health import ProjectHealth, ProjectHealthChecker
 from ..archive.automaton_loader import AutomatonLoader

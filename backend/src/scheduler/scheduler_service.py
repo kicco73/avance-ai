@@ -30,7 +30,7 @@ from fastapi.responses import StreamingResponse
 
 from jobs.job import CancelableJob, DependentJob
 from jobs.job_queue import JobQueue
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 from .persisted_scheduler import Hydrator, PersistedScheduler
 from .task import Task

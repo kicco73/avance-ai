@@ -7,8 +7,8 @@ from http import HTTPStatus
 import httpx
 import pytest
 
-from service_error import ServiceError
-from session import Session
+from system.service_error import ServiceError
+from system.session import Session
 from whatsapp.whatsapp_service import (
     REPLY_ACCEPT_TERMS_LABEL, REPLY_BUSY, REPLY_DONE, REPLY_INVALID_ACTION, REPLY_NO_CHAT_STATE, REPLY_NOT_LINKED,
     REPLY_NOT_REGISTERED, REPLY_PAUSED, REPLY_REGISTERED, REPLY_SESSION_TAKEN_OVER, REPLY_TECHNICAL_PROBLEM,

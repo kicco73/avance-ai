@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, AsyncIterator
 
-from cascade import BASE_DELAY_SECONDS, MAX_RETRIES, ProviderCascade
+from system.cascade import BASE_DELAY_SECONDS, MAX_RETRIES, ProviderCascade
 from ai.llm_provider import (
     AIServiceProviderPermanentError,
     AIServiceProviderRateLimitedError,
@@ -19,7 +19,7 @@ from ai.llm_provider import (
     SystemPrompt,
     ToolSpec,
 )
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 

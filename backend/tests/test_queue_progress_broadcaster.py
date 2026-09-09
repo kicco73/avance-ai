@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from broadcaster import Broadcaster
+from system.broadcaster import Broadcaster
 
 pytestmark = pytest.mark.contract
 

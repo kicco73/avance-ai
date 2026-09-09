@@ -13,7 +13,7 @@ from http import HTTPStatus
 from build import BuildService, CompileError
 from fastapi import HTTPException
 
-import skills
+from system import skills
 from controllers.base_controller import BaseController, get, post
 from pydantic import BaseModel
 

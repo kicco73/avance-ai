@@ -24,7 +24,7 @@ import simpleeval
 
 from automaton.scope import EvaluationScope
 
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 from . import analysis
 from .trigger_expression_analyzer import TriggerExpressionAnalyzer

@@ -12,8 +12,8 @@ from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
 from db import ContentRestored, Db, FileRenamed
-from logging_factory import LoggerFactory
-from session import Session
+from system.logging_factory import LoggerFactory
+from system.session import Session
 from tracking.project_files import PROJECT_FILE_CACHE
 
 from .inspector import ProjectInspector

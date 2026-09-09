@@ -11,8 +11,8 @@ from google import genai
 from google.genai import types
 from google.genai.errors import APIError
 
-from cascade import OnRetry
-from logging_factory import LoggerFactory
+from system.cascade import OnRetry
+from system.logging_factory import LoggerFactory
 from ai.llm_provider import (
 	AIServiceConfig,
 	AIServiceError,

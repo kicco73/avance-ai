@@ -34,12 +34,13 @@ import asyncio
 import threading
 from typing import TYPE_CHECKING
 
+from system import bus
+from system.bus import UI_TEST_UPDATE, Message
 from jobs.job import CancelableJob
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 
 if TYPE_CHECKING:
     from ai import AiService
-    from turn.ws_notifications import WsNotifications
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -73,8 +74,9 @@ class Broadcaster:
     once — right for a progress indicator, wrong for anything whose
     pieces all matter, so a stream of chunks must use an unbatched one.
     `ai_service`, when given, adds the running token total to every
-    message. `set_ws_notifications` additionally mirrors each message onto
-    the shared websocket channel."""
+    message. Every message is also published on the Bus as
+    bus.UI_TEST_UPDATE, so an interface that wants to mirror it
+    subscribes there — this object holds no reference to one."""
 
     def __init__(
         self,
@@ -89,21 +91,20 @@ class Broadcaster:
         self._scheduled: dict[str, _FlushJob] = {}
         self._last_by_key: dict[str, dict] = {}
         self._main_loop: asyncio.AbstractEventLoop | None = None
-        self._ws_notifications: "WsNotifications | None" = None
         self._scheduler = None
 
-    # --- the websocket mirror ---------------------------------------------
+    # --- publishing what was delivered ------------------------------------
 
-    def set_ws_notifications(self, ws_notifications: "WsNotifications") -> None:
-        # Called from main.py's async lifespan, so this is always the main
-        # uvicorn loop — a flush runs on a job-worker thread with its own
-        # unrelated loop, so pushing onto the shared /ws/notifications
-        # connection needs this specific loop handed in, not whichever one
-        # happens to be running at flush time. Captured here rather than in
-        # __init__ because the test suite constructs broadcasters outside
-        # any running loop at all.
+    def bind_loop(self) -> None:
+        """Called from main.py's async lifespan, so this is always the
+        main uvicorn loop. A flush runs on a job-worker thread with its
+        own unrelated loop, and a listener that ends up writing to a
+        socket needs this specific loop, not whichever one happens to be
+        running at flush time. Captured here rather than in __init__
+        because the test suite constructs broadcasters outside any
+        running loop at all; a broadcaster that was never bound simply
+        does not publish, which is what a test with no interface wants."""
         self._main_loop = asyncio.get_running_loop()
-        self._ws_notifications = ws_notifications
 
     # --- connections -------------------------------------------------------
 
@@ -161,20 +162,27 @@ class Broadcaster:
     def _deliver(self, username: str, messages: list[dict]) -> None:
         with self._lock:
             connections = list(self._connections.get(username, {}).items())
-        if not connections and self._ws_notifications is None:
+        listeners = self._listeners()
+        if not connections and not listeners:
             return
         tokens = self._ai_service.get_total_tokens() if self._ai_service is not None else None
         for message in messages:
             enriched = message if tokens is None else {**message, "tokens": tokens}
             for connection, loop in connections:
                 loop.call_soon_threadsafe(connection.put_nowait, enriched)
-            if self._ws_notifications is not None and self._main_loop is not None:
+            if listeners:
                 asyncio.run_coroutine_threadsafe(
-                    self._ws_notifications.push(username, {"type": "test_update", **enriched}), self._main_loop,
+                    bus.publish(Message(type=UI_TEST_UPDATE, body=enriched, username=username)), self._main_loop,
                 )
 
+    def _listeners(self) -> list:
+        """Who would receive a UI_TEST_UPDATE right now — empty until
+        this broadcaster has a loop to publish on, since without one
+        nothing can reach them anyway."""
+        return bus.handlers_for(UI_TEST_UPDATE) if self._main_loop is not None else []
+
     def _deliverable(self, username: str) -> bool:
-        return bool(self._connections.get(username)) or self._ws_notifications is not None
+        return bool(self._connections.get(username)) or bool(self._listeners())
 
     # --- the batching window, as a scheduled job ---------------------------
 

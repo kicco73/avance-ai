@@ -18,7 +18,7 @@ from automaton.automaton import Action, Automaton, State
 from turn.channels import NATIVE_CHAT
 from turn.sessions.session_manager import SessionManager
 from turn.sessions.session_type_strategy import get_session_type_strategy
-from session import Session
+from system.session import Session
 
 pytestmark = pytest.mark.contract
 

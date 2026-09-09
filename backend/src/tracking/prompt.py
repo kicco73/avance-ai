@@ -5,8 +5,8 @@ import io
 import json
 from typing import Any, Iterable, NoReturn
 
-from logging_factory import LoggerFactory
-from try_again_error import TryAgainError
+from system.logging_factory import LoggerFactory
+from system.try_again_error import TryAgainError
 
 from ai import SystemPrompt
 from automaton.automaton import Automaton, State

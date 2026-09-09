@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import AsyncIterator
 
 from ai import MetadataCallback, SystemPrompt
-from logging_factory import LoggerFactory
+from system.logging_factory import LoggerFactory
 from tracking.prompt import Prompt
 from tracking.sources import ToolSet
 
