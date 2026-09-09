@@ -9,12 +9,12 @@ import { setApiError } from './errorStore.js'
 // subscriber among several — notifications and test updates reach their
 // own consumers without passing through here.
 //
-// Every outgoing frame of a turn carries the turn_id the client minted
+// Every outgoing frame of a turn carries the stream_id the client minted
 // for it, and that id is the only correlation there is.
 
 let turnSequence = 0
 
-// turn_id -> the live callbacks of the one in-flight turn that minted it.
+// stream_id -> the live callbacks of the one in-flight turn that minted it.
 const pendingTurns = new Map()
 
 function normalizeResult(data) {
@@ -33,27 +33,27 @@ function normalizeResult(data) {
   }
 }
 
-chatChannel.subscribe('chunk', (data) => {
-  const turn = pendingTurns.get(data.turn_id)
-  if (turn && data.content) turn.onChunk?.(data.content)
+chatChannel.subscribe('output.text', (data) => {
+  const turn = pendingTurns.get(data.stream_id)
+  if (turn && data.body) turn.onChunk?.(data.body)
 })
 
-chatChannel.subscribe('tool', (data) => {
-  const turn = pendingTurns.get(data.turn_id)
+chatChannel.subscribe('turn.tool', (data) => {
+  const turn = pendingTurns.get(data.stream_id)
   if (turn) turn.onStatus?.(data.phase === 'start' ? data.status_text || '' : '')
 })
 
-chatChannel.subscribe('done', (data) => {
-  const turn = pendingTurns.get(data.turn_id)
+chatChannel.subscribe('turn.ended', (data) => {
+  const turn = pendingTurns.get(data.stream_id)
   if (!turn) return
-  pendingTurns.delete(data.turn_id)
+  pendingTurns.delete(data.stream_id)
   turn.resolve(normalizeResult(data))
 })
 
-chatChannel.subscribe('error', (data) => {
-  const turn = pendingTurns.get(data.turn_id)
+chatChannel.subscribe('turn.failed', (data) => {
+  const turn = pendingTurns.get(data.stream_id)
   if (!turn) return
-  pendingTurns.delete(data.turn_id)
+  pendingTurns.delete(data.stream_id)
   setApiError(data.message, data.detail)
   const error = new Error(data.message)
   error.code = data.code
@@ -70,7 +70,7 @@ export function sendMessage(text, sessionId, options = {}) {
   const turnId = `t${++turnSequence}-${Date.now()}`
   return new Promise((resolve, reject) => {
     pendingTurns.set(turnId, { resolve, reject, onChunk: options.onChunk, onStatus: options.onStatus, sessionId, text })
-    chatChannel.send({ type: 'turn', turn_id: turnId, session_id: sessionId, text })
+    chatChannel.send({ type: 'input.text', stream_id: turnId, session_id: sessionId, body: text })
   })
 }
 

@@ -13,7 +13,7 @@ from logging_factory import LoggerFactory
 from .job import CancelableJob, DependentJob
 
 if TYPE_CHECKING:
-    from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
+    from broadcaster import Broadcaster
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -50,7 +50,7 @@ class JobQueue(AbstractJobQueue):
     STATUS.running = STATUS("running")
     STATUS.exited = STATUS("exited")
 
-    def __init__(self, max_concurrent: int, broadcaster: QueueProgressBroadcaster) -> None:
+    def __init__(self, max_concurrent: int, broadcaster: "Broadcaster") -> None:
         self._broadcaster = broadcaster
         self._lock = threading.RLock()
         self._not_empty = threading.Condition(self._lock)

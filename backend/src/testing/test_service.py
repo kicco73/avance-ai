@@ -19,7 +19,7 @@ from jobs.job_queue import JobQueue
 from project.project_service import ProjectService
 from testing.errors import TestServiceError
 from testing.cache import TestCache
-from testing.last_status_broadcaster import LastStatusBroadcaster
+from broadcaster import Broadcaster
 from testing.signal_sources import BatchLiteSignalSource, BatchSignalSource, TurnByTurnSignalSource, estimate_max_turns_per_call
 from testing.jobs import (
     AllSignalsAggregationJob,
@@ -49,7 +49,7 @@ class TestService:
 
     def __init__(
         self, db: Db, ai_service: AiService, tracking_service: TrackingService, job_queue: JobQueue,
-        project_service: ProjectService, status_broadcaster: LastStatusBroadcaster,
+        project_service: ProjectService, status_broadcaster: Broadcaster,
     ) -> None:
         self._db = db
         self._ai_service = ai_service

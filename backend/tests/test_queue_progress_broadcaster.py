@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
+from broadcaster import Broadcaster
 
 pytestmark = pytest.mark.contract
 
@@ -21,7 +21,7 @@ class _FakeAiServiceForTokens:
 
 async def test_push_enriches_the_message_with_the_current_token_total():
     ai_service = _FakeAiServiceForTokens(total=42)
-    broadcaster = QueueProgressBroadcaster(ai_service, batch_window_seconds=0.01)
+    broadcaster = Broadcaster(ai_service, batch_window_seconds=0.01)
     connection = broadcaster.connect("user")
 
     broadcaster.push("user", {"key": "batch:session:1", "status": "running"})
@@ -32,7 +32,7 @@ async def test_push_enriches_the_message_with_the_current_token_total():
 
 async def test_push_does_not_deliver_instantly():
     ai_service = _FakeAiServiceForTokens(total=1)
-    broadcaster = QueueProgressBroadcaster(ai_service, batch_window_seconds=0.20)
+    broadcaster = Broadcaster(ai_service, batch_window_seconds=0.20)
     connection = broadcaster.connect("user")
 
     broadcaster.push("user", {"status": "running"})
@@ -44,7 +44,7 @@ async def test_push_does_not_deliver_instantly():
 
 async def test_pushes_within_the_batch_window_are_merged_into_one_message():
     ai_service = _FakeAiServiceForTokens(total=1)
-    broadcaster = QueueProgressBroadcaster(ai_service, batch_window_seconds=0.05)
+    broadcaster = Broadcaster(ai_service, batch_window_seconds=0.05)
     connection = broadcaster.connect("user")
 
     broadcaster.push("user", {"key": "job:1", "status": "running"})
@@ -60,7 +60,7 @@ async def test_pushes_within_the_batch_window_are_merged_into_one_message():
 
 async def test_concurrent_jobs_do_not_clobber_each_others_updates():
     ai_service = _FakeAiServiceForTokens(total=3)
-    broadcaster = QueueProgressBroadcaster(ai_service, batch_window_seconds=0.05)
+    broadcaster = Broadcaster(ai_service, batch_window_seconds=0.05)
     connection = broadcaster.connect("user")
 
     broadcaster.push("user", {"key": "batch:session:1", "status": "running"})
@@ -78,7 +78,7 @@ async def test_concurrent_jobs_do_not_clobber_each_others_updates():
 
 async def test_push_skips_the_ai_service_call_when_nobody_is_connected():
     ai_service = _FakeAiServiceForTokens(total=99)
-    broadcaster = QueueProgressBroadcaster(ai_service, batch_window_seconds=0.01)
+    broadcaster = Broadcaster(ai_service, batch_window_seconds=0.01)
 
     broadcaster.push("nobody-connected", {"status": "running"})
 

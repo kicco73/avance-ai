@@ -12,11 +12,9 @@ task derives from, only the ones meant to be scheduled. Import any of
 these from its own module only when building one of those services (or
 a test of the primitives themselves)."""
 from .job import Job, DependentJob, CancelableJob
-from .null_broadcaster import NullBroadcaster
 
 __all__ = [
     "Job",
     "DependentJob",
     "CancelableJob",
-    "NullBroadcaster",
 ]

@@ -17,6 +17,7 @@ from config import WhatsAppServiceConfig
 from controllers.whatsapp_controller import WhatsAppController
 from service_error import ServiceError
 from session import Session
+from listen.decoder import SpeechDecoder
 from listen.listen_service import ListenServiceError
 from talk.talk_format import PcmWavCodec
 from whatsapp.audio import split_wav
@@ -313,7 +314,11 @@ def _build(config=None, talk=None, listen=None):
     chat = _FakeChatService(db)
     api = _FakeCloudApi()
     auth = _FakeAuthService(db)
-    service = WhatsAppService(config or _config(), chat, db, auth, client=api, talk_service=talk, listen_service=listen)
+    if listen is not None:
+        # Listen reaches this channel through the Bus now, never as a
+        # constructor argument: the service does not know it exists.
+        SpeechDecoder(listen).register()
+    service = WhatsAppService(config or _config(), chat, db, auth, client=api, talk_service=talk)
     app = FastAPI()
     # The real app's login wall sits in front of these routes too — they
     # must be reachable with no cookie at all (role=None).

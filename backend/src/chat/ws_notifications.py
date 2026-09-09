@@ -8,6 +8,7 @@ import uuid
 from fastapi import WebSocket, WebSocketDisconnect
 
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
+from bus import CLIENT_INJECTABLE
 from auth.roles import role_satisfies
 from session import Session
 from .channels import NATIVE_CHAT
@@ -180,7 +181,11 @@ class WsNotifications(object):
         frame_type = frame.get("type")
         if frame_type == "ping":
             connection.send({"type": "pong"})
-        elif frame_type == "turn":
+        elif frame_type in CLIENT_INJECTABLE:
+            # A client speaks as a person: the only types it may put on
+            # the Bus are the ones a person can say (see bus.py's own
+            # CLIENT_INJECTABLE). Anything else falls through to the
+            # unknown-frame branch below rather than finding listeners.
             self._start_turn(connection, frame)
         elif frame_type == "human_reply":
             self._resolve_human_reply_for_session(frame.get("session_id"), str(frame.get("text", "")))
@@ -209,8 +214,8 @@ class WsNotifications(object):
         if self._chat_service is None:
             return
         turn = WsChatTurn(
-            self._chat_service, connection, str(frame.get("turn_id", "")), frame.get("session_id"),
-            str(frame.get("text", "")),
+            self._chat_service, connection, str(frame.get("stream_id", "")), frame.get("session_id"),
+            str(frame.get("body", "")),
         )
         if not turn.accept():
             return

@@ -28,7 +28,8 @@ from db import Db
 from db.models import User
 from error_handlers import ApiErrorHandlers
 from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
-from jobs import NullBroadcaster
+import bus
+from broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
 from jobs.job_queue import JobQueue
 from scheduler import SchedulerService
 from metrics.metric_service import MetricService
@@ -38,8 +39,6 @@ from project.archive.compiled_automaton_loader import CompiledAutomatonLoader
 from project.project_service import ProjectService
 from session import Session
 from testing.test_service import TestService
-from testing.queue_progress_broadcaster import QueueProgressBroadcaster
-from testing.last_status_broadcaster import LastStatusBroadcaster
 from tracking.actuators import TaskNamespaceFactory
 from tracking.project_files import PROJECT_FILE_CACHE
 from tracking.tracking_service import TrackingService
@@ -84,12 +83,12 @@ def chat_turn_frames(client: TestClient, session_id: int, text: str, turn_id: st
     """One turn over the websocket, every frame it produced in order —
     the last one is its `done` or `error`."""
     with chat_socket(client) as ws:
-        ws.send_json({"type": "turn", "turn_id": turn_id, "session_id": session_id, "text": text})
+        ws.send_json({"type": "input.text", "stream_id": turn_id, "session_id": session_id, "body": text})
         frames = []
         while True:
             frame = ws.receive_json()
             frames.append(frame)
-            if frame["type"] in ("done", "error"):
+            if frame["type"] in ("turn.ended", "turn.failed"):
                 return frames
 
 
@@ -97,7 +96,7 @@ def chat_turn(client: TestClient, session_id: int, text: str = "hi") -> dict:
     """The `done` body of one turn, exactly what the browser's own store
     gets (see chatClient.js) — asserts the turn did not fail."""
     final = chat_turn_frames(client, session_id, text)[-1]
-    assert final["type"] == "done", final
+    assert final["type"] == "turn.ended", final
     return final
 
 
@@ -127,6 +126,15 @@ def _reset_ephemeral_env_registry():
     EphemeralEnvRegistry._reset_for_tests()
     yield
     EphemeralEnvRegistry._reset_for_tests()
+
+
+@pytest.fixture(autouse=True)
+def _reset_bus():
+    """bus's listener registry is a process-global, like events' — a
+    decoder registered by one test must not answer another's messages."""
+    bus._reset_for_tests()
+    yield
+    bus._reset_for_tests()
 
 
 @pytest.fixture(autouse=True)
@@ -245,7 +253,7 @@ def make_test_scheduler_service(db: Db, broadcaster=None) -> SchedulerService:
     needs platform jobs (never a TestService's own throttled pool) shares.
     Not started: nothing here claims hibernated tasks unless a test
     calls start() itself (see test_task_defer.py)."""
-    return SchedulerService(max_concurrent=1, broadcaster=broadcaster if broadcaster is not None else NullBroadcaster(), db=db)
+    return SchedulerService(max_concurrent=1, broadcaster=broadcaster if broadcaster is not None else Broadcaster(), db=db)
 
 
 def make_test_namespace_factory(
@@ -290,7 +298,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
     project_service = ProjectService(app_db, automaton_loader, ChatSessionManager(app_db), fake_ai_service)
     session_manager = ChatSessionManager(app_db)
     metric_service = MetricService(app_db, project_service)
-    test_event_broadcaster = LastStatusBroadcaster(QueueProgressBroadcaster(fake_ai_service))
+    test_event_broadcaster = Broadcaster(fake_ai_service, batch_window_seconds=DEFAULT_BATCH_WINDOW_SECONDS)
     scheduler_service = make_test_scheduler_service(app_db, test_event_broadcaster)
     # TestService's own pool, as in main.py — never the platform SchedulerService's.
     test_job_queue = JobQueue(max_concurrent=1, broadcaster=test_event_broadcaster)

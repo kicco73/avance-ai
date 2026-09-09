@@ -2,7 +2,7 @@
 entirely (see ChatService._process_human_turn): no _session_scope lock, no
 TrackingEngine, no auto-generated opening message — the operator's own
 reply is the only thing that produces the assistant message, delivered
-through the exact same 'chunk'/'done' frames a normal turn uses.
+through the exact same 'chunk'/'turn.ended' frames a normal turn uses.
 """
 from __future__ import annotations
 
@@ -129,7 +129,7 @@ async def test_a_human_operators_reply_arrives_as_the_turns_own_done_frame(chat_
     # for HumanTalker's own typing-race first yield) — _process_human_turn
     # dispatches an empty chunk as "typing", never "chunk" (see chat/
     # ws_turn.py's own on_metadata).
-    assert kinds == ["typing", "chunk", "done"]
+    assert kinds == ["turn.started", "output.text", "turn.ended"]
     assert events[-1][1]["reply"][0]["content"] == "sure, let me check"
     assert events[-1][1]["state_changed"] is False
     assert events[-1][1]["new_state"] is None
@@ -159,11 +159,11 @@ async def test_a_human_mode_turn_never_holds_the_session_lock(chat_service_for):
         _run_turn(chat_service, session["id"], "turn-2", "second message, sent before the first is answered"),
         timeout=1.0,
     )
-    assert [event for event, _ in second_events][-1] == "done"
+    assert [event for event, _ in second_events][-1] == "turn.ended"
 
     finish.set()
     first_events = await asyncio.wait_for(task, timeout=1.0)
-    assert [event for event, _ in first_events][-1] == "done"
+    assert [event for event, _ in first_events][-1] == "turn.ended"
 
 
 async def test_a_human_mode_session_never_auto_generates_an_opening_message(chat_service_for):

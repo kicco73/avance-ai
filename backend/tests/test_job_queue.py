@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from conftest import NullBroadcaster
+from broadcaster import Broadcaster
 from jobs import CancelableJob
 from jobs.job_queue import JobQueue
 from try_again_error import TryAgainError
@@ -15,7 +15,7 @@ pytestmark = pytest.mark.contract
 
 
 def _queue(max_concurrent: int = 1) -> JobQueue:
-    return JobQueue(max_concurrent=max_concurrent, broadcaster=NullBroadcaster())
+    return JobQueue(max_concurrent=max_concurrent, broadcaster=Broadcaster())
 
 
 def _wait_until(predicate, timeout=2.0, interval=0.01) -> bool:
@@ -339,7 +339,7 @@ async def test_abort_broadcasts_a_parent_left_only_waiting_on_a_child():
     aborts, not just whichever ones a worker happens to step through."""
     started = threading.Event()
     release = threading.Event()
-    broadcaster = NullBroadcaster()
+    broadcaster = Broadcaster()
     job_queue = JobQueue(max_concurrent=1, broadcaster=broadcaster)
     connection = broadcaster.connect("test")
 

@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from conftest import NullBroadcaster
+from broadcaster import Broadcaster
 from db import Db
 from db.models import Task as TaskRow
 from scheduler.persisted_scheduler import PersistedScheduler
@@ -100,7 +100,7 @@ def _stop_schedulers():
 def _make(
     file_db: Db, sink: list, *, start: bool = True, hydrators: dict | None = None, lease_seconds: float = 600.0,
 ) -> PersistedScheduler:
-    queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
+    queue = JobQueue(max_concurrent=1, broadcaster=Broadcaster())
     scheduler = PersistedScheduler(queue, file_db, poll_interval_seconds=0.2, lease_seconds=lease_seconds)
     for task_type, hydrator in (hydrators if hydrators is not None else _hydrators(sink)).items():
         scheduler.register_task_type(task_type, hydrator)

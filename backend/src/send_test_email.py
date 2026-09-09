@@ -5,7 +5,7 @@ import asyncio
 
 from config import AppConfig
 from db import Db
-from jobs import NullBroadcaster
+from broadcaster import Broadcaster
 from notification.notification_service import NotificationService
 from scheduler import SchedulerService
 
@@ -18,7 +18,7 @@ async def main() -> None:
     config = AppConfig()
     # Never started: this script only ever submits one immediate job,
     # so no hibernated task of the real deployment gets claimed by it.
-    scheduler_service = SchedulerService(max_concurrent=1, broadcaster=NullBroadcaster(), db=Db(config.database_url))
+    scheduler_service = SchedulerService(max_concurrent=1, broadcaster=Broadcaster(), db=Db(config.database_url))
     service = NotificationService(config.notification_service_config, scheduler_service)
     await service.send_mail(
         to=args.to,

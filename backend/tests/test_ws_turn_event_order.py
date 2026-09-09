@@ -1,7 +1,7 @@
 """End to end, through a real WsChatTurn (see chat/ws_turn.py) and a real
 AiService driven by a fake provider: every frame a turn raises reaches the
 connection in the order it was raised, each with the turn's own turn_id,
-and "done" always comes last — after every chunk, whether the turn made
+and "turn.ended" always comes last — after every chunk, whether the turn made
 tool calls (a collected round replayed without ever yielding the loop) or
 not. on_metadata is synchronous end to end (see tracking/turn_callbacks.py's
 own OnMetadata): nothing is scheduled, so nothing can be overtaken.
@@ -111,19 +111,19 @@ async def _streamed_events(chat_service: ChatService, text: str) -> list[tuple[s
     turn = WsChatTurn(chat_service, connection, "turn-1", session["id"], text)
     assert turn.accept()
     await turn.run()
-    assert {frame["turn_id"] for frame in connection.frames} == {"turn-1"}
+    assert {frame["stream_id"] for frame in connection.frames} == {"turn-1"}
     return [(frame["type"], frame) for frame in connection.frames]
 
 
 def _kinds(events: list[tuple[str, dict]]) -> list[str]:
     return [
-        f"tool({data['phase']})" if event == "tool" else event
+        f"tool({data['phase']})" if event == "turn.tool" else event
         for event, data in events
     ]
 
 
 def _streamed_text(events: list[tuple[str, dict]]) -> str:
-    return "".join(data["content"] for event, data in events if event == "chunk")
+    return "".join(data["body"] for event, data in events if event == "output.text")
 
 
 async def test_with_declared_sources_every_chunk_of_the_replayed_final_round_precedes_done(chat_service_for):
@@ -134,13 +134,13 @@ async def test_with_declared_sources_every_chunk_of_the_replayed_final_round_pre
     events = await _streamed_events(chat_service, "where's my flight?")
 
     kinds = _kinds(events)
-    # "typing" always precedes generation (see tracking_processor.py's
+    # "turn.started" always precedes generation (see tracking_processor.py's
     # own process()), before even the first tool call.
-    assert kinds[0] == "typing"
+    assert kinds[0] == "turn.started"
     assert kinds[1:3] == ["tool(start)", "tool(result)"]
-    assert kinds[-1] == "done"
+    assert kinds[-1] == "turn.ended"
     chunk_kinds = kinds[3:-1]
-    assert chunk_kinds and set(chunk_kinds) == {"chunk"}
+    assert chunk_kinds and set(chunk_kinds) == {"output.text"}
     assert _streamed_text(events) == "Your flight is on time."
     assert events[-1][1]["reply"][0]["content"] == "Your flight is on time."
 
@@ -153,9 +153,9 @@ async def test_without_sources_and_tracking_after_the_user_message_every_chunk_p
     events = await _streamed_events(chat_service, "hello")
 
     kinds = _kinds(events)
-    assert kinds[-1] == "done"
-    assert kinds[0] == "typing"
-    assert kinds[1:-1] and set(kinds[1:-1]) == {"chunk"}
+    assert kinds[-1] == "turn.ended"
+    assert kinds[0] == "turn.started"
+    assert kinds[1:-1] and set(kinds[1:-1]) == {"output.text"}
     assert _streamed_text(events) == "Your flight is on time."
 
 
@@ -167,7 +167,7 @@ async def test_with_declared_sources_but_no_tool_call_the_answer_streams_then_do
     events = await _streamed_events(chat_service, "hello")
 
     kinds = _kinds(events)
-    assert kinds[-1] == "done"
-    assert kinds[0] == "typing"
-    assert kinds[1:-1] and set(kinds[1:-1]) == {"chunk"}
+    assert kinds[-1] == "turn.ended"
+    assert kinds[0] == "turn.started"
+    assert kinds[1:-1] and set(kinds[1:-1]) == {"output.text"}
     assert _streamed_text(events) == "Your flight is on time."

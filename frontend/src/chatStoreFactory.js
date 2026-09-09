@@ -16,7 +16,7 @@ import { registerSkinSource } from './chatSkin.js'
 
 const SESSION_INACTIVE_CODES = ['session_closed', 'session_channel_mismatch', 'session_superseded']
 
-// A 'typing' frame (see chat/ws_turn.py) turns the dots on; if nothing
+// A 'turn.started' frame (see chat/ws_turn.py) turns the dots on; if nothing
 // real follows within this long, they turn back off on their own rather
 // than sitting there forever (e.g. an operator who started typing then
 // walked away) — the turn itself keeps waiting regardless, this only
@@ -383,7 +383,7 @@ export function createChatStore({
       messageId: null,
       timestamp: new Date().toISOString(),
       pending: true,
-      // Set only by an explicit 'typing' frame below — never assumed just
+      // Set only by an explicit 'turn.started' frame below — never assumed just
       // because content starts empty (see MessageBubble.vue's own
       // isAwaitingReply).
       awaitingReply: false,
@@ -407,13 +407,13 @@ export function createChatStore({
       clearTimeout(awaitingReplyTimer)
       awaitingReplyTimer = null
     }
-    // A 'typing' frame is routed here directly (see chatChannel.js's own
+    // A 'turn.started' frame is routed here directly (see chatChannel.js's own
     // multi-subscriber support), not through chatClient.js's onChunk —
     // that file is off limits, and it only ever forwards non-empty
-    // content anyway (see its own `if (turn && data.content)` guard).
+    // content anyway (see its own `if (turn && data.body)` guard).
     // This is what actually reveals the bubble in the common case (see
     // `pending` above) — nothing on screen shows it any sooner.
-    const unsubscribeTyping = chatChannel.subscribe('typing', (frame) => {
+    const unsubscribeTyping = chatChannel.subscribe('turn.started', (frame) => {
       if (frame.session_id !== turnSessionId || currentSessionId.value !== turnSessionId) return
       const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
       if (idx === -1) return
@@ -456,7 +456,7 @@ export function createChatStore({
             messages.value[idx] = {
               ...messages.value[idx],
               content: messages.value[idx].content + chunkText,
-              // Covers the one case 'typing' never fires: a human
+              // Covers the one case 'turn.started' never fires: a human
               // operator whose reply itself wins the race against their
               // own typing signal (see talker/human_talker.py's own
               // chat()) — the first thing this bubble ever shows is the

@@ -354,7 +354,7 @@ class _ScriptedWebSocket(_FakeWebSocket):
 
     async def send_json(self, payload: dict):
         self.sent.append(payload)
-        finished = len([f for f in self.sent if f.get("type") in ("done", "error")])
+        finished = len([f for f in self.sent if f.get("type") in ("turn.ended", "turn.failed")])
         if self._stop_after_finished is not None and finished >= self._stop_after_finished:
             self.disconnect_now.set()
 
@@ -367,7 +367,7 @@ async def _wait_for(predicate, timeout: float = 5.0) -> None:
 
 
 def _frames_of(frames: list[dict], turn_id: str) -> list[dict]:
-    return [frame for frame in frames if frame.get("turn_id") == turn_id]
+    return [frame for frame in frames if frame.get("stream_id") == turn_id]
 
 
 @pytest.mark.regression
@@ -387,8 +387,8 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     channel = WsNotifications(_FakeAuthService(), chat_service)
     websocket = _ScriptedWebSocket(
         [
-            json.dumps({"type": "turn", "turn_id": "first", "session_id": session["id"], "text": "I have a problem"}),
-            json.dumps({"type": "turn", "turn_id": "second", "session_id": session["id"], "text": "with flight VY3003"}),
+            json.dumps({"type": "input.text", "stream_id": "first", "session_id": session["id"], "body": "I have a problem"}),
+            json.dumps({"type": "input.text", "stream_id": "second", "session_id": session["id"], "body": "with flight VY3003"}),
         ],
         stop_after_finished=2,
     )
@@ -407,14 +407,14 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     assert [m["role"] for m in persisted] == ["user", "user", "assistant", "assistant"]
     assert [m["content"] for m in persisted if m["role"] == "user"] == ["I have a problem", "with flight VY3003"]
 
-    # Each frame's own turn reported under its own turn_id: a "typing"
+    # Each frame's own turn reported under its own turn_id: a "turn.started"
     # frame first (see tracking_processor.py's own process()), chunks,
     # then done.
     for turn_id in ("first", "second"):
         own = _frames_of(websocket.sent, turn_id)
-        assert own[-1]["type"] == "done", own
-        assert own[0]["type"] == "typing", own
-        assert set(f["type"] for f in own[1:-1]) == {"chunk"}
+        assert own[-1]["type"] == "turn.ended", own
+        assert own[0]["type"] == "turn.started", own
+        assert set(f["type"] for f in own[1:-1]) == {"output.text"}
 
 
 @pytest.mark.regression
@@ -427,7 +427,7 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
     session = await chat_service.get_current_session_if_any_or_create_new(None)
     channel = WsNotifications(_FakeAuthService(), chat_service)
     websocket = _ScriptedWebSocket(
-        [json.dumps({"type": "turn", "turn_id": "dropped", "session_id": session["id"], "text": "hello?"})],
+        [json.dumps({"type": "input.text", "stream_id": "dropped", "session_id": session["id"], "body": "hello?"})],
     )
 
     loop_task = asyncio.create_task(channel.channel_loop(websocket))
@@ -441,10 +441,10 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
 
     assert [m["role"] for m in db.get_messages(session["id"])] == ["user", "assistant"]
     # The only frame queued before the browser actually left is the
-    # "typing" one process() always sends first (see tracking_processor.
+    # "turn.started" one process() always sends first (see tracking_processor.
     # py) — nothing from the reply itself made it, since generation was
     # still gated behind provider.release at the moment of disconnect.
-    assert [f["type"] for f in websocket.sent] == ["typing"]
+    assert [f["type"] for f in websocket.sent] == ["turn.started"]
 
 
 @pytest.mark.regression
@@ -453,14 +453,14 @@ def test_every_outgoing_frame_of_a_turn_carries_its_turn_id_and_chunks_precede_d
 
     frames = chat_turn_frames(client, session["id"], "hi", turn_id="abc-123")
 
-    assert {f["turn_id"] for f in frames} == {"abc-123"}
-    assert frames[-1]["type"] == "done"
-    # "typing" always precedes generation (see tracking_processor.py's
+    assert {f["stream_id"] for f in frames} == {"abc-123"}
+    assert frames[-1]["type"] == "turn.ended"
+    # "turn.started" always precedes generation (see tracking_processor.py's
     # own process()), then every chunk, then done.
-    assert frames[0]["type"] == "typing"
+    assert frames[0]["type"] == "turn.started"
     chunks = frames[1:-1]
-    assert chunks and set(f["type"] for f in chunks) == {"chunk"}
-    assert frames[-1]["reply"][0]["content"] == "".join(f["content"] for f in chunks)
+    assert chunks and set(f["type"] for f in chunks) == {"output.text"}
+    assert frames[-1]["reply"][0]["content"] == "".join(f["body"] for f in chunks)
 
 
 @pytest.mark.contract
@@ -468,11 +468,11 @@ def test_a_turn_on_someone_elses_session_is_answered_with_an_error_frame(client,
     session = client.get("/api/chat/session").json()
 
     with chat_socket(client, username="intruder") as ws:
-        ws.send_json({"type": "turn", "turn_id": "x", "session_id": session["id"], "text": "hi"})
+        ws.send_json({"type": "input.text", "stream_id": "x", "session_id": session["id"], "body": "hi"})
         frame = ws.receive_json()
 
-    assert frame["type"] == "error"
-    assert frame["turn_id"] == "x"
+    assert frame["type"] == "turn.failed"
+    assert frame["stream_id"] == "x"
     assert frame["code"] == "session_not_found"
     assert [m for m in app_db.get_messages(session["id"]) if m["role"] == "user"] == []
 
@@ -484,5 +484,5 @@ def test_a_turn_on_a_closed_session_is_answered_with_session_closed(client, hell
 
     final = chat_turn_frames(client, session["id"], "hi")[-1]
 
-    assert final["type"] == "error"
+    assert final["type"] == "turn.failed"
     assert final["code"] == "session_closed"

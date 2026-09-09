@@ -17,8 +17,7 @@ from project.project_service import ProjectService
 from scheduler import SchedulerService
 from talk.talk_service import TalkService
 from testing.test_service import TestService
-from testing.last_status_broadcaster import LastStatusBroadcaster
-from testing.queue_progress_broadcaster import QueueProgressBroadcaster
+from broadcaster import Broadcaster
 from tracking.tracking_service import TrackingService
 
 from controllers.app_store_controller import AppStoreController
@@ -46,7 +45,7 @@ class AvanceController(object):
         tracking_service: TrackingService,
         test_service: TestService,
         auth_service: AuthService,
-        test_event_broadcaster: QueueProgressBroadcaster | LastStatusBroadcaster,
+        test_event_broadcaster: Broadcaster,
         scheduler_service: SchedulerService,
         version: str,
         services_config: dict,

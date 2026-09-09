@@ -54,12 +54,13 @@ from config import WhatsAppServiceConfig
 from db import Db
 from logging_factory import LoggerFactory
 from service_error import ServiceError
+import bus
+from bus import INPUT_AUDIO, INPUT_TEXT, Message
 from session import Session
 from talker import AiTalker
 from whatsapp.cloud_api_client import WhatsAppCloudApiClient
 
 if TYPE_CHECKING:
-    from listen.listen_service import ListenService
     from talk.talk_service import TalkService
 
 logger = LoggerFactory.get_logger(__name__)
@@ -133,14 +134,12 @@ class WhatsAppService(object):
         auth_service: AuthService,
         client: WhatsAppCloudApiClient | None = None,
         talk_service: "TalkService | None" = None,
-        listen_service: "ListenService | None" = None,
     ) -> None:
         self._config = config
         self._chat_service = chat_service
         self._db = db
         self._auth_service = auth_service
         self._talk_service = talk_service
-        self._listen_service = listen_service
         self._assistant_talker = AiTalker(talk_service=talk_service)
         self._client = client or WhatsAppCloudApiClient(
             config.access_token, config.phone_number_id, config.graph_version
@@ -242,38 +241,71 @@ class WhatsAppService(object):
                     return (*await self._accept_terms_action(), False)
                 return (*await self._run_action(message.action_id), False)
             if message.type == "audio" and message.audio_id:
-                if self._listen_service is None:
-                    logger.info(f"WhatsApp [{message.id}]: voice note from {message.sender} but no listen-service.")
-                    return _notice(REPLY_UNSUPPORTED_AUDIO)
-                text = await self._transcribe(message, message.audio_id)
+                text = await self._decoded_text(message, message.audio_id)
                 if text is None:
-                    return _notice(REPLY_AUDIO_NOT_UNDERSTOOD)
+                    return _notice(self._audio_notice())
                 return (*await self._run_turn(text, spoken=True), True)
             text = (message.text or "").strip()
             if message.type != "text" or not text:
                 return _notice(REPLY_UNSUPPORTED)
             return (*await self._run_turn(text), False)
 
-    async def _transcribe(self, message: IncomingMessage, audio_id: str) -> str | None:
-        """Transcript of the voice note, or None when it couldn't be
-        fetched/understood — the caller turns that into a notice, never
-        a turn with an empty user message."""
-        from listen.listen_service import ListenServiceError
+    async def _decoded_text(self, message: IncomingMessage, audio_id: str) -> str | None:
+        """The voice note as text, or None when nothing could read it —
+        the caller turns that into a notice, never a turn with an empty
+        user message.
 
-        try:
+        This channel does not know what speech-to-text is. It publishes
+        the voice note on the Bus as `input.audio` and takes back whatever
+        `input.text` a decoder produced from it (see listen.decoder);
+        whether a decoder exists at all is asked first, so "nobody here
+        can read a voice note" is answered on the spot rather than by a
+        message disappearing.
+
+        The audio is passed as a callable rather than as bytes: nothing is
+        downloaded from Meta for a message no one is going to decode."""
+        decoded: list[str] = []
+
+        async def take(converted: Message) -> None:
+            # Only this voice note's own answer: two users' messages can
+            # be decoded at the same time, and neither may take the
+            # other's text.
+            if converted.origin_id == message.id:
+                decoded.append(str(converted.body))
+
+        async def fetch() -> bytes:
             audio, mime_type = await self._client.download_media(audio_id)
-            transcript = (await self._listen_service.transcribe(audio)).strip()
+            logger.info(f"WhatsApp [{message.id}]: downloaded {len(audio)} bytes of {mime_type}.")
+            return audio
+
+        bus.subscribe(INPUT_TEXT, take)
+        try:
+            await bus.publish(self._inbound(message, INPUT_AUDIO, fetch, mime="audio/ogg"))
         except httpx.HTTPError as exc:
             logger.warning(f"WhatsApp [{message.id}]: media download failed: {exc}")
             return None
-        except ListenServiceError as exc:
-            logger.warning(f"WhatsApp [{message.id}]: transcription failed: {exc}")
+        finally:
+            bus.unsubscribe(INPUT_TEXT, take)
+        if not decoded:
+            logger.info(f"WhatsApp [{message.id}]: no decoder produced text for this voice note.")
             return None
-        if not transcript:
-            logger.info(f"WhatsApp [{message.id}]: empty transcript ({mime_type}, {len(audio)} bytes).")
-            return None
-        logger.info(f"WhatsApp [{message.id}]: transcribed {len(audio)} bytes of {mime_type}: {transcript[:80]!r}")
-        return transcript
+        logger.info(f"WhatsApp [{message.id}]: decoded to {decoded[0][:80]!r}")
+        return decoded[0]
+
+    def _audio_notice(self) -> str:
+        """What to say about a voice note that produced no text: that we
+        cannot listen at all when nothing is registered to decode audio,
+        and that we could not make it out when something is."""
+        return REPLY_AUDIO_NOT_UNDERSTOOD if bus.handlers_for(INPUT_AUDIO) else REPLY_UNSUPPORTED_AUDIO
+
+    def _inbound(self, message: IncomingMessage, type: str, body, mime: str | None = None) -> Message:
+        """One inbound WhatsApp message, as the Bus sees it — everything
+        that says which conversation this is travels with it, so a
+        conversion never has to reconstruct it."""
+        return Message(
+            type=type, body=body, mime=mime,
+            username=Session().user, channel=WHATSAPP_CHAT, origin_id=message.id,
+        )
 
     async def _handle_unlinked(self, message: IncomingMessage) -> tuple[list[Reply], list[dict] | None, int | None]:
         """A number with no User row at all: the only way forward is a

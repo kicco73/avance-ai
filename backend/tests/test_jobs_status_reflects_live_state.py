@@ -1,9 +1,7 @@
 """Regression coverage for the "reconnecting to Test shows stale/idle
-state" problem: get_test_status serves LastStatusBroadcaster's own
-recorded last-message-per-key snapshot directly — one broadcaster records
-state and forwards to the /ws/notifications-facing one, instead of a
-second, separately re-derived computation (job.status()/the DB) that
-could disagree with it.
+state" problem: get_test_status serves the broadcaster's own recorded
+last-message-per-key snapshot directly, instead of a second, separately
+re-derived computation (job.status()/the DB) that could disagree with it.
 """
 from __future__ import annotations
 
@@ -17,7 +15,7 @@ from conftest import chat_turn
 from jobs import CancelableJob
 from testing.jobs import AllStatesAggregationJob
 from testing.jobs.state_aggregation_job import StateAggregationJob
-from testing.last_status_broadcaster import LastStatusBroadcaster
+from broadcaster import Broadcaster
 
 pytestmark = pytest.mark.contract
 
@@ -31,33 +29,29 @@ def _wait_until(predicate, timeout=5.0, interval=0.02):
     return predicate()
 
 
-class _FakeInner:
-    def __init__(self) -> None:
-        self.pushed: list[tuple[str, dict]] = []
+def test_the_broadcaster_records_every_push_and_still_delivers_it():
+    broadcaster = Broadcaster()
+    message = {"key": "batch:sessions-branch", "job_status": "running", "queue_status": "running"}
 
-    def connect(self, username):
-        return object()
-
-    def disconnect(self, username, connection):
-        pass
-
-    def push(self, username, message):
-        self.pushed.append((username, message))
-
-
-def test_last_status_broadcaster_records_and_forwards_every_push():
-    inner = _FakeInner()
-    broadcaster = LastStatusBroadcaster(inner)
-
-    broadcaster.push("alice", {"key": "batch:sessions-branch", "job_status": "running", "queue_status": "running"})
+    broadcaster.push("alice", message)
 
     assert broadcaster.last_status("batch:sessions-branch")["job_status"] == "running"
-    assert inner.pushed == [("alice", {"key": "batch:sessions-branch", "job_status": "running", "queue_status": "running"})]
 
 
-def test_last_status_broadcaster_keeps_only_the_latest_message_per_key():
-    inner = _FakeInner()
-    broadcaster = LastStatusBroadcaster(inner)
+async def test_a_recorded_push_still_reaches_a_connected_waiter():
+    """Recording must never replace delivery: JobQueue.wait_for waits by
+    connecting here and awaiting a push."""
+    broadcaster = Broadcaster()
+    connection = broadcaster.connect("alice")
+
+    broadcaster.push("alice", {"key": "batch:root", "job_status": "running"})
+
+    assert (await connection.get())["job_status"] == "running"
+    assert broadcaster.last_status("batch:root")["job_status"] == "running"
+
+
+def test_the_broadcaster_keeps_only_the_latest_message_per_key():
+    broadcaster = Broadcaster()
 
     broadcaster.push("alice", {"key": "batch:root", "job_status": "running", "queue_status": "running"})
     broadcaster.push("alice", {"key": "batch:root", "job_status": "completed", "queue_status": "exited"})
@@ -66,9 +60,8 @@ def test_last_status_broadcaster_keeps_only_the_latest_message_per_key():
     assert broadcaster.snapshot() == [{"key": "batch:root", "job_status": "completed", "queue_status": "exited"}]
 
 
-def test_last_status_broadcaster_clear_and_forget():
-    inner = _FakeInner()
-    broadcaster = LastStatusBroadcaster(inner)
+def test_the_broadcaster_forgets_one_key_or_all_of_them():
+    broadcaster = Broadcaster()
     broadcaster.push("alice", {"key": "batch:root", "job_status": "completed", "queue_status": "exited"})
     broadcaster.push("alice", {"key": "batch:sessions-branch", "job_status": "completed", "queue_status": "exited"})
 
@@ -83,7 +76,7 @@ def test_last_status_broadcaster_clear_and_forget():
 def test_get_test_status_returns_the_broadcaster_snapshot(client, hello_project):
     """A job that already finished before anyone asked must still be
     visible in the very next snapshot read — the whole point of
-    LastStatusBroadcaster recording rather than only ever forwarding."""
+    the broadcaster recording rather than only ever forwarding."""
     test_service = client.app.state.test_service
     test_service._status_broadcaster.push(
         "user", {"key": "batch:root", "job_status": "completed", "queue_status": "exited", "error": None},

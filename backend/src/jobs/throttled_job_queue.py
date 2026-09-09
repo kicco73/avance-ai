@@ -11,7 +11,7 @@ from .job import DependentJob
 from .job_queue import JobQueue
 
 if TYPE_CHECKING:
-    from testing.queue_progress_broadcaster import QueueProgressBroadcaster
+    from broadcaster import Broadcaster
 
 
 logger = LoggerFactory.get_logger(__name__)
@@ -30,7 +30,7 @@ class ThrottledJobQueue(JobQueue):
     def __init__(
         self,
         max_concurrent: int,
-        broadcaster: "QueueProgressBroadcaster",
+        broadcaster: "Broadcaster",
         max_jobs_per_minute: int,
         min_job_interval_ms: int,
     ) -> None:

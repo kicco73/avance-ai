@@ -15,8 +15,7 @@ from fastapi import HTTPException, Request, Response
 from auth.roles import role_satisfies
 from chat.chat_service import ChatService
 from db import Db
-from testing.last_status_broadcaster import LastStatusBroadcaster
-from testing.queue_progress_broadcaster import QueueProgressBroadcaster
+from broadcaster import Broadcaster
 from project.project_service import ProjectService
 from scheduler import SchedulerService
 from session import Session
@@ -32,7 +31,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
 
     def __init__(
         self, chat_service: ChatService, project_service: ProjectService, db: Db, version: str,
-        test_event_broadcaster: QueueProgressBroadcaster | LastStatusBroadcaster, scheduler_service: SchedulerService,
+        test_event_broadcaster: Broadcaster, scheduler_service: SchedulerService,
         services_config: dict,
     ) -> None:
         self.chat_service = chat_service

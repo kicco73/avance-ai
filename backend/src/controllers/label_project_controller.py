@@ -15,7 +15,7 @@ from project.project_service import ProjectService
 from scheduler import SchedulerService
 from session import Session
 from testing.test_service import TestService
-from testing.last_status_broadcaster import LastStatusBroadcaster
+from broadcaster import Broadcaster
 from tracking.tracking_service import TrackingService
 from schemas import (
     CommentRequest,
@@ -40,7 +40,7 @@ class LabelProjectController(BaseController):
         project_service: ProjectService,
         tracking_service: TrackingService,
         test_service: TestService,
-        test_event_broadcaster: LastStatusBroadcaster,
+        test_event_broadcaster: Broadcaster,
         scheduler_service: SchedulerService,
     ) -> None:
         self.chat_service = chat_service

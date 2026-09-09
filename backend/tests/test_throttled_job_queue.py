@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from conftest import NullBroadcaster
+from broadcaster import Broadcaster
 from jobs import CancelableJob
 from jobs.throttled_job_queue import ThrottledJobQueue
 from jobs import throttled_job_queue as throttled_job_queue_module
@@ -73,7 +73,7 @@ def test_min_job_interval_ms_is_respected_between_consecutive_jobs(fake_time):
     log: list[float] = []
     job_queue = ThrottledJobQueue(
         max_concurrent=1,
-        broadcaster=NullBroadcaster(),
+        broadcaster=Broadcaster(),
         max_jobs_per_minute=1000,
         min_job_interval_ms=100,
     )
@@ -92,7 +92,7 @@ def test_max_jobs_per_minute_forces_a_wait_until_the_next_window(fake_time):
     log: list[float] = []
     job_queue = ThrottledJobQueue(
         max_concurrent=1,
-        broadcaster=NullBroadcaster(),
+        broadcaster=Broadcaster(),
         max_jobs_per_minute=2,
         min_job_interval_ms=0,
     )
@@ -113,7 +113,7 @@ def test_max_jobs_per_minute_is_a_true_sliding_window_across_the_boundary(fake_t
     log: list[float] = []
     job_queue = ThrottledJobQueue(
         max_concurrent=1,
-        broadcaster=NullBroadcaster(),
+        broadcaster=Broadcaster(),
         max_jobs_per_minute=2,
         min_job_interval_ms=0,
     )
@@ -150,7 +150,7 @@ def test_non_background_jobs_bypass_the_throttle(fake_time):
     log: list[float] = []
     job_queue = ThrottledJobQueue(
         max_concurrent=1,
-        broadcaster=NullBroadcaster(),
+        broadcaster=Broadcaster(),
         max_jobs_per_minute=1,
         min_job_interval_ms=100_000,
     )
@@ -220,7 +220,8 @@ class _NoOpJob(CancelableJob):
 
 
 class _RecordingBroadcaster:
-    """Captures every push() verbatim — NullBroadcaster drops them, so
+    """Captures every push() verbatim — a plain Broadcaster reaches no
+    user-facing surface, so
     it can't tell us what queue_status a given broadcast actually
     carried."""
 

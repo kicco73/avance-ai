@@ -33,14 +33,14 @@ from project.health_notifications import ProjectHealthNotifications
 from project.project_service import ProjectService
 from ai import AiService
 from testing.test_service import TestService
-from testing.queue_progress_broadcaster import QueueProgressBroadcaster
-from testing.last_status_broadcaster import LastStatusBroadcaster
+from broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
 from tracking.actuators import TaskNamespaceFactory
 from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
 from whatsapp.whatsapp_service import WhatsAppService
+from listen.decoder import SpeechDecoder
 from listen.listen_service import ListenService
 
 __version__ = "1.33.0"
@@ -101,8 +101,14 @@ def create_app() -> FastAPI:
         )
         talk_service = TalkService.from_config(config.talk_services) if config.talk_services is not None else None
         listen_service = ListenService.from_config(config.listen_services) if config.listen_services is not None else None
+        if listen_service is not None:
+            # Listen joins the conversation by registering on the Bus, not
+            # by being handed to whoever might need it: a channel that
+            # receives a voice note asks the Bus whether anything decodes
+            # audio and never names speech-to-text (see listen.decoder).
+            SpeechDecoder(listen_service).register()
         
-        test_event_broadcaster = LastStatusBroadcaster(QueueProgressBroadcaster(ai_test_service))
+        test_event_broadcaster = Broadcaster(ai_test_service, batch_window_seconds=DEFAULT_BATCH_WINDOW_SECONDS)
         # Started last (see the end of this block): until then its Task
         # table only gains rows, nothing is claimed.
         scheduler_service = SchedulerService(max_concurrent=config.jobs_shared_max_concurrent, broadcaster=test_event_broadcaster, db=db)
@@ -243,7 +249,7 @@ def create_app() -> FastAPI:
         whatsapp_service = (
             WhatsAppService(
                 config.whatsapp_service_config, chat_service, db, auth_service,
-                talk_service=talk_service, listen_service=listen_service,
+                talk_service=talk_service,
             )
             if config.whatsapp_service_config is not None else None
         )

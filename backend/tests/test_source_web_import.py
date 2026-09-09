@@ -23,7 +23,7 @@ PAGES = [
 ]
 COLUMNS = ["name", "district", "rating"]
 MODEL_CSV = "name,district,rating\nDr. Nuria,Eixample,4.8\nDr. Pau,Gracia,4.6\n"
-# Longer than QueueProgressBroadcaster's own 100ms batching window, so
+# Longer than the broadcaster's own 100ms batching window, so
 # each step lands as its own SSE chunk instead of being coalesced.
 STEP_SECONDS = 0.15
 
@@ -96,7 +96,7 @@ def test_web_import_reports_one_quarter_per_step_and_writes_the_csv_into_the_sou
     final = messages[-1]
     assert final["queue_status"] == "exited" and final["job_status"] == "completed", response.text
     # One quarter per completed step, nothing in between — a step
-    # finishing inside QueueProgressBroadcaster's own batching window is
+    # finishing inside the broadcaster's own batching window is
     # coalesced into the next chunk, so the sequence is a growing prefix
     # of the five, never a percentage of some other shape.
     percentages = [message["percentage"] for message in messages]

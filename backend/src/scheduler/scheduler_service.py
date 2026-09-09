@@ -37,7 +37,7 @@ from .task import Task
 
 if TYPE_CHECKING:
     from db import Db
-    from testing.queue_progress_broadcaster import QueueProgressBroadcaster
+    from broadcaster import Broadcaster
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -52,7 +52,7 @@ class SchedulerService:
     task can never run against a half-built process."""
 
     def __init__(
-        self, max_concurrent: int, broadcaster: "QueueProgressBroadcaster", db: "Db", *,
+        self, max_concurrent: int, broadcaster: "Broadcaster", db: "Db", *,
         task_lease_seconds: float = 600.0,
     ) -> None:
         self._broadcaster = broadcaster
