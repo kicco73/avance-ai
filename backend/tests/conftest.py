@@ -47,7 +47,24 @@ from tracking.tracking_service import TrackingService
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
 TEST_STATS_PATH = Path(__file__).resolve().parent.parent / "test_stats.json"
-_test_outcomes: dict[str, str] = {}
+
+
+class _TestRun:
+    def __init__(self):
+        self.outcome = None
+        self.seconds = 0.0
+
+    def record(self, report):
+        self.seconds += report.duration
+        if report.when == "call":
+            self.outcome = "failed" if report.failed else "passed"
+        elif report.failed:
+            self.outcome = "failed"
+        elif report.when == "setup" and report.skipped and self.outcome is None:
+            self.outcome = "skipped"
+
+
+_test_runs: dict[str, _TestRun] = {}
 
 
 def parse_sse_result(response) -> dict:
@@ -499,12 +516,7 @@ def hello_project(client: TestClient) -> str:
 
 
 def pytest_runtest_logreport(report) -> None:
-    if report.when == "call":
-        _test_outcomes[report.nodeid] = "failed" if report.failed else "passed"
-    elif report.when in ("setup", "teardown") and report.failed:
-        _test_outcomes[report.nodeid] = "failed"
-    elif report.when == "setup" and report.skipped and report.nodeid not in _test_outcomes:
-        _test_outcomes[report.nodeid] = "skipped"
+    _test_runs.setdefault(report.nodeid, _TestRun()).record(report)
 
 
 def _git_renamed_test_files() -> dict[str, str]:
@@ -558,7 +570,7 @@ def _is_full_test_run(session) -> bool:
 
 
 def pytest_sessionfinish(session, exitstatus) -> None:
-    if not _test_outcomes:
+    if not _test_runs:
         return
     TEST_STATS_PATH.touch(exist_ok=True)
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -568,17 +580,19 @@ def pytest_sessionfinish(session, exitstatus) -> None:
             raw = f.read()
             stats = _remap_renamed_files(json.loads(raw) if raw else {}, _git_renamed_test_files())
             if _is_full_test_run(session):
-                stats = {nodeid: entry for nodeid, entry in stats.items() if nodeid in _test_outcomes}
-            for nodeid, outcome in _test_outcomes.items():
+                stats = {nodeid: entry for nodeid, entry in stats.items() if nodeid in _test_runs}
+            for nodeid, run in _test_runs.items():
+                outcome = run.outcome
                 entry = stats.setdefault(
                     nodeid,
-                    {"runs": 0, "failures": 0, "skips": 0, "last_outcome": None, "last_run": None, "last_failed": None},
+                    {"runs": 0, "failures": 0, "skips": 0, "seconds": 0.0, "last_outcome": None, "last_run": None, "last_failed": None},
                 )
                 if outcome == "skipped":
                     entry["skips"] += 1
                 else:
                     entry["runs"] += 1
                     entry["failures"] += int(outcome == "failed")
+                entry["seconds"] = round(entry.get("seconds", 0.0) + run.seconds, 3)
                 entry["last_outcome"] = outcome
                 entry["last_run"] = now
                 if outcome == "failed":

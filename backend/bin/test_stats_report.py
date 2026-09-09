@@ -13,7 +13,7 @@ def main() -> None:
 
     stats = json.loads(STATS_PATH.read_text())
     rows = [
-        (nodeid, e["runs"], e["failures"], e["skips"], e.get("last_failed"))
+        (nodeid, e["runs"], e["failures"], e["skips"], e.get("seconds", 0.0), e.get("last_failed"))
         for nodeid, e in stats.items()
     ]
 
@@ -23,10 +23,14 @@ def main() -> None:
     else:
         rows.sort(key=lambda r: (-r[2], -(r[2] / r[1]) if r[1] else 0))
 
-    print(f"{'runs':>5} {'fails':>5} {'skips':>5} {'rate':>6}  {'last_failed':<20}  test")
-    for nodeid, runs, fails, skips, last_failed in rows:
+    if "--slowest" in sys.argv:
+        rows.sort(key=lambda r: -(r[4] / r[1] if r[1] else r[4]))
+
+    print(f"{'runs':>5} {'fails':>5} {'skips':>5} {'rate':>6} {'tot s':>8} {'avg s':>7}  {'last_failed':<20}  test")
+    for nodeid, runs, fails, skips, seconds, last_failed in rows:
         rate = f"{fails / runs:.0%}" if runs else "-"
-        print(f"{runs:>5} {fails:>5} {skips:>5} {rate:>6}  {last_failed or '-':<20}  {nodeid}")
+        avg = f"{seconds / runs:.2f}" if runs else "-"
+        print(f"{runs:>5} {fails:>5} {skips:>5} {rate:>6} {seconds:>8.1f} {avg:>7}  {last_failed or '-':<20}  {nodeid}")
 
 
 if __name__ == "__main__":

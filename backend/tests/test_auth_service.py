@@ -176,7 +176,7 @@ class TestCompleteRegistration:
         first already redeemed it."""
         db.ensure_project("maxed-project")
         maxed_service = ProjectService(db, AutomatonLoader(db), SessionManager(db), invite_max_shares=1)
-        invite = maxed_service.create_invite("maxed-project", created_by=None)
+        invite = PlatformService(maxed_service).create_invite("maxed-project", created_by=None)
         service = _auth_service(db, provider, maxed_service)
         first_token = service.login("google", "good-credential")
         service.complete_registration(first_token, invite["code"])
