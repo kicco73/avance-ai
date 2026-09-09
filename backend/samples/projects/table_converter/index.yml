@@ -1,0 +1,37 @@
+avance-version: "1.7.0"
+
+init-action:
+  target: Hello
+
+states:
+  Hello:
+    contextual-prompt: |-
+      Ask the user to paste the input file.
+    actions:
+      - name: action-0
+        ui-label: To MD
+        target: state-0
+        trigger: 'env.input_file not in ['''', None]'
+    output:
+      - input_file
+    input: []
+  state-0:
+    ui-label: MD
+    contextual-prompt: 'convert the original data the user wrote into an MD tabular format to output_file, then print it to the user.'
+    input:
+      - input_file
+    output:
+      - output_file
+project:
+  ui-label: Table Converter
+  id: table_converted
+  revision: 3
+  ui-description: An interactive tool to convert data into tables.
+general-prompt: "You are a converter between formats. \ninput and output template are giiven and you must return the output to the file that the user attaches."
+env:
+  input_file:
+    value: ''
+    ai-definition: the file in the original format that needs to be converted
+  output_file:
+    value: ''
+    ai-definition: The user input_file converted into the required format.

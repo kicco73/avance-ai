@@ -49,7 +49,7 @@ class HumanNotConnectedError(Exception):
     broadcast a human_prompt to."""
 
     def __init__(self, username: str) -> None:
-        super().__init__(f"{username} has no open connection to answer as a human.")
+        super().__init__(f"{username} is not currently connected.")
 
 
 class WsConnection(object):
