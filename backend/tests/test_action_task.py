@@ -156,9 +156,10 @@ def _process(db: Db, websocket: _FakeWebSocket | None = None, *, start: bool = F
     project_service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
     factory = make_test_namespace_factory(db, scheduler_service, project_service, ai_service)
     if websocket is not None:
+        # Constructing it is the wiring: WsNotifications subscribes to
+        # ui.notification itself, and nothing hands it to the factory.
         ws_notifications = WsNotifications(auth_service=None)
         ws_notifications._connections[USERNAME] = [websocket]
-        factory.set_ws_notifications(ws_notifications)
     if start:
         scheduler_service.start()
     return scheduler_service, project_service, factory

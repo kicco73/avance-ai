@@ -19,104 +19,104 @@
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_deferred_lambda_is_the_same_task_with_a_later_when_and_no_session": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_deferred_lambda_sees_names_assigned_earlier_in_the_same_script": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_fake_task_namespaces_task_still_runs_as_a_task_and_reports": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_task_is_hibernated_as_a_task_due_now_not_run_inline": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_task_never_sees_a_session": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_task_reports_a_suppressed_send_mail_over_the_websocket_in_fake_mode": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_task_survives_a_restart_and_runs_against_an_equivalent_environment": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_action_task.py::test_build_scope_with_no_session_never_constructs_a_persisted_env": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T09:41:46+00:00",
-    "runs": 6,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_action_task.py::test_deleting_the_project_takes_its_pending_tasks_with_it": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_action_task.py::test_persisted_env_cannot_be_constructed_without_a_session_id": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_action_task.py::test_task_prompt_runs_inside_the_task_with_the_firing_sessions_history": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_action_task.py::test_the_task_runs_against_the_revision_it_was_written_for": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_ai_package_boundary.py::test_nothing_outside_the_ai_package_imports_a_provider": {
@@ -2923,72 +2923,96 @@
     "failures": 1,
     "last_failed": "2026-09-08T22:05:07+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:04:22+00:00",
-    "runs": 18,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 19,
     "skips": 0
   },
   "tests/test_build_service_apps_dir.py::test_a_failed_build_leaves_nothing_the_loader_could_pick_up": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:04:22+00:00",
-    "runs": 18,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 19,
     "skips": 0
   },
   "tests/test_build_service_apps_dir.py::test_a_package_that_does_not_import_is_never_published": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:04:22+00:00",
-    "runs": 18,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 19,
     "skips": 0
   },
   "tests/test_build_service_apps_dir.py::test_a_project_with_unpublished_changes_cannot_be_built": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:04:22+00:00",
-    "runs": 18,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 19,
     "skips": 0
   },
   "tests/test_build_service_apps_dir.py::test_building_again_at_a_new_revision_replaces_the_old_package": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:04:22+00:00",
-    "runs": 18,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 19,
     "skips": 0
   },
-  "tests/test_build_service_backend_copy.py::test_a_built_backend_copy_is_a_real_launchable_server": {
+  "tests/test_build_service_backend_copy.py::test_a_backend_without_listen_still_imports_its_own_entry_point": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T09:59:21+00:00",
+    "last_run": "2026-09-09T10:12:48+00:00",
     "runs": 1,
+    "skips": 0
+  },
+  "tests/test_build_service_backend_copy.py::test_a_built_backend_copy_is_a_real_launchable_server": {
+    "failures": 2,
+    "last_failed": "2026-09-09T10:12:48+00:00",
+    "last_outcome": "failed",
+    "last_run": "2026-09-09T10:12:48+00:00",
+    "runs": 3,
     "skips": 0
   },
   "tests/test_build_service_backend_copy.py::test_a_project_with_unpublished_changes_cannot_be_built": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:04:22+00:00",
-    "runs": 2,
+    "last_run": "2026-09-09T10:12:48+00:00",
+    "runs": 4,
+    "skips": 0
+  },
+  "tests/test_build_service_backend_copy.py::test_a_skill_left_out_of_a_build_is_a_directory_that_is_not_copied": {
+    "failures": 0,
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-09T10:12:48+00:00",
+    "runs": 1,
     "skips": 0
   },
   "tests/test_build_service_backend_copy.py::test_pruning_a_database_with_only_the_kept_project_is_a_no_op": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:04:22+00:00",
-    "runs": 2,
+    "last_run": "2026-09-09T10:12:48+00:00",
+    "runs": 4,
     "skips": 0
   },
   "tests/test_build_service_backend_copy.py::test_pruning_drops_every_other_project_and_what_belongs_to_it": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:04:22+00:00",
-    "runs": 2,
+    "last_run": "2026-09-09T10:12:48+00:00",
+    "runs": 4,
+    "skips": 0
+  },
+  "tests/test_build_service_backend_copy.py::test_the_installed_skills_are_read_off_the_source_tree": {
+    "failures": 0,
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-09T10:12:48+00:00",
+    "runs": 1,
     "skips": 0
   },
   "tests/test_button_translation.py::test_a_state_with_a_manual_action_requests_translations_and_the_result_reaches_the_final_state_payload[malformed-falls-back]": {
@@ -3571,104 +3595,104 @@
     "failures": 1,
     "last_failed": "2026-09-08T22:38:50+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 14,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 15,
     "skips": 0
   },
   "tests/test_compiled_automaton_loader.py::test_a_package_that_does_not_import_degrades_rather_than_breaking_the_project": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 14,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 15,
     "skips": 0
   },
   "tests/test_compiled_automaton_loader.py::test_a_revision_that_is_not_the_published_one_is_never_served_compiled": {
     "failures": 1,
     "last_failed": "2026-09-08T22:05:07+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 14,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 15,
     "skips": 0
   },
   "tests/test_compiled_automaton_loader.py::test_everything_other_than_load_at_revision_is_the_ordinary_loader": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 14,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 15,
     "skips": 0
   },
   "tests/test_compiled_automaton_loader.py::test_the_published_revision_is_served_from_the_package_when_one_matches": {
     "failures": 1,
     "last_failed": "2026-09-08T22:05:07+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 14,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 15,
     "skips": 0
   },
   "tests/test_compiled_automaton_loader.py::test_the_second_load_comes_from_the_cache_rather_than_a_second_import": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 14,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 15,
     "skips": 0
   },
   "tests/test_compiled_automaton_loader.py::test_two_revisions_of_one_project_can_be_imported_at_once_without_serving_each_other": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 14,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 15,
     "skips": 0
   },
   "tests/test_compiled_automaton_loader.py::test_without_a_package_the_ordinary_loader_answers": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 14,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 15,
     "skips": 0
   },
   "tests/test_compiled_product_end_to_end.py::test_a_project_serves_interpreted_until_it_is_built_and_compiled_after": {
     "failures": 1,
     "last_failed": "2026-09-08T22:05:07+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 15,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 16,
     "skips": 0
   },
   "tests/test_compiled_product_end_to_end.py::test_a_project_with_unpublished_changes_cannot_be_built_through_the_panel": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 15,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 16,
     "skips": 0
   },
   "tests/test_compiled_product_end_to_end.py::test_editing_the_project_again_takes_it_back_to_the_interpreted_automaton": {
     "failures": 1,
     "last_failed": "2026-09-08T22:05:07+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 15,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 16,
     "skips": 0
   },
   "tests/test_compiled_product_end_to_end.py::test_the_app_store_listing_reports_whether_the_project_is_served_compiled": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 14,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 15,
     "skips": 0
   },
   "tests/test_compiled_product_end_to_end.py::test_the_design_view_reads_a_compiled_project_like_any_other": {
     "failures": 1,
     "last_failed": "2026-09-08T22:05:07+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 15,
+    "last_run": "2026-09-09T10:12:04+00:00",
+    "runs": 16,
     "skips": 0
   },
   "tests/test_concurrent_root_activation.py::test_root_aggregation_resolves_its_full_two_level_dependency_chain": {
@@ -4123,32 +4147,32 @@
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T09:41:46+00:00",
-    "runs": 6,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 9,
     "skips": 0
   },
   "tests/test_controller_action_task.py::test_manual_action_pushes_its_on_exits_own_chat_snippets_synchronously": {
-    "failures": 0,
-    "last_failed": null,
+    "failures": 1,
+    "last_failed": "2026-09-09T10:20:00+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-09T09:41:46+00:00",
-    "runs": 6,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 9,
     "skips": 0
   },
   "tests/test_controller_action_task.py::test_manual_action_without_on_exit_reports_none_even_for_the_same_target_state": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T09:41:46+00:00",
-    "runs": 6,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 9,
     "skips": 0
   },
   "tests/test_controller_action_task.py::test_state_payload_never_carries_on_exit_itself": {
-    "failures": 0,
-    "last_failed": null,
+    "failures": 1,
+    "last_failed": "2026-09-09T10:20:00+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-09T09:41:46+00:00",
-    "runs": 6,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 9,
     "skips": 0
   },
   "tests/test_controller_ai_models.py::test_get_ai_models_response_shape": {
@@ -6931,24 +6955,24 @@
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_human_mode_turn.py::test_a_human_mode_turn_never_holds_the_session_lock": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_human_mode_turn.py::test_a_human_operators_reply_arrives_as_the_turns_own_done_frame": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_input_token_budget.py::test_a_turn_whose_system_prompt_alone_exceeds_the_budget_is_rejected_before_calling_the_provider": {
@@ -7688,35 +7712,35 @@
     "skips": 0
   },
   "tests/test_on_exit_chat_switch.py::test_a_fake_chat_namespace_suppresses_switch_to_human_and_reports_it": {
-    "failures": 0,
-    "last_failed": null,
+    "failures": 1,
+    "last_failed": "2026-09-09T10:20:00+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_on_exit_chat_switch.py::test_a_mixed_on_exit_script_writes_env_and_pushes_a_chat_notification_synchronously": {
-    "failures": 0,
-    "last_failed": null,
+    "failures": 1,
+    "last_failed": "2026-09-09T10:20:00+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_on_exit_chat_switch.py::test_switch_to_ai_from_on_exit_clears_a_previously_set_operator": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_on_exit_chat_switch.py::test_switch_to_human_from_on_exit_records_the_operator_and_pages_them": {
-    "failures": 0,
-    "last_failed": null,
+    "failures": 1,
+    "last_failed": "2026-09-09T10:20:00+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_openai_compatible_provider_errors.py::test_bad_request_maps_to_request_error_not_permanent": {
@@ -8859,416 +8883,416 @@
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[absent-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[closed-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[closed-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[expired-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[expired-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[other_channel_open-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[other_channel_open-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[same_channel_open-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[same_channel_open-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[absent-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[absent-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[closed-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[closed-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[expired-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[expired-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[other_channel_open-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[other_channel_open-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[same_channel_open-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[same_channel_open-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[absent-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[absent-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[closed-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[closed-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[expired-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[expired-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[other_channel_open-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[other_channel_open-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[same_channel_open-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[same_channel_open-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[absent-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[absent-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[closed-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[closed-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[expired-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[expired-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[other_channel_open-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[other_channel_open-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[same_channel_open-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[same_channel_open-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[absent-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[absent-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[closed-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[closed-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[expired-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[expired-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[other_channel_open-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[other_channel_open-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[same_channel_open-native-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[same_channel_open-whatsapp-chat]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_takeover_web_to_whatsapp_via_run_turn_then_prepare_user_initiated_turn": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_channels.py::test_takeover_whatsapp_to_web_via_new_session_then_open_if_needed": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_session_facts.py::test_current_session_duration_is_zero_without_a_session_and_otherwise_measured_from_the_most_recent_one": {
@@ -10651,24 +10675,24 @@
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_wakeup_service.py::TestWsAdapterPush::test_manual_actions_includes_the_triggered_action_when_auto_tracking_is_disabled": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_wakeup_service.py::TestWsAdapterPush::test_nothing_is_pushed_when_the_self_loop_does_not_fire": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_wakeup_service.py::TestWsAdapterPush::test_the_transition_is_applied_regardless_of_whether_anyone_is_connected_or_ws_is_wired_at_all": {
@@ -10679,220 +10703,228 @@
     "runs": 5,
     "skips": 0
   },
+  "tests/test_wakeup_service.py::TestWsAdapterPush::test_the_transition_is_applied_whether_or_not_anyone_is_listening": {
+    "failures": 0,
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 2,
+    "skips": 0
+  },
   "tests/test_wakeup_service.py::test_a_user_with_no_session_in_the_observer_project_is_never_woken": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_wakeup_service.py::test_publishing_state_changed_wakes_up_every_observer_that_has_a_session": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_wakeup_service.py::test_reevaluating_fires_the_self_loop_only_once_the_observed_state_actually_matches": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_wakeup_service.py::test_the_reverse_index_records_the_reference_and_is_cleared_once_it_is_removed": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:40+00:00",
+    "runs": 7,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_a_gone_session_is_retried_once_for_turns_and_actions_reporting_a_technical_problem_if_it_fails_again[session_closed]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_a_gone_session_is_retried_once_for_turns_and_actions_reporting_a_technical_problem_if_it_fails_again[session_not_found]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_a_non_chat_state_becomes_a_notice_after_the_states_own_wrap_up_and_with_its_own_buttons": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_a_second_inbound_answered_by_the_turn_already_running_sends_nothing": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_a_valid_invite_code_plain_or_wame_prefixed_registers_welcomes_and_delivers_the_opening_message": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_accepting_terms_bootstraps_with_the_opening_message_or_a_plain_confirmation_never_resending_history": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_an_action_with_no_message_falls_back_to_the_states_ui_label_then_done_and_an_invalid_one_gets_a_notice_with_buttons": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_bad_signatures_status_updates_and_redeliveries_never_produce_a_second_turn": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_button_and_list_replies_apply_the_action_as_the_linked_account_while_an_unsupported_reply_is_ignored": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_cloud_api_client_sends_the_read_receipt_with_the_typing_indicator_and_swallows_a_failure": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_five_manual_actions_send_a_list": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_impersonation_does_not_leak_past_the_turn": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_manual_actions_become_buttons_excluding_triggered_ones_truncating_long_titles_and_plain_text_when_none": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_no_typing_indicator_when_mark_read_is_off": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_paused_project_gate_is_relayed": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_pending_terms_send_the_content_with_an_accept_button_instead_of_a_turn": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_registration_with_pending_terms_sends_terms_instead_of_the_welcome": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_taken_over_codes_become_the_taken_over_notice_for_turns_and_actions": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_turn_in_progress_becomes_the_busy_notice_for_turns_and_actions_with_no_buttons": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_turn_runs_as_the_linked_account_after_a_typing_indicator_replying_only_with_the_new_assistant_message": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_unexpected_error_during_redeem_gets_an_apology_not_silence": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_unlinked_unregistered_or_non_text_senders_get_a_canned_reply_and_no_turn": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_channel.py::test_verification_handshake_echoes_the_challenge_and_rejects_a_wrong_token": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_voice.py::test_a_voice_note_that_cannot_be_transcribed_gets_a_notice_and_no_turn": {
@@ -10995,200 +11027,200 @@
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestChannelLoop::test_a_ping_is_answered_with_a_pong_and_an_unknown_frame_is_ignored": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestChannelLoop::test_a_pushed_frame_reaches_the_socket_while_connected": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestChannelLoop::test_an_unauthenticated_socket_is_closed_with_4401_before_accept": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestChannelLoop::test_the_registration_is_removed_on_disconnect": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestConnectionCap::test_a_second_connection_for_a_plain_user_is_rejected": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestConnectionCap::test_a_third_connection_for_an_admin_is_rejected": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestConnectionCap::test_an_admin_may_open_a_second_connection": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestHumanPrompt::test_a_human_reply_resolves_await_human_reply_with_its_text": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestHumanPrompt::test_a_human_typing_frame_resolves_wait_for_typing": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestHumanPrompt::test_await_human_reply_clears_the_sessions_current_prompt": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestHumanPrompt::test_exclude_connection_id_keeps_the_sending_tab_from_seeing_its_own_prompt": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestHumanPrompt::test_raises_when_excluding_the_only_connection": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestHumanPrompt::test_raises_when_the_user_has_no_open_connection": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestPush::test_broadcasts_to_every_one_of_the_users_own_connections": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestPush::test_exclude_connection_id_returns_false_when_it_was_the_only_connection": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestPush::test_exclude_connection_id_skips_only_that_connection": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestPush::test_never_reaches_a_different_users_own_connection": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestPush::test_returns_false_when_no_connection_is_registered": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestPush::test_sends_the_payload_and_returns_true_when_a_connection_exists": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::test_a_turn_on_a_closed_session_is_answered_with_session_closed": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::test_a_turn_on_someone_elses_session_is_answered_with_an_error_frame": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::test_every_outgoing_frame_of_a_turn_carries_its_turn_id_and_chunks_precede_done": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_order_even_when_the_first_turn_is_slower": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:20:55+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_turn_event_order.py::test_with_declared_sources_but_no_tool_call_the_answer_streams_then_done": {

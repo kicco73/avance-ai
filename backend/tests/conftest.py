@@ -384,7 +384,6 @@ def run_pending_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0
     websocket = FakeWebSocket()
     ws_notifications = WsNotifications(auth_service=None)
     ws_notifications._connections[username] = [websocket]
-    factory.set_ws_notifications(ws_notifications)
     scheduler_service = app.state.scheduler_service
     scheduler_service.start()
     try:

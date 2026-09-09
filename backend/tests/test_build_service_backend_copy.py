@@ -119,3 +119,64 @@ def test_a_built_backend_copy_is_a_real_launchable_server(tmp_path, monkeypatch)
         assert [row[0] for row in connection.execute("SELECT id FROM Project")] == [PROJECT_A]
     finally:
         connection.close()
+
+
+@pytest.mark.contract
+def test_the_installed_skills_are_read_off_the_source_tree():
+    """Nothing maintains this list: a package with a skill.py is a skill,
+    and its package name is the directory a build either copies or does
+    not."""
+    import skills
+
+    installed = skills.installed()
+
+    assert {entry["package"] for entry in installed} >= {"listen"}
+    listen = next(entry for entry in installed if entry["package"] == "listen")
+    assert listen["key"] == "listen" and listen["label"]
+
+
+@pytest.mark.contract
+def test_a_skill_left_out_of_a_build_is_a_directory_that_is_not_copied(tmp_path):
+    """The switch is the absence of the code, not a flag inside it —
+    there is nothing in the built copy that records the choice, and
+    nothing at run time that could read it back."""
+    import shutil
+
+    from build.build_service import BACKEND_DIR, _ignore_for
+
+    full = tmp_path / "full"
+    without = tmp_path / "without"
+    shutil.copytree(BACKEND_DIR, full, ignore=_ignore_for([]))
+    shutil.copytree(BACKEND_DIR, without, ignore=_ignore_for(["listen"]))
+
+    assert (full / "src" / "listen" / "skill.py").is_file()
+    assert not (without / "src" / "listen").exists()
+    # Only that one directory: excluding a skill must not take anything
+    # else with it.
+    assert (
+        {path.name for path in (full / "src").iterdir()} - {path.name for path in (without / "src").iterdir()}
+        == {"listen"}
+    )
+
+
+@pytest.mark.contract
+def test_a_backend_without_listen_still_imports_its_own_entry_point(tmp_path):
+    """The reason a build can drop a directory at all: nothing outside it
+    names it. If some core file still imported listen, this is where it
+    would show."""
+    import shutil
+    import subprocess
+    import sys
+
+    from build.build_service import BACKEND_DIR, _ignore_for
+
+    copy = tmp_path / "backend"
+    shutil.copytree(BACKEND_DIR, copy, ignore=_ignore_for(["listen"]))
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import sys; sys.path.insert(0, 'src'); import main; import skills; print(skills.installed())"],
+        cwd=copy, capture_output=True, text=True, timeout=180,
+    )
+
+    assert result.returncode == 0, result.stderr[-2000:]
+    assert "'package': 'listen'" not in result.stdout

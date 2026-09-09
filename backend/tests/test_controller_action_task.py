@@ -58,7 +58,6 @@ def _attach_websocket(app, username: str) -> _FakeWebSocket:
     websocket = _FakeWebSocket()
     ws_notifications = WsNotifications(auth_service=None)
     ws_notifications._connections[username] = [websocket]
-    app.state.namespace_factory.set_ws_notifications(ws_notifications)
     return websocket
 
 

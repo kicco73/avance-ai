@@ -31,6 +31,7 @@ from logging_factory import LoggerFactory
 logger = LoggerFactory.get_logger(__name__)
 
 KEY = "listen"
+LABEL = "Listen — speech to text"
 
 
 def start(raw: dict, path: Path) -> None:

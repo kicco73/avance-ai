@@ -13,7 +13,13 @@ from http import HTTPStatus
 from build import BuildService, CompileError
 from fastapi import HTTPException
 
-from controllers.base_controller import BaseController, post
+import skills
+from controllers.base_controller import BaseController, get, post
+from pydantic import BaseModel
+
+
+class BuildBackendCopyRequest(BaseModel):
+    excluded_skills: list[str] = []
 
 
 class BuildController(BaseController):
@@ -31,9 +37,19 @@ class BuildController(BaseController):
         except CompileError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
+    @get("/api/build/skills", role="admin")
+    def get_build_skills(self):
+        """What this backend has installed and a build may leave out —
+        read off the source tree, never a list someone maintains (see
+        skills.installed)."""
+        return {"skills": skills.installed()}
+
     @post("/api/projects/{project_id}/build/backend-copy", role="admin")
-    def post_build_backend_copy(self, project_id: str):
+    def post_build_backend_copy(self, project_id: str, req: BuildBackendCopyRequest | None = None):
+        """`excluded_skills` names the packages this build leaves out.
+        Absent means a full build: a client that does not know about a
+        skill can never drop one by accident."""
         try:
-            return self.build_service.build_backend_copy(project_id)
+            return self.build_service.build_backend_copy(project_id, req.excluded_skills if req else None)
         except CompileError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc

@@ -172,7 +172,7 @@ class TestWsAdapterPush:
         _both_projects(db, project_service)
         ws_notifications, websocket = self._connected()
 
-        _wake(db, project_service, ws_notifications=ws_notifications)
+        _wake(db, project_service)
 
         assert len(websocket.sent) == 1
         assert websocket.sent[0]["type"] == "notification"
@@ -190,10 +190,7 @@ class TestWsAdapterPush:
         watcher_session = _both_projects(db, project_service)
         ws_notifications, websocket = self._connected()
 
-        _wake(
-            db, project_service, ws_notifications=ws_notifications,
-            tracking_service=_FakeTrackingService({watcher_session["id"]}),
-        )
+        _wake(db, project_service, tracking_service=_FakeTrackingService({watcher_session["id"]}))
 
         assert [a["name"] for a in websocket.sent[0]["state"]["manual_actions"]] == ["notice"]
 
@@ -201,16 +198,19 @@ class TestWsAdapterPush:
         _both_projects(db, project_service, observed_moved=False)
         ws_notifications, websocket = self._connected()
 
-        _wake(db, project_service, ws_notifications=ws_notifications)
+        _wake(db, project_service)
 
         assert websocket.sent == []
 
-    def test_the_transition_is_applied_regardless_of_whether_anyone_is_connected_or_ws_is_wired_at_all(self, db, project_service):
+    def test_the_transition_is_applied_whether_or_not_anyone_is_listening(self, db, project_service):
+        """The nudge is published either way; whether an interface is
+        connected — or subscribed at all — is not this service's business."""
         unconnected_session = _both_projects(db, project_service)
-        _wake(db, project_service, ws_notifications=WsNotifications(auth_service=None))
+        WsNotifications(auth_service=None)
+        _wake(db, project_service)
         assert db.get_signals(unconnected_session["id"])[-1]["new_state"] == "x"
 
-        # ws_notifications omitted entirely — same as before the parameter existed.
+        # Nobody subscribed at all.
         _wake(db, project_service)
         assert db.get_signals(unconnected_session["id"])[-1]["new_state"] == "x"
 

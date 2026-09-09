@@ -43,6 +43,21 @@ def discover(source_root: Path | None = None) -> list[ModuleType]:
     return found
 
 
+def installed(source_root: Path | None = None) -> list[dict]:
+    """What a build can choose to leave out, as the Build view lists it:
+    the package name — which is also the directory a build either copies
+    or does not — and a label to show. Derived from what is on disk, so a
+    skill added tomorrow appears without anyone maintaining a list."""
+    return [
+        {
+            "key": getattr(module, "KEY", module.__name__.split(".")[0]),
+            "package": module.__name__.split(".")[0],
+            "label": getattr(module, "LABEL", module.__name__.split(".")[0].replace("_", " ").title()),
+        }
+        for module in discover(source_root)
+    ]
+
+
 def start_all(raw: dict, path: Path, source_root: Path | None = None) -> list[ModuleType]:
     """Starts every discovered skill with the configuration file as it
     was read. Each reads the section that belongs to it; one that finds

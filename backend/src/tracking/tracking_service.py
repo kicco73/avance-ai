@@ -70,7 +70,7 @@ class TrackingService(object):
 		self._human_talker_factory: HumanTalkerFactory | None = None
 
 	def set_human_talker_factory(self, factory: HumanTalkerFactory) -> None:
-		"""Late-bound the same way namespace_factory.set_ws_notifications is
+		"""Late-bound the same way namespace_factory.set_whatsapp_service is
 		— TrackingService is built before WsNotifications exists, so
 		main.py wires this in once both are constructed."""
 		self._human_talker_factory = factory

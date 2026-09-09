@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 
 from automaton.automaton import JsSnippet
 from logging_factory import LoggerFactory
+import bus
+from bus import UI_HUMAN_TAKEOVER, UI_NOTIFICATION, Message
 from session import Session
 
 from .actuator_set import _run_sync
@@ -32,7 +34,7 @@ class ChatNamespace(ABC):
         # The factory that built this namespace — where switch_to_human/
         # switch_to_ai actually record the operator (see
         # TaskNamespaceFactory.set_human_operator/clear_human_operator),
-        # and where push_notification reaches the browser (ws_notifications).
+        # and where push_notification reaches whatever the person has open.
         self._factory = factory
         # Bound fresh per on-exit evaluation via with_session — never
         # set any other way. None for a namespace built without a firing
@@ -65,18 +67,14 @@ class ChatNamespace(ABC):
 
     def push_notification(self, snippet_text: str) -> None:
         """Pushes `snippet_text` (already-joined JsSnippet text — see
-        Automaton.eval_action_on_exit) over the same "notification"
-        websocket frame `task:`'s own ActionTask uses (see
+        Automaton.eval_action_on_exit) as the same ui.notification
+        `task:`'s own ActionTask publishes (see
         tracking/actuators/action_task.py's own _run_next_step) —
-        best-effort and silent, same contract WsNotifications.push
-        already has everywhere else: a no-op with nobody bound to push
-        to (no factory/session), or no websocket adapter yet wired up."""
+        best-effort and silent: a no-op with no factory or session, and
+        otherwise published whether or not any interface is listening."""
         if self._factory is None or self._session_id is None:
             return
-        ws_notifications = self._factory.ws_notifications
-        if ws_notifications is None:
-            return
-        _run_sync(ws_notifications.push(Session().user, {"type": "notification", "task": snippet_text}))
+        _run_sync(bus.publish(Message(type=UI_NOTIFICATION, username=Session().user, body={"task": snippet_text})))
 
     @abstractmethod
     def switch_to_human(self, user_id: str) -> JsSnippet | None:
@@ -96,9 +94,10 @@ class LiveChatNamespace(ChatNamespace):
             logger.warning("chat.switch_to_human() called outside a session context — ignored.")
             return None
         self._factory.set_human_operator(self._session_id, user_id)
-        ws_notifications = self._factory.ws_notifications
-        if ws_notifications is not None:
-            _run_sync(ws_notifications.send_human_takeover(user_id, self._session_id, self._project_id))
+        _run_sync(bus.publish(Message(
+            type=UI_HUMAN_TAKEOVER, username=user_id,
+            body={"session_id": self._session_id, "project_id": self._project_id},
+        )))
         return None
 
 

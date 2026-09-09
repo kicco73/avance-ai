@@ -8,7 +8,8 @@ import uuid
 from fastapi import WebSocket, WebSocketDisconnect
 
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
-from bus import CLIENT_INJECTABLE
+import bus
+from bus import CLIENT_INJECTABLE, UI_HUMAN_TAKEOVER, UI_NOTIFICATION, Message
 from auth.roles import role_satisfies
 from session import Session
 from .channels import NATIVE_CHAT
@@ -111,6 +112,12 @@ class WsNotifications(object):
     def __init__(self, auth_service: AuthService, chat_service: ChatService | None = None) -> None:
         self._auth_service = auth_service
         self._chat_service = chat_service
+        # The only thing in the process that writes to these sockets, and
+        # so the only thing that subscribes on their behalf: a producer
+        # publishes a nudge and never holds a connection (see
+        # _forward_notification).
+        bus.subscribe(UI_NOTIFICATION, self._forward_notification)
+        bus.subscribe(UI_HUMAN_TAKEOVER, self._forward_human_takeover)
         # username -> every open connection of that identity, oldest
         # first — see the class docstring for the cap.
         self._connections: dict[str, list[WsConnection]] = {}
@@ -222,6 +229,19 @@ class WsNotifications(object):
         task = asyncio.create_task(turn.run())
         self._turn_tasks.add(task)
         task.add_done_callback(self._turn_tasks.discard)
+
+    async def _forward_notification(self, message: Message) -> None:
+        """Whatever wants to nudge one identity's open interfaces reaches
+        them here, and only here: the socket is this object's business,
+        and a producer that publishes a nudge never learns whether anyone
+        was connected (see bus.UI_NOTIFICATION)."""
+        if message.username:
+            await self.push(message.username, {"type": "notification", **(message.body or {})})
+
+    async def _forward_human_takeover(self, message: Message) -> None:
+        body = message.body or {}
+        if message.username:
+            await self.send_human_takeover(message.username, body["session_id"], body["project_id"])
 
     async def push(self, username: str, payload: dict, exclude_connection_id: str | None = None) -> bool:
         """Sends `payload` to every one of `username`'s open connections

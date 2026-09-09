@@ -198,7 +198,6 @@ def create_app() -> FastAPI:
         # already-open connection (WakeupService, namespace_factory's own
         # deferred calls).
         ws_notifications = WsNotifications(auth_service, chat_service)
-        namespace_factory.set_ws_notifications(ws_notifications)
         test_event_broadcaster.set_ws_notifications(ws_notifications)
 
         # Manual-testing seam for HumanTalker (see talker.human_talker and
@@ -235,7 +234,7 @@ def create_app() -> FastAPI:
         # Cross-project wake-up (see tracking/wakeup_service.py) —
         # subscribes once for the process lifetime.
         WakeupService(
-            db, project_service, scheduler_service, namespace_factory, ws_notifications=ws_notifications, tracking_service=tracking_service,
+            db, project_service, scheduler_service, namespace_factory, tracking_service=tracking_service,
             ai_service=ai_live_service,
         ).register()
 

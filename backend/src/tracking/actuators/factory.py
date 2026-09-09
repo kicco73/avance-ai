@@ -12,7 +12,6 @@ from .chat_namespace import ChatNamespace, FakeChatNamespace, LiveChatNamespace
 
 if TYPE_CHECKING:
     from ai import AiService
-    from chat.ws_notifications import WsNotifications
     from project.project_service import ProjectService
     from whatsapp.whatsapp_service import WhatsAppService
 
@@ -28,9 +27,8 @@ class TaskNamespaceFactory:
     what a rehydrated task.prompt runs against. Builds both a task
     namespace (`.live`/`.fake`/`.for_session`) and a chat namespace
     (`.chat_live`/`.chat_fake`/`.chat_for_session`) — the two share the
-    exact same human-operator bookkeeping and ws_notifications adapter
-    below, so one factory holds both rather than duplicating that state
-    into a second class."""
+    exact same human-operator bookkeeping below, so one factory holds
+    both rather than duplicating that state into a second class."""
 
     def __init__(
         self, notification_service: NotificationService, db: Db, scheduler_service: SchedulerService,
@@ -46,7 +44,6 @@ class TaskNamespaceFactory:
         # _enabled_test_sessions above; read by TrackingService._process
         # to decide who answers a session's next turn.
         self._human_operators: dict[int, str] = {}
-        self._ws_notifications: "WsNotifications | None" = None
         self._whatsapp_service: "WhatsAppService | None" = None
         self._hydrator = ScopeHydrator(db, project_service, self, ai_service)
         scheduler_service.register_task_type(ActionTask.TYPE, self._hydrator.hydrate)
@@ -59,13 +56,6 @@ class TaskNamespaceFactory:
 
     def clear_human_operator(self, session_id: int) -> None:
         self._human_operators.pop(session_id, None)
-
-    def set_ws_notifications(self, ws_notifications: "WsNotifications") -> None:
-        self._ws_notifications = ws_notifications
-
-    @property
-    def ws_notifications(self) -> "WsNotifications | None":
-        return self._ws_notifications
 
     def set_whatsapp_service(self, whatsapp_service: "WhatsAppService | None") -> None:
         self._whatsapp_service = whatsapp_service

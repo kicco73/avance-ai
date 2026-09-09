@@ -97,7 +97,6 @@ def wired(db):
     project_service = ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
     factory = make_test_namespace_factory(db, scheduler_service, project_service)
     ws_notifications = WsNotifications(auth_service=None)
-    factory.set_ws_notifications(ws_notifications)
     return db, project_service, factory, ws_notifications
 
 

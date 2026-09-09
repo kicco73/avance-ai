@@ -45,6 +45,17 @@ OUTPUT_TEXT = "output.text"
 OUTPUT_SPEECH = "output.speech"
 OUTPUT_AUDIO = "output.audio"
 
+# Something one identity's interfaces may want to show — a task's own
+# snippet, a state that moved while nobody was looking. Not content and
+# not a fact about a turn: a nudge, addressed to whoever that person has
+# open. Whether anything is listening is not the producer's business.
+UI_NOTIFICATION = "ui.notification"
+
+# One identity is being asked to take a session over as a human. Its own
+# type rather than a flavour of the one above: an interface subscribes to
+# what it can act on, and paging an operator is not showing a nudge.
+UI_HUMAN_TAKEOVER = "ui.human_takeover"
+
 # Facts about a turn that are not its content.
 TURN_STARTED = "turn.started"
 TURN_ENDED = "turn.ended"

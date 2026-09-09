@@ -51,7 +51,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
 
+import bus
 from automaton.automaton import Action, DeferredExpression
+from bus import UI_NOTIFICATION, Message
 from automaton.scope import EvaluationScope
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from jobs import CancelableJob
@@ -61,7 +63,6 @@ from session import Session
 
 if TYPE_CHECKING:
     from ai import AiService
-    from chat.ws_notifications import WsNotifications
     from db import Db
     from project.project_service import ProjectService
     from tracking.actuators.factory import TaskNamespaceFactory
@@ -202,17 +203,18 @@ class ActionTask(Task):
 
     async def _run_next_step(self) -> None:
         task = self._hydrator.run(self.username, self._payload)
-        ws_notifications = self._hydrator.ws_notifications
-        if task and ws_notifications is not None:
-            await ws_notifications.push(self.username, {"type": "notification", "task": task})
+        if task:
+            # Whoever this person has open, if anyone: a deferred task
+            # does not know, and must not have to hold a socket to find
+            # out (see bus.UI_NOTIFICATION).
+            await bus.publish(Message(type=UI_NOTIFICATION, body={"task": task}, username=self.username))
 
 
 class ScopeHydrator(object):
     """Rebuilds, for a hibernated payload, a scope equivalent to the one
     its script was evaluated in, and runs the script in it. The factory
-    is held rather than its products so that the websocket adapter
-    (bound late, see main.py) and the task namespace — which lets a
-    script itself defer again, persisting the chain — are always
+    is held rather than its products so that the task namespace — which
+    lets a script itself defer again, persisting the chain — is always
     resolved at run time, never captured."""
 
     def __init__(
@@ -223,10 +225,6 @@ class ScopeHydrator(object):
         self._project_service = project_service
         self._namespace_factory = namespace_factory
         self._ai_service = ai_service
-
-    @property
-    def ws_notifications(self) -> "WsNotifications | None":
-        return self._namespace_factory.ws_notifications
 
     def hydrate(self, key: str, username: str, payload: dict[str, Any]) -> ActionTask:
         """SchedulerService's hydrator for ActionTask.TYPE. Cheap and

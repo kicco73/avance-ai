@@ -6,10 +6,11 @@ from __future__ import annotations
 
 from ai import AiService
 from automaton.automaton import manual_actions_for
-from chat.ws_notifications import WsNotifications
 from db.db import Db
 from events import EnvChanged, StateChanged, subscribe
 from jobs import CancelableJob
+import bus
+from bus import UI_NOTIFICATION, Message
 from logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
@@ -54,7 +55,7 @@ class WakeupJob(CancelableJob):
 class WakeupService:
     def __init__(
         self, db: Db, project_service: ProjectService, scheduler_service: SchedulerService, namespace_factory: TaskNamespaceFactory,
-        ws_notifications: WsNotifications | None = None, tracking_service: TrackingService | None = None,
+        tracking_service: TrackingService | None = None,
         ai_service: AiService | None = None,
     ) -> None:
         self._db = db
@@ -64,7 +65,6 @@ class WakeupService:
         # None whenever no websocket transport is configured — push is
         # simply skipped in that case; a re-evaluated self-loop is still
         # applied and persisted either way, only live delivery depends on this.
-        self._ws_notifications = ws_notifications
         self._tracking_service = tracking_service
         # Only task.prompt() needs this — None here just means a
         # self-loop's own task falls back to task.prompt()'s own
@@ -136,28 +136,24 @@ class WakeupService:
                     automaton, state, action, {}, session["id"],
                     origin='system', username=username, project_id=observer_project_id,
                 )
-                # A "notification" frame, never "done" — chatClient.js drops a
-                # "done" with no pendingTurn in flight, which a push never is.
-                # Best-effort live nudge only; the transition above is already
-                # persisted regardless, and its task arrives in its own
-                # frame, from the ActionTask apply_transition scheduled.
-                if self._ws_notifications is not None:
-                    state_payload = automaton.get_state_payload(state)
-                    auto_tracking_enabled = (
-                        self._tracking_service.is_auto_tracking_enabled(session["id"])
-                        if self._tracking_service is not None else True
-                    )
-                    await self._ws_notifications.push(username, {
-                        "type": "notification",
-                        # Deliberately still "project_name", not "project_id":
-                        # chatClient.js (frontend, off-limits — "NEVER TOUCH
-                        # THIS FILE") parses this exact WS message shape by
-                        # that literal key name. This is the one wire format
-                        # kept stable for that frozen consumer; everywhere
-                        # else (HTTP responses, DB) already uses project_id.
-                        "project_name": observer_project_id,
-                        "state": {**state_payload, "manual_actions": manual_actions_for(state_payload["actions"], auto_tracking_enabled)},
-                    })
+                # A nudge, never a turn's own ending — a push has no turn
+                # in flight to end. Best-effort: the transition above is
+                # persisted regardless, and its task arrives on its own,
+                # from the ActionTask apply_transition scheduled.
+                state_payload = automaton.get_state_payload(state)
+                auto_tracking_enabled = (
+                    self._tracking_service.is_auto_tracking_enabled(session["id"])
+                    if self._tracking_service is not None else True
+                )
+                await bus.publish(Message(type=UI_NOTIFICATION, username=username, body={
+                    # Deliberately still "project_name", not "project_id":
+                    # the frontend parses this exact shape by that literal
+                    # key name. This is the one wire format kept stable for
+                    # that consumer; everywhere else (HTTP responses, DB)
+                    # already uses project_id.
+                    "project_name": observer_project_id,
+                    "state": {**state_payload, "manual_actions": manual_actions_for(state_payload["actions"], auto_tracking_enabled)},
+                }))
 
     def _wake(self, username: str, observer_project_id: str) -> None:
         self._scheduler_service.submit(WakeupJob(self, username, observer_project_id))

@@ -47,6 +47,24 @@ _BACKEND_COPY_IGNORE = shutil.ignore_patterns(
 
 _LAUNCH_TIMEOUT_SECONDS = 20.0
 
+
+def _ignore_for(excluded_skills: "list[str] | None"):
+    """What not to copy: the usual build leftovers, plus the source
+    directory of every skill this build leaves out. That directory *is*
+    the switch — nothing else records the choice, and there is nothing to
+    read at run time to discover it (see skills.py). The launch check at
+    the end of the build is what proves the remaining code still stands
+    up without it."""
+    excluded = set(excluded_skills or ())
+
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        dropped = set(_BACKEND_COPY_IGNORE(directory, names))
+        if excluded and Path(directory).resolve() == (BACKEND_DIR / "src").resolve():
+            dropped |= {name for name in names if name in excluded}
+        return dropped
+
+    return ignore
+
 # Names this package already uses for something else, so a project whose
 # id sanitizes to one of them cannot quietly overwrite it.
 _RESERVED = frozenset({"compiler", "build_service", "data"})
@@ -127,7 +145,7 @@ class BuildService:
             "files": sorted(path.name for path in final.iterdir() if path.is_file()),
         }
 
-    def build_backend_copy(self, project_id: str) -> dict:
+    def build_backend_copy(self, project_id: str, excluded_skills: "list[str] | None" = None) -> dict:
         revision = published_revision_of(self._db, self._project_service, project_id)
         module_name = module_name_for(project_id)
         target_name = f"{module_name}.{revision}"
@@ -138,7 +156,7 @@ class BuildService:
         shutil.rmtree(staging, ignore_errors=True)
         try:
             backend_copy = staging / "backend"
-            shutil.copytree(BACKEND_DIR, backend_copy, ignore=_BACKEND_COPY_IGNORE)
+            shutil.copytree(BACKEND_DIR, backend_copy, ignore=_ignore_for(excluded_skills))
             self._write_compiled_automaton(project_id, revision, module_name, backend_copy)
             self._write_pruned_database(project_id, backend_copy)
             self._verify_backend_copy_launches(backend_copy)
@@ -147,8 +165,11 @@ class BuildService:
         except Exception:
             shutil.rmtree(staging, ignore_errors=True)
             raise
-        logger.info("Built backend copy of '%s' revision %s into %s.", project_id, revision, final / "backend")
-        return {"path": str(final / "backend"), "revision": revision}
+        logger.info(
+            "Built backend copy of '%s' revision %s into %s (without: %s).",
+            project_id, revision, final / "backend", ", ".join(excluded_skills or []) or "nothing",
+        )
+        return {"path": str(final / "backend"), "revision": revision, "excluded_skills": list(excluded_skills or [])}
 
     def _write_compiled_automaton(self, project_id: str, revision: int, module_name: str, backend_copy: Path) -> None:
         from project.archive.layout import ArchiveLayout

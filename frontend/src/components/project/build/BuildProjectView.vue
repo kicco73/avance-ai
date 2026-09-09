@@ -5,10 +5,10 @@
 // this one (see ProjectDetailPanel.vue's own @compile, and
 // useProjectAdminActions.js's handleCompileProject), not through this
 // wizard.
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import AppHeader from '../../AppHeader.vue'
 import ProfileMenu from '../../ProfileMenu.vue'
-import { postBuildBackendCopy } from '../../../api/build.js'
+import { getBuildSkills, postBuildBackendCopy } from '../../../api/build.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -26,6 +26,25 @@ const currentStep = ref(0)
 const building = ref(false)
 const buildResult = ref(null)
 const buildError = ref('')
+
+// What this backend has installed, as the server reads it off its own
+// source tree — never a list kept here. A skill switched off is a
+// directory the build does not copy, so what is off is what is absent.
+const skills = ref([])
+const included = ref({})
+const skillsError = ref('')
+
+const excludedSkills = computed(() => skills.value.map(s => s.package).filter(p => !included.value[p]))
+
+onMounted(async () => {
+  try {
+    const { skills: installed } = await getBuildSkills()
+    skills.value = installed
+    included.value = Object.fromEntries(installed.map(s => [s.package, true]))
+  } catch (err) {
+    skillsError.value = err.message || 'Could not read the installed skills.'
+  }
+})
 
 function goToStep(index) {
   if (index > currentStep.value + 1) return
@@ -45,7 +64,7 @@ async function runBuild() {
   buildResult.value = null
   buildError.value = ''
   try {
-    buildResult.value = await postBuildBackendCopy(props.projectId)
+    buildResult.value = await postBuildBackendCopy(props.projectId, excludedSkills.value)
   } catch (err) {
     buildError.value = err.message || 'Build failed.'
   } finally {
@@ -86,7 +105,21 @@ async function runBuild() {
 
     <div class="build-body">
       <div v-show="currentStep === 0" class="build-panel">
-        <p class="build-status">Nothing here yet.</p>
+        <p class="build-status">
+          What this build includes. A skill left out is not switched off in the result — its code
+          is not there at all.
+        </p>
+        <p v-if="skillsError" class="build-status build-status-error">{{ skillsError }}</p>
+        <p v-else-if="!skills.length" class="build-status">No optional skills installed.</p>
+        <ul v-else class="build-skill-list">
+          <li v-for="skill in skills" :key="skill.package" class="build-skill-row">
+            <label class="build-skill-label">
+              <input v-model="included[skill.package]" type="checkbox" class="build-skill-toggle">
+              <span>{{ skill.label }}</span>
+            </label>
+            <code class="build-skill-package">src/{{ skill.package }}</code>
+          </li>
+        </ul>
         <div class="build-actions-row">
           <button type="button" class="build-action-btn build-action-btn-primary" @click="goNext">Next</button>
         </div>
@@ -100,6 +133,9 @@ async function runBuild() {
         </p>
         <p v-if="buildResult" class="build-status">
           Built revision {{ buildResult.revision }} into {{ buildResult.path }} — launched and confirmed working.
+          <template v-if="buildResult.excluded_skills?.length">
+            Left out: {{ buildResult.excluded_skills.join(', ') }}.
+          </template>
         </p>
         <p v-if="buildError" class="build-status build-status-error">{{ buildError }}</p>
         <div class="build-actions-row">
@@ -137,6 +173,43 @@ async function runBuild() {
 
 .build-header-title {
   color: #4a6fa5;
+}
+
+.build-skill-list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.build-skill-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #dde3ec;
+  border-radius: 6px;
+}
+
+.build-skill-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.build-skill-toggle {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+}
+
+.build-skill-package {
+  color: #7b8794;
+  font-size: 0.85em;
 }
 
 .build-steps {
