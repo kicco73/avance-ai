@@ -169,7 +169,7 @@ auth-service:
       key: <your-google-client-id>
       # ui-label/ui-description: same optional fields as ai-service above.
 
-notification-service:
+mail-service:
   # Optional: omit this whole section if no project ever needs
   # task.send_mail — it's the only thing that uses it. Present, url/
   # username/password are mandatory: url is parsed as smtp://host[:port]

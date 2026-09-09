@@ -34,15 +34,6 @@ class ConfigError(Exception):
     """Raised when backend/.config.yml is missing or structurally invalid."""
 
 @dataclass(frozen=True)
-class NotificationServiceConfig:
-    url: str
-    username: str
-    password: str
-    from_name: str | None
-    timeout_seconds: int
-
-
-@dataclass(frozen=True)
 class TalkServiceConfig:
     driver: str
     model: str
@@ -341,26 +332,6 @@ class AppConfig:
         )
 
     @classmethod
-    def _parse_notification_service_config(cls, raw: dict, path: Path) -> NotificationServiceConfig | None:
-        if raw.get("notification-service") is None:
-            return None
-        url = cls._require_str(raw, "notification-service", "url", path)
-        username = cls._require_str(raw, "notification-service", "username", path)
-        password = cls._require_str(raw, "notification-service", "password", path)
-        sub = cls._get_section(raw, "notification-service", path)
-        from_name = sub.get("from-name")
-        if from_name is not None and not isinstance(from_name, str):
-            raise ConfigError(f"{path}: 'notification-service.from-name' must be a string if present.")
-        timeout_seconds = cls._get_optional_positive_int(
-            raw, "notification-service", "timeout-seconds", path, default=10
-        )
-        return NotificationServiceConfig(
-            url=url, username=username, password=password,
-            from_name=from_name.strip() if from_name and from_name.strip() else None,
-            timeout_seconds=timeout_seconds,
-        )
-
-    @classmethod
     def _parse_build_service_config(cls, raw: dict, path: Path) -> BuildServiceConfig:
         sub = cls._get_optional_section(raw, "build-service", path)
         for field in ("repo-url", "username", "token", "apps-dir"):
@@ -567,8 +538,6 @@ class AppConfig:
             raw, "auth-service", "token-ttl-in-hours", path, default=24 * 7
         )
         self.auth_providers = self._parse_auth_providers(raw, path)
-
-        self.notification_service_config = self._parse_notification_service_config(raw, path)
 
         self.whatsapp_service_config = self._parse_whatsapp_service_config(raw, path)
 

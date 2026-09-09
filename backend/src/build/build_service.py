@@ -165,9 +165,18 @@ class BuildService:
         except Exception:
             shutil.rmtree(staging, ignore_errors=True)
             raise
+        # One directory per project, not one per build: the revision just
+        # written stays, every other build of the same project goes. Same
+        # rule the apps directory already follows, and for the same
+        # reason — a backend copy is the whole tree, so two of them are
+        # two of everything. Discarded only once this one is in place and
+        # has been proven to launch, never before: a build that fails at
+        # the launch check must leave the last good one where it was.
+        discarded = discard_other_revisions(BUILDS_DIR, module_name, revision)
         logger.info(
-            "Built backend copy of '%s' revision %s into %s (without: %s).",
+            "Built backend copy of '%s' revision %s into %s (without: %s) (dropped %s).",
             project_id, revision, final / "backend", ", ".join(excluded_skills or []) or "nothing",
+            ", ".join(path.name for path in discarded) or "nothing",
         )
         return {"path": str(final / "backend"), "revision": revision, "excluded_skills": list(excluded_skills or [])}
 

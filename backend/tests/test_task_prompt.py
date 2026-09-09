@@ -54,7 +54,7 @@ def test_task_prompt_leaves_no_message_persisted(db: Db):
 
 def test_task_namespace_prompt_returns_empty_string_with_no_bound_context():
     assert FakeTaskNamespace().prompt("Say hi.") == ""
-    assert LiveTaskNamespace(notification_service=None, dispatcher=None).prompt("Say hi.") == ""
+    assert LiveTaskNamespace(dispatcher=None).prompt("Say hi.") == ""
 
 
 def test_with_ai_service_never_mutates_the_original_instance():

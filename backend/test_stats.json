@@ -19,104 +19,104 @@
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 7,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_deferred_lambda_is_the_same_task_with_a_later_when_and_no_session": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 7,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_deferred_lambda_sees_names_assigned_earlier_in_the_same_script": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 7,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_fake_task_namespaces_task_still_runs_as_a_task_and_reports": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 7,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_task_is_hibernated_as_a_task_due_now_not_run_inline": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 7,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_task_never_sees_a_session": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 7,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_task_reports_a_suppressed_send_mail_over_the_websocket_in_fake_mode": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 7,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_task_survives_a_restart_and_runs_against_an_equivalent_environment": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 7,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_action_task.py::test_build_scope_with_no_session_never_constructs_a_persisted_env": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 8,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 9,
     "skips": 0
   },
   "tests/test_action_task.py::test_deleting_the_project_takes_its_pending_tasks_with_it": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 7,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_action_task.py::test_persisted_env_cannot_be_constructed_without_a_session_id": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 7,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_action_task.py::test_task_prompt_runs_inside_the_task_with_the_firing_sessions_history": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 7,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_action_task.py::test_the_task_runs_against_the_revision_it_was_written_for": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 7,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_ai_package_boundary.py::test_nothing_outside_the_ai_package_imports_a_provider": {
@@ -2923,96 +2923,112 @@
     "failures": 1,
     "last_failed": "2026-09-08T22:05:07+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:12:04+00:00",
-    "runs": 19,
+    "last_run": "2026-09-09T10:56:59+00:00",
+    "runs": 20,
     "skips": 0
   },
   "tests/test_build_service_apps_dir.py::test_a_failed_build_leaves_nothing_the_loader_could_pick_up": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:12:04+00:00",
-    "runs": 19,
+    "last_run": "2026-09-09T10:56:59+00:00",
+    "runs": 20,
     "skips": 0
   },
   "tests/test_build_service_apps_dir.py::test_a_package_that_does_not_import_is_never_published": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:12:04+00:00",
-    "runs": 19,
+    "last_run": "2026-09-09T10:56:59+00:00",
+    "runs": 20,
     "skips": 0
   },
   "tests/test_build_service_apps_dir.py::test_a_project_with_unpublished_changes_cannot_be_built": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:12:04+00:00",
-    "runs": 19,
+    "last_run": "2026-09-09T10:56:59+00:00",
+    "runs": 20,
     "skips": 0
   },
   "tests/test_build_service_apps_dir.py::test_building_again_at_a_new_revision_replaces_the_old_package": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:12:04+00:00",
-    "runs": 19,
+    "last_run": "2026-09-09T10:56:59+00:00",
+    "runs": 20,
     "skips": 0
   },
   "tests/test_build_service_backend_copy.py::test_a_backend_without_listen_still_imports_its_own_entry_point": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:12:48+00:00",
-    "runs": 1,
+    "last_run": "2026-09-09T10:56:59+00:00",
+    "runs": 3,
     "skips": 0
   },
   "tests/test_build_service_backend_copy.py::test_a_built_backend_copy_is_a_real_launchable_server": {
-    "failures": 2,
-    "last_failed": "2026-09-09T10:12:48+00:00",
+    "failures": 3,
+    "last_failed": "2026-09-09T10:48:50+00:00",
     "last_outcome": "failed",
-    "last_run": "2026-09-09T10:12:48+00:00",
-    "runs": 3,
+    "last_run": "2026-09-09T10:48:50+00:00",
+    "runs": 4,
     "skips": 0
   },
   "tests/test_build_service_backend_copy.py::test_a_project_with_unpublished_changes_cannot_be_built": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:12:48+00:00",
-    "runs": 4,
+    "last_run": "2026-09-09T10:56:59+00:00",
+    "runs": 6,
+    "skips": 0
+  },
+  "tests/test_build_service_backend_copy.py::test_a_rebuild_leaves_no_previous_build_of_the_same_project_behind": {
+    "failures": 0,
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-09T10:56:59+00:00",
+    "runs": 2,
     "skips": 0
   },
   "tests/test_build_service_backend_copy.py::test_a_skill_left_out_of_a_build_is_a_directory_that_is_not_copied": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:12:48+00:00",
-    "runs": 1,
+    "last_run": "2026-09-09T10:56:59+00:00",
+    "runs": 3,
+    "skips": 0
+  },
+  "tests/test_build_service_backend_copy.py::test_building_the_same_revision_twice_replaces_it": {
+    "failures": 0,
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-09T10:56:59+00:00",
+    "runs": 2,
     "skips": 0
   },
   "tests/test_build_service_backend_copy.py::test_pruning_a_database_with_only_the_kept_project_is_a_no_op": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:12:48+00:00",
-    "runs": 4,
+    "last_run": "2026-09-09T10:56:59+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_build_service_backend_copy.py::test_pruning_drops_every_other_project_and_what_belongs_to_it": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:12:48+00:00",
-    "runs": 4,
+    "last_run": "2026-09-09T10:56:59+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_build_service_backend_copy.py::test_the_installed_skills_are_read_off_the_source_tree": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:12:48+00:00",
-    "runs": 1,
+    "last_run": "2026-09-09T10:56:59+00:00",
+    "runs": 3,
     "skips": 0
   },
   "tests/test_button_translation.py::test_a_state_with_a_manual_action_requests_translations_and_the_result_reaches_the_final_state_payload[malformed-falls-back]": {
@@ -3715,416 +3731,432 @@
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestAiServiceProvidersModes::test_defaults_to_both_reads_an_explicit_both_and_deduplicates_repeats": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestAiServiceProvidersModes::test_rejects_a_non_list_an_unknown_mode_and_leaving_either_auto_cascade_empty[[live, staging]-staging]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestAiServiceProvidersModes::test_rejects_a_non_list_an_unknown_mode_and_leaving_either_auto_cascade_empty[[live, test, no-auto]-'live']": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestAiServiceProvidersModes::test_rejects_a_non_list_an_unknown_mode_and_leaving_either_auto_cascade_empty[[live]-'test']": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestAiServiceProvidersModes::test_rejects_a_non_list_an_unknown_mode_and_leaving_either_auto_cascade_empty[[test]-'live']": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestAiServiceProvidersModes::test_rejects_a_non_list_an_unknown_mode_and_leaving_either_auto_cascade_empty[live-None]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestCompiledAutomatonSwitch::test_a_module_name_is_a_configuration_error": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestCompiledAutomatonSwitch::test_defaults_to_off_with_the_default_apps_dir": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestCompiledAutomatonSwitch::test_reads_the_switch_and_the_shared_apps_dir": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalChoice::test_rejects_values_outside_the_choices[1]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalChoice::test_rejects_values_outside_the_choices[None]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalChoice::test_rejects_values_outside_the_choices[True]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalChoice::test_rejects_values_outside_the_choices[wipe]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalChoice::test_returns_the_default_when_absent_and_any_listed_choice_when_present": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalNonNegativeInt::test_rejects_negative_non_integer_values_and_a_non_mapping_section[raw0]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalNonNegativeInt::test_rejects_negative_non_integer_values_and_a_non_mapping_section[raw1]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalNonNegativeInt::test_rejects_negative_non_integer_values_and_a_non_mapping_section[raw2]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalNonNegativeInt::test_rejects_negative_non_integer_values_and_a_non_mapping_section[raw3]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalNonNegativeInt::test_rejects_negative_non_integer_values_and_a_non_mapping_section[raw4]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalNonNegativeInt::test_rejects_negative_non_integer_values_and_a_non_mapping_section[raw5]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalNonNegativeInt::test_returns_the_default_when_absent_and_accepts_zero_or_positive_values": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalPositiveFloat::test_rejects_non_positive_non_numeric_values_and_a_missing_section[raw0]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalPositiveFloat::test_rejects_non_positive_non_numeric_values_and_a_missing_section[raw1]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalPositiveFloat::test_rejects_non_positive_non_numeric_values_and_a_missing_section[raw2]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalPositiveFloat::test_rejects_non_positive_non_numeric_values_and_a_missing_section[raw3]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalPositiveFloat::test_rejects_non_positive_non_numeric_values_and_a_missing_section[raw4]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalPositiveFloat::test_rejects_non_positive_non_numeric_values_and_a_missing_section[raw5]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalPositiveFloat::test_returns_the_default_when_absent_and_the_configured_int_or_float_when_present": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalPositiveInt::test_rejects_non_positive_non_integer_values_and_a_non_mapping_section[raw0]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalPositiveInt::test_rejects_non_positive_non_integer_values_and_a_non_mapping_section[raw1]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalPositiveInt::test_rejects_non_positive_non_integer_values_and_a_non_mapping_section[raw2]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalPositiveInt::test_rejects_non_positive_non_integer_values_and_a_non_mapping_section[raw3]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalPositiveInt::test_rejects_non_positive_non_integer_values_and_a_non_mapping_section[raw4]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalPositiveInt::test_rejects_non_positive_non_integer_values_and_a_non_mapping_section[raw5]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalPositiveInt::test_rejects_non_positive_non_integer_values_and_a_non_mapping_section[raw6]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestGetOptionalPositiveInt::test_returns_the_default_when_the_field_or_section_is_absent_and_the_configured_value_when_present": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestOptionalSettingsEndToEnd::test_every_optional_setting_falls_back_to_its_default_when_omitted": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestOptionalSettingsEndToEnd::test_min_test_interval_accepts_an_explicit_zero": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestOptionalSettingsEndToEnd::test_reads_a_custom_value_and_rejects_an_invalid_one[auth_token_ttl_in_hours]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestOptionalSettingsEndToEnd::test_reads_a_custom_value_and_rejects_an_invalid_one[database_migration_strategy]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestOptionalSettingsEndToEnd::test_reads_a_custom_value_and_rejects_an_invalid_one[input_token_budget_per_turn]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestOptionalSettingsEndToEnd::test_reads_a_custom_value_and_rejects_an_invalid_one[invite_max_shares]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestOptionalSettingsEndToEnd::test_reads_a_custom_value_and_rejects_an_invalid_one[invite_valid_days]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestOptionalSettingsEndToEnd::test_reads_a_custom_value_and_rejects_an_invalid_one[jobs_shared_max_concurrent]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestOptionalSettingsEndToEnd::test_reads_a_custom_value_and_rejects_an_invalid_one[max_session_duration_in_minutes]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestOptionalSettingsEndToEnd::test_reads_a_custom_value_and_rejects_an_invalid_one[test_service_max_concurrent_tests]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestOptionalSettingsEndToEnd::test_reads_a_custom_value_and_rejects_an_invalid_one[test_service_max_tests_per_minute]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestOptionalSettingsEndToEnd::test_reads_a_custom_value_and_rejects_an_invalid_one[test_service_min_test_interval_ms]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestOptionalSettingsEndToEnd::test_reads_a_custom_value_and_rejects_an_invalid_one[total_token_budget_per_session]": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestWhatsAppServiceConfig::test_an_absent_section_or_enabled_false_leaves_the_channel_disabled": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_config.py::TestWhatsAppServiceConfig::test_enabled_parses_with_or_without_a_phone_number_normalized_to_digits_and_a_default_graph_version": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
+    "skips": 0
+  },
+  "tests/test_config.py::TestWhatsAppServiceConfig::test_rejects_a_non_digit_phone_number_and_a_missing_verify_token[\\ndatabase:\\n  url: \"sqlite:///:memory:\"\\n\\nchat-service: {}\\n\\nai-service:\\n  providers:\\n    - driver: gemini\\n      model: gemini-flash-lite-latest\\n      key: fake-key\\n\\nauth-service:\\n  providers:\\n    - driver: google\\n      key: fake-client-id\\n\\nmail-service:\\n  url: \"smtp://smtp.example.com:587\"\\n  username: fake-username\\n  password: fake-password\\n\\n\\nwhatsapp-service:\\n  enabled: true\\n  verify-token: my-verify-token\\n  app-secret: my-app-secret\\n  access-token: my-access-token\\n  phone-number-id: \"123456\"\\n  phone-number: not-a-number\\n-phone-number]": {
+    "failures": 0,
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 1,
+    "skips": 0
+  },
+  "tests/test_config.py::TestWhatsAppServiceConfig::test_rejects_a_non_digit_phone_number_and_a_missing_verify_token[\\ndatabase:\\n  url: \"sqlite:///:memory:\"\\n\\nchat-service: {}\\n\\nai-service:\\n  providers:\\n    - driver: gemini\\n      model: gemini-flash-lite-latest\\n      key: fake-key\\n\\nauth-service:\\n  providers:\\n    - driver: google\\n      key: fake-client-id\\n\\nmail-service:\\n  url: \"smtp://smtp.example.com:587\"\\n  username: fake-username\\n  password: fake-password\\n\\nwhatsapp-service:\\n  enabled: true\\n  app-secret: my-app-secret\\n  access-token: my-access-token\\n  phone-number-id: \"123456\"\\n-verify-token]": {
+    "failures": 0,
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 1,
     "skips": 0
   },
   "tests/test_config.py::TestWhatsAppServiceConfig::test_rejects_a_non_digit_phone_number_and_a_missing_verify_token[\\ndatabase:\\n  url: \"sqlite:///:memory:\"\\n\\nchat-service: {}\\n\\nai-service:\\n  providers:\\n    - driver: gemini\\n      model: gemini-flash-lite-latest\\n      key: fake-key\\n\\nauth-service:\\n  providers:\\n    - driver: google\\n      key: fake-client-id\\n\\nnotification-service:\\n  url: \"smtp://smtp.example.com:587\"\\n  username: fake-username\\n  password: fake-password\\n\\n\\nwhatsapp-service:\\n  enabled: true\\n  verify-token: my-verify-token\\n  app-secret: my-app-secret\\n  access-token: my-access-token\\n  phone-number-id: \"123456\"\\n  phone-number: not-a-number\\n-phone-number]": {
@@ -4147,32 +4179,32 @@
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:55+00:00",
-    "runs": 9,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 10,
     "skips": 0
   },
   "tests/test_controller_action_task.py::test_manual_action_pushes_its_on_exits_own_chat_snippets_synchronously": {
     "failures": 1,
     "last_failed": "2026-09-09T10:20:00+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:55+00:00",
-    "runs": 9,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 10,
     "skips": 0
   },
   "tests/test_controller_action_task.py::test_manual_action_without_on_exit_reports_none_even_for_the_same_target_state": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:55+00:00",
-    "runs": 9,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 10,
     "skips": 0
   },
   "tests/test_controller_action_task.py::test_state_payload_never_carries_on_exit_itself": {
     "failures": 1,
     "last_failed": "2026-09-09T10:20:00+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:55+00:00",
-    "runs": 9,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 10,
     "skips": 0
   },
   "tests/test_controller_ai_models.py::test_get_ai_models_response_shape": {
@@ -7247,6 +7279,46 @@
     "runs": 5,
     "skips": 0
   },
+  "tests/test_mail_skill.py::test_parse_reads_the_required_and_optional_fields": {
+    "failures": 0,
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-09T10:56:03+00:00",
+    "runs": 1,
+    "skips": 0
+  },
+  "tests/test_mail_skill.py::test_parse_rejects_a_missing_required_field": {
+    "failures": 0,
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-09T10:56:03+00:00",
+    "runs": 1,
+    "skips": 0
+  },
+  "tests/test_mail_skill.py::test_parse_returns_none_when_the_section_is_absent": {
+    "failures": 0,
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-09T10:56:03+00:00",
+    "runs": 1,
+    "skips": 0
+  },
+  "tests/test_mail_skill.py::test_send_mail_raises_when_no_mail_skill_is_installed": {
+    "failures": 0,
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-09T10:56:03+00:00",
+    "runs": 1,
+    "skips": 0
+  },
+  "tests/test_mail_skill.py::test_send_mail_reaches_whatever_subscribed_to_mail_send": {
+    "failures": 0,
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-09T10:56:03+00:00",
+    "runs": 1,
+    "skips": 0
+  },
   "tests/test_metadata_channel_order.py::test_after_mode_orders_audio_text_signals_memory": {
     "failures": 0,
     "last_failed": null,
@@ -7715,32 +7787,32 @@
     "failures": 1,
     "last_failed": "2026-09-09T10:20:00+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 7,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_on_exit_chat_switch.py::test_a_mixed_on_exit_script_writes_env_and_pushes_a_chat_notification_synchronously": {
     "failures": 1,
     "last_failed": "2026-09-09T10:20:00+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 7,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_on_exit_chat_switch.py::test_switch_to_ai_from_on_exit_clears_a_previously_set_operator": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 7,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_on_exit_chat_switch.py::test_switch_to_human_from_on_exit_records_the_operator_and_pages_them": {
     "failures": 1,
     "last_failed": "2026-09-09T10:20:00+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-09T10:20:40+00:00",
-    "runs": 7,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 8,
     "skips": 0
   },
   "tests/test_openai_compatible_provider_errors.py::test_bad_request_maps_to_request_error_not_permanent": {
@@ -9835,80 +9907,80 @@
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_task_defer.py::test_a_live_defer_refuses_anything_but_a_task_lambda_and_a_real_datetime_scheduling_nothing": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_task_defer.py::test_a_zero_argument_lambda_evaluates_to_a_deferred_expression_that_knows_its_own_source_and_scope_and_runs_on_call": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_task_defer.py::test_task_eval_rejects_a_lambda_with_arguments_and_a_plain_dict_scope": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_task_prompt.py::test_task_can_compose_prompt_with_send_mail": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_task_prompt.py::test_task_namespace_prompt_returns_empty_string_with_no_bound_context": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_task_prompt.py::test_task_prompt_fires_through_the_real_app_end_to_end": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_task_prompt.py::test_task_prompt_leaves_no_message_persisted": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_task_prompt.py::test_task_prompt_sends_an_isolated_single_turn": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_task_prompt.py::test_with_ai_service_never_mutates_the_original_instance": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T10:55:24+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_test_status_snapshot.py::test_get_test_status_reflects_a_completed_job": {

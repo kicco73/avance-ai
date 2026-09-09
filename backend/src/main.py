@@ -27,7 +27,6 @@ from scheduler import SchedulerService
 from jobs.throttled_job_queue import ThrottledJobQueue
 from logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
-from notification.notification_service import NotificationService
 from project.archive.automaton_loader import AutomatonLoader
 from project.archive.compiled_automaton_loader import CompiledAutomatonLoader
 from project.health_notifications import ProjectHealthNotifications
@@ -109,16 +108,6 @@ def create_app() -> FastAPI:
         # table only gains rows, nothing is claimed.
         scheduler_service = SchedulerService(max_concurrent=config.jobs_shared_max_concurrent, broadcaster=test_event_broadcaster, db=db)
 
-        # Always constructed, even with no notification-service section in
-        # .config.yml — task.send_mail (see tracking/actuators/
-        # actuator_set.py) is the only caller, and may never fire; a real
-        # attempt to send/enqueue a mail without one configured raises at
-        # that point instead of blocking startup for a feature nothing may ever use.
-        if config.notification_service_config is None:
-            logger.critical("No 'notification-service' section in .config.yml — task.send_mail will fail if used.")
-        notification_service = NotificationService(config.notification_service_config, scheduler_service)
-        app.state.notification_service = notification_service
-
         # Bridged onto app.state for the same reason auth_service is below:
         # AuthMiddleware was already registered before this existed, and
         # needs it for its own per-request UserProject ownership check.
@@ -155,7 +144,7 @@ def create_app() -> FastAPI:
         # After ProjectService (a hibernated task.defer is rebuilt
         # against a project revision through it) and before the SchedulerService
         # is started: this registers the task type the scheduler hydrates.
-        namespace_factory = TaskNamespaceFactory(notification_service, db, scheduler_service, project_service, ai_live_service)
+        namespace_factory = TaskNamespaceFactory(db, scheduler_service, project_service, ai_live_service)
 
         # Built once here (not a global singleton — see auth/auth_service.py's
         # own module docstring), passed explicitly to whatever needs it.

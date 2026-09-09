@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -180,3 +181,63 @@ def test_a_backend_without_listen_still_imports_its_own_entry_point(tmp_path):
 
     assert result.returncode == 0, result.stderr[-2000:]
     assert "'package': 'listen'" not in result.stdout
+
+
+def _build_service_for(tmp_path, monkeypatch, build_root):
+    """A BuildService whose backend copy is exercised for what it leaves
+    on disk, not for whether the copy boots: the launch check needs a
+    virtualenv this test has no business building."""
+    import build.build_service as build_service
+    monkeypatch.setattr(build_service, "BUILDS_DIR", build_root)
+    monkeypatch.setattr(BuildService, "_verify_backend_copy_launches", lambda self, backend_copy: None)
+    db = Db(f"sqlite:///{tmp_path / 'avance.db'}")
+    db.get_or_create_user("test", "sub-user", "user", "user", None)
+    _publish(db, PROJECT_A)
+    return BuildService(db, _Service(db), tmp_path / "apps"), db
+
+
+def test_a_rebuild_leaves_no_previous_build_of_the_same_project_behind(tmp_path, monkeypatch):
+    """One directory per project, not one per build. Whatever an earlier
+    build of this project left in the builds directory is gone — an older
+    revision, and the staging directory of a build that died halfway —
+    while another project's build is untouched."""
+    import build.build_service as build_service
+    build_root = tmp_path / "builds"
+    build_root.mkdir()
+    service, db = _build_service_for(tmp_path, monkeypatch, build_root)
+    module = build_service.module_name_for(PROJECT_A)
+    revision = db.get_project_revision(PROJECT_A)
+
+    stale = build_root / f"{module}.{revision - 1}"
+    stale.mkdir()
+    (stale / "marker.txt").write_text("from the build before")
+    half_written = build_root / f"{build_service.STAGING_PREFIX}{module}.{revision - 1}"
+    half_written.mkdir()
+    unrelated = build_root / "some_other_project.1"
+    unrelated.mkdir()
+
+    result = service.build_backend_copy(PROJECT_A)
+
+    built = Path(result["path"]).parent
+    assert built.is_dir()
+    assert not stale.exists()
+    assert not half_written.exists()
+    assert unrelated.is_dir()
+    assert sorted(path.name for path in build_root.iterdir()) == sorted([built.name, unrelated.name])
+
+
+def test_building_the_same_revision_twice_replaces_it(tmp_path, monkeypatch):
+    """The same (project, revision) built again is the same directory,
+    with nothing of the earlier build left inside it."""
+    build_root = tmp_path / "builds"
+    build_root.mkdir()
+    service, _ = _build_service_for(tmp_path, monkeypatch, build_root)
+
+    first = Path(service.build_backend_copy(PROJECT_A)["path"]).parent
+    (first / "left_over.txt").write_text("should not survive")
+
+    second = Path(service.build_backend_copy(PROJECT_A)["path"]).parent
+
+    assert second == first
+    assert not (second / "left_over.txt").exists()
+    assert [path.name for path in build_root.iterdir()] == [second.name]

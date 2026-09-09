@@ -9,10 +9,11 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING, TypeVar
 
+import bus
 from automaton.automaton import Action, DeferredExpression, JsSnippet
 from automaton.scope import EvaluationScope
+from bus import MAIL_SEND, Message
 from logging_factory import LoggerFactory
-from notification.notification_service import NotificationService
 from scheduler import SchedulerService
 from session import Session
 
@@ -190,19 +191,19 @@ class LiveTaskNamespace(TaskNamespace):
     deferred call runs (see action_task.py)."""
 
     def __init__(
-        self, notification_service: NotificationService, dispatcher: "TaskDispatcher",
+        self, dispatcher: "TaskDispatcher",
         whatsapp_service: "WhatsAppService | None" = None, factory: "TaskNamespaceFactory | None" = None,
     ) -> None:
         super().__init__(dispatcher, factory)
-        self._notification_service = notification_service
         self._whatsapp_service = whatsapp_service
 
     def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
-        # Raises (NotificationError) if this deployment's own .config.yml
-        # declares no notification-service section — see
-        # NotificationService's own docstring on why that's deferred to
-        # here rather than failing at app boot.
-        self._notification_service.enqueue_mail(to, _SEND_MAIL_SUBJECT, body_md)
+        if not bus.handlers_for(MAIL_SEND):
+            raise ValueError("No 'mail-service' section in .config.yml — task.send_mail can't run.")
+        _run_sync(bus.publish(Message(
+            type=MAIL_SEND, username=Session().user,
+            body={"to": to, "subject": _SEND_MAIL_SUBJECT, "body_md": body_md},
+        )))
         return None
 
     def whatsapp(self, phone_number: str, message_md: str) -> bool:

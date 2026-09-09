@@ -85,9 +85,8 @@ states:
 # own task.whatsapp is the one task-only call safe to run for real
 # there: `whatsapp-service` is never configured in these tests, so it
 # short-circuits to `False` with no real network attempt, unlike
-# send_mail (always a real notification_service.enqueue_mail attempt,
-# against the dummy SMTP config — see conftest.make_test_namespace_factory's
-# own docstring on why that must never actually run). Its own return
+# send_mail (would raise: no mail-service is configured/subscribed in
+# these tests). Its own return
 # carries no observable content though, so these tests prove the
 # frozen-scope restore via the hibernated payload's own snapshot data
 # directly, not via rendered wire text.

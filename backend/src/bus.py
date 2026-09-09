@@ -62,6 +62,8 @@ TURN_ENDED = "turn.ended"
 TURN_FAILED = "turn.failed"
 TURN_TOOL = "turn.tool"
 
+MAIL_SEND = "mail.send"
+
 # Named places the core assembles something and anything may add to it.
 # Not messages: nothing is delivered and nobody is notified — the core
 # asks, synchronously, and whoever registered fills in its part. They

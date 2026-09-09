@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from db import Db
-from notification.notification_service import NotificationService
 from scheduler import SchedulerService
 
 from .actuator_set import FakeTaskNamespace, LiveTaskNamespace, TaskDispatcher, TaskNamespace
@@ -31,10 +30,9 @@ class TaskNamespaceFactory:
     both rather than duplicating that state into a second class."""
 
     def __init__(
-        self, notification_service: NotificationService, db: Db, scheduler_service: SchedulerService,
+        self, db: Db, scheduler_service: SchedulerService,
         project_service: "ProjectService", ai_service: "AiService | None" = None,
     ) -> None:
-        self._notification_service = notification_service
         self._db = db
         self._scheduler_service = scheduler_service
         self._enabled_test_sessions: set[int] = set()
@@ -68,7 +66,7 @@ class TaskNamespaceFactory:
     def live(self, *, project_id: str) -> LiveTaskNamespace:
         """Bound to `project_id`: what its task tasks are hibernated under."""
         return LiveTaskNamespace(
-            self._notification_service, self._dispatcher(project_id, TASK_NAMESPACE_LIVE),
+            self._dispatcher(project_id, TASK_NAMESPACE_LIVE),
             whatsapp_service=self._whatsapp_service, factory=self,
         )
 

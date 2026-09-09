@@ -22,7 +22,6 @@ from chat.chat_service import ChatService
 from chat.ephemeral_env_registry import EphemeralEnvRegistry
 from chat.sessions.session_manager import ChatSessionManager
 from chat.ws_notifications import WsNotifications
-from config import NotificationServiceConfig
 from controller import AvanceController
 from db import Db
 from db.models import User
@@ -33,7 +32,6 @@ from broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
 from jobs.job_queue import JobQueue
 from scheduler import SchedulerService
 from metrics.metric_service import MetricService
-from notification.notification_service import NotificationService
 from project.archive.automaton_loader import AutomatonLoader
 from project.archive.compiled_automaton_loader import CompiledAutomatonLoader
 from project.project_service import ProjectService
@@ -260,20 +258,12 @@ def make_test_namespace_factory(
     db: Db, scheduler_service: SchedulerService | None = None, project_service: ProjectService | None = None,
     ai_service=None,
 ) -> TaskNamespaceFactory:
-    """A real TaskNamespaceFactory, wired the same way main.py does — every
-    test project's own YAML only ever calls chat.celebrate()/notify(),
-    never task.send_mail, so the dummy SMTP config below is never
-    actually dialed. Shared by every fixture/helper across the test suite
-    that needs to construct a TrackingService/ChatService/WakeupService."""
+    """A real TaskNamespaceFactory, wired the same way main.py does. Shared
+    by every fixture/helper across the test suite that needs to construct
+    a TrackingService/ChatService/WakeupService."""
     scheduler_service = scheduler_service if scheduler_service is not None else make_test_scheduler_service(db)
     project_service = project_service if project_service is not None else ProjectService(db, AutomatonLoader(db), ChatSessionManager(db))
-    notification_service = NotificationService(
-        NotificationServiceConfig(
-            url="smtp://localhost", username="test@example.com", password="", from_name=None, timeout_seconds=5,
-        ),
-        scheduler_service,
-    )
-    return TaskNamespaceFactory(notification_service, db, scheduler_service, project_service, ai_service)
+    return TaskNamespaceFactory(db, scheduler_service, project_service, ai_service)
 
 
 @pytest.fixture
