@@ -33,18 +33,48 @@ _ICON_FILE_RE = re.compile(r'^aspect/icon\.(png|jpe?g|gif|webp|svg)$', re.IGNORE
 class PlatformService(object):
 
     def __init__(self, project_service: "ProjectService") -> None:
-        self.db = project_service.db
-        self.ai_service = project_service.ai_service
-        self.web_crawler = project_service.web_crawler
-        self.inspector = project_service.inspector
-        self.manager = project_service.manager
-        self.editor = project_service.editor
-        self.invites = project_service.invites
-        # A handful of these methods still ask a question about the
-        # project itself — which revision is published, what its
-        # automaton is. Those belong to the project and are asked of it
-        # (see project/project_service.py), not reimplemented here.
+        # The project service itself, not its parts. Some of these
+        # methods also ask a question *about the project* — which
+        # revision is published, what its automaton is — and those are
+        # asked of it rather than reimplemented here.
         self.project_service = project_service
+
+    # The collaborators are read through, never copied. Copying them in
+    # __init__ made this a snapshot: replacing project_service.ai_service
+    # or .web_crawler afterwards (which is exactly what the web-import
+    # tests do, and what any substitution at runtime would do) left this
+    # facade holding the originals, so a job built here used the real
+    # crawler while the caller believed it had installed a fake. Two
+    # facades over *one* set of collaborators was the whole point; these
+    # properties are what make that true rather than true-at-construction.
+
+    @property
+    def db(self):
+        return self.project_service.db
+
+    @property
+    def ai_service(self):
+        return self.project_service.ai_service
+
+    @property
+    def web_crawler(self):
+        return self.project_service.web_crawler
+
+    @property
+    def inspector(self):
+        return self.project_service.inspector
+
+    @property
+    def manager(self):
+        return self.project_service.manager
+
+    @property
+    def editor(self):
+        return self.project_service.editor
+
+    @property
+    def invites(self):
+        return self.project_service.invites
 
     def get_active_state_payload(self) -> StatePayload:
         return self.inspector.get_active_state_payload()

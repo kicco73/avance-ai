@@ -579,13 +579,15 @@ def pytest_sessionfinish(session, exitstatus) -> None:
         try:
             raw = f.read()
             stats = _remap_renamed_files(json.loads(raw) if raw else {}, _git_renamed_test_files())
+            for entry in stats.values():
+                entry.setdefault("first_run", entry.get("last_run") or now)
             if _is_full_test_run(session):
                 stats = {nodeid: entry for nodeid, entry in stats.items() if nodeid in _test_runs}
             for nodeid, run in _test_runs.items():
                 outcome = run.outcome
                 entry = stats.setdefault(
                     nodeid,
-                    {"runs": 0, "failures": 0, "skips": 0, "seconds": 0.0, "last_outcome": None, "last_run": None, "last_failed": None},
+                    {"runs": 0, "failures": 0, "skips": 0, "seconds": 0.0, "first_run": now, "last_outcome": None, "last_run": None, "last_failed": None},
                 )
                 if outcome == "skipped":
                     entry["skips"] += 1
