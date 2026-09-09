@@ -2,9 +2,15 @@
 automaton's side of the conversation: the model (AiTalker) today, a
 person (HumanTalker) from now on, and whatever else replaces one of
 them later. A call site that only knows it's holding a BaseTalker
-doesn't know or care which — chat()/listen()/talk() mean the same thing
-either way: produce the reply text for this turn, transcribe an inbound
-audio message, and produce the audio for an outbound one."""
+doesn't know or care which — chat()/talk() mean the same thing either
+way: produce the reply text for this turn, and produce the audio for an
+outbound one.
+
+Transcription is deliberately *not* here. It has nothing to do with who
+is answering — the same speech-to-text runs whether a model or a person
+is on the other side — and both implementations proved it by holding the
+identical one-line delegation. A caller that needs an inbound voice note
+transcribed asks the transcription service, not the talker."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -35,11 +41,6 @@ class BaseTalker(ABC):
 		produce a given field (HumanTalker and signals/reaction/
 		translations/tool_call, today) simply never calls it for that tag —
 		never a placeholder, never a default."""
-		raise NotImplementedError
-
-	@abstractmethod
-	async def listen(self, audio: bytes) -> str:
-		"""Speech-to-text for one inbound audio message."""
 		raise NotImplementedError
 
 	@abstractmethod

@@ -55,7 +55,7 @@ class ChatController(BaseController):
         self.project_service = project_service
         self.talk_service = talk_service
         self.listen_service = listen_service
-        self.assistant_talker = AiTalker(talk_service=talk_service, listen_service=listen_service)
+        self.assistant_talker = AiTalker(talk_service=talk_service)
 
     @get("/api/docs/{name}")
     def get_doc(self, name: str):
@@ -333,7 +333,7 @@ class ChatController(BaseController):
             )
         audio_bytes = await file.read()
         try:
-            text = await self.assistant_talker.listen(audio_bytes)
+            text = await self.listen_service.transcribe(audio_bytes)
         except ListenServiceError as exc:
             raise HTTPException(status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(exc)) from exc
         return {"text": text}

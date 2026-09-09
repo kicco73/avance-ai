@@ -1,24 +1,23 @@
 """AiTalker — the one object each call site talks to instead of wiring
-straight to AiService/TalkService/ListenService. It doesn't add any new
-behaviour: chat()/listen()/talk() are exactly the calls that used to be
-made directly (TurnProtocolUsingSchema(ai_service).generate_reply(...),
-talk_service.generate(...), listen_service.transcribe(...)), just behind
-one name — so a caller-side substitution (a different chat()/listen()/
-talk() implementation, e.g. a human answering instead of the model) has
-a single seam instead of three scattered ones.
+straight to AiService/TalkService. It doesn't add any new behaviour:
+chat()/talk() are exactly the calls that used to be made directly
+(TurnProtocolUsingSchema(ai_service).generate_reply(...),
+talk_service.generate(...)), just behind one name — so a caller-side
+substitution (a different chat()/talk() implementation, e.g. a human
+answering instead of the model) has a single seam instead of two
+scattered ones.
 
-Each of the three services is optional: a caller that only ever needs
-listen()/talk() (ChatController, WhatsAppService) builds an AiTalker
-without an ai_service, and one that only ever needs chat() (TrackingProcessor)
-builds one without talk_service/listen_service. Calling a method whose
-service wasn't supplied raises the same *NotAvailableError the direct call
-would have raised.
+Both services are optional: a caller that only ever needs talk()
+(ChatController, WhatsAppService) builds an AiTalker without an
+ai_service, and one that only ever needs chat() (TrackingProcessor)
+builds one without a talk_service. Calling a method whose service wasn't
+supplied raises the same *NotAvailableError the direct call would have
+raised.
 """
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, AsyncIterator
 
-from listen.listen_service import ListenService, ListenServiceNotAvailableError
 from talk.talk_service import TalkService, TalkServiceNotAvailableError
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 
@@ -35,11 +34,9 @@ class AiTalker(BaseTalker):
 		self,
 		ai_service: "AiService | None" = None,
 		talk_service: TalkService | None = None,
-		listen_service: ListenService | None = None,
 	) -> None:
 		self._ai_service = ai_service
 		self._talk_service = talk_service
-		self._listen_service = listen_service
 
 	def chat(
 		self,
@@ -59,15 +56,6 @@ class AiTalker(BaseTalker):
 			prompt, chat_history, on_metadata,
 			tool_set=tool_set, force_required_tools=force_required_tools, env_block=env_block,
 		)
-
-	async def listen(self, audio: bytes) -> str:
-		"""Speech-to-text for one audio message — same call as
-		listen_service.transcribe(audio) always made. Raises
-		ListenServiceNotAvailableError if no ListenService was supplied,
-		same as a caller checking `listen_service is None` itself used to."""
-		if self._listen_service is None:
-			raise ListenServiceNotAvailableError()
-		return await self._listen_service.transcribe(audio)
 
 	def talk(self, text: str) -> AsyncIterator[bytes]:
 		"""Text-to-speech for one reply — same call as talk_service.

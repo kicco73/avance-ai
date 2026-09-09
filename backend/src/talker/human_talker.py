@@ -17,7 +17,6 @@ import asyncio
 from typing import TYPE_CHECKING, AsyncIterator, Protocol
 
 from ai import content_to_text
-from listen.listen_service import ListenService, ListenServiceNotAvailableError
 
 from .base_talker import BaseTalker
 
@@ -39,9 +38,9 @@ class HumanRelay(Protocol):
 
 	async def receive(self) -> str:
 		"""Waits for and returns what the person sends back, as text
-		(a voice note is transcribed by the caller through listen(),
-		same as any other inbound audio — receive() only ever returns
-		the text)."""
+		(a voice note is transcribed by the caller before it ever gets
+		here, same as any other inbound audio — receive() only ever
+		returns the text)."""
 		...
 
 	async def wait_for_typing(self) -> None:
@@ -69,9 +68,8 @@ class HumanTalkerNoRecordingError(Exception):
 
 
 class HumanTalker(BaseTalker):
-	def __init__(self, relay: HumanRelay, listen_service: ListenService | None = None) -> None:
+	def __init__(self, relay: HumanRelay) -> None:
 		self._relay = relay
-		self._listen_service = listen_service
 
 	async def chat(
 		self,
@@ -110,14 +108,6 @@ class HumanTalker(BaseTalker):
 			return
 		yield ""
 		yield await reply
-
-	async def listen(self, audio: bytes) -> str:
-		"""Speech-to-text for a voice note the person sent — same STT as
-		AiTalker.listen(): transcription is a mechanical service, not a
-		property of who's speaking."""
-		if self._listen_service is None:
-			raise ListenServiceNotAvailableError()
-		return await self._listen_service.transcribe(audio)
 
 	def talk(self, text: str) -> AsyncIterator[bytes]:
 		"""Audio for a reply the person actually spoke — their own

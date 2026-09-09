@@ -205,7 +205,6 @@ def create_app() -> FastAPI:
         tracking_service.set_human_talker_factory(
             lambda username, session_id, session_type, project_id: HumanTalker(
                 WsHumanRelay(ws_notifications, username, session_id, session_type=session_type, project_id=project_id),
-                listen_service=listen_service,
             )
         )
 

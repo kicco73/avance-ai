@@ -141,7 +141,7 @@ class WhatsAppService(object):
         self._auth_service = auth_service
         self._talk_service = talk_service
         self._listen_service = listen_service
-        self._assistant_talker = AiTalker(talk_service=talk_service, listen_service=listen_service)
+        self._assistant_talker = AiTalker(talk_service=talk_service)
         self._client = client or WhatsAppCloudApiClient(
             config.access_token, config.phone_number_id, config.graph_version
         )
@@ -262,7 +262,7 @@ class WhatsAppService(object):
 
         try:
             audio, mime_type = await self._client.download_media(audio_id)
-            transcript = (await self._assistant_talker.listen(audio)).strip()
+            transcript = (await self._listen_service.transcribe(audio)).strip()
         except httpx.HTTPError as exc:
             logger.warning(f"WhatsApp [{message.id}]: media download failed: {exc}")
             return None
