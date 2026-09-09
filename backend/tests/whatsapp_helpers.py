@@ -320,6 +320,7 @@ def _build(config=None, talk=None, listen=None):
         # Listen reaches this channel through the Bus now, never as a
         # constructor argument: the service does not know it exists.
         SpeechDecoder(listen).register()
+    bus._contributors[POINT_TALK_PROVIDER] = []
     if talk is not None:
         bus.contribute(POINT_TALK_PROVIDER, lambda registry: registry.update({"generate": talk.generate}))
     service = WhatsAppService(config or _config(), chat, db, auth, client=api)

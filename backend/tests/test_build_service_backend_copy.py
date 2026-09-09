@@ -122,6 +122,27 @@ def test_a_built_backend_copy_is_a_real_launchable_server(tmp_path, monkeypatch)
         connection.close()
 
 
+@pytest.mark.slow
+def test_a_backend_copy_without_talk_still_launches(tmp_path, monkeypatch):
+    import build.build_service as build_service
+    build_root = tmp_path / "builds"
+    monkeypatch.setattr(build_service, "BUILDS_DIR", build_root)
+
+    db_path = tmp_path / "avance.db"
+    source_db = Db(f"sqlite:///{db_path}")
+    source_db.get_or_create_user("test", "sub-user", "user", "user", None)
+    _publish(source_db, PROJECT_A)
+    revision = source_db.get_project_revision(PROJECT_A)
+
+    result = BuildService(source_db, _Service(source_db), tmp_path / "apps").build_backend_copy(
+        PROJECT_A, excluded_skills=["talk"],
+    )
+
+    backend_copy = build_root / f"{PROJECT_A}.{revision}" / "backend"
+    assert str(backend_copy) == result["path"]
+    assert not (backend_copy / "src" / "talk").exists()
+
+
 @pytest.mark.contract
 def test_the_installed_skills_are_read_off_the_source_tree():
     """Nothing maintains this list: a package with a skill.py is a skill,
@@ -181,6 +202,30 @@ def test_a_backend_without_listen_still_imports_its_own_entry_point(tmp_path):
 
     assert result.returncode == 0, result.stderr[-2000:]
     assert "'package': 'listen'" not in result.stdout
+
+
+@pytest.mark.contract
+def test_a_backend_without_talk_still_imports_its_own_entry_point(tmp_path):
+    """talk is threaded through more core constructors than listen ever
+    was (ChatController, WhatsAppService, TrackingService) — if any of
+    them still imported it directly instead of reaching it through the
+    Bus, this is where it would show."""
+    import shutil
+    import subprocess
+    import sys
+
+    from build.build_service import BACKEND_DIR, _ignore_for
+
+    copy = tmp_path / "backend"
+    shutil.copytree(BACKEND_DIR, copy, ignore=_ignore_for(["talk"]))
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import sys; sys.path.insert(0, 'src'); import main; import skills; print(skills.installed())"],
+        cwd=copy, capture_output=True, text=True, timeout=180,
+    )
+
+    assert result.returncode == 0, result.stderr[-2000:]
+    assert "'package': 'talk'" not in result.stdout
 
 
 def _build_service_for(tmp_path, monkeypatch, build_root):

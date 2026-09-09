@@ -17,8 +17,7 @@ from bus import POINT_API_STATE, POINT_TALK_PROVIDER
 
 from chat.chat_service import ChatService
 from project.project_service import ProjectService
-from talker import AiTalker
-from talker.base_talker import TalkServiceNotAvailableError
+from talker import AiTalker, TalkServiceNotAvailableError
 from schemas import (
     ActionRequest,
     ActuatorsRequest,
