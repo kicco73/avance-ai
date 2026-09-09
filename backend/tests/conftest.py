@@ -22,12 +22,14 @@ from turn.turn_service import TurnService
 from turn.ephemeral_env_registry import EphemeralEnvRegistry
 from turn.sessions.session_manager import SessionManager
 from system.ws_notifications import WsNotifications
+from webchat.webchat_service import WebchatService
 from controller import AvanceController
 from db import Db
 from db.models import User
 from error_handlers import ApiErrorHandlers
 from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
 from system import bus
+from system.bus import POINT_HTTP_CONTROLLERS
 from system.broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
 from jobs.job_queue import JobQueue
 from scheduler import SchedulerService
@@ -330,10 +332,19 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
 
     fastapi_app = FastAPI(title="Avance State Engine (test)")
     ApiErrorHandlers.register(fastapi_app)
+    # What webchat/skill.py does at boot, done here directly: the harness
+    # has the composed core in hand, so it builds the service rather than
+    # going round through POINT_CORE_SERVICES (which
+    # test_build_service_backend_copy.py covers on its own).
+    ws_notifications = WsNotifications(auth_service)
+    webchat = WebchatService(turn_service, project_service, ws_notifications)
+    webchat.register()
+    bus.contribute(POINT_HTTP_CONTROLLERS, lambda controllers: controllers.append(webchat.controller))
+    tracking_service.set_human_talker_factory(webchat.human_talker_factory)
     controller = AvanceController(
         turn_service, project_service, app_db, tracking_service, test_service,
         auth_service, test_event_broadcaster, scheduler_service, "test-version", services_config,
-        ws_notifications=WsNotifications(auth_service, turn_service),
+        ws_notifications=ws_notifications,
         # Never backend/apps: a test that builds must not write into the
         # developer's own working tree.
         apps_dir=tmp_path / "apps",

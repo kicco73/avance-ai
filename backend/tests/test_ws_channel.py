@@ -15,6 +15,7 @@ from fastapi import WebSocketDisconnect
 from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME
 from system.ws_notifications import ALREADY_CONNECTED_CLOSE_CODE, HumanNotConnectedError, WsNotifications
+from webchat.webchat_service import WebchatService
 from conftest import chat_socket, chat_turn_frames
 from system.session import Session
 from test_ws_turn_event_order import _automaton, turn_service_for  # noqa: F401 — a pytest fixture, used by name
@@ -384,7 +385,8 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     )
     db = turn_service_for.db
     session = await turn_service.get_current_session_if_any_or_create_new(None)
-    channel = WsNotifications(_FakeAuthService(), turn_service)
+    channel = WsNotifications(_FakeAuthService())
+    WebchatService(turn_service, None, channel).register()
     websocket = _ScriptedWebSocket(
         [
             json.dumps({"type": "input.text", "stream_id": "first", "session_id": session["id"], "body": "I have a problem"}),
@@ -425,7 +427,9 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
     )
     db = turn_service_for.db
     session = await turn_service.get_current_session_if_any_or_create_new(None)
-    channel = WsNotifications(_FakeAuthService(), turn_service)
+    channel = WsNotifications(_FakeAuthService())
+    webchat = WebchatService(turn_service, None, channel)
+    webchat.register()
     websocket = _ScriptedWebSocket(
         [json.dumps({"type": "input.text", "stream_id": "dropped", "session_id": session["id"], "body": "hello?"})],
     )
@@ -435,7 +439,7 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
     # The browser goes away mid-generation.
     websocket.disconnect_now.set()
     await asyncio.wait_for(loop_task, 5)
-    turns = list(channel._turn_tasks)
+    turns = list(webchat._turn_tasks)
     provider.release.set()
     await asyncio.wait_for(asyncio.gather(*turns), 5)
 

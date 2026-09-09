@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from controllers.chat_controller import DOC_FILES
+from controllers.platform_controller import DOC_FILES
 
 pytestmark = pytest.mark.contract
 

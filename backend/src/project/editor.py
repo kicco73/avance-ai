@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 logger = LoggerFactory.get_logger(__name__)
 
-# backend/src/docs/ — same directory ChatController.get_doc serves
+# backend/src/docs/ — same directory PlatformController.get_doc serves
 # PROJECT_SPECS.md from (as "project-specs"); read directly here rather
 # than going through that endpoint since this runs server-side.
 DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"

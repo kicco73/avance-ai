@@ -15,7 +15,7 @@ from ai.llm_provider import ToolCall, ToolCallsRequested
 from automaton.automaton import Action, Automaton, Source, State
 from turn.turn_service import TurnService
 from turn.sessions.session_manager import SessionManager
-from system.ws_turn import WsChatTurn
+from webchat.ws_turn import WsChatTurn
 from conftest import make_test_namespace_factory, make_test_scheduler_service
 from db.db import Db
 from metrics.metric_service import MetricService
@@ -108,7 +108,7 @@ class _RecordingConnection:
 async def _streamed_events(turn_service: TurnService, text: str) -> list[tuple[str, dict]]:
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     connection = _RecordingConnection()
-    turn = WsChatTurn(turn_service, connection, "turn-1", session["id"], text)
+    turn = WsChatTurn(turn_service, connection.send, "turn-1", session["id"], text)
     assert turn.accept()
     await turn.run()
     assert {frame["stream_id"] for frame in connection.frames} == {"turn-1"}

@@ -17,7 +17,7 @@ from typing import AsyncIterator
 
 from system.session import Session
 
-from .ws_notifications import WsNotifications
+from system.ws_notifications import WsNotifications
 
 
 class WsHumanRelay:

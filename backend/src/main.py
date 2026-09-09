@@ -16,9 +16,7 @@ from turn.turn_service import TurnService
 from turn.sessions.session_manager import SessionManager
 from system import bus
 from system.bus import POINT_CORE_SERVICES, POINT_TALK_PROVIDER
-from system.ws_human_relay import WsHumanRelay
 from system.ws_notifications import WsNotifications
-from talker import HumanTalker
 from system import skills
 from config import AppConfig
 from tracking.project_files import configure_project_file_cache
@@ -183,10 +181,22 @@ def create_app() -> FastAPI:
             tracking_service, metric_service, scheduler_service, namespace_factory,
         )
 
-        # The composed core, offered to whoever asks for it. Everything
-        # a skill could need exists by now; nothing is handed to anyone,
+        # A flush runs on a job-worker thread, and a listener that ends
+        # up writing to a socket needs this loop rather than that one.
+        test_event_broadcaster.bind_loop()
+
+        # One shared connection per identity, and not the chat's: the
+        # whole SPA reads it (see system/__init__.py). It subscribes to
+        # the Bus's ui.* messages in its own constructor, and publishes
+        # what a client sends without knowing who — if anyone — answers.
+        ws_notifications = WsNotifications(auth_service)
+
+        # The composed core, offered to whoever asks for it. Everything a
+        # skill could need exists by now; nothing is handed to anyone,
         # and a skill that is not in this build asks for nothing (see
-        # bus.POINT_CORE_SERVICES, skills.py).
+        # bus.POINT_CORE_SERVICES, system/skills.py). Contributed after
+        # ws_notifications rather than before, so the registry is
+        # readable at the moment it is built and not only later.
         bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({
             "db": db,
             "auth_service": auth_service,
@@ -194,26 +204,8 @@ def create_app() -> FastAPI:
             "project_service": project_service,
             "tracking_service": tracking_service,
             "scheduler_service": scheduler_service,
+            "ws_notifications": ws_notifications,
         }))
-
-        # A flush runs on a job-worker thread, and a listener that ends
-        # up writing to a socket needs this loop rather than that one.
-        test_event_broadcaster.bind_loop()
-
-        # One shared connection per identity, and not the chat's: the
-        # whole SPA reads it (see system/__init__.py). It subscribes to
-        # the Bus's ui.* messages in its own constructor — nothing here
-        # hands it to a producer any more.
-        ws_notifications = WsNotifications(auth_service, turn_service)
-
-        # Manual-testing seam for HumanTalker (see talker.human_talker and
-        # TrackingService.set_human_talker_factory): reaches the person
-        # through their own already-open /ws/notifications connection(s).
-        tracking_service.set_human_talker_factory(
-            lambda username, session_id, session_type, project_id: HumanTalker(
-                WsHumanRelay(ws_notifications, username, session_id, session_type=session_type, project_id=project_id),
-            )
-        )
 
         test_service = TestService(
             db, ai_test_service, tracking_service, test_job_queue, project_service, test_event_broadcaster,

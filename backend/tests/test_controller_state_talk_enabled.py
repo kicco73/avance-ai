@@ -10,7 +10,7 @@ import pytest
 
 from system import bus
 from system.bus import POINT_TALK_PROVIDER
-from controllers.chat_controller import ChatController
+from controllers.platform_controller import PlatformController
 
 pytestmark = pytest.mark.contract
 
@@ -47,10 +47,10 @@ class _FakeChatService:
         return 200000
 
 
-def _controller(*, talk_service_configured: bool, project_talk_enabled: bool) -> ChatController:
+def _controller(*, talk_service_configured: bool, project_talk_enabled: bool) -> PlatformController:
     if talk_service_configured:
         bus.contribute(POINT_TALK_PROVIDER, lambda registry: registry.update({"generate": object()}))
-    return ChatController(
+    return PlatformController(
         turn_service=_FakeChatService(),
         project_service=_FakeProjectService(project_talk_enabled),
     )
@@ -73,7 +73,7 @@ def test_talk_disabled_when_the_server_has_no_provider_even_if_the_project_opts_
 
 def test_defaults_to_the_server_flag_when_there_is_no_active_project():
     bus.contribute(POINT_TALK_PROVIDER, lambda registry: registry.update({"generate": object()}))
-    controller = ChatController(
+    controller = PlatformController(
         turn_service=_FakeChatService(),
         project_service=_NoActiveProjectService(),
     )

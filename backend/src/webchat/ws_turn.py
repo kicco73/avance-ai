@@ -15,9 +15,9 @@ class WsChatTurn(object):
     its own task (run), every frame it produces sent on the connection
     with this turn's own stream_id — the only correlation there is."""
 
-    def __init__(self, turn_service: TurnService, connection, turn_id: str, session_id, text: str) -> None:
+    def __init__(self, turn_service: TurnService, send, turn_id: str, session_id, text: str) -> None:
         self._turn_service = turn_service
-        self._connection = connection
+        self._send_frame = send
         self._turn_id = turn_id
         self._session_id = session_id
         self._text = text
@@ -27,7 +27,7 @@ class WsChatTurn(object):
         # The wire carries the Bus's own type names and field names —
         # nothing is translated on the way out, so a listener and a
         # browser read the same message (see bus.py).
-        self._connection.send({"type": frame_type, "stream_id": self._turn_id, **payload})
+        self._send_frame({"type": frame_type, "stream_id": self._turn_id, **payload})
 
     def _send_error(self, exc: ServiceError) -> None:
         data = {"message": exc.message, "detail": getattr(exc, "detail", str(exc))}

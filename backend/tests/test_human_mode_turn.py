@@ -13,7 +13,7 @@ import pytest
 from ai.ai_service import AiService
 from turn.turn_service import TurnService
 from turn.sessions.session_manager import SessionManager
-from system.ws_turn import WsChatTurn
+from webchat.ws_turn import WsChatTurn
 from conftest import make_test_namespace_factory, make_test_scheduler_service
 from db.db import Db
 from metrics.metric_service import MetricService
@@ -109,7 +109,7 @@ def turn_service_for(tmp_path):
 
 async def _run_turn(turn_service: TurnService, session_id: int, turn_id: str, text: str) -> list[tuple[str, dict]]:
     connection = _RecordingConnection()
-    turn = WsChatTurn(turn_service, connection, turn_id, session_id, text)
+    turn = WsChatTurn(turn_service, connection.send, turn_id, session_id, text)
     assert turn.accept()
     await turn.run()
     return [(frame["type"], frame) for frame in connection.frames]

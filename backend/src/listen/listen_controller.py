@@ -1,6 +1,6 @@
 """Listen's own route, in Listen's own package.
 
-It used to live in ChatController, which is why removing the directory
+It used to live in PlatformController, which is why removing the directory
 would have broken the core: a route written inside a shared file cannot
 be excluded by not composing an object. Here it can — nothing registers
 it unless this package is present.

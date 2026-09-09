@@ -20,7 +20,7 @@ from tracking.tracking_service import TrackingService
 
 from controllers.app_store_controller import AppStoreController
 from controllers.auth_controller import AuthController
-from controllers.chat_controller import ChatController
+from controllers.platform_controller import PlatformController
 from system import bus
 from build import BuildService
 from system.bus import POINT_HTTP_CONTROLLERS
@@ -61,7 +61,7 @@ class AvanceController(object):
         self.scheduler_service = scheduler_service
         self.version = version
 
-        self.chat = ChatController(turn_service, project_service)
+        self.platform = PlatformController(turn_service, project_service)
         self.edit_project = EditProjectController(turn_service, project_service, scheduler_service)
         # XXX Compiled automaton requirement - do not touch.
         # XXX The Build view's Target step, wired to a real compile. The
@@ -79,7 +79,7 @@ class AvanceController(object):
         self.app_store = AppStoreController(turn_service, project_service)
 
         controllers = [
-            self.chat, self.edit_project, self.build, self.label_project, self.settings, self.auth,
+            self.platform, self.edit_project, self.build, self.label_project, self.settings, self.auth,
             self.user, self.app_store,
         ]
         # Opt-in channel (see docs/WHATSAPP.md): no service, no routes.

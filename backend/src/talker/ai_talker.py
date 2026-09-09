@@ -8,7 +8,7 @@ answering instead of the model) has a single seam instead of two
 scattered ones.
 
 ai_service is optional: a caller that only ever needs talk()
-(ChatController, WhatsAppService) builds an AiTalker without one.
+(PlatformController, WhatsAppService) builds an AiTalker without one.
 talk() itself is always available or not depending on whether a talk
 skill is installed/configured, checked fresh on every call rather than
 supplied at construction; calling chat() without an ai_service raises

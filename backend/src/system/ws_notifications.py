@@ -9,12 +9,12 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from system import bus
+from dataclasses import replace
+
 from system.bus import CLIENT_INJECTABLE, UI_HUMAN_TAKEOVER, UI_NOTIFICATION, UI_SYSTEM_WARNING, UI_TEST_UPDATE, Message
 from auth.roles import role_satisfies
 from system.session import Session
 from turn.channels import NATIVE_CHAT
-from turn.turn_service import TurnService
-from .ws_turn import WsChatTurn
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +109,8 @@ class WsNotifications(object):
     replacing an older one: the tab that goes quiet with no explanation
     is exactly the failure mode this is meant to avoid."""
 
-    def __init__(self, auth_service: AuthService, turn_service: TurnService | None = None) -> None:
+    def __init__(self, auth_service: AuthService) -> None:
         self._auth_service = auth_service
-        self._turn_service = turn_service
         # The only thing in the process that writes to these sockets, and
         # so the only thing that subscribes on their behalf: a producer
         # publishes a nudge and never holds a connection (see
@@ -123,7 +122,7 @@ class WsNotifications(object):
         # username -> every open connection of that identity, oldest
         # first — see the class docstring for the cap.
         self._connections: dict[str, list[WsConnection]] = {}
-        self._turn_tasks: set[asyncio.Task] = set()
+        self._inbound_tasks: set[asyncio.Task] = set()
         # prompt_id -> the Future await_human_reply() is waiting on, and
         # the Event wait_for_typing() is waiting on — one pair per prompt,
         # both resolved by session_id (see _current_prompt_for_session):
@@ -193,9 +192,11 @@ class WsNotifications(object):
         elif frame_type in CLIENT_INJECTABLE:
             # A client speaks as a person: the only types it may put on
             # the Bus are the ones a person can say (see bus.py's own
-            # CLIENT_INJECTABLE). Anything else falls through to the
-            # unknown-frame branch below rather than finding listeners.
-            self._start_turn(connection, frame)
+            # CLIENT_INJECTABLE). What happens next is not this object's
+            # business — it publishes and stops. With no listener the
+            # frame is simply not answered, which is what a build with no
+            # chat installed looks like from here.
+            self._publish_client_frame(connection, frame_type, frame)
         elif frame_type == "human_reply":
             self._resolve_human_reply_for_session(frame.get("session_id"), str(frame.get("text", "")))
         elif frame_type == "human_typing":
@@ -219,18 +220,41 @@ class WsNotifications(object):
         if event is not None:
             event.set()
 
-    def _start_turn(self, connection: WsConnection, frame: dict) -> None:
-        if self._turn_service is None:
-            return
-        turn = WsChatTurn(
-            self._turn_service, connection, str(frame.get("stream_id", "")), frame.get("session_id"),
-            str(frame.get("body", "")),
+    def _publish_client_frame(self, connection: WsConnection, frame_type: str, frame: dict) -> None:
+        """One inbound frame, onto the Bus. `origin_id` carries the
+        connection it arrived on so whoever answers can answer *there*
+        (see send_to_connection) rather than to every tab this identity
+        has open."""
+        message = Message(
+            type=frame_type,
+            body=str(frame.get("body", "")),
+            username=Session().user,
+            session_id=frame.get("session_id"),
+            channel=NATIVE_CHAT,
+            origin_id=connection.id,
         )
-        if not turn.accept():
-            return
-        task = asyncio.create_task(turn.run())
-        self._turn_tasks.add(task)
-        task.add_done_callback(self._turn_tasks.discard)
+        stream_id = str(frame.get("stream_id", ""))
+        task = asyncio.create_task(self._publish_client_message(message, stream_id))
+        self._inbound_tasks.add(task)
+        task.add_done_callback(self._inbound_tasks.discard)
+
+    async def _publish_client_message(self, message: Message, stream_id: str) -> None:
+        # stream_id rides along rather than sitting in the envelope: it
+        # names one exchange over one socket, which is the interface's
+        # own bookkeeping and means nothing to any other listener.
+        await bus.publish(replace(message, body={"stream_id": stream_id, "text": message.body}))
+
+    def send_to_connection(self, connection_id: str, payload: dict) -> bool:
+        """Writes one frame to one open connection, by the id an inbound
+        message carried in `origin_id`. False when that connection is
+        gone — the caller is streaming, and a closed tab is an ordinary
+        outcome, not an error."""
+        for connections in self._connections.values():
+            for connection in connections:
+                if connection.id == connection_id:
+                    connection.send(payload)
+                    return True
+        return False
 
     async def _forward_notification(self, message: Message) -> None:
         """Whatever wants to nudge one identity's open interfaces reaches
