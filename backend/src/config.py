@@ -5,7 +5,9 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from ruamel.yaml import YAML
 
+import bus
 from ai import AIServiceConfig
+from bus import POINT_CONFIG_SERVICES
 
 # Default home for compiled packages: backend/apps, beside src/ rather
 # than inside it — a built package is generated data, not source, and it
@@ -93,19 +95,6 @@ class AuthProviderConfig:
     # this should become optional if a future provider doesn't need one.
     key: str
     # Optional: falls back to `driver` (see AppConfig._parse_auth_providers).
-    ui_label: str
-    ui_description: str | None = None
-
-
-@dataclass(frozen=True)
-class ListenServiceConfig:
-    driver: str
-    model: str
-    # Optional: unused by faster-whisper, kept for a future remote provider.
-    key: str | None
-    # Optional: skips faster-whisper's autodetect when given (e.g. "ca").
-    language: str | None
-    # Optional: falls back to `driver` (see AppConfig._parse_listen_services).
     ui_label: str
     ui_description: str | None = None
 
@@ -274,37 +263,6 @@ class AppConfig:
             ui_label, ui_description = cls._parse_ui_fields(entry, driver, "talk-service", i, path)
             services.append(TalkServiceConfig(
                 driver=driver, model=model.strip(), key=key, ui_label=ui_label, ui_description=ui_description,
-            ))
-        return services
-
-    @classmethod
-    def _parse_listen_services(cls, raw: dict, path: Path) -> list[ListenServiceConfig] | None:
-        entries = cls._get_optional_providers(raw, "listen-service", path)
-        if entries is None:
-            return None
-
-        services = []
-        for i, entry in enumerate(entries):
-            if not isinstance(entry, dict):
-                raise ConfigError(f"{path}: 'listen-service.providers[{i}]' must be a mapping.")
-            driver = entry.get("driver")
-            model = entry.get("model")
-            key = entry.get("key")
-            language = entry.get("language")
-            if not isinstance(driver, str) or not driver.strip():
-                raise ConfigError(f"{path}: 'listen-service.providers[{i}].driver' is missing or empty.")
-            if not isinstance(model, str) or not model.strip():
-                raise ConfigError(f"{path}: 'listen-service.providers[{i}].model' is missing or empty.")
-            if key is not None and not isinstance(key, str):
-                raise ConfigError(f"{path}: 'listen-service.providers[{i}].key' must be a string if present.")
-            if language is not None and not isinstance(language, str):
-                raise ConfigError(f"{path}: 'listen-service.providers[{i}].language' must be a string if present.")
-            driver = driver.strip()
-            ui_label, ui_description = cls._parse_ui_fields(entry, driver, "listen-service", i, path)
-            services.append(ListenServiceConfig(
-                driver=driver, model=model.strip(), key=key,
-                language=language.strip() if language else None,
-                ui_label=ui_label, ui_description=ui_description,
             ))
         return services
 
@@ -512,6 +470,12 @@ class AppConfig:
     def __init__(self) -> None:
 
         raw, path = self._load_yml()
+        # The file as it was read, kept so a service can parse the part
+        # that belongs to it (see listen/config.py). The core validates
+        # what the core uses; a skill validates its own section when it
+        # starts.
+        self.raw = raw
+        self.path = path
         if not isinstance(raw, dict):
             raise ConfigError(f"{path} must contain a YAML mapping at the top level.")
         assert path is not None
@@ -596,7 +560,6 @@ class AppConfig:
 
         self.ai_services = self._parse_ai_services(raw, path)
         self.talk_services = self._parse_talk_services(raw, path)
-        self.listen_services = self._parse_listen_services(raw, path)
 
         # Not provider-specific — needed regardless of which auth provider
         # actually authenticated the user.
@@ -631,7 +594,7 @@ class AppConfig:
         as-is (admin-only route) for Manage services' masked/revealable
         fields."""
         wa = self.whatsapp_service_config
-        return {
+        snapshot = {
             "chat": {
                 "max-session-duration-in-minutes": self.max_session_duration_in_minutes,
                 "input-token-budget-per-turn": self.input_token_budget_per_turn,
@@ -657,13 +620,6 @@ class AppConfig:
                 "enabled": self.talk_services is not None,
                 "providers": [self._public_provider_fields(p) for p in (self.talk_services or [])],
             },
-            "listen": {
-                "enabled": self.listen_services is not None,
-                "providers": [
-                    {**self._public_provider_fields(p), "language": p.language}
-                    for p in (self.listen_services or [])
-                ],
-            },
             "whatsapp": {
                 "enabled": wa is not None,
                 "verify-token": wa.verify_token if wa else None,
@@ -682,6 +638,9 @@ class AppConfig:
             },
             "build": self._public_build_service_fields(),
         }
+        # Whatever else is running adds its own section: a service the
+        # core does not know about still shows up in Manage services.
+        return bus.collect(POINT_CONFIG_SERVICES, snapshot)
 
     def _public_build_service_fields(self) -> dict:
         b = self.build_service_config
@@ -691,3 +650,15 @@ class AppConfig:
             "token": b.token,
             "apps-dir": str(b.apps_dir),
         }
+
+
+# Two of AppConfig's own parsing helpers, reachable by name: a service
+# that reads its own section of the file (see listen/config.py) needs
+# them and must not reach into a private classmethod. Wrappers rather
+# than a move, so the validation itself stays in one place.
+def parse_ui_fields(entry: dict, driver: str, section: str, i: int, path: Path) -> tuple[str, str | None]:
+    return AppConfig._parse_ui_fields(entry, driver, section, i, path)
+
+
+def optional_providers(raw: dict, section: str, path: Path) -> list | None:
+    return AppConfig._get_optional_providers(raw, section, path)

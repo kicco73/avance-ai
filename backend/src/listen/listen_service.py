@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import threading
 
-from config import ListenServiceConfig
+from listen.config import ListenServiceConfig
 from cascade import ProviderError
 from listen.listen_provider import ListenProvider
 from listen.cascading_listen_provider import CascadingListenProvider
@@ -20,14 +20,6 @@ logger = LoggerFactory.get_logger(__name__)
 class ListenServiceError(Exception):
     """Raised once every configured STT provider has failed — carries
     the last provider-specific error as __cause__, never leaks it directly."""
-
-
-class ListenServiceNotAvailableError(Exception):
-    """Raised by the controller when listen-service.enabled is false in
-    .config.yml — there is no ListenService instance to call at all."""
-
-    def __init__(self, message: str = "Speech-to-text is not enabled on this server.") -> None:
-        super().__init__(message)
 
 
 class ListenService(ListenProvider):

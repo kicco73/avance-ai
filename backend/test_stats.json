@@ -5587,32 +5587,32 @@
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T09:09:32+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_controller_state_talk_enabled.py::test_talk_disabled_when_the_project_opts_out_even_with_a_server_provider": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T09:09:32+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_controller_state_talk_enabled.py::test_talk_disabled_when_the_server_has_no_provider_even_if_the_project_opts_in": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T09:09:32+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_controller_state_talk_enabled.py::test_talk_enabled_when_server_has_a_provider_and_the_project_opts_in": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T09:09:32+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_controller_test_sessions.py::test_a_chat_turn_against_a_test_session_is_accepted_as_active": {
@@ -10835,96 +10835,96 @@
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T09:09:32+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_voice.py::test_every_voice_note_failure_falls_back_to_the_text_reply": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T09:09:32+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_voice.py::test_incremental_encoder_matches_whole_file_encoding_and_finishes_empty_with_no_audio": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T09:09:32+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_voice.py::test_manual_actions_follow_a_spoken_reply_as_buttons_and_stay_on_the_text_fallback": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T09:09:32+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_voice.py::test_markdown_flattening_and_text_splitting_lose_nothing": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T09:09:32+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_voice.py::test_notices_are_never_spoken": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T09:09:32+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_voice.py::test_split_wav_handles_streaming_header_and_complete_file": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T09:09:32+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_voice.py::test_synthesis_starts_mid_turn_when_announced_otherwise_from_the_persisted_text_and_afresh_when_it_differs": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T09:09:32+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_voice.py::test_the_always_policy_speaks_text_replies_and_the_never_policy_stays_text": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T09:09:32+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_voice.py::test_the_default_policy_answers_in_kind_voice_for_voice_and_text_for_text": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T09:09:32+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_voice.py::test_voice_note_is_transcribed_and_processed_as_text": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T09:09:32+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_whatsapp_voice.py::test_wav_to_mp3_produces_mono_48k_mp3_and_rejects_empty_audio": {
     "failures": 0,
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-08T22:44:20+00:00",
-    "runs": 5,
+    "last_run": "2026-09-09T09:09:32+00:00",
+    "runs": 6,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestChannelLoop::test_a_different_users_own_registration_is_left_alone": {

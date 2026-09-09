@@ -12,7 +12,6 @@ from auth.auth_service import AuthService
 from chat.chat_service import ChatService
 from chat.ws_notifications import WsNotifications
 from db import Db
-from listen.listen_service import ListenService
 from project.project_service import ProjectService
 from scheduler import SchedulerService
 from talk.talk_service import TalkService
@@ -23,7 +22,9 @@ from tracking.tracking_service import TrackingService
 from controllers.app_store_controller import AppStoreController
 from controllers.auth_controller import AuthController
 from controllers.chat_controller import ChatController
+import bus
 from build import BuildService
+from bus import POINT_HTTP_CONTROLLERS
 from config import DEFAULT_APPS_DIR
 from controllers.build_controller import BuildController
 from controllers.edit_project_controller import EditProjectController
@@ -40,7 +41,6 @@ class AvanceController(object):
         chat_service: ChatService,
         project_service: ProjectService,
         talk_service: TalkService | None,
-        listen_service: ListenService | None,
         db: Db,
         tracking_service: TrackingService,
         test_service: TestService,
@@ -56,7 +56,6 @@ class AvanceController(object):
         self.chat_service = chat_service
         self.project_service = project_service
         self.talk_service = talk_service
-        self.listen_service = listen_service
         self.db = db
         self.test_service = test_service
         self.tracking_service = tracking_service
@@ -65,7 +64,7 @@ class AvanceController(object):
         self.scheduler_service = scheduler_service
         self.version = version
 
-        self.chat = ChatController(chat_service, project_service, talk_service, listen_service)
+        self.chat = ChatController(chat_service, project_service, talk_service)
         self.edit_project = EditProjectController(chat_service, project_service, scheduler_service)
         # XXX Compiled automaton requirement - do not touch.
         # XXX The Build view's Target step, wired to a real compile. The
@@ -90,6 +89,10 @@ class AvanceController(object):
         self.whatsapp = WhatsAppController(whatsapp_service) if whatsapp_service is not None else None
         if self.whatsapp is not None:
             controllers.append(self.whatsapp)
+        # And whatever a skill registered for itself: a package that is
+        # not in this build contributes nothing, so its routes are not
+        # there to answer (see bus.POINT_HTTP_CONTROLLERS, skills.py).
+        bus.collect(POINT_HTTP_CONTROLLERS, controllers)
 
         self.router = APIRouter()
         for controller in controllers:

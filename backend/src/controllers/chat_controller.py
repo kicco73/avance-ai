@@ -1,6 +1,6 @@
 """The main chat window's own backend surface (ChatWindow.vue) — live
 session bootstrap/messaging, env/identifiers/metrics as the Inspector
-shows them there, AI model selection, talk/listen, and the handful of
+shows them there, AI model selection, talk, and the handful of
 cross-screen utilities (GET /api/docs/{name}, GET /api/state) that don't
 belong to any one screen more than another.
 """
@@ -12,8 +12,10 @@ from pathlib import Path
 from fastapi import HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
+import bus
+from bus import POINT_API_STATE
+
 from chat.chat_service import ChatService
-from listen.listen_service import ListenService, ListenServiceError, ListenServiceNotAvailableError
 from project.project_service import ProjectService
 from talk.talk_service import TalkService, TalkServiceNotAvailableError
 from talker import AiTalker
@@ -49,12 +51,10 @@ class ChatController(BaseController):
         chat_service: ChatService,
         project_service: ProjectService,
         talk_service: TalkService | None,
-        listen_service: ListenService | None,
     ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
         self.talk_service = talk_service
-        self.listen_service = listen_service
         self.assistant_talker = AiTalker(talk_service=talk_service)
 
     @get("/api/docs/{name}")
@@ -156,7 +156,8 @@ class ChatController(BaseController):
     @get("/api/state")
     def get_state(self):
         """Also the frontend's boot/readiness ping — piggybacks
-        talk_enabled/listen_enabled here. No `-> StatePayload` annotation:
+        talk_enabled here, plus whatever a skill contributes (see
+        bus.POINT_API_STATE). No `-> StatePayload` annotation:
         with no active project/state the payload lacks those fields.
         talk_enabled here is the AND of two independent things: whether
         the server has any TTS provider configured at all (talk_service),
@@ -176,10 +177,12 @@ class ChatController(BaseController):
             project_talk_enabled = True
 
         payload["talk_enabled"] = self.talk_service is not None and project_talk_enabled
-        payload["listen_enabled"] = self.listen_service is not None and self.listen_service.enabled
         payload["input_token_budget_per_turn"] = self.chat_service.get_input_token_budget_per_turn()
         payload["total_token_budget_per_session"] = self.chat_service.get_total_token_budget_per_session()
-        return payload
+        # Whatever else is running adds its own field: listen_enabled
+        # comes from the Listen package when that package is there, and
+        # simply isn't in the payload when it isn't.
+        return bus.collect(POINT_API_STATE, payload)
 
     @get("/api/ai/models")
     def get_ai_models(self):
@@ -322,19 +325,4 @@ class ChatController(BaseController):
             aclose = getattr(generation, "aclose", None)
             if aclose and callable(aclose):
                 aclose()
-
-    @post("/api/listen/transcribe")
-    async def post_listen_transcribe(self, file: UploadFile):
-        """Isolated verification endpoint: not wired into process_turn or
-        the chat frontend yet — just confirms ListenService end-to-end."""
-        if self.listen_service is None:
-            raise HTTPException(
-                status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(ListenServiceNotAvailableError())
-            )
-        audio_bytes = await file.read()
-        try:
-            text = await self.listen_service.transcribe(audio_bytes)
-        except ListenServiceError as exc:
-            raise HTTPException(status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-        return {"text": text}
 

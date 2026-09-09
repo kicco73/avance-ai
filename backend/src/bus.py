@@ -51,6 +51,16 @@ TURN_ENDED = "turn.ended"
 TURN_FAILED = "turn.failed"
 TURN_TOOL = "turn.tool"
 
+# Named places the core assembles something and anything may add to it.
+# Not messages: nothing is delivered and nobody is notified — the core
+# asks, synchronously, and whoever registered fills in its part. They
+# exist because the three things a skill has to reach are all built
+# before or outside any turn: the boot-time router, a request's own
+# response, a read of the configuration.
+POINT_API_STATE = "api.state"
+POINT_CONFIG_SERVICES = "config.services"
+POINT_HTTP_CONTROLLERS = "http.controllers"
+
 # What a client connected over a socket is allowed to put on the Bus.
 # The wire uses these very names — a frame is not translated into
 # something else on the way in — so without this list the socket would
@@ -98,8 +108,12 @@ class Message:
 
 
 Listener = Callable[[Message], Awaitable[None]]
+#: A contribution point's handler: it is handed the thing being
+#: assembled and adds to it. Synchronous, because every point is.
+Contributor = Callable[[Any], None]
 
 _listeners: dict[str, list[Listener]] = {}
+_contributors: dict[str, list[Contributor]] = {}
 
 
 def subscribe(type: str, listener: Listener) -> None:
@@ -163,6 +177,28 @@ def _body_summary(message: Message) -> str:
     return f" body=<{type(body).__name__}>"
 
 
+def contribute(point: str, contributor: Contributor) -> None:
+    """Register to add something to whatever `point` assembles."""
+    _contributors.setdefault(point, []).append(contributor)
+
+
+def collect(point: str, target: Any) -> Any:
+    """Hands `target` to everyone registered for `point`, in registration
+    order, and gives it back. Synchronous and immediate: a contribution
+    point is the core asking, not the core announcing — and every one of
+    them is a response being built while a caller waits for it.
+
+    Returns `target` so a call site can say what it means in one line:
+    `return bus.collect(POINT_API_STATE, payload)`."""
+    for contributor in _contributors.get(point, ()):
+        try:
+            contributor(target)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Contributor to %s failed: %s", point, exc)
+    return target
+
+
 def _reset_for_tests() -> None:
-    """Test-only — the registry is a process-global, like events'."""
+    """Test-only — the registries are process-globals, like events'."""
     _listeners.clear()
+    _contributors.clear()

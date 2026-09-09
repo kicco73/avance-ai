@@ -17,6 +17,7 @@ from chat.sessions.session_manager import ChatSessionManager
 from chat.ws_human_relay import WsHumanRelay
 from chat.ws_notifications import WsNotifications
 from talker import HumanTalker
+import skills
 from config import AppConfig
 from tracking.project_files import configure_project_file_cache
 from controller import AvanceController
@@ -40,8 +41,6 @@ from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
 from whatsapp.whatsapp_service import WhatsAppService
-from listen.decoder import SpeechDecoder
-from listen.listen_service import ListenService
 
 __version__ = "1.33.0"
 
@@ -100,13 +99,10 @@ def create_app() -> FastAPI:
             config.ai_services, db=db, input_token_budget_per_turn=config.input_token_budget_per_turn,
         )
         talk_service = TalkService.from_config(config.talk_services) if config.talk_services is not None else None
-        listen_service = ListenService.from_config(config.listen_services) if config.listen_services is not None else None
-        if listen_service is not None:
-            # Listen joins the conversation by registering on the Bus, not
-            # by being handed to whoever might need it: a channel that
-            # receives a voice note asks the Bus whether anything decodes
-            # audio and never names speech-to-text (see listen.decoder).
-            SpeechDecoder(listen_service).register()
+        # Whatever is installed, started with the configuration file as it
+        # was read: nothing here names a skill, and a build that leaves a
+        # package out simply has one fewer (see skills.py).
+        skills.start_all(config.raw, config.path)
         
         test_event_broadcaster = Broadcaster(ai_test_service, batch_window_seconds=DEFAULT_BATCH_WINDOW_SECONDS)
         # Started last (see the end of this block): until then its Task
@@ -256,7 +252,7 @@ def create_app() -> FastAPI:
         namespace_factory.set_whatsapp_service(whatsapp_service)
 
         controller = AvanceController(
-            chat_service, project_service, talk_service, listen_service, db, tracking_service, test_service,
+            chat_service, project_service, talk_service, db, tracking_service, test_service,
             auth_service, test_event_broadcaster, scheduler_service, __version__, config.public_services_snapshot(),
             whatsapp_service=whatsapp_service, ws_notifications=ws_notifications,
             apps_dir=config.build_service_config.apps_dir,
@@ -274,7 +270,8 @@ def create_app() -> FastAPI:
         # --- SHUTDOWN / CLEANUP ---
         logger.info("Shutting down - cleaning up resources...")
         
-        for service in [db, talk_service, listen_service, ai_live_service, ai_test_service, whatsapp_service]:
+        skills.stop_all()
+        for service in [db, talk_service, ai_live_service, ai_test_service, whatsapp_service]:
             if service is not None and hasattr(service, "close") and callable(getattr(service, "close")):
                 close_fn = getattr(service, "close")
                 if inspect.iscoroutinefunction(close_fn):
