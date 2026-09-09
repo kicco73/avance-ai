@@ -14,9 +14,9 @@ from fastapi.testclient import TestClient
 
 from auth.auth_middleware import AuthMiddleware
 from system import bus
-from system.bus import POINT_TALK_PROVIDER
-from config import WhatsAppServiceConfig
-from controllers.whatsapp_controller import WhatsAppController
+from system.bus import OUTPUT_AUDIO, OUTPUT_SPEECH, Message
+from whatsapp.config import WhatsAppServiceConfig
+from whatsapp.whatsapp_controller import WhatsAppController
 from system.service_error import ServiceError
 from system.session import Session
 from listen.decoder import SpeechDecoder
@@ -320,10 +320,18 @@ def _build(config=None, talk=None, listen=None):
         # Listen reaches this channel through the Bus now, never as a
         # constructor argument: the service does not know it exists.
         SpeechDecoder(listen).register()
-    bus._contributors[POINT_TALK_PROVIDER] = []
+    # Stands in for the talk skill: registered for output.speech, it
+    # answers with output.audio on the same envelope. One listener per
+    # _build, so a second call in the same test never answers the first's.
+    bus._listeners[OUTPUT_SPEECH] = []
     if talk is not None:
-        bus.contribute(POINT_TALK_PROVIDER, lambda registry: registry.update({"generate": talk.generate}))
+        async def speak(message: Message) -> None:
+            audio = b"".join([chunk async for chunk in talk.generate(str(message.body))])
+            await bus.publish(message.converted(OUTPUT_AUDIO, audio, mime="audio/wav"))
+
+        bus.subscribe(OUTPUT_SPEECH, speak)
     service = WhatsAppService(config or _config(), chat, db, auth, client=api)
+    service.register()
     app = FastAPI()
     # The real app's login wall sits in front of these routes too — they
     # must be reachable with no cookie at all (role=None).

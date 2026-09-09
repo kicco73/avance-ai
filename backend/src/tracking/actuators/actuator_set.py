@@ -12,7 +12,8 @@ from typing import Any, TYPE_CHECKING, TypeVar
 from system import bus
 from automaton.automaton import Action, DeferredExpression, JsSnippet
 from automaton.scope import EvaluationScope
-from system.bus import MAIL_SEND, Message
+from system.bus import MAIL_SEND, OUTPUT_TEXT, Message
+from turn.channels import WHATSAPP_CHAT
 from system.logging_factory import LoggerFactory
 from scheduler import SchedulerService
 from system.session import Session
@@ -20,8 +21,6 @@ from system.session import Session
 from .action_task import ActionTask, ScopeHydrator
 
 if TYPE_CHECKING:
-    from whatsapp.whatsapp_service import WhatsAppService
-
     from ai import AiService
     from tracking.actuators.factory import TaskNamespaceFactory
     from tracking.sources import ToolSet
@@ -191,11 +190,9 @@ class LiveTaskNamespace(TaskNamespace):
     deferred call runs (see action_task.py)."""
 
     def __init__(
-        self, dispatcher: "TaskDispatcher",
-        whatsapp_service: "WhatsAppService | None" = None, factory: "TaskNamespaceFactory | None" = None,
+        self, dispatcher: "TaskDispatcher", factory: "TaskNamespaceFactory | None" = None,
     ) -> None:
         super().__init__(dispatcher, factory)
-        self._whatsapp_service = whatsapp_service
 
     def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
         if not bus.handlers_for(MAIL_SEND):
@@ -207,10 +204,13 @@ class LiveTaskNamespace(TaskNamespace):
         return None
 
     def whatsapp(self, phone_number: str, message_md: str) -> bool:
-        if self._whatsapp_service is None:
-            logger.warning("task.whatsapp() called but no 'whatsapp-service' section in .config.yml — message not sent.")
-            return False
-        return _run_sync(self._whatsapp_service.send_message(phone_number, message_md, self._dispatcher.project_id))
+        """The text goes out on the channel it names, and the posting is
+        the answer: False means nothing in this build carries it, which
+        is what an unconfigured channel always meant here."""
+        return _run_sync(bus.publish(Message(
+            type=OUTPUT_TEXT, body=message_md, username=phone_number.strip().lstrip("+"),
+            channel=WHATSAPP_CHAT, project_id=self._dispatcher.project_id,
+        )))
 
     def defer(self, act: Callable[[], None], when: datetime) -> JsSnippet | None:
         # Both refusals are unreachable from a built index.yml — the

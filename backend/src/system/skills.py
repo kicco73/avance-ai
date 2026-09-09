@@ -14,6 +14,7 @@ which resolves at call time, so the order they start in does not matter.
 from __future__ import annotations
 
 import importlib
+import inspect
 import pkgutil
 from pathlib import Path
 from types import ModuleType
@@ -77,12 +78,15 @@ def start_all(raw: dict, path: Path, source_root: Path | None = None) -> list[Mo
     return list(_started)
 
 
-def stop_all() -> None:
+async def stop_all() -> None:
+    """Awaits a stop() that needs it — a skill holding an open client
+    releases it the same way main.py's own shutdown does, rather than
+    leaving it to process exit."""
     for module in reversed(_started):
-        stop = getattr(module, "stop", None)
-        if stop is not None:
+        for stop in filter(None, [getattr(module, "stop", None)]):
             try:
-                stop()
+                for pending in filter(inspect.isawaitable, [stop()]):
+                    await pending
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Skill %r failed to stop: %s", module.__name__, exc)
     _started.clear()

@@ -15,7 +15,7 @@ from auth.auth_service import AuthService
 from turn.turn_service import TurnService
 from turn.sessions.session_manager import SessionManager
 from system import bus
-from system.bus import POINT_CORE_SERVICES, POINT_TALK_PROVIDER
+from system.bus import OUTPUT_SPEECH, POINT_CORE_SERVICES
 from system.ws_notifications import WsNotifications
 from system import skills
 from config import AppConfig
@@ -38,7 +38,6 @@ from tracking.actuators import TaskNamespaceFactory
 from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
-from whatsapp.whatsapp_service import WhatsAppService
 
 __version__ = "1.33.0"
 
@@ -136,8 +135,6 @@ def create_app() -> FastAPI:
             db, automaton_loader, session_manager,
             ai_live_service, 
             invite_valid_days=config.invite_valid_days, invite_max_shares=config.invite_max_shares,
-            whatsapp_number=config.whatsapp_service_config.phone_number if config.whatsapp_service_config else None,
-            whatsapp_invite_prefix=config.whatsapp_service_config.invite_prefix if config.whatsapp_service_config else "Invitation code: ",
         )
 
         # After ProjectService (a hibernated task.defer is rebuilt
@@ -172,7 +169,7 @@ def create_app() -> FastAPI:
         # TurnService depend on ai_service/metric_service directly, never each other.
         tracking_service = TrackingService(
             db, project_service, metric_service, namespace_factory,
-            talk_enabled=bus.collect(POINT_TALK_PROVIDER, {}).get("generate") is not None,
+            talk_enabled=bool(bus.handlers_for(OUTPUT_SPEECH)),
             input_token_budget_per_turn=config.input_token_budget_per_turn,
             total_token_budget_per_session=config.total_token_budget_per_session,
         )
@@ -236,19 +233,10 @@ def create_app() -> FastAPI:
             ai_service=ai_live_service,
         ).register()
 
-        # Opt-in (whatsapp-service.enabled in .config.yml): one more
-        # client of TurnService.process_turn, beside the SPA — see
-        # whatsapp/whatsapp_service.py's own module docstring.
-        whatsapp_service = (
-            WhatsAppService(config.whatsapp_service_config, turn_service, db, auth_service)
-            if config.whatsapp_service_config is not None else None
-        )
-        namespace_factory.set_whatsapp_service(whatsapp_service)
-
         controller = AvanceController(
             turn_service, project_service, db, tracking_service, test_service,
             auth_service, test_event_broadcaster, scheduler_service, __version__, config.public_services_snapshot(),
-            whatsapp_service=whatsapp_service, ws_notifications=ws_notifications,
+            ws_notifications=ws_notifications,
             apps_dir=config.build_service_config.apps_dir,
         )
         app.include_router(controller.router)
@@ -264,8 +252,8 @@ def create_app() -> FastAPI:
         # --- SHUTDOWN / CLEANUP ---
         logger.info("Shutting down - cleaning up resources...")
         
-        skills.stop_all()
-        for service in [db, ai_live_service, ai_test_service, whatsapp_service]:
+        await skills.stop_all()
+        for service in [db, ai_live_service, ai_test_service]:
             if service is not None and hasattr(service, "close") and callable(getattr(service, "close")):
                 close_fn = getattr(service, "close")
                 if inspect.iscoroutinefunction(close_fn):

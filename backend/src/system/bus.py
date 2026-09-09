@@ -99,7 +99,6 @@ POINT_HTTP_CONTROLLERS = "http.controllers"
 # rule is that a collect must not run before main.py has contributed,
 # which is what "later" means here.
 POINT_CORE_SERVICES = "core.services"
-POINT_TALK_PROVIDER = "talk.provider"
 
 # What a client connected over a socket is allowed to put on the Bus.
 # The wire uses these very names — a frame is not translated into
@@ -177,17 +176,21 @@ def handlers_for(type: str) -> list[Listener]:
     return list(_listeners.get(type, ()))
 
 
-async def publish(message: Message) -> None:
+async def publish(message: Message) -> bool:
     """Hands `message` to every listener registered for its type, in
     subscription order, awaiting each. A listener that raises is logged
     and the rest still run: one broken consumer must not silence the
-    others."""
+    others.
+
+    Returns whether anything took it. False means nobody is listening
+    for this type — the producer's answer to "can this be done here at
+    all", given back by the posting itself rather than by asking first."""
     if message.conversions > MAX_CONVERSIONS:
         logger.error(
             "Dropping %s after %d conversions — a handler is publishing what it consumes.",
             message.type, message.conversions,
         )
-        return
+        return False
     listeners = handlers_for(message.type)
     # INFO while the Bus is young: every delivery, with what identifies
     # the conversation and how many listeners took it. Drop to DEBUG once
@@ -202,6 +205,7 @@ async def publish(message: Message) -> None:
             await listener(message)
         except Exception as exc:  # noqa: BLE001
             logger.exception("Bus listener for %s failed: %s", message.type, exc)
+    return bool(listeners)
 
 
 def _body_summary(message: Message) -> str:

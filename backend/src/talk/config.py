@@ -17,10 +17,11 @@ class TalkServiceConfig:
     ui_description: str | None = None
 
 
-def parse(raw: dict, path: Path) -> list[TalkServiceConfig] | None:
-    entries = optional_providers(raw, SECTION, path)
-    if entries is None:
-        return None
+def parse(raw: dict, path: Path) -> list[TalkServiceConfig]:
+    """The configured providers, empty when the section is absent or not
+    enabled — the one shape a caller can act on without asking whether
+    there is anything there."""
+    entries = optional_providers(raw, SECTION, path) or []
     services = []
     for i, entry in enumerate(entries):
         if not isinstance(entry, dict):
@@ -42,11 +43,11 @@ def parse(raw: dict, path: Path) -> list[TalkServiceConfig] | None:
     return services
 
 
-def public_fields(services: list[TalkServiceConfig] | None) -> dict:
+def public_fields(services: list[TalkServiceConfig]) -> dict:
     return {
-        "enabled": services is not None,
+        "enabled": bool(services),
         "providers": [
             {"driver": p.driver, "model": p.model, "ui-label": p.ui_label, "ui-description": p.ui_description}
-            for p in (services or [])
+            for p in services
         ],
     }

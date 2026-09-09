@@ -49,12 +49,12 @@ import httpx
 from auth.auth_service import AuthService
 from turn.channels import WHATSAPP_CHAT
 from turn.turn_service import TurnService
-from config import WhatsAppServiceConfig
+from whatsapp.config import WhatsAppServiceConfig
 from db import Db
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
 from system import bus
-from system.bus import INPUT_AUDIO, INPUT_TEXT, POINT_TALK_PROVIDER, Message
+from system.bus import INPUT_AUDIO, INPUT_TEXT, OUTPUT_TEXT, Message
 from system.session import Session
 from talker import AiTalker
 from whatsapp.cloud_api_client import WhatsAppCloudApiClient
@@ -140,12 +140,22 @@ class WhatsAppService(object):
         )
         self._seen = _SeenMessages()
         self._sender_locks: dict[str, asyncio.Lock] = {}
-        talk_available = bus.collect(POINT_TALK_PROVIDER, {}).get("generate") is not None
-        self._voice_notes = VoiceNoteSynthesizer(self._assistant_talker) if talk_available else None
+        self._voice_notes = VoiceNoteSynthesizer(self._assistant_talker)
+
+    def register(self) -> None:
+        """What reaches this channel from anywhere else: a text addressed
+        to a WhatsApp number. task.whatsapp() posts one and reads the
+        posting's own answer — nothing on the other side names this
+        package."""
+        bus.subscribe(OUTPUT_TEXT, self._send_outbound)
+
+    async def _send_outbound(self, message: Message) -> None:
+        for _ in filter(WHATSAPP_CHAT.__eq__, [message.channel]):
+            await self.send_message(str(message.username), str(message.body), str(message.project_id))
 
     async def close(self) -> None:
-        if self._voice_notes is not None:
-            self._voice_notes.cancel()
+        bus.unsubscribe(OUTPUT_TEXT, self._send_outbound)
+        self._voice_notes.cancel()
         await self._client.close()
 
     # ----------------------------------------------------------------- #

@@ -8,21 +8,23 @@ answering instead of the model) has a single seam instead of two
 scattered ones.
 
 ai_service is optional: a caller that only ever needs talk()
-(PlatformController, WhatsAppService) builds an AiTalker without one.
-talk() itself is always available or not depending on whether a talk
-skill is installed/configured, checked fresh on every call rather than
-supplied at construction; calling chat() without an ai_service raises
-the same *NotAvailableError the direct call would have raised.
+(WhatsAppService) builds an AiTalker without one. talk() asks the Bus
+rather than any object it was handed: a build with nothing registered
+for `output.speech` produces no audio and the caller falls back to
+text, which is the same answer it always had for an unconfigured
+talk-service.
 """
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING, AsyncIterator
 
 from system import bus
-from system.bus import POINT_TALK_PROVIDER
+from system.bus import OUTPUT_AUDIO, OUTPUT_SPEECH, Message
+from system.session import Session
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 
-from .base_talker import BaseTalker, TalkServiceNotAvailableError
+from .base_talker import BaseTalker
 
 if TYPE_CHECKING:
 	from ai import AiService, MetadataCallback
@@ -56,12 +58,24 @@ class AiTalker(BaseTalker):
 			tool_set=tool_set, force_required_tools=force_required_tools, env_block=env_block,
 		)
 
-	def talk(self, text: str) -> AsyncIterator[bytes]:
-		"""Text-to-speech for one reply — same call as talk_service.
-		generate(text) always made. Raises TalkServiceNotAvailableError if
-		no talk skill is installed/configured, same as a caller checking
-		`talk_service is None` itself used to."""
-		generate = bus.collect(POINT_TALK_PROVIDER, {}).get("generate")
-		if generate is None:
-			raise TalkServiceNotAvailableError()
-		return generate(text)
+	async def talk(self, text: str) -> AsyncIterator[bytes]:
+		"""Text-to-speech for one reply: `output.speech` goes out, and
+		whatever `output.audio` comes back on this exchange's own origin
+		is the answer. Yields nothing when nobody is registered to
+		speak — the same "no audio, send the text" the caller already
+		handles."""
+		origin = f"speech:{uuid.uuid4()}"
+		answers: dict[str, bytes] = {}
+
+		async def take(message: Message) -> None:
+			answers[str(message.origin_id)] = bytes(message.body)
+
+		bus.subscribe(OUTPUT_AUDIO, take)
+		try:
+			await bus.publish(Message(
+				type=OUTPUT_SPEECH, body=text, username=Session().user, origin_id=origin,
+			))
+		finally:
+			bus.unsubscribe(OUTPUT_AUDIO, take)
+		for chunk in filter(None, [answers.get(origin)]):
+			yield chunk

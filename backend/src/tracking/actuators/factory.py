@@ -12,7 +12,6 @@ from .chat_namespace import ChatNamespace, FakeChatNamespace, LiveChatNamespace
 if TYPE_CHECKING:
     from ai import AiService
     from project.project_service import ProjectService
-    from whatsapp.whatsapp_service import WhatsAppService
 
 
 class TaskNamespaceFactory:
@@ -42,7 +41,6 @@ class TaskNamespaceFactory:
         # _enabled_test_sessions above; read by TrackingService._process
         # to decide who answers a session's next turn.
         self._human_operators: dict[int, str] = {}
-        self._whatsapp_service: "WhatsAppService | None" = None
         self._hydrator = ScopeHydrator(db, project_service, self, ai_service)
         scheduler_service.register_task_type(ActionTask.TYPE, self._hydrator.hydrate)
 
@@ -55,9 +53,6 @@ class TaskNamespaceFactory:
     def clear_human_operator(self, session_id: int) -> None:
         self._human_operators.pop(session_id, None)
 
-    def set_whatsapp_service(self, whatsapp_service: "WhatsAppService | None") -> None:
-        self._whatsapp_service = whatsapp_service
-
     def _dispatcher(self, project_id: str, namespace_kind: str) -> TaskDispatcher:
         return TaskDispatcher(self._scheduler_service, self._hydrator, project_id=project_id, namespace_kind=namespace_kind)
 
@@ -67,7 +62,7 @@ class TaskNamespaceFactory:
         """Bound to `project_id`: what its task tasks are hibernated under."""
         return LiveTaskNamespace(
             self._dispatcher(project_id, TASK_NAMESPACE_LIVE),
-            whatsapp_service=self._whatsapp_service, factory=self,
+            factory=self,
         )
 
     def fake(self, *, project_id: str) -> FakeTaskNamespace:

@@ -1,30 +1,25 @@
 """WhatsApp as something the platform finds rather than builds.
 
-Everything this package contributes is registered from here, and nothing
-outside it names WhatsApp: not main.py, not config.py, not the composition
-root. A build that leaves `backend/src/whatsapp/` out has no WhatsApp
-channel, and there is nothing else to switch off.
+Nothing outside this package names WhatsApp: not main.py, not config.py,
+not the composition root. A build that leaves `backend/src/whatsapp/`
+out has no webhook for Meta to call, no channel, and nothing left in the
+code saying either ever existed.
 
-What it registers:
-  - its own `whatsapp-service` section, parsed by whatsapp/config.py
-  - Meta's two webhook routes (whatsapp/whatsapp_controller.py)
-  - the sender behind task.whatsapp() (bus.POINT_WHATSAPP_SENDER)
-  - the wa.me link an invite carries (bus.POINT_INVITE_LINKS)
-  - its section of Settings > Manage services
+Configured or not is two objects, not a branch: `_WhatsApp` registers
+the webhook routes and the service that answers them; `_NoWhatsApp`
+registers only its Manage services section, saying it is off.
+
+Registered from `install_controller`, not from `start`: start() runs at
+boot, before the turn engine exists; the contributor runs when
+AvanceController assembles its router, which is after (see
+bus.POINT_CORE_SERVICES) — the same shape webchat uses.
 """
 from __future__ import annotations
 
 from pathlib import Path
-from urllib.parse import quote
 
 from system import bus
-from system.bus import (
-    POINT_CONFIG_SERVICES,
-    POINT_CORE_SERVICES,
-    POINT_HTTP_CONTROLLERS,
-    POINT_INVITE_LINKS,
-    POINT_WHATSAPP_SENDER,
-)
+from system.bus import POINT_CONFIG_SERVICES, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
 from system.logging_factory import LoggerFactory
 from whatsapp import config as whatsapp_config
 
@@ -33,56 +28,63 @@ logger = LoggerFactory.get_logger(__name__)
 KEY = "whatsapp"
 LABEL = "WhatsApp — chat channel"
 
-_config = None
-_service = None
 
+class _NoWhatsApp:
 
-def start(raw: dict, path: Path) -> None:
-    global _config
-    _config = whatsapp_config.parse(raw, path)
-    bus.contribute(POINT_CONFIG_SERVICES, lambda snapshot: snapshot.update(
-        {KEY: whatsapp_config.public_fields(_config)}
-    ))
-    if _config is None:
+    def __init__(self, config) -> None:
+        self._config = config
+
+    def install(self) -> None:
+        self._contribute_config()
         logger.info("whatsapp-service is not enabled — no webhook, no channel.")
-        return
 
-    bus.contribute(POINT_HTTP_CONTROLLERS, _install_controller)
-    bus.contribute(POINT_WHATSAPP_SENDER, lambda registry: registry.update({"send_message": _send_message}))
-    if _config.phone_number:
-        bus.contribute(POINT_INVITE_LINKS, lambda links: links.update({"whatsapp_url": _invite_url}))
-    logger.info("whatsapp-service started.")
+    async def uninstall(self) -> None:
+        pass
+
+    def _contribute_config(self) -> None:
+        bus.contribute(POINT_CONFIG_SERVICES, lambda snapshot: snapshot.update(
+            {KEY: whatsapp_config.public_fields(self._config)}
+        ))
 
 
-def _service_now():
-    """The one WhatsAppService, built the first time anything actually
-    needs it — never at start(), when the core it talks to (TurnService,
-    Db, AuthService) does not exist yet (see bus.POINT_CORE_SERVICES)."""
-    global _service
-    if _service is None:
+class _WhatsApp(_NoWhatsApp):
+
+    def __init__(self, config) -> None:
+        super().__init__(config)
+        self._service = None
+
+    def install(self) -> None:
+        self._contribute_config()
+        bus.contribute(POINT_HTTP_CONTROLLERS, self.install_controller)
+        logger.info("whatsapp-service started.")
+
+    def install_controller(self, controllers: list) -> None:
+        from whatsapp.whatsapp_controller import WhatsAppController
         from whatsapp.whatsapp_service import WhatsAppService
 
         core = bus.collect(POINT_CORE_SERVICES, {})
-        _service = WhatsAppService(_config, core["turn_service"], core["db"], core["auth_service"])
-    return _service
+        self._service = WhatsAppService(
+            self._config, core["turn_service"], core["db"], core["auth_service"],
+        )
+        self._service.register()
+        controllers.append(WhatsAppController(self._service))
+
+    async def uninstall(self) -> None:
+        for service in filter(None, [self._service]):
+            await service.close()
+        self._service = None
 
 
-def _install_controller(controllers: list) -> None:
-    from whatsapp.whatsapp_controller import WhatsAppController
-
-    controllers.append(WhatsAppController(_service_now()))
+_INSTALLATIONS = {False: _NoWhatsApp, True: _WhatsApp}
+_installed = _NoWhatsApp(None)
 
 
-async def _send_message(phone_number: str, message_md: str, project_id: str) -> bool:
-    return await _service_now().send_message(phone_number, message_md, project_id)
-
-
-def _invite_url(code: str) -> str:
-    return f"https://wa.me/{_config.phone_number}?text={quote(_config.invite_prefix + code)}"
+def start(raw: dict, path: Path) -> None:
+    global _installed
+    config = whatsapp_config.parse(raw, path)
+    _installed = _INSTALLATIONS[bool(config)](config)
+    _installed.install()
 
 
 async def stop() -> None:
-    global _service
-    if _service is not None:
-        await _service.close()
-        _service = None
+    await _installed.uninstall()

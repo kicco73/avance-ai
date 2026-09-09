@@ -30,8 +30,6 @@ from controllers.edit_project_controller import EditProjectController
 from controllers.label_project_controller import LabelProjectController
 from controllers.settings_controller import SettingsController
 from controllers.user_controller import UserController
-from controllers.whatsapp_controller import WhatsAppController
-from whatsapp.whatsapp_service import WhatsAppService
 
 
 class AvanceController(object):
@@ -47,7 +45,6 @@ class AvanceController(object):
         scheduler_service: SchedulerService,
         version: str,
         services_config: dict,
-        whatsapp_service: WhatsAppService | None = None,
         ws_notifications: WsNotifications | None = None,
         apps_dir: Path | None = None,
     ) -> None:
@@ -82,10 +79,6 @@ class AvanceController(object):
             self.platform, self.edit_project, self.build, self.label_project, self.settings, self.auth,
             self.user, self.app_store,
         ]
-        # Opt-in channel (see docs/WHATSAPP.md): no service, no routes.
-        self.whatsapp = WhatsAppController(whatsapp_service) if whatsapp_service is not None else None
-        if self.whatsapp is not None:
-            controllers.append(self.whatsapp)
         # And whatever a skill registered for itself: a package that is
         # not in this build contributes nothing, so its routes are not
         # there to answer (see bus.POINT_HTTP_CONTROLLERS, skills.py).

@@ -16,15 +16,19 @@ from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from controllers.base_controller import BaseController, get
-from talker import AiTalker, TalkServiceNotAvailableError
+from talk.talk_service import TalkService
 from turn.turn_service import TurnService
 
 
 class TalkController(BaseController):
+    """Holds the TalkService directly rather than going through the Bus:
+    this route only exists when the package that answers it is here, and
+    it streams the audio out chunk by chunk as it is generated — which a
+    single message carrying one finished body cannot do."""
 
-    def __init__(self, turn_service: TurnService) -> None:
+    def __init__(self, turn_service: TurnService, talk_service: TalkService) -> None:
         self.turn_service = turn_service
-        self.assistant_talker = AiTalker()
+        self.talk_service = talk_service
 
     @get("/api/chat/messages/{message_id}/audio")
     def get_message_audio(self, message_id: int, request: Request):
@@ -34,12 +38,9 @@ class TalkController(BaseController):
         audio_text = self.turn_service.get_message_audio_text(message_id)
         if not audio_text:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No audio available for this message.")
-        try:
-            generation = self.assistant_talker.talk(audio_text)
-        except TalkServiceNotAvailableError as exc:
-            raise HTTPException(status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(exc)) from exc
         return StreamingResponse(
-            self._stream_audio_until_disconnected(request, generation), media_type="audio/wav"
+            self._stream_audio_until_disconnected(request, self.talk_service.generate(audio_text)),
+            media_type="audio/wav",
         )
 
     async def _stream_audio_until_disconnected(self, request: Request, generation):

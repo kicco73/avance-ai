@@ -1,6 +1,6 @@
 """GET /api/state's own talk_enabled — the AND of "does the server have
-a TTS provider configured at all" (a talk skill contributing to
-bus.POINT_TALK_PROVIDER) and "does the active project itself opt in"
+a TTS provider configured at all" (anything registered to speak, i.e. a
+listener for bus.OUTPUT_SPEECH) and "does the active project itself opt in"
 (its own automaton.talk_enabled, defaulting true) — the chat toolbar's
 audio/spoken-text icons (ChatInput.vue) read this one combined flag.
 """
@@ -9,10 +9,15 @@ from __future__ import annotations
 import pytest
 
 from system import bus
-from system.bus import POINT_TALK_PROVIDER
+from system.bus import OUTPUT_SPEECH
 from controllers.platform_controller import PlatformController
 
 pytestmark = pytest.mark.contract
+
+
+async def _speaks(message) -> None:
+    """Stands in for the talk skill: registered for output.speech, which
+    is the whole of what "the server can speak" means here."""
 
 
 class _FakeAutomaton:
@@ -49,7 +54,7 @@ class _FakeChatService:
 
 def _controller(*, talk_service_configured: bool, project_talk_enabled: bool) -> PlatformController:
     if talk_service_configured:
-        bus.contribute(POINT_TALK_PROVIDER, lambda registry: registry.update({"generate": object()}))
+        bus.subscribe(OUTPUT_SPEECH, _speaks)
     return PlatformController(
         turn_service=_FakeChatService(),
         project_service=_FakeProjectService(project_talk_enabled),
@@ -72,7 +77,7 @@ def test_talk_disabled_when_the_server_has_no_provider_even_if_the_project_opts_
 
 
 def test_defaults_to_the_server_flag_when_there_is_no_active_project():
-    bus.contribute(POINT_TALK_PROVIDER, lambda registry: registry.update({"generate": object()}))
+    bus.subscribe(OUTPUT_SPEECH, _speaks)
     controller = PlatformController(
         turn_service=_FakeChatService(),
         project_service=_NoActiveProjectService(),

@@ -17,7 +17,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from system import bus
-from system.bus import POINT_API_STATE, POINT_TALK_PROVIDER
+from system.bus import OUTPUT_SPEECH, POINT_API_STATE
 
 from turn.turn_service import TurnService
 from project.project_service import ProjectService
@@ -129,8 +129,7 @@ class PlatformController(BaseController):
         except:
             project_talk_enabled = True
 
-        talk_available = bus.collect(POINT_TALK_PROVIDER, {}).get("generate") is not None
-        payload["talk_enabled"] = talk_available and project_talk_enabled
+        payload["talk_enabled"] = bool(bus.handlers_for(OUTPUT_SPEECH)) and project_talk_enabled
         payload["input_token_budget_per_turn"] = self.turn_service.get_input_token_budget_per_turn()
         payload["total_token_budget_per_session"] = self.turn_service.get_total_token_budget_per_session()
         # Whatever else is running adds its own field: listen_enabled
