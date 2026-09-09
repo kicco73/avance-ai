@@ -6,12 +6,13 @@ from email.mime.text import MIMEText
 from email.utils import formataddr
 from urllib.parse import urlsplit
 
-import aiosmtplib
 import markdown
 
 from logging_factory import LoggerFactory
 from mail.config import MailServiceConfig
 from mail.errors import MailError
+from mail.send_mail_job import SendMailJob
+from scheduler import SchedulerService
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -23,7 +24,8 @@ class MailService:
         "smtps": (465, True),
     }
 
-    def __init__(self, config: MailServiceConfig) -> None:
+    def __init__(self, config: MailServiceConfig, scheduler_service: SchedulerService) -> None:
+        self._scheduler_service = scheduler_service
         self._username = config.username
         self._password = config.password
         self._from_name = config.from_name
@@ -59,14 +61,21 @@ class MailService:
         return message
 
     async def send_mail(self, to: str, subject: str, body_md: str) -> None:
-        message = self._build_message(to, subject, body_md)
-        try:
-            await aiosmtplib.send(
-                message, hostname=self._hostname, port=self._port,
-                username=self._username, password=self._password,
-                use_tls=self._implicit_tls, start_tls=not self._implicit_tls,
-                timeout=self._timeout_seconds,
-            )
-        except Exception as exc:
-            raise MailError(f"Failed to send email to {to!r}.") from exc
+        job = self._build_send_mail_job(to, subject, body_md)
+        self._scheduler_service.submit(job)
+        await self._scheduler_service.wait_for(job)
+
+        if job.exception is not None:
+            raise MailError(f"Failed to send email to {to!r}.") from job.exception
+
         logger.info(f"Sent email to {to!r} (subject: {subject!r}).")
+
+    def enqueue_mail(self, to: str, subject: str, body_md: str) -> None:
+        self._scheduler_service.submit(self._build_send_mail_job(to, subject, body_md))
+
+    def _build_send_mail_job(self, to: str, subject: str, body_md: str) -> SendMailJob:
+        message = self._build_message(to, subject, body_md)
+        return SendMailJob(
+            self._hostname, self._port, self._implicit_tls, self._username, self._password,
+            self._timeout_seconds, message,
+        )

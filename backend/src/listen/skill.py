@@ -34,7 +34,7 @@ KEY = "listen"
 LABEL = "Listen — speech to text"
 
 
-def start(raw: dict, path: Path) -> None:
+def start(raw: dict, path: Path, scheduler_service) -> None:
     """Called once at boot with the configuration file as it was read.
     Absent or disabled section: nothing registers, and every question
     about speech-to-text answers "nobody" from then on."""

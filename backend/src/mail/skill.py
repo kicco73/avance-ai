@@ -16,18 +16,18 @@ LABEL = "Mail"
 _listener = None
 
 
-def start(raw: dict, path: Path) -> None:
+def start(raw: dict, path: Path, scheduler_service) -> None:
     config = mail_config.parse(raw, path)
     bus.contribute(POINT_CONFIG_SERVICES, lambda snapshot: snapshot.update({KEY: mail_config.public_fields(config)}))
     if config is None:
         logger.info("mail-service is not enabled — task.send_mail can't run.")
         return
 
-    service = MailService(config)
+    service = MailService(config, scheduler_service)
 
     async def on_mail_send(message: bus.Message) -> None:
         body = message.body
-        await service.send_mail(body["to"], body["subject"], body["body_md"])
+        service.enqueue_mail(body["to"], body["subject"], body["body_md"])
 
     global _listener
     _listener = on_mail_send

@@ -98,15 +98,16 @@ def create_app() -> FastAPI:
             config.ai_services, db=db, input_token_budget_per_turn=config.input_token_budget_per_turn,
         )
         talk_service = TalkService.from_config(config.talk_services) if config.talk_services is not None else None
-        # Whatever is installed, started with the configuration file as it
-        # was read: nothing here names a skill, and a build that leaves a
-        # package out simply has one fewer (see skills.py).
-        skills.start_all(config.raw, config.path)
-        
+
         test_event_broadcaster = Broadcaster(ai_test_service, batch_window_seconds=DEFAULT_BATCH_WINDOW_SECONDS)
         # Started last (see the end of this block): until then its Task
         # table only gains rows, nothing is claimed.
         scheduler_service = SchedulerService(max_concurrent=config.jobs_shared_max_concurrent, broadcaster=test_event_broadcaster, db=db)
+
+        # Whatever is installed, started with the configuration file as it
+        # was read: nothing here names a skill, and a build that leaves a
+        # package out simply has one fewer (see skills.py).
+        skills.start_all(config.raw, config.path, scheduler_service)
 
         # Bridged onto app.state for the same reason auth_service is below:
         # AuthMiddleware was already registered before this existed, and

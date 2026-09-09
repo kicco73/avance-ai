@@ -58,13 +58,13 @@ def installed(source_root: Path | None = None) -> list[dict]:
     ]
 
 
-def start_all(raw: dict, path: Path, source_root: Path | None = None) -> list[ModuleType]:
+def start_all(raw: dict, path: Path, scheduler_service, source_root: Path | None = None) -> list[ModuleType]:
     """Starts every discovered skill with the configuration file as it
     was read. Each reads the section that belongs to it; one that finds
     its section absent registers nothing and says so."""
     for module in discover(source_root):
         try:
-            module.start(raw, path)
+            module.start(raw, path, scheduler_service)
             _started.append(module)
         except Exception as exc:  # noqa: BLE001
             logger.exception("Skill %r failed to start: %s", module.__name__, exc)
