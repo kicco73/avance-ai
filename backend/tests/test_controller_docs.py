@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from controllers.platform_controller import DOC_FILES
+from avance_platform.platform_controller import DOC_FILES
 
 pytestmark = pytest.mark.contract
 

@@ -205,11 +205,14 @@ def test_a_backend_without_listen_still_imports_its_own_entry_point(tmp_path):
 
 
 @pytest.mark.contract
-def test_a_backend_without_talk_still_imports_its_own_entry_point(tmp_path):
-    """talk is threaded through more core constructors than listen ever
-    was (PlatformController, WhatsAppService, TrackingService) — if any of
-    them still imported it directly instead of reaching it through the
-    Bus, this is where it would show."""
+@pytest.mark.parametrize("package", ["talk", "whatsapp", "testing", "webchat"])
+def test_a_backend_without_a_skill_still_imports_its_own_entry_point(tmp_path, package):
+    """Each of these was threaded through core constructors before it
+    became a skill — talk through the studio controller and the tracking
+    service, whatsapp through the composition root, testing through both,
+    webchat hardest of all (the socket ran the turn). If any core file
+    still imported one directly rather than reaching it through the Bus,
+    this is where it would show."""
     import shutil
     import subprocess
     import sys
@@ -217,7 +220,7 @@ def test_a_backend_without_talk_still_imports_its_own_entry_point(tmp_path):
     from build.build_service import BACKEND_DIR, _ignore_for
 
     copy = tmp_path / "backend"
-    shutil.copytree(BACKEND_DIR, copy, ignore=_ignore_for(["talk"]))
+    shutil.copytree(BACKEND_DIR, copy, ignore=_ignore_for([package]))
 
     result = subprocess.run(
         [sys.executable, "-c", "import sys; sys.path.insert(0, 'src'); import main; from system import skills; print(skills.installed())"],
@@ -225,33 +228,7 @@ def test_a_backend_without_talk_still_imports_its_own_entry_point(tmp_path):
     )
 
     assert result.returncode == 0, result.stderr[-2000:]
-    assert "'package': 'talk'" not in result.stdout
-
-
-def test_a_backend_without_webchat_still_imports_its_own_entry_point(tmp_path):
-    """The browser interface is the one the core had wired into itself
-    hardest: the socket ran the turn, the human-talker seam was built
-    from it in main.py, and its routes sat in the core's own controller.
-    If any of that were still a direct reference rather than a Bus
-    message, this is where it would show — the copy has no src/webchat/
-    to import."""
-    import shutil
-    import subprocess
-    import sys
-
-    from build.build_service import BACKEND_DIR, _ignore_for
-
-    copy = tmp_path / "backend"
-    shutil.copytree(BACKEND_DIR, copy, ignore=_ignore_for(["webchat"]))
-
-    result = subprocess.run(
-        [sys.executable, "-c",
-         "import sys; sys.path.insert(0, 'src'); import main; from system import skills; print(skills.installed())"],
-        cwd=copy, capture_output=True, text=True, timeout=180,
-    )
-
-    assert result.returncode == 0, result.stderr[-2000:]
-    assert "'package': 'webchat'" not in result.stdout
+    assert f"'package': '{package}'" not in result.stdout
 
 
 def test_webchat_is_offered_as_something_a_build_can_leave_out(tmp_path):
@@ -261,6 +238,47 @@ def test_webchat_is_offered_as_something_a_build_can_leave_out(tmp_path):
     from system import skills
 
     assert "webchat" in {skill["package"] for skill in skills.installed()}
+
+
+def test_a_backend_without_the_platform_still_imports_its_own_entry_point(tmp_path):
+    """The authoring surface was the composition root itself: eight
+    controllers AvanceController built by hand, with the services they
+    needed threaded through its constructor. If any of that were still a
+    direct reference, this is where it would show — the copy has no
+    src/avance_platform/ to import."""
+    import shutil
+    import subprocess
+    import sys
+
+    from build.build_service import BACKEND_DIR, _ignore_for
+
+    copy = tmp_path / "backend"
+    shutil.copytree(BACKEND_DIR, copy, ignore=_ignore_for(["avance_platform"]))
+
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, 'src'); import main; from system import skills; print(skills.installed())"],
+        cwd=copy, capture_output=True, text=True, timeout=180,
+    )
+
+    assert result.returncode == 0, result.stderr[-2000:]
+    assert "'package': 'avance_platform'" not in result.stdout
+
+
+def test_the_composition_root_names_no_controller_a_build_could_leave_out(tmp_path):
+    """AvanceController builds one controller — the per-project views,
+    which every build answers. Everything else arrives through
+    bus.POINT_HTTP_CONTROLLERS, so a package that is not in the build
+    contributes nothing and its routes are simply not there."""
+    from pathlib import Path as _Path
+
+    source = (_Path(__file__).resolve().parent.parent / "src" / "controller.py").read_text()
+
+    assert "ProjectController" in source
+    for left_out in ("EditProjectController", "SettingsController", "AuthController",
+                     "BuildController", "AppStoreController", "LabelProjectController",
+                     "UserController", "PlatformController"):
+        assert left_out not in source, left_out
 
 
 def test_every_installed_skill_starts_with_the_configuration_and_nothing_else(tmp_path):

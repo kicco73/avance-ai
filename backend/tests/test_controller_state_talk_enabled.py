@@ -10,7 +10,7 @@ import pytest
 
 from system import bus
 from system.bus import OUTPUT_SPEECH
-from controllers.platform_controller import PlatformController
+from avance_platform.platform_controller import PlatformController
 
 pytestmark = pytest.mark.contract
 

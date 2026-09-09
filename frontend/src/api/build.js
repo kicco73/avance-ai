@@ -9,11 +9,13 @@ export function postBuildLocalModule(projectId) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/build/local-module`, { method: 'POST' })
 }
 
-// What this backend has installed and a build may leave out. Read from
-// the source tree on the server, so the list is whatever is actually
-// there rather than something the frontend keeps in sync.
-export function getBuildSkills() {
-  return apiFetch(`${API_URL}/build/skills`)
+// What this backend has installed and a build may leave out, plus the
+// packages this project's own automaton makes mandatory (`required`).
+// Both are read on the server: the list is whatever is actually in its
+// source tree, and the rule that task.send_mail needs mail lives in
+// mail, never here.
+export function getBuildSkills(projectId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/build/skills`)
 }
 
 // `excludedSkills` names the packages this build leaves out. Sending the

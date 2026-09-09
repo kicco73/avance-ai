@@ -29,7 +29,8 @@ from db.models import User
 from error_handlers import ApiErrorHandlers
 from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
 from system import bus
-from system.bus import POINT_HTTP_CONTROLLERS
+from system.bus import POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
+from avance_platform import skill as platform_skill
 from system.broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
 from jobs.job_queue import JobQueue
 from scheduler import SchedulerService
@@ -39,6 +40,7 @@ from project.archive.compiled_automaton_loader import CompiledAutomatonLoader
 from project.project_service import ProjectService
 from system.session import Session
 from testing.test_service import TestService
+from testing.testing_controller import TestingController
 from tracking.actuators import TaskNamespaceFactory
 from tracking.project_files import PROJECT_FILE_CACHE
 from tracking.tracking_service import TrackingService
@@ -340,14 +342,35 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
     webchat = WebchatService(turn_service, project_service, ws_notifications)
     webchat.register()
     bus.contribute(POINT_HTTP_CONTROLLERS, lambda controllers: controllers.append(webchat.controller))
+    # Same for testing/skill.py: the benchmark routes travel with the
+    # package that runs them, so the harness registers them the same way.
+    bus.contribute(POINT_HTTP_CONTROLLERS, lambda controllers: controllers.append(
+        TestingController(test_service, test_event_broadcaster, turn_service)
+    ))
     tracking_service.set_human_talker_factory(webchat.human_talker_factory)
-    controller = AvanceController(
-        turn_service, project_service, app_db, tracking_service, test_service,
-        auth_service, test_event_broadcaster, scheduler_service, "test-version", services_config,
-        ws_notifications=ws_notifications,
+    # What avance_platform/skill.py does at boot, done here directly: the
+    # harness has the composed core in hand, so it contributes the
+    # registry the platform's own installer reads (see
+    # bus.POINT_CORE_SERVICES).
+    bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({
+        "db": app_db,
+        "auth_service": auth_service,
+        "turn_service": turn_service,
+        "project_service": project_service,
+        "tracking_service": tracking_service,
+        "scheduler_service": scheduler_service,
+        "ai_test_service": fake_ai_service,
+        "test_event_broadcaster": test_event_broadcaster,
+        "ws_notifications": ws_notifications,
         # Never backend/apps: a test that builds must not write into the
         # developer's own working tree.
-        apps_dir=tmp_path / "apps",
+        "apps_dir": tmp_path / "apps",
+        "services_config": services_config,
+        "version": "test-version",
+    }))
+    platform_skill.start({}, Path("."))
+    controller = AvanceController(
+        turn_service, project_service, ws_notifications=ws_notifications,
     )
     fastapi_app.include_router(controller.router)
     fastapi_app.state.test_service = test_service

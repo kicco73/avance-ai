@@ -32,15 +32,28 @@ const buildError = ref('')
 // directory the build does not copy, so what is off is what is absent.
 const skills = ref([])
 const included = ref({})
+// The packages this project actually uses, worked out on the server from
+// its own automaton: ticked and not untickable, since a build without
+// one produces a server that fails where the automaton expects the call
+// to work.
+const required = ref([])
 const skillsError = ref('')
 
 const excludedSkills = computed(() => skills.value.map(s => s.package).filter(p => !included.value[p]))
 
+function isRequired(skill) {
+  return required.value.includes(skill.package)
+}
+
 onMounted(async () => {
   try {
-    const { skills: installed } = await getBuildSkills()
+    const { skills: installed, required: mandatory } = await getBuildSkills(props.projectId)
     skills.value = installed
-    included.value = Object.fromEntries(installed.map(s => [s.package, true]))
+    required.value = mandatory
+    // Off unless the project actually uses it: the smallest build that
+    // still runs this project is the starting point, and anything else
+    // is something the operator asks for on purpose.
+    included.value = Object.fromEntries(installed.map(s => [s.package, mandatory.includes(s.package)]))
   } catch (err) {
     skillsError.value = err.message || 'Could not read the installed skills.'
   }
@@ -113,9 +126,15 @@ async function runBuild() {
         <p v-else-if="!skills.length" class="build-status">No optional skills installed.</p>
         <ul v-else class="build-skill-list">
           <li v-for="skill in skills" :key="skill.package" class="build-skill-row">
-            <label class="build-skill-label">
-              <input v-model="included[skill.package]" type="checkbox" class="build-skill-toggle">
+            <label class="build-skill-label" :class="{ 'build-skill-label-required': isRequired(skill) }">
+              <input
+                v-model="included[skill.package]"
+                type="checkbox"
+                class="build-skill-toggle"
+                :disabled="isRequired(skill)"
+              >
               <span>{{ skill.label }}</span>
+              <span v-if="isRequired(skill)" class="build-skill-required">this project uses it</span>
             </label>
             <code class="build-skill-package">src/{{ skill.package }}</code>
           </li>
@@ -205,6 +224,18 @@ async function runBuild() {
   width: 1rem;
   height: 1rem;
   cursor: pointer;
+}
+
+.build-skill-label-required {
+  cursor: default;
+}
+
+.build-skill-required {
+  font-size: 0.72rem;
+  color: #777;
+  border: 1px solid #ddd;
+  border-radius: 999px;
+  padding: 0.05rem 0.4rem;
 }
 
 .build-skill-package {

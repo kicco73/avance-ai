@@ -88,3 +88,14 @@ def start(raw: dict, path: Path) -> None:
 
 async def stop() -> None:
     await _installed.uninstall()
+
+
+def required_by(automaton, sources: dict[str, str]) -> bool:
+    """A project that calls task.whatsapp cannot run in a build without
+    this package: the message would be posted with nothing registered to
+    carry it, and the call would answer False for every recipient."""
+    return any("task.whatsapp" in (action.task or "") for action in _actions(automaton))
+
+
+def _actions(automaton):
+    return [action for state in automaton.states.values() for action in state.actions]

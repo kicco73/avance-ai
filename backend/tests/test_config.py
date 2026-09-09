@@ -149,9 +149,6 @@ SETTINGS = [
     ("database_migration_strategy", "stop", _database("migration-strategy", "upgrade"), "upgrade", _database("migration-strategy", "wipe")),
     ("auth_token_ttl_in_hours", 24 * 7, _auth("token-ttl-in-hours", 12), 12, _auth("token-ttl-in-hours", 0)),
     ("jobs_shared_max_concurrent", 2, _section("scheduler-service", "shared-max-concurrent", 3), 3, _section("scheduler-service", "shared-max-concurrent", 0)),
-    ("test_service_max_concurrent_tests", 4, _section("test-service", "max-concurrent-tests", 5), 5, _section("test-service", "max-concurrent-tests", 0)),
-    ("test_service_max_tests_per_minute", 1_000_000, _section("test-service", "max-tests-per-minute", 30), 30, _section("test-service", "max-tests-per-minute", 0)),
-    ("test_service_min_test_interval_ms", 0, _section("test-service", "min-test-interval-ms", 500), 500, _section("test-service", "min-test-interval-ms", -1)),
     ("invite_valid_days", 7, _section("project-service", "invite-valid-days", 14), 14, _section("project-service", "invite-valid-days", 0)),
     ("invite_max_shares", 3, _section("project-service", "invite-max-shares", 10), 10, _section("project-service", "invite-max-shares", 0)),
 ]
@@ -168,10 +165,6 @@ class TestOptionalSettingsEndToEnd:
         assert getattr(_load(monkeypatch, tmp_path, custom_yaml), attribute) == custom_value
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, invalid_yaml)
-
-    def test_min_test_interval_accepts_an_explicit_zero(self, monkeypatch, tmp_path):
-        config = _load(monkeypatch, tmp_path, _section("test-service", "min-test-interval-ms", 0))
-        assert config.test_service_min_test_interval_ms == 0
 
 
 _ONE_PROVIDER = "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n"
@@ -218,41 +211,6 @@ class TestAiServiceProvidersModes:
     def test_rejects_a_non_list_an_unknown_mode_and_leaving_either_auto_cascade_empty(self, monkeypatch, tmp_path, modes, match):
         with pytest.raises(ConfigError, match=match):
             _load(monkeypatch, tmp_path, _sole_provider_modes(modes))
-
-
-_WHATSAPP_SERVICE_MINIMAL = """
-whatsapp-service:
-  enabled: true
-  verify-token: my-verify-token
-  app-secret: my-app-secret
-  access-token: my-access-token
-  phone-number-id: "123456"
-"""
-
-_WHATSAPP_SERVICE_WITH_PHONE_NUMBER = _WHATSAPP_SERVICE_MINIMAL + "  phone-number: \"+34600000001\"\n"
-
-
-class TestWhatsAppServiceConfig:
-    def test_an_absent_section_or_enabled_false_leaves_the_channel_disabled(self, monkeypatch, tmp_path):
-        assert _load(monkeypatch, tmp_path, MINIMAL_CONFIG).whatsapp_service_config is None
-        assert _load(monkeypatch, tmp_path, MINIMAL_CONFIG + "\nwhatsapp-service:\n  enabled: false\n").whatsapp_service_config is None
-
-    def test_enabled_parses_with_or_without_a_phone_number_normalized_to_digits_and_a_default_graph_version(self, monkeypatch, tmp_path):
-        without_phone = _load(monkeypatch, tmp_path, MINIMAL_CONFIG + "\n" + _WHATSAPP_SERVICE_MINIMAL).whatsapp_service_config
-        assert without_phone is not None
-        assert without_phone.phone_number is None
-        assert without_phone.graph_version == "v23.0"
-
-        with_phone = _load(monkeypatch, tmp_path, MINIMAL_CONFIG + "\n" + _WHATSAPP_SERVICE_WITH_PHONE_NUMBER).whatsapp_service_config
-        assert with_phone.phone_number == "34600000001"
-
-    @pytest.mark.parametrize(("content", "match"), [
-        (MINIMAL_CONFIG + "\n" + _WHATSAPP_SERVICE_MINIMAL + "  phone-number: not-a-number\n", "phone-number"),
-        (MINIMAL_CONFIG + "\nwhatsapp-service:\n  enabled: true\n  app-secret: my-app-secret\n  access-token: my-access-token\n  phone-number-id: \"123456\"\n", "verify-token"),
-    ])
-    def test_rejects_a_non_digit_phone_number_and_a_missing_verify_token(self, monkeypatch, tmp_path, content, match):
-        with pytest.raises(ConfigError, match=match):
-            _load(monkeypatch, tmp_path, content)
 
 
 class TestCompiledAutomatonSwitch:

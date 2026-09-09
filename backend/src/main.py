@@ -24,7 +24,6 @@ from controller import AvanceController
 from db import Db
 from error_handlers import ApiErrorHandlers
 from scheduler import SchedulerService
-from jobs.throttled_job_queue import ThrottledJobQueue
 from system.logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.archive.automaton_loader import AutomatonLoader
@@ -32,7 +31,6 @@ from project.archive.compiled_automaton_loader import CompiledAutomatonLoader
 from project.health_notifications import ProjectHealthNotifications
 from project.project_service import ProjectService
 from ai import AiService
-from testing.test_service import TestService
 from system.broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
 from tracking.actuators import TaskNamespaceFactory
 from tracking.legacy_env_migration import migrate_env_rows
@@ -149,13 +147,6 @@ def create_app() -> FastAPI:
         auth_service = AuthService(db, config.auth_providers, config.auth_token_ttl_in_hours, project_service)
         app.state.auth_service = auth_service
 
-        test_job_queue = ThrottledJobQueue(
-            max_concurrent=config.test_service_max_concurrent_tests,
-            broadcaster=test_event_broadcaster,
-            max_jobs_per_minute=config.test_service_max_tests_per_minute,
-            min_job_interval_ms=config.test_service_min_test_interval_ms,
-        )
-
         # A leaf service (see metrics/metric_service.py's own module
         # docstring) — never depends on TurnService/TrackingService, so
         # it's built first and handed to whoever needs it, never the
@@ -191,9 +182,9 @@ def create_app() -> FastAPI:
         # The composed core, offered to whoever asks for it. Everything a
         # skill could need exists by now; nothing is handed to anyone,
         # and a skill that is not in this build asks for nothing (see
-        # bus.POINT_CORE_SERVICES, system/skills.py). Contributed after
-        # ws_notifications rather than before, so the registry is
-        # readable at the moment it is built and not only later.
+        # bus.POINT_CORE_SERVICES, system/skills.py). Contributed here
+        # rather than earlier so the registry is complete at the moment
+        # it is built, not only by the time somebody reads it.
         bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({
             "db": db,
             "auth_service": auth_service,
@@ -201,12 +192,13 @@ def create_app() -> FastAPI:
             "project_service": project_service,
             "tracking_service": tracking_service,
             "scheduler_service": scheduler_service,
+            "ai_test_service": ai_test_service,
+            "test_event_broadcaster": test_event_broadcaster,
             "ws_notifications": ws_notifications,
+            "apps_dir": config.build_service_config.apps_dir,
+            "services_config": config.public_services_snapshot(),
+            "version": __version__,
         }))
-
-        test_service = TestService(
-            db, ai_test_service, tracking_service, test_job_queue, project_service, test_event_broadcaster,
-        )
 
         # Availability cascade (see ProjectService.recompute_availability/
         # register_availability_cascade) — same "subscribe once, react
@@ -234,10 +226,7 @@ def create_app() -> FastAPI:
         ).register()
 
         controller = AvanceController(
-            turn_service, project_service, db, tracking_service, test_service,
-            auth_service, test_event_broadcaster, scheduler_service, __version__, config.public_services_snapshot(),
-            ws_notifications=ws_notifications,
-            apps_dir=config.build_service_config.apps_dir,
+            turn_service, project_service, ws_notifications=ws_notifications,
         )
         app.include_router(controller.router)
 

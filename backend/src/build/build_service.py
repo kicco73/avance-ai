@@ -100,6 +100,20 @@ class BuildService:
         self._project_service = project_service
         self._apps_dir = apps_dir
 
+    def installed_skills(self, project_id: str) -> dict:
+        """What this backend has installed, and which of those this
+        project cannot be built without — the second list is what the
+        Build view ticks and refuses to untick. Asked of the project's
+        published automaton, so what a draft is about to add does not
+        constrain a build of what is live."""
+        from project.archive.layout import ArchiveLayout
+        from system import skills
+
+        revision = published_revision_of(self._db, self._project_service, project_id)
+        automaton = self._project_service.get_automaton(project_id, revision)
+        sources = ArchiveLayout.decode_text(self._db.get_archives(project_id, revision=revision))
+        return {"skills": skills.installed(), "required": skills.required_for(automaton, sources)}
+
     def build_local_module(self, project_id: str) -> dict:
         """Compiles `project_id`'s published revision into the apps
         directory and reports what was written. Raises CompileError with a

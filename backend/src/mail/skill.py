@@ -46,3 +46,14 @@ def start(raw: dict, path: Path) -> None:
 def stop() -> None:
     if _listener is not None:
         bus.unsubscribe(MAIL_SEND, _listener)
+
+
+def required_by(automaton, sources: dict[str, str]) -> bool:
+    """A project that calls task.send_mail cannot run in a build without
+    this package: the call would find nobody registered for MAIL_SEND
+    and raise where the automaton expects a mail to go out."""
+    return any("task.send_mail" in (action.task or "") for action in _actions(automaton))
+
+
+def _actions(automaton):
+    return [action for state in automaton.states.values() for action in state.actions]

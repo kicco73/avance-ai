@@ -61,6 +61,25 @@ def installed(source_root: Path | None = None) -> list[dict]:
     ]
 
 
+def required_for(automaton, sources: dict[str, str], source_root: Path | None = None) -> list[str]:
+    """The packages this project cannot run without. Nothing here knows
+    what any of them do: each installed skill is handed the project and
+    answers for itself (`required_by`), so the rule that `task.send_mail`
+    needs mail lives in mail, and a skill added tomorrow brings its own
+    rule with it. A skill that never declares one is never required.
+
+    Both forms of the project are offered because they answer different
+    questions: the built `automaton` for what it does (its task scripts),
+    and its `sources` for what it asked for — a default the builder
+    filled in is not the project asking."""
+    return [
+        module.__name__.split(".")[0]
+        for module in discover(source_root)
+        for required_by in filter(None, [getattr(module, "required_by", None)])
+        if required_by(automaton, sources)
+    ]
+
+
 def start_all(raw: dict, path: Path, source_root: Path | None = None) -> list[ModuleType]:
     """Starts every discovered skill with the configuration file as it
     was read — nothing else, because nothing else exists yet. A skill

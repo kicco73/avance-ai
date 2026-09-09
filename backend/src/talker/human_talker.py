@@ -1,6 +1,6 @@
 """HumanTalker — the BaseTalker whose replies come from a person instead
 of the model. Same three methods, same signatures as AiTalker, so a
-caller that already holds a BaseTalker (TrackingProcessor, PlatformController,
+caller that already holds a BaseTalker (TrackingProcessor, StudioController,
 WhatsAppService) doesn't change at all when the session's talker switches;
 only which concrete class got constructed changes.
 

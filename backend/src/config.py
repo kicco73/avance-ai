@@ -388,16 +388,6 @@ class AppConfig:
         self.jobs_shared_max_concurrent = self._get_optional_positive_int(
             raw, "scheduler-service", "shared-max-concurrent", path, default=2
         )
-        self.test_service_max_concurrent_tests = self._get_optional_positive_int(
-            raw, "test-service", "max-concurrent-tests", path, default=4
-        )
-        self.test_service_max_tests_per_minute = self._get_optional_positive_int(
-            raw, "test-service", "max-tests-per-minute", path, default=1_000_000
-        )
-        self.test_service_min_test_interval_ms = self._get_optional_non_negative_int(
-            raw, "test-service", "min-test-interval-ms", path, default=0
-        )
-
         # "Share project" invite links (see project/invites.py's own
         # InviteManager) — how long a freshly generated code stays
         # redeemable, and how many new registrations it can carry before
@@ -460,11 +450,6 @@ class AppConfig:
                 "input-token-budget-per-turn": self.input_token_budget_per_turn,
                 "total-token-budget-per-session": self.total_token_budget_per_session,
                 "project-file-cache-bytes": self.project_file_cache_bytes,
-            },
-            "testing": {
-                "max-concurrent-tests": self.test_service_max_concurrent_tests,
-                "max-tests-per-minute": self.test_service_max_tests_per_minute,
-                "min-test-interval-ms": self.test_service_min_test_interval_ms,
             },
             "ai": {
                 "max-output-tokens": self.ai_services[0].max_output_tokens,
