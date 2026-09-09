@@ -12,7 +12,7 @@ import sys
 import pytest
 
 from automaton.automaton import CompiledAutomaton
-from build.apps import PackageError, import_automaton, package_dir, staging_dir
+from project.archive.packages import PackageError, import_automaton, package_dir, staging_dir
 from build.build_service import BuildService, module_name_for
 from build.compiler import CompileError, compile_contents
 from db import Db

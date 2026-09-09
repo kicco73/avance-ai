@@ -18,7 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from automaton.automaton import CompiledAutomaton
-from build.apps import package_dir
+from project.archive.packages import package_dir
 from build.build_service import module_name_for
 
 from conftest import chat_turn
@@ -31,7 +31,7 @@ def compiled_automata() -> bool:
 
 def _served_automaton(app, project_id: str):
     db = app.state.db
-    loader = app.state.project_service._automaton_loader
+    loader = app.state.project_service.automaton_loader
     return loader.load_at_revision(project_id, db.get_project_published_revision(project_id))
 
 
@@ -105,7 +105,7 @@ def test_editing_the_project_again_takes_it_back_to_the_interpreted_automaton(
     draft = db.get_project_revision(hello_project)
     assert draft != published
 
-    loader = app.state.project_service._automaton_loader
+    loader = app.state.project_service.automaton_loader
     assert type(loader.load_at_revision(hello_project, draft)).__name__ == "Automaton"
     assert isinstance(loader.load_at_revision(hello_project, published), CompiledAutomaton)
 

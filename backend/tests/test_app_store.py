@@ -4,6 +4,8 @@ from datetime import datetime
 
 import pytest
 
+from avance_platform.platform_service import PlatformService
+
 from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
@@ -77,7 +79,7 @@ class TestInstallUninstallProject:
         mine = _create_session(db, published_project, type="live")
         theirs = _create_session(db, published_project, username=other, type="live")
 
-        service.uninstall_app("user", published_project)
+        PlatformService(service).uninstall_app("user", published_project)
 
         assert db.user_has_project_access("user", published_project) is False
         assert db.get_chat_session(mine) is None
@@ -94,7 +96,7 @@ def test_session_summaries_list_most_recently_closed_first_omitting_sessions_wit
     db.set_session_summary(older, "Older summary")
     db.set_session_summary(newer, "Newer summary")
 
-    summaries = service.get_app_session_summaries("user", published_project)
+    summaries = PlatformService(service).get_app_session_summaries("user", published_project)
 
     assert [s["id"] for s in summaries] == [newer, older]
     assert [s["ai_summary"] for s in summaries] == ["Newer summary", "Older summary"]

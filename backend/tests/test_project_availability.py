@@ -10,6 +10,8 @@ import asyncio
 
 import pytest
 
+from avance_platform.platform_service import PlatformService
+
 from automaton.automaton_builder import AutomatonBuilder
 from events import AvailabilityChanged, publish, subscribe
 from turn.sessions.session_manager import SessionManager
@@ -66,7 +68,7 @@ def _publish_project(db, project_service: ProjectService, project_id: str, index
     db.publish_project(project_id)
     db.set_active_project_id(project_id, USERNAME)
     automaton = AutomatonBuilder().build({"index.yml": index_yml})
-    asyncio.run(project_service._manager.finalize_update(project_id, automaton, _commit, is_new_project=is_new_project))
+    asyncio.run(project_service.manager.finalize_update(project_id, automaton, _commit, is_new_project=is_new_project))
 
 
 def _chain(db, project_service) -> None:
@@ -183,7 +185,7 @@ def test_a_dangling_reference_never_blocks_but_the_referenced_projects_arrival_w
     _publish_project(db, project_service, "dep", VALID_YML)
     assert db.get_observed_projects("dependent") == ["dep"]
 
-    project_service.set_manually_paused("dep")
+    PlatformService(project_service).set_manually_paused("dep")
 
     is_paused, reason = db.get_project_availability("dependent")
     assert is_paused is True
@@ -215,13 +217,13 @@ def test_manual_pause_and_resume_are_the_only_transitions_between_running_and_ma
     own docstring): once set, nothing but the matching resume clears it
     — not a rebuild, not a dependency flipping back and forth."""
     with pytest.raises(FileNotFoundError):
-        project_service.set_manually_paused("does_not_exist")
+        PlatformService(project_service).set_manually_paused("does_not_exist")
 
     _publish_project(db, project_service, "solo", VALID_YML)
     with pytest.raises(ValueError):
-        project_service.set_manually_running("solo")
+        PlatformService(project_service).set_manually_running("solo")
 
-    row = project_service.set_manually_paused("solo")
+    row = PlatformService(project_service).set_manually_paused("solo")
     assert row == {
         "id": "solo", "status": "manually_paused", "paused_reason": "Manually paused.",
         "revision": 0, "published_revision": 0,
@@ -229,27 +231,27 @@ def test_manual_pause_and_resume_are_the_only_transitions_between_running_and_ma
     assert db.get_project_availability("solo") == (True, "Manually paused.")
     assert db.get_manually_paused("solo") is True
     with pytest.raises(ValueError):
-        project_service.set_manually_paused("solo")
+        PlatformService(project_service).set_manually_paused("solo")
 
     project_service.recompute_availability("solo")
     project_service.recompute_availability("solo")
     assert db.get_project_availability("solo") == (True, "Manually paused.")
     assert db.get_manually_paused("solo") is True
 
-    row = project_service.set_manually_running("solo")
+    row = PlatformService(project_service).set_manually_running("solo")
     assert row["status"] == "running"
     assert db.get_project_availability("solo") == (False, None)
     assert db.get_manually_paused("solo") is False
 
     db.set_project_availability("solo", is_paused=True, paused_reason="Build failed: whatever")
     with pytest.raises(ValueError):
-        project_service.set_manually_paused("solo")
+        PlatformService(project_service).set_manually_paused("solo")
 
 
 def test_manually_pausing_a_dependency_cascades_to_its_observer_and_resuming_it_cascades_availability_back(db, project_service):
     _dependency_pair(db, project_service, cascade=True)
 
-    project_service.set_manually_paused("dependency")
+    PlatformService(project_service).set_manually_paused("dependency")
 
     is_paused, reason = db.get_project_availability("dependent")
     assert is_paused is True
@@ -259,7 +261,7 @@ def test_manually_pausing_a_dependency_cascades_to_its_observer_and_resuming_it_
     # only resuming "dependency" itself can bring it back.
     assert db.get_manually_paused("dependent") is False
 
-    project_service.set_manually_running("dependency")
+    PlatformService(project_service).set_manually_running("dependency")
 
     assert db.get_project_availability("dependency") == (False, None)
     assert db.get_project_availability("dependent") == (False, None)
@@ -283,9 +285,9 @@ def test_get_runtime_status_reports_all_three_states(db, project_service):
     _publish_project(db, project_service, "auto_paused_proj", VALID_YML)
     db.set_project_availability("auto_paused_proj", is_paused=True, paused_reason="Build failed: x")
     _publish_project(db, project_service, "manually_paused_proj", VALID_YML)
-    project_service.set_manually_paused("manually_paused_proj")
+    PlatformService(project_service).set_manually_paused("manually_paused_proj")
 
-    rows = {row["id"]: row for row in project_service.get_runtime_status()}
+    rows = {row["id"]: row for row in PlatformService(project_service).get_runtime_status()}
 
     assert rows["running_proj"]["status"] == "running"
     assert rows["auto_paused_proj"]["status"] == "paused"

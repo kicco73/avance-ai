@@ -6,6 +6,7 @@ from http import HTTPStatus
 from fastapi import HTTPException, Request, Response
 
 from turn.turn_service import TurnService
+from avance_platform.platform_service import PlatformService
 from project.project_service import ProjectService
 from system.session import Session
 
@@ -14,39 +15,40 @@ from controllers.base_controller import BaseController, delete, get, post
 
 class AppStoreController(BaseController):
 
-    def __init__(self, turn_service: TurnService, project_service: ProjectService) -> None:
+    def __init__(self, turn_service: TurnService, project_service: ProjectService, platform_service: "PlatformService") -> None:
         self.turn_service = turn_service
         self.project_service = project_service
+        self.platform_service = platform_service
 
     @get("/api/app-store/apps")
     def get_apps(self, q: str | None = None):
-        return {"apps": self.project_service.list_app_store_apps(Session().user, q)}
+        return {"apps": self.platform_service.list_app_store_apps(Session().user, q)}
 
     @post("/api/app-store/apps/{app_id}/install")
     def post_install_app(self, app_id: str):
         try:
-            self.project_service.install_app(Session().user, app_id)
+            self.platform_service.install_app(Session().user, app_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         return {"success": True}
 
     @delete("/api/app-store/apps/{app_id}/install")
     def delete_install_app(self, app_id: str):
-        self.project_service.uninstall_app(Session().user, app_id)
+        self.platform_service.uninstall_app(Session().user, app_id)
         return {"success": True}
 
     @get("/api/app-store/apps/{app_id}/preview-transcript")
     def get_app_preview_transcript(self, app_id: str):
-        return {"messages": self.project_service.get_app_store_preview_messages(app_id)}
+        return {"messages": self.platform_service.get_app_store_preview_messages(app_id)}
 
     @get("/api/app-store/apps/{app_id}/session-summaries")
     def get_app_session_summaries(self, app_id: str):
-        return {"sessions": self.project_service.get_app_session_summaries(Session().user, app_id)}
+        return {"sessions": self.platform_service.get_app_session_summaries(Session().user, app_id)}
 
     @get("/api/app-store/apps/{app_id}/files/{file_name:path}/content")
     def get_app_file_content(self, app_id: str, file_name: str, request: Request):
         try:
-            content, content_type = self.project_service.get_app_store_file_content(app_id, file_name)
+            content, content_type = self.platform_service.get_app_store_file_content(app_id, file_name)
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         etag = f'"{hashlib.sha256(content).hexdigest()}"'

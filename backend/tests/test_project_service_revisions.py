@@ -68,7 +68,7 @@ def test_load_at_revision_caches_by_project_and_revision(db, project_service):
     _save(db, _index_yml("a"))
     db.publish_project(PROJECT_ID)  # revision 0
     _save(db, _index_yml("b"))  # forks to revision 1
-    loader = project_service._automaton_loader
+    loader = project_service.automaton_loader
 
     rev0 = loader.load_at_revision(PROJECT_ID, 0)
     rev1 = loader.load_at_revision(PROJECT_ID, 1)

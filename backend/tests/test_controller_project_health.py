@@ -39,7 +39,7 @@ def _break_project(app, app_db, project_id: str) -> None:
     Archive.update(content=BROKEN_YML.encode("utf-8")).where(
         (Archive.project == project_id) & (Archive.archive_name == "index.yml") & (Archive.revision == revision)
     ).execute()
-    app.state.turn_service._project_service._manager._automaton_loader.invalidate_cache(project_id)
+    app.state.turn_service._project_service.manager._automaton_loader.invalidate_cache(project_id)
 
 
 def test_automaton_derived_endpoints_return_409_project_broken(client, app, app_db):
@@ -108,7 +108,7 @@ def test_a_session_pinned_to_an_old_now_broken_revision_is_flagged_unsupported(c
     Archive.update(content=BROKEN_YML.encode("utf-8")).where(
         (Archive.project == "flaky") & (Archive.archive_name == "index.yml") & (Archive.revision == 0)
     ).execute()
-    app.state.turn_service._project_service._manager._automaton_loader.invalidate_cache("flaky")
+    app.state.turn_service._project_service.manager._automaton_loader.invalidate_cache("flaky")
 
     sessions = client.get("/api/projects/flaky/sessions").json()
     row = next(s for s in sessions if s["id"] == session["id"])

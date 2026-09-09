@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from automaton.automaton import CompiledAutomaton
-from build.apps import package_dir, staging_dir
+from project.archive.packages import package_dir, staging_dir
 from build.build_service import BuildService, module_name_for
 from build.compiler import CompileError
 from db import Db
@@ -120,7 +120,7 @@ def test_a_package_that_does_not_import_is_never_published(db, tmp_path, monkeyp
     build, not something to rename into place."""
     revision = _published(db)
     import build.build_service as build_service
-    from build.apps import PackageError
+    from project.archive.packages import PackageError
 
     def refuse(*args, **kwargs):
         raise PackageError("nope")

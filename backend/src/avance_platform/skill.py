@@ -39,6 +39,7 @@ def _install(controllers: list) -> None:
     from avance_platform.edit_project_controller import EditProjectController
     from avance_platform.label_project_controller import LabelProjectController
     from avance_platform.platform_controller import PlatformController
+    from avance_platform.platform_service import PlatformService
     from avance_platform.settings_controller import SettingsController
     from avance_platform.user_controller import UserController
     from build import BuildService
@@ -48,10 +49,14 @@ def _install(controllers: list) -> None:
     project_service = core["project_service"]
     scheduler_service = core["scheduler_service"]
     db = core["db"]
+    # Two facades over one set of collaborators, not two sets: a
+    # revision published here is immediately what the engine loads (see
+    # avance_platform/platform_service.py).
+    platform_service = PlatformService(project_service)
 
     controllers.extend([
-        PlatformController(turn_service, project_service),
-        EditProjectController(turn_service, project_service, scheduler_service),
+        PlatformController(turn_service, project_service, platform_service),
+        EditProjectController(turn_service, project_service, platform_service, scheduler_service),
         # XXX Compiled automaton requirement - do not touch.
         # XXX The Build view's Target step, wired to a real compile. The
         # directory it writes into is the one CompiledAutomatonLoader
@@ -61,15 +66,15 @@ def _install(controllers: list) -> None:
         # package that runs it (see testing/testing_controller.py), so a
         # build without benchmarking still annotates sessions.
         LabelProjectController(
-            turn_service, project_service, core["tracking_service"], scheduler_service,
+            turn_service, project_service, platform_service, core["tracking_service"], scheduler_service,
         ),
         SettingsController(
-            turn_service, project_service, db, core["version"],
+            turn_service, project_service, platform_service, db, core["version"],
             core["test_event_broadcaster"], scheduler_service, core["services_config"],
         ),
         AuthController(core["auth_service"]),
         UserController(core["auth_service"]),
-        AppStoreController(turn_service, project_service),
+        AppStoreController(turn_service, project_service, platform_service),
     ])
     logger.info("platform started — the authoring surface is served.")
 

@@ -20,6 +20,7 @@ from system import bus
 from system.bus import OUTPUT_SPEECH, POINT_API_STATE
 
 from turn.turn_service import TurnService
+from avance_platform.platform_service import PlatformService
 from project.project_service import ProjectService
 from schemas import AiModelSelectionRequest
 
@@ -45,9 +46,11 @@ class PlatformController(BaseController):
         self,
         turn_service: TurnService,
         project_service: ProjectService,
+        platform_service: PlatformService,
     ) -> None:
         self.turn_service = turn_service
         self.project_service = project_service
+        self.platform_service = platform_service
 
     @get("/api/docs/{name}")
     def get_doc(self, name: str):
@@ -73,7 +76,7 @@ class PlatformController(BaseController):
         checking the project's own setting separately."""
 
         try:
-            payload = self.project_service.get_active_state_payload()
+            payload = self.platform_service.get_active_state_payload()
         except:
             payload = {}
 

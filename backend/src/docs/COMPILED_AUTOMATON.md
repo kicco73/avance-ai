@@ -317,7 +317,7 @@ from a different revision degrades with a line in the log: a product that
 stops answering because a build went wrong is worse than one running
 interpreted.
 
-Two conventions, both in `build/apps.py` so the writer and the reader
+Two conventions, both in `project/archive/packages.py` so the writer and the reader
 cannot disagree:
 
 - **One directory per `(project, revision)`**, `<module>.<revision>`. Not

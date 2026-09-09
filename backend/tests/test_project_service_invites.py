@@ -10,6 +10,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from avance_platform.platform_service import PlatformService
+
 from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
@@ -47,24 +49,24 @@ def _maxed_invite(db, code: str, project: str) -> None:
 
 class TestCreateInvite:
     def test_generates_distinct_6_character_alphanumeric_codes_recording_their_creator(self, db, project_service, project):
-        first = project_service.create_invite(project, created_by=None)
+        first = PlatformService(project_service).create_invite(project, created_by=None)
         assert len(first["code"]) == 6
         assert first["code"].isalnum()
         assert first["whatsapp_url"] is None
 
-        assert project_service.create_invite(project, created_by=None)["code"] != first["code"]
+        assert PlatformService(project_service).create_invite(project, created_by=None)["code"] != first["code"]
 
         admin = _user(db, "admin")
-        created = project_service.create_invite(project, created_by=admin)
+        created = PlatformService(project_service).create_invite(project, created_by=admin)
         assert db.get_invite_by_code(created["code"]).created_by_id == admin
 
         with pytest.raises(FileNotFoundError):
-            project_service.create_invite("does-not-exist", created_by=None)
+            PlatformService(project_service).create_invite("does-not-exist", created_by=None)
 
     def test_uses_the_configured_valid_days_max_shares_and_whatsapp_number(self, db, project):
         service = ProjectService(db, AutomatonLoader(db), SessionManager(db), invite_valid_days=14, invite_max_shares=10, whatsapp_number="15552052260")
 
-        invite = service.create_invite(project, created_by=None)
+        invite = PlatformService(service).create_invite(project, created_by=None)
 
         assert invite["max_shares"] == 10
         expires_at = datetime.fromisoformat(invite["expires_at"])
@@ -80,7 +82,7 @@ class TestCreateInvite:
         db.record_invite_redemption(_user(db, "a"), project, db.get_invite_by_code("OLD002").id, datetime.utcnow())
         db.create_invite("STILL1", project, None, datetime.utcnow() + timedelta(days=7), max_shares=3)
 
-        project_service.create_invite(project, created_by=None)
+        PlatformService(project_service).create_invite(project, created_by=None)
 
         assert db.get_invite_by_code("OLD001") is None
         assert db.get_invite_by_code("OLD002") is not None
@@ -89,13 +91,13 @@ class TestCreateInvite:
 
 class TestResolveInviteLink:
     def test_resolves_a_generated_code_granting_a_user_access_the_first_time_and_none_for_an_unknown_code(self, db, project_service, project):
-        created = project_service.create_invite(project, created_by=None)
+        created = PlatformService(project_service).create_invite(project, created_by=None)
         user = _user(db, "a")
 
-        assert project_service.resolve_invite_link(created["code"], "someone@example.com", "admin") == project
-        assert project_service.resolve_invite_link(created["code"], user, "user") == project
+        assert PlatformService(project_service).resolve_invite_link(created["code"], "someone@example.com", "admin") == project
+        assert PlatformService(project_service).resolve_invite_link(created["code"], user, "user") == project
         assert db.user_has_project_access(user, project) is True
-        assert project_service.resolve_invite_link("NOSUCH", "someone@example.com", "user") is None
+        assert PlatformService(project_service).resolve_invite_link("NOSUCH", "someone@example.com", "user") is None
 
     def test_privileged_roles_and_users_with_existing_access_ignore_expiry_and_max_shares(self, db, project_service, project):
         """Only role='user' is ever gated by UserProject (see
@@ -104,11 +106,11 @@ class TestResolveInviteLink:
         _expired_invite(db, "OLDONE", project, max_shares=1)
         user = _user(db, "a")
 
-        assert project_service.resolve_invite_link("OLDONE", user, "admin") == project
+        assert PlatformService(project_service).resolve_invite_link("OLDONE", user, "admin") == project
         assert db.user_has_project_access(user, project) is False
 
         db.record_invite_redemption(user, project, db.get_invite_by_code("OLDONE").id, datetime.utcnow())
-        assert project_service.resolve_invite_link("OLDONE", user, "user") == project
+        assert PlatformService(project_service).resolve_invite_link("OLDONE", user, "user") == project
 
     def test_raises_for_a_user_with_no_existing_access_on_an_expired_or_maxed_out_link(self, db, project_service, project):
         _expired_invite(db, "EXPIR1", project)
@@ -116,9 +118,9 @@ class TestResolveInviteLink:
         newcomer = _user(db, "b")
 
         with pytest.raises(PermissionError, match="expired"):
-            project_service.resolve_invite_link("EXPIR1", newcomer, "user")
+            PlatformService(project_service).resolve_invite_link("EXPIR1", newcomer, "user")
         with pytest.raises(PermissionError, match="maximum"):
-            project_service.resolve_invite_link("MAXED1", newcomer, "user")
+            PlatformService(project_service).resolve_invite_link("MAXED1", newcomer, "user")
 
 
 class TestValidateAndRedeemInviteForRegistration:
@@ -130,7 +132,7 @@ class TestValidateAndRedeemInviteForRegistration:
             with pytest.raises(PermissionError, match=match):
                 project_service.validate_invite_for_registration(code)
 
-        created = project_service.create_invite(project, created_by=None)
+        created = PlatformService(project_service).create_invite(project, created_by=None)
         invite = project_service.validate_invite_for_registration(created["code"])
         assert invite.code == created["code"]
 

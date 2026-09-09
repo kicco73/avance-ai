@@ -72,7 +72,7 @@ def _publish(db, project_service: ProjectService, on_exit: str) -> None:
     async def commit(_project_id, _automaton):
         pass
 
-    asyncio.run(project_service._manager.finalize_update(PROJECT, automaton, commit))
+    asyncio.run(project_service.manager.finalize_update(PROJECT, automaton, commit))
 
 
 def _fire_go(db, factory, project_service: ProjectService, session_id: int, *, fake: bool = False) -> None:

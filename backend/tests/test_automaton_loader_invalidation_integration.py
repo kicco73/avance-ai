@@ -26,6 +26,8 @@ import asyncio
 
 import pytest
 
+from avance_platform.platform_service import PlatformService
+
 from automaton.automaton_builder import AutomatonBuilder
 from db.models import Archive
 from turn.sessions.session_manager import SessionManager
@@ -108,7 +110,7 @@ def test_a_real_save_on_a_previously_broken_draft_revision_clears_the_stale_fail
     _upload(db, project_service, project_id)  # never published: draft stays at revision 0 in place
     revision = db.get_project_revision(project_id)
     _corrupt_in_place(db, project_id, revision)
-    automaton_loader = project_service._manager._automaton_loader
+    automaton_loader = project_service.manager._automaton_loader
     automaton_loader.invalidate_cache(project_id)  # simulates a fresh process never having cached the old, valid build
 
     with pytest.raises(Exception):
@@ -116,7 +118,7 @@ def test_a_real_save_on_a_previously_broken_draft_revision_clears_the_stale_fail
     assert (project_id, revision) in automaton_loader._build_failures
 
     fixed_automaton = AutomatonBuilder().build({"index.yml": VALID_YML.format(project_id=project_id)})
-    asyncio.run(project_service._manager.finalize_update(project_id, fixed_automaton, _commit))
+    asyncio.run(project_service.manager.finalize_update(project_id, fixed_automaton, _commit))
 
     assert (project_id, revision) not in automaton_loader._build_failures
     healed = automaton_loader.load(project_id)
@@ -126,7 +128,7 @@ def test_a_real_save_on_a_previously_broken_draft_revision_clears_the_stale_fail
 def test_revert_to_published_clears_a_broken_drafts_stale_failure(db, project_service):
     project_id = "wip_revert"
     _upload(db, project_service, project_id)
-    project_service.publish_project(project_id)
+    PlatformService(project_service).publish_project(project_id)
     published_revision = db.get_project_published_revision(project_id)
 
     # A raw draft edit, bypassing every real save path's own validation —
@@ -136,7 +138,7 @@ def test_revert_to_published_clears_a_broken_drafts_stale_failure(db, project_se
     db.save_project_files(project_id, {"index.yml": BROKEN_YML.encode("utf-8")}, {"index.yml": "text/yaml"})
     draft_revision = db.get_project_revision(project_id)
     assert draft_revision != published_revision
-    automaton_loader = project_service._manager._automaton_loader
+    automaton_loader = project_service.manager._automaton_loader
     automaton_loader.invalidate_cache(project_id)
     with pytest.raises(Exception):
         automaton_loader.load(project_id)
@@ -153,7 +155,7 @@ def test_reuploading_a_project_clears_its_previously_broken_published_revisions_
     project_id = "wip_reimport"
     _upload(db, project_service, project_id)
     published_revision = db.get_project_published_revision(project_id)
-    automaton_loader = project_service._manager._automaton_loader
+    automaton_loader = project_service.manager._automaton_loader
     automaton_loader.invalidate_cache(project_id)
 
     # The published revision breaks under a framework upgrade — discovered
@@ -197,13 +199,13 @@ def _set_dep_family(db, project_service: ProjectService, family: str) -> None:
     Archive.update(content=DEP_YML.format(family=family).encode("utf-8")).where(
         (Archive.project == "dep") & (Archive.archive_name == "index.yml") & (Archive.revision == revision)
     ).execute()
-    project_service._manager._automaton_loader.invalidate_cache("dep")
+    project_service.manager._automaton_loader.invalidate_cache("dep")
 
 
 def test_a_family_only_edit_via_put_project_file_clears_a_dependents_stale_failure(db, project_service):
     _upload(db, project_service, "dep", DEP_YML.format(family="fam1"))
     _upload(db, project_service, "watcher_family", WATCHER_YML)  # succeeds: same family, resolves automaton.dep
-    automaton_loader = project_service._manager._automaton_loader
+    automaton_loader = project_service.manager._automaton_loader
 
     # dep's family changes (raw, bypassing validation — see _set_dep_family)
     # to something watcher_family doesn't share, and watcher_family's own
@@ -233,7 +235,7 @@ def test_a_family_only_edit_via_put_project_file_clears_a_dependents_stale_failu
 def test_a_family_only_reupload_clears_a_dependents_stale_failure(db, project_service):
     _upload(db, project_service, "dep", DEP_YML.format(family="fam1"))
     _upload(db, project_service, "watcher_family", WATCHER_YML)
-    automaton_loader = project_service._manager._automaton_loader
+    automaton_loader = project_service.manager._automaton_loader
 
     _set_dep_family(db, project_service, "fam2")
     automaton_loader.invalidate_cache("watcher_family")

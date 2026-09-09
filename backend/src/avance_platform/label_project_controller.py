@@ -13,6 +13,7 @@ from urllib.parse import quote
 from fastapi import HTTPException, Response, UploadFile
 
 from turn.turn_service import TurnService
+from avance_platform.platform_service import PlatformService
 from project.project_service import ProjectService
 from scheduler import SchedulerService
 from system.session import Session
@@ -36,11 +37,13 @@ class LabelProjectController(BaseController):
         self,
         turn_service: TurnService,
         project_service: ProjectService,
+        platform_service: PlatformService,
         tracking_service: TrackingService,
         scheduler_service: SchedulerService,
     ) -> None:
         self.turn_service = turn_service
         self.project_service = project_service
+        self.platform_service = platform_service
         self.tracking_service = tracking_service
         self.scheduler_service = scheduler_service
 
@@ -147,7 +150,7 @@ class LabelProjectController(BaseController):
             await self.turn_service.truncate_session(session_id, req.timestamp)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return self.project_service.get_active_state_payload()
+        return self.platform_service.get_active_state_payload()
 
     @get("/api/chat/sessions/{session_id}/signals", role="supervisor")
     def get_session_signals(self, session_id: int):

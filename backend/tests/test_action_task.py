@@ -142,7 +142,7 @@ def _publish(db: Db, project_service: ProjectService, index_yml: str) -> None:
     async def commit(_project_id, _automaton):
         pass
 
-    asyncio.run(project_service._manager.finalize_update(PROJECT, automaton, commit))
+    asyncio.run(project_service.manager.finalize_update(PROJECT, automaton, commit))
 
 
 def _process(db: Db, websocket: _FakeWebSocket | None = None, *, start: bool = False, ai_service=None):

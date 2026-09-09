@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from automaton.automaton import Automaton
-from build.apps import PackageError, import_automaton, package_dir
+from project.archive.packages import PackageError, import_automaton, package_dir
 from build.build_service import module_name_for
 from db import Db
 from system.logging_factory import LoggerFactory

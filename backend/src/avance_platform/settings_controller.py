@@ -16,6 +16,7 @@ from auth.roles import role_satisfies
 from turn.turn_service import TurnService
 from db import Db
 from system.broadcaster import Broadcaster
+from avance_platform.platform_service import PlatformService
 from project.project_service import ProjectService
 from scheduler import SchedulerService
 from system.session import Session
@@ -30,12 +31,14 @@ APP_NAME = "Avance"
 class SettingsController(BaseController, ProjectCommitMixin):
 
     def __init__(
-        self, turn_service: TurnService, project_service: ProjectService, db: Db, version: str,
+        self, turn_service: TurnService, project_service: ProjectService,
+        platform_service: PlatformService, db: Db, version: str,
         test_event_broadcaster: Broadcaster, scheduler_service: SchedulerService,
         services_config: dict,
     ) -> None:
         self.turn_service = turn_service
         self.project_service = project_service
+        self.platform_service = platform_service
         self.db = db
         self.version = version
         self.test_event_broadcaster = test_event_broadcaster
@@ -98,7 +101,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         conversation across every project (not just the active one), same
         global scope as the backup endpoints above."""
         async with self.turn_service.global_exclusive_access():
-            self.project_service.wipe_all_live_sessions()
+            self.platform_service.wipe_all_live_sessions()
         return {"success": True}
 
     @post("/api/settings/database/clean-unused-revisions", role="admin")
@@ -108,20 +111,20 @@ class SettingsController(BaseController, ProjectCommitMixin):
         current draft, nor pinned by any session (see
         ProjectService.clean_unused_revisions)."""
         async with self.turn_service.global_exclusive_access():
-            deleted = self.project_service.clean_unused_revisions()
+            deleted = self.platform_service.clean_unused_revisions()
         return {"success": True, "deleted": deleted}
 
     @get("/api/projects")
     def get_projects(self):
         username = Session().user if not role_satisfies(Session().role, 'supervisor') else None
-        return self.project_service.list_projects(username)
+        return self.platform_service.list_projects(username)
 
     @get("/api/settings/projects/runtime-status", role="admin")
     def get_all_projects_runtime_status(self):
         """One row per project — id/status/paused_reason/revision/
         published_revision — the Settings > Runtime status view's own
         table."""
-        return {"projects": self.project_service.get_runtime_status()}
+        return {"projects": self.platform_service.get_runtime_status()}
 
     @get("/api/settings/warnings", role="admin")
     def get_warnings(self, kind: str | None = None):
@@ -160,7 +163,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         """An operator's own explicit override — only ever allowed while
         `project_id` is actually running."""
         try:
-            return self.project_service.set_manually_paused(project_id)
+            return self.platform_service.set_manually_paused(project_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:
@@ -172,7 +175,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         `project_id` is manually paused (see ProjectService.
         set_manually_running)."""
         try:
-            return self.project_service.set_manually_running(project_id)
+            return self.platform_service.set_manually_running(project_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:
@@ -207,7 +210,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         /api/projects/upload, built so it round-trips back through that
         endpoint with no transformation. Not restricted to the active project."""
         try:
-            content = self.project_service.export_project_zip(project_id)
+            content = self.platform_service.export_project_zip(project_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         encoded_project_id = quote(project_id)

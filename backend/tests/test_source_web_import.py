@@ -63,8 +63,8 @@ def _install_fakes(app: FastAPI, pages=None, columns=None, csv_text=None, step_s
         COLUMNS if columns is None else columns, MODEL_CSV if csv_text is None else csv_text, step_seconds,
     )
     project_service = app.state.project_service
-    project_service._web_crawler = crawler
-    project_service._ai_service = ai_service
+    project_service.web_crawler = crawler
+    project_service.ai_service = ai_service
     return crawler, ai_service
 
 

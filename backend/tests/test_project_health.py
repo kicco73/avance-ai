@@ -14,6 +14,8 @@ from http import HTTPStatus
 
 import pytest
 
+from avance_platform.platform_service import PlatformService
+
 from system import bus
 from system.bus import UI_SYSTEM_WARNING
 from automaton.automaton_builder import AutomatonBuilder
@@ -52,7 +54,7 @@ def _publish(db, project_service: ProjectService, project_id: str, index_yml: st
     async def commit(_project_id, _automaton):
         pass
 
-    asyncio.run(project_service._manager.finalize_update(project_id, automaton, commit, is_new_project=is_new_project))
+    asyncio.run(project_service.manager.finalize_update(project_id, automaton, commit, is_new_project=is_new_project))
 
 
 def _corrupt_published_revision(db, project_service: ProjectService, project_id: str) -> None:
@@ -70,7 +72,7 @@ def _corrupt_published_revision(db, project_service: ProjectService, project_id:
     Archive.update(content=BROKEN_YML.encode("utf-8")).where(
         (Archive.project == project_id) & (Archive.archive_name == "index.yml") & (Archive.revision == revision)
     ).execute()
-    project_service._manager._automaton_loader.invalidate_cache(project_id)
+    project_service.manager._automaton_loader.invalidate_cache(project_id)
 
 
 @pytest.fixture
@@ -137,7 +139,7 @@ def test_a_publish_that_builds_again_resumes_the_project(db, project_service):
 
 def test_ensure_project_not_broken_is_a_noop_for_a_healthy_draft(db, project_service):
     _publish(db, project_service, "solo", VALID_YML)
-    project_service.ensure_project_not_broken("solo")  # must not raise
+    PlatformService(project_service).ensure_project_not_broken("solo")  # must not raise
 
 
 def test_ensure_project_not_broken_raises_409_project_broken_for_a_broken_draft(db, project_service):
@@ -145,7 +147,7 @@ def test_ensure_project_not_broken_raises_409_project_broken_for_a_broken_draft(
     db.save_project_files("wip", {"index.yml": BROKEN_YML.encode("utf-8")}, {"index.yml": "text/yaml"})
 
     with pytest.raises(ServiceError) as exc_info:
-        project_service.ensure_project_not_broken("wip")
+        PlatformService(project_service).ensure_project_not_broken("wip")
 
     assert exc_info.value.status_code == HTTPStatus.CONFLICT
     assert exc_info.value.code == "project_broken"
@@ -156,11 +158,11 @@ def test_ensure_project_not_broken_raises_409_project_broken_for_a_broken_draft(
 
 def test_set_manually_running_rejects_a_project_whose_published_revision_is_broken(db, project_service):
     _publish(db, project_service, "solo", VALID_YML)
-    project_service.set_manually_paused("solo")
+    PlatformService(project_service).set_manually_paused("solo")
     _corrupt_published_revision(db, project_service, "solo")
 
     with pytest.raises(ServiceError) as exc_info:
-        project_service.set_manually_running("solo")
+        PlatformService(project_service).set_manually_running("solo")
 
     assert exc_info.value.status_code == HTTPStatus.CONFLICT
     assert exc_info.value.code == "project_broken"
@@ -178,7 +180,7 @@ def test_get_runtime_status_reports_broken_published_and_draft_separately(db, pr
     _publish(db, project_service, "broken_draft", VALID_YML)
     db.save_project_files("broken_draft", {"index.yml": BROKEN_YML.encode("utf-8")}, {"index.yml": "text/yaml"})
 
-    rows = {row["id"]: row for row in project_service.get_runtime_status()}
+    rows = {row["id"]: row for row in PlatformService(project_service).get_runtime_status()}
 
     assert rows["healthy"]["broken"] == {"published": None, "draft": None}
     assert rows["broken_pub"]["broken"]["published"] is not None
@@ -189,7 +191,7 @@ def test_get_runtime_status_reports_broken_published_and_draft_separately(db, pr
 def test_get_runtime_status_reports_no_build_warnings_for_a_clean_project(db, project_service):
     _publish(db, project_service, "clean", VALID_YML)
 
-    rows = {row["id"]: row for row in project_service.get_runtime_status()}
+    rows = {row["id"]: row for row in PlatformService(project_service).get_runtime_status()}
 
     assert rows["clean"]["build_warnings"] == []
 
@@ -204,8 +206,8 @@ def test_get_runtime_status_never_eats_a_real_transition(db, project_service):
     subscribe(ProjectPublishedHealthChanged, received.append)
 
     _corrupt_published_revision(db, project_service, "flaky")
-    project_service.get_runtime_status()  # polled repeatedly, e.g. by Manage projects
-    project_service.get_runtime_status()
+    PlatformService(project_service).get_runtime_status()  # polled repeatedly, e.g. by Manage projects
+    PlatformService(project_service).get_runtime_status()
     project_service.recompute_availability("flaky")
 
     assert len(received) == 1
@@ -308,7 +310,7 @@ def test_a_broken_published_revision_reports_where_it_broke(db, project_service)
     _publish(db, project_service, "broken", VALID_YML)
     _corrupt_published_revision(db, project_service, "broken")
 
-    health = project_service._manager._health_checker.current("broken")
+    health = project_service.manager._health_checker.current("broken")
 
     assert health.published.error is not None
     assert health.published.file == "index.yml"
@@ -388,7 +390,7 @@ def test_a_stale_build_failure_that_depended_on_a_deleted_and_recreated_project_
     async def commit(_project_id, _automaton):
         pass
 
-    asyncio.run(project_service._manager.delete_project("dep", commit))
+    asyncio.run(project_service.manager.delete_project("dep", commit))
     project_service.recompute_availability("watcher_a")
     assert db.get_project_availability("watcher_a")[0] is True  # paused: dep unavailable
 
@@ -396,11 +398,11 @@ def test_a_stale_build_failure_that_depended_on_a_deleted_and_recreated_project_
     # check while 'dep' is still gone — this is what actually makes
     # watcher_a's *build* fail (a real AutomatonBuildError, not just a
     # dependency-unavailable pause) and cache that failure.
-    project_service._manager._automaton_loader.invalidate_cache("watcher_a")
-    health = project_service._manager._health_checker.current("watcher_a")
+    project_service.manager._automaton_loader.invalidate_cache("watcher_a")
+    health = project_service.manager._health_checker.current("watcher_a")
     assert health.published is not None and "automaton.dep" in health.published.error
     cache_key = ("watcher_a", db.get_project_published_revision("watcher_a"))
-    assert cache_key in project_service._manager._automaton_loader._build_failures
+    assert cache_key in project_service.manager._automaton_loader._build_failures
 
     _publish(db, project_service, "dep", DEP_YML)  # recreated, same id/family
 
@@ -470,7 +472,7 @@ def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_fiel
     Archive.update(content=TOOLS_FIELD_YML.encode("utf-8")).where(
         (Archive.project == "old_format") & (Archive.archive_name == "index.yml") & (Archive.revision == revision)
     ).execute()
-    project_service._manager._automaton_loader.invalidate_cache("old_format")
+    project_service.manager._automaton_loader.invalidate_cache("old_format")
     before = db.get_archive("old_format", "index.yml", revision=revision)
 
     _make_admin(db, "admin1")

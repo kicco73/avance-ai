@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 import jwt
 import pytest
 
+from avance_platform.platform_service import PlatformService
+
 from auth.auth_provider import AuthenticatedUser, AuthProvider
 from auth.auth_service import AuthService
 from auth.errors import AuthError
@@ -77,7 +79,7 @@ def jwt_secret(db, auth_service) -> str:
 @pytest.fixture
 def invite_code(db, project_service) -> str:
     db.ensure_project("invite-project")
-    invite = project_service.create_invite("invite-project", created_by=None)
+    invite = PlatformService(project_service).create_invite("invite-project", created_by=None)
     return invite["code"]
 
 

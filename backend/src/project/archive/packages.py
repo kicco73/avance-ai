@@ -115,6 +115,42 @@ def import_automaton(directory: Path, project_id: str, revision: int) -> Any:
     return automaton
 
 
+def sole_package(apps_dir: Path) -> Path:
+    """The one package in `apps_dir`, for a caller that serves exactly
+    one project and never chooses. A build writes precisely one package
+    into the backend copy it produces (see BuildService.
+    _write_compiled_automaton), so "which one" is not a question a
+    product has to answer — and neither zero nor two is a state it can
+    run in, so both raise here rather than being resolved by a rule
+    nobody would remember.
+
+    Staging directories are ignored: a half-written package is not one.
+    """
+    candidates = sorted(
+        entry for entry in apps_dir.iterdir()
+        if entry.is_dir() and not entry.name.startswith(STAGING_PREFIX) and (entry / "__init__.py").is_file()
+    ) if apps_dir.is_dir() else []
+    if not candidates:
+        raise PackageError(f"{apps_dir}: no compiled package to serve.")
+    if len(candidates) > 1:
+        raise PackageError(
+            f"{apps_dir}: {len(candidates)} compiled packages "
+            f"({', '.join(entry.name for entry in candidates)}) — a product serves exactly one."
+        )
+    return candidates[0]
+
+
+def declared_revision(directory: Path) -> int:
+    """The revision the package says it was compiled from, read off the
+    directory name. `import_automaton` checks this against the package's
+    own STORAGE_REVISION, so this is only how a caller with no revision
+    of its own gets one to check with."""
+    suffix = directory.name.rsplit(".", 1)[-1]
+    if not suffix.isdigit():
+        raise PackageError(f"{directory}: name does not end in a revision.")
+    return int(suffix)
+
+
 def discard_other_revisions(apps_dir: Path, module_name: str, keep_revision: int) -> list[Path]:
     """Every other build of the same project, gone — older revisions and
     any half-written directory left by a failed build. Called once the

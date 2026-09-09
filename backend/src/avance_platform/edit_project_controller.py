@@ -13,6 +13,7 @@ from fastapi import HTTPException, Request, Response
 from automaton.automaton_yaml_editor import InitActionTargetError
 from automaton.build_error import AutomatonBuildError
 from turn.turn_service import TurnService
+from avance_platform.platform_service import PlatformService
 from project.project_service import ProjectService
 from scheduler import SchedulerService
 from schemas import (
@@ -63,10 +64,12 @@ PROJECT_EDITABLE_FIELDS = {"id", "ui-label", "ui-description", "talk-enabled", "
 class EditProjectController(BaseController, ProjectCommitMixin):
 
     def __init__(
-        self, turn_service: TurnService, project_service: ProjectService, scheduler_service: SchedulerService,
+        self, turn_service: TurnService, project_service: ProjectService,
+        platform_service: PlatformService, scheduler_service: SchedulerService,
     ) -> None:
         self.turn_service = turn_service
         self.project_service = project_service
+        self.platform_service = platform_service
         self.scheduler_service = scheduler_service
 
     @post("/api/projects/{project_id}/test-sessions", role="admin")
@@ -98,9 +101,9 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         """Every real state key of `project_id`'s current draft
         automaton — the "States" branch's own node list (see
         TestsTree.vue)."""
-        self.project_service.ensure_project_not_broken(project_id)
+        self.platform_service.ensure_project_not_broken(project_id)
         try:
-            return self.project_service.get_project_states(project_id)
+            return self.platform_service.get_project_states(project_id)
         except AutomatonBuildError:
             raise
         except ValueError as exc:
@@ -111,9 +114,9 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         """The project's state machine (states as nodes, actions as
         edges), for the Inspect panel graph. `session_id` omitted
         resolves the current draft; given, resolves that session's revision."""
-        self.project_service.ensure_project_not_broken(project_id)
+        self.platform_service.ensure_project_not_broken(project_id)
         try:
-            return self.project_service.get_project_graph(project_id, session_id)
+            return self.platform_service.get_project_graph(project_id, session_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except AutomatonBuildError:
@@ -129,7 +132,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         ProjectInspector.get_state_input_tokens). `tokens` is null when no
         AiService is configured for this deployment."""
         try:
-            return {"tokens": self.project_service.get_state_input_tokens(project_id, state_name, session_id)}
+            return {"tokens": self.platform_service.get_state_input_tokens(project_id, state_name, session_id)}
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except AutomatonBuildError:
@@ -142,9 +145,9 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         """Signal definitions for the Inspect panel. `state_key`, when
         given, scopes each signal's `relevant` field to that state's
         outgoing actions. `session_id`: see get_project_graph above."""
-        self.project_service.ensure_project_not_broken(project_id)
+        self.platform_service.ensure_project_not_broken(project_id)
         try:
-            return {"signals": self.project_service.get_project_signals(project_id, state_key, session_id)}
+            return {"signals": self.platform_service.get_project_signals(project_id, state_key, session_id)}
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except AutomatonBuildError:
@@ -156,9 +159,9 @@ class EditProjectController(BaseController, ProjectCommitMixin):
     def get_project_env_keys(self, project_id: str, session_id: int | None = None):
         """Declared env-key definitions for the "Edit project" view's
         Inspect panel Env tab. `session_id`: see get_project_graph above."""
-        self.project_service.ensure_project_not_broken(project_id)
+        self.platform_service.ensure_project_not_broken(project_id)
         try:
-            return {"env_keys": self.project_service.get_project_env_keys(project_id, session_id)}
+            return {"env_keys": self.platform_service.get_project_env_keys(project_id, session_id)}
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except AutomatonBuildError:
@@ -171,7 +174,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         """Declared source definitions for the "Edit project" view's
         design tree/Inspector Source card. `session_id`: see get_project_graph above."""
         try:
-            return {"sources": self.project_service.get_project_sources(project_id, session_id)}
+            return {"sources": self.platform_service.get_project_sources(project_id, session_id)}
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except AutomatonBuildError:
@@ -183,9 +186,9 @@ class EditProjectController(BaseController, ProjectCommitMixin):
     def get_project_metadata(self, project_id: str):
         """The optional top-level `project:` section of `project_id`'s
         last saved index.yml, for the Inspect panel Info tab."""
-        self.project_service.ensure_project_not_broken(project_id)
+        self.platform_service.ensure_project_not_broken(project_id)
         try:
-            return {"project": self.project_service.get_project_metadata(project_id)}
+            return {"project": self.platform_service.get_project_metadata(project_id)}
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except AutomatonBuildError:
@@ -201,7 +204,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         reused. {code, expires_at, max_shares, whatsapp_url}; whatsapp_url
         is null unless whatsapp-service is configured."""
         try:
-            return self.project_service.create_invite(project_id, Session().user)
+            return self.platform_service.create_invite(project_id, Session().user)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
@@ -218,7 +221,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         that can fail (expired/maxed-out link). null project_id when
         the code doesn't resolve to anything at all, never an error."""
         try:
-            project_id = self.project_service.resolve_invite_link(code, Session().user, Session().role)
+            project_id = self.platform_service.resolve_invite_link(code, Session().user, Session().role)
         except PermissionError as exc:
             raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail=str(exc)) from exc
         return {"project_id": project_id}
@@ -229,7 +232,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         plus any text attachments), for the "Edit project" view's file
         explorer panel."""
         try:
-            return {"files": self.project_service.list_project_files(project_id)}
+            return {"files": self.platform_service.list_project_files(project_id)}
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
@@ -242,7 +245,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         via cssAssetUrls.js) hits this for every live chat session,
         regardless of the viewer's role."""
         try:
-            content, content_type = self.project_service.get_project_file_content(project_id, file_name, session_id)
+            content, content_type = self.platform_service.get_project_file_content(project_id, file_name, session_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except AutomatonBuildError:
@@ -266,7 +269,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         content — can_undo/can_redo drive the Undo/Redo buttons. Missing
         index.css reports 204 instead of 404, since it's optional."""
         try:
-            return self.project_service.get_project_file(project_id, file_name)
+            return self.platform_service.get_project_file(project_id, file_name)
         except FileNotFoundError as exc:
             if file_name == "index.css":
                 return Response(status_code=HTTPStatus.NO_CONTENT)
@@ -346,7 +349,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         in `project_id` — called when the view opens, so a fresh
         editing session never inherits a previous one's trail."""
         try:
-            self.project_service.clear_project_history(project_id)
+            self.platform_service.clear_project_history(project_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         return {"success": True}
@@ -472,7 +475,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
     @post("/api/projects/{project_id}/sources/{source_name}/web-import", role="admin")
     async def post_source_web_import(self, project_id: str, source_name: str, req: WebImportRequest):
         try:
-            job = self.project_service.build_web_import_job(
+            job = self.platform_service.build_web_import_job(
                 project_id, source_name, req.query, self._activate_project,
             )
         except FileNotFoundError as exc:
@@ -499,7 +502,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=f"'{field}' is not an editable state field — expected one of {sorted(STATE_EDITABLE_FIELDS)}.",
             )
-        self.project_service.ensure_project_not_broken(project_id)
+        self.platform_service.ensure_project_not_broken(project_id)
         try:
             return await self.project_service.set_state_field(
                 project_id, state_name, field, req.value, self._activate_project
@@ -520,7 +523,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=f"'{field}' is not an editable action field — expected one of {sorted(ACTION_EDITABLE_FIELDS)}.",
             )
-        self.project_service.ensure_project_not_broken(project_id)
+        self.platform_service.ensure_project_not_broken(project_id)
         try:
             return await self.project_service.set_action_field(
                 project_id, state_name, action_name, field, req.value, self._activate_project
@@ -539,7 +542,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=f"'{field}' is not an editable signal field — expected one of {sorted(SIGNAL_EDITABLE_FIELDS)}.",
             )
-        self.project_service.ensure_project_not_broken(project_id)
+        self.platform_service.ensure_project_not_broken(project_id)
         try:
             return await self.project_service.set_signal_field(
                 project_id, signal_name, field, req.value, self._activate_project
@@ -558,7 +561,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=f"'{field}' is not an editable env key field — expected one of {sorted(ENV_KEY_EDITABLE_FIELDS)}.",
             )
-        self.project_service.ensure_project_not_broken(project_id)
+        self.platform_service.ensure_project_not_broken(project_id)
         try:
             return await self.project_service.set_env_key_field(
                 project_id, env_key_name, field, req.value, self._activate_project
@@ -577,7 +580,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=f"'{field}' is not an editable source field — expected one of {sorted(SOURCE_EDITABLE_FIELDS)}.",
             )
-        self.project_service.ensure_project_not_broken(project_id)
+        self.platform_service.ensure_project_not_broken(project_id)
         try:
             return await self.project_service.set_source_field(
                 project_id, source_name, field, req.value, self._activate_project
@@ -599,7 +602,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=f"'{field}' is not an editable init-action field — expected one of {sorted(INIT_ACTION_EDITABLE_FIELDS)}.",
             )
-        self.project_service.ensure_project_not_broken(project_id)
+        self.platform_service.ensure_project_not_broken(project_id)
         try:
             return await self.project_service.set_init_action_field(
                 project_id, field, req.value, self._activate_project
@@ -618,7 +621,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=f"'{field}' is not an editable project field — expected one of {sorted(PROJECT_EDITABLE_FIELDS)}.",
             )
-        self.project_service.ensure_project_not_broken(project_id)
+        self.platform_service.ensure_project_not_broken(project_id)
         try:
             return await self.project_service.set_project_field(
                 project_id, field, req.value, self._activate_project
@@ -717,7 +720,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         """{revision, published_revision} — the "Edit project" toolbar's
         own revision display."""
         try:
-            return self.project_service.get_project_revision_info(project_id)
+            return self.platform_service.get_project_revision_info(project_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
@@ -727,7 +730,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         first. The Publish button's confirm flow calls this before
         POSTing, to know whether to prompt for a remap target."""
         try:
-            return self.project_service.preview_publish(project_id)
+            return self.platform_service.preview_publish(project_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
@@ -737,7 +740,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         revision — see ProjectService.publish_project. `remap_to` is
         required only when get_publish_preview reported needs_remap."""
         try:
-            return self.project_service.publish_project(project_id, req.remap_to)
+            return self.platform_service.publish_project(project_id, req.remap_to)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except AutomatonBuildError:

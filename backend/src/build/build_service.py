@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 
 from system.logging_factory import LoggerFactory
 
-from .apps import PackageError, discard_other_revisions, import_automaton, package_dir, staging_dir
+from project.archive.packages import PackageError, discard_other_revisions, import_automaton, package_dir, staging_dir
 from .compiler import CompileError, compile_contents
 
 if TYPE_CHECKING:
