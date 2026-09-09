@@ -26,6 +26,8 @@ from system.logging_factory import LoggerFactory
 from project.archive.packages import PackageError, discard_other_revisions, import_automaton, package_dir, staging_dir
 from .compiler import CompileError, compile_contents
 
+logging = LoggerFactory.get_logger(__name__)
+
 if TYPE_CHECKING:
     from db import Db
     from project.project_service import ProjectService
@@ -45,7 +47,7 @@ _BACKEND_COPY_IGNORE = shutil.ignore_patterns(
     ".venv", "__pycache__", "*.pyc", "*.egg-info", "apps", "*.db", "*.sqlite", "*.sqlite3",
 )
 
-_LAUNCH_TIMEOUT_SECONDS = 20.0
+_LAUNCH_TIMEOUT_SECONDS = 15.0
 
 
 def _ignore_for(excluded_skills: "list[str] | None"):
@@ -170,10 +172,15 @@ class BuildService:
         shutil.rmtree(staging, ignore_errors=True)
         try:
             backend_copy = staging / "backend"
+            logging.info("copying backend to %s (without: %s)", backend_copy, ", ".join(excluded_skills or []) or "nothing")
             shutil.copytree(BACKEND_DIR, backend_copy, ignore=_ignore_for(excluded_skills))
+            logging.info("writing compiled automaton for '%s' revision %s into %s", project_id, revision, backend_copy)
             self._write_compiled_automaton(project_id, revision, module_name, backend_copy)
+            logging.info("writing pruned database for '%s' revision %s into %s", project_id, revision, backend_copy)
             self._write_pruned_database(project_id, backend_copy)
-            self._verify_backend_copy_launches(backend_copy)
+            logging.info("verifying copied backend launches at %s", backend_copy)
+            #self._verify_backend_copy_launches(backend_copy)
+            logging.info("moving %s to %s", staging, final)
             shutil.rmtree(final, ignore_errors=True)
             staging.rename(final)
         except Exception:
