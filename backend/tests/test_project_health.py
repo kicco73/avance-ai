@@ -139,7 +139,7 @@ def test_a_publish_that_builds_again_resumes_the_project(db, project_service):
 
 def test_ensure_project_not_broken_is_a_noop_for_a_healthy_draft(db, project_service):
     _publish(db, project_service, "solo", VALID_YML)
-    PlatformService(project_service).ensure_project_not_broken("solo")  # must not raise
+    project_service.ensure_project_not_broken("solo")  # must not raise
 
 
 def test_ensure_project_not_broken_raises_409_project_broken_for_a_broken_draft(db, project_service):
@@ -147,7 +147,7 @@ def test_ensure_project_not_broken_raises_409_project_broken_for_a_broken_draft(
     db.save_project_files("wip", {"index.yml": BROKEN_YML.encode("utf-8")}, {"index.yml": "text/yaml"})
 
     with pytest.raises(ServiceError) as exc_info:
-        PlatformService(project_service).ensure_project_not_broken("wip")
+        project_service.ensure_project_not_broken("wip")
 
     assert exc_info.value.status_code == HTTPStatus.CONFLICT
     assert exc_info.value.code == "project_broken"

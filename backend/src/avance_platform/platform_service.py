@@ -16,8 +16,13 @@ immediately what the engine loads through the other.
 """
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import TYPE_CHECKING
+
+from automaton.automaton import Automaton, CompiledAutomaton, ProjectPayload, StatePayload
+from project.web_import_job import WebImportJob
+from tracking.sources.url import parse_source_url
 
 if TYPE_CHECKING:
     from project.project_service import CommitCallback, ProjectService
@@ -35,6 +40,11 @@ class PlatformService(object):
         self.manager = project_service.manager
         self.editor = project_service.editor
         self.invites = project_service.invites
+        # A handful of these methods still ask a question about the
+        # project itself — which revision is published, what its
+        # automaton is. Those belong to the project and are asked of it
+        # (see project/project_service.py), not reimplemented here.
+        self.project_service = project_service
 
     def get_active_state_payload(self) -> StatePayload:
         return self.inspector.get_active_state_payload()
@@ -53,9 +63,6 @@ class PlatformService(object):
     def get_project_metadata(self, project_id: str) -> ProjectPayload:
         return self.inspector.get_project_metadata(project_id)
 
-    def get_identifier_registry(self, project_id: str) -> dict[str, dict[str, str]]:
-        return self.inspector.get_identifier_registry(project_id)
-
     def get_project_states(self, project_id: str) -> list[str]:
         return self.inspector.get_project_states(project_id)
 
@@ -70,9 +77,6 @@ class PlatformService(object):
 
     def get_project_revision_info(self, project_id: str) -> dict:
         return self.inspector.get_project_revision_info(project_id)
-
-    def ensure_project_not_broken(self, project_id: str) -> None:
-        self.manager.ensure_project_not_broken(project_id)
 
     def get_runtime_status(self) -> list[dict]:
         return self.manager.get_runtime_status()
@@ -104,28 +108,11 @@ class PlatformService(object):
     def publish_project(self, project_id: str, remap_to: str | None = None) -> dict:
         return self.manager.publish_project(project_id, remap_to)
 
-    async def revert_to_published(self, project_id: str, commit: CommitCallback) -> dict:
-        return await self.manager.revert_to_published(project_id, commit)
-
     async def activate_project(self, project_id: str, commit: CommitCallback) -> Automaton:
         return await self.manager.activate_project(project_id, commit)
 
-    async def activate_project_idempotent(self, project_id: str, commit: CommitCallback) -> Automaton:
-        return await self.manager.activate_project_idempotent(project_id, commit)
-
-    async def put_project(
-        self, content: bytes, content_type: str | None, commit: CommitCallback
-    ) -> tuple[dict, ProjectImportBundleJob]:
-        return await self.manager.put_project(content, content_type, commit)
-
-    async def create_new_project(self, commit: CommitCallback) -> tuple[dict, ProjectImportBundleJob]:
-        return await self.manager.create_new_project(commit)
-
     def export_project_zip(self, project_id: str) -> bytes:
         return self.manager.export_project_zip(project_id)
-
-    async def delete_project(self, project_id: str, commit: CommitCallback) -> None:
-        await self.manager.delete_project(project_id, commit)
 
     def list_project_files(self, project_id: str) -> list[str]:
         return self.editor.list_project_files(project_id)
@@ -133,91 +120,10 @@ class PlatformService(object):
     def get_project_file(self, project_id: str, file_name: str) -> dict:
         return self.editor.get_project_file(project_id, file_name)
 
-    async def generate_index_yml_ai_edit(self, project_id: str, instruction: str) -> str:
-        return await self.editor.generate_index_yml_ai_edit(project_id, instruction)
-
-    async def generate_index_css_ai_edit(self, project_id: str, instruction: str) -> str:
-        return await self.editor.generate_index_css_ai_edit(project_id, instruction)
-
     def get_project_file_content(
         self, project_id: str, file_name: str, session_id: int | None
     ) -> tuple[bytes, str]:
         return self.editor.get_project_file_content(project_id, file_name, session_id)
-
-    async def put_project_file(
-        self, project_id: str, file_name: str, content: bytes | str, content_type_header: str | None,
-        commit: CommitCallback,
-    ) -> dict:
-        return await self.editor.put_project_file(project_id, file_name, content, content_type_header, commit)
-
-    async def rename_project_file(self, project_id: str, old_name: str, new_name: str, commit: CommitCallback) -> dict:
-        return await self.editor.rename_project_file(project_id, old_name, new_name, commit)
-
-    async def add_legal_terms(self, project_id: str, commit: CommitCallback) -> dict:
-        return await self.editor.add_legal_terms(project_id, commit)
-
-    async def add_state(self, project_id: str, commit: CommitCallback) -> StatePayload:
-        return await self.editor.add_state(project_id, commit)
-
-    async def add_signal(self, project_id: str, commit: CommitCallback) -> SignalPayload:
-        return await self.editor.add_signal(project_id, commit)
-
-    async def add_action(self, project_id: str, state_name: str, commit: CommitCallback) -> ActionPayload:
-        return await self.editor.add_action(project_id, state_name, commit)
-
-    async def set_state_field(
-        self, project_id: str, state_name: str, field: str, value, commit: CommitCallback
-    ) -> StatePayload:
-        return await self.editor.set_state_field(project_id, state_name, field, value, commit)
-
-    async def set_action_field(
-        self, project_id: str, state_name: str, action_name: str, field: str, value, commit: CommitCallback
-    ) -> ActionPayload:
-        return await self.editor.set_action_field(project_id, state_name, action_name, field, value, commit)
-
-    async def set_signal_field(
-        self, project_id: str, signal_name: str, field: str, value, commit: CommitCallback
-    ) -> SignalPayload:
-        return await self.editor.set_signal_field(project_id, signal_name, field, value, commit)
-
-    async def set_init_action_field(self, project_id: str, field: str, value, commit: CommitCallback):
-        return await self.editor.set_init_action_field(project_id, field, value, commit)
-
-    async def set_project_field(self, project_id: str, field: str, value, commit: CommitCallback) -> ProjectPayload:
-        return await self.editor.set_project_field(project_id, field, value, commit)
-
-    async def delete_state(self, project_id: str, state_name: str, commit: CommitCallback) -> None:
-        await self.editor.delete_state(project_id, state_name, commit)
-
-    async def delete_action(self, project_id: str, state_name: str, action_name: str, commit: CommitCallback) -> None:
-        await self.editor.delete_action(project_id, state_name, action_name, commit)
-
-    async def delete_signal(self, project_id: str, signal_name: str, commit: CommitCallback) -> None:
-        await self.editor.delete_signal(project_id, signal_name, commit)
-
-    async def add_env_key(self, project_id: str, commit: CommitCallback) -> EnvKeyPayload:
-        return await self.editor.add_env_key(project_id, commit)
-
-    async def set_env_key_field(
-        self, project_id: str, env_key_name: str, field: str, value, commit: CommitCallback
-    ) -> EnvKeyPayload:
-        return await self.editor.set_env_key_field(project_id, env_key_name, field, value, commit)
-
-    async def delete_env_key(self, project_id: str, env_key_name: str, commit: CommitCallback) -> None:
-        await self.editor.delete_env_key(project_id, env_key_name, commit)
-
-    async def add_source(
-        self, project_id: str, commit: CommitCallback, name_hint: str | None = None, content: bytes = b"",
-    ) -> SourcePayload:
-        return await self.editor.add_source(project_id, commit, name_hint, content)
-
-    async def set_source_field(
-        self, project_id: str, source_name: str, field: str, value, commit: CommitCallback
-    ) -> SourcePayload:
-        return await self.editor.set_source_field(project_id, source_name, field, value, commit)
-
-    async def delete_source(self, project_id: str, source_name: str, commit: CommitCallback) -> None:
-        await self.editor.delete_source(project_id, source_name, commit)
 
     def build_web_import_job(
         self, project_id: str, source_name: str, query: str, commit: CommitCallback,
@@ -243,34 +149,20 @@ class PlatformService(object):
             return path
         raise FileNotFoundError(f"Source '{source_name}' does not exist in project '{project_id}'.")
 
-    async def reorder_actions(
-        self, project_id: str, state_name: str, action_name: str, position: int, commit: CommitCallback
-    ) -> list[ActionPayload]:
-        return await self.editor.reorder_actions(project_id, state_name, action_name, position, commit)
-
-    async def undo_project_file(self, project_id: str, file_name: str, content: bytes) -> dict:
-        return await self.editor.undo_project_file(project_id, file_name, content)
-
-    async def redo_project_file(self, project_id: str, file_name: str, content: bytes) -> dict:
-        return await self.editor.redo_project_file(project_id, file_name, content)
-
     def clear_project_history(self, project_id: str) -> None:
         self.editor.clear_project_history(project_id)
-
-    async def delete_project_file(self, project_id: str, file_name: str, commit: CommitCallback) -> None:
-        await self.editor.delete_project_file(project_id, file_name, commit)
 
     def list_app_store_apps(self, username: str, search: str | None = None) -> list[dict]:
         apps = self.db.list_projects_for_app_store(username, search)
         for app in apps:
             app["icon_file"] = self._find_app_icon_file(app["id"])
-            automaton = self.get_automaton(app["id"], self.get_published_revision(app["id"]))
+            automaton = self.project_service.get_automaton(app["id"], self.project_service.get_published_revision(app["id"]))
             app["reactions_enabled"] = any(automaton.reactions_enabled_for(s) for s in automaton.states.values())
             app["compiled"] = isinstance(automaton, CompiledAutomaton)
         return apps
 
     def _find_app_icon_file(self, project_id: str) -> str | None:
-        revision = self.get_published_revision(project_id)
+        revision = self.project_service.get_published_revision(project_id)
         for name in self.db.list_archives(project_id, revision=revision):
             if _ICON_FILE_RE.match(name):
                 return name
@@ -289,7 +181,7 @@ class PlatformService(object):
         return self.db.list_session_summaries_for_user_project(username, project_id)
 
     def get_app_store_file_content(self, project_id: str, file_name: str) -> tuple[bytes, str]:
-        revision = self.get_published_revision(project_id)
+        revision = self.project_service.get_published_revision(project_id)
         return self.editor.get_project_file_content_at_revision(project_id, file_name, revision)
 
     def get_app_store_preview_messages(self, project_id: str) -> list[dict] | None:

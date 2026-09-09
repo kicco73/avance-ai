@@ -101,7 +101,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         """Every real state key of `project_id`'s current draft
         automaton — the "States" branch's own node list (see
         TestsTree.vue)."""
-        self.platform_service.ensure_project_not_broken(project_id)
+        self.project_service.ensure_project_not_broken(project_id)
         try:
             return self.platform_service.get_project_states(project_id)
         except AutomatonBuildError:
@@ -114,7 +114,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         """The project's state machine (states as nodes, actions as
         edges), for the Inspect panel graph. `session_id` omitted
         resolves the current draft; given, resolves that session's revision."""
-        self.platform_service.ensure_project_not_broken(project_id)
+        self.project_service.ensure_project_not_broken(project_id)
         try:
             return self.platform_service.get_project_graph(project_id, session_id)
         except FileNotFoundError as exc:
@@ -145,7 +145,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         """Signal definitions for the Inspect panel. `state_key`, when
         given, scopes each signal's `relevant` field to that state's
         outgoing actions. `session_id`: see get_project_graph above."""
-        self.platform_service.ensure_project_not_broken(project_id)
+        self.project_service.ensure_project_not_broken(project_id)
         try:
             return {"signals": self.platform_service.get_project_signals(project_id, state_key, session_id)}
         except FileNotFoundError as exc:
@@ -159,7 +159,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
     def get_project_env_keys(self, project_id: str, session_id: int | None = None):
         """Declared env-key definitions for the "Edit project" view's
         Inspect panel Env tab. `session_id`: see get_project_graph above."""
-        self.platform_service.ensure_project_not_broken(project_id)
+        self.project_service.ensure_project_not_broken(project_id)
         try:
             return {"env_keys": self.platform_service.get_project_env_keys(project_id, session_id)}
         except FileNotFoundError as exc:
@@ -186,7 +186,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
     def get_project_metadata(self, project_id: str):
         """The optional top-level `project:` section of `project_id`'s
         last saved index.yml, for the Inspect panel Info tab."""
-        self.platform_service.ensure_project_not_broken(project_id)
+        self.project_service.ensure_project_not_broken(project_id)
         try:
             return {"project": self.platform_service.get_project_metadata(project_id)}
         except FileNotFoundError as exc:
@@ -502,7 +502,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=f"'{field}' is not an editable state field — expected one of {sorted(STATE_EDITABLE_FIELDS)}.",
             )
-        self.platform_service.ensure_project_not_broken(project_id)
+        self.project_service.ensure_project_not_broken(project_id)
         try:
             return await self.project_service.set_state_field(
                 project_id, state_name, field, req.value, self._activate_project
@@ -523,7 +523,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=f"'{field}' is not an editable action field — expected one of {sorted(ACTION_EDITABLE_FIELDS)}.",
             )
-        self.platform_service.ensure_project_not_broken(project_id)
+        self.project_service.ensure_project_not_broken(project_id)
         try:
             return await self.project_service.set_action_field(
                 project_id, state_name, action_name, field, req.value, self._activate_project
@@ -542,7 +542,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=f"'{field}' is not an editable signal field — expected one of {sorted(SIGNAL_EDITABLE_FIELDS)}.",
             )
-        self.platform_service.ensure_project_not_broken(project_id)
+        self.project_service.ensure_project_not_broken(project_id)
         try:
             return await self.project_service.set_signal_field(
                 project_id, signal_name, field, req.value, self._activate_project
@@ -561,7 +561,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=f"'{field}' is not an editable env key field — expected one of {sorted(ENV_KEY_EDITABLE_FIELDS)}.",
             )
-        self.platform_service.ensure_project_not_broken(project_id)
+        self.project_service.ensure_project_not_broken(project_id)
         try:
             return await self.project_service.set_env_key_field(
                 project_id, env_key_name, field, req.value, self._activate_project
@@ -580,7 +580,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=f"'{field}' is not an editable source field — expected one of {sorted(SOURCE_EDITABLE_FIELDS)}.",
             )
-        self.platform_service.ensure_project_not_broken(project_id)
+        self.project_service.ensure_project_not_broken(project_id)
         try:
             return await self.project_service.set_source_field(
                 project_id, source_name, field, req.value, self._activate_project
@@ -602,7 +602,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=f"'{field}' is not an editable init-action field — expected one of {sorted(INIT_ACTION_EDITABLE_FIELDS)}.",
             )
-        self.platform_service.ensure_project_not_broken(project_id)
+        self.project_service.ensure_project_not_broken(project_id)
         try:
             return await self.project_service.set_init_action_field(
                 project_id, field, req.value, self._activate_project
@@ -621,7 +621,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=f"'{field}' is not an editable project field — expected one of {sorted(PROJECT_EDITABLE_FIELDS)}.",
             )
-        self.platform_service.ensure_project_not_broken(project_id)
+        self.project_service.ensure_project_not_broken(project_id)
         try:
             return await self.project_service.set_project_field(
                 project_id, field, req.value, self._activate_project

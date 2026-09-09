@@ -58,6 +58,7 @@ def _controller(*, talk_service_configured: bool, project_talk_enabled: bool) ->
     return PlatformController(
         turn_service=_FakeChatService(),
         project_service=_FakeProjectService(project_talk_enabled),
+        platform_service=_FakeProjectService(project_talk_enabled),
     )
 
 
@@ -81,5 +82,6 @@ def test_defaults_to_the_server_flag_when_there_is_no_active_project():
     controller = PlatformController(
         turn_service=_FakeChatService(),
         project_service=_NoActiveProjectService(),
+        platform_service=_NoActiveProjectService(),
     )
     assert controller.get_state()["talk_enabled"] is True

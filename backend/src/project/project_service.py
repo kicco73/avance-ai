@@ -11,19 +11,17 @@ than building a second set over the same database.
 """
 from __future__ import annotations
 
-import asyncio
 import re
 from typing import TYPE_CHECKING
 
 from automaton.automaton import (
-    Action, ActionPayload, Automaton, CompiledAutomaton, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload,
+    Action, ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload,
     State, StatePayload,
 )
 from turn.sessions.session_manager import SessionManager
 from db import Db
 from tracking.session_export import SessionExportManager
 from tracking.session_import import SessionImportManager
-from tracking.sources.url import parse_source_url
 
 from .editor import ProjectEditor
 from .inspector import ProjectInspector
@@ -33,14 +31,9 @@ from .archive.automaton_loader import AutomatonLoader
 from .project_import_bundle_job import ProjectImportBundleJob
 from .types import CommitCallback
 from .web_import_crawler import WebCrawler
-from .web_import_job import WebImportJob
 
 if TYPE_CHECKING:
     from ai import AiService
-
-    # Type-only: naming it here costs this module no runtime dependency on
-    # the compiled-automaton path, which it never chooses (see main.py).
-    from .archive.compiled_automaton_loader import CompiledAutomatonLoader
 
 __all__ = ["ProjectService", "CommitCallback"]
 
@@ -145,3 +138,126 @@ class ProjectService(object):
 
     def reset_test_sessions(self, project_id: str) -> None:
         self.manager.reset_test_sessions(project_id)
+
+    # -- ProjectEditor / ProjectManager: editing a project ---------------
+    # Restored: these are operations *on a project*, and they stay with
+    # the project. Only the design view calls them today, but that is a
+    # fact about today's callers, not about what they are.
+
+    async def activate_project_idempotent(self, project_id: str, commit: CommitCallback) -> Automaton:
+        return await self.manager.activate_project_idempotent(project_id, commit)
+
+    async def add_action(self, project_id: str, state_name: str, commit: CommitCallback) -> ActionPayload:
+        return await self.editor.add_action(project_id, state_name, commit)
+
+    async def add_env_key(self, project_id: str, commit: CommitCallback) -> EnvKeyPayload:
+        return await self.editor.add_env_key(project_id, commit)
+
+    async def add_legal_terms(self, project_id: str, commit: CommitCallback) -> dict:
+        return await self.editor.add_legal_terms(project_id, commit)
+
+    async def add_signal(self, project_id: str, commit: CommitCallback) -> SignalPayload:
+        return await self.editor.add_signal(project_id, commit)
+
+    async def add_source(
+        self, project_id: str, commit: CommitCallback, name_hint: str | None = None, content: bytes = b"",
+    ) -> SourcePayload:
+        return await self.editor.add_source(project_id, commit, name_hint, content)
+
+    async def add_state(self, project_id: str, commit: CommitCallback) -> StatePayload:
+        return await self.editor.add_state(project_id, commit)
+
+    async def create_new_project(self, commit: CommitCallback) -> tuple[dict, ProjectImportBundleJob]:
+        return await self.manager.create_new_project(commit)
+
+    async def delete_action(self, project_id: str, state_name: str, action_name: str, commit: CommitCallback) -> None:
+        await self.editor.delete_action(project_id, state_name, action_name, commit)
+
+    async def delete_env_key(self, project_id: str, env_key_name: str, commit: CommitCallback) -> None:
+        await self.editor.delete_env_key(project_id, env_key_name, commit)
+
+    async def delete_project(self, project_id: str, commit: CommitCallback) -> None:
+        await self.manager.delete_project(project_id, commit)
+
+    async def delete_project_file(self, project_id: str, file_name: str, commit: CommitCallback) -> None:
+        await self.editor.delete_project_file(project_id, file_name, commit)
+
+    async def delete_signal(self, project_id: str, signal_name: str, commit: CommitCallback) -> None:
+        await self.editor.delete_signal(project_id, signal_name, commit)
+
+    async def delete_source(self, project_id: str, source_name: str, commit: CommitCallback) -> None:
+        await self.editor.delete_source(project_id, source_name, commit)
+
+    async def delete_state(self, project_id: str, state_name: str, commit: CommitCallback) -> None:
+        await self.editor.delete_state(project_id, state_name, commit)
+
+    async def generate_index_css_ai_edit(self, project_id: str, instruction: str) -> str:
+        return await self.editor.generate_index_css_ai_edit(project_id, instruction)
+
+    async def generate_index_yml_ai_edit(self, project_id: str, instruction: str) -> str:
+        return await self.editor.generate_index_yml_ai_edit(project_id, instruction)
+
+    async def put_project(
+        self, content: bytes, content_type: str | None, commit: CommitCallback
+    ) -> tuple[dict, ProjectImportBundleJob]:
+        return await self.manager.put_project(content, content_type, commit)
+
+    async def put_project_file(
+        self, project_id: str, file_name: str, content: bytes | str, content_type_header: str | None,
+        commit: CommitCallback,
+    ) -> dict:
+        return await self.editor.put_project_file(project_id, file_name, content, content_type_header, commit)
+
+    async def redo_project_file(self, project_id: str, file_name: str, content: bytes) -> dict:
+        return await self.editor.redo_project_file(project_id, file_name, content)
+
+    async def rename_project_file(self, project_id: str, old_name: str, new_name: str, commit: CommitCallback) -> dict:
+        return await self.editor.rename_project_file(project_id, old_name, new_name, commit)
+
+    async def reorder_actions(
+        self, project_id: str, state_name: str, action_name: str, position: int, commit: CommitCallback
+    ) -> list[ActionPayload]:
+        return await self.editor.reorder_actions(project_id, state_name, action_name, position, commit)
+
+    async def revert_to_published(self, project_id: str, commit: CommitCallback) -> dict:
+        return await self.manager.revert_to_published(project_id, commit)
+
+    async def set_action_field(
+        self, project_id: str, state_name: str, action_name: str, field: str, value, commit: CommitCallback
+    ) -> ActionPayload:
+        return await self.editor.set_action_field(project_id, state_name, action_name, field, value, commit)
+
+    async def set_env_key_field(
+        self, project_id: str, env_key_name: str, field: str, value, commit: CommitCallback
+    ) -> EnvKeyPayload:
+        return await self.editor.set_env_key_field(project_id, env_key_name, field, value, commit)
+
+    async def set_init_action_field(self, project_id: str, field: str, value, commit: CommitCallback):
+        return await self.editor.set_init_action_field(project_id, field, value, commit)
+
+    async def set_project_field(self, project_id: str, field: str, value, commit: CommitCallback) -> ProjectPayload:
+        return await self.editor.set_project_field(project_id, field, value, commit)
+
+    async def set_signal_field(
+        self, project_id: str, signal_name: str, field: str, value, commit: CommitCallback
+    ) -> SignalPayload:
+        return await self.editor.set_signal_field(project_id, signal_name, field, value, commit)
+
+    async def set_source_field(
+        self, project_id: str, source_name: str, field: str, value, commit: CommitCallback
+    ) -> SourcePayload:
+        return await self.editor.set_source_field(project_id, source_name, field, value, commit)
+
+    async def set_state_field(
+        self, project_id: str, state_name: str, field: str, value, commit: CommitCallback
+    ) -> StatePayload:
+        return await self.editor.set_state_field(project_id, state_name, field, value, commit)
+
+    async def undo_project_file(self, project_id: str, file_name: str, content: bytes) -> dict:
+        return await self.editor.undo_project_file(project_id, file_name, content)
+
+    def get_identifier_registry(self, project_id: str) -> dict[str, dict[str, str]]:
+        return self.inspector.get_identifier_registry(project_id)
+
+    def ensure_project_not_broken(self, project_id: str) -> None:
+        self.manager.ensure_project_not_broken(project_id)
