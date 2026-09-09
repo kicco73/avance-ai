@@ -1,6 +1,6 @@
 <script setup>
-// The "Build" button's own wizard (see ProjectDetailPanel.vue). Both
-// steps are placeholders — compiling a project's published revision into
+// The "Build" button's own wizard (see ProjectDetailPanel.vue). The
+// Compile step is a placeholder — compiling a project's published revision into
 // a local module now happens directly from the "Compile" button next to
 // this one (see ProjectDetailPanel.vue's own @compile, and
 // useProjectAdminActions.js's handleCompileProject), not through this
@@ -8,8 +8,9 @@
 import { ref } from 'vue'
 import AppHeader from '../../AppHeader.vue'
 import ProfileMenu from '../../ProfileMenu.vue'
+import { postBuildBackendCopy } from '../../../api/build.js'
 
-defineProps({
+const props = defineProps({
   projectId: { type: String, required: true },
   profile: { type: Object, default: null }
 })
@@ -17,11 +18,14 @@ defineProps({
 const emit = defineEmits(['close', 'home', 'profile', 'logout'])
 
 const STEPS = [
-  { id: 'compile', label: 'Compile' },
+  { id: 'skills', label: 'Skills' },
   { id: 'target', label: 'Target' }
 ]
 
 const currentStep = ref(0)
+const building = ref(false)
+const buildResult = ref(null)
+const buildError = ref('')
 
 function goToStep(index) {
   if (index > currentStep.value + 1) return
@@ -34,6 +38,19 @@ function goNext() {
 
 function goBack() {
   if (currentStep.value > 0) currentStep.value -= 1
+}
+
+async function runBuild() {
+  building.value = true
+  buildResult.value = null
+  buildError.value = ''
+  try {
+    buildResult.value = await postBuildBackendCopy(props.projectId)
+  } catch (err) {
+    buildError.value = err.message || 'Build failed.'
+  } finally {
+    building.value = false
+  }
 }
 </script>
 
@@ -76,9 +93,25 @@ function goBack() {
       </div>
 
       <div v-show="currentStep === 1" class="build-panel">
-        <p class="build-status">Nothing here yet.</p>
+        <p v-if="!buildResult && !buildError" class="build-status">
+          Copies this backend, with the project's compiled automaton and its own database
+          (every other project removed from it), into a standalone directory under
+          <code>builds/</code> — then launches it once to confirm it actually starts.
+        </p>
+        <p v-if="buildResult" class="build-status">
+          Built revision {{ buildResult.revision }} into {{ buildResult.path }} — launched and confirmed working.
+        </p>
+        <p v-if="buildError" class="build-status build-status-error">{{ buildError }}</p>
         <div class="build-actions-row">
-          <button type="button" class="build-action-btn" @click="goBack">Back</button>
+          <button type="button" class="build-action-btn" :disabled="building" @click="goBack">Back</button>
+          <button
+            type="button"
+            class="build-action-btn build-action-btn-primary"
+            :disabled="building"
+            @click="runBuild"
+          >
+            {{ building ? 'Building…' : 'Build' }}
+          </button>
         </div>
       </div>
     </div>
@@ -183,6 +216,10 @@ function goBack() {
   margin: 0;
   font-size: 0.9rem;
   color: #666;
+}
+
+.build-status-error {
+  color: #b23a3a;
 }
 
 .build-actions-row {

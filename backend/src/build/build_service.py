@@ -12,6 +12,12 @@ not the shape the feature will keep.
 from __future__ import annotations
 
 import shutil
+import socket
+import sqlite3
+import subprocess
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -30,9 +36,31 @@ logger = LoggerFactory.get_logger(__name__)
 # build from the panel goes to the configured apps directory instead.
 BUILD_DIR = Path(__file__).resolve().parent
 
+BACKEND_DIR = BUILD_DIR.parent.parent
+REPO_ROOT = BACKEND_DIR.parent
+BUILDS_DIR = REPO_ROOT / "builds"
+STAGING_PREFIX = ".building."
+
+_BACKEND_COPY_IGNORE = shutil.ignore_patterns(
+    ".venv", "__pycache__", "*.pyc", "*.egg-info", "apps", "*.db", "*.sqlite", "*.sqlite3",
+)
+
+_LAUNCH_TIMEOUT_SECONDS = 20.0
+
 # Names this package already uses for something else, so a project whose
 # id sanitizes to one of them cannot quietly overwrite it.
 _RESERVED = frozenset({"compiler", "build_service", "data"})
+
+
+def published_revision_of(db: "Db", project_service: "ProjectService", project_id: str) -> int:
+    published = project_service.get_published_revision(project_id)
+    current = db.get_project_revision(project_id)
+    if current != published:
+        raise CompileError(
+            f"Project '{project_id}' has unpublished changes (draft revision {current}, "
+            f"published {published}) — publish them first."
+        )
+    return published
 
 
 def module_name_for(project_id: str) -> str:
@@ -58,7 +86,7 @@ class BuildService:
         """Compiles `project_id`'s published revision into the apps
         directory and reports what was written. Raises CompileError with a
         message the panel can show as-is."""
-        revision = self._published_revision_of_a_project_with_nothing_unpublished(project_id)
+        revision = published_revision_of(self._db, self._project_service, project_id)
         archives = self._db.get_archives(project_id, revision=revision)
         if not archives:
             raise CompileError(f"Project '{project_id}' has no files at revision {revision}.")
@@ -99,16 +127,116 @@ class BuildService:
             "files": sorted(path.name for path in final.iterdir() if path.is_file()),
         }
 
-    def _published_revision_of_a_project_with_nothing_unpublished(self, project_id: str) -> int:
-        """A build is of the published revision, so a project carrying an
-        unpublished draft has nothing to build yet — the panel disables
-        the button for exactly this, and saying so here is what makes it
-        a project error rather than a surprise later."""
-        published = self._project_service.get_published_revision(project_id)
-        current = self._db.get_project_revision(project_id)
-        if current != published:
-            raise CompileError(
-                f"Project '{project_id}' has unpublished changes (draft revision {current}, "
-                f"published {published}) — publish them first."
-            )
-        return published
+    def build_backend_copy(self, project_id: str) -> dict:
+        revision = published_revision_of(self._db, self._project_service, project_id)
+        module_name = module_name_for(project_id)
+        target_name = f"{module_name}.{revision}"
+        final = BUILDS_DIR / target_name
+        staging = BUILDS_DIR / f"{STAGING_PREFIX}{target_name}"
+
+        BUILDS_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(staging, ignore_errors=True)
+        try:
+            backend_copy = staging / "backend"
+            shutil.copytree(BACKEND_DIR, backend_copy, ignore=_BACKEND_COPY_IGNORE)
+            self._write_compiled_automaton(project_id, revision, module_name, backend_copy)
+            self._write_pruned_database(project_id, backend_copy)
+            self._verify_backend_copy_launches(backend_copy)
+            shutil.rmtree(final, ignore_errors=True)
+            staging.rename(final)
+        except Exception:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        logger.info("Built backend copy of '%s' revision %s into %s.", project_id, revision, final / "backend")
+        return {"path": str(final / "backend"), "revision": revision}
+
+    def _write_compiled_automaton(self, project_id: str, revision: int, module_name: str, backend_copy: Path) -> None:
+        from project.archive.layout import ArchiveLayout
+
+        archives = self._db.get_archives(project_id, revision=revision)
+        if not archives:
+            raise CompileError(f"Project '{project_id}' has no files at revision {revision}.")
+        apps_dir = backend_copy / "apps"
+        apps_dir.mkdir(parents=True, exist_ok=True)
+        package_staging = staging_dir(apps_dir, module_name, revision)
+        shutil.rmtree(package_staging, ignore_errors=True)
+        try:
+            built = compile_contents(ArchiveLayout.decode_text(archives), module_name, package_staging, revision)
+            try:
+                import_automaton(built, project_id, revision)
+            except PackageError as exc:
+                raise CompileError(f"The package built for '{project_id}' does not load: {exc}") from exc
+            built.rename(package_dir(apps_dir, module_name, revision))
+        finally:
+            shutil.rmtree(package_staging, ignore_errors=True)
+
+    def _write_pruned_database(self, project_id: str, backend_copy: Path) -> None:
+        db_filename = Path(self._db.backup_file_path()).name
+        dest = backend_copy / "src" / db_filename
+        dest.write_bytes(self._db.export_backup())
+        _prune_database_to_project(dest, project_id)
+
+    def _verify_backend_copy_launches(self, backend_copy: Path) -> None:
+        python = BACKEND_DIR / ".venv" / "bin" / "python"
+        port = _free_port()
+        process = subprocess.Popen(
+            [str(python), "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(port)],
+            cwd=backend_copy / "src", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        )
+        try:
+            self._wait_until_responding(process, port)
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+
+    def _wait_until_responding(self, process: subprocess.Popen, port: int) -> None:
+        url = f"http://127.0.0.1:{port}/api/auth/providers"
+        deadline = time.monotonic() + _LAUNCH_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            exit_code = process.poll()
+            if exit_code is not None:
+                raise CompileError(
+                    f"Copied backend exited (code {exit_code}) before starting up:\n{process.stdout.read()}"
+                )
+            try:
+                with urllib.request.urlopen(url, timeout=1) as response:
+                    if response.status == 200:
+                        return
+            except (urllib.error.URLError, ConnectionError, TimeoutError):
+                pass
+            time.sleep(0.5)
+        raise CompileError(f"Copied backend did not answer at {url} within {_LAUNCH_TIMEOUT_SECONDS:.0f}s.")
+
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def _prune_database_to_project(db_path: Path, keep_project_id: str) -> None:
+    connection = sqlite3.connect(str(db_path))
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        other_ids = [row[0] for row in connection.execute("SELECT id FROM Project WHERE id != ?", (keep_project_id,))]
+        if not other_ids:
+            return
+        connection.executemany("DELETE FROM Project WHERE id = ?", [(project_id,) for project_id in other_ids])
+        placeholders = ",".join("?" for _ in other_ids)
+        for table, column in (
+            ("StateRemap", "project_id"),
+            ("EditHistory", "project_id"),
+            ("Test", "project_id"),
+            ("TestAggregateResult", "project_id"),
+            ("SystemWarning", "project_id"),
+            ("ProjectObserverIndex", "project_id"),
+            ("ProjectObserverIndex", "observer_project_id"),
+        ):
+            connection.execute(f"DELETE FROM {table} WHERE {column} IN ({placeholders})", other_ids)
+        connection.commit()
+    finally:
+        connection.close()

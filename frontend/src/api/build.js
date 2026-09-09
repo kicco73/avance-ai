@@ -8,3 +8,7 @@ const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 export function postBuildLocalModule(projectId) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/build/local-module`, { method: 'POST' })
 }
+
+export function postBuildBackendCopy(projectId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/build/backend-copy`, { method: 'POST' })
+}

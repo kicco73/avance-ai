@@ -30,3 +30,10 @@ class BuildController(BaseController):
             return self.build_service.build_local_module(project_id)
         except CompileError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @post("/api/projects/{project_id}/build/backend-copy", role="admin")
+    def post_build_backend_copy(self, project_id: str):
+        try:
+            return self.build_service.build_backend_copy(project_id)
+        except CompileError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
