@@ -9,14 +9,14 @@
 // createChatStore() instances, so this asserts they can carry totally
 // different content *at the same time*, with no clearing/reset needed at all.
 import { describe, expect, it, vi } from 'vitest'
-import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
+import { installApiBackedLiveChannel } from '../../../../tests/liveChatChannelStub.js'
 import { createApp, h } from 'vue'
 
-vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
-vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
-vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn() }))
-vi.mock('../src/audio.js', () => ({ playMessageChime: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn() }))
-vi.mock('../src/api.js', () => ({
+vi.mock('../../../taskActions.js', () => ({ runTaskScript: vi.fn() }))
+vi.mock('../../../chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
+vi.mock('../../../dialogStore.js', () => ({ confirmDialog: vi.fn() }))
+vi.mock('../../../audio.js', () => ({ playMessageChime: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn() }))
+vi.mock('../../../api.js', () => ({
   getCurrentSession: vi.fn(),
   postCreateSession: vi.fn(),
   getCurrentTestSession: vi.fn(),
@@ -47,9 +47,9 @@ vi.setConfig({ testTimeout: 10_000 })
 
 describe('the live chat and the "Run" test chat are genuinely independent stores', () => {
   it('each ChatView instance shows only its own store\'s content, simultaneously, with no clearing needed', async () => {
-    const chatStore = await import('../src/chatStore.js')
-    const testChatStore = await import('../src/skills/platform/testChatStore.js')
-    const ChatWindow = (await import('../src/components/chat/ChatView.vue')).default
+    const chatStore = await import('../../../chatStore.js')
+    const testChatStore = await import('../testChatStore.js')
+    const ChatWindow = (await import('../../../components/chat/ChatView.vue')).default
 
     chatStore.state.value = { key: 'live-state', ui_label: 'Live', actions: [] }
     chatStore.currentSessionId.value = 7
@@ -94,8 +94,8 @@ describe('the live chat and the "Run" test chat are genuinely independent stores
   })
 
   it("browsing an imported session's id in one store's currentSessionId never touches the other's", async () => {
-    const chatStore = await import('../src/chatStore.js')
-    const testChatStore = await import('../src/skills/platform/testChatStore.js')
+    const chatStore = await import('../../../chatStore.js')
+    const testChatStore = await import('../testChatStore.js')
 
     chatStore.currentSessionId.value = 7
     testChatStore.currentSessionId.value = 123 // e.g. LabelProjectView.vue browsing an imported session

@@ -2,14 +2,14 @@
 // chatStoreSkin.test.js) to check the theme-mode prop end to end, including
 // the async race a bare-refs test can't reach.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
+import { installApiBackedLiveChannel } from '../../../../tests/liveChatChannelStub.js'
 import { createApp, nextTick } from 'vue'
 
-vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
-vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
-vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn() }))
-vi.mock('../src/audio.js', () => ({ playMessageChime: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn() }))
-vi.mock('../src/api.js', () => ({
+vi.mock('../../../taskActions.js', () => ({ runTaskScript: vi.fn() }))
+vi.mock('../../../chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
+vi.mock('../../../dialogStore.js', () => ({ confirmDialog: vi.fn() }))
+vi.mock('../../../audio.js', () => ({ playMessageChime: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn() }))
+vi.mock('../../../api.js', () => ({
   getCurrentSession: vi.fn(),
   postCreateSession: vi.fn(),
   getCurrentTestSession: vi.fn(),
@@ -50,7 +50,7 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
   beforeEach(async () => {
     vi.resetModules()
     document.head.innerHTML = ''
-    chatStore = await import('../src/chatStore.js')
+    chatStore = await import('../../../chatStore.js')
     fetchMock = vi.fn().mockResolvedValue({ ok: true, text: async () => '.chat-window-shell { color: red; }' })
     global.fetch = fetchMock
     container = document.createElement('div')
@@ -68,7 +68,7 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
     chatStore.currentSessionId.value = 1
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
 
-    const ChatWindow = (await import('../src/components/chat/ChatView.vue')).default
+    const ChatWindow = (await import('../../../components/chat/ChatView.vue')).default
     const app = createApp(ChatWindow, { hideSessionsPanel: true, themeMode: 'manual' })
     app.mount(container)
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(0))
@@ -77,16 +77,16 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
   })
 
   it('an always-mounted auto ChatWindow (App.vue) plus a manual one entering (RunChat) — Run mode opening over the live chat', async () => {
-    const api = await import('../src/api.js')
+    const api = await import('../../../api.js')
     await installApiBackedLiveChannel(api)
-    const chatSkin = await import('../src/chatSkin.js')
-    const testChatStore = await import('../src/skills/platform/testChatStore.js')
+    const chatSkin = await import('../../../chatSkin.js')
+    const testChatStore = await import('../testChatStore.js')
     testChatStore.setTestProject('test-proj')
     api.getCurrentSession.mockResolvedValue({ id: 1, project_id: 'live-proj', current: true, state: { key: 'live', ui_label: 'Live', actions: [] } })
     api.getCurrentTestSession.mockResolvedValue({ id: 99, project_id: 'test-proj', current: true, state: { key: 'test', ui_label: 'Test', actions: [] } })
     api.getMessages.mockResolvedValue([])
 
-    const ChatWindow = (await import('../src/components/chat/ChatView.vue')).default
+    const ChatWindow = (await import('../../../components/chat/ChatView.vue')).default
 
     const liveContainer = document.createElement('div')
     document.body.appendChild(liveContainer)

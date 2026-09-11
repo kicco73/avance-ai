@@ -6,13 +6,13 @@
 // tag actually land, does toggling applyAspect back on actually resume
 // loading, is there ever more than one tag at once.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
+import { installApiBackedLiveChannel } from '../../../../tests/liveChatChannelStub.js'
 import { nextTick } from 'vue'
 
-vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
-vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
-vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn() }))
-vi.mock('../src/api.js', () => ({
+vi.mock('../../../taskActions.js', () => ({ runTaskScript: vi.fn() }))
+vi.mock('../../../chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
+vi.mock('../../../dialogStore.js', () => ({ confirmDialog: vi.fn() }))
+vi.mock('../../../api.js', () => ({
   getCurrentSession: vi.fn(),
   postCreateSession: vi.fn(),
   getCurrentTestSession: vi.fn(),
@@ -47,8 +47,8 @@ describe("chatSkin.js's shared index.css skin loader, driven by the live store",
   beforeEach(async () => {
     vi.resetModules()
     document.head.innerHTML = ''
-    chatStore = await import('../src/chatStore.js')
-    chatSkin = await import('../src/chatSkin.js')
+    chatStore = await import('../../../chatStore.js')
+    chatSkin = await import('../../../chatSkin.js')
     fetchMock = vi.fn()
     global.fetch = fetchMock
   })
@@ -136,10 +136,10 @@ describe('chatSkin.js only ever applies the currently active store — live vs t
   beforeEach(async () => {
     vi.resetModules()
     document.head.innerHTML = ''
-    chatStore = await import('../src/chatStore.js')
-    testChatStore = await import('../src/skills/platform/testChatStore.js')
+    chatStore = await import('../../../chatStore.js')
+    testChatStore = await import('../testChatStore.js')
     testChatStore.setTestProject('draft-project')
-    chatSkin = await import('../src/chatSkin.js')
+    chatSkin = await import('../../../chatSkin.js')
     fetchMock = vi.fn()
     global.fetch = fetchMock
   })
@@ -188,11 +188,11 @@ describe('the real Test-mode bootstrap sequence (loadMessages -> ensureSession) 
   beforeEach(async () => {
     vi.resetModules()
     document.head.innerHTML = ''
-    testChatStore = await import('../src/skills/platform/testChatStore.js')
+    testChatStore = await import('../testChatStore.js')
     testChatStore.setTestProject('ttm_prototype_2')
-    chatSkin = await import('../src/chatSkin.js')
+    chatSkin = await import('../../../chatSkin.js')
     chatSkin.activeChatMode.value = 'test'
-    api = await import('../src/api.js')
+    api = await import('../../../api.js')
     await installApiBackedLiveChannel(api)
     api.getMessages.mockResolvedValue([])
     fetchMock = vi.fn().mockResolvedValue({ ok: true, text: async () => '.chat-window-shell { color: teal; }' })

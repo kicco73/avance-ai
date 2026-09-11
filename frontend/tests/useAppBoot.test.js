@@ -31,6 +31,7 @@ vi.mock('../src/skills/registry.js', () => ({
   messageListeners: { value: [] },
   stateListeners: { value: [{ stateReceived: (...args) => stateReceivedSpy(...args) }] },
   liveChatChannels: { value: [] },
+  modelSelectors: { value: [] },
 }))
 vi.mock('../src/skillRoster.js', () => ({
   loadSkillRoster: vi.fn(),
@@ -41,7 +42,6 @@ vi.mock('../src/chatStore.js', () => ({
   setTotalTokenBudgetPerSession: vi.fn(),
   handleStateChange: vi.fn(),
   loadMessages: vi.fn(),
-  loadAiModels: vi.fn(),
 }))
 
 import { getState, getMe, getProjects, postRedeemInviteCode, activateProject, postAcceptTerms, postLogout, getPendingStatus } from '../src/api.js'
@@ -52,7 +52,8 @@ import { confirmDialog } from '../src/dialogStore.js'
 import { consumeInviteCode, peekInviteCode } from '../src/shareLink.js'
 import { loadSkillRoster } from '../src/skillRoster.js'
 const stateReceivedSpy = vi.fn()
-import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../src/chatStore.js'
+import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages } from '../src/chatStore.js'
+import { modelSelector } from '../src/modelSelector.js'
 import { useAppBoot } from '../src/composables/useAppBoot.js'
 
 function mountComposable(setup) {
@@ -145,7 +146,9 @@ describe('useAppBoot', () => {
       expect(handleStateChange).toHaveBeenCalled()
       expect(clearApiError).toHaveBeenCalled()
       expect(loadMessages).toHaveBeenCalled()
-      expect(loadAiModels).toHaveBeenCalled()
+      // The model roster is loaded through whatever panel contributed a
+      // selector; with none installed the null object is asked and says no.
+      expect(modelSelector().available).toBe(false)
     })
 
     it('an absent budget is published as null, and the navigation stack is reset before resolving where an admin lands', async () => {

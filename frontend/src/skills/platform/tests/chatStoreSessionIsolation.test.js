@@ -6,10 +6,10 @@
 // getTestSessions/postResetTestSessions) — never a shared flag deciding
 // which pool a single store instance happens to be routed to right now.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
+import { installApiBackedLiveChannel } from '../../../../tests/liveChatChannelStub.js'
 
-vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
-vi.mock('../src/api.js', () => ({
+vi.mock('../../../taskActions.js', () => ({ runTaskScript: vi.fn() }))
+vi.mock('../../../api.js', () => ({
   getCurrentSession: vi.fn(),
   postCreateSession: vi.fn(),
   getCurrentTestSession: vi.fn(),
@@ -28,8 +28,8 @@ vi.mock('../src/api.js', () => ({
   postTruncateSession: vi.fn(),
   projectFileContentUrl: vi.fn(() => '/skin.css')
 }))
-vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
-vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }))
+vi.mock('../../../chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
+vi.mock('../../../dialogStore.js', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }))
 
 const STATE = { key: 'x', ui_label: 'X', actions: [] }
 
@@ -42,13 +42,13 @@ describe('the live store and the test store always route to their own endpoints'
 
   beforeEach(async () => {
     vi.resetModules()
-    chatStore = await import('../src/chatStore.js')
-    testChatStore = await import('../src/skills/platform/testChatStore.js')
+    chatStore = await import('../../../chatStore.js')
+    testChatStore = await import('../testChatStore.js')
     testChatStore.setTestProject('my-project')
-    api = await import('../src/api.js')
+    api = await import('../../../api.js')
     await installApiBackedLiveChannel(api)
-    dialogStore = await import('../src/dialogStore.js')
-    taskActions = await import('../src/taskActions.js')
+    dialogStore = await import('../../../dialogStore.js')
+    taskActions = await import('../../../taskActions.js')
     api.getMessages.mockResolvedValue([])
     api.getSessions.mockResolvedValue([])
     api.getTestSessions.mockResolvedValue([])
