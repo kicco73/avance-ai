@@ -8,10 +8,15 @@ the socket adapter this replaces, and the phone channel did it again its
 own way; they did not just duplicate the work, they disagreed about it.
 
 The preparation is part of that (see TurnService.prepare_user_initiated_turn):
-an opening the state owes the person, which no turn's reply carries and
-which happens even when the turn is then refused. Every terminal frame
-reports it — `reply` on both "turn.ended" and "turn.failed" — because one
-message in, one terminal frame out is the whole contract a channel reads.
+the one message a state that takes no messages will ever say. It is in no
+turn's reply and it happens even when the turn is then refused, so the
+terminal frame is the only thing that can carry it — `prepared`, on both
+"turn.ended" and "turn.failed".
+
+On a key of its own, never folded into `reply`. `reply` is the turn's own
+message and readers address it positionally: chatStoreFactory.js
+reconciles the bubble it streamed against `reply[0]`, so anything placed
+in front of it reconciles that bubble against the wrong message.
 
 Nothing here names a channel. The message says which one it came from,
 and the frames it publishes carry the same correlation back out —
@@ -88,21 +93,12 @@ class TurnInput(object):
     async def _turn(self, message: Message, outbound: "_Outbound") -> None:
         session_id = message.session_id
         text = str(message.body or "").strip()
-        # Whatever the preparation below persisted, carried on every
-        # terminal frame: it happened as part of this exchange and the
-        # turn will not report it, so a turn that then fails must not
-        # take it down with it (see TurnService.prepare_user_initiated_turn).
         prepared: list[dict] = []
         try:
             if not isinstance(session_id, int):
                 raise ServiceError("Session not found.", status_code=404, code="session_not_found")
             if not text:
                 raise ServiceError("Message cannot be empty.", status_code=400, code="empty_message")
-            # Before the message is accepted, never after: a state that
-            # takes no messages refuses this one (accept_user_message's
-            # own "state_not_chat"), and the wrap-up that state owes the
-            # person is the only thing it will ever say. Preparing after
-            # the refusal would mean never preparing at all.
             prepared = await self._turn_service.prepare_user_initiated_turn(session_id)
             user_message_id = self._turn_service.accept_user_message(session_id, text)
         except ServiceError as exc:
@@ -114,13 +110,13 @@ class TurnInput(object):
                 session_id, text, on_metadata=outbound.on_metadata, user_message_id=user_message_id,
                 audio_wanted=self._turn_service.is_audio_enabled(session_id),
             )
-            outbound.put(TURN_ENDED, {**result, "reply": [*prepared, *result["reply"]]})
+            outbound.put(TURN_ENDED, {**result, "prepared": prepared})
         except ServiceError as exc:
             outbound.failed(exc, prepared)
         except Exception as exc:  # noqa: BLE001
             logger.exception("Unexpected error while processing a turn: %s", exc)
             outbound.put(TURN_FAILED, {
-                "message": "Unexpected server error.", "detail": str(exc), "reply": prepared,
+                "message": "Unexpected server error.", "detail": str(exc), "prepared": prepared,
             })
 
 
@@ -170,7 +166,7 @@ class _Outbound(object):
 
     def failed(self, exc: ServiceError, prepared: list[dict]) -> None:
         body = {
-            "message": exc.message, "detail": getattr(exc, "detail", str(exc)), "reply": prepared,
+            "message": exc.message, "detail": getattr(exc, "detail", str(exc)), "prepared": prepared,
         }
         if exc.code is not None:
             body["code"] = exc.code

@@ -7,8 +7,6 @@
 // leave with it (see skills/<key>/api.js); re-exporting them here would
 // put a name the core may not say in a file every core module imports.
 export * from './api/auth.js'
-export * from './api/aiModels.js'
-export * from './api/testSessions.js'
 export * from './api/chat.js'
 export * from './api/projects.js'
 export * from './api/serverAdmin.js'

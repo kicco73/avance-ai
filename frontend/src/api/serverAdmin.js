@@ -6,8 +6,7 @@ const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 // database in and out, wiping live conversations, clearing revisions
 // nothing points at, what this deployment has configured, what the
 // scheduler has queued, and what version is running. Core, on
-// /api/skills/platform/settings/… — an operator needs these whether or not an
-// editor was ever installed (see system/server_admin_controller.py).
+
 
 // Settings > "About Avance..." dialog — {name, version}, version being
 // whatever the running backend's own __version__ (main.py) currently is.

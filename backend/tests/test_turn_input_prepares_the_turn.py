@@ -5,9 +5,10 @@ A state that cannot take a turn at all still owes the person something:
 the wrap-up its own state generates. That message is not in any turn's
 reply (a turn response carries exactly one assistant message, its own)
 and the turn that would have followed is refused, so the only frame that
-can carry it is the terminal one. These tests pin that it does — and that
-the preparation runs ahead of the refusal, since preparing after it would
-mean never preparing at all.
+can carry it is the terminal one. These tests pin that it does, as
+`prepared` — never in front of `reply`, which readers address
+positionally — and that the preparation runs ahead of the refusal, since
+preparing after it would mean never preparing at all.
 
 The phone channel used to do this itself, around the turn, with its own
 bootstrap and its own watermark. It was the only caller
@@ -48,8 +49,6 @@ class _FakeProvider:
 
 
 def _chat_blocked_automaton() -> Automaton:
-    """One state the conversation ends on: final, and it does not take
-    messages. Reaching it is what produces a wrap-up at all."""
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     states = {
         "": State(key="", ui_label="", final=False, actions=[init_action]),
@@ -87,21 +86,21 @@ async def _terminal_frame(turn_service, db, text: str) -> Message:
 
 
 async def test_a_state_that_takes_no_messages_reports_its_wrap_up_on_the_failure(turn_service_for):
+    """Fails when prepare_user_initiated_turn and accept_user_message are
+    swapped: the refusal comes first and nothing is ever prepared."""
     turn_service = turn_service_for(_chat_blocked_automaton(), _FakeProvider())
 
     frame = await _terminal_frame(turn_service, turn_service_for.db, "hello?")
 
-    # The turn itself is refused — the state does not take messages.
     assert frame.type == "turn.failed"
     assert frame.body["code"] == "state_not_chat"
-    # ...and the wrap-up the refusal was preceded by still goes out. It
-    # is persisted either way, and the person is owed it either way.
-    assert [m["content"] for m in frame.body["reply"]] == [_WRAP_UP]
+    assert [m["content"] for m in frame.body["prepared"]] == [_WRAP_UP]
 
 
-async def test_a_state_that_takes_messages_prepares_nothing_and_reports_only_the_turn(turn_service_for):
-    """The ordinary case, and the one webchat is: nothing to prepare, so
-    the reply is the turn's own and nothing else."""
+async def test_an_ordinary_turn_prepares_nothing_and_leaves_reply_to_the_turn(turn_service_for):
+    """The case webchat is. `reply[0]` is what chatStoreFactory.js
+    reconciles a streamed bubble against, so nothing may precede the
+    turn's own message in it."""
     turn_service = turn_service_for(
         one_state_automaton(with_sources=False, autotracking_on_ai_message=False), _FakeProvider(),
     )
@@ -109,4 +108,5 @@ async def test_a_state_that_takes_messages_prepares_nothing_and_reports_only_the
     frame = await _terminal_frame(turn_service, turn_service_for.db, "hello")
 
     assert frame.type == "turn.ended"
+    assert frame.body["prepared"] == []
     assert [m["content"] for m in frame.body["reply"]] == [_WRAP_UP]

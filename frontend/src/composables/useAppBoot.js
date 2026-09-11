@@ -6,10 +6,11 @@ import { requireLogin } from '../authStore.js'
 import { confirmDialog } from '../dialogStore.js'
 import { consumeInviteCode, peekInviteCode } from '../shareLink.js'
 import { loadSkillRoster } from '../skillRoster.js'
-import { liveChatChannels, messageListeners, stateListeners } from '../skills/registry.js'
+import { liveChatChannels, messageListeners, modelSelectors, stateListeners } from '../skills/registry.js'
 import { observeMessages } from '../messageNotifier.js'
 import { installLiveChatChannel } from '../liveChatChannel.js'
-import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../chatStore.js'
+import { installModelSelector, modelSelector } from '../modelSelector.js'
+import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages } from '../chatStore.js'
 
 // App.vue's own boot sequence: the backend-readiness ping loop, resolving
 // which view a freshly-booted session lands on, and every navigate-away
@@ -92,6 +93,7 @@ export function useAppBoot(
       await loadSkillRoster()
       observeMessages(messageListeners.value)
       installLiveChatChannel(liveChatChannels.value)
+      installModelSelector(modelSelectors.value)
       publishState(newState)
       return 'ready'
     } catch (err) {
@@ -139,7 +141,7 @@ export function useAppBoot(
     if (currentUserRole.value === 'user' || chatOpen.value) {
       loadMessages()
     }
-    loadAiModels()
+    modelSelector().load()
     // The /api/core/bus channel carries more than chat turns now
     // (test-run updates, task notifications, health pushes), so every
     // role connects here at boot rather than lazily on first chat use.

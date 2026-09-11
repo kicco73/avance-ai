@@ -16,7 +16,7 @@ import StatusToggleButton from './StatusToggleButton.vue'
 import TaskCard from './TaskCard.vue'
 import { getAiUsage, getScheduledTasks, getServicesConfig } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
-import { liveModelStore } from '../../chatStore.js'
+import { modelSelector } from '../../modelSelector.js'
 import { servicesTabs, servicesTabActions } from '../../skills/registry.js'
 import { fieldLabel } from '../skillkit/serviceFields.js'
 
@@ -147,13 +147,13 @@ const NO_FALLBACK_WARNING =
 // own select() used to run before ever reaching this, now needed here
 // directly since neither caller goes through that component anymore.
 async function selectModelWithConfirm(index) {
-  if (liveModelStore.selectionLoading.value) return
-  const alreadySelected = index === (liveModelStore.auto.value ? null : liveModelStore.currentIndex.value)
+  if (modelSelector().selectionLoading.value) return
+  const alreadySelected = index === (modelSelector().auto.value ? null : modelSelector().currentIndex.value)
   if (alreadySelected) return
   const ok = index == null
     ? await confirmDialog({
         title: 'Enable auto-live cascading',
-        body: `Switch the live chat provider to "${liveModelStore.autoLabel ?? 'Auto'}"?`,
+        body: `Switch the live chat provider to "${modelSelector().autoLabel ?? 'Auto'}"?`,
         okLabel: 'Switch'
       })
     : await confirmDialog({
@@ -163,7 +163,7 @@ async function selectModelWithConfirm(index) {
         danger: true
       })
   if (!ok) return
-  await liveModelStore.select(index)
+  await modelSelector().select(index)
 }
 
 // The Auto-live checkbox's own click handler — turning it on is just
@@ -173,8 +173,8 @@ async function selectModelWithConfirm(index) {
 // auto-live cascading was actually using stays exactly where it is — this
 // only pins it explicitly, it never re-picks.
 async function toggleAutoLive() {
-  if (liveModelStore.selectionLoading.value) return
-  if (!liveModelStore.auto.value) {
+  if (modelSelector().selectionLoading.value) return
+  if (!modelSelector().auto.value) {
     await selectModelWithConfirm(null)
     return
   }
@@ -185,12 +185,12 @@ async function toggleAutoLive() {
     danger: true
   })
   if (!ok) return
-  await liveModelStore.select(liveModelStore.currentIndex.value)
+  await modelSelector().select(modelSelector().currentIndex.value)
 }
 
 // The AI tab only ever shows/selects live providers — a test-only entry
 // belongs to ai_test_service's own cascade, never this view. This is
-// also what keeps liveModelStore's own currentIndex/select() (indices
+// also what keeps modelSelector()'s own currentIndex/select() (indices
 // into ai_live_service's already-live-filtered provider list — see
 // AiService.for_live) aligned with this list's own index: both only
 // ever count live providers, in the same order, so a plain loop index
@@ -209,7 +209,7 @@ function isProviderLive(provider) {
 // effect" ModelMenu.vue's own checkmark used to show next to "Auto
 // (currentLabel)" when cascading was on.
 function isProviderActive(index) {
-  return liveModelStore.currentIndex.value === index
+  return modelSelector().currentIndex.value === index
 }
 
 function providerStatusTitle(index) {
@@ -286,7 +286,7 @@ function providerStatusTitle(index) {
             <AiUsageTrendsChart :history="aiUsage.history" :provider-labels="aiProviderLabels" />
           </div>
           <label class="services-checkbox-field services-checkbox-field-active">
-            <input type="checkbox" :checked="liveModelStore.auto.value" @click.prevent="toggleAutoLive" />
+            <input type="checkbox" :checked="modelSelector().auto.value" @click.prevent="toggleAutoLive" />
             Auto-live cascading enabled
           </label>
           <div class="services-field">
@@ -303,7 +303,7 @@ function providerStatusTitle(index) {
             />
             <StatusToggleButton
               :status="isProviderActive(i) ? 'running' : 'manually_paused'"
-              :disabled="isProviderActive(i) || liveModelStore.selectionLoading.value"
+              :disabled="isProviderActive(i) || modelSelector().selectionLoading.value"
               :title="providerStatusTitle(i)"
               @click="selectModelWithConfirm(i)"
             />

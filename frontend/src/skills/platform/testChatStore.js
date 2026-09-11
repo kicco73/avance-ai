@@ -3,7 +3,7 @@ import {
   getCurrentTestSession, postCreateTestSession, getTestSessions, postResetTestSessions,
   getTestChatModels, postTestChatModelSelection, postSessionAction, getTranscript
 } from './api.js'
-import { createChatStore } from './chatStoreFactory.js'
+import { createChatStore } from '../../chatStoreFactory.js'
 
 // EditProjectView's embedded "Run" test chat — its own independent
 // session/messages/state, scoped to whichever project is currently open

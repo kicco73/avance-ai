@@ -10,7 +10,7 @@ import SessionsPanel from '../../../../../../components/chat/SessionsPanel.vue'
 import { getTranscript, deleteSession } from '../../../../api.js'
 import { spokenTextEnabled, totalTokenBudgetPerSession } from '../../../../../../chatStoreFactory.js'
 import { applyAspect } from '../../../../../../chatSkin.js'
-import { testStore } from '../../../../../../testChatStore.js'
+import { testStore } from '../../../../testChatStore.js'
 import { useTokensBar } from '../../../../../../composables/useTokensBar.js'
 import { useFloatingTooltip } from '../../../../../../useFloatingTooltip.js'
 

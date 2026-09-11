@@ -1,13 +1,14 @@
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import {
-  getSessionState, getAutoTracking, putAutoTracking, getActuators, putActuators,
+  getSessionState, getActuators, putActuators,
   putSessionAudio,
   postTruncateSession, deleteSession, postCloseSession, putMessageReaction,
 } from './api.js'
 import { sendMessage as sendChatMessage, onConnectionState, getConnectionState } from './chatClient.js'
 import { busChannel } from './busChannel.js'
 import { ChatReconnectSync } from './chatReconnectSync.js'
-import { applyAiModelInfo } from './aiModelStore.js'
+import { modelSelector } from './modelSelector.js'
+import { watchSession } from './watchedSessions.js'
 import { ToolStatusHold } from './toolStatusHold.js'
 import { subscribeToStateNotifications } from './notificationBus.js'
 import { playMessageChime, playReactionChime } from './audio.js'
@@ -61,11 +62,16 @@ export function setTotalTokenBudgetPerSession(value) {
 // about session resolution itself.
 export function createChatStore({
   kind, getCurrentSession, getSessionsList, createSession, postAction, getMessages, resetSession = null,
+  getAutoTracking = null, putAutoTracking = null,
   confirmNewSession = true, useAutoTracking = false, useActuatorsToggle = false,
   subscribeToNotifications = false,
 }) {
   const state = ref(null)
   const currentSessionId = ref(null)
+  // What this store is showing, so whoever needs to know a session is
+  // already on screen can ask without naming any store (see
+  // watchedSessions.js).
+  watch(currentSessionId, (now, before) => watchSession(now, before))
   const selectedSessionActive = ref(false)
   const projectPaused = ref(false)
   const projectPausedReason = ref('')
@@ -585,7 +591,7 @@ export function createChatStore({
         handleStateChange(result.state)
       }
       if (result.ai_model) {
-        applyAiModelInfo(result.ai_model)
+        modelSelector().applyInfo(result.ai_model)
       }
       if (result.session_id != null) {
         // A turn always lands on a session it just touched — open by definition.
@@ -707,7 +713,7 @@ export function createChatStore({
       }
       handleStateChange(result.state)
       if (result.ai_model) {
-        applyAiModelInfo(result.ai_model)
+        modelSelector().applyInfo(result.ai_model)
       }
       if (result.session_id != null) {
         currentSessionId.value = result.session_id

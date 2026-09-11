@@ -6,9 +6,6 @@ export {
   audioEnabled, spokenTextEnabled, inputTokenBudgetPerTurn, totalTokenBudgetPerSession,
   setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, toggleSpokenText,
 } from './chatStoreFactory.js'
-export {
-  aiModels, aiModelAuto, aiModelCurrentIndex, aiModelSelectionLoading, loadAiModels, selectAiModel, liveModelStore,
-} from './aiModelStore.js'
 export { applyAspect, invalidateSkin, setSkinCss } from './chatSkin.js'
 
 // The app's one live chat — App.vue's own always-mounted widget. Never

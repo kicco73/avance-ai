@@ -40,11 +40,17 @@ export async function selectAiModel(index) {
 // testChatModelStore exposes the same shape for ai_test_service, so the
 // component itself never needs to know which context it's in.
 export const liveModelStore = {
+  // What the core asks before offering the choice at all (see
+  // modelSelector.js's null object): a build with no panel has no one to
+  // change the model, and says so rather than showing a dead control.
+  available: true,
   models: aiModels,
   auto: aiModelAuto,
   currentIndex: aiModelCurrentIndex,
   selectionLoading: aiModelSelectionLoading,
   select: selectAiModel,
+  load: loadAiModels,
+  applyInfo: applyAiModelInfo,
   autoLabel: 'Auto-live',
 }
 

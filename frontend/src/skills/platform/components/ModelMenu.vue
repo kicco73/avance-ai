@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
-import { renderMarkdown } from '../markdown.js'
-import { liveModelStore } from '../chatStore.js'
+import { renderMarkdown } from '../../../markdown.js'
+import { liveModelStore } from '../aiModelStore.js'
 
 // `modelStore` bundles the model list/selection state + its own select()
 // — chatStoreFactory.js's liveModelStore (default, ai_live_service) or

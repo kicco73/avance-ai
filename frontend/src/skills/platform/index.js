@@ -1,5 +1,6 @@
 import AdminHome from './components/AdminHome.vue'
 import ServerOpsActions from './components/ServerOpsActions.vue'
+import { liveModelStore } from './aiModelStore.js'
 import CustomerHome from './components/appStore/CustomerHome.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
 import EditProjectView from './components/project/edit/EditProjectView.vue'
@@ -26,3 +27,9 @@ export const pushedViews = [
 
 // The deployment operations, offered inside Settings' own Data tab.
 export const servicesTabActions = [{ id: 'platform-server-ops', tab: 'database', component: ServerOpsActions }]
+
+// Which model answers the live chat, and the one screen that can change
+// it. Reading the roster is the core's; choosing is an operation, so a
+// build without this panel gets the null object and offers no choice
+// (see ../../modelSelector.js).
+export const modelSelectors = [liveModelStore]

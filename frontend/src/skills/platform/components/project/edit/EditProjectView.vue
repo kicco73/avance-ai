@@ -16,7 +16,7 @@ import InspectorStateIOTab from '../../inspector/InspectorStateIOTab.vue'
 import EditorStateTab from './EditorStateTab.vue'
 import ActionsOrderDialog from '../../inspector/ActionsOrderDialog.vue'
 import SessionDetailCard from '../../../../../components/skillkit/SessionDetailCard.vue'
-import ModelMenu from '../../../../../components/ModelMenu.vue'
+import ModelMenu from '../../ModelMenu.vue'
 import ProfileMenu from '../../../../../components/ProfileMenu.vue'
 import AppHeader from '../../../../../components/AppHeader.vue'
 import { useLeaveConfirmation } from '../../../useLeaveConfirmation.js'
@@ -35,7 +35,7 @@ import { setApiWarning } from '../../../../../errorStore.js'
 import { chooseDialog, customDialog } from '../../../../../dialogStore.js'
 import { totalTokenBudgetPerSession } from '../../../../../chatStore.js'
 import { activeChatMode } from '../../../../../chatSkin.js'
-import { setTestProject, testStore, testChatModelStore, loadTestChatModels } from '../../../../../testChatStore.js'
+import { setTestProject, testStore, testChatModelStore, loadTestChatModels } from '../../../testChatStore.js'
 
 // `runSessions` is the "Run" tab's own draft session pool, unrelated to
 // chatStore's project-wide `sessions` catalog used by useTestModeSelection.

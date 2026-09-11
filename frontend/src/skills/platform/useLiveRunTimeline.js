@@ -1,7 +1,7 @@
 import { computed, nextTick, ref } from 'vue'
 import { getSessions, getSessionSignals } from './api.js'
 import { buildTimeline, highlightedStateKeyFor, latestSignalValues, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../../testTimeline.js'
-import { testStore } from '../../testChatStore.js'
+import { testStore } from './testChatStore.js'
 
 // The "Run" tab's live conversation as a clickable message+transition
 // timeline, plus the point in time the Inspector reflects (`selected`:

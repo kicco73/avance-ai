@@ -6,9 +6,11 @@
 // to. Core -> skill would be the other direction, and is forbidden.
 export * from '../../api.js'
 export * from './api/admin.js'
+export * from './api/aiModels.js'
 export * from './api/appStore.js'
 export * from './api/envStore.js'
 export * from './api/labeling.js'
 export * from './api/projectEditor.js'
 export * from './api/serverOps.js'
+export * from './api/testSessions.js'
 export * from './api/sessionsAdmin.js'
