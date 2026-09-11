@@ -14,7 +14,6 @@ from fastapi import HTTPException, Response, UploadFile
 
 from turn.turn_service import TurnService
 from avance_platform.platform_service import PlatformService
-from project.project_service import ProjectService
 from scheduler import SchedulerService
 from system.session import Session
 from tracking.tracking_service import TrackingService
@@ -36,13 +35,11 @@ class LabelProjectController(BaseController):
     def __init__(
         self,
         turn_service: TurnService,
-        project_service: ProjectService,
         platform_service: PlatformService,
         tracking_service: TrackingService,
         scheduler_service: SchedulerService,
     ) -> None:
         self.turn_service = turn_service
-        self.project_service = project_service
         self.platform_service = platform_service
         self.tracking_service = tracking_service
         self.scheduler_service = scheduler_service

@@ -47,7 +47,7 @@ class WebchatService:
         # The /api/chat/* routes travel with the service that answers
         # them: the skill hands this to POINT_HTTP_CONTROLLERS and a
         # build without this package has nothing to register.
-        self.controller = WebchatController(turn_service, project_service)
+        self.controller = WebchatController(turn_service)
 
     def register(self) -> None:
         for message_type in CLIENT_INJECTABLE:

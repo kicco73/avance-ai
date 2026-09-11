@@ -17,7 +17,6 @@ from http import HTTPStatus
 from fastapi import HTTPException
 
 from controllers.base_controller import BaseController, delete, get, post, put
-from project.project_service import ProjectService
 from schemas import (
     ActionRequest,
     ActuatorsRequest,
@@ -31,9 +30,8 @@ from turn.turn_service import TurnService
 
 class WebchatController(BaseController):
 
-    def __init__(self, turn_service: TurnService, project_service: ProjectService) -> None:
+    def __init__(self, turn_service: TurnService) -> None:
         self.turn_service = turn_service
-        self.project_service = project_service
 
     @get("/api/chat/signals")
     def get_signals(self):

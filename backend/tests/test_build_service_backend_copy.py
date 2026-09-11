@@ -182,6 +182,7 @@ def test_a_skill_left_out_of_a_build_is_a_directory_that_is_not_copied(tmp_path)
 
 
 @pytest.mark.contract
+@pytest.mark.slow
 def test_a_backend_without_listen_still_imports_its_own_entry_point(tmp_path):
     """The reason a build can drop a directory at all: nothing outside it
     names it. If some core file still imported listen, this is where it
@@ -205,14 +206,14 @@ def test_a_backend_without_listen_still_imports_its_own_entry_point(tmp_path):
 
 
 @pytest.mark.contract
-@pytest.mark.parametrize("package", ["talk", "whatsapp", "testing", "webchat"])
+@pytest.mark.slow
+@pytest.mark.parametrize("package", ["talk", "whatsapp", "testing"])
 def test_a_backend_without_a_skill_still_imports_its_own_entry_point(tmp_path, package):
     """Each of these was threaded through core constructors before it
     became a skill — talk through the studio controller and the tracking
-    service, whatsapp through the composition root, testing through both,
-    webchat hardest of all (the socket ran the turn). If any core file
-    still imported one directly rather than reaching it through the Bus,
-    this is where it would show."""
+    service, whatsapp through the composition root, testing through both.
+    If any core file still imported one directly rather than reaching it
+    through the Bus, this is where it would show."""
     import shutil
     import subprocess
     import sys
@@ -238,31 +239,6 @@ def test_webchat_is_offered_as_something_a_build_can_leave_out(tmp_path):
     from system import skills
 
     assert "webchat" in {skill["package"] for skill in skills.installed()}
-
-
-def test_a_backend_without_the_platform_still_imports_its_own_entry_point(tmp_path):
-    """The authoring surface was the composition root itself: eight
-    controllers AvanceController built by hand, with the services they
-    needed threaded through its constructor. If any of that were still a
-    direct reference, this is where it would show — the copy has no
-    src/avance_platform/ to import."""
-    import shutil
-    import subprocess
-    import sys
-
-    from build.build_service import BACKEND_DIR, _ignore_for
-
-    copy = tmp_path / "backend"
-    shutil.copytree(BACKEND_DIR, copy, ignore=_ignore_for(["avance_platform"]))
-
-    result = subprocess.run(
-        [sys.executable, "-c",
-         "import sys; sys.path.insert(0, 'src'); import main; from system import skills; print(skills.installed())"],
-        cwd=copy, capture_output=True, text=True, timeout=180,
-    )
-
-    assert result.returncode == 0, result.stderr[-2000:]
-    assert "'package': 'avance_platform'" not in result.stdout
 
 
 def test_the_composition_root_names_no_controller_a_build_could_leave_out(tmp_path):

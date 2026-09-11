@@ -53,6 +53,7 @@ def main():
         runs = stats.get("runs", 0)
         failures = stats.get("failures", 0)
         seconds = stats.get("seconds", 0.0)
+        seconds = seconds / runs if runs else seconds
         
         # Assumiamo la presenza di 'first_run' (con fallback a 'last_run' o min se non trovato)
         first_run_str = stats.get("first_run") or stats.get("last_run") or ""
@@ -88,6 +89,7 @@ def main():
         limit_by_percentage = int(round(total_tests * (args.percentage / 100.0)))
         
     # 2. Calcolo limite durata massima
+    by_cost = sorted(tests, key=lambda x: (x["failures"], -x["seconds"]))
     limit_by_duration = total_tests
     if args.max_duration is not None:
         target_max_sec = args.max_duration * 60.0 if args.unit == "minutes" else args.max_duration
@@ -98,7 +100,7 @@ def main():
         else:
             cum_time = 0.0
             count = 0
-            for t in tests:
+            for t in by_cost:
                 cum_time += t["seconds"]
                 count += 1
                 if cum_time >= time_to_cut:
@@ -106,9 +108,10 @@ def main():
             limit_by_duration = count
             
     # Criterio "quale arriva prima"
-    num_to_delete = min(limit_by_percentage, limit_by_duration)
-    
-    to_delete = tests[:num_to_delete]
+    if limit_by_duration < limit_by_percentage:
+        to_delete = by_cost[:limit_by_duration]
+    else:
+        to_delete = tests[:limit_by_percentage]
     
     for t in to_delete:
         print(t["test"])

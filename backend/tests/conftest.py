@@ -323,10 +323,10 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
     project_service = ProjectService(app_db, automaton_loader, SessionManager(app_db), fake_ai_service)
     session_manager = SessionManager(app_db)
     metric_service = MetricService(app_db, project_service)
-    test_event_broadcaster = Broadcaster(fake_ai_service, batch_window_seconds=DEFAULT_BATCH_WINDOW_SECONDS)
-    scheduler_service = make_test_scheduler_service(app_db, test_event_broadcaster)
+    progress_broadcaster = Broadcaster(fake_ai_service, batch_window_seconds=DEFAULT_BATCH_WINDOW_SECONDS)
+    scheduler_service = make_test_scheduler_service(app_db, progress_broadcaster)
     # TestService's own pool, as in main.py — never the platform SchedulerService's.
-    test_job_queue = JobQueue(max_concurrent=1, broadcaster=test_event_broadcaster)
+    test_job_queue = JobQueue(max_concurrent=1, broadcaster=progress_broadcaster)
     namespace_factory = make_test_namespace_factory(app_db, scheduler_service, project_service, fake_ai_service)
     tracking_service = TrackingService(
         app_db, project_service, metric_service, namespace_factory,
@@ -336,7 +336,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
         tracking_service, metric_service, scheduler_service, namespace_factory,
     )
     test_service = TestService(
-        app_db, fake_ai_service, tracking_service, test_job_queue, project_service, test_event_broadcaster,
+        app_db, fake_ai_service, tracking_service, test_job_queue, project_service, progress_broadcaster,
     )
     # No real providers: this app fixture never goes through AuthMiddleware
     # (that's only wired in main.py's create_app(), not here) or exercises
@@ -376,7 +376,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
     # Same for testing/skill.py: the benchmark routes travel with the
     # package that runs them, so the harness registers them the same way.
     bus.contribute(POINT_HTTP_CONTROLLERS, lambda controllers: controllers.append(
-        TestingController(test_service, test_event_broadcaster, turn_service)
+        TestingController(test_service, progress_broadcaster, turn_service)
     ))
     tracking_service.set_human_talker_factory(webchat.human_talker_factory)
     # What avance_platform/skill.py does at boot, done here directly: the
@@ -391,7 +391,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
         "tracking_service": tracking_service,
         "scheduler_service": scheduler_service,
         "ai_test_service": fake_ai_service,
-        "test_event_broadcaster": test_event_broadcaster,
+        "progress_broadcaster": progress_broadcaster,
         "ws_notifications": ws_notifications,
         # Never backend/apps: a test that builds must not write into the
         # developer's own working tree.

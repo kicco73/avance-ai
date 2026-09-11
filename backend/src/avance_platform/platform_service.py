@@ -68,15 +68,15 @@ class PlatformService(object):
             # the package that runs it (see testing/testing_controller.py),
             # so a build without benchmarking still annotates sessions.
             LabelProjectController(
-                turn_service, project_service, self, core["tracking_service"], scheduler_service,
+                turn_service, self, core["tracking_service"], scheduler_service,
             ),
             SettingsController(
                 turn_service, project_service, self, core["db"], core["version"],
-                core["test_event_broadcaster"], scheduler_service, core["services_config"],
+                scheduler_service, core["services_config"],
             ),
             AuthController(auth_service),
             UserController(auth_service),
-            AppStoreController(turn_service, project_service, self),
+            AppStoreController(turn_service, self),
         ]
         controllers.extend(self.controllers)
 

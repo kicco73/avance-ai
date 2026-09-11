@@ -15,7 +15,6 @@ from fastapi import HTTPException, Request, Response
 from auth.roles import role_satisfies
 from turn.turn_service import TurnService
 from db import Db
-from system.broadcaster import Broadcaster
 from avance_platform.platform_service import PlatformService
 from project.project_service import ProjectService
 from scheduler import SchedulerService
@@ -33,15 +32,13 @@ class SettingsController(BaseController, ProjectCommitMixin):
     def __init__(
         self, turn_service: TurnService, project_service: ProjectService,
         platform_service: PlatformService, db: Db, version: str,
-        test_event_broadcaster: Broadcaster, scheduler_service: SchedulerService,
-        services_config: dict,
+        scheduler_service: SchedulerService, services_config: dict,
     ) -> None:
         self.turn_service = turn_service
         self.project_service = project_service
         self.platform_service = platform_service
         self.db = db
         self.version = version
-        self.test_event_broadcaster = test_event_broadcaster
         self.scheduler_service = scheduler_service
         self.services_config = services_config
 

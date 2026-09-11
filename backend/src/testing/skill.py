@@ -45,7 +45,7 @@ def _install(controllers: list) -> None:
     from testing.testing_controller import TestingController
 
     core = bus.collect(POINT_CORE_SERVICES, {})
-    broadcaster = core["test_event_broadcaster"]
+    broadcaster = core["progress_broadcaster"]
     # Its own pool, never the platform SchedulerService's: a benchmark
     # replaying hundreds of sessions must not starve live turns.
     queue = ThrottledJobQueue(

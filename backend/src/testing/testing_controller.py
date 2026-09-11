@@ -26,10 +26,10 @@ from turn.turn_service import TurnService
 class TestingController(BaseController):
 
     def __init__(
-        self, test_service: TestService, test_event_broadcaster: Broadcaster, turn_service: TurnService,
+        self, test_service: TestService, progress_broadcaster: Broadcaster, turn_service: TurnService,
     ) -> None:
         self.test_service = test_service
-        self.test_event_broadcaster = test_event_broadcaster
+        self.progress_broadcaster = progress_broadcaster
         self.turn_service = turn_service
 
     @get("/api/projects/{project_id}/tests/metrics", role="supervisor")
@@ -189,4 +189,4 @@ class TestingController(BaseController):
 
     @get("/api/projects/{project_id}/test-status", role="supervisor")
     def get_test_status(self, project_id: str):
-        return {"events": self.test_event_broadcaster.snapshot()}
+        return {"events": self.progress_broadcaster.snapshot()}

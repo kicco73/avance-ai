@@ -10,7 +10,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from system import bus
 
-from system.bus import CLIENT_INJECTABLE, UI_HUMAN_TAKEOVER, UI_NOTIFICATION, UI_SYSTEM_WARNING, UI_TEST_UPDATE, Message
+from system.bus import CLIENT_INJECTABLE, UI_HUMAN_TAKEOVER, UI_NOTIFICATION, UI_SYSTEM_WARNING, UI_PROGRESS, Message
 from auth.roles import role_satisfies
 from system.session import Session
 from turn.channels import NATIVE_CHAT
@@ -45,7 +45,7 @@ HUMAN_REPLY_TIMEOUT_SECONDS = 300.0
 # is the message that was published, under its own type — this object is
 # the Bus's reach into a web client, with a filter on what may leave, not
 # a second vocabulary (see docs/BUS.md).
-WEB_FORWARDED = (UI_NOTIFICATION, UI_HUMAN_TAKEOVER, UI_SYSTEM_WARNING, UI_TEST_UPDATE)
+WEB_FORWARDED = (UI_NOTIFICATION, UI_HUMAN_TAKEOVER, UI_SYSTEM_WARNING, UI_PROGRESS)
 
 
 class HumanReplyTimeoutError(Exception):
@@ -133,7 +133,7 @@ class WsNotifications(object):
     actions, session bootstrap and everything else stay HTTP) and
     receives every frame the server has for it — a turn's own chunk/
     tool/done/error, each carrying the turn_id of the `turn` frame that
-    produced it, plus the push-only notification/test_update/
+    produced it, plus the push-only notification/progress/
     system_warning/human_prompt frames, sent to every one of that
     identity's own connections at once (see push()).
 

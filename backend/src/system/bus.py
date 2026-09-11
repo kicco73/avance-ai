@@ -62,11 +62,13 @@ UI_HUMAN_TAKEOVER = "ui.human_takeover"
 # it is addressed to a role, not to a person doing something.
 UI_SYSTEM_WARNING = "ui.system_warning"
 
-# Progress of a benchmark run, as the broadcaster batches it. Published
-# rather than pushed so the broadcaster — which is core, and on which
-# every JobQueue depends — holds no reference to whatever interface
-# happens to be watching (see broadcaster.Broadcaster).
-UI_TEST_UPDATE = "ui.test_update"
+# How far along a job is, as the broadcaster batches it. Every JobQueue
+# reports through that one broadcaster, so this is not the benchmark's
+# alone however much the benchmark screen is what watches it. Published
+# rather than pushed so the broadcaster — which is core — holds no
+# reference to whatever interface happens to be watching (see
+# broadcaster.Broadcaster).
+UI_PROGRESS = "ui.progress"
 
 # Facts about a turn that are not its content.
 TURN_STARTED = "turn.started"

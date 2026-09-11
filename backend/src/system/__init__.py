@@ -5,7 +5,7 @@ The Bus is here because everything reaches everything else through it.
 The broadcaster and the shared websocket are here because they are the
 two ways the running system talks outward, and neither belongs to
 whatever happens to be listening — the broadcaster publishes
-ui.test_update and never learns who reads it, and /ws/notifications is
+ui.progress and never learns who reads it, and /ws/notifications is
 one connection per identity that the whole SPA uses, not the chat's.
 
 The three loose modules that came with them (logging_factory, session,

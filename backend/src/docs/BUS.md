@@ -112,7 +112,7 @@ and `whatsapp/whatsapp_service.py` (`input.audio` → `input.text`).
 | `ui.notification` | `UI_NOTIFICATION` | `dict` — a nudge for whoever that identity has open | `tracking.wakeup_service`, `tracking.actuators` | `system.ws_notifications` |
 | `ui.human_takeover` | `UI_HUMAN_TAKEOVER` | `{"session_id", "project_id"}` | `tracking.actuators.chat_namespace` | `system.ws_notifications` |
 | `ui.system_warning` | `UI_SYSTEM_WARNING` | `dict` — addressed to a role, so the publisher names each recipient | `project.health_notifications` | `system.ws_notifications` |
-| `ui.test_update` | `UI_TEST_UPDATE` | `dict` — one batch of benchmark progress | `system.broadcaster` | `system.ws_notifications` |
+| `ui.progress` | `UI_PROGRESS` | `dict` — one batch of job progress | `system.broadcaster` | `system.ws_notifications` |
 | `mail.send` | `MAIL_SEND` | `{"to", "subject", "body_md"}` | `tracking.actuators` (`task.send_mail`, with bounceback) | `mail` |
 | `turn.started` | `TURN_STARTED` | — | — | — |
 | `turn.ended` | `TURN_ENDED` | — | — | — |

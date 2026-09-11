@@ -7,7 +7,6 @@ from fastapi import HTTPException, Request, Response
 
 from turn.turn_service import TurnService
 from avance_platform.platform_service import PlatformService
-from project.project_service import ProjectService
 from system.session import Session
 
 from controllers.base_controller import BaseController, delete, get, post
@@ -15,9 +14,8 @@ from controllers.base_controller import BaseController, delete, get, post
 
 class AppStoreController(BaseController):
 
-    def __init__(self, turn_service: TurnService, project_service: ProjectService, platform_service: "PlatformService") -> None:
+    def __init__(self, turn_service: TurnService, platform_service: "PlatformService") -> None:
         self.turn_service = turn_service
-        self.project_service = project_service
         self.platform_service = platform_service
 
     @get("/api/app-store/apps")

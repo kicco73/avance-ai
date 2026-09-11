@@ -95,10 +95,10 @@ def create_app() -> FastAPI:
             config.ai_services, db=db, input_token_budget_per_turn=config.input_token_budget_per_turn,
         )
 
-        test_event_broadcaster = Broadcaster(ai_test_service, batch_window_seconds=DEFAULT_BATCH_WINDOW_SECONDS)
+        progress_broadcaster = Broadcaster(ai_test_service, batch_window_seconds=DEFAULT_BATCH_WINDOW_SECONDS)
         # Started last (see the end of this block): until then its Task
         # table only gains rows, nothing is claimed.
-        scheduler_service = SchedulerService(max_concurrent=config.jobs_shared_max_concurrent, broadcaster=test_event_broadcaster, db=db)
+        scheduler_service = SchedulerService(max_concurrent=config.jobs_shared_max_concurrent, broadcaster=progress_broadcaster, db=db)
 
         # Whatever is installed, started with the configuration file as it
         # was read: nothing here names a skill, and a build that leaves a
@@ -176,7 +176,7 @@ def create_app() -> FastAPI:
 
         # A flush runs on a job-worker thread, and a listener that ends
         # up writing to a socket needs this loop rather than that one.
-        test_event_broadcaster.bind_loop()
+        progress_broadcaster.bind_loop()
 
         # One shared connection per identity, and not the chat's: the
         # whole SPA reads it (see system/__init__.py). It subscribes to
@@ -198,7 +198,7 @@ def create_app() -> FastAPI:
             "tracking_service": tracking_service,
             "scheduler_service": scheduler_service,
             "ai_test_service": ai_test_service,
-            "test_event_broadcaster": test_event_broadcaster,
+            "progress_broadcaster": progress_broadcaster,
             "ws_notifications": ws_notifications,
             "apps_dir": config.build_service_config.apps_dir,
             "services_config": config.public_services_snapshot(),

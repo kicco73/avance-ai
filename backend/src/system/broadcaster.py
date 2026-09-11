@@ -35,7 +35,7 @@ import threading
 from typing import TYPE_CHECKING
 
 from system import bus
-from system.bus import UI_TEST_UPDATE, Message
+from system.bus import UI_PROGRESS, Message
 from jobs.job import CancelableJob
 from system.logging_factory import LoggerFactory
 
@@ -75,7 +75,7 @@ class Broadcaster:
     pieces all matter, so a stream of chunks must use an unbatched one.
     `ai_service`, when given, adds the running token total to every
     message. Every message is also published on the Bus as
-    bus.UI_TEST_UPDATE, so an interface that wants to mirror it
+    bus.UI_PROGRESS, so an interface that wants to mirror it
     subscribes there — this object holds no reference to one."""
 
     def __init__(
@@ -172,14 +172,14 @@ class Broadcaster:
                 loop.call_soon_threadsafe(connection.put_nowait, enriched)
             if listeners:
                 asyncio.run_coroutine_threadsafe(
-                    bus.publish(Message(type=UI_TEST_UPDATE, body=enriched, username=username)), self._main_loop,
+                    bus.publish(Message(type=UI_PROGRESS, body=enriched, username=username)), self._main_loop,
                 )
 
     def _listeners(self) -> list:
-        """Who would receive a UI_TEST_UPDATE right now — empty until
+        """Who would receive a UI_PROGRESS right now — empty until
         this broadcaster has a loop to publish on, since without one
         nothing can reach them anyway."""
-        return bus.handlers_for(UI_TEST_UPDATE) if self._main_loop is not None else []
+        return bus.handlers_for(UI_PROGRESS) if self._main_loop is not None else []
 
     def _deliverable(self, username: str) -> bool:
         return bool(self._connections.get(username)) or bool(self._listeners())
