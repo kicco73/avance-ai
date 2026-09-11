@@ -24,6 +24,14 @@ const SOURCE = /\.(js|vue)$/
 const RELATIVE_IMPORT = /(?:from|import)\s*\(?\s*['"](\.[^'"]*)['"]/g
 // A specifier may leave off what Vite fills in.
 const CANDIDATES = ['', '.js', '.vue', '/index.js', '/index.vue']
+// Prose has the shape of code: a line comment saying «existing `from
+// '.../api.js'` imports» reads as an import to any pattern, and this
+// file's own examples read as broken ones. Dropping line comments and
+// skipping this file is not parsing — an import quoted inside a
+// multi-line string still slips through — but it is the whole of what
+// has ever come up.
+const LINE_COMMENT = /^\s*\/\/.*$/gm
+const SELF = fileURLToPath(import.meta.url)
 
 function sourceFiles(dir) {
   return readdirSync(dir).flatMap((entry) => {
@@ -39,11 +47,13 @@ function resolves(fromFile, specifier) {
 }
 
 function danglingImports() {
-  return SCANNED.flatMap((area) => sourceFiles(join(ROOT, area))).flatMap((file) =>
-    [...readFileSync(file, 'utf8').matchAll(RELATIVE_IMPORT)]
-      .filter(([, specifier]) => !resolves(file, specifier))
-      .map(([, specifier]) => `${file.slice(ROOT.length + 1)} → ${specifier}`)
-  )
+  return SCANNED.flatMap((area) => sourceFiles(join(ROOT, area)))
+    .filter((file) => file !== SELF)
+    .flatMap((file) =>
+      [...readFileSync(file, 'utf8').replace(LINE_COMMENT, '').matchAll(RELATIVE_IMPORT)]
+        .filter(([, specifier]) => !resolves(file, specifier))
+        .map(([, specifier]) => `${file.slice(ROOT.length + 1)} → ${specifier}`)
+    )
 }
 
 describe('the import graph', () => {
