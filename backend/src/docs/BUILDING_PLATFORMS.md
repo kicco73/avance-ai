@@ -133,9 +133,8 @@ only, and the frontend needs both answers.
 ## Frontend — the same shape, one skill at a time
 
 Every skill with a frontend now has one, on the same shape as its
-package: `build`, `testing`, `talk`, `listen`, `whatsapp`. What is not
-done is the build step — no build copies the frontend yet. The layout
-mirrors the backend one-for-one:
+package: `build`, `testing`, `talk`, `listen`, `whatsapp`, `webchat`. The
+layout mirrors the backend one-for-one:
 
 ```
 frontend/src/skills/<key>/
@@ -260,6 +259,23 @@ covers both the import path and the route.
 settings, the app store, login, labeling — is spread across the frontend
 core rather than gathered under `src/skills/platform/`, so no build can
 drop it yet. The build now says so and fails; the split is open work.
+
+`webchat` was in the same position and is out of it, which is worth
+reading as the worked example. Two things got it there. First, the
+backend surface was cut where it actually divides: a live session admits
+a write only from the channel that opened it, so what reaches that gate
+belongs to the channel (`sessions/current`, `POST sessions`, `messages`,
+`operator-state`, firing an action) and everything else addresses a
+session by id and belongs to the core (`turn/session_controller.py`).
+`TurnService.read_transcript` exists because of that cut: `get_messages`
+opens the conversation, which is a turn, so the readers that are not a
+conversation needed a read that is only a read — two named methods, not
+one with a flag. Second, the frontend followed the seam `createChatStore`
+already had: the live store and the test store are two instances with two
+sets of endpoints, so the live one's set *is* the channel skill's, and
+`src/liveChatChannel.js` is the leaf the core asks for it. A build
+without the directory installs the null object: the live chat opens no
+session, and nothing left says one was ever possible.
 
 What it deliberately does not do is compile the frontend. The delivery is
 pruned source, built where it is deployed exactly as the Dockerfile
