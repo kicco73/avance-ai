@@ -6,6 +6,7 @@
 // getTestSessions/postResetTestSessions) — never a shared flag deciding
 // which pool a single store instance happens to be routed to right now.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
@@ -45,6 +46,7 @@ describe('the live store and the test store always route to their own endpoints'
     testChatStore = await import('../src/testChatStore.js')
     testChatStore.setTestProject('my-project')
     api = await import('../src/api.js')
+    await installApiBackedLiveChannel(api)
     dialogStore = await import('../src/dialogStore.js')
     taskActions = await import('../src/taskActions.js')
     api.getMessages.mockResolvedValue([])

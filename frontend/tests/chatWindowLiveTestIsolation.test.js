@@ -9,6 +9,7 @@
 // createChatStore() instances, so this asserts they can carry totally
 // different content *at the same time*, with no clearing/reset needed at all.
 import { describe, expect, it, vi } from 'vitest'
+import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { createApp, h } from 'vue'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))

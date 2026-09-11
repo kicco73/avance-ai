@@ -8,6 +8,7 @@
 // taskActions.js itself (script → taskLocals binding) has its own
 // dedicated tests — see taskActions.test.js.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { buildTimeline } from '../src/testTimeline.js'
 import { TOOL_STATUS_MIN_MS } from '../src/toolStatusHold.js'
 
@@ -31,6 +32,7 @@ describe('handleAction (manual test action) never runs an task script off the re
     chatStore = await import('../src/chatStore.js')
     taskActions = await import('../src/taskActions.js')
     api = await import('../src/api.js')
+    await installApiBackedLiveChannel(api)
   })
 
   afterEach(() => {

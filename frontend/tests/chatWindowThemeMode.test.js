@@ -2,6 +2,7 @@
 // chatStoreSkin.test.js) to check the theme-mode prop end to end, including
 // the async race a bare-refs test can't reach.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { createApp, nextTick } from 'vue'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
@@ -77,6 +78,7 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
 
   it('an always-mounted auto ChatWindow (App.vue) plus a manual one entering (RunChat) — Run mode opening over the live chat', async () => {
     const api = await import('../src/api.js')
+    await installApiBackedLiveChannel(api)
     const chatSkin = await import('../src/chatSkin.js')
     const testChatStore = await import('../src/testChatStore.js')
     testChatStore.setTestProject('test-proj')

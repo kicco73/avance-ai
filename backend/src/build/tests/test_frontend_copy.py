@@ -104,14 +104,24 @@ def test_a_clean_copy_delivers_the_source_of_what_is_left(tmp_path):
     assert (copy.skills_dir / "build" / "index.js").is_file()
 
 
-@pytest.mark.parametrize("dropped", ["build", "testing", "talk", "listen", "whatsapp"])
+def _frontend_skill_keys():
+    """Read off the repo rather than listed here: a skill that grows a
+    frontend directory tomorrow is covered by this test the day it does,
+    the same way registry.js finds it without being told."""
+    from build.backend_copy import REPO_ROOT
+
+    skills_dir = REPO_ROOT / "frontend" / "src" / "skills"
+    return sorted(path.name for path in skills_dir.iterdir() if path.is_dir())
+
+
+@pytest.mark.parametrize("dropped", _frontend_skill_keys())
 def test_the_real_frontend_delivered_without_one_skill_keeps_every_other(tmp_path, dropped):
     """The delivery proof, on the repo's own frontend rather than a
     fixture: drop one skill and what is left must still be a whole
     frontend that names it nowhere."""
     from build.backend_copy import REPO_ROOT
 
-    expected = sorted({"build", "testing", "talk", "listen", "whatsapp"} - {dropped})
+    expected = sorted(set(_frontend_skill_keys()) - {dropped})
 
     report = FrontendCopy(REPO_ROOT / "frontend", tmp_path / "frontend", [dropped]).build()
 

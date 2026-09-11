@@ -6,8 +6,9 @@ import { requireLogin } from '../authStore.js'
 import { confirmDialog } from '../dialogStore.js'
 import { consumeInviteCode, peekInviteCode } from '../shareLink.js'
 import { loadSkillRoster } from '../skillRoster.js'
-import { messageListeners, stateListeners } from '../skills/registry.js'
+import { liveChatChannels, messageListeners, stateListeners } from '../skills/registry.js'
 import { observeMessages } from '../messageNotifier.js'
+import { installLiveChatChannel } from '../liveChatChannel.js'
 import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../chatStore.js'
 
 // App.vue's own boot sequence: the backend-readiness ping loop, resolving
@@ -90,6 +91,7 @@ export function useAppBoot(
       // which ones it has.
       await loadSkillRoster()
       observeMessages(messageListeners.value)
+      installLiveChatChannel(liveChatChannels.value)
       publishState(newState)
       return 'ready'
     } catch (err) {

@@ -30,6 +30,7 @@ vi.mock('../src/shareLink.js', () => ({
 vi.mock('../src/skills/registry.js', () => ({
   messageListeners: { value: [] },
   stateListeners: { value: [{ stateReceived: (...args) => stateReceivedSpy(...args) }] },
+  liveChatChannels: { value: [] },
 }))
 vi.mock('../src/skillRoster.js', () => ({
   loadSkillRoster: vi.fn(),

@@ -6,6 +6,7 @@
 // handleCloseSession). Mounts the real ChatView.vue end to end, not just
 // the store refs (see chatStoreSessionIsolation.test.js for that).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { createApp, nextTick } from 'vue'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
@@ -58,6 +59,7 @@ describe('ChatView.vue: the applications menu carries New/Close session, with no
     vi.resetModules()
     chatStore = await import('../src/chatStore.js')
     api = await import('../src/api.js')
+    await installApiBackedLiveChannel(api)
     container = document.createElement('div')
     document.body.appendChild(container)
   })

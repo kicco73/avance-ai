@@ -1,5 +1,6 @@
 import { onConnectionState, resolvePendingTurnsAfterReload } from './chatClient.js'
-import { getMessages, getSessionState } from './api.js'
+import { getSessionState } from './api.js'
+import { liveChatChannel } from './liveChatChannel.js'
 
 // A dropped socket loses whatever the server was still sending. The truth
 // is in the database, so a reconnection re-reads the open session and
@@ -27,7 +28,7 @@ export class ChatReconnectSync {
     let history
     let sessionState
     try {
-      [history, sessionState] = await Promise.all([getMessages(sessionId), getSessionState(sessionId)])
+      [history, sessionState] = await Promise.all([liveChatChannel().getMessages(sessionId), getSessionState(sessionId)])
     } catch {
       return // already surfaced via apiFetch
     }

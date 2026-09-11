@@ -45,7 +45,7 @@ export function putMessageComment(messageId, comment) {
 // message — a key out of the active project's own `reactions` dict (see
 // chatStore.js's state.reactions).
 export function putMessageReaction(messageId, reaction) {
-  return apiFetch(`${API_URL}/skills/webchat/messages/${encodeURIComponent(messageId)}/reaction`, {
+  return apiFetch(`${API_URL}/core/messages/${encodeURIComponent(messageId)}/reaction`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ reaction })

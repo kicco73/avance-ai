@@ -9,6 +9,7 @@
 // the turn is done the persisted tool_calls record (fetched via
 // getMessages, same as a reload) renders through toolTraceLine.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { toolTraceLine } from '../src/toolTraceLine.js'
 import { TOOL_STATUS_MIN_MS } from '../src/toolStatusHold.js'
 import { installFakeChatSocket, turnIdOf } from './fakeChatSocket.js'
@@ -50,6 +51,7 @@ describe('a live turn shows the tool status then the persisted trace, end to end
     chatStore = await import('../src/chatStore.js')
     chatClient = await import('../src/chatClient.js')
     api = await import('../src/api.js')
+    await installApiBackedLiveChannel(api)
     sockets = installFakeChatSocket(api)
     chatClient.connect()
     sockets[0].open()

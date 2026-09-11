@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import {
   getCurrentTestSession, postCreateTestSession, getTestSessions, postResetTestSessions,
-  getTestChatModels, postTestChatModelSelection
+  getTestChatModels, postTestChatModelSelection, postSessionAction, getTranscript
 } from './api.js'
 import { createChatStore } from './chatStoreFactory.js'
 
@@ -23,6 +23,8 @@ export const testStore = createChatStore({
   getCurrentSession: (sessionId) => getCurrentTestSession(sessionId, projectId),
   getSessionsList: () => getTestSessions(projectId),
   createSession: () => postCreateTestSession(projectId),
+  postAction: (actionName, sessionId) => postSessionAction(actionName, sessionId),
+  getMessages: (sessionId) => getTranscript(sessionId),
   resetSession: () => postResetTestSessions(projectId),
   confirmNewSession: false,
   useAutoTracking: true,

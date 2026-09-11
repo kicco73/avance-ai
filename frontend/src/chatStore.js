@@ -1,4 +1,5 @@
-import { getCurrentSession, postCreateSession, getSessions } from './api.js'
+import { getSessions } from './api.js'
+import { liveChatChannel } from './liveChatChannel.js'
 import { createChatStore } from './chatStoreFactory.js'
 
 export {
@@ -16,9 +17,11 @@ export { applyAspect, invalidateSkin, setSkinCss } from './chatSkin.js'
 // createChatStore() instance.
 export const liveStore = createChatStore({
   kind: 'live',
-  getCurrentSession: (sessionId) => getCurrentSession(sessionId),
+  getCurrentSession: (sessionId) => liveChatChannel().getCurrentSession(sessionId),
   getSessionsList: (includeImported, projectId) => getSessions(projectId, includeImported),
-  createSession: () => postCreateSession(),
+  createSession: () => liveChatChannel().createSession(),
+  postAction: (actionName, sessionId) => liveChatChannel().postAction(actionName, sessionId),
+  getMessages: (sessionId) => liveChatChannel().getMessages(sessionId),
   confirmNewSession: true,
   useAutoTracking: false,
   subscribeToNotifications: true,

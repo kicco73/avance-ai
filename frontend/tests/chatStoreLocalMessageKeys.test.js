@@ -8,6 +8,7 @@
 // from the same counter as every placeholder, so no loaded message can
 // ever collide with one.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
@@ -27,6 +28,7 @@ describe('every store message carries a unique local id, loaded or placeholder',
     vi.resetModules()
     chatStore = await import('../src/chatStore.js')
     api = await import('../src/api.js')
+    await installApiBackedLiveChannel(api)
   })
 
   afterEach(() => {

@@ -9,6 +9,7 @@
 // fix keys on msg.id first, which never changes across a message's own
 // lifetime, so the bubble instance survives the messageId backfill intact.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { createApp } from 'vue'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
@@ -55,6 +56,7 @@ describe("a live turn's assistant bubble survives the messageId backfill without
     chatClient = await import('../src/chatClient.js')
     chatStore = await import('../src/chatStore.js')
     api = await import('../src/api.js')
+    await installApiBackedLiveChannel(api)
     container = document.createElement('div')
     document.body.appendChild(container)
   })

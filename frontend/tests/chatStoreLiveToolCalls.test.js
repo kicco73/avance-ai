@@ -6,6 +6,7 @@
 // same getMessages source a reload uses — see chatStoreFactory.js's own
 // hadToolCall/result.assistant_message_id branch.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
@@ -27,6 +28,7 @@ describe('a live turn backfills its own persisted tool-call trace once it lands'
     chatStore = await import('../src/chatStore.js')
     chatClient = await import('../src/chatClient.js')
     api = await import('../src/api.js')
+    await installApiBackedLiveChannel(api)
   })
 
   afterEach(() => {

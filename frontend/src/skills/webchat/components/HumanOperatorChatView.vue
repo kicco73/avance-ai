@@ -10,11 +10,12 @@
 // would otherwise never know what to reply to) — see system/bus_channel.
 // py's own _current_prompt_for_session.
 import { computed, onMounted, ref, watch } from 'vue'
-import MessageBubble from './MessageBubble.vue'
-import ActionButtons from './ActionButtons.vue'
-import { getMessages, getOperatorState, postAction } from '../../api/chat.js'
-import { busChannel } from '../../busChannel.js'
-import { getHumanPromptForSession, removeHumanPrompt } from '../../humanPromptStore.js'
+import MessageBubble from '../../../components/chat/MessageBubble.vue'
+import ActionButtons from '../../../components/chat/ActionButtons.vue'
+import { getMessages } from '../../../api/chat.js'
+import { getOperatorState, postAction } from '../api.js'
+import { busChannel } from '../../../busChannel.js'
+import { getHumanPromptForSession, removeHumanPrompt } from '../../../humanPromptStore.js'
 
 const props = defineProps({
   sessionId: { type: [Number, String], required: true }

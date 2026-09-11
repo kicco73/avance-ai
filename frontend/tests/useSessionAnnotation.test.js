@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, ref } from 'vue'
 
 vi.mock('../src/api.js', () => ({
-  getMessages: vi.fn(),
+  getTranscript: vi.fn(),
   getSessionSignals: vi.fn(),
   getSessions: vi.fn(),
   putMessageExpectedState: vi.fn(),
@@ -18,7 +18,7 @@ vi.mock('../src/dialogStore.js', () => ({
 }))
 
 import {
-  getMessages, getSessionSignals, getSessions, putMessageExpectedState, putMessageExpectedSignals,
+  getTranscript, getSessionSignals, getSessions, putMessageExpectedState, putMessageExpectedSignals,
   putMessageComment, deleteSessionAnnotations,
 } from '../src/api.js'
 import { refreshSessionsQuietly } from '../src/chatStore.js'
@@ -54,7 +54,7 @@ describe('useSessionAnnotation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     inspectorRef.value = { refresh: vi.fn() }
-    getMessages.mockResolvedValue([MESSAGE_1, MESSAGE_2])
+    getTranscript.mockResolvedValue([MESSAGE_1, MESSAGE_2])
     getSessionSignals.mockResolvedValue([signalsRow()])
     getSessions.mockResolvedValue([{ id: 7, start_state: 'a' }])
   })
@@ -86,11 +86,11 @@ describe('useSessionAnnotation', () => {
     expect(empty.rawMessages.value).toEqual([])
     expect(empty.signalsLog.value).toEqual([])
     expect(empty.sessionStartState.value).toBeNull()
-    expect(getMessages).not.toHaveBeenCalled()
+    expect(getTranscript).not.toHaveBeenCalled()
     empty.unmount?.()
 
     const s = await loaded()
-    expect(getMessages).toHaveBeenCalledWith(7)
+    expect(getTranscript).toHaveBeenCalledWith(7)
     expect(getSessionSignals).toHaveBeenCalledWith(7)
     expect(s.rawMessages.value).toEqual([MESSAGE_1, MESSAGE_2])
     expect(s.signalsLog.value).toEqual([signalsRow()])
@@ -98,9 +98,9 @@ describe('useSessionAnnotation', () => {
     expect(s.loading.value).toBe(false)
     expect(inspectorRef.value.refresh).toHaveBeenCalled()
 
-    getMessages.mockClear()
+    getTranscript.mockClear()
     s.currentSessionId.value = 42
-    await vi.waitFor(() => expect(getMessages).toHaveBeenCalledWith(42))
+    await vi.waitFor(() => expect(getTranscript).toHaveBeenCalledWith(42))
   })
 
   it('selectMessage/selectTransition set `selected` to the right shape and resolve the row backing it', async () => {

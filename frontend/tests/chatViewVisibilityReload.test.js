@@ -5,6 +5,7 @@
 // true; the in-flight turn's own `done` handler reconciles that bubble
 // itself once it lands (see chatStoreFactory.js's submitMessage).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { createApp } from 'vue'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
@@ -51,6 +52,7 @@ describe('ChatView.vue never reloads messages mid-turn on visibilitychange', () 
     chatClient = await import('../src/chatClient.js')
     chatStore = await import('../src/chatStore.js')
     api = await import('../src/api.js')
+    await installApiBackedLiveChannel(api)
     container = document.createElement('div')
     document.body.appendChild(container)
   })

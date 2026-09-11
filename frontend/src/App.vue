@@ -1,7 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import LiveChatWindow from './components/chat/LiveChatWindow.vue'
-import HumanOperatorChatView from './components/chat/HumanOperatorChatView.vue'
 import EditProjectView from './components/project/edit/EditProjectView.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
 import LoginView from './components/LoginView.vue'
@@ -315,8 +314,9 @@ onBeforeUnmount(() => {
             <component
               v-else-if="pushedSkillView"
               :is="pushedSkillView.component"
-              :key="skillViewProjectId"
+              :key="`${skillViewProjectId}-${operatorSessionId}`"
               :project-id="skillViewProjectId"
+              :session-id="operatorSessionId"
               :profile="currentUserProfile"
               @close="popPushedView"
               v-on="profileMenuListeners"
@@ -345,12 +345,6 @@ onBeforeUnmount(() => {
               @close="popPushedView"
               @open="handleManageProjectsChat"
               v-on="profileMenuListeners"
-            />
-            <HumanOperatorChatView
-              v-else-if="pushedView === 'operatorChat'"
-              :key="operatorSessionId"
-              :session-id="operatorSessionId"
-              @close="popPushedView"
             />
           </Transition>
         </div>

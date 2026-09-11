@@ -1,6 +1,6 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import {
-  getMessages, getSessionSignals, getSessions, putMessageExpectedState, putMessageExpectedSignals,
+  getTranscript, getSessionSignals, getSessions, putMessageExpectedState, putMessageExpectedSignals,
   putMessageComment, deleteSessionAnnotations,
 } from '../api.js'
 import { buildTimeline, highlightedStateKeyFor, signalValuesFor } from '../testTimeline.js'
@@ -37,7 +37,7 @@ export function useSessionAnnotation(projectId, currentSessionId, currentSession
     selected.value = null
     try {
       const [messageRows, signalRows, allSessions] = await Promise.all([
-        getMessages(sessionId),
+        getTranscript(sessionId),
         getSessionSignals(sessionId),
         getSessions(projectId, true)
       ])

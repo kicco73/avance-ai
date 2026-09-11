@@ -7,15 +7,6 @@ const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 // to point the two halves of one backend at different servers.
 const WS_URL = new URL(API_URL + '/core/bus', location.href).href.replace(/^http/, 'ws')
 
-export function getCurrentSession(sessionId) {
-  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
-  return apiFetch(`${API_URL}/skills/webchat/sessions/current${query}`)
-}
-
-export function postCreateSession() {
-  return apiFetch(`${API_URL}/skills/webchat/sessions`, { method: 'POST' })
-}
-
 // EditProjectView's embedded "Test" chat — the one place a session can
 // exist against an unpublished revision. Which revision applies is
 // decided by which endpoint is called, never by a caller-supplied flag.
@@ -45,35 +36,36 @@ export function postResetTestSessions(projectId) {
 }
 
 export function deleteSession(sessionId) {
-  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
+  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
 }
 
 export function postCloseSession(sessionId) {
-  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/close`, { method: 'POST' })
+  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/close`, { method: 'POST' })
 }
 
-export function getMessages(sessionId) {
-  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/messages`)
+// The transcript as it already is. Never opens the conversation — a
+// session nobody has started yet reads as empty rather than running its
+// opening turn under the reader (see turn/turn_service.py's own
+// read_transcript, and get_messages for the one that does open it).
+export function getTranscript(sessionId) {
+  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/transcript`)
 }
 
 export function getSessionState(sessionId) {
-  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/state`)
-}
-
-// HumanOperatorChatView.vue's own state read — see ChatService.
-// get_state_for_operator: every action is manually triggerable while an
-// operator is attached, regardless of this session's own is_auto_tracking_
-// enabled flag, and this is never sent to the customer's own chat.
-export function getOperatorState(sessionId) {
-  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/operator-state`)
+  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/state`)
 }
 
 export function createChatSocket() {
   return new WebSocket(WS_URL)
 }
 
-export function postAction(actionName, sessionId) {
-  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/actions`, {
+// Firing an action on a session that has no channel of its own — the
+// editor's Test chat, the app store's preview. A live session refuses
+// this route: the write asks who is speaking and this caller cannot say
+// (see turn/session_controller.py, and postChatWindowAction for the one
+// that can).
+export function postSessionAction(actionName, sessionId) {
+  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/actions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action_name: actionName })
@@ -81,7 +73,7 @@ export function postAction(actionName, sessionId) {
 }
 
 export function putSessionAudio(sessionId, enabled) {
-  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/audio`, {
+  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/audio`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled })
@@ -103,11 +95,11 @@ export function putAutoTracking(sessionId, enabled) {
 }
 
 export function getActuators(sessionId) {
-  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/actuators`)
+  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/actuators`)
 }
 
 export function putActuators(sessionId, enabled) {
-  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/actuators`, {
+  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/actuators`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled })

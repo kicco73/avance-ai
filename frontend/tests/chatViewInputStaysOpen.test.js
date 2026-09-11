@@ -4,6 +4,7 @@
 // things that still close it are an unusable session and a chat socket
 // that is not connected.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { createApp } from 'vue'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
@@ -57,6 +58,7 @@ describe('ChatView keeps the input open while a reply is being generated', () =>
     chatStore = await import('../src/chatStore.js')
     chatClient = await import('../src/chatClient.js')
     api = await import('../src/api.js')
+    await installApiBackedLiveChannel(api)
     container = document.createElement('div')
     document.body.appendChild(container)
   })

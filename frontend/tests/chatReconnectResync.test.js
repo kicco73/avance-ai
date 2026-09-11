@@ -5,6 +5,7 @@
 // actually landed — resolving it from the reloaded messages, or failing
 // the bubble so the user can send it again.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { installFakeChatSocket } from './fakeChatSocket.js'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
@@ -32,6 +33,7 @@ describe('a turn interrupted by a dropped socket', () => {
     chatStore = await import('../src/chatStore.js')
     chatClient = await import('../src/chatClient.js')
     api = await import('../src/api.js')
+    await installApiBackedLiveChannel(api)
     sockets = installFakeChatSocket(api)
     api.getSessionState.mockResolvedValue(STATE)
     chatStore.currentSessionId.value = 1

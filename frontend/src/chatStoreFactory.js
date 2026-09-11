@@ -1,6 +1,6 @@
 import { computed, nextTick, ref } from 'vue'
 import {
-  getMessages, getSessionState, postAction, getAutoTracking, putAutoTracking, getActuators, putActuators,
+  getSessionState, getAutoTracking, putAutoTracking, getActuators, putActuators,
   putSessionAudio,
   postTruncateSession, deleteSession, postCloseSession, putMessageReaction,
 } from './api.js'
@@ -60,7 +60,7 @@ export function setTotalTokenBudgetPerSession(value) {
 // `kind` ('live'|'test') only ever drives chatSkin.js's routing, nothing
 // about session resolution itself.
 export function createChatStore({
-  kind, getCurrentSession, getSessionsList, createSession, resetSession = null,
+  kind, getCurrentSession, getSessionsList, createSession, postAction, getMessages, resetSession = null,
   confirmNewSession = true, useAutoTracking = false, useActuatorsToggle = false,
   subscribeToNotifications = false,
 }) {

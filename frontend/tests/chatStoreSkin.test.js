@@ -6,6 +6,7 @@
 // tag actually land, does toggling applyAspect back on actually resume
 // loading, is there ever more than one tag at once.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { nextTick } from 'vue'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
@@ -192,6 +193,7 @@ describe('the real Test-mode bootstrap sequence (loadMessages -> ensureSession) 
     chatSkin = await import('../src/chatSkin.js')
     chatSkin.activeChatMode.value = 'test'
     api = await import('../src/api.js')
+    await installApiBackedLiveChannel(api)
     api.getMessages.mockResolvedValue([])
     fetchMock = vi.fn().mockResolvedValue({ ok: true, text: async () => '.chat-window-shell { color: teal; }' })
     global.fetch = fetchMock
