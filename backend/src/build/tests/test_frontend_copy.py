@@ -114,6 +114,15 @@ def _frontend_skill_keys():
     return sorted(path.name for path in skills_dir.iterdir() if path.is_dir())
 
 
+def _package_of(key: str) -> str:
+    """FrontendCopy is given *packages* and prunes *directories*, which are
+    named by key — avance_platform/platform is the pair that tells them
+    apart, and a test that hands it a key silently drops nothing."""
+    from system import skills
+
+    return next(entry["package"] for entry in skills.installed() if entry["key"] == key)
+
+
 @pytest.mark.parametrize("dropped", _frontend_skill_keys())
 def test_the_real_frontend_delivered_without_one_skill_keeps_every_other(tmp_path, dropped):
     """The delivery proof, on the repo's own frontend rather than a
@@ -123,9 +132,9 @@ def test_the_real_frontend_delivered_without_one_skill_keeps_every_other(tmp_pat
 
     expected = sorted(set(_frontend_skill_keys()) - {dropped})
 
-    report = FrontendCopy(REPO_ROOT / "frontend", tmp_path / "frontend", [dropped]).build()
+    report = FrontendCopy(REPO_ROOT / "frontend", tmp_path / "frontend", [_package_of(dropped)]).build()
 
-    copy = FrontendCopy(REPO_ROOT / "frontend", tmp_path / "frontend", [dropped])
+    copy = FrontendCopy(REPO_ROOT / "frontend", tmp_path / "frontend", [_package_of(dropped)])
     assert report["dropped_skills"] == [dropped]
     assert not (copy.skills_dir / dropped).exists()
     assert (copy.skills_dir / "registry.js").is_file()

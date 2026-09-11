@@ -129,7 +129,7 @@ def test_new_project_creates_activates_and_de_duplicates_the_hello_world_templat
     without requiring an id up front — the template's own declared id
     ("hello_world") is used as-is on the first call (see
     ProjectManager.create_new_project)."""
-    response = client.post("/api/core/projects")
+    response = client.post("/api/skills/platform/projects")
     assert response.status_code == 200, response.text
     assert response.json()["project_id"] == "hello_world"
     assert client.get("/api/core/projects").json()["active"] == "hello_world"
@@ -141,8 +141,8 @@ def test_new_project_creates_activates_and_de_duplicates_the_hello_world_templat
     assert client.post("/api/skills/platform/projects/hello_world/publish", json={}).status_code == 200
     assert client.get("/api/skills/webchat/sessions/current").status_code == 200
 
-    assert client.post("/api/core/projects").json()["project_id"] == "hello_world_2"
-    assert client.post("/api/core/projects").json()["project_id"] == "hello_world_3"
+    assert client.post("/api/skills/platform/projects").json()["project_id"] == "hello_world_2"
+    assert client.post("/api/skills/platform/projects").json()["project_id"] == "hello_world_3"
     assert client.get("/api/core/projects").json()["projects"] == [
         {"id": "hello_world", "is_paused": False, "ui_label": "Hello, world!"},
         {"id": "hello_world_2", "is_paused": False, "ui_label": "Hello, world!"},

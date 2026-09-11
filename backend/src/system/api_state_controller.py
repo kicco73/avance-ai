@@ -8,7 +8,7 @@ client needs it before it can do anything at all.
 
 What is *not* here, and was for an afternoon: choosing a model, listing
 projects, switching between them. Describing is domain; deciding is a
-panel, and lives with one (see avance_platform/deployment_controller.py).
+panel, and lives with one.
 """
 from __future__ import annotations
 

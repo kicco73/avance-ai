@@ -83,16 +83,21 @@ def test_a_test_session_always_tracks_the_live_draft(client):
     assert _state_keys(response) == {"a", "b", "c"}
 
 
-@pytest.mark.parametrize(("route", "declaration", "payload_key", "name_of"), [
-    ("signals", 'signals:\n  mood:\n    definition: "1"\n', "signals", lambda row: row["signal"]["name"]),
-    ("env-keys", "env:\n  greeting:\n    value: \"'hi'\"\n", "env_keys", lambda row: row["env_key"]["name"]),
+# A signal definition describes what the engine tracks, so reading one is
+# the core's (see project/project_controller.py); an env key is declared
+# and edited in the editor, and reading it stayed with it. Same pinning
+# rule either way, which is what this checks — hence the prefix travelling
+# with the route.
+@pytest.mark.parametrize(("prefix", "route", "declaration", "payload_key", "name_of"), [
+    ("core", "signals", 'signals:\n  mood:\n    definition: "1"\n', "signals", lambda row: row["signal"]["name"]),
+    ("skills/platform", "env-keys", "env:\n  greeting:\n    value: \"'hi'\"\n", "env_keys", lambda row: row["env_key"]["name"]),
 ])
-def test_signals_and_env_keys_pin_to_a_sessions_own_revision_the_same_way_the_graph_does(client, route, declaration, payload_key, name_of):
+def test_signals_and_env_keys_pin_to_a_sessions_own_revision_the_same_way_the_graph_does(client, prefix, route, declaration, payload_key, name_of):
     session_id = _pinned_live_session(client)
     _upload(client, TWO_STATE_YML + declaration)
 
-    pinned = client.get(f"/api/skills/platform/projects/proj/{route}?session_id={session_id}")
-    current = client.get(f"/api/skills/platform/projects/proj/{route}")
+    pinned = client.get(f"/api/{prefix}/projects/proj/{route}?session_id={session_id}")
+    current = client.get(f"/api/{prefix}/projects/proj/{route}")
 
     assert pinned.json()[payload_key] == []
     assert [name_of(row) for row in current.json()[payload_key]] == [declaration.split(":")[1].split()[0].rstrip(":")]

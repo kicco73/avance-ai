@@ -31,21 +31,14 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from controllers.base_controller import BaseController, get, post
 from db import Db
 from project.project_service import ProjectService
-from scheduler import SchedulerService
 from turn.turn_service import TurnService
 
 class ServerAdminController(BaseController):
 
-    def __init__(
-        self, turn_service: TurnService, project_service: ProjectService, db: Db,
-        version: str, scheduler_service: SchedulerService, services_config: dict,
-    ) -> None:
+    def __init__(self, turn_service: TurnService, project_service: ProjectService, db: Db) -> None:
         self.turn_service = turn_service
         self.project_service = project_service
         self.db = db
-        self.version = version
-        self.scheduler_service = scheduler_service
-        self.services_config = services_config
 
     def register_routes(self, router: APIRouter) -> None:
         for method, path, kwargs, member in self._declared_routes():
