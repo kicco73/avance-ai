@@ -1,5 +1,5 @@
 <script setup>
-import InspectorUserInfoCard from '../../../components/inspector/InspectorUserInfoCard.vue'
+import InspectorUserInfoCard from '../../../components/skillkit/InspectorUserInfoCard.vue'
 import { selection } from '../selection.js'
 
 defineProps({

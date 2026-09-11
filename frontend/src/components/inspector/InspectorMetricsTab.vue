@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { getMetrics } from '../../api.js'
 import DocInfoButton from '../DocInfoButton.vue'
-import MetricDetail from './MetricDetail.vue'
+import MetricDetail from '../skillkit/MetricDetail.vue'
 import { useSignalChangeFlash } from './signalDisplay.js'
 
 const props = defineProps({

@@ -1,5 +1,5 @@
 <script setup>
-import ServicesFieldList from '../../../components/settings/ServicesFieldList.vue'
+import ServicesFieldList from '../../../components/skillkit/ServicesFieldList.vue'
 
 defineProps({
   section: { type: Object, required: true }

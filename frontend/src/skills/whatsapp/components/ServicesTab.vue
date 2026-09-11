@@ -1,6 +1,6 @@
 <script setup>
-import ServicesFieldList from '../../../components/settings/ServicesFieldList.vue'
-import ServicesSecretField from '../../../components/settings/ServicesSecretField.vue'
+import ServicesFieldList from '../../../components/skillkit/ServicesFieldList.vue'
+import ServicesSecretField from '../../../components/skillkit/ServicesSecretField.vue'
 
 defineProps({
   section: { type: Object, required: true }

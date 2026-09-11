@@ -10,15 +10,15 @@ import AppHeader from '../AppHeader.vue'
 import DocInfoButton from '../DocInfoButton.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import AiUsageTrendsChart from './AiUsageTrendsChart.vue'
-import ServicesProviderCard from './ServicesProviderCard.vue'
-import ServicesFieldList from './ServicesFieldList.vue'
+import ServicesProviderCard from '../skillkit/ServicesProviderCard.vue'
+import ServicesFieldList from '../skillkit/ServicesFieldList.vue'
 import StatusToggleButton from './StatusToggleButton.vue'
 import TaskCard from './TaskCard.vue'
 import { getAiUsage, getScheduledTasks, getServicesConfig } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 import { liveModelStore } from '../../chatStore.js'
 import { servicesTabs } from '../../skills/registry.js'
-import { fieldLabel } from './serviceFields.js'
+import { fieldLabel } from '../skillkit/serviceFields.js'
 
 defineProps({
   // ProfileMenu.vue's own avatar/name — App.vue already fetched this once
