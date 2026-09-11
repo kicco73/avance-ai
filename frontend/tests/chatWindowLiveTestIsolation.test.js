@@ -48,7 +48,7 @@ vi.setConfig({ testTimeout: 10_000 })
 describe('the live chat and the "Run" test chat are genuinely independent stores', () => {
   it('each ChatView instance shows only its own store\'s content, simultaneously, with no clearing needed', async () => {
     const chatStore = await import('../src/chatStore.js')
-    const testChatStore = await import('../src/testChatStore.js')
+    const testChatStore = await import('../src/skills/platform/testChatStore.js')
     const ChatWindow = (await import('../src/components/chat/ChatView.vue')).default
 
     chatStore.state.value = { key: 'live-state', ui_label: 'Live', actions: [] }
@@ -95,7 +95,7 @@ describe('the live chat and the "Run" test chat are genuinely independent stores
 
   it("browsing an imported session's id in one store's currentSessionId never touches the other's", async () => {
     const chatStore = await import('../src/chatStore.js')
-    const testChatStore = await import('../src/testChatStore.js')
+    const testChatStore = await import('../src/skills/platform/testChatStore.js')
 
     chatStore.currentSessionId.value = 7
     testChatStore.currentSessionId.value = 123 // e.g. LabelProjectView.vue browsing an imported session

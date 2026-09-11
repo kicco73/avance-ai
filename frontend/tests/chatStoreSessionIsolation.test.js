@@ -43,7 +43,7 @@ describe('the live store and the test store always route to their own endpoints'
   beforeEach(async () => {
     vi.resetModules()
     chatStore = await import('../src/chatStore.js')
-    testChatStore = await import('../src/testChatStore.js')
+    testChatStore = await import('../src/skills/platform/testChatStore.js')
     testChatStore.setTestProject('my-project')
     api = await import('../src/api.js')
     await installApiBackedLiveChannel(api)

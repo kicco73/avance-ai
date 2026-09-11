@@ -80,7 +80,7 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
     const api = await import('../src/api.js')
     await installApiBackedLiveChannel(api)
     const chatSkin = await import('../src/chatSkin.js')
-    const testChatStore = await import('../src/testChatStore.js')
+    const testChatStore = await import('../src/skills/platform/testChatStore.js')
     testChatStore.setTestProject('test-proj')
     api.getCurrentSession.mockResolvedValue({ id: 1, project_id: 'live-proj', current: true, state: { key: 'live', ui_label: 'Live', actions: [] } })
     api.getCurrentTestSession.mockResolvedValue({ id: 99, project_id: 'test-proj', current: true, state: { key: 'test', ui_label: 'Test', actions: [] } })

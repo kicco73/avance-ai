@@ -137,7 +137,7 @@ describe('chatSkin.js only ever applies the currently active store — live vs t
     vi.resetModules()
     document.head.innerHTML = ''
     chatStore = await import('../src/chatStore.js')
-    testChatStore = await import('../src/testChatStore.js')
+    testChatStore = await import('../src/skills/platform/testChatStore.js')
     testChatStore.setTestProject('draft-project')
     chatSkin = await import('../src/chatSkin.js')
     fetchMock = vi.fn()
@@ -188,7 +188,7 @@ describe('the real Test-mode bootstrap sequence (loadMessages -> ensureSession) 
   beforeEach(async () => {
     vi.resetModules()
     document.head.innerHTML = ''
-    testChatStore = await import('../src/testChatStore.js')
+    testChatStore = await import('../src/skills/platform/testChatStore.js')
     testChatStore.setTestProject('ttm_prototype_2')
     chatSkin = await import('../src/chatSkin.js')
     chatSkin.activeChatMode.value = 'test'
