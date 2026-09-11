@@ -613,6 +613,7 @@ def pytest_sessionfinish(session, exitstatus) -> None:
                     entry["runs"] += 1
                     entry["failures"] += int(outcome == "failed")
                 entry["seconds"] = round(entry.get("seconds", 0.0) + run.seconds, 3)
+                entry["last_seconds"] = round(run.seconds, 3)
                 entry["last_outcome"] = outcome
                 entry["last_run"] = now
                 if outcome == "failed":

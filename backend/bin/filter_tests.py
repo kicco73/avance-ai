@@ -52,8 +52,10 @@ def main():
     for test_name, stats in data.items():
         runs = stats.get("runs", 0)
         failures = stats.get("failures", 0)
-        seconds = stats.get("seconds", 0.0)
-        seconds = seconds / runs if runs else seconds
+        seconds = stats.get("last_seconds")
+        if seconds is None:
+            seconds = stats.get("seconds", 0.0)
+            seconds = seconds / runs if runs else seconds
         
         # Assumiamo la presenza di 'first_run' (con fallback a 'last_run' o min se non trovato)
         first_run_str = stats.get("first_run") or stats.get("last_run") or ""
