@@ -6,8 +6,7 @@ import ProjectDesignPanel from './design/ProjectDesignPanel.vue'
 import RunChat from './run/RunChat.vue'
 import ProjectTestPanel from './test/ProjectTestPanel.vue'
 import ModeSegment from './ModeSegment.vue'
-import PublishControls from './PublishControls.vue'
-import PublishRemapDialog from './PublishRemapDialog.vue'
+import RevisionMenu from './RevisionMenu.vue'
 import Inspector from '../../inspector/Inspector.vue'
 import InspectorGraphTab from '../../inspector/InspectorGraphTab.vue'
 import InspectorSignalsTab from '../../inspector/InspectorSignalsTab.vue'
@@ -27,7 +26,7 @@ import { useLeaveConfirmation } from '../../../composables/useLeaveConfirmation.
 import { useResizablePanel } from '../../../composables/useResizablePanel.js'
 import { useProjectFiles } from '../../../composables/useProjectFiles.js'
 import { useProjectSources } from '../../../composables/useProjectSources.js'
-import { useProjectPublishing } from '../../../composables/useProjectPublishing.js'
+import { useProjectRevision } from '../../../composables/useProjectRevision.js'
 import { useIndexYmlEditing } from '../../../composables/useIndexYmlEditing.js'
 import { useProjectCatalog } from '../../../composables/useProjectCatalog.js'
 import { useLiveRunTimeline } from '../../../composables/useLiveRunTimeline.js'
@@ -265,15 +264,13 @@ const unsubscribeProjectChanged = onProjectChanged((changedProjectId) => {
 onBeforeUnmount(unsubscribeProjectChanged)
 
 const {
-  projectRevision, publishing, publishRemapPrompt, pendingLeaveAction,
-  refreshProjectRevision, publishUpToDate,
-  handlePublish, confirmPublishRemap, cancelPublishRemap,
-  canRevert, publishMenuOpen, handleRevert,
-} = useProjectPublishing(props.projectId, currentFileName, activeEditor, selectedGraphElement)
+  projectRevision, reverting, refreshProjectRevision,
+  canRevert, revisionMenuOpen, handleRevert,
+} = useProjectRevision(props.projectId, currentFileName, activeEditor, selectedGraphElement)
 
 const {
   handleAddState, handleAddSignal, handleAddEnvKey, handleAddAction,
-  handleSetStateField, handleSetProjectField, handleSetActionField, handleSetSignalField, handleSetEnvKeyField,
+  handleSetStateField, handleSetProjectField, handleSetServiceLevel, handleSetActionField, handleSetSignalField, handleSetEnvKeyField,
   handleDeleteState, handleDeleteAction, handleDeleteSignal, handleDeleteEnvKey,
 } = useIndexYmlEditing(
   props.projectId, guardedAction, indexYmlEditorRef, jumpToDefinition, selectedGraphElement, selectedStateKey, flashRecentlyAdded
@@ -326,26 +323,13 @@ function handleJumpToAttachment(fileName) {
 
 const { confirmLeaveIfNeeded } = useLeaveConfirmation(activeEditorIsDirty, 'Discard unsaved changes to this file?')
 
+// Unpublished changes are not asked about — leaving with a draft ahead of
+// the published revision is the normal way to work here, and publishing it
+// is Manage projects' own button. The only question left is the open
+// editor's own unsaved buffer (see useLeaveConfirmation).
 async function leaveEditProject(onLeave) {
   if (!(await confirmLeaveIfNeeded())) return
-  if (publishUpToDate.value) {
-    onLeave()
-    return
-  }
-  const choice = await chooseDialog({
-    title: 'Unpublished changes',
-    body: `Revision ${projectRevision.value?.revision} isn't published yet.`,
-    options: [
-      { id: 'publish', label: 'Publish and close' },
-      { id: 'leave', label: 'Leave pending' }
-    ]
-  })
-  if (choice === 'publish') {
-    pendingLeaveAction.value = onLeave
-    handlePublish()
-    return
-  }
-  if (choice === 'leave') onLeave()
+  onLeave()
 }
 
 function handleBack() {
@@ -435,14 +419,12 @@ onBeforeUnmount(() => {
       </template>
       <template #right>
         <div class="edit-project-header-actions">
-          <PublishControls
+          <RevisionMenu
             v-if="projectRevision"
             :project-revision="projectRevision"
-            :publishing="publishing"
-            :publish-up-to-date="publishUpToDate"
+            :reverting="reverting"
             :can-revert="canRevert"
-            v-model:menu-open="publishMenuOpen"
-            @publish="handlePublish"
+            v-model:menu-open="revisionMenuOpen"
             @revert="handleRevert"
           />
           <ProfileMenu :profile="profile" @home="emit('home')" @profile="emit('profile')" @logout="emit('logout')" />
@@ -578,6 +560,7 @@ onBeforeUnmount(() => {
                 @set-field="handleSetSelectedElementField"
                 :save-field="handleSetSelectedElementField"
                 @set-project-field="handleSetProjectField"
+                @set-service-level="handleSetServiceLevel"
                 @delete="handleDeleteSelectedElement"
                 @open-actions-order="handleOpenActionsOrder"
                 @add-state="handleAddState"
@@ -643,14 +626,6 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
-
-    <PublishRemapDialog
-      v-if="publishRemapPrompt"
-      :prompt="publishRemapPrompt"
-      :publishing="publishing"
-      @confirm="confirmPublishRemap"
-      @cancel="cancelPublishRemap"
-    />
   </div>
 </template>
 

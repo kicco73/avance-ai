@@ -74,7 +74,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'select', 'select-attachment', 'jump-to-attachment', 'set-field', 'set-project-field', 'delete',
+  'select', 'select-attachment', 'jump-to-attachment', 'set-field', 'set-project-field',
+  'set-service-level', 'delete',
   'add-state', 'add-action', 'delete-file', 'rename-file', 'open-actions-order',
   'set-source-field', 'delete-source'
 ])
@@ -157,6 +158,7 @@ onMounted(loadProjectMetadata)
       :project="projectMetadata"
       :editable="!readOnly"
       @set-field="(field, value) => emit('set-project-field', field, value)"
+      @set-service-level="(service, level) => emit('set-service-level', service, level)"
     />
     <InspectorFileCard
       v-if="showFileCard"

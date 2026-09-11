@@ -14,6 +14,7 @@ logger = LoggerFactory.get_logger(__name__)
 KEY = "mail"
 UI_LABEL = "Mail"
 UI_DESCRIPTION = "Sends email on behalf of a project."
+PROJECT_DECLARABLE = True
 
 _listener = None
 

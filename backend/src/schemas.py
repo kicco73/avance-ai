@@ -147,6 +147,10 @@ class SetEnvValueRequest(BaseModel):
     value: str
 
 
+class SetServiceLevelRequest(BaseModel):
+    level: Literal["required", "optional", "disabled"]
+
+
 class SetProjectFieldRequest(BaseModel):
     # See ProjectService.set_state_field/set_action_field/set_signal_field.
     # Editable fields are free text (ui-label, contextual-prompt, etc.), a

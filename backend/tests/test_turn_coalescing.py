@@ -12,7 +12,7 @@ import pytest
 
 from ai.llm_provider import content_to_text, is_text_fragments
 from db.messages import _group_user_fragments
-from test_ws_turn_event_order import _automaton, turn_service_for  # noqa: F401 — a pytest fixture, used by name
+from turn_harness import one_state_automaton, turn_service_for  # noqa: F401 — a pytest fixture, used by name
 
 pytestmark = pytest.mark.contract
 
@@ -199,7 +199,7 @@ async def test_messages_arriving_while_a_turn_generates_are_answered_together_by
     next turn takes B and C together as one multi-block user message, and
     the third request ends with no reply of its own."""
     provider = _GatedProvider()
-    turn_service = turn_service_for(_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
+    turn_service = turn_service_for(one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
     db = turn_service_for.db
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     session_id = session["id"]
@@ -240,7 +240,7 @@ async def test_the_coalesced_turn_binds_to_its_last_fragment(turn_service_for):
     reaction, the input tokens) — visible here as the turn's
     user_message_id."""
     provider = _GatedProvider()
-    turn_service = turn_service_for(_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
+    turn_service = turn_service_for(one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
     db = turn_service_for.db
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     session_id = session["id"]
@@ -260,7 +260,7 @@ async def test_the_coalesced_turn_binds_to_its_last_fragment(turn_service_for):
 @pytest.mark.regression
 async def test_the_history_reloaded_afterwards_is_the_one_the_model_was_sent(turn_service_for):
     provider = _GatedProvider()
-    turn_service = turn_service_for(_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
+    turn_service = turn_service_for(one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
     db = turn_service_for.db
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     session_id = session["id"]
@@ -284,7 +284,7 @@ async def test_the_history_budget_drops_a_half_cut_group_whole(turn_service_for)
     it never sees the rest of."""
     provider = _GatedProvider()
     provider.release.set()
-    turn_service = turn_service_for(_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
+    turn_service = turn_service_for(one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
     db = turn_service_for.db
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     session_id = session["id"]
@@ -305,7 +305,7 @@ async def test_the_history_budget_drops_a_half_cut_group_whole(turn_service_for)
 async def test_the_history_budget_keeps_a_group_it_fits_entirely(turn_service_for):
     provider = _GatedProvider()
     provider.release.set()
-    turn_service = turn_service_for(_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
+    turn_service = turn_service_for(one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
     db = turn_service_for.db
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     session_id = session["id"]

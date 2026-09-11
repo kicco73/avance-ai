@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 import simpleeval
 
+from automaton.project_services import ProjectServices
 from automaton.scope import EvaluationScope
 
 from system.logging_factory import LoggerFactory
@@ -126,7 +127,7 @@ class CoreAutomaton(object):
         project_revision: int = 0,
         project_ui_label: str | None = None,
         project_ui_description: str | None = None,
-        talk_enabled: bool = True,
+        project_services: dict[str, str] | None = None,
         # "resume" (default): a brand-new live session picks up wherever
         # this user's own live automaton state already is (LiveSessionStrategy.
         # starting_state). "restart": it enters cold instead, exactly like a
@@ -159,7 +160,7 @@ class CoreAutomaton(object):
         # The two auto-tracking modes (before/after the AI reply) are
         # mutually exclusive — this flag selects between them.
         self.autotracking_on_ai_message = autotracking_on_ai_message
-        self.talk_enabled = talk_enabled
+        self.services = ProjectServices(project_services)
         self.new_session_strategy = new_session_strategy
         self.build_warnings = list(build_warnings or [])
         # Which DB storage revision this Automaton actually came from —

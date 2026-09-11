@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from ruamel.yaml import YAML
 
+from automaton import project_services
+from automaton.project_services import ProjectServices
 from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
@@ -24,7 +26,8 @@ class ProjectMetadata:
     ui_label: str | None
     ui_description: str | None
     autotracking_on_ai_message: bool
-    talk_enabled: bool
+    services: ProjectServices
+    service_warnings: tuple[str, ...]
     # "resume" (default): a brand-new live session resumes wherever this
     # user's own live automaton state already is. "restart": it enters
     # cold instead, same as a test/preview session — see
@@ -41,7 +44,7 @@ class ProjectMetadata:
         if not isinstance(raw_project, dict):
             raise ValueError(
                 "'project' is required and must be a mapping of fields (id, family, ui-label, "
-                "ui-description, signal-tracking-on-ai-message, talk-enabled), got "
+                "ui-description, signal-tracking-on-ai-message, services), got "
                 f"{type(raw_project).__name__ if raw_project is not None else 'nothing'}."
             )
         project_id = raw_project.get("id")
@@ -62,6 +65,9 @@ class ProjectMetadata:
                 f"project.new-session-strategy {new_session_strategy!r} must be one of "
                 f"{sorted(VALID_NEW_SESSION_STRATEGIES)}."
             )
+        services, service_warnings = project_services.parse(
+            raw_project.get("services"), talk_enabled=raw_project.get("talk-enabled"),
+        )
         return cls(
             project_id=project_id,
             family=family,
@@ -69,7 +75,8 @@ class ProjectMetadata:
             ui_label=raw_project.get("ui-label"),
             ui_description=raw_project.get("ui-description"),
             autotracking_on_ai_message=raw_project.get("signal-tracking-on-ai-message", False),
-            talk_enabled=raw_project.get("talk-enabled", True),
+            services=services,
+            service_warnings=tuple(service_warnings),
             new_session_strategy=new_session_strategy,
         )
 

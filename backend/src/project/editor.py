@@ -485,6 +485,13 @@ class ProjectEditor:
             project_id, commit, lambda editor: editor.set_project_field(field, value)
         )
 
+    async def set_service_level(
+        self, project_id: str, service: str, level: str, commit: CommitCallback
+    ) -> ProjectPayload:
+        return await self._edit_index_yml(
+            project_id, commit, lambda editor: editor.set_service_level(service, level)
+        )
+
     async def delete_state(self, project_id: str, state_name: str, commit: CommitCallback) -> None:
         await self._edit_index_yml(project_id, commit, lambda editor: editor.delete_state(state_name))
 

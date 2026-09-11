@@ -16,7 +16,8 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
-from system import bus
+from automaton.project_services import OptionalService
+from system import bus, skills
 from system.bus import POINT_API_STATE
 from system.config_services import talk_configured
 
@@ -69,12 +70,12 @@ class PlatformController(BaseController):
         talk_enabled here, plus whatever a skill contributes (see
         bus.POINT_API_STATE). No `-> StatePayload` annotation:
         with no active project/state the payload lacks those fields.
-        talk_enabled here is the AND of two independent things: whether
-        the talk skill is installed and configured at all, and whether
-        the active project itself opted in (its own
-        project.talk-enabled, defaulting true) — the chat toolbar's
-        audio/spoken-text icons read this one combined flag rather than
-        checking the project's own setting separately."""
+        talk_enabled here is what the active project's own declared
+        level (project.services.talk — see automaton/project_services.py)
+        makes of the server's own talk-service switch: a project can only
+        narrow it, never turn it on. The chat toolbar's audio/spoken-text
+        icons read this one combined flag rather than checking the
+        project's own setting separately."""
 
         try:
             payload = self.platform_service.get_active_state_payload()
@@ -82,17 +83,25 @@ class PlatformController(BaseController):
             payload = {}
 
         try:
-            project_talk_enabled = self.project_service.get_active_automaton().talk_enabled
+            project_talk = self.project_service.get_active_automaton().services["talk"]
         except:
-            project_talk_enabled = True
+            project_talk = OptionalService()
 
-        payload["talk_enabled"] = talk_configured() and project_talk_enabled
+        payload["talk_enabled"] = project_talk.narrow(talk_configured())
         payload["input_token_budget_per_turn"] = self.turn_service.get_input_token_budget_per_turn()
         payload["total_token_budget_per_session"] = self.turn_service.get_total_token_budget_per_session()
         # Whatever else is running adds its own field: listen_enabled
         # comes from the Listen package when that package is there, and
         # simply isn't in the payload when it isn't.
         return bus.collect(POINT_API_STATE, payload)
+
+    @get("/api/services", role="admin")
+    def get_declarable_services(self):
+        """The services a project may declare a level for, as the
+        Inspector's Project card lists them (see skills.declarable).
+        Here rather than in the build package: the editor asks this on
+        every project, including in a backend that cannot compile."""
+        return {"services": skills.declarable()}
 
     @get("/api/ai/models")
     def get_ai_models(self):

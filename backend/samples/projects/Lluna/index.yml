@@ -9,7 +9,8 @@ project:
     (Prochaska, DiClemente)
 
   signal-tracking-on-ai-message: true
-  talk-enabled: false
+  services:
+    talk: disabled
 init-action:
   ui-label: new user
   on-exit: chat.celebrate()

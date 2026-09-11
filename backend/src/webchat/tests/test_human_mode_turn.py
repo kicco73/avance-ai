@@ -19,7 +19,7 @@ from db.db import Db
 from metrics.metric_service import MetricService
 from talker.base_talker import BaseTalker
 from test_chat_tool_set_integration import FakeProjectService, PROJECT_ID
-from test_ws_turn_event_order import _automaton
+from turn_harness import one_state_automaton
 from tracking.tracking_service import TrackingService
 
 pytestmark = pytest.mark.contract
@@ -117,7 +117,7 @@ async def _run_turn(turn_service: TurnService, session_id: int, turn_id: str, te
 
 async def test_a_human_operators_reply_arrives_as_the_turns_own_done_frame(turn_service_for):
     turn_service, namespace_factory = turn_service_for(
-        _automaton(with_sources=False, autotracking_on_ai_message=True)
+        one_state_automaton(with_sources=False, autotracking_on_ai_message=True)
     )
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     namespace_factory.set_human_operator(session["id"], OPERATOR)
@@ -141,7 +141,7 @@ async def test_a_human_mode_turn_never_holds_the_session_lock(turn_service_for):
     started = asyncio.Event()
     finish = asyncio.Event()
     turn_service, namespace_factory = turn_service_for(
-        _automaton(with_sources=False, autotracking_on_ai_message=True), delay_first=finish,
+        one_state_automaton(with_sources=False, autotracking_on_ai_message=True), delay_first=finish,
     )
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     namespace_factory.set_human_operator(session["id"], OPERATOR)
@@ -168,7 +168,7 @@ async def test_a_human_mode_turn_never_holds_the_session_lock(turn_service_for):
 
 async def test_a_human_mode_session_never_auto_generates_an_opening_message(turn_service_for):
     turn_service, namespace_factory = turn_service_for(
-        _automaton(with_sources=False, autotracking_on_ai_message=True)
+        one_state_automaton(with_sources=False, autotracking_on_ai_message=True)
     )
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     namespace_factory.set_human_operator(session["id"], OPERATOR)

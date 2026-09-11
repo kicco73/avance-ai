@@ -74,6 +74,16 @@ def parse_sse_result(response) -> dict:
     return message["result"]
 
 
+def installed_skill(package: str) -> None:
+    """Abstains rather than fails when the skill a helper needs is not in
+    this build. Every core test that reaches a skill's surface goes
+    through a helper or a fixture, so this one call is what keeps a
+    pruned build's own test run reporting what it left out instead of a
+    wall of failures for code that is deliberately absent."""
+    if package not in {entry["package"] for entry in skills.installed()}:
+        pytest.skip(f"needs {package}, which this build leaves out")
+
+
 @contextmanager
 def chat_socket(client: TestClient, username: str | None = None):
     """The one chat channel a browser has (see chat/ws_notifications.py),
@@ -89,6 +99,10 @@ def chat_socket(client: TestClient, username: str | None = None):
     User.update(email=username, role=Session().role).where(User.id == username).execute()
     identity = AuthenticatedUser(provider_user_id=f"sub-{username}", email=username, name=username, picture_url=None)
     token = app.state.auth_service._issue_token(identity, "test")
+    # A turn typed into the browser is answered by webchat and by nothing
+    # else (see webchat/skill.py): without that package the socket opens
+    # and no frame ever comes back.
+    installed_skill("webchat")
     with client.websocket_connect("/ws/notifications", headers={"cookie": f"{SESSION_COOKIE_NAME}={token}"}) as ws:
         yield ws
 
@@ -517,6 +531,10 @@ def hello_project(client: TestClient) -> str:
     chat sessions. Returns the project's own id (its index.yml declares
     "legacy.hello_world" — put_project.py always uses whatever the
     upload's own project.id says, there's no separate name to request)."""
+    # Uploading, activating and publishing are the authoring surface's own
+    # routes (see avance_platform/settings_controller.py) — a build without
+    # it has no way to put a project there at all.
+    installed_skill("avance_platform")
     content = (SAMPLES_DIR / "Hello world.zip").read_bytes()
     response = client.post(
         "/api/projects/upload", content=content, headers={"Content-Type": "application/zip"}

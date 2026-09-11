@@ -286,6 +286,6 @@ class ProjectPayload(TypedDict):
     revision: int
     ui_label: str | None
     ui_description: str | None
-    talk_enabled: bool
+    services: dict[str, str]
     signal_tracking_on_ai_message: bool
     general_prompt: str

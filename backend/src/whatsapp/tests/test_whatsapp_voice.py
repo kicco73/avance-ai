@@ -11,7 +11,7 @@ from whatsapp.whatsapp_service import (
     REPLY_AUDIO_NOT_UNDERSTOOD, REPLY_NOT_LINKED, REPLY_OPTIONS_PROMPT, REPLY_PAUSED, REPLY_UNSUPPORTED_AUDIO,
     to_whatsapp_markdown,
 )
-from whatsapp_helpers import (  # noqa: F401 — env/voice_env are fixtures
+from whatsapp.tests.whatsapp_helpers import (  # noqa: F401 — env/voice_env are fixtures
     LINKED_EMAIL, LINKED_NUMBER, _FakeListen, _FakeTalk, _action, _build, _config, _payload, _post, _wav, env, voice_env,
 )
 

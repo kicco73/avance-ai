@@ -1,33 +1,26 @@
-"""Builds a stored project into a compiled package, for the Build view.
+"""What the Build view calls, and nothing it does itself for long.
 
-The one build this does today is "local module": the project's own
-Archive rows are compiled into a package written inside this one, next to
-compiler.py, so the result is importable as `build.<name>` without moving
-anything. The Target step's other options (zip, push to a repository) are
-not wired to anything yet and this service knows nothing about them.
-
-All of this is scaffolding for testing the round trip through the panel,
-not the shape the feature will keep.
+Two builds. "Local module" compiles the project's published revision into
+a package under the configured apps directory, where the compiled loader
+finds it — a matter of seconds, so it stays a request that returns when
+it is done. "Backend copy" is a whole backend built around one project,
+which takes minutes and ends by running that backend's own tests: it is
+a job with a step apiece (see build/backend_copy.py, build/build_job.py),
+and this service only assembles it.
 """
 from __future__ import annotations
 
 import shutil
-import socket
-import sqlite3
-import subprocess
-import time
-import urllib.error
-import urllib.request
-from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from system.logging_factory import LoggerFactory
 
 from project.archive.packages import PackageError, discard_other_revisions, import_automaton, package_dir, staging_dir
-from .compiler import CompileError, compile_contents
 
-logging = LoggerFactory.get_logger(__name__)
+from .backend_copy import BackendCopy
+from .build_job import BuildJob
+from .compiler import CompileError, compile_contents
 
 if TYPE_CHECKING:
     from db import Db
@@ -38,35 +31,6 @@ logger = LoggerFactory.get_logger(__name__)
 # Kept for the CLI, which writes a package wherever it is told to. A
 # build from the panel goes to the configured apps directory instead.
 BUILD_DIR = Path(__file__).resolve().parent
-
-BACKEND_DIR = BUILD_DIR.parent.parent
-REPO_ROOT = BACKEND_DIR.parent
-BUILDS_DIR = REPO_ROOT / "builds"
-STAGING_PREFIX = ".building."
-
-_BACKEND_COPY_IGNORE = shutil.ignore_patterns(
-    ".venv", "__pycache__", "*.pyc", "*.egg-info", "apps", "*.db", "*.sqlite", "*.sqlite3",
-)
-
-_LAUNCH_TIMEOUT_SECONDS = 15.0
-
-
-def _ignore_for(excluded_skills: "list[str] | None"):
-    """What not to copy: the usual build leftovers, plus the source
-    directory of every skill this build leaves out. That directory *is*
-    the switch — nothing else records the choice, and there is nothing to
-    read at run time to discover it (see skills.py). The launch check at
-    the end of the build is what proves the remaining code still stands
-    up without it."""
-    excluded = set(excluded_skills or ())
-
-    def ignore(directory: str, names: list[str]) -> set[str]:
-        dropped = set(_BACKEND_COPY_IGNORE(directory, names))
-        if excluded and Path(directory).resolve() == (BACKEND_DIR / "src").resolve():
-            dropped |= {name for name in names if name in excluded}
-        return dropped
-
-    return ignore
 
 # Names this package already uses for something else, so a project whose
 # id sanitizes to one of them cannot quietly overwrite it.
@@ -104,9 +68,11 @@ class BuildService:
         self._apps_dir = apps_dir
 
     def installed_skills(self, project_id: str) -> dict:
-        """What this backend has installed, and which of those this
-        project cannot be built without — the second list is what the
-        Build view ticks and refuses to untick. Asked of the project's
+        """What this backend has installed, and what the project makes of
+        each: `required` is what it cannot be built without (the Build
+        view ticks those and refuses to untick them), `disabled` what it
+        declared it will not use, and `contradicted` the few it declared
+        disabled while still calling into them. Asked of the project's
         published automaton, so what a draft is about to add does not
         constrain a build of what is live."""
         from project.archive.layout import ArchiveLayout
@@ -115,7 +81,12 @@ class BuildService:
         revision = published_revision_of(self._db, self._project_service, project_id)
         automaton = self._project_service.get_automaton(project_id, revision)
         sources = ArchiveLayout.decode_text(self._db.get_archives(project_id, revision=revision))
-        return {"skills": skills.installed(), "required": skills.required_for(automaton, sources)}
+        return {
+            "skills": skills.installed(),
+            "required": skills.required_for(automaton, sources),
+            "disabled": skills.disabled_for(automaton, sources),
+            "contradicted": skills.contradicted_for(automaton, sources),
+        }
 
     def build_local_module(self, project_id: str) -> dict:
         """Compiles `project_id`'s published revision into the apps
@@ -162,174 +133,16 @@ class BuildService:
             "files": sorted(path.name for path in final.iterdir() if path.is_file()),
         }
 
-    def build_backend_copy(self, project_id: str, excluded_skills: "list[str] | None" = None) -> dict:
-        revision = published_revision_of(self._db, self._project_service, project_id)
-        module_name = module_name_for(project_id)
-        target_name = f"{module_name}.{revision}"
-        final = BUILDS_DIR / target_name
-        staging = BUILDS_DIR / f"{STAGING_PREFIX}{target_name}"
-
-        BUILDS_DIR.mkdir(parents=True, exist_ok=True)
-        shutil.rmtree(staging, ignore_errors=True)
-        try:
-            backend_copy = staging / "backend"
-            logging.info("copying backend to %s (without: %s)", backend_copy, ", ".join(excluded_skills or []) or "nothing")
-            shutil.copytree(BACKEND_DIR, backend_copy, ignore=_ignore_for(excluded_skills))
-            logging.info("writing compiled automaton for '%s' revision %s into %s", project_id, revision, backend_copy)
-            self._write_compiled_automaton(project_id, revision, module_name, backend_copy)
-            logging.info("writing pruned database for '%s' revision %s into %s", project_id, revision, backend_copy)
-            self._write_pruned_database(project_id, backend_copy)
-            logging.info("verifying copied backend launches at %s", backend_copy)
-            #self._verify_backend_copy_launches(backend_copy)
-            logging.info("moving %s to %s", staging, final)
-            shutil.rmtree(final, ignore_errors=True)
-            staging.rename(final)
-        except Exception:
-            shutil.rmtree(staging, ignore_errors=True)
-            raise
-        # One directory per project, not one per build: the revision just
-        # written stays, every other build of the same project goes. Same
-        # rule the apps directory already follows, and for the same
-        # reason — a backend copy is the whole tree, so two of them are
-        # two of everything. Discarded only once this one is in place and
-        # has been proven to launch, never before: a build that fails at
-        # the launch check must leave the last good one where it was.
-        discarded = discard_other_revisions(BUILDS_DIR, module_name, revision)
-        logger.info(
-            "Built backend copy of '%s' revision %s into %s (without: %s) (dropped %s).",
-            project_id, revision, final / "backend", ", ".join(excluded_skills or []) or "nothing",
-            ", ".join(path.name for path in discarded) or "nothing",
-        )
-        return {"path": str(final / "backend"), "revision": revision, "excluded_skills": list(excluded_skills or [])}
-
-    def _write_compiled_automaton(self, project_id: str, revision: int, module_name: str, backend_copy: Path) -> None:
-        from project.archive.layout import ArchiveLayout
-
-        archives = self._db.get_archives(project_id, revision=revision)
-        if not archives:
-            raise CompileError(f"Project '{project_id}' has no files at revision {revision}.")
-        apps_dir = backend_copy / "apps"
-        apps_dir.mkdir(parents=True, exist_ok=True)
-        package_staging = staging_dir(apps_dir, module_name, revision)
-        shutil.rmtree(package_staging, ignore_errors=True)
-        try:
-            built = compile_contents(ArchiveLayout.decode_text(archives), module_name, package_staging, revision)
-            try:
-                import_automaton(built, project_id, revision)
-            except PackageError as exc:
-                raise CompileError(f"The package built for '{project_id}' does not load: {exc}") from exc
-            built.rename(package_dir(apps_dir, module_name, revision))
-        finally:
-            shutil.rmtree(package_staging, ignore_errors=True)
-
-    def _write_pruned_database(self, project_id: str, backend_copy: Path) -> None:
-        db_filename = Path(self._db.backup_file_path()).name
-        dest = backend_copy / "src" / db_filename
-        dest.write_bytes(self._db.export_backup())
-        _prune_database_to_project(dest, project_id)
-
-    def _verify_backend_copy_launches(self, backend_copy: Path) -> None:
-        python = BACKEND_DIR / ".venv" / "bin" / "python"
-        port = _free_port()
-        process = subprocess.Popen(
-            [str(python), "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(port)],
-            cwd=backend_copy / "src", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-        )
-        try:
-            self._wait_until_responding(process, port)
-        finally:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
-
-    def _wait_until_responding(self, process: subprocess.Popen, port: int) -> None:
-        """Up means the real router answered, and any status other than
-        503 proves that: a 401 or a 404 comes from a running app, while
-        503 is what main.py's fallback app returns for every path when
-        create_app raised. Probing a specific route would not work — this
-        check has to pass for a build with no authoring surface and no
-        chat, so there is no route it can count on existing.
-        """
-        url = f"http://127.0.0.1:{port}/api/state"
-        deadline = time.monotonic() + _LAUNCH_TIMEOUT_SECONDS
-        while time.monotonic() < deadline:
-            exit_code = process.poll()
-            if exit_code is not None:
-                raise CompileError(
-                    f"Copied backend exited (code {exit_code}) before starting up:"
-                    f"\n{_drain(process)}"
-                )
-            status = _probe(url)
-            if status is not None and status != HTTPStatus.SERVICE_UNAVAILABLE:
-                return
-            time.sleep(0.5)
-        # Still alive and still answering 503: it started as the fallback
-        # app, and the reason is in its own output. Without this the
-        # message is "did not answer", which says nothing.
-        raise CompileError(
-            f"Copied backend did not start within {_LAUNCH_TIMEOUT_SECONDS:.0f}s "
-            f"(last answer at {url}: "
-            f"{'no response' if _probe(url) is None else str(_probe(url)) + ', the fallback app'}):"
-            f"\n{_drain(process)}"
-        )
-
-
-def _probe(url: str) -> "int | None":
-    """The status the backend answered with, or None if nothing answered
-    at all. An HTTP error status is an answer."""
-    try:
-        with urllib.request.urlopen(url, timeout=1) as response:
-            return response.status
-    except urllib.error.HTTPError as exc:
-        return exc.code
-    except (urllib.error.URLError, ConnectionError, TimeoutError, OSError):
-        return None
-
-
-def _drain(process: subprocess.Popen) -> str:
-    """Whatever the copy printed. Terminated first: stdout.read() on a
-    live process blocks until it closes, which is how a failed build
-    used to hang instead of reporting."""
-    if process.poll() is None:
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-    try:
-        return (process.stdout.read() or "").strip() or "(no output)"
-    except Exception:  # noqa: BLE001
-        return "(output unavailable)"
-
-
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        probe.bind(("127.0.0.1", 0))
-        return probe.getsockname()[1]
-
-
-def _prune_database_to_project(db_path: Path, keep_project_id: str) -> None:
-    connection = sqlite3.connect(str(db_path))
-    try:
-        connection.execute("PRAGMA foreign_keys = ON")
-        other_ids = [row[0] for row in connection.execute("SELECT id FROM Project WHERE id != ?", (keep_project_id,))]
-        if not other_ids:
-            return
-        connection.executemany("DELETE FROM Project WHERE id = ?", [(project_id,) for project_id in other_ids])
-        placeholders = ",".join("?" for _ in other_ids)
-        for table, column in (
-            ("StateRemap", "project_id"),
-            ("EditHistory", "project_id"),
-            ("Test", "project_id"),
-            ("TestAggregateResult", "project_id"),
-            ("SystemWarning", "project_id"),
-            ("ProjectObserverIndex", "project_id"),
-            ("ProjectObserverIndex", "observer_project_id"),
-        ):
-            connection.execute(f"DELETE FROM {table} WHERE {column} IN ({placeholders})", other_ids)
-        connection.commit()
-    finally:
-        connection.close()
+    def backend_copy_job(self, project_id: str, excluded_skills: "list[str] | None" = None) -> BuildJob:
+        """The build itself, as a job somebody watches run (see
+        build/build_job.py). Everything that can be known before the first
+        step runs is settled here — the published revision, the package
+        name — so a project that cannot be built says so on the request
+        rather than in a job that starts and then stops."""
+        return BuildJob(BackendCopy(
+            self._db,
+            project_id,
+            published_revision_of(self._db, self._project_service, project_id),
+            module_name_for(project_id),
+            list(excluded_skills or []),
+        ))

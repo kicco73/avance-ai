@@ -73,6 +73,25 @@ export function putProjectField(projectId, field, value) {
   )
 }
 
+// One service's own level for this project: 'required', 'optional' (the
+// default, which removes the declaration) or 'disabled' — see
+// PROJECT_SPECS.md §1.2. One service at a time, never a whole mapping
+// assembled here.
+export function putServiceLevel(projectId, service, level) {
+  return projectFetch(
+    projectId,
+    `${API_URL}/projects/${encodeURIComponent(projectId)}/services/${encodeURIComponent(service)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level }) }
+  )
+}
+
+// The services a project may declare a level for, as this backend has
+// them installed (see skills.declarable) — name, label and description
+// all read off the server's own source tree.
+export function getDeclarableServices() {
+  return apiFetch(`${API_URL}/services`)
+}
+
 // Every file type a project can carry, straight from the backend's own
 // catalog (automaton.file_types) — see projectFileTypes.js.
 export function getProjectFileTypes() {

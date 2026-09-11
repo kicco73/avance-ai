@@ -29,6 +29,7 @@ logger = LoggerFactory.get_logger(__name__)
 KEY = "talk"
 UI_LABEL = "Talk"
 UI_DESCRIPTION = "Text to speech."
+PROJECT_DECLARABLE = True
 
 
 class _NoTalk:
@@ -95,23 +96,3 @@ def start(raw: dict, path: Path) -> None:
 
 def stop() -> None:
     _installed.uninstall()
-
-
-def required_by(automaton, sources: dict[str, str]) -> bool:
-    """Read from what the project wrote, not from the built automaton:
-    `talk-enabled` defaults to true, so the flag says nothing about
-    whether this project ever asked to be spoken. An explicit
-    `talk-enabled: true` is the asking."""
-    return any(_asks_for_speech(text) for text in filter(_is_text, sources.values()))
-
-
-def _is_text(content) -> bool:
-    """A project carries its attachments too, and those are bytes."""
-    return isinstance(content, str)
-
-
-def _asks_for_speech(text: str) -> bool:
-    return any(
-        line.split("#")[0].strip().replace(" ", "") == "talk-enabled:true"
-        for line in text.splitlines()
-    )

@@ -18,7 +18,8 @@ from avance_platform.platform_service import PlatformService
 from project.project_service import ProjectService
 from scheduler import SchedulerService
 from schemas import (
-    AiEditRequest, PublishProjectRequest, RenameProjectFileRequest, ReorderActionRequest, SetProjectFieldRequest,
+    AiEditRequest, PublishProjectRequest, RenameProjectFileRequest, ReorderActionRequest,
+    SetProjectFieldRequest, SetServiceLevelRequest,
     WebImportRequest,
 )
 from system.session import Session
@@ -59,7 +60,10 @@ SOURCE_EDITABLE_FIELDS = {"name", "ui-label", "ui-description", "ai-definition"}
 # actually its own separate top-level key (see AutomatonYamlEditor.
 # set_project_field), grouped in here only because the frontend edits it
 # from the same Project card.
-PROJECT_EDITABLE_FIELDS = {"id", "ui-label", "ui-description", "talk-enabled", "signal-tracking-on-ai-message", "general-prompt"}
+# 'services' is absent on purpose: a service's level is set one service
+# at a time through put_service_level below, never as a whole mapping
+# somebody has to assemble client-side.
+PROJECT_EDITABLE_FIELDS = {"id", "ui-label", "ui-description", "signal-tracking-on-ai-message", "general-prompt"}
 
 
 class EditProjectController(BaseController, ProjectCommitMixin):
@@ -633,6 +637,20 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         try:
             return await self.project_service.set_project_field(
                 project_id, field, req.value, self._activate_project
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except AutomatonBuildError:
+            raise
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @put("/api/projects/{project_id}/services/{service}", role="admin")
+    async def put_service_level(self, project_id: str, service: str, req: SetServiceLevelRequest):
+        self.project_service.ensure_project_not_broken(project_id)
+        try:
+            return await self.project_service.set_service_level(
+                project_id, service, req.level, self._activate_project
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc

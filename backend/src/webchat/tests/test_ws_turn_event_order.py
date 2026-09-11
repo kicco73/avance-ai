@@ -10,17 +10,10 @@ from __future__ import annotations
 
 import pytest
 
-from ai.ai_service import AiService
 from ai.llm_provider import ToolCall, ToolCallsRequested
-from automaton.automaton import Action, Automaton, Source, State
-from turn.turn_service import TurnService
-from turn.sessions.session_manager import SessionManager
+from automaton.automaton import Automaton
 from webchat.ws_turn import WsChatTurn
-from conftest import make_test_namespace_factory, make_test_scheduler_service
-from db.db import Db
-from metrics.metric_service import MetricService
-from test_chat_tool_set_integration import FakeProjectService, PROJECT_ID
-from tracking.tracking_service import TrackingService
+from turn_harness import one_state_automaton, turn_service_for  # noqa: F401 — turn_service_for is a fixture
 
 pytestmark = pytest.mark.regression
 
@@ -54,47 +47,6 @@ class _FakeProvider:
         return 4096
 
 
-def _automaton(*, with_sources: bool, autotracking_on_ai_message: bool) -> Automaton:
-    action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="a")
-    state_a = State(
-        key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action],
-        ai_may_read_sources=("flights",) if with_sources else (),
-    )
-    init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
-    states = {"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a}
-    return Automaton(
-        init_action=init_action, states=states, general_prompt="", signals=[], general_attachments={}, autotracking_on_ai_message=autotracking_on_ai_message,
-        sources=[Source(name="flights", url="avance:flights.csv", ui_label="Flights", ai_definition="One row per flight.")]
-        if with_sources else [],
-        project_id=PROJECT_ID,
-    )
-
-
-@pytest.fixture
-def turn_service_for(tmp_path):
-    db = Db(f"sqlite:///{tmp_path / 'ws_turn_order.db'}")
-    db.ensure_project(PROJECT_ID)
-    db.save_project_files(PROJECT_ID, {"flights.csv": b"city,country\nParis,France\n"}, {"flights.csv": "text/csv"})
-    db.publish_project(PROJECT_ID)
-
-    def make(automaton: Automaton, provider) -> TurnService:
-        automaton.set_storage_location(db.get_project_revision(PROJECT_ID))
-        ai_service = AiService(provider)
-        project_service = FakeProjectService(automaton)
-        metric_service = MetricService(db, project_service)
-        scheduler_service = make_test_scheduler_service(db)
-        namespace_factory = make_test_namespace_factory(db, scheduler_service)
-        tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
-        return TurnService(
-            ai_service=ai_service, ai_test_service=ai_service, project_service=project_service, db=db,
-            session_manager=SessionManager(db), tracking_service=tracking_service,
-            metric_service=metric_service, scheduler_service=scheduler_service, namespace_factory=namespace_factory,
-        )
-
-    # The very database those services write to — what a test asserts the
-    # persisted order of messages against.
-    make.db = db
-    return make
 
 
 class _RecordingConnection:
@@ -128,7 +80,7 @@ def _streamed_text(events: list[tuple[str, dict]]) -> str:
 
 async def test_with_declared_sources_every_chunk_of_the_replayed_final_round_precedes_done(turn_service_for):
     turn_service = turn_service_for(
-        _automaton(with_sources=True, autotracking_on_ai_message=True), _FakeProvider(tool_rounds=1),
+        one_state_automaton(with_sources=True, autotracking_on_ai_message=True), _FakeProvider(tool_rounds=1),
     )
 
     events = await _streamed_events(turn_service, "where's my flight?")
@@ -147,7 +99,7 @@ async def test_with_declared_sources_every_chunk_of_the_replayed_final_round_pre
 
 async def test_without_sources_and_tracking_after_the_user_message_every_chunk_precedes_done(turn_service_for):
     turn_service = turn_service_for(
-        _automaton(with_sources=False, autotracking_on_ai_message=False), _FakeProvider(tool_rounds=0),
+        one_state_automaton(with_sources=False, autotracking_on_ai_message=False), _FakeProvider(tool_rounds=0),
     )
 
     events = await _streamed_events(turn_service, "hello")
@@ -161,7 +113,7 @@ async def test_without_sources_and_tracking_after_the_user_message_every_chunk_p
 
 async def test_with_declared_sources_but_no_tool_call_the_answer_streams_then_done(turn_service_for):
     turn_service = turn_service_for(
-        _automaton(with_sources=True, autotracking_on_ai_message=True), _FakeProvider(tool_rounds=0),
+        one_state_automaton(with_sources=True, autotracking_on_ai_message=True), _FakeProvider(tool_rounds=0),
     )
 
     events = await _streamed_events(turn_service, "hello")

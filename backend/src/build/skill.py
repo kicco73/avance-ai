@@ -23,7 +23,10 @@ from pathlib import Path
 
 from build import config as build_config
 from system import bus
-from system.bus import POINT_AUTOMATON_LOADER, POINT_CONFIG_SERVICES, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
+from system.bus import (
+    POINT_API_STATE, POINT_AUTOMATON_LOADER, POINT_CONFIG_SERVICES, POINT_CORE_SERVICES,
+    POINT_HTTP_CONTROLLERS,
+)
 from system.config_services import ui_section
 from system.wiring import construct
 from system.logging_factory import LoggerFactory
@@ -38,6 +41,12 @@ UI_DESCRIPTION = "Compiles a project into a standalone package."
 def start(raw: dict, path: Path) -> None:
     bus.contribute(POINT_HTTP_CONTROLLERS, _install)
     bus.contribute(POINT_CONFIG_SERVICES, _describe_section)
+    # The one thing the frontend cannot find out by itself: whether this
+    # backend can compile at all. Manage projects' Publish button compiles
+    # right after publishing where it can, and simply publishes where it
+    # cannot — a backend without this package never sends the field, which
+    # is the answer.
+    bus.contribute(POINT_API_STATE, lambda payload: payload.update({"build_enabled": True}))
     if build_config.serves_compiled(raw, path):
         bus.contribute(POINT_AUTOMATON_LOADER, _choose_compiled_loader)
 

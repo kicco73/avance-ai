@@ -22,6 +22,7 @@ from pathlib import Path
 
 from system import bus
 from system.bus import POINT_API_STATE, POINT_CONFIG_SERVICES, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
+from automaton.project_services import OptionalService
 from system.config_services import ui_section
 from system.wiring import construct
 from listen import config as listen_config
@@ -35,6 +36,7 @@ logger = LoggerFactory.get_logger(__name__)
 KEY = "listen"
 UI_LABEL = "Listen"
 UI_DESCRIPTION = "Speech to text."
+PROJECT_DECLARABLE = True
 
 
 def start(raw: dict, path: Path) -> None:
@@ -54,8 +56,21 @@ def start(raw: dict, path: Path) -> None:
     bus.contribute(POINT_HTTP_CONTROLLERS, lambda controllers: controllers.append(
         construct(ListenController, {**bus.collect(POINT_CORE_SERVICES, {}), "listen_service": service})
     ))
-    bus.contribute(POINT_API_STATE, lambda payload: payload.update({"listen_enabled": service.enabled}))
+    bus.contribute(POINT_API_STATE, lambda payload: payload.update(
+        {"listen_enabled": _project_listen().narrow(service.enabled)}
+    ))
     logger.info("listen-service started with %d provider(s).", len(services))
+
+
+def _project_listen() -> OptionalService:
+    """What the active project declared about this service — the same
+    "a project can only narrow the server's own switch" the talk level
+    gets in PlatformController.get_state. No active project (or none
+    loadable) declares nothing, which is `optional`."""
+    try:
+        return bus.collect(POINT_CORE_SERVICES, {})["project_service"].get_active_automaton().services[KEY]
+    except Exception:  # noqa: BLE001
+        return OptionalService()
 
 
 def stop() -> None:

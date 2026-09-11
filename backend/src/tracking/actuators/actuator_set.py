@@ -11,6 +11,7 @@ from typing import Any, TYPE_CHECKING, TypeVar
 
 from system import bus
 from automaton.automaton import Action, DeferredExpression, JsSnippet
+from automaton.project_services import ProjectServices
 from automaton.scope import EvaluationScope
 from system.bus import MAIL_SEND, OUTPUT_TEXT, Message
 from turn.channels import WHATSAPP_CHAT
@@ -32,12 +33,13 @@ _SEND_MAIL_SUBJECT = "Notification from Avance"
 
 
 class _NoMailService:
-    """What a mail.send coming back undelivered means: this build has no
-    mail-service, so a project that calls task.send_mail cannot run here
-    (see mail.skill.required_by)."""
+    """What a mail.send coming back undelivered means: either this build
+    has no mail-service, or the project declared `mail: disabled` — both
+    say the same thing to a task that expected a mail to go out (see
+    mail.skill.required_by and automaton/project_services.py)."""
 
     async def bounced(self, message: Message) -> None:
-        raise ValueError("No 'mail-service' section in .config.yml — task.send_mail can't run.")
+        raise ValueError("No mail-service available to this project — task.send_mail can't run.")
 
 _T = TypeVar("_T")
 
@@ -84,6 +86,13 @@ class TaskNamespace(ABC):
         # set any other way. None for a namespace built without a firing
         # session (e.g. a deferred call, or a project-wide test reset).
         self._session_id: int | None = None
+        # What the project running this task declared about each service
+        # it may reach (project.services — see
+        # automaton/project_services.py). Bound per evaluation from the
+        # scope's own automaton, like _ai_service above; the empty one
+        # answers "optional" for everything, which is what a namespace
+        # nobody bound to a project has always done.
+        self._services = ProjectServices()
 
     def schedule_task(self, action: Action, scope: EvaluationScope, *, session_id: int | None) -> None:
         """Runs `action.task` as an ActionTask due now (see
@@ -126,6 +135,14 @@ class TaskNamespace(ABC):
         bound = copy.copy(self)
         bound._ai_service = ai_service
         bound._tool_set = tool_set
+        return bound
+
+    def with_services(self, services: ProjectServices) -> "TaskNamespace":
+        """A copy bound to what the project being evaluated declared
+        about each service — same never-mutate-self shape as
+        with_ai_service above (see EvaluationScopeBuilder.build)."""
+        bound = copy.copy(self)
+        bound._services = services
         return bound
 
     def with_session(self, session_id: int) -> "TaskNamespace":
@@ -204,7 +221,7 @@ class LiveTaskNamespace(TaskNamespace):
         super().__init__(dispatcher, factory)
 
     def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
-        _run_sync(bus.publish_with_bounceback(Message(
+        _run_sync(self._services["mail"].deliver(Message(
             type=MAIL_SEND, username=Session().user,
             body={"to": to, "subject": _SEND_MAIL_SUBJECT, "body_md": body_md},
         ), _NoMailService()))
@@ -212,9 +229,11 @@ class LiveTaskNamespace(TaskNamespace):
 
     def whatsapp(self, phone_number: str, message_md: str) -> bool:
         """The text goes out on the channel it names, and the posting is
-        the answer: False means nothing in this build carries it, which
-        is what an unconfigured channel always meant here."""
-        return _run_sync(bus.publish(Message(
+        the answer: False means nothing in this build carries it — or
+        that this project declared `whatsapp: disabled`, which reaches a
+        caller as the same "nobody carried it" an unconfigured channel
+        always meant here."""
+        return _run_sync(self._services["whatsapp"].publish(Message(
             type=OUTPUT_TEXT, body=message_md, username=phone_number.strip().lstrip("+"),
             channel=WHATSAPP_CHAT, project_id=self._dispatcher.project_id,
         )))

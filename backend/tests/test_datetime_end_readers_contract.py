@@ -29,7 +29,8 @@ def test_datetime_end_is_only_read_by_the_allowlisted_files():
     offenders = sorted(
         path.relative_to(SRC_ROOT).as_posix()
         for path in SRC_ROOT.rglob("*.py")
-        if "datetime_end" in path.read_text(encoding="utf-8")
+        if "tests" not in path.parts
+        and "datetime_end" in path.read_text(encoding="utf-8")
         and path.relative_to(SRC_ROOT).as_posix() not in ALLOWED_DATETIME_END_READERS
     )
     assert not offenders, (

@@ -21,10 +21,15 @@ export function getBuildSkills(projectId) {
 // `excludedSkills` names the packages this build leaves out. Sending the
 // excluded ones rather than the included ones means a client that does
 // not know about a skill can never drop it by accident.
-export function postBuildBackendCopy(projectId, excludedSkills = []) {
+//
+// A backend copy is a job of several steps ending in the built backend's
+// own test run, so this streams rather than waits: `onProgress` gets each
+// chunk the job broadcasts, whose `result` carries the step table (see
+// build/build_job.py). What resolves is the last chunk's report.
+export function postBuildBackendCopy(projectId, excludedSkills = [], onProgress) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/build/backend-copy`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ excluded_skills: excludedSkills })
-  })
+  }, { parse: 'sse', onProgress })
 }

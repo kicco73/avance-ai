@@ -1,10 +1,11 @@
 """The Build view's own routes.
 
-One route today, and deliberately only one: the Target step's "Local
-module" build, which compiles the project into a package under src/build/
-(see build.build_service.BuildService). The step's other targets — zip,
-push to a repository — have no backend behind them yet, and this
-controller does not pretend otherwise.
+Two builds and the list of what either may leave out. "Local module"
+compiles the project into a package and returns when it is done; "backend
+copy" builds a whole backend around it and streams its steps back, since
+it ends by running that backend's own tests (see build/build_job.py).
+The Target step's other options — zip, push to a repository — have no
+backend behind them yet, and this controller does not pretend otherwise.
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from http import HTTPStatus
 from build import BuildService, CompileError
 from fastapi import HTTPException
 
+from scheduler import SchedulerService
 from system import skills
 from controllers.base_controller import BaseController, get, post
 from pydantic import BaseModel
@@ -24,8 +26,9 @@ class BuildBackendCopyRequest(BaseModel):
 
 class BuildController(BaseController):
 
-    def __init__(self, build_service: BuildService) -> None:
+    def __init__(self, build_service: BuildService, scheduler_service: SchedulerService) -> None:
         self.build_service = build_service
+        self.scheduler_service = scheduler_service
 
     @post("/api/projects/{project_id}/build/local-module", role="admin")
     def post_build_local_module(self, project_id: str):
@@ -57,8 +60,17 @@ class BuildController(BaseController):
     def post_build_backend_copy(self, project_id: str, req: BuildBackendCopyRequest | None = None):
         """`excluded_skills` names the packages this build leaves out.
         Absent means a full build: a client that does not know about a
-        skill can never drop one by accident."""
+        skill can never drop one by accident.
+
+        Answers with the build's progress as it happens, not with its
+        result: a backend copy ends by running the built backend's own
+        test suite, which is minutes, so this streams the job's steps on
+        the same response and the last chunk carries the report (see
+        SchedulerService.stream_progress). What cannot be built at all —
+        a project with unpublished changes — is still a 400 here, before
+        any job exists."""
         try:
-            return self.build_service.build_backend_copy(project_id, req.excluded_skills if req else None)
+            job = self.build_service.backend_copy_job(project_id, req.excluded_skills if req else None)
         except CompileError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return self.scheduler_service.stream_progress(job)

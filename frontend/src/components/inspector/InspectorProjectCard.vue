@@ -2,17 +2,43 @@
 // A reusable detail card for the project's top-level `project:` section, using
 // the same badge/title/edit-form convention as InspectorDetailCard.vue's state/action
 // cards but as its own component: a project has no attachments, delete, or Graph-selection identity.
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { vAutosize } from './textareaAutosize.js'
 import { handleEnterNext } from './enterToNextField.js'
+import { getDeclarableServices } from '../../api.js'
 
 const props = defineProps({
-  // { id, ui_label, ui_description, talk_enabled, signal_tracking_on_ai_message, general_prompt } | null, from getProjectMetadata
+  // { id, ui_label, ui_description, services, signal_tracking_on_ai_message, general_prompt } | null, from getProjectMetadata
   project: { type: Object, default: null },
   editable: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['set-field'])
+const emit = defineEmits(['set-field', 'set-service-level'])
+
+// What this backend actually has to offer a project, read off its own
+// source tree (see skills.declarable) — never a list kept here, so a
+// service added tomorrow shows up with its own label and description.
+const declarableServices = ref([])
+
+const SERVICE_LEVELS = [
+  { id: 'required', label: 'Required', title: 'The build must include it' },
+  { id: 'optional', label: 'Optional', title: 'Used if the build has it' },
+  { id: 'disabled', label: 'Disabled', title: 'Never used, even when installed' }
+]
+
+onMounted(async () => {
+  try {
+    declarableServices.value = (await getDeclarableServices()).services
+  } catch {
+    // already surfaced via apiFetch — the section just stays empty
+  }
+})
+
+// A service the project never named is `optional`, which is exactly what
+// the backend does with an absent declaration (see project_services.py).
+function levelOf(service) {
+  return props.project?.services?.[service.key] ?? 'optional'
+}
 
 const open = ref(false)
 const showEditForm = computed(() => props.editable && open.value)
@@ -90,12 +116,6 @@ function commitBoolField(field, value) {
       <div v-if="showEditForm" class="inspector-detail-badges">
         <span
           class="inspector-detail-badge inspector-detail-badge-toggle"
-          :class="(project?.talk_enabled ?? true) ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
-          title="Click to toggle"
-          @click.stop="commitBoolField('talk-enabled', !(project?.talk_enabled ?? true))"
-        >Talk enabled</span>
-        <span
-          class="inspector-detail-badge inspector-detail-badge-toggle"
           :class="project?.signal_tracking_on_ai_message ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
           title="Click to toggle"
           @click.stop="commitBoolField('signal-tracking-on-ai-message', !project?.signal_tracking_on_ai_message)"
@@ -140,6 +160,30 @@ function commitBoolField(field, value) {
             @click.stop
             @blur="commitGeneralPrompt"
           ></textarea>
+          <template v-if="declarableServices.length">
+            <label class="inspector-detail-form-label" title="What this project asks of each platform service">
+              Services
+            </label>
+            <div
+              v-for="service in declarableServices"
+              :key="service.key"
+              class="inspector-service-row"
+              :title="service.ui_description"
+            >
+              <span class="inspector-service-name">{{ service.ui_label }}</span>
+              <div class="inspector-service-levels">
+                <button
+                  v-for="level in SERVICE_LEVELS"
+                  :key="level.id"
+                  type="button"
+                  class="inspector-service-level"
+                  :class="{ 'inspector-service-level-active': levelOf(service) === level.id }"
+                  :title="level.title"
+                  @click.stop="emit('set-service-level', service.key, level.id)"
+                >{{ level.label }}</button>
+              </div>
+            </div>
+          </template>
         </div>
         <div v-else key="readonly" class="inspector-detail-readonly">
           <p v-if="project?.id" class="inspector-detail-field"><strong>Id:</strong> <code class="inspector-detail-code">{{ project.id }}</code></p>
@@ -163,6 +207,13 @@ function commitBoolField(field, value) {
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
 .inspector-detail-badge-project { background: #6a1b9a; }
 .inspector-detail-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.inspector-service-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.35rem; }
+.inspector-service-name { font-size: 0.8rem; color: #444; }
+.inspector-service-levels { display: flex; border: 1px solid #ddd; border-radius: 999px; overflow: hidden; background: #fff; }
+.inspector-service-level { border: none; background: transparent; padding: 0.15rem 0.5rem; font: inherit; font-size: 0.68rem; color: #777; cursor: pointer; }
+.inspector-service-level:hover { background: #f2f2f4; }
+.inspector-service-level-active { background: #6a1b9a; color: #fff; }
+.inspector-service-level-active:hover { background: #6a1b9a; }
 .inspector-detail-badge-toggle { cursor: pointer; }
 .inspector-detail-badge-toggle-off { background: #ccc; color: #555; }
 .inspector-detail-badge-toggle-on { background: #4a6fa5; }

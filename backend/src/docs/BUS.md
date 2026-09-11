@@ -42,6 +42,17 @@ so a producer writes what it means once, in a method with a name,
 instead of at every call site. `Sender` is a Protocol; the sender is an
 object, never a callback.
 
+**A project may refuse a service before the post.** What a project
+declared about a service (`project.services`, see
+`automaton/project_services.py`) decides *how* a task's post is made:
+`optional`/`required` publish normally, `disabled` hands the message
+straight to `sender.bounced` — or answers `False` — without touching the
+registry. A producer writes the same call either way
+(`self._services["mail"].deliver(message, sender)`), and "the operator
+left this service out of the build" and "this project said no" reach it
+as one and the same answer. This is a decision on the *sending* side and
+changes nothing about routing: it is not a listener declining.
+
 A listener may **not** decline a message per delivery. Subscribing to a
 type already declares what it wants, and "try to deliver, handlers may
 refuse" only moves one conditional at the producer into one in every
@@ -152,9 +163,9 @@ meant to become a message.
 
 | Point | Constant | Target | Asked by | Filled by |
 | --- | --- | --- | --- | --- |
-| `api.state` | `POINT_API_STATE` | the `GET /api/state` payload | `avance_platform.platform_controller` | `listen` |
-| `config.services` | `POINT_CONFIG_SERVICES` | the public services snapshot | `config.py`, `system.config_services` | `talk`, `listen`, `mail`, `whatsapp`, `testing` |
-| `http.controllers` | `POINT_HTTP_CONTROLLERS` | the list of controllers to route | `controller.py` | `talk`, `listen`, `webchat`, `whatsapp`, `avance_platform`, `testing` |
+| `api.state` | `POINT_API_STATE` | the `GET /api/state` payload | `avance_platform.platform_controller` | `listen`, `build` |
+| `config.services` | `POINT_CONFIG_SERVICES` | the public services snapshot | `config.py`, `system.config_services` | `talk`, `listen`, `mail`, `whatsapp`, `testing`, `build` |
+| `http.controllers` | `POINT_HTTP_CONTROLLERS` | the list of controllers to route | `controller.py` | `talk`, `listen`, `webchat`, `whatsapp`, `avance_platform`, `testing`, `build` |
 | `core.services` | `POINT_CORE_SERVICES` | the composed core, offered to whoever asks | every skill | `main.py` |
 | `automaton.loader` | `POINT_AUTOMATON_LOADER` | which loader answers "give me this project's automaton" | `main.py` | `avance_platform`, `product` |
 

@@ -1,5 +1,5 @@
 import {
-  postAddState, postAddSignal, postAddEnvKey, postAddAction, putStateField, putProjectField,
+  postAddState, postAddSignal, postAddEnvKey, postAddAction, putStateField, putProjectField, putServiceLevel,
   putActionField, putInitActionField, putSignalField, putEnvKeyField,
   deleteState, deleteProjectAction, deleteProjectSignal, deleteProjectEnvKey,
 } from '../api.js'
@@ -82,6 +82,16 @@ export function useIndexYmlEditing(
     guardedAction(`edit "${field}"`, async () => {
       try {
         await putProjectField(projectId, field, value)
+      } catch {
+        // already surfaced via apiFetch
+      }
+    })
+  }
+
+  function handleSetServiceLevel(service, level) {
+    guardedAction(`set "${service}" to ${level}`, async () => {
+      try {
+        await putServiceLevel(projectId, service, level)
       } catch {
         // already surfaced via apiFetch
       }
@@ -190,7 +200,7 @@ export function useIndexYmlEditing(
 
   return {
     handleAddState, handleAddSignal, handleAddEnvKey, handleAddAction,
-    handleSetStateField, handleSetProjectField, handleSetActionField, handleSetSignalField, handleSetEnvKeyField,
+    handleSetStateField, handleSetProjectField, handleSetServiceLevel, handleSetActionField, handleSetSignalField, handleSetEnvKeyField,
     handleDeleteState, handleDeleteAction, handleDeleteSignal, handleDeleteEnvKey,
   }
 }

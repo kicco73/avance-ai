@@ -25,7 +25,7 @@ async function readSseResult(res, onProgress) {
     }
   }
   if (final?.job_status === 'failed') {
-    const message = final.error || 'Import failed.'
+    const message = final.error || 'The job failed.'
     setApiError(message, '')
     throw new Error(message)
   }

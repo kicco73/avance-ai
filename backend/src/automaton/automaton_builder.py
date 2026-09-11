@@ -305,6 +305,8 @@ class AutomatonBuilder(object):
 
         self._at(self._line_of(raw, "project"), "project")
         metadata = ProjectMetadata.from_raw(raw, legacy_project_id=legacy_project_id)
+        for warning in metadata.service_warnings:
+            self._cursor.warn(warning)
 
         raw_signals = self._require_mapping_section(raw, "signals", "signal name")
         signals: dict[str, Signal] = {}
@@ -402,7 +404,7 @@ class AutomatonBuilder(object):
             project_revision=metadata.revision,
             project_ui_label=metadata.ui_label,
             project_ui_description=metadata.ui_description,
-            talk_enabled=metadata.talk_enabled,
+            project_services=metadata.services.as_raw(),
             new_session_strategy=metadata.new_session_strategy,
             build_warnings=self._cursor.warnings,
         )

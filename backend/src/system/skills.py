@@ -59,28 +59,76 @@ def installed(source_root: Path | None = None) -> list[dict]:
             "package": module.__name__.split(".")[0],
             "ui_label": getattr(module, "UI_LABEL", module.__name__.split(".")[0].replace("_", " ").title()),
             "ui_description": getattr(module, "UI_DESCRIPTION", ""),
+            "declarable": bool(getattr(module, "PROJECT_DECLARABLE", False)),
         }
         for module in discover(source_root)
     ]
 
 
+def declarable(source_root: Path | None = None) -> list[dict]:
+    """The services a project may declare a level for in its own
+    index.yml (`project.services` — see automaton/project_services.py).
+    A skill says so itself, with PROJECT_DECLARABLE: the platform, the
+    build service and the compiled-product server are things an operator
+    installs, never things a project asks for."""
+    return [entry for entry in installed(source_root) if entry["declarable"]]
+
+
 def required_for(automaton, sources: dict[str, str], source_root: Path | None = None) -> list[str]:
-    """The packages this project cannot run without. Nothing here knows
-    what any of them do: each installed skill is handed the project and
-    answers for itself (`required_by`), so the rule that `task.send_mail`
-    needs mail lives in mail, and a skill added tomorrow brings its own
-    rule with it. A skill that never declares one is never required.
+    """The packages this project cannot run without: what it declared as
+    `required`, plus what each skill works out for itself from what the
+    project does (`required_by`) — a `task.send_mail` call requires mail
+    whether or not anyone wrote it down. Nothing here knows what any
+    skill does: the rule lives in the skill, and a skill added tomorrow
+    brings its own rule with it.
 
     Both forms of the project are offered because they answer different
     questions: the built `automaton` for what it does (its task scripts),
     and its `sources` for what it asked for — a default the builder
     filled in is not the project asking."""
+    declared = _declared(automaton).required_keys()
     return [
         module.__name__.split(".")[0]
         for module in discover(source_root)
-        for required_by in filter(None, [getattr(module, "required_by", None)])
-        if required_by(automaton, sources)
+        if getattr(module, "KEY", module.__name__.split(".")[0]) in declared
+        or any(
+            required_by(automaton, sources)
+            for required_by in filter(None, [getattr(module, "required_by", None)])
+        )
     ]
+
+
+def disabled_for(automaton, sources: dict[str, str], source_root: Path | None = None) -> list[str]:
+    """The packages this project declared it will not use, and the ones
+    it contradicts itself about — a project that declares `mail:
+    disabled` and still calls task.send_mail gets the call bounced at
+    run time (see automaton/project_services.py), which is worth saying
+    out loud in the Build view rather than discovering in a log."""
+    declared = _declared(automaton).disabled_keys()
+    return [
+        module.__name__.split(".")[0]
+        for module in discover(source_root)
+        if getattr(module, "KEY", module.__name__.split(".")[0]) in declared
+    ]
+
+
+def contradicted_for(automaton, sources: dict[str, str], source_root: Path | None = None) -> list[str]:
+    declared = _declared(automaton).disabled_keys()
+    return [
+        module.__name__.split(".")[0]
+        for module in discover(source_root)
+        if getattr(module, "KEY", module.__name__.split(".")[0]) in declared
+        and any(
+            required_by(automaton, sources)
+            for required_by in filter(None, [getattr(module, "required_by", None)])
+        )
+    ]
+
+
+def _declared(automaton):
+    from automaton.project_services import ProjectServices
+
+    return getattr(automaton, "services", None) or ProjectServices()
 
 
 def start_all(raw: dict, path: Path, source_root: Path | None = None) -> list[ModuleType]:

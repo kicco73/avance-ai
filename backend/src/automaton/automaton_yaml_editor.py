@@ -14,6 +14,7 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from automaton.automaton import (
     ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload,
 )
+from automaton import project_services
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 
 
@@ -218,7 +219,7 @@ class AutomatonYamlEditor:
             "revision": raw_project.get("revision", 0),
             "ui_label": raw_project.get("ui-label"),
             "ui_description": raw_project.get("ui-description"),
-            "talk_enabled": raw_project.get("talk-enabled", True),
+            "services": self._declared_services(raw_project),
             "signal_tracking_on_ai_message": raw_project.get("signal-tracking-on-ai-message", False),
             "general_prompt": self._raw.get("general-prompt", ""),
         }
@@ -396,6 +397,31 @@ class AutomatonYamlEditor:
         else:
             project[field] = value
         return self._project_payload()
+
+    def set_service_level(self, service: str, level: str) -> ProjectPayload:
+        """`project.services.<service>`, where the default level writes
+        nothing: an unlisted service is already `optional`, and a project
+        that declares nothing keeps the section out of its index.yml. The
+        deprecated `talk-enabled` goes as soon as anything is declared
+        here, so the two can never disagree."""
+        project = self._raw.setdefault("project", CommentedMap())
+        services = project.setdefault("services", CommentedMap())
+        if level == project_services.OPTIONAL:
+            services.pop(service, None)
+        else:
+            services[service] = level
+        if service == "talk":
+            project.pop("talk-enabled", None)
+        if not services:
+            project.pop("services", None)
+        return self._project_payload()
+
+    @staticmethod
+    def _declared_services(raw_project: Mapping) -> dict[str, str]:
+        declared, _ = project_services.parse(
+            dict(raw_project.get("services") or {}), talk_enabled=raw_project.get("talk-enabled"),
+        )
+        return declared.as_raw()
 
     def set_project_revision(self, revision: int) -> ProjectPayload:
         """Stamps `project.revision` directly — called only by

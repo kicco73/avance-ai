@@ -18,7 +18,7 @@ const props = defineProps({
   revision: { type: Number, default: null }
 })
 
-const emit = defineEmits(['edit', 'label', 'download', 'share', 'delete', 'compile', 'build'])
+const emit = defineEmits(['edit', 'label', 'download', 'share', 'delete', 'publish', 'build'])
 
 const previewing = ref(false)
 
@@ -164,10 +164,9 @@ onBeforeUnmount(async () => {
       v-if="!app.compiled"
       type="button"
       class="project-detail-secondary-btn"
-      :disabled="!!buildBlockedReason"
-      :title="buildBlockedReason || 'Compile the published revision into a local module'"
-      @click="emit('compile', app.id)"
-    >Compile</button>
+      title="Publish this project's current revision, then compile it if this backend can"
+      @click="emit('publish', app.id)"
+    >Publish</button>
     <button
       type="button"
       class="project-detail-secondary-btn"

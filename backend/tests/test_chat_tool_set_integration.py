@@ -12,12 +12,10 @@ from automaton.automaton import Action, Automaton, Source, State
 from turn.turn_service import TurnService
 from turn.sessions.session_manager import SessionManager
 from conftest import make_test_namespace_factory, make_test_scheduler_service
+from turn_harness import PROJECT_ID, FakeProjectService
 from db.db import Db
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService
-
-PROJECT_ID = "proj"
-
 
 class FakeToolAwareAiService:
     """Like test_turn_service_evaluation_points.py's own
@@ -61,36 +59,6 @@ class FakeToolAwareAiService:
             if key in schema:
                 on_metadata(key, value)
         yield "Hi!"
-
-
-class FakeProjectService:
-    def __init__(self, automaton: Automaton, state_key: str = "a") -> None:
-        self._automaton = automaton
-        self._state_key = state_key
-
-    def get_active_automaton_and_state(self, username: str | None = None):
-        return self._automaton, self._automaton.states[self._state_key]
-
-    def get_automaton_and_state(self, project_id: str, type: str = 'live', username: str | None = None):
-        return self._automaton, self._automaton.states[self._state_key]
-
-    def get_automaton_for_session(self, session_id: int):
-        return self._automaton
-
-    def get_automaton_and_state_for_session(self, session_id: int):
-        return self._automaton, self._automaton.states[self._state_key]
-
-    def get_active_project_id(self) -> str:
-        return PROJECT_ID
-
-    def get_published_revision(self, project_id: str) -> int:
-        return 0
-
-    def legal_terms_pending(self, username: str, project_id: str) -> bool:
-        return False
-
-    def get_project_availability(self, project_id: str):
-        return (False, None)
 
 
 @pytest.fixture

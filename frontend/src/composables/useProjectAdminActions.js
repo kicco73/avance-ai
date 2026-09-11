@@ -1,10 +1,13 @@
 import { ref } from 'vue'
 import {
   getState, putProject, postNewProject, activateProject, deleteProject, postWipeAllLiveSessions,
-  postCleanUnusedRevisions, downloadProject, getBackup, postRestoreBackup, getAbout
+  postCleanUnusedRevisions, downloadProject, getBackup, postRestoreBackup, getAbout,
+  getPublishPreview, postPublishProject
 } from '../api.js'
 import { postBuildLocalModule } from '../api/build.js'
-import { aboutDialog, confirmDialog, infoDialog } from '../dialogStore.js'
+import { buildAvailable } from '../buildAvailability.js'
+import PublishRemapDialog from '../components/settings/PublishRemapDialog.vue'
+import { aboutDialog, confirmDialog, customDialog, infoDialog } from '../dialogStore.js'
 import { handleStateChange, loadMessages, clearChatUi } from '../chatStore.js'
 
 function downloadBlob(blob, filename) {
@@ -17,6 +20,10 @@ function downloadBlob(blob, filename) {
   link.remove()
   URL.revokeObjectURL(url)
 }
+
+// askPublishConsent's "the user backed out" — distinct from the null
+// that means "no remap needed", which is a perfectly good publish.
+const CANCELLED = Symbol('publish cancelled')
 
 export function useProjectAdminActions(chatWindowRef, manageProjectsView) {
   const modelUploadInput = ref(null)
@@ -119,18 +126,64 @@ export function useProjectAdminActions(chatWindowRef, manageProjectsView) {
     }
   }
 
-  async function handleCompileProject(projectId) {
-    let result
+  // Manage projects' one Publish button: the draft becomes the published
+  // revision, and where this backend can compile at all (see
+  // buildAvailability.js) that revision is compiled into a package right
+  // after. A backend without the build package publishes and stops there.
+  async function handlePublishProject(projectId) {
+    const remapTo = await askPublishConsent(projectId)
+    if (remapTo === CANCELLED) return
+    let published
     try {
-      result = await postBuildLocalModule(projectId)
+      published = await postPublishProject(projectId, remapTo)
     } catch {
       return
     }
+    const built = await compilePublishedRevision(projectId)
     await refreshStateAndProjects()
-    await infoDialog({
-      title: 'Compile',
-      body: `Compiled revision ${result.revision} into ${result.module}.`,
+    await infoDialog({ title: 'Publish', body: publishReport(published, built) })
+  }
+
+  // The chosen remap target, null when none is needed, or CANCELLED when
+  // the user backed out of either question.
+  async function askPublishConsent(projectId) {
+    let preview
+    try {
+      preview = await getPublishPreview(projectId)
+    } catch {
+      return CANCELLED
+    }
+    if (preview.needs_remap) {
+      return await customDialog({ component: PublishRemapDialog, props: { prompt: preview } }) ?? CANCELLED
+    }
+    // Only ask when it's actually consequential — a live conversation
+    // still running on the currently published revision.
+    if (!preview.has_active_sessions) return null
+    const ok = await confirmDialog({
+      title: 'Publish',
+      body: "Publish this project's current revision? There's an active session on the currently "
+        + 'published revision — it will stay frozen there; this one becomes the new one.',
+      okLabel: 'Publish',
+      danger: true
     })
+    return ok ? null : CANCELLED
+  }
+
+  // What was built, or null — a backend that cannot compile, and a
+  // compile that failed (already surfaced via apiFetch), read the same
+  // here: the publish itself stands either way.
+  async function compilePublishedRevision(projectId) {
+    if (!buildAvailable.value) return null
+    try {
+      return await postBuildLocalModule(projectId)
+    } catch {
+      return null
+    }
+  }
+
+  function publishReport(published, built) {
+    const head = `Published revision ${published.published_revision}.`
+    return built ? `${head} Compiled into ${built.module}.` : head
   }
 
   async function handleWipeAllLiveSessions() {
@@ -191,7 +244,7 @@ export function useProjectAdminActions(chatWindowRef, manageProjectsView) {
   return {
     modelUploadInput, uploadingProject, uploadProgress, uploadProjectId, uploadIconReady,
     triggerModelUpload, handleNewProject, handleModelUploadChange, handleModelEditSaved, handleProjectSwitch,
-    activateAndRefresh, handleModelDownload, handleModelDelete, handleCompileProject, handleWipeAllLiveSessions,
+    activateAndRefresh, handleModelDownload, handleModelDelete, handlePublishProject, handleWipeAllLiveSessions,
     handleCleanUnusedRevisions, handleDownloadBackup, handleRestoreBackup, handleShowAbout,
   }
 }

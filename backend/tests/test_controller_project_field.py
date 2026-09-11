@@ -28,7 +28,7 @@ class TestGetProjectMetadata:
         assert response.status_code == 200
         assert response.json()["project"] == {
             "id": "bare", "family": None, "revision": 0, "ui_label": None, "ui_description": None,
-            "talk_enabled": True, "signal_tracking_on_ai_message": False, "general_prompt": "",
+            "services": {}, "signal_tracking_on_ai_message": False, "general_prompt": "",
         }
 
     def test_reports_declared_fields(self, client, hello_project):
@@ -43,8 +43,27 @@ class TestGetProjectMetadata:
         assert response.status_code == 200
         assert response.json()["project"] == {
             "id": "concierge", "family": None, "revision": 0, "ui_label": "Concierge", "ui_description": "The front desk.",
-            "talk_enabled": True, "signal_tracking_on_ai_message": False, "general_prompt": "",
+            "services": {}, "signal_tracking_on_ai_message": False, "general_prompt": "",
         }
+
+
+class TestPutServiceLevel:
+    def test_declares_a_level_per_service_and_the_default_removes_it(self, client, hello_project):
+        response = client.put(f"/api/projects/{hello_project}/services/talk", json={"level": "disabled"})
+        assert response.status_code == 200
+        assert response.json()["services"] == {"talk": "disabled"}
+
+        response = client.put(f"/api/projects/{hello_project}/services/mail", json={"level": "required"})
+        assert response.status_code == 200
+        assert response.json()["services"] == {"talk": "disabled", "mail": "required"}
+
+        response = client.put(f"/api/projects/{hello_project}/services/talk", json={"level": "optional"})
+        assert response.status_code == 200
+        assert response.json()["services"] == {"mail": "required"}
+
+    def test_refuses_a_level_that_is_not_one_of_the_three(self, client, hello_project):
+        response = client.put(f"/api/projects/{hello_project}/services/talk", json={"level": "maybe"})
+        assert response.status_code == 422
 
 
 class TestPutProjectField:
@@ -56,10 +75,6 @@ class TestPutProjectField:
         response = client.put(f"/api/projects/{hello_project}/project/ui-description", json={"value": "A greeting bot."})
         assert response.status_code == 200
         assert response.json()["ui_description"] == "A greeting bot."
-
-        response = client.put(f"/api/projects/{hello_project}/project/talk-enabled", json={"value": False})
-        assert response.status_code == 200
-        assert response.json()["talk_enabled"] is False
 
         response = client.put(
             f"/api/projects/{hello_project}/project/signal-tracking-on-ai-message", json={"value": True}

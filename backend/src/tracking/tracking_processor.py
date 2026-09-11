@@ -494,12 +494,13 @@ class TrackingProcessor(object):
 		started in. OutputPrompt is always first, before signals (so output
 		values are available to triggers when signals arrive)."""
 		has_to_evaluate_signals_before_ai_reply = not self.user.automaton.autotracking_on_ai_message
-		talk_enabled = self.talk_enabled and self.user.automaton.talk_enabled and self.audio_wanted
+		project_talk = self.user.automaton.services["talk"]
+		talk_enabled = project_talk.narrow(self.talk_enabled) and self.audio_wanted
 		logger.info(
 			"build_turn_prompt talk_enabled: project=%r revision=%s session=%s system_talk_enabled=%s "
-			"automaton_talk_enabled=%s audio_wanted=%s -> %s",
+			"project_talk_level=%s audio_wanted=%s -> %s",
 			self.user.project_id, self.user.automaton.revision, self.user.session_id, self.talk_enabled,
-			self.user.automaton.talk_enabled, self.audio_wanted, talk_enabled,
+			project_talk.name, self.audio_wanted, talk_enabled,
 		)
 		reactions_enabled = self.user.automaton.reactions_enabled_for(self.user.state)
 
@@ -710,7 +711,7 @@ def estimate_state_prompt(
 	output_prompt = OutputPrompt(output_definition) if state.output else None
 	signals_prompt = SignalsPrompt(signal_definition)
 	reaction_prompt = ReactionPrompt(reaction_definition) if automaton.reactions_enabled_for(state) else None
-	audio_prompt = AudioPrompt() if automaton.talk_enabled else None
+	audio_prompt = AudioPrompt() if automaton.services["talk"].narrow(True) else None
 	text_prompt = TextPrompt(base_prompt)
 	memory_prompt = MemoryPrompt(env)
 	if has_to_evaluate_signals_before_ai_reply:

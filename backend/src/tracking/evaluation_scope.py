@@ -121,6 +121,7 @@ class EvaluationScopeBuilder(object):
         if self._automaton_namespace is not None:
             scope["automaton"] = self._automaton_namespace.scoped_to(automaton.family)
         scope["chat"] = self._chat_namespace
+        task_namespace = self._task_namespace.with_services(automaton.services)
         if self._ai_service is not None:
             # task.prompt()'s own tool catalog — this task's own
             # state's ai-may-read-sources/ai-must-read-sources/
@@ -140,8 +141,8 @@ class EvaluationScopeBuilder(object):
                 )
                 if state is not None and state.ai_source_names else None
             )
-            scope["task"] = self._task_namespace.with_ai_service(self._ai_service, tool_set=tool_set)
+            scope["task"] = task_namespace.with_ai_service(self._ai_service, tool_set=tool_set)
         else:
-            scope["task"] = self._task_namespace
+            scope["task"] = task_namespace
         merged = self._metrics.merge_if_referenced(automaton, state_key, scope)
         return EvaluationScope(merged, automaton=automaton, state_key=state_key)

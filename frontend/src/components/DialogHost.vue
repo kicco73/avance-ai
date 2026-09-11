@@ -68,9 +68,11 @@ function onNativeClose() {
 // A 'custom' dialog's own component has no dialog-actions row of its own
 // (see the template below) — its content is the only thing that could
 // ever offer a real "OK" button, so this is how it reaches the same
-// closeWith() every other kind's own button already uses. Unused by
-// every other kind, which close through their own buttons directly.
-provide('closeDialog', () => closeWith(null))
+// closeWith() every other kind's own button already uses, and how it
+// resolves customDialog()'s promise with whatever it was opened to ask
+// for (see PublishRemapDialog.vue's chosen state). Unused by every other
+// kind, which close through their own buttons directly.
+provide('closeDialog', (value = null) => closeWith(value))
 
 // ESC fires 'cancel' (cancelable) before the native close — prevented so
 // closeWith's own animated sequence runs instead of an instant vanish,

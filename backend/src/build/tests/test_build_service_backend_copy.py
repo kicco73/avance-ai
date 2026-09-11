@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
 import sqlite3
+import subprocess
 from pathlib import Path
 
 import pytest
 
-from build.build_service import BuildService, _prune_database_to_project
+import build.backend_copy as backend_copy
+from build.backend_copy import STEPS, _prune_database_to_project
+from build.build_service import BuildService, module_name_for
 from build.compiler import CompileError
 from db import Db
 
@@ -32,6 +36,25 @@ class _Service:
         if revision is None:
             raise ValueError(f"Project '{project_id}' has never been published.")
         return revision
+
+
+async def _build_artifacts(service: BuildService, project_id: str, excluded_skills: "list[str] | None" = None) -> dict:
+    """Every step but the last. What a build leaves on disk is what these
+    tests are about; running the built backend's own suite is minutes and
+    has its own test below."""
+    return await _run(service.backend_copy_job(project_id, excluded_skills), len(STEPS) - 1)
+
+
+async def _build_and_test(service: BuildService, project_id: str, excluded_skills: "list[str] | None" = None) -> dict:
+    """The whole job, test run included — what the Build view triggers."""
+    return await _run(service.backend_copy_job(project_id, excluded_skills), len(STEPS))
+
+
+async def _run(job, steps: int) -> dict:
+    job.prepare()
+    for _ in range(steps):
+        await job.run_next_step()
+    return json.loads(job.result)
 
 
 def _publish(db: Db, project_id: str) -> None:
@@ -79,8 +102,10 @@ def test_pruning_a_database_with_only_the_kept_project_is_a_no_op(db, tmp_path):
 
 
 def test_a_project_with_unpublished_changes_cannot_be_built(db, tmp_path, monkeypatch):
-    import build.build_service as build_service
-    monkeypatch.setattr(build_service, "BUILDS_DIR", tmp_path)
+    """Refused where the request can still see it — before there is a job
+    at all, so the Build view gets a 400 rather than a stream that starts
+    and stops."""
+    monkeypatch.setattr(backend_copy, "BUILDS_DIR", tmp_path)
 
     _publish(db, PROJECT_A)
     db.save_project_files(
@@ -88,16 +113,15 @@ def test_a_project_with_unpublished_changes_cannot_be_built(db, tmp_path, monkey
     )
 
     with pytest.raises(CompileError, match="publish"):
-        BuildService(db, _Service(db), tmp_path / "apps").build_backend_copy(PROJECT_A)
+        BuildService(db, _Service(db), tmp_path / "apps").backend_copy_job(PROJECT_A)
 
     assert list(tmp_path.iterdir()) == []
 
 
 @pytest.mark.slow
-def test_a_built_backend_copy_is_a_real_launchable_server(tmp_path, monkeypatch):
-    import build.build_service as build_service
+async def test_a_built_backend_copy_is_a_whole_backend_around_one_project(tmp_path, monkeypatch):
     build_root = tmp_path / "builds"
-    monkeypatch.setattr(build_service, "BUILDS_DIR", build_root)
+    monkeypatch.setattr(backend_copy, "BUILDS_DIR", build_root)
 
     db_path = tmp_path / "avance.db"
     source_db = Db(f"sqlite:///{db_path}")
@@ -105,17 +129,22 @@ def test_a_built_backend_copy_is_a_real_launchable_server(tmp_path, monkeypatch)
     _publish(source_db, PROJECT_A)
     revision = source_db.get_project_revision(PROJECT_A)
 
-    result = BuildService(source_db, _Service(source_db), tmp_path / "apps").build_backend_copy(PROJECT_A)
+    result = await _build_artifacts(BuildService(source_db, _Service(source_db), tmp_path / "apps"), PROJECT_A)
 
     assert result["revision"] == revision
-    backend_copy = build_root / f"{PROJECT_A}.{revision}" / "backend"
-    assert str(backend_copy) == result["path"]
-    assert (backend_copy / "src" / "main.py").is_file()
-    assert (backend_copy / "src" / db_path.name).is_file()
-    assert (backend_copy / "apps" / f"{PROJECT_A}.{revision}").is_dir()
-    assert not (backend_copy / ".venv").exists()
+    built = build_root / f"{PROJECT_A}.{revision}" / "backend"
+    assert str(built) == result["path"]
+    assert (built / "src" / "main.py").is_file()
+    assert (built / "src" / db_path.name).is_file()
+    assert (built / "apps" / f"{PROJECT_A}.{revision}").is_dir()
+    assert not (built / ".venv").exists()
+    # The tests travel with the code they test — that is what the build's
+    # own last step runs (see build/backend_copy.py).
+    assert (built / "tests" / "test_wiring_contract.py").is_file()
+    assert (built / "conftest.py").is_file()
+    assert (built / "pytest.ini").is_file()
 
-    connection = sqlite3.connect(str(backend_copy / "src" / db_path.name))
+    connection = sqlite3.connect(str(built / "src" / db_path.name))
     try:
         assert [row[0] for row in connection.execute("SELECT id FROM Project")] == [PROJECT_A]
     finally:
@@ -123,10 +152,12 @@ def test_a_built_backend_copy_is_a_real_launchable_server(tmp_path, monkeypatch)
 
 
 @pytest.mark.slow
-def test_a_backend_copy_without_talk_still_launches(tmp_path, monkeypatch):
-    import build.build_service as build_service
+async def test_a_skill_left_out_takes_its_own_tests_with_it(tmp_path, monkeypatch):
+    """The whole reason a skill's tests live inside its package: there is
+    no list of which tests belong to what, and nothing to keep in sync —
+    the directory that is not copied is not there to be collected."""
     build_root = tmp_path / "builds"
-    monkeypatch.setattr(build_service, "BUILDS_DIR", build_root)
+    monkeypatch.setattr(backend_copy, "BUILDS_DIR", build_root)
 
     db_path = tmp_path / "avance.db"
     source_db = Db(f"sqlite:///{db_path}")
@@ -134,13 +165,14 @@ def test_a_backend_copy_without_talk_still_launches(tmp_path, monkeypatch):
     _publish(source_db, PROJECT_A)
     revision = source_db.get_project_revision(PROJECT_A)
 
-    result = BuildService(source_db, _Service(source_db), tmp_path / "apps").build_backend_copy(
-        PROJECT_A, excluded_skills=["talk"],
+    result = await _build_artifacts(
+        BuildService(source_db, _Service(source_db), tmp_path / "apps"), PROJECT_A, ["talk"],
     )
 
-    backend_copy = build_root / f"{PROJECT_A}.{revision}" / "backend"
-    assert str(backend_copy) == result["path"]
-    assert not (backend_copy / "src" / "talk").exists()
+    built = build_root / f"{PROJECT_A}.{revision}" / "backend"
+    assert str(built) == result["path"]
+    assert not (built / "src" / "talk").exists()
+    assert (built / "src" / "whatsapp" / "tests").is_dir()
 
 
 @pytest.mark.contract
@@ -164,7 +196,7 @@ def test_a_skill_left_out_of_a_build_is_a_directory_that_is_not_copied(tmp_path)
     nothing at run time that could read it back."""
     import shutil
 
-    from build.build_service import BACKEND_DIR, _ignore_for
+    from build.backend_copy import BACKEND_DIR, _ignore_for
 
     full = tmp_path / "full"
     without = tmp_path / "without"
@@ -191,7 +223,7 @@ def test_a_backend_without_listen_still_imports_its_own_entry_point(tmp_path):
     import subprocess
     import sys
 
-    from build.build_service import BACKEND_DIR, _ignore_for
+    from build.backend_copy import BACKEND_DIR, _ignore_for
 
     copy = tmp_path / "backend"
     shutil.copytree(BACKEND_DIR, copy, ignore=_ignore_for(["listen"]))
@@ -218,7 +250,7 @@ def test_a_backend_without_a_skill_still_imports_its_own_entry_point(tmp_path, p
     import subprocess
     import sys
 
-    from build.build_service import BACKEND_DIR, _ignore_for
+    from build.backend_copy import BACKEND_DIR, _ignore_for
 
     copy = tmp_path / "backend"
     shutil.copytree(BACKEND_DIR, copy, ignore=_ignore_for([package]))
@@ -248,7 +280,7 @@ def test_the_composition_root_names_no_controller_a_build_could_leave_out(tmp_pa
     contributes nothing and its routes are simply not there."""
     from pathlib import Path as _Path
 
-    source = (_Path(__file__).resolve().parent.parent / "src" / "controller.py").read_text()
+    source = (_Path(__file__).resolve().parents[2] / "controller.py").read_text()
 
     assert "ProjectController" in source
     for left_out in ("EditProjectController", "SettingsController", "AuthController",
@@ -306,7 +338,7 @@ def _boot(copy: "Path") -> "tuple[int, str]":
 def _copy_backend(tmp_path: "Path", excluded: "list[str]") -> "Path":
     import shutil
 
-    from build.build_service import BACKEND_DIR, _ignore_for
+    from build.backend_copy import BACKEND_DIR, _ignore_for
 
     copy = tmp_path / "backend"
     shutil.copytree(BACKEND_DIR, copy, ignore=_ignore_for(excluded))
@@ -358,36 +390,33 @@ def _build_service_for(tmp_path, monkeypatch, build_root):
     """A BuildService whose backend copy is exercised for what it leaves
     on disk, not for whether the copy boots: the launch check needs a
     virtualenv this test has no business building."""
-    import build.build_service as build_service
-    monkeypatch.setattr(build_service, "BUILDS_DIR", build_root)
-    monkeypatch.setattr(BuildService, "_verify_backend_copy_launches", lambda self, backend_copy: None)
+    monkeypatch.setattr(backend_copy, "BUILDS_DIR", build_root)
     db = Db(f"sqlite:///{tmp_path / 'avance.db'}")
     db.get_or_create_user("test", "sub-user", "user", "user", None)
     _publish(db, PROJECT_A)
     return BuildService(db, _Service(db), tmp_path / "apps"), db
 
 
-def test_a_rebuild_leaves_no_previous_build_of_the_same_project_behind(tmp_path, monkeypatch):
+async def test_a_rebuild_leaves_no_previous_build_of_the_same_project_behind(tmp_path, monkeypatch):
     """One directory per project, not one per build. Whatever an earlier
     build of this project left in the builds directory is gone — an older
     revision, and the staging directory of a build that died halfway —
     while another project's build is untouched."""
-    import build.build_service as build_service
     build_root = tmp_path / "builds"
     build_root.mkdir()
     service, db = _build_service_for(tmp_path, monkeypatch, build_root)
-    module = build_service.module_name_for(PROJECT_A)
+    module = module_name_for(PROJECT_A)
     revision = db.get_project_revision(PROJECT_A)
 
     stale = build_root / f"{module}.{revision - 1}"
     stale.mkdir()
     (stale / "marker.txt").write_text("from the build before")
-    half_written = build_root / f"{build_service.STAGING_PREFIX}{module}.{revision - 1}"
+    half_written = build_root / f"{backend_copy.STAGING_PREFIX}{module}.{revision - 1}"
     half_written.mkdir()
     unrelated = build_root / "some_other_project.1"
     unrelated.mkdir()
 
-    result = service.build_backend_copy(PROJECT_A)
+    result = await _build_artifacts(service, PROJECT_A)
 
     built = Path(result["path"]).parent
     assert built.is_dir()
@@ -398,18 +427,66 @@ def test_a_rebuild_leaves_no_previous_build_of_the_same_project_behind(tmp_path,
 
 
 @pytest.mark.slow
-def test_building_the_same_revision_twice_replaces_it(tmp_path, monkeypatch):
+async def test_building_the_same_revision_twice_replaces_it(tmp_path, monkeypatch):
     """The same (project, revision) built again is the same directory,
     with nothing of the earlier build left inside it."""
     build_root = tmp_path / "builds"
     build_root.mkdir()
     service, _ = _build_service_for(tmp_path, monkeypatch, build_root)
 
-    first = Path(service.build_backend_copy(PROJECT_A)["path"]).parent
+    first = Path((await _build_artifacts(service, PROJECT_A))["path"]).parent
     (first / "left_over.txt").write_text("should not survive")
 
-    second = Path(service.build_backend_copy(PROJECT_A)["path"]).parent
+    second = Path((await _build_artifacts(service, PROJECT_A))["path"]).parent
 
     assert second == first
     assert not (second / "left_over.txt").exists()
     assert [path.name for path in build_root.iterdir()] == [second.name]
+
+
+@pytest.mark.contract
+def test_the_last_step_of_a_build_is_running_the_built_backends_own_tests():
+    assert [step.key for step in STEPS][-1] == "tests"
+    assert STEPS[-1].label == "Running the build's tests"
+
+
+async def test_the_test_step_runs_pytest_inside_the_build_and_never_recursively(tmp_path, monkeypatch):
+    """Against the built directory, not this one — and without the tests
+    that build a backend themselves, which would build a backend that
+    builds a backend."""
+    copy = backend_copy.BackendCopy(None, PROJECT_A, 3, PROJECT_A, [])
+    monkeypatch.setattr(backend_copy, "BUILDS_DIR", tmp_path)
+    recorded = {}
+
+    def fake_run(command, **kwargs):
+        recorded["command"] = command
+        recorded["cwd"] = kwargs["cwd"]
+        return subprocess.CompletedProcess(command, 0, stdout="12 passed in 3.4s\n", stderr="")
+
+    monkeypatch.setattr(backend_copy.subprocess, "run", fake_run)
+
+    copy.run_tests()
+
+    assert recorded["cwd"] == tmp_path / f"{PROJECT_A}.3" / "backend"
+    assert recorded["command"][1:3] == ["-m", "pytest"]
+    assert recorded["command"][-2:] == ["-m", "not spawns_a_build"]
+    assert copy.report()["tests"] == {
+        "passed": True, "summary": "12 passed in 3.4s", "output": "12 passed in 3.4s",
+    }
+
+
+async def test_a_build_whose_own_tests_fail_is_a_failed_build(tmp_path, monkeypatch):
+    """The build stays on disk — it was published before the tests ran —
+    and the job says why it failed, so the panel shows the failure rather
+    than a green build nobody looked at."""
+    copy = backend_copy.BackendCopy(None, PROJECT_A, 3, PROJECT_A, [])
+    monkeypatch.setattr(backend_copy, "BUILDS_DIR", tmp_path)
+    monkeypatch.setattr(
+        backend_copy.subprocess, "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 1, stdout="1 failed, 2 passed\n", stderr=""),
+    )
+
+    with pytest.raises(CompileError, match="tests failed"):
+        copy.run_tests()
+
+    assert copy.report()["tests"]["passed"] is False

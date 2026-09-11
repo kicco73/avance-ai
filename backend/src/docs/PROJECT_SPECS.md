@@ -86,7 +86,9 @@ project:
   ui-label: My Project
   ui-description: A friendly description.
   signal-tracking-on-ai-message: false
-  talk-enabled: true
+  services:
+    talk: required
+    mail: disabled
 ```
 
 | Field | Required | Type | Default | Meaning |
@@ -97,7 +99,32 @@ project:
 | `ui-label` | no | string | — | The only "name" ever shown to a user; `id` is never displayed. |
 | `ui-description` | no | string | — | Shown in the frontend. |
 | `signal-tracking-on-ai-message` | no | boolean | `false` | `false`: auto-tracking runs after the user's message, before the reply. `true`: runs after the reply instead (may reuse model-reported inline values, §3.2). |
-| `talk-enabled` | no | boolean | `true` | Whether this project asks for `audio` metadata at all — can only narrow the server's own talk-service switch, never enable it. |
+| `services` | no | mapping (service name → level) | `{}` | What this project asks of each platform service it can reach. §1.2. |
+
+### 1.2 `project.services:`
+
+Every service the platform can offer a project — `talk`, `listen`,
+`mail`, `whatsapp` — is declared at one of three levels. A service this
+mapping never names is `optional`.
+
+| Level | Build | Run time |
+| --- | --- | --- |
+| `required` | The build must include it; the Build view ticks it and refuses to untick it. | Used whenever it is there. |
+| `optional` (default) | Free choice. | Used if the build has it, done without if not. |
+| `disabled` | Defaults to left out, still includable. | Never used, even in a build that has it: a call into it comes back exactly as it does when nothing in the build is listening — `task.send_mail` raises, `task.whatsapp(...)` returns `false`, and no `audio` metadata is ever asked for. |
+
+A service a project uses through a task call (`task.send_mail`,
+`task.whatsapp`) is `required` for a build whether or not it is written
+down here — declaring it `disabled` and calling it anyway is reported in
+the Build view, and the call bounces at run time.
+
+The name is the service's own, as Settings > Manage services shows it.
+Naming a service this backend does not have installed is not an error: a
+project is authored once and built against many backends.
+
+> **Deprecated:** `project.talk-enabled: true|false` still reads as
+> `services: {talk: required}` / `services: {talk: disabled}` and builds
+> with a warning. Write `services:` instead.
 
 ## 2. Names, identifiers, and reserved words
 

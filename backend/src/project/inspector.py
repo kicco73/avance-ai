@@ -233,7 +233,7 @@ class ProjectInspector:
             "revision": automaton.project_revision,
             "ui_label": automaton.project_ui_label,
             "ui_description": automaton.project_ui_description,
-            "talk_enabled": automaton.talk_enabled,
+            "services": automaton.services.as_raw(),
             "signal_tracking_on_ai_message": automaton.autotracking_on_ai_message,
             "general_prompt": automaton.general_prompt,
         }

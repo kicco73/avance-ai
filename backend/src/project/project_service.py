@@ -238,6 +238,11 @@ class ProjectService(object):
     async def set_project_field(self, project_id: str, field: str, value, commit: CommitCallback) -> ProjectPayload:
         return await self.editor.set_project_field(project_id, field, value, commit)
 
+    async def set_service_level(
+        self, project_id: str, service: str, level: str, commit: CommitCallback
+    ) -> ProjectPayload:
+        return await self.editor.set_service_level(project_id, service, level, commit)
+
     async def set_signal_field(
         self, project_id: str, signal_name: str, field: str, value, commit: CommitCallback
     ) -> SignalPayload:

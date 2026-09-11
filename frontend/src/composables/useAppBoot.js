@@ -5,6 +5,7 @@ import { clearApiError } from '../errorStore.js'
 import { requireLogin } from '../authStore.js'
 import { confirmDialog } from '../dialogStore.js'
 import { consumeInviteCode, peekInviteCode } from '../shareLink.js'
+import { setBuildAvailable } from '../buildAvailability.js'
 import { setCapabilities, setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../chatStore.js'
 
 // App.vue's own boot sequence: the backend-readiness ping loop, resolving
@@ -80,6 +81,7 @@ export function useAppBoot(
     try {
       const newState = await getState(controller.signal)
       setCapabilities({ talkAvailable: newState.talk_enabled ?? true, micAvailable: newState.listen_enabled ?? true })
+      setBuildAvailable(newState.build_enabled ?? false)
       setInputTokenBudgetPerTurn(newState.input_token_budget_per_turn ?? null)
       setTotalTokenBudgetPerSession(newState.total_token_budget_per_session ?? null)
       handleStateChange(newState)

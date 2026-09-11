@@ -1,13 +1,16 @@
-"""GET /api/state's own talk_enabled — the AND of "does the server have
-a TTS provider configured at all" (what the talk package itself declares
-at bus.POINT_CONFIG_SERVICES) and "does the active project itself opt in"
-(its own automaton.talk_enabled, defaulting true) — the chat toolbar's
-audio/spoken-text icons (ChatInput.vue) read this one combined flag.
+"""GET /api/state's own talk_enabled — what the active project's own
+declared level for the talk service (project.services.talk, see
+automaton/project_services.py) makes of "does the server have a TTS
+provider configured at all" (what the talk package itself declares at
+bus.POINT_CONFIG_SERVICES). A project can only narrow it, never turn it
+on; the chat toolbar's audio/spoken-text icons (ChatInput.vue) read this
+one combined flag.
 """
 from __future__ import annotations
 
 import pytest
 
+from automaton.project_services import ProjectServices
 from system import bus
 from system.bus import POINT_CONFIG_SERVICES
 from avance_platform.platform_controller import PlatformController
@@ -22,13 +25,13 @@ def _declare_talk_configured() -> None:
 
 
 class _FakeAutomaton:
-    def __init__(self, talk_enabled: bool) -> None:
-        self.talk_enabled = talk_enabled
+    def __init__(self, talk_level: str | None) -> None:
+        self.services = ProjectServices({"talk": talk_level} if talk_level else {})
 
 
 class _FakeProjectService:
-    def __init__(self, talk_enabled: bool) -> None:
-        self._automaton = _FakeAutomaton(talk_enabled)
+    def __init__(self, talk_level: str | None) -> None:
+        self._automaton = _FakeAutomaton(talk_level)
 
     def get_active_state_payload(self) -> dict:
         return {}
@@ -53,28 +56,33 @@ class _FakeChatService:
         return 200000
 
 
-def _controller(*, talk_service_configured: bool, project_talk_enabled: bool) -> PlatformController:
+def _controller(*, talk_service_configured: bool, project_talk_level: str | None) -> PlatformController:
     if talk_service_configured:
         _declare_talk_configured()
     return PlatformController(
         turn_service=_FakeChatService(),
-        project_service=_FakeProjectService(project_talk_enabled),
-        platform_service=_FakeProjectService(project_talk_enabled),
+        project_service=_FakeProjectService(project_talk_level),
+        platform_service=_FakeProjectService(project_talk_level),
     )
 
 
-def test_talk_enabled_when_server_has_a_provider_and_the_project_opts_in():
-    controller = _controller(talk_service_configured=True, project_talk_enabled=True)
+def test_talk_enabled_when_server_has_a_provider_and_the_project_requires_it():
+    controller = _controller(talk_service_configured=True, project_talk_level="required")
     assert controller.get_state()["talk_enabled"] is True
 
 
-def test_talk_disabled_when_the_project_opts_out_even_with_a_server_provider():
-    controller = _controller(talk_service_configured=True, project_talk_enabled=False)
+def test_talk_enabled_when_server_has_a_provider_and_the_project_declares_nothing():
+    controller = _controller(talk_service_configured=True, project_talk_level=None)
+    assert controller.get_state()["talk_enabled"] is True
+
+
+def test_talk_disabled_when_the_project_disables_it_even_with_a_server_provider():
+    controller = _controller(talk_service_configured=True, project_talk_level="disabled")
     assert controller.get_state()["talk_enabled"] is False
 
 
-def test_talk_disabled_when_the_server_has_no_provider_even_if_the_project_opts_in():
-    controller = _controller(talk_service_configured=False, project_talk_enabled=True)
+def test_talk_disabled_when_the_server_has_no_provider_even_if_the_project_requires_it():
+    controller = _controller(talk_service_configured=False, project_talk_level="required")
     assert controller.get_state()["talk_enabled"] is False
 
 

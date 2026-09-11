@@ -20,7 +20,7 @@ from system.ws_notifications import (
 from webchat.webchat_service import WebchatService
 from conftest import chat_socket, chat_turn_frames
 from system.session import Session
-from test_ws_turn_event_order import _automaton, turn_service_for  # noqa: F401 — a pytest fixture, used by name
+from turn_harness import one_state_automaton, turn_service_for  # noqa: F401 — a pytest fixture, used by name
 
 pytestmark = pytest.mark.contract
 
@@ -462,7 +462,7 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     the conversation, never how long a turn happens to take."""
     provider = _GatedProvider()
     turn_service = turn_service_for(
-        _automaton(with_sources=False, autotracking_on_ai_message=False), provider,
+        one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider,
     )
     db = turn_service_for.db
     session = await turn_service.get_current_session_if_any_or_create_new(None)
@@ -504,7 +504,7 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
 async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(turn_service_for):
     provider = _GatedProvider()
     turn_service = turn_service_for(
-        _automaton(with_sources=False, autotracking_on_ai_message=False), provider,
+        one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider,
     )
     db = turn_service_for.db
     session = await turn_service.get_current_session_if_any_or_create_new(None)

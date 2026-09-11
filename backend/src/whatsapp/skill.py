@@ -30,6 +30,7 @@ logger = LoggerFactory.get_logger(__name__)
 KEY = "whatsapp"
 UI_LABEL = "WhatsApp"
 UI_DESCRIPTION = "Chat channel over the WhatsApp Cloud API."
+PROJECT_DECLARABLE = True
 
 
 class _NoWhatsApp:

@@ -211,7 +211,7 @@ AUTOMATON = {class_name}(
     project_revision={project_revision!r},
     project_ui_label={ui_label!r},
     project_ui_description={ui_description!r},
-    talk_enabled={talk_enabled!r},
+    project_services={project_services!r},
     new_session_strategy={new_session_strategy!r},
     build_warnings={build_warnings!r},
 )
@@ -301,7 +301,7 @@ def _compiled(table, text, kind):
             project_revision=self.automaton.project_revision,
             ui_label=self.automaton.project_ui_label,
             ui_description=self.automaton.project_ui_description,
-            talk_enabled=self.automaton.talk_enabled,
+            project_services=self.automaton.services.as_raw(),
             new_session_strategy=self.automaton.new_session_strategy,
             build_warnings=self.automaton.build_warnings,
         ))
@@ -657,7 +657,7 @@ def verify_package(project_path: Path, module_name: str) -> None:
     problems: list[str] = []
     for attribute in (
         "project_id", "family", "project_revision", "project_ui_label", "project_ui_description",
-        "talk_enabled", "autotracking_on_ai_message", "new_session_strategy", "general_prompt",
+        "services", "autotracking_on_ai_message", "new_session_strategy", "general_prompt",
         "build_warnings",
     ):
         problems += _compare(attribute, getattr(compiled, attribute), getattr(interpreted, attribute))

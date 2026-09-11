@@ -283,4 +283,5 @@ project:
   ui-label: "Vueling - Refund Management"
   ui-description: "Automated conversational flow for handling and analyzing flight refund requests."
   signal-tracking-on-ai-message: false
-  talk-enabled: true
+  services:
+    talk: required

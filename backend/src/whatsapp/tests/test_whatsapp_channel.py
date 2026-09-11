@@ -14,7 +14,7 @@ from whatsapp.whatsapp_service import (
     REPLY_NOT_REGISTERED, REPLY_PAUSED, REPLY_REGISTERED, REPLY_SESSION_TAKEN_OVER, REPLY_TECHNICAL_PROBLEM,
     REPLY_TERMS_ACCEPTED, REPLY_UNSUPPORTED, IncomingMessage, WhatsAppService,
 )
-from whatsapp_helpers import (  # noqa: F401 — env is a fixture
+from whatsapp.tests.whatsapp_helpers import (  # noqa: F401 — env is a fixture
     LINKED_EMAIL, LINKED_NUMBER, _action, _build, _config, _interactive_payload, _payload, _post, env,
 )
 
