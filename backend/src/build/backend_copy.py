@@ -139,9 +139,6 @@ class BackendCopy:
         self._write_requirements()
 
     def _write_requirements(self) -> None:
-        """A skill's directory is left out by the copy above; the lines it
-        owns in the shared requirements.txt have to be taken out here, or
-        a product built without Talk still asks pip for piper-tts."""
         from system import skills
 
         dropped = set(skills.requirements_of(self.excluded_skills))

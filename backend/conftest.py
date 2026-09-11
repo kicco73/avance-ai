@@ -619,10 +619,19 @@ def _is_full_test_run(session) -> bool:
         session.config.args == list(session.config.getini("testpaths"))
         and not option.keyword
         and not option.markexpr
-        and not option.lf
-        and not option.failedfirst
-        and not option.stepwise
+        and not getattr(option, "lf", False)
+        and not getattr(option, "failedfirst", False)
+        and not getattr(option, "stepwise", False)
     )
+
+
+def pytest_collection_modifyitems(config, items):
+    if "spawns_a_build" in (config.option.markexpr or ""):
+        return
+    recursive = [item for item in items if item.get_closest_marker("spawns_a_build")]
+    for item in recursive:
+        items.remove(item)
+    config.hook.pytest_deselected(items=recursive)
 
 
 def pytest_sessionfinish(session, exitstatus) -> None:
