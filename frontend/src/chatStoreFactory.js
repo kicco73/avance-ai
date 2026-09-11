@@ -162,7 +162,7 @@ export function createChatStore({
     }
     if (session.legal_terms_pending) return null
     currentSessionId.value = session.id
-    selectedSessionActive.value = session.active
+    selectedSessionActive.value = session.current
     currentProjectId.value = session.project_id
     state.value = session.state
     if (useAutoTracking) await loadAutoTracking()
@@ -225,7 +225,7 @@ export function createChatStore({
   async function selectSession(session) {
     if (session.id === currentSessionId.value) return
     currentSessionId.value = session.id
-    selectedSessionActive.value = session.active
+    selectedSessionActive.value = session.current
     syncAudioPreference()
     messages.value = []
     historyLoaded.value = false
@@ -779,7 +779,7 @@ export function createChatStore({
         return
       }
       currentSessionId.value = session.id
-      selectedSessionActive.value = session.active
+      selectedSessionActive.value = session.current
       clearApiError()
       messages.value = []
       // A brand new session enters init_action.target through init_action
@@ -799,7 +799,7 @@ export function createChatStore({
     if (currentSessionId.value == null) return
     try {
       const session = await postCloseSession(currentSessionId.value)
-      selectedSessionActive.value = session.active
+      selectedSessionActive.value = session.current
       if (sessionsPanelOpen.value) await loadSessions()
     } catch {
       // already surfaced via apiFetch

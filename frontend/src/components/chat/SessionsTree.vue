@@ -236,7 +236,7 @@ const {
                   <span class="session-badge-row">
                     <span
                       class="session-badge"
-                      :class="{ 'session-badge-inactive': !session.active, 'session-badge-unsupported': session.unsupported_revision }"
+                      :class="{ 'session-badge-inactive': !session.current, 'session-badge-unsupported': session.unsupported_revision }"
                     >
                       {{ session.title || session.end_state }}
                     </span>

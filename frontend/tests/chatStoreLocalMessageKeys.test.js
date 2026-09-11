@@ -36,7 +36,7 @@ describe('every store message carries a unique local id, loaded or placeholder',
   })
 
   it('never lets a loaded message and a later placeholder share the same local id', async () => {
-    api.getCurrentSession.mockResolvedValue({ id: 1, active: true, state: { key: 'x', ui_label: 'X', actions: [] } })
+    api.getCurrentSession.mockResolvedValue({ id: 1, current: true, state: { key: 'x', ui_label: 'X', actions: [] } })
     api.getMessages.mockResolvedValue([
       { id: 1, role: 'assistant', content: 'loaded reply', audio_text: null, timestamp: 't1' },
     ])

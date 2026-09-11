@@ -51,7 +51,7 @@ describe('a turn stays pinned to the session it was sent for, even if the user s
     // slow reply comes back.
     api.getMessages.mockResolvedValue([{ id: 900, role: 'assistant', content: 'B history', timestamp: 't' }])
     api.getSessionState.mockResolvedValue({ key: 'b', ui_label: 'B', actions: [] })
-    await chatStore.selectSession({ id: 2, active: true })
+    await chatStore.selectSession({ id: 2, current: true })
 
     expect(chatStore.currentSessionId.value).toBe(2)
     const beforeReply = chatStore.messages.value.map((m) => m.content)
@@ -81,7 +81,7 @@ describe('a turn stays pinned to the session it was sent for, even if the user s
     const sendPromise = chatStore.handleSend('hello from A')
     api.getMessages.mockResolvedValue([])
     api.getSessionState.mockResolvedValue({ key: 'b', ui_label: 'B', actions: [] })
-    await chatStore.selectSession({ id: 2, active: true })
+    await chatStore.selectSession({ id: 2, current: true })
 
     turn.resolve({
       reply: [], user_message_id: 1, assistant_message_id: 2,
@@ -101,7 +101,7 @@ describe('a turn stays pinned to the session it was sent for, even if the user s
 
     api.getMessages.mockResolvedValue([])
     api.getSessionState.mockResolvedValue({ key: 'b', ui_label: 'B', actions: [] })
-    await chatStore.selectSession({ id: 2, active: true })
+    await chatStore.selectSession({ id: 2, current: true })
 
     turn.resolve({
       reply: [{ id: 99, content: 'stale reply for A', audio_text: null, timestamp: 't' }],

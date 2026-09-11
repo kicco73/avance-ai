@@ -59,8 +59,8 @@ describe('the live store and the test store always route to their own endpoints'
   })
 
   it('loadMessages and loadSessions each hit their own pool, never the other one', async () => {
-    api.getCurrentSession.mockResolvedValue({ id: 1, active: true, state: STATE })
-    api.getCurrentTestSession.mockResolvedValue({ id: 2, active: true, state: STATE })
+    api.getCurrentSession.mockResolvedValue({ id: 1, current: true, state: STATE })
+    api.getCurrentTestSession.mockResolvedValue({ id: 2, current: true, state: STATE })
 
     await chatStore.loadMessages()
     await chatStore.loadSessions()
@@ -76,8 +76,8 @@ describe('the live store and the test store always route to their own endpoints'
   })
 
   it('handleNewSession creates in its own pool — the live one confirming first, the test one scoped to its project and unconfirmed', async () => {
-    api.postCreateSession.mockResolvedValue({ id: 3, active: true })
-    api.getCurrentSession.mockResolvedValue({ id: 3, active: true, state: STATE })
+    api.postCreateSession.mockResolvedValue({ id: 3, current: true })
+    api.getCurrentSession.mockResolvedValue({ id: 3, current: true, state: STATE })
 
     await chatStore.handleNewSession()
 
@@ -88,8 +88,8 @@ describe('the live store and the test store always route to their own endpoints'
     expect(taskActions.runTaskScript).not.toHaveBeenCalled()
 
     dialogStore.confirmDialog.mockClear()
-    api.postCreateTestSession.mockResolvedValue({ id: 4, active: true })
-    api.getCurrentTestSession.mockResolvedValue({ id: 4, active: true, state: STATE })
+    api.postCreateTestSession.mockResolvedValue({ id: 4, current: true })
+    api.getCurrentTestSession.mockResolvedValue({ id: 4, current: true, state: STATE })
 
     await testChatStore.handleNewSession()
 
@@ -101,7 +101,7 @@ describe('the live store and the test store always route to their own endpoints'
     expect(chatStore.liveStore.handleReset).toBeNull()
 
     api.postResetTestSessions.mockResolvedValue({ key: 'a', ui_label: 'A', actions: [] })
-    api.getCurrentTestSession.mockResolvedValue({ id: 6, active: true, state: { key: 'a', ui_label: 'A', actions: [] } })
+    api.getCurrentTestSession.mockResolvedValue({ id: 6, current: true, state: { key: 'a', ui_label: 'A', actions: [] } })
 
     await testChatStore.handleReset()
 
@@ -115,9 +115,9 @@ describe('the live store and the test store always route to their own endpoints'
     await chatStore.handleCloseSession()
     expect(api.postCloseSession).not.toHaveBeenCalled()
 
-    api.getCurrentSession.mockResolvedValue({ id: 7, active: true, state: STATE })
+    api.getCurrentSession.mockResolvedValue({ id: 7, current: true, state: STATE })
     await chatStore.loadMessages()
-    api.postCloseSession.mockResolvedValue({ id: 7, active: false })
+    api.postCloseSession.mockResolvedValue({ id: 7, current: false })
 
     await chatStore.handleCloseSession()
 

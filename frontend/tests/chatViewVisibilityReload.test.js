@@ -64,7 +64,7 @@ describe('ChatView.vue never reloads messages mid-turn on visibilitychange', () 
   })
 
   it('skips reloadMessages while chatLoading is true, and calls it once the turn resolves', async () => {
-    api.getCurrentSession.mockResolvedValue({ id: 1, active: true, state: { key: 'x', ui_label: 'X', actions: [] } })
+    api.getCurrentSession.mockResolvedValue({ id: 1, current: true, state: { key: 'x', ui_label: 'X', actions: [] } })
     const ChatWindow = (await import('../src/components/chat/ChatView.vue')).default
     const app = createApp(ChatWindow, { hideSessionsPanel: false })
     app.mount(container)

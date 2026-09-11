@@ -67,7 +67,7 @@ describe("a live turn's assistant bubble survives the messageId backfill without
   })
 
   it('keeps the same .bubble-assistant DOM node from first chunk through assistant_message_id landing', async () => {
-    api.getCurrentSession.mockResolvedValue({ id: 1, active: true, state: { key: 'x', ui_label: 'X', actions: [] } })
+    api.getCurrentSession.mockResolvedValue({ id: 1, current: true, state: { key: 'x', ui_label: 'X', actions: [] } })
     const ChatWindow = (await import('../src/components/chat/ChatView.vue')).default
     const app = createApp(ChatWindow, { hideSessionsPanel: false })
     app.mount(container)

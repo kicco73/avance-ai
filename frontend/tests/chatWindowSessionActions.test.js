@@ -70,7 +70,7 @@ describe('ChatView.vue: the applications menu carries New/Close session, with no
   })
 
   async function mountLiveChat() {
-    api.getCurrentSession.mockResolvedValue({ id: 1, active: true, state: { key: 'x', ui_label: 'X', actions: [] } })
+    api.getCurrentSession.mockResolvedValue({ id: 1, current: true, state: { key: 'x', ui_label: 'X', actions: [] } })
     const ChatWindow = (await import('../src/components/chat/ChatView.vue')).default
     const app = createApp(ChatWindow, { hideSessionsPanel: false })
     app.mount(container)
@@ -122,8 +122,8 @@ describe('ChatView.vue: the applications menu carries New/Close session, with no
   it('clicking "New session" confirms, then starts a new session', async () => {
     const app = await mountLiveChat()
     const dialogStore = await import('../src/dialogStore.js')
-    api.postCreateSession.mockResolvedValue({ id: 2, active: true })
-    api.getCurrentSession.mockResolvedValue({ id: 2, active: true, state: { key: 'x', ui_label: 'X', actions: [] } })
+    api.postCreateSession.mockResolvedValue({ id: 2, current: true })
+    api.getCurrentSession.mockResolvedValue({ id: 2, current: true, state: { key: 'x', ui_label: 'X', actions: [] } })
 
     container.querySelector('.projects-btn').click()
     await nextTick()
@@ -143,7 +143,7 @@ describe('ChatView.vue: the applications menu carries New/Close session, with no
     await nextTick()
     expect(findButton(container, 'Close session').disabled).toBe(false)
 
-    api.postCloseSession.mockResolvedValue({ id: 1, active: false })
+    api.postCloseSession.mockResolvedValue({ id: 1, current: false })
     findButton(container, 'Close session').click()
     await vi.waitFor(() => expect(api.postCloseSession).toHaveBeenCalledWith(1))
     expect(dialogStore.confirmDialog).not.toHaveBeenCalled()

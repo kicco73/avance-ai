@@ -216,7 +216,7 @@ describe('the real Test-mode bootstrap sequence (loadMessages -> ensureSession) 
       start_state: 'Precontemplation',
       end_state: 'Precontemplation',
       open: true,
-      active: true,
+      current: true,
       has_annotations: false,
       comment: null
     })

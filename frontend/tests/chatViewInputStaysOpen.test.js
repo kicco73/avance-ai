@@ -70,7 +70,7 @@ describe('ChatView keeps the input open while a reply is being generated', () =>
 
   it('leaves the text input enabled with a turn in flight, and takes a second message', async () => {
     api.getCurrentSession.mockResolvedValue({
-      id: 1, active: true, state: { key: 'x', ui_label: 'X', actions: [], chat_enabled: true },
+      id: 1, current: true, state: { key: 'x', ui_label: 'X', actions: [], chat_enabled: true },
     })
     const ChatWindow = (await import('../src/components/chat/ChatView.vue')).default
     const app = createApp(ChatWindow, { hideSessionsPanel: false })

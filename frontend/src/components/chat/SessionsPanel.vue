@@ -129,7 +129,7 @@ const {
         @click="selectSession(session)"
       >
         <span class="session-badge-row">
-          <span class="session-badge" :class="{ 'session-badge-inactive': !session.active }">
+          <span class="session-badge" :class="{ 'session-badge-inactive': !session.current }">
             {{ session.title || session.end_state }}
           </span>
           <span v-if="channelLabel(session)" class="session-channel-label">{{ channelLabel(session) }}</span>
