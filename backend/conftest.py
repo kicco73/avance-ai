@@ -22,32 +22,26 @@ from turn.turn_service import TurnService
 from turn.ephemeral_env_registry import EphemeralEnvRegistry
 from turn.sessions.session_manager import SessionManager
 from system.ws_notifications import WsNotifications
-from webchat.webchat_service import WebchatService
 from controller import AvanceController
 from db import Db
 from db.models import User
 from error_handlers import ApiErrorHandlers
 from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
-from system import bus
+from system import bus, skills
 from system.bus import POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
-from avance_platform import skill as platform_skill
-from build import skill as build_skill
 from system.broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
-from jobs.job_queue import JobQueue
 from scheduler import SchedulerService
 from metrics.metric_service import MetricService
 from project.archive.automaton_loader import AutomatonLoader
-from build.compiled_automaton_loader import CompiledAutomatonLoader
 from project.project_service import ProjectService
 from system.session import Session
-from testing.testing_service import TestingService
-from testing.testing_controller import TestingController
 from tracking.actuators import TaskNamespaceFactory
 from tracking.project_files import PROJECT_FILE_CACHE
 from tracking.tracking_service import TrackingService
 
-SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
-TEST_STATS_PATH = Path(__file__).resolve().parent.parent / "test_stats.json"
+BACKEND_DIR = Path(__file__).resolve().parent
+SAMPLES_DIR = BACKEND_DIR / "samples" / "projects"
+TEST_STATS_PATH = BACKEND_DIR / "test_stats.json"
 
 
 class _TestRun:
@@ -155,6 +149,16 @@ def _reset_bus():
     bus._reset_for_tests()
     yield
     bus._reset_for_tests()
+
+
+@pytest.fixture(autouse=True)
+def _reset_skills():
+    """skills' list of started modules is a process-global too, and the
+    `app` fixture starts whatever is on disk once per test — without this
+    it would grow by one skill per test for the whole run."""
+    skills._reset_for_tests()
+    yield
+    skills._reset_for_tests()
 
 
 @pytest.fixture(autouse=True)
@@ -302,51 +306,29 @@ def make_test_namespace_factory(
 
 
 @pytest.fixture
-def compiled_automata() -> bool:
-    """Whether `app` below runs on CompiledAutomatonLoader — what
-    `project-service.compiled-automaton` switches in a real deployment. A
-    test module that wants the compiled path overrides this fixture with
-    one returning True; everything else gets today's loader. The compiled
-    loader falls back to the interpreted one whenever no package matches,
-    so it is safe from the first request, before anything is built."""
-    return False
+def automaton_loader(app_db: Db) -> AutomatonLoader:
+    """Which loader `app` reads projects through. The Db/Archive-backed
+    one here, as in a bare backend; a package that knows better replaces
+    it in a deployment (see bus.POINT_AUTOMATON_LOADER), and the tests
+    that belong to that package override this fixture the same way."""
+    return AutomatonLoader(app_db)
 
 
 @pytest.fixture
-def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata: bool) -> FastAPI:
-    """The real controller/routing wiring, but against an isolated
-    file-backed Db and a FakeAiService, so tests never touch the
-    developer's real avance.db or make costly AI calls."""
-    automaton_loader = (
-        CompiledAutomatonLoader(app_db, tmp_path / "apps") if compiled_automata else AutomatonLoader(app_db)
-    )
-    project_service = ProjectService(app_db, automaton_loader, SessionManager(app_db), fake_ai_service)
-    session_manager = SessionManager(app_db)
-    metric_service = MetricService(app_db, project_service)
-    progress_broadcaster = Broadcaster(fake_ai_service, batch_window_seconds=DEFAULT_BATCH_WINDOW_SECONDS)
-    scheduler_service = make_test_scheduler_service(app_db, progress_broadcaster)
-    # TestingService's own pool, as in main.py — never the platform SchedulerService's.
-    test_job_queue = JobQueue(max_concurrent=1, broadcaster=progress_broadcaster)
-    namespace_factory = make_test_namespace_factory(app_db, scheduler_service, project_service, fake_ai_service)
-    tracking_service = TrackingService(
-        app_db, project_service, metric_service, namespace_factory,
-    )
-    turn_service = TurnService(
-        app_db, fake_ai_service, fake_ai_service, project_service, session_manager,
-        tracking_service, metric_service, scheduler_service, namespace_factory,
-    )
-    testing_service = TestingService(
-        app_db, fake_ai_service, tracking_service, test_job_queue, project_service, progress_broadcaster,
-    )
-    # No real providers: this app fixture never goes through AuthMiddleware
-    # (that's only wired in main.py's create_app(), not here) or exercises
-    # /api/auth/*, so nothing needs a real Google client id to resolve.
-    auth_service = AuthService(app_db, [], token_ttl_in_hours=24 * 7, project_service=project_service)
+def raw_config(tmp_path) -> dict:
+    """The configuration file as it was read, for the skills `app` starts.
+    Every section absent is a skill that registers nothing and says so, so
+    what is here is only what a test run needs said differently from the
+    defaults. A skill's own tests override this to switch it on."""
+    return {"test-service": {"max-concurrent-tests": 1}}
 
-    # A plausible stand-in for AppConfig.public_services_snapshot() — this
-    # fixture never loads a real .config.yml, so the Settings > Manage
-    # services page's own read-only payload is faked here instead.
-    services_config = {
+
+@pytest.fixture
+def services_config(tmp_path) -> dict:
+    """A plausible stand-in for AppConfig.public_services_snapshot() — this
+    fixture never loads a real .config.yml, so the Settings > Manage
+    services page's own read-only payload is faked here instead."""
+    return {
         "chat": {
             "max-session-duration-in-minutes": 60,
             "input-token-budget-per-turn": 16000,
@@ -363,26 +345,45 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
         "build": {"repo-url": None, "username": None, "token": None, "apps-dir": str(tmp_path / "apps")},
     }
 
+
+@pytest.fixture
+def app(
+    app_db: Db, fake_ai_service: FakeAiService, tmp_path,
+    automaton_loader: AutomatonLoader, raw_config: dict, services_config: dict,
+) -> FastAPI:
+    """The real controller/routing wiring, but against an isolated
+    file-backed Db and a FakeAiService, so tests never touch the
+    developer's real avance.db or make costly AI calls.
+
+    Composed the way main.py composes: the core is built here and offered
+    at bus.POINT_CORE_SERVICES, and then *whatever skill is on disk*
+    starts against it — nothing here names webchat, testing, the platform
+    or the compiler. That is what lets this same harness run inside a
+    build that left one of them out: the package is absent, so its routes
+    and its tests are absent with it, and no fixture has to be told."""
+    project_service = ProjectService(app_db, automaton_loader, SessionManager(app_db), fake_ai_service)
+    session_manager = SessionManager(app_db)
+    metric_service = MetricService(app_db, project_service)
+    progress_broadcaster = Broadcaster(fake_ai_service, batch_window_seconds=DEFAULT_BATCH_WINDOW_SECONDS)
+    scheduler_service = make_test_scheduler_service(app_db, progress_broadcaster)
+    namespace_factory = make_test_namespace_factory(app_db, scheduler_service, project_service, fake_ai_service)
+    tracking_service = TrackingService(
+        app_db, project_service, metric_service, namespace_factory,
+    )
+    turn_service = TurnService(
+        app_db, fake_ai_service, fake_ai_service, project_service, session_manager,
+        tracking_service, metric_service, scheduler_service, namespace_factory,
+    )
+    # No real providers: this app fixture never goes through AuthMiddleware
+    # (that's only wired in main.py's create_app(), not here) or exercises
+    # /api/auth/*, so nothing needs a real Google client id to resolve.
+    auth_service = AuthService(app_db, [], token_ttl_in_hours=24 * 7, project_service=project_service)
+
     fastapi_app = FastAPI(title="Avance State Engine (test)")
     ApiErrorHandlers.register(fastapi_app)
-    # What webchat/skill.py does at boot, done here directly: the harness
-    # has the composed core in hand, so it builds the service rather than
-    # going round through POINT_CORE_SERVICES (which
-    # test_build_service_backend_copy.py covers on its own).
+    # One shared connection per identity, as in main.py — the skills that
+    # answer a turn collect it from the registry below.
     ws_notifications = WsNotifications(auth_service)
-    webchat = WebchatService(turn_service, project_service, ws_notifications)
-    webchat.register()
-    bus.contribute(POINT_HTTP_CONTROLLERS, lambda controllers: controllers.append(webchat.controller))
-    # Same for testing/skill.py: the benchmark routes travel with the
-    # package that runs them, so the harness registers them the same way.
-    bus.contribute(POINT_HTTP_CONTROLLERS, lambda controllers: controllers.append(
-        TestingController(testing_service, progress_broadcaster, turn_service)
-    ))
-    tracking_service.set_human_talker_factory(webchat.human_talker_factory)
-    # What avance_platform/skill.py does at boot, done here directly: the
-    # harness has the composed core in hand, so it contributes the
-    # registry the platform's own installer reads (see
-    # bus.POINT_CORE_SERVICES).
     bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({
         "db": app_db,
         "auth_service": auth_service,
@@ -399,25 +400,21 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
         "services_config": services_config,
         "version": "test-version",
     }))
-    platform_skill.start({}, Path("."))
-    # The Build view's routes travel with the compiler now (see
-    # build/skill.py); the loader is chosen here directly, so this
-    # only needs the controller half.
-    build_skill.start({}, Path("."))
+    skills.start_all(raw_config, Path("."))
     controller = AvanceController(
         turn_service, project_service, ws_notifications=ws_notifications,
     )
     fastapi_app.include_router(controller.router)
-    fastapi_app.state.testing_service = testing_service
-    fastapi_app.state.project_service = project_service
-    fastapi_app.state.turn_service = turn_service
-    fastapi_app.state.db = app_db
-    fastapi_app.state.auth_service = auth_service
+    # Every service the composed system ended up with, under the name it
+    # is registered by — including the ones a skill built for itself and
+    # offered back (see testing/skill.py). Collected after the router is
+    # assembled, which is when a skill's own _install has run.
+    for name, service in bus.collect(POINT_CORE_SERVICES, {}).items():
+        setattr(fastapi_app.state, name, service)
     # For tests that need to watch a task run: start the
     # service and register a fake websocket on the factory (see
     # run_pending_tasks below). Never started here — most tests only
     # ever assert on the Task rows a task leaves behind.
-    fastapi_app.state.scheduler_service = scheduler_service
     fastapi_app.state.namespace_factory = namespace_factory
     return fastapi_app
 
@@ -578,7 +575,7 @@ def _is_full_test_run(session) -> bool:
     either, so they need their own exclusion."""
     option = session.config.option
     return (
-        session.config.args == ["tests"]
+        session.config.args == list(session.config.getini("testpaths"))
         and not option.keyword
         and not option.markexpr
         and not option.lf

@@ -18,15 +18,17 @@ import pytest
 from fastapi.testclient import TestClient
 
 from automaton.automaton import CompiledAutomaton
+from db import Db
 from project.archive.packages import package_dir
 from build.build_service import module_name_for
+from build.compiled_automaton_loader import CompiledAutomatonLoader
 
 from conftest import chat_turn
 
 
 @pytest.fixture
-def compiled_automata() -> bool:
-    return True
+def automaton_loader(app_db: Db, tmp_path) -> CompiledAutomatonLoader:
+    return CompiledAutomatonLoader(app_db, tmp_path / "apps")
 
 
 def _served_automaton(app, project_id: str):

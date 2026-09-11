@@ -112,3 +112,7 @@ async def stop_all() -> None:
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Skill %r failed to stop: %s", module.__name__, exc)
     _started.clear()
+
+
+def _reset_for_tests() -> None:
+    _started.clear()

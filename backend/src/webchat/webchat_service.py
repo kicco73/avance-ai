@@ -23,6 +23,7 @@ from system import bus
 from system.bus import CLIENT_INJECTABLE, Message
 from turn.channels import NATIVE_CHAT
 from system.logging_factory import LoggerFactory
+from system.session import Session
 from system.wiring import construct
 from system.ws_notifications import WsNotifications
 from talker import HumanTalker
@@ -55,13 +56,19 @@ class WebchatService:
             bus.subscribe(message_type, self._start_turn)
 
     async def _start_turn(self, message: Message) -> None:
-        """Only what a person said into one of *these* connections: an
+        """Only what a person said into one of *these* connections. An
         `input.text` converted from a voice note on another channel (see
-        listen.decoder) carries that channel and belongs to whoever
-        published the audio, never to a chat window here."""
+        listen.decoder) also carries an `origin_id` — the id of the
+        message it was converted from — so the test is whether that id
+        names a connection this socket actually has open, not whether it
+        is set.
+
+        The channel is named here and not by the socket: the socket is a
+        way in, and this is the interface listening on it."""
         connection_id = message.origin_id
-        if connection_id is None or message.channel != NATIVE_CHAT:
+        if connection_id is None or not self._notifications.has_connection(connection_id):
             return
+        Session().channel = NATIVE_CHAT
 
         def send(payload: dict) -> None:
             self._notifications.send_to_connection(connection_id, payload)

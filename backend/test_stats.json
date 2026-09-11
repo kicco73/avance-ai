@@ -4,10 +4,10 @@
     "first_run": "2026-08-29T17:18:08+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 1.081,
-    "runs": 31,
-    "seconds": 8.031,
+    "runs": 32,
+    "seconds": 8.483,
     "skips": 0
   },
   "tests/test_abort_all_jobs.py::test_delete_all_test_jobs_endpoint_calls_abort_all_jobs": {
@@ -15,10 +15,10 @@
     "first_run": "2026-08-29T17:18:08+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.665,
-    "runs": 31,
-    "seconds": 5.543,
+    "runs": 32,
+    "seconds": 5.996,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_deferred_call_runs_after_a_restart_against_the_frozen_scope": {
@@ -4719,14 +4719,14 @@
     "skips": 0
   },
   "tests/test_compiled_product_end_to_end.py::test_a_project_serves_interpreted_until_it_is_built_and_compiled_after": {
-    "failures": 4,
+    "failures": 5,
     "first_run": "2026-09-08T21:39:10+00:00",
-    "last_failed": "2026-09-09T15:13:49+00:00",
-    "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_failed": "2026-09-11T10:32:42+00:00",
+    "last_outcome": "failed",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.864,
-    "runs": 43,
-    "seconds": 9.091,
+    "runs": 44,
+    "seconds": 9.711,
     "skips": 0
   },
   "tests/test_compiled_product_end_to_end.py::test_a_project_with_unpublished_changes_cannot_be_built_through_the_panel": {
@@ -4734,43 +4734,43 @@
     "first_run": "2026-09-08T21:39:10+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.506,
-    "runs": 43,
-    "seconds": 6.406,
+    "runs": 44,
+    "seconds": 6.888,
     "skips": 0
   },
   "tests/test_compiled_product_end_to_end.py::test_editing_the_project_again_takes_it_back_to_the_interpreted_automaton": {
-    "failures": 4,
+    "failures": 5,
     "first_run": "2026-09-08T21:39:10+00:00",
-    "last_failed": "2026-09-09T15:13:49+00:00",
-    "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_failed": "2026-09-11T10:32:42+00:00",
+    "last_outcome": "failed",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.521,
-    "runs": 43,
-    "seconds": 7.029,
+    "runs": 44,
+    "seconds": 7.695,
     "skips": 0
   },
   "tests/test_compiled_product_end_to_end.py::test_the_app_store_listing_reports_whether_the_project_is_served_compiled": {
-    "failures": 4,
+    "failures": 5,
     "first_run": "2026-09-08T22:40:12+00:00",
-    "last_failed": "2026-09-09T15:13:49+00:00",
-    "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_failed": "2026-09-11T10:32:42+00:00",
+    "last_outcome": "failed",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.728,
-    "runs": 42,
-    "seconds": 9.129,
+    "runs": 43,
+    "seconds": 9.734,
     "skips": 0
   },
   "tests/test_compiled_product_end_to_end.py::test_the_design_view_reads_a_compiled_project_like_any_other": {
-    "failures": 4,
+    "failures": 5,
     "first_run": "2026-09-08T21:39:10+00:00",
-    "last_failed": "2026-09-09T15:13:49+00:00",
-    "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_failed": "2026-09-11T10:32:42+00:00",
+    "last_outcome": "failed",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.59,
-    "runs": 43,
-    "seconds": 8.477,
+    "runs": 44,
+    "seconds": 9.061,
     "skips": 0
   },
   "tests/test_concurrent_root_activation.py::test_root_aggregation_resolves_its_full_two_level_dependency_chain": {
@@ -6967,10 +6967,10 @@
     "first_run": "2026-09-06T12:59:30+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:11+00:00",
     "last_seconds": 0.679,
-    "runs": 33,
-    "seconds": 6.656,
+    "runs": 34,
+    "seconds": 7.761,
     "skips": 0
   },
   "tests/test_controller_projects.py::test_a_fresh_install_has_no_active_project_and_still_reports_the_configured_token_budgets": {
@@ -6978,10 +6978,10 @@
     "first_run": "2026-09-06T12:59:30+00:00",
     "last_failed": "2026-09-09T12:54:18+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:11+00:00",
     "last_seconds": 0.469,
-    "runs": 33,
-    "seconds": 4.898,
+    "runs": 34,
+    "seconds": 5.398,
     "skips": 0
   },
   "tests/test_controller_projects.py::test_a_plain_user_only_sees_the_projects_they_have_a_userproject_row_for": {
@@ -6989,10 +6989,10 @@
     "first_run": "2026-09-06T12:59:30+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:11+00:00",
     "last_seconds": 0.764,
-    "runs": 33,
-    "seconds": 8.973,
+    "runs": 34,
+    "seconds": 9.906,
     "skips": 0
   },
   "tests/test_controller_projects.py::test_an_image_aspect_asset_keeps_its_content_type_across_an_export_reimport_round_trip": {
@@ -7000,10 +7000,10 @@
     "first_run": "2026-09-02T16:28:48+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:11+00:00",
     "last_seconds": 1.002,
-    "runs": 33,
-    "seconds": 7.701,
+    "runs": 34,
+    "seconds": 8.294,
     "skips": 0
   },
   "tests/test_controller_projects.py::test_default_is_just_an_id_like_any_other_and_can_be_deleted": {
@@ -7011,10 +7011,10 @@
     "first_run": "2026-09-06T12:59:30+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:11+00:00",
     "last_seconds": 0.533,
-    "runs": 33,
-    "seconds": 5.986,
+    "runs": 34,
+    "seconds": 6.437,
     "skips": 0
   },
   "tests/test_controller_projects.py::test_deleting_the_active_project_falls_back_to_a_remaining_one_and_degrades_gracefully_when_none_is_left": {
@@ -7022,10 +7022,10 @@
     "first_run": "2026-09-06T12:59:30+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:11+00:00",
     "last_seconds": 0.816,
-    "runs": 33,
-    "seconds": 10.064,
+    "runs": 34,
+    "seconds": 10.841,
     "skips": 0
   },
   "tests/test_controller_projects.py::test_new_project_creates_activates_and_de_duplicates_the_hello_world_template": {
@@ -7033,10 +7033,10 @@
     "first_run": "2026-09-06T12:59:30+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:11+00:00",
     "last_seconds": 0.544,
-    "runs": 33,
-    "seconds": 5.918,
+    "runs": 34,
+    "seconds": 6.365,
     "skips": 0
   },
   "tests/test_controller_scheduled_tasks.py::test_scheduled_tasks_empty_when_none_pending": {
@@ -7594,10 +7594,10 @@
     "first_run": "2026-08-19T22:04:45+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.625,
-    "runs": 33,
-    "seconds": 8.224,
+    "runs": 34,
+    "seconds": 9.01,
     "skips": 0
   },
   "tests/test_controller_tests.py::test_create_run_rejects_unknown_strategy": {
@@ -7605,10 +7605,10 @@
     "first_run": "2026-08-19T22:04:45+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.56,
-    "runs": 33,
-    "seconds": 6.559,
+    "runs": 34,
+    "seconds": 7.081,
     "skips": 0
   },
   "tests/test_controller_tests.py::test_create_run_returns_immediately_pending": {
@@ -7616,10 +7616,10 @@
     "first_run": "2026-08-19T22:04:45+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.605,
-    "runs": 34,
-    "seconds": 8.956,
+    "runs": 35,
+    "seconds": 9.617,
     "skips": 0
   },
   "tests/test_controller_tests.py::test_delete_tests_forces_a_fresh_run_instead_of_a_cache_hit": {
@@ -7627,10 +7627,10 @@
     "first_run": "2026-08-27T10:27:15+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.777,
-    "runs": 33,
-    "seconds": 8.719,
+    "runs": 34,
+    "seconds": 9.545,
     "skips": 0
   },
   "tests/test_controller_tests.py::test_get_run_404_for_unknown_id": {
@@ -7638,10 +7638,10 @@
     "first_run": "2026-08-19T22:04:45+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.481,
-    "runs": 33,
-    "seconds": 6.856,
+    "runs": 34,
+    "seconds": 7.324,
     "skips": 0
   },
   "tests/test_controller_tests.py::test_list_runs_defaults_to_whole_project_scope": {
@@ -7649,10 +7649,10 @@
     "first_run": "2026-08-19T22:04:45+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.971,
-    "runs": 34,
-    "seconds": 8.641,
+    "runs": 35,
+    "seconds": 9.29,
     "skips": 0
   },
   "tests/test_controller_tests.py::test_sessions_aggregation_pools_both_live_and_imported_sessions": {
@@ -7660,10 +7660,10 @@
     "first_run": "2026-08-24T13:36:22+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.81,
-    "runs": 34,
-    "seconds": 10.782,
+    "runs": 35,
+    "seconds": 11.767,
     "skips": 0
   },
   "tests/test_controller_tests.py::test_turn_by_turn_run_completes_and_produces_results": {
@@ -7671,10 +7671,10 @@
     "first_run": "2026-08-19T22:04:45+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.636,
-    "runs": 33,
-    "seconds": 8.301,
+    "runs": 34,
+    "seconds": 9.099,
     "skips": 0
   },
   "tests/test_controller_tests.py::test_whole_project_run_scopes_to_labeled_sessions_only": {
@@ -7682,10 +7682,10 @@
     "first_run": "2026-08-19T22:04:45+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.691,
-    "runs": 34,
-    "seconds": 10.228,
+    "runs": 35,
+    "seconds": 11.207,
     "skips": 0
   },
   "tests/test_controller_timeline.py::test_timeline_excludes_signal_rows_but_still_includes_the_initial_state": {
@@ -15635,10 +15635,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.002,
-    "runs": 44,
-    "seconds": 0.055,
+    "runs": 45,
+    "seconds": 0.056,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestChannelLoop::test_a_ping_is_answered_with_a_pong_and_an_unknown_frame_is_ignored": {
@@ -15646,10 +15646,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.002,
-    "runs": 44,
-    "seconds": 0.051,
+    "runs": 45,
+    "seconds": 0.053,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestChannelLoop::test_a_pushed_frame_reaches_the_socket_while_connected": {
@@ -15657,10 +15657,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.002,
-    "runs": 44,
-    "seconds": 0.119,
+    "runs": 45,
+    "seconds": 0.121,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestChannelLoop::test_an_unauthenticated_socket_is_closed_with_4401_before_accept": {
@@ -15668,10 +15668,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.001,
-    "runs": 44,
-    "seconds": 0.039,
+    "runs": 45,
+    "seconds": 0.04,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestChannelLoop::test_the_registration_is_removed_on_disconnect": {
@@ -15679,10 +15679,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.002,
-    "runs": 44,
-    "seconds": 0.061,
+    "runs": 45,
+    "seconds": 0.063,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestConnectionCap::test_a_second_connection_for_a_plain_user_supersedes_the_first": {
@@ -15690,10 +15690,10 @@
     "first_run": "2026-09-11T08:16:50+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.002,
-    "runs": 18,
-    "seconds": 0.049,
+    "runs": 19,
+    "seconds": 0.05,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestConnectionCap::test_a_third_connection_for_an_admin_supersedes_the_oldest_only": {
@@ -15701,10 +15701,10 @@
     "first_run": "2026-09-11T08:16:50+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.002,
-    "runs": 18,
-    "seconds": 0.046,
+    "runs": 19,
+    "seconds": 0.047,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestConnectionCap::test_an_admin_may_open_a_second_connection_without_superseding": {
@@ -15712,10 +15712,10 @@
     "first_run": "2026-09-11T08:16:50+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.002,
-    "runs": 18,
-    "seconds": 0.04,
+    "runs": 19,
+    "seconds": 0.041,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestConnectionCap::test_the_superseded_connection_stops_being_registered": {
@@ -15723,10 +15723,10 @@
     "first_run": "2026-09-11T08:16:50+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.002,
-    "runs": 18,
-    "seconds": 0.07,
+    "runs": 19,
+    "seconds": 0.071,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestHumanPrompt::test_a_human_reply_resolves_await_human_reply_with_its_text": {
@@ -15734,10 +15734,10 @@
     "first_run": "2026-09-06T15:19:30+00:00",
     "last_failed": "2026-09-11T08:16:50+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.002,
-    "runs": 44,
-    "seconds": 0.047,
+    "runs": 45,
+    "seconds": 0.048,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestHumanPrompt::test_a_human_typing_frame_resolves_wait_for_typing": {
@@ -15745,10 +15745,10 @@
     "first_run": "2026-09-06T17:53:21+00:00",
     "last_failed": "2026-09-11T08:16:50+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.002,
-    "runs": 44,
-    "seconds": 0.042,
+    "runs": 45,
+    "seconds": 0.043,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestHumanPrompt::test_await_human_reply_clears_the_sessions_current_prompt": {
@@ -15756,10 +15756,10 @@
     "first_run": "2026-09-06T17:53:21+00:00",
     "last_failed": "2026-09-11T08:16:50+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.002,
-    "runs": 44,
-    "seconds": 0.041,
+    "runs": 45,
+    "seconds": 0.042,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestHumanPrompt::test_exclude_connection_id_keeps_the_sending_tab_from_seeing_its_own_prompt": {
@@ -15767,10 +15767,10 @@
     "first_run": "2026-09-06T15:19:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.002,
-    "runs": 44,
-    "seconds": 0.038,
+    "runs": 45,
+    "seconds": 0.039,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestHumanPrompt::test_only_the_operator_who_was_asked_can_answer": {
@@ -15778,10 +15778,10 @@
     "first_run": "2026-09-11T09:37:23+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.002,
-    "runs": 4,
-    "seconds": 0.011,
+    "runs": 5,
+    "seconds": 0.012,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestHumanPrompt::test_raises_when_excluding_the_only_connection": {
@@ -15789,10 +15789,10 @@
     "first_run": "2026-09-06T15:19:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.002,
-    "runs": 44,
-    "seconds": 0.041,
+    "runs": 45,
+    "seconds": 0.042,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestHumanPrompt::test_raises_when_the_user_has_no_open_connection": {
@@ -15800,10 +15800,10 @@
     "first_run": "2026-09-06T15:19:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.001,
-    "runs": 44,
-    "seconds": 0.036,
+    "runs": 45,
+    "seconds": 0.037,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestPush::test_broadcasts_to_every_one_of_the_users_own_connections": {
@@ -15811,10 +15811,10 @@
     "first_run": "2026-09-06T15:19:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.001,
-    "runs": 44,
-    "seconds": 0.034,
+    "runs": 45,
+    "seconds": 0.035,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestPush::test_exclude_connection_id_returns_false_when_it_was_the_only_connection": {
@@ -15822,10 +15822,10 @@
     "first_run": "2026-09-06T15:19:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.002,
-    "runs": 44,
-    "seconds": 0.039,
+    "runs": 45,
+    "seconds": 0.04,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestPush::test_exclude_connection_id_skips_only_that_connection": {
@@ -15833,10 +15833,10 @@
     "first_run": "2026-09-06T15:19:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.001,
-    "runs": 44,
-    "seconds": 0.035,
+    "runs": 45,
+    "seconds": 0.036,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestPush::test_never_reaches_a_different_users_own_connection": {
@@ -15844,10 +15844,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.001,
-    "runs": 44,
-    "seconds": 0.035,
+    "runs": 45,
+    "seconds": 0.036,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestPush::test_returns_false_when_no_connection_is_registered": {
@@ -15855,10 +15855,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.002,
-    "runs": 44,
-    "seconds": 0.049,
+    "runs": 45,
+    "seconds": 0.051,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestPush::test_sends_the_payload_and_returns_true_when_a_connection_exists": {
@@ -15866,10 +15866,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.001,
-    "runs": 44,
-    "seconds": 0.038,
+    "runs": 45,
+    "seconds": 0.039,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestSupersede::test_a_frame_arriving_after_it_was_superseded_is_not_answered": {
@@ -15877,10 +15877,10 @@
     "first_run": "2026-09-11T08:16:50+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.001,
-    "runs": 18,
-    "seconds": 0.048,
+    "runs": 19,
+    "seconds": 0.049,
     "skips": 0
   },
   "tests/test_ws_channel.py::TestSupersede::test_sends_the_switched_frame_then_closes_with_the_superseded_code": {
@@ -15888,10 +15888,10 @@
     "first_run": "2026-09-11T08:16:50+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.001,
-    "runs": 18,
-    "seconds": 0.045,
+    "runs": 19,
+    "seconds": 0.046,
     "skips": 0
   },
   "tests/test_ws_channel.py::test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn": {
@@ -15899,10 +15899,10 @@
     "first_run": "2026-09-06T11:59:25+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.133,
-    "runs": 44,
-    "seconds": 3.769,
+    "runs": 45,
+    "seconds": 3.885,
     "skips": 0
   },
   "tests/test_ws_channel.py::test_a_turn_on_a_closed_session_is_answered_with_session_closed": {
@@ -15910,10 +15910,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.536,
-    "runs": 44,
-    "seconds": 15.406,
+    "runs": 45,
+    "seconds": 16.408,
     "skips": 0
   },
   "tests/test_ws_channel.py::test_a_turn_on_someone_elses_session_is_answered_with_an_error_frame": {
@@ -15921,10 +15921,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.613,
-    "runs": 44,
-    "seconds": 13.341,
+    "runs": 45,
+    "seconds": 13.894,
     "skips": 0
   },
   "tests/test_ws_channel.py::test_every_outgoing_frame_of_a_turn_carries_its_turn_id_and_chunks_precede_done": {
@@ -15932,10 +15932,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": "2026-09-09T15:13:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.58,
-    "runs": 44,
-    "seconds": 14.788,
+    "runs": 45,
+    "seconds": 15.712,
     "skips": 0
   },
   "tests/test_ws_channel.py::test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_order_even_when_the_first_turn_is_slower": {
@@ -15943,10 +15943,10 @@
     "first_run": "2026-09-06T11:59:25+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T10:17:46+00:00",
+    "last_run": "2026-09-11T10:32:42+00:00",
     "last_seconds": 0.162,
-    "runs": 44,
-    "seconds": 4.573,
+    "runs": 45,
+    "seconds": 4.726,
     "skips": 0
   },
   "tests/test_ws_turn_event_order.py::test_with_declared_sources_but_no_tool_call_the_answer_streams_then_done": {

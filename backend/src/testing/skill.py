@@ -62,6 +62,11 @@ def _install(controllers: list) -> None:
         core["project_service"], broadcaster,
     )
     controllers.append(construct(TestingController, {**core, "testing_service": service}))
+    # Offered to whoever collects the core registry next, the same way
+    # main.py offers what it composed: a skill that builds a service
+    # others may legitimately need is the only one that can put it
+    # there (see bus.POINT_CORE_SERVICES).
+    bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({"testing_service": service}))
     logger.info("benchmarking started — up to %d run(s) at a time.", _config.max_concurrent_tests)
 
 

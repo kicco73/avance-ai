@@ -13,7 +13,6 @@ from system import bus
 from system.bus import CLIENT_INJECTABLE, UI_HUMAN_TAKEOVER, UI_NOTIFICATION, UI_SYSTEM_WARNING, UI_PROGRESS, Message
 from auth.roles import role_satisfies
 from system.session import Session
-from turn.channels import NATIVE_CHAT
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +191,6 @@ class WsNotifications(object):
             return
         Session().user = identity.email
         Session().role = identity.role
-        Session().channel = NATIVE_CHAT
 
         username = Session().user
         cap = MAX_CONNECTIONS_PER_ADMIN if role_satisfies(identity.role, "admin") else MAX_CONNECTIONS_PER_USER
@@ -306,19 +304,35 @@ class WsNotifications(object):
         """One inbound frame, onto the Bus. `origin_id` carries the
         connection it arrived on so whoever answers can answer *there*
         (see send_to_connection) rather than to every tab this identity
-        has open, and `stream_id` names the one exchange over it."""
+        has open, and `stream_id` names the one exchange over it.
+
+        No channel. This socket is a way in, not a channel: naming one
+        would mean this package knows which interface is listening on
+        it, which is exactly what it stopped knowing. Whoever picks the
+        message up says what channel it is."""
         message = Message(
             type=frame_type,
             body=str(frame.get("body", "")),
             username=Session().user,
             session_id=frame.get("session_id"),
-            channel=NATIVE_CHAT,
             origin_id=connection.id,
             stream_id=str(frame.get("stream_id", "")),
         )
         task = asyncio.create_task(bus.publish(message))
         self._inbound_tasks.add(task)
         task.add_done_callback(self._inbound_tasks.discard)
+
+    def has_connection(self, connection_id: str) -> bool:
+        """Whether `connection_id` is one of the connections open here.
+        What a listener asks to tell a frame that came in over this
+        socket from one that reached the Bus some other way — an
+        `input.text` converted from a voice note carries the id of the
+        message it was converted from, not of a connection."""
+        return any(
+            connection.id == connection_id
+            for connections in self._connections.values()
+            for connection in connections
+        )
 
     def send_to_connection(self, connection_id: str, payload: dict) -> bool:
         """Writes one frame to one open connection, by the id an inbound
