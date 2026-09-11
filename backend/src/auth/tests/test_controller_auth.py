@@ -1,4 +1,4 @@
-"""GET /api/skills/platform/auth/pending-status (AuthController.get_pending_status /
+"""GET /api/core/auth/pending-status (AuthController.get_pending_status /
 AuthService.is_invite_exempt) — App.vue's own TermsView-vs-
 InviteRequiredView gate for a pending identity."""
 from __future__ import annotations
@@ -18,7 +18,7 @@ def test_a_pre_wired_admin_is_invite_exempt(client):
     service-level half of this)."""
     Session().user = "enrico.carniani@gmail.com"
 
-    response = client.get("/api/skills/platform/auth/pending-status")
+    response = client.get("/api/core/auth/pending-status")
 
     assert response.status_code == 200
     assert response.json() == {"invite_exempt": True}
@@ -28,7 +28,7 @@ def test_a_pre_wired_admin_is_invite_exempt(client):
 def test_a_regular_identity_is_not_invite_exempt(client):
     Session().user = "stranger@example.com"
 
-    response = client.get("/api/skills/platform/auth/pending-status")
+    response = client.get("/api/core/auth/pending-status")
 
     assert response.status_code == 200
     assert response.json() == {"invite_exempt": False}

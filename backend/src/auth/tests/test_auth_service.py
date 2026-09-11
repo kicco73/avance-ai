@@ -324,7 +324,7 @@ class TestPreWiredAdminRegistration:
         """Regression: a pre-wired admin who "Erase all my data"'d their
         User row and then just logs back in (no share link involved)
         must still resolve as invite-exempt — App.vue's own TermsView-
-        vs-InviteRequiredView gate (GET /api/skills/platform/auth/pending-status) relies
+        vs-InviteRequiredView gate (GET /api/core/auth/pending-status) relies
         on this to avoid dead-ending them at InviteRequiredView, which
         has no path back to a registered account at all."""
         token = admin_auth_service.login("google", "admin-credential")

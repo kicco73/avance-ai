@@ -11,7 +11,7 @@ export function getState(signal) {
 // the session cookie itself (Set-Cookie on this response); there's
 // nothing in the returned body the caller needs to store.
 export function postLogin(provider, credential) {
-  return apiFetch(`${API_URL}/skills/platform/auth/login`, {
+  return apiFetch(`${API_URL}/core/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ provider, credential })
@@ -19,14 +19,14 @@ export function postLogin(provider, credential) {
 }
 
 export function postLogout() {
-  return apiFetch(`${API_URL}/skills/platform/auth/logout`, { method: 'POST' })
+  return apiFetch(`${API_URL}/core/auth/logout`, { method: 'POST' })
 }
 
 // Raw markdown content of the Terms of Service — reachable even by a
 // pending (not-yet-registered) or fully anonymous session, since
 // TermsView.vue must show it before there's any account to gate on.
 export function getTerms() {
-  return apiFetch(`${API_URL}/skills/platform/auth/terms`)
+  return apiFetch(`${API_URL}/core/auth/terms`)
 }
 
 // TermsView.vue's Accept action — creates the User row postLogin's own
@@ -36,7 +36,7 @@ export function getTerms() {
 // this is refused (403, with a specific reason) — see useAppBoot.js's
 // handleTermsAccept, the only caller.
 export function postAcceptTerms(inviteCode) {
-  return apiFetch(`${API_URL}/skills/platform/auth/terms/acceptance`, {
+  return apiFetch(`${API_URL}/core/auth/terms/acceptance`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ invite_code: inviteCode ?? null })
@@ -55,15 +55,15 @@ export function postAcceptProjectTerms(projectId) {
 // everything tied to it server-side (see Db.erase_user_data); also
 // clears the session cookie itself.
 export function postEraseData() {
-  return apiFetch(`${API_URL}/skills/platform/auth/erase-data`, { method: 'POST' })
+  return apiFetch(`${API_URL}/core/auth/erase-data`, { method: 'POST' })
 }
 
 export function getMe() {
-  return apiFetch(`${API_URL}/skills/platform/auth/me`)
+  return apiFetch(`${API_URL}/core/auth/me`)
 }
 
 export function putUserPhoneNumber(phoneNumber, confirmMerge = false) {
-  return apiFetch(`${API_URL}/skills/platform/auth/me/phone-number`, {
+  return apiFetch(`${API_URL}/core/auth/me/phone-number`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone_number: phoneNumber, confirm_merge: confirmMerge })
@@ -77,9 +77,9 @@ export function putUserPhoneNumber(phoneNumber, confirmMerge = false) {
 // still reach TermsView even with no "share project" invite link in
 // the URL (e.g. re-logging in after "Erase all my data").
 export function getPendingStatus() {
-  return apiFetch(`${API_URL}/skills/platform/auth/pending-status`)
+  return apiFetch(`${API_URL}/core/auth/pending-status`)
 }
 
 export function getAuthProviders() {
-  return apiFetch(`${API_URL}/skills/platform/auth/providers`)
+  return apiFetch(`${API_URL}/core/auth/providers`)
 }

@@ -132,7 +132,7 @@ class UserMixin:
             User.update(whatsapp_phone_number=whatsapp_phone_number).where(User.id == target_id).execute()
 
     def get_user_by_email(self, email: str) -> dict | None:
-        """AuthService.get_profile's own lookup — GET /api/skills/platform/auth/me's
+        """AuthService.get_profile's own lookup — GET /api/core/auth/me's
         source, both for the topbar avatar and ProfileView.vue."""
         user = User.get_or_none(User.id == email)
         if user is None:

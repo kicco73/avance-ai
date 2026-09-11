@@ -34,7 +34,7 @@ Meta ──POST /api/skills/whatsapp/webhook──▶ WhatsAppController   (role
 - `whatsapp/whatsapp_controller.py` — the two webhook routes, under `/api/` so `nginx.conf` needs no change.
 - `config.py` — `WhatsAppServiceConfig` / `whatsapp-service` section (optional, default off; see `.config.example.yml`).
 - `db/models.py` / `db/users.py` — `User.whatsapp_phone_number`, the phone → account link itself.
-- `avance_platform/auth_controller.py` — `PUT /api/skills/platform/auth/me/phone-number`, ProfileView.vue's own save action.
+- `avance_platform/auth_controller.py` — `PUT /api/core/auth/me/phone-number`, ProfileView.vue's own save action.
 - `auth/auth_service.py` — `register_via_whatsapp`, the WhatsApp-native signup path (shares `_register_with_invite` with the web's own `complete_registration`).
 - `project/invites.py` — `whatsapp_url` on a created invite's payload, `ShareProjectDialog.vue`'s WhatsApp QR.
 - `tracking/actuators/actuator_set.py` — `task.whatsapp(phone_number, message_md)`, the proactive-send entry point (see below).
@@ -48,7 +48,7 @@ so each sender's number (E.164 digits, no `+`) is looked up against
 linked to one of two ways:
 
 - An already-registered web user adds it themselves from ProfileView.vue's
-  own "WhatsApp" field (`PUT /api/skills/platform/auth/me/phone-number`).
+  own "WhatsApp" field (`PUT /api/core/auth/me/phone-number`).
 - A brand-new identity registers straight from WhatsApp: `ShareProjectDialog.vue`'s
   WhatsApp tab renders a `wa.me` QR (`project/invites.py`'s own `whatsapp_url`,
   built from `whatsapp-service.phone-number` + the invite code) that opens

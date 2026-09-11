@@ -53,7 +53,6 @@ class PlatformService(object):
         is written here is a list of names and not of call sites: adding
         a parameter to one of them changes that file and nothing here."""
         from avance_platform.app_store_controller import AppStoreController
-        from avance_platform.auth_controller import AuthController
         from avance_platform.edit_project_controller import EditProjectController
         from avance_platform.inspector_controller import InspectorController
         from avance_platform.label_project_controller import LabelProjectController
@@ -74,7 +73,6 @@ class PlatformService(object):
                 # benchmarking still annotates sessions.
                 LabelProjectController,
                 SettingsController,
-                AuthController,
                 UserController,
                 AppStoreController,
             )

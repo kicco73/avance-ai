@@ -60,7 +60,7 @@ def client(identity, fake_db) -> TestClient:
     app.state.auth_service = _FakeAuthService({"good-token": identity})
     app.state.db = fake_db
 
-    @app.get("/api/skills/platform/auth/login")
+    @app.get("/api/core/auth/login")
     def login_stub():
         return {"allowlisted": True}
 
@@ -78,7 +78,7 @@ def client(identity, fake_db) -> TestClient:
 
 
 def test_an_allowlisted_path_needs_no_cookie_while_a_protected_one_accepts_only_a_verifiable_token(client, identity):
-    assert client.get("/api/skills/platform/auth/login").status_code == 200
+    assert client.get("/api/core/auth/login").status_code == 200
 
     no_cookie = client.get("/api/protected")
     assert no_cookie.status_code == 401
