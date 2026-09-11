@@ -30,7 +30,7 @@ def test_metrics_endpoint_returns_every_core_metric_with_ui_metadata(client, hel
 def test_metrics_reflect_an_empty_conversation_at_baseline(client, hello_project):
     # Bootstrapping alone creates a session, so only message-driven
     # metrics like signal_stability stay at the floor.
-    client.get("/api/skills/webchat/session")
+    client.get("/api/skills/webchat/sessions/current")
 
     body = client.get(f"/api/core/projects/{hello_project}/metrics").json()
     by_name = {m["name"]: m["value"] for m in body}
@@ -40,7 +40,7 @@ def test_metrics_reflect_an_empty_conversation_at_baseline(client, hello_project
 
 @pytest.mark.regression
 def test_engagement_rises_after_sending_messages(client, hello_project):
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     baseline = {m["name"]: m["value"] for m in client.get(f"/api/core/projects/{hello_project}/metrics").json()}["engagement"]
 
     for text in ("hi", "how are you", "tell me more"):
@@ -61,13 +61,13 @@ def test_metrics_are_scoped_to_the_url_project(client):
         resp = client.post(f"/api/skills/platform/projects/{names[key]}/publish", json={})
         assert resp.status_code == 200, resp.text
 
-    client.put(f"/api/skills/platform/projects/{names['hello']}/activate")
-    session = client.get("/api/skills/webchat/session").json()
+    client.post(f"/api/skills/platform/projects/{names['hello']}/activate")
+    session = client.get("/api/skills/webchat/sessions/current").json()
     for text in ("hi", "again", "and again"):
         chat_turn(client, session['id'], text)
     hello_engagement = {m["name"]: m["value"] for m in client.get(f"/api/core/projects/{names['hello']}/metrics").json()}["engagement"]
 
-    client.put(f"/api/skills/platform/projects/{names['cat']}/activate")
+    client.post(f"/api/skills/platform/projects/{names['cat']}/activate")
     cat_engagement = {m["name"]: m["value"] for m in client.get(f"/api/core/projects/{names['cat']}/metrics").json()}["engagement"]
 
     assert hello_engagement > 0.0

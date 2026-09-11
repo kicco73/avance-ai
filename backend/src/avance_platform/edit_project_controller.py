@@ -87,7 +87,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
     @get("/api/skills/platform/projects/{project_id}/test-sessions/current", role="admin")
     async def get_current_test_session(self, project_id: str, session_id: int | None = None):
         """The embedded "Test" chat's bootstrap endpoint — the
-        draft-session equivalent of GET /api/skills/webchat/session."""
+        draft-session equivalent of GET /api/skills/webchat/sessions/current."""
         return await self.turn_service.get_current_draft_session_if_any_or_create_new(session_id, project_id)
 
     @get("/api/skills/platform/projects/{project_id}/test-sessions", role="admin")
@@ -213,7 +213,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
-    @post("/api/skills/platform/projects/by-invite/{code}", role="user")
+    @post("/api/skills/platform/projects/invitations/{code}", role="user")
     def post_resolve_invite_code(self, code: str):
         """Resolves a "share project" invite code back to the project it
         was generated for. Unlike every other route in this file, open to

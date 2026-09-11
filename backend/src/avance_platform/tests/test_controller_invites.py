@@ -1,6 +1,6 @@
 """POST /api/skills/platform/projects/{project_name}/invites (ShareProjectDialog.vue's own
 trigger — a fresh Invite row every time the dialog opens) and
-POST /api/skills/platform/projects/by-invite/{code} (the resolution an already-
+POST /api/skills/platform/projects/invitations/{code} (the resolution an already-
 authenticated landing needs — see ProjectService.resolve_invite_link).
 The default test session role (supervisor, see conftest.py's
 _default_session_user) isn't gated by UserProject at all, so most cases
@@ -41,11 +41,11 @@ def test_every_call_creates_a_fresh_invite_with_its_own_code_and_the_configured_
 def test_resolving_a_code_reports_its_project_or_none_rather_than_404ing(client, hello_project):
     code = _create_invite(client, hello_project)["code"]
 
-    response = client.post(f"/api/skills/platform/projects/by-invite/{code}")
+    response = client.post(f"/api/skills/platform/projects/invitations/{code}")
     assert response.status_code == 200
     assert response.json() == {"project_id": hello_project}
 
-    unknown = client.post("/api/skills/platform/projects/by-invite/NOSUCH")
+    unknown = client.post("/api/skills/platform/projects/invitations/NOSUCH")
     assert unknown.status_code == 200
     assert unknown.json() == {"project_id": None}
 
@@ -60,14 +60,14 @@ class TestPostResolveInviteCodeAsUser:
         app_db.create_invite("EXPIR1", hello_project, None, datetime.utcnow() - timedelta(days=1), max_shares=3)
         Session().role = "user"
 
-        expired = client.post("/api/skills/platform/projects/by-invite/EXPIR1")
+        expired = client.post("/api/skills/platform/projects/invitations/EXPIR1")
         assert expired.status_code == 403
         assert app_db.user_has_project_access(Session().user, hello_project) is False
 
-        response = client.post(f"/api/skills/platform/projects/by-invite/{code}")
+        response = client.post(f"/api/skills/platform/projects/invitations/{code}")
         assert response.status_code == 200
         assert response.json() == {"project_id": hello_project}
         assert app_db.user_has_project_access(Session().user, hello_project) is True
 
         # Revisiting a project already accessible ignores expiry entirely.
-        assert client.post("/api/skills/platform/projects/by-invite/EXPIR1").status_code == 200
+        assert client.post("/api/skills/platform/projects/invitations/EXPIR1").status_code == 200

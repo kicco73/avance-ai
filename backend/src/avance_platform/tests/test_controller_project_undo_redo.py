@@ -173,8 +173,8 @@ def test_undo_does_not_reset_or_reload_the_active_conversation(client):
     assert parse_sse_result(resp)["project_id"] == "proj2"
     resp = client.post("/api/skills/platform/projects/proj2/publish", json={})
     assert resp.status_code == 200, resp.text
-    session = client.get("/api/skills/webchat/session").json()
-    action_resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/action", json={"action_name": "go"})
+    session = client.get("/api/skills/webchat/sessions/current").json()
+    action_resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "go"})
     assert action_resp.status_code == 200, action_resp.text
     assert action_resp.json()["state"]["key"] == "b"
 

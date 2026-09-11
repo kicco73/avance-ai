@@ -155,7 +155,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
             ]
         }
 
-    @put("/api/skills/platform/projects/{project_id}/pause", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/pause", role="admin")
     def put_project_pause(self, project_id: str):
         """An operator's own explicit override — only ever allowed while
         `project_id` is actually running."""
@@ -166,7 +166,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/skills/platform/projects/{project_id}/resume", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/resume", role="admin")
     def put_project_resume(self, project_id: str):
         """The other half of pause above — only ever allowed while
         `project_id` is manually paused (see ProjectService.
@@ -190,7 +190,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         result, _job = await self.project_service.create_new_project(self._activate_project)
         return result
 
-    @put("/api/skills/platform/projects/{project_id}/activate")
+    @post("/api/skills/platform/projects/{project_id}/activate")
     async def activate_project(self, project_id: str):
         try:
             await self.project_service.activate_project_idempotent(project_id, self._activate_project)

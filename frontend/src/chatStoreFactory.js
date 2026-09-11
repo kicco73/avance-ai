@@ -1,7 +1,7 @@
 import { computed, nextTick, ref } from 'vue'
 import {
-  getMessages, getSessionState, postAction, getAutoTracking, postAutoTracking, getActuators, postActuators,
-  postSessionAudio,
+  getMessages, getSessionState, postAction, getAutoTracking, putAutoTracking, getActuators, putActuators,
+  putSessionAudio,
   postTruncateSession, deleteSession, postCloseSession, putMessageReaction, postListenTranscribe, messageAudioUrl,
 } from './api.js'
 import { sendMessage as sendChatMessage, onConnectionState, getConnectionState } from './chatClient.js'
@@ -302,7 +302,7 @@ export function createChatStore({
   async function toggleAutoTracking() {
     autoTrackingLoading.value = true
     try {
-      const res = await postAutoTracking(currentSessionId.value, !autoTrackingEnabled.value)
+      const res = await putAutoTracking(currentSessionId.value, !autoTrackingEnabled.value)
       autoTrackingEnabled.value = res.enabled
       // manual_actions is baked into state at fetch time (see ChatService.
       // _with_manual_actions) — the toggle just flipped which actions
@@ -318,7 +318,7 @@ export function createChatStore({
   async function toggleActuators() {
     actuatorsLoading.value = true
     try {
-      const res = await postActuators(currentSessionId.value, !actuatorsEnabled.value)
+      const res = await putActuators(currentSessionId.value, !actuatorsEnabled.value)
       actuatorsEnabled.value = res.enabled
     } catch {
       // already surfaced via apiFetch
@@ -330,7 +330,7 @@ export function createChatStore({
   async function syncAudioPreference() {
     if (currentSessionId.value == null) return
     try {
-      await postSessionAudio(currentSessionId.value, audioEnabled.value)
+      await putSessionAudio(currentSessionId.value, audioEnabled.value)
     } catch {
       // A preference the next turn re-sends; never worth an error toast.
     }

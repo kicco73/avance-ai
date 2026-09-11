@@ -26,7 +26,7 @@ def _make_labeled_session(client, app_db, project_name, username):
     # compare against — set_active_project_id directly is the same
     # effect for a brand new username with no chat history yet.
     app_db.set_active_project_id(project_name, username)
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     chat_turn(client, session['id'], "hi")
     client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})
     Session().user = "user"

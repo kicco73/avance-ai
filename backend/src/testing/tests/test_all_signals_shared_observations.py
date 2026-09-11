@@ -31,7 +31,7 @@ def _wait_until(predicate, timeout=5.0, interval=0.02):
 
 
 def _make_completed_run(client, hello_project):
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     session_id = session["id"]
     chat_turn(client, session_id, "hi")
     client.put(f"/api/skills/platform/sessions/{session_id}/labeled", json={"labeled": True})

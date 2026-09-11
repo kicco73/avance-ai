@@ -24,7 +24,7 @@ def _wait_until(predicate, timeout=8.0, interval=0.05):
 def _make_labeled_session_for(client, app_db, project_id, username):
     app_db.set_active_project_id(project_id, username)
     with Session().impersonate(username):
-        session = client.get("/api/skills/webchat/session").json()
+        session = client.get("/api/skills/webchat/sessions/current").json()
         turn = chat_turn(client, session['id'], "hi")
         client.put(
             f"/api/skills/platform/messages/{turn['assistant_message_id']}/expected-state", json={"expected_state": "Hello"},

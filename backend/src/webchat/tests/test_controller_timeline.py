@@ -17,7 +17,7 @@ pytestmark = pytest.mark.contract
 def test_timeline_signals_span_every_session_chronologically(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
     with Session().impersonate("alice"):
-        older = client.get("/api/skills/webchat/session").json()
+        older = client.get("/api/skills/webchat/sessions/current").json()
         app_db.save_signal_snapshot({"foo": 10}, older["id"])
         newer = client.post("/api/skills/webchat/sessions").json()
         app_db.save_signal_snapshot({"foo": 20}, newer["id"])
@@ -33,7 +33,7 @@ def test_timeline_signals_span_every_session_chronologically(client, app_db, hel
 def test_timeline_excludes_signal_rows_but_still_includes_the_initial_state(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "bob")
     with Session().impersonate("bob"):
-        session = client.get("/api/skills/webchat/session").json()
+        session = client.get("/api/skills/webchat/sessions/current").json()
         client.get(f"/api/skills/webchat/sessions/{session['id']}/messages")
         turn = chat_turn(client, session['id'], "hi")
         client.put(
@@ -51,7 +51,7 @@ def test_timeline_excludes_signal_rows_but_still_includes_the_initial_state(clie
 def test_timeline_includes_state_transitions(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
     with Session().impersonate("alice"):
-        session = client.get("/api/skills/webchat/session").json()
+        session = client.get("/api/skills/webchat/sessions/current").json()
         client.get(f"/api/skills/webchat/sessions/{session['id']}/messages")
         app_db.save_transition(None, "leave", "Goodbye", session["id"], "INFO")
 
@@ -66,12 +66,12 @@ def test_timeline_includes_state_transitions(client, app_db, hello_project):
 def test_timeline_is_scoped_to_the_given_user_and_project(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
     with Session().impersonate("alice"):
-        alice_session = client.get("/api/skills/webchat/session").json()
+        alice_session = client.get("/api/skills/webchat/sessions/current").json()
         app_db.save_signal_snapshot({"foo": 1}, alice_session["id"])
 
     app_db.set_active_project_id(hello_project, "carol")
     with Session().impersonate("carol"):
-        carol_session = client.get("/api/skills/webchat/session").json()
+        carol_session = client.get("/api/skills/webchat/sessions/current").json()
         app_db.save_signal_snapshot({"foo": 2}, carol_session["id"])
 
     response = client.get(f"/api/core/projects/{hello_project}/users/alice/timeline")

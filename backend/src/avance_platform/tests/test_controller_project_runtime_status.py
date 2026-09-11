@@ -24,32 +24,32 @@ def test_pause_and_resume_round_trip_through_the_runtime_status_listing_and_each
     assert row["revision"] == 0
     assert row["published_revision"] == 0
 
-    assert client.put(f"/api/skills/platform/projects/{hello_project}/resume").status_code == 400
+    assert client.post(f"/api/skills/platform/projects/{hello_project}/resume").status_code == 400
 
-    response = client.put(f"/api/skills/platform/projects/{hello_project}/pause")
+    response = client.post(f"/api/skills/platform/projects/{hello_project}/pause")
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "manually_paused"
     row = _status(client)
     assert row["status"] == "manually_paused"
     assert row["paused_reason"] == "Manually paused."
 
-    assert client.put(f"/api/skills/platform/projects/{hello_project}/pause").status_code == 400
+    assert client.post(f"/api/skills/platform/projects/{hello_project}/pause").status_code == 400
 
-    response = client.put(f"/api/skills/platform/projects/{hello_project}/resume")
+    response = client.post(f"/api/skills/platform/projects/{hello_project}/resume")
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "running"
 
 
 def test_pause_and_resume_both_404_for_an_unknown_project(client):
-    assert client.put("/api/skills/platform/projects/does-not-exist/pause").status_code == 404
-    assert client.put("/api/skills/platform/projects/does-not-exist/resume").status_code == 404
+    assert client.post("/api/skills/platform/projects/does-not-exist/pause").status_code == 404
+    assert client.post("/api/skills/platform/projects/does-not-exist/resume").status_code == 404
 
 
 @pytest.mark.regression
 def test_a_manually_paused_project_blocks_chat_the_same_as_an_automatic_pause(client, hello_project):
-    client.put(f"/api/skills/platform/projects/{hello_project}/pause")
+    client.post(f"/api/skills/platform/projects/{hello_project}/pause")
 
-    response = client.get("/api/skills/webchat/session")
+    response = client.get("/api/skills/webchat/sessions/current")
 
     assert response.status_code == 200
     body = response.json()

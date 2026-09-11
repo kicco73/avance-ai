@@ -16,7 +16,7 @@ pytestmark = pytest.mark.contract
 def _make_labeled_session(client, app_db, project_name, username):
     Session().user = username
     app_db.set_active_project_id(project_name, username)
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     chat_turn(client, session['id'], "hi")
     client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})
     Session().user = "user"

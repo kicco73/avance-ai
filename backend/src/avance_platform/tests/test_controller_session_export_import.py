@@ -46,7 +46,7 @@ def test_export_covers_every_session_of_the_project_native_and_imported_alike_wi
     chat) and imported alike, not just the imported ones."""
     assert _export(client, hello_project) == []
 
-    native_session = client.get("/api/skills/webchat/session").json()
+    native_session = client.get("/api/skills/webchat/sessions/current").json()
     session_id = _import_transcript(client, hello_project)
     user_message_id = _messages(client, session_id)[0]["id"]
     client.put(f"/api/skills/platform/messages/{user_message_id}/expected-state", json={"expected_state": "Hello"})

@@ -54,7 +54,7 @@ export function postCreateInvite(projectId) {
 // project for the first time, it also consumes the invite and grants
 // them access (creates a UserProject row) server-side.
 export function postRedeemInviteCode(code) {
-  return apiFetch(`${API_URL}/skills/platform/projects/by-invite/${encodeURIComponent(code)}`, { method: 'POST' })
+  return apiFetch(`${API_URL}/skills/platform/projects/invitations/${encodeURIComponent(code)}`, { method: 'POST' })
 }
 
 // { tokens: number | null } — estimated input-token cost of `stateKey`'s
@@ -89,7 +89,7 @@ export function putServiceLevel(projectId, service, level) {
 // Every file type a project can carry, straight from the backend's own
 // catalog (automaton.file_types) — see projectFileTypes.js.
 export function getProjectFileTypes() {
-  return apiFetch(`${API_URL}/project-file-types`)
+  return apiFetch(`${API_URL}/skills/platform/projects/file-types`)
 }
 
 export function getProjectFiles(projectId) {
@@ -99,7 +99,7 @@ export function getProjectFiles(projectId) {
 // Raw markdown content of a fixed reference doc, backing each "(?)" doc
 // button. `name` is one of 'project-specs' / 'metrics' / 'benchmark'.
 export function getDoc(name) {
-  return apiFetch(`${API_URL}/docs/${encodeURIComponent(name)}`)
+  return apiFetch(`${API_URL}/skills/platform/docs/${encodeURIComponent(name)}`)
 }
 
 // {content, can_undo, can_redo} of fileName's current content —

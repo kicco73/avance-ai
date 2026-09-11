@@ -15,7 +15,7 @@ def _metrics(client, project_id, query: str = "") -> dict:
 
 
 def _first_message_of_a_second_session(client) -> tuple[int, int]:
-    first = client.get("/api/skills/webchat/session").json()
+    first = client.get("/api/skills/webchat/sessions/current").json()
     client.get(f"/api/skills/webchat/sessions/{first['id']}/messages")
     second = client.post("/api/skills/webchat/sessions").json()
     messages = client.get(f"/api/skills/webchat/sessions/{second['id']}/messages").json()
@@ -25,7 +25,7 @@ def _first_message_of_a_second_session(client) -> tuple[int, int]:
 
 @pytest.mark.contract
 def test_get_session_signals_returns_the_full_event_log_and_404s_for_an_unknown_session(client, hello_project):
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
 
     response = client.get(f"/api/skills/platform/sessions/{session['id']}/signals")
     assert response.status_code == 200
@@ -36,7 +36,7 @@ def test_get_session_signals_returns_the_full_event_log_and_404s_for_an_unknown_
 
 @pytest.mark.contract
 def test_get_metrics_is_the_live_history_unless_pinned_to_a_message_keeping_its_shape_and_404ing_an_unknown_one(client, hello_project):
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     first_message_id = chat_turn(client, session['id'], "first")["assistant_message_id"]
     chat_turn(client, session['id'], "second")
 
@@ -62,7 +62,7 @@ def test_get_metrics_is_the_live_history_unless_pinned_to_a_message_keeping_its_
 def test_get_messages_response_shape_has_no_annotation_fields(client, hello_project):
     """Annotation-related fields and the evaluation-point link live on
     Tracking (see get_session_signals), not on the message row."""
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     chat_turn(client, session['id'], "hi")
     rows = client.get(f"/api/skills/webchat/sessions/{session['id']}/messages").json()
 
@@ -75,7 +75,7 @@ def test_get_messages_response_shape_has_no_annotation_fields(client, hello_proj
 
 @pytest.mark.contract
 def test_put_expected_state_and_signals_are_409_for_a_non_evaluation_point_message_and_404_for_an_unknown_one(client, hello_project):
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     message_id = chat_turn(client, session['id'], "hi")["assistant_message_id"]
 
     assert client.put(f"/api/skills/platform/messages/{message_id}/expected-state", json={"expected_state": "start"}).status_code == 409
@@ -103,7 +103,7 @@ def test_get_test_metrics_lists_the_whole_catalog_optionally_scoped_to_a_session
     for metric in body:
         assert set(metric) == {"name", "ui_label", "ui_description", "value", "sample_count"}
 
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     assert client.get(f"/api/skills/testing/projects/{hello_project}/tests/metrics?session_id={session['id']}").status_code == 200
     assert client.get(f"/api/skills/testing/projects/{hello_project}/tests/metrics?session_id=999999").status_code == 404
 
@@ -112,7 +112,7 @@ def test_get_test_metrics_lists_the_whole_catalog_optionally_scoped_to_a_session
 def test_get_test_metrics_reflects_annotations_and_deleting_them_clears_only_the_annotations(client, hello_project, app_db):
     """"Hello world" declares no triggers, so there's no real chat-turn
     path to a linked Tracking row — written directly via app_db."""
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     message_id = chat_turn(client, session['id'], "hi")["assistant_message_id"]
     signal_row_id = app_db.save_signal_snapshot({"foo": 80}, session["id"], message_id=message_id)
 
@@ -166,7 +166,7 @@ def test_annotating_the_first_sessions_own_start_links_the_unlinked_init_row_to_
     """The automaton's first ("" -> start_state) transition fires before
     any message exists, so it starts unlinked — a domain expert can
     still annotate it via the same lazy-link path a later session uses."""
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     messages = client.get(f"/api/skills/webchat/sessions/{session['id']}/messages").json()
     assert messages
     first_message_id = messages[0]["id"]

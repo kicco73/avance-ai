@@ -26,7 +26,7 @@ def _wait_for_aggregate_result(client, project_name, kind, strategy, target=None
 
 
 def _make_session_annotated_at_hello(client, *, labeled=False):
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     turn = chat_turn(client, session['id'], "hi")
     client.put(
         f"/api/skills/platform/messages/{turn['assistant_message_id']}/expected-state", json={"expected_state": "Hello"},

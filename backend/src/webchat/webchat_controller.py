@@ -30,7 +30,7 @@ class WebchatController(BaseController):
     def __init__(self, turn_service: TurnService) -> None:
         self.turn_service = turn_service
 
-    @get("/api/skills/webchat/session")
+    @get("/api/skills/webchat/sessions/current")
     async def get_current_session(self, session_id: int | None = None):
         """Bootstrap endpoint: resolves (or creates) the active project's
         current writable session. Always a real, published-revision
@@ -73,7 +73,7 @@ class WebchatController(BaseController):
     async def get_messages(self, session_id: int):
         return await self.turn_service.get_messages(session_id)
 
-    @post("/api/skills/webchat/sessions/{session_id}/action")
+    @post("/api/skills/webchat/sessions/{session_id}/actions")
     async def post_action(self, session_id: int, req: ActionRequest):
         try:
             return await self.turn_service.apply_manual_action(req.action_name, session_id)
@@ -84,8 +84,8 @@ class WebchatController(BaseController):
     def get_session_audio(self, session_id: int):
         return {"enabled": self.turn_service.is_audio_enabled(session_id)}
 
-    @post("/api/skills/webchat/sessions/{session_id}/audio")
-    def post_session_audio(self, session_id: int, req: AudioEnabledRequest):
+    @put("/api/skills/webchat/sessions/{session_id}/audio")
+    def put_session_audio(self, session_id: int, req: AudioEnabledRequest):
         self.turn_service.set_audio_enabled(session_id, req.enabled)
         return {"enabled": self.turn_service.is_audio_enabled(session_id)}
 
@@ -93,8 +93,8 @@ class WebchatController(BaseController):
     def get_actuators(self, session_id: int):
         return {"enabled": self.turn_service.is_actuators_enabled(session_id)}
 
-    @post("/api/skills/webchat/sessions/{session_id}/actuators")
-    def post_actuators(self, session_id: int, req: ActuatorsRequest):
+    @put("/api/skills/webchat/sessions/{session_id}/actuators")
+    def put_actuators(self, session_id: int, req: ActuatorsRequest):
         self.turn_service.set_actuators_enabled(session_id, req.enabled)
         return {"enabled": self.turn_service.is_actuators_enabled(session_id)}
 

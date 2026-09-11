@@ -41,7 +41,7 @@ def test_reading_an_imported_sessions_messages_survives_a_final_live_state(clien
     )
     assert response.status_code == 200, response.text
     assert parse_sse_result(response)["project_id"] == "proj"
-    assert client.put("/api/skills/platform/projects/proj/activate").status_code == 200
+    assert client.post("/api/skills/platform/projects/proj/activate").status_code == 200
     assert client.post("/api/skills/platform/projects/proj/publish", json={}).status_code == 200
 
     # Bootstraps the live conversation into its final, no-chat state.

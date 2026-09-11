@@ -24,7 +24,7 @@ def _wait_for_terminal_status(client, project_name, run_id, timeout=5.0, interva
 
 
 def _make_labeled_session(client):
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     chat_turn(client, session['id'], "hi")
     client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})
     return session["id"]
@@ -84,7 +84,7 @@ def test_batch_run_completes_and_tracks_batch_segments(client, hello_project):
 def test_whole_project_run_scopes_to_labeled_sessions_only(client, hello_project):
     _make_labeled_session(client)
     # An unlabeled session must never be pulled into a whole-project run.
-    unlabeled = client.get("/api/skills/webchat/session").json()
+    unlabeled = client.get("/api/skills/webchat/sessions/current").json()
     chat_turn(client, unlabeled['id'], "hi")
     run = client.post(
         f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": None, "strategy": "turn_by_turn"},

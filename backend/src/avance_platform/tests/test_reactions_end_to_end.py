@@ -46,7 +46,7 @@ def reactions_project(client):
     )
     assert response.status_code == 200, response.text
     project_id = parse_sse_result(response)["project_id"]
-    assert client.put(f"/api/skills/platform/projects/{project_id}/activate").status_code == 200
+    assert client.post(f"/api/skills/platform/projects/{project_id}/activate").status_code == 200
     assert client.post(f"/api/skills/platform/projects/{project_id}/publish", json={}).status_code == 200
     return project_id
 
@@ -67,7 +67,7 @@ def test_get_state_carries_the_reactions_vocabulary(client, reactions_project):
 
 
 def test_chat_turn_response_state_carries_reactions_too(client, reactions_project):
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
 
     turn = chat_turn(client, session['id'], "hi")
 
@@ -78,7 +78,7 @@ def test_chat_turn_response_state_carries_reactions_too(client, reactions_projec
 
 
 def test_message_list_and_reaction_endpoint_round_trip(client, reactions_project):
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     turn = chat_turn(client, session['id'], "hi")
     assistant_id = turn["assistant_message_id"]
 
@@ -137,7 +137,7 @@ def no_reactions_project(client):
     )
     assert response.status_code == 200, response.text
     project_id = parse_sse_result(response)["project_id"]
-    assert client.put(f"/api/skills/platform/projects/{project_id}/activate").status_code == 200
+    assert client.post(f"/api/skills/platform/projects/{project_id}/activate").status_code == 200
     assert client.post(f"/api/skills/platform/projects/{project_id}/publish", json={}).status_code == 200
     return project_id
 
@@ -159,7 +159,7 @@ def test_a_states_reactions_enabled_has_no_effect_without_a_declared_reactions_s
 
     fake_ai_service.generate_stream_with_metadata = generate_stream_with_metadata_and_reaction
 
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     turn = chat_turn(client, session['id'], "hi")
     user_message_id = turn["user_message_id"]
 
@@ -181,7 +181,7 @@ def test_bots_own_reaction_is_captured_and_persisted_on_the_users_message(client
 
     fake_ai_service.generate_stream_with_metadata = generate_stream_with_metadata_and_reaction
 
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     turn = chat_turn(client, session['id'], "hi")
     user_message_id = turn["user_message_id"]
     assert user_message_id is not None

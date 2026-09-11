@@ -89,7 +89,7 @@ def test_a_session_pinned_to_an_old_now_broken_revision_is_flagged_unsupported(c
     and builds fine) — only the one session still pinned to the older,
     since-superseded revision that broke is affected."""
     _upload(client, "flaky", VALID_YML)
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     assert session["project_revision"] == 0
 
     # A second, still-valid revision gets published — the session above
@@ -117,11 +117,11 @@ def test_a_session_pinned_to_an_old_now_broken_revision_is_flagged_unsupported(c
 
 def test_resume_is_rejected_for_a_project_whose_published_revision_is_broken(client, app, app_db):
     _upload(client, "solo", VALID_YML)
-    paused = client.put("/api/skills/platform/projects/solo/pause")
+    paused = client.post("/api/skills/platform/projects/solo/pause")
     assert paused.status_code == 200, paused.text
     _break_project(app, app_db, "solo")
 
-    response = client.put("/api/skills/platform/projects/solo/resume")
+    response = client.post("/api/skills/platform/projects/solo/resume")
 
     assert response.status_code == HTTPStatus.CONFLICT, response.text
     assert response.json()["error"]["code"] == "project_broken"

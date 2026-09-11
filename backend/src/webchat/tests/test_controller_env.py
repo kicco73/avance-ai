@@ -15,7 +15,7 @@ pytestmark = pytest.mark.contract
 
 
 def _session_id(client) -> int:
-    return client.get("/api/skills/webchat/session").json()["id"]
+    return client.get("/api/skills/webchat/sessions/current").json()["id"]
 
 
 def test_env_endpoint_reports_stored_and_action_set_only(client, hello_project):

@@ -9,7 +9,7 @@ export function getProjects() {
 // Settings > Runtime status view's own table — every project's own
 // {id, status, paused_reason, revision, published_revision, broken}.
 export function getProjectsRuntimeStatus() {
-  return apiFetch(`${API_URL}/settings/projects/runtime-status`)
+  return apiFetch(`${API_URL}/skills/platform/settings/projects/runtime-status`)
 }
 
 // Manage projects' own "broken project" warnings counter/list — a
@@ -17,19 +17,19 @@ export function getProjectsRuntimeStatus() {
 // received, outliving the project actually being fixed (unlike
 // getProjectsRuntimeStatus's own live `broken` field).
 export function getProjectBrokenWarnings() {
-  return apiFetch(`${API_URL}/settings/warnings?kind=project_broken`)
+  return apiFetch(`${API_URL}/skills/platform/settings/warnings?kind=project_broken`)
 }
 
 export function deleteProjectBrokenWarning(warningId) {
-  return apiFetch(`${API_URL}/settings/warnings/${encodeURIComponent(warningId)}`, { method: 'DELETE' })
+  return apiFetch(`${API_URL}/skills/platform/settings/warnings/${encodeURIComponent(warningId)}`, { method: 'DELETE' })
 }
 
 export function getUsers() {
-  return apiFetch(`${API_URL}/users`)
+  return apiFetch(`${API_URL}/skills/platform/users`)
 }
 
 export function putUserRole(userId, role) {
-  return apiFetch(`${API_URL}/users/${encodeURIComponent(userId)}/role`, {
+  return apiFetch(`${API_URL}/skills/platform/users/${encodeURIComponent(userId)}/role`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ role })
@@ -40,11 +40,11 @@ export function putUserRole(userId, role) {
 // respectively, enforced backend-side; a 400 means the status shown was
 // already stale.
 export function putProjectPause(projectId) {
-  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/pause`, { method: 'PUT' })
+  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/pause`, { method: 'POST' })
 }
 
 export function putProjectResume(projectId) {
-  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/resume`, { method: 'PUT' })
+  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/resume`, { method: 'POST' })
 }
 
 // "New project" — same effect server-side as uploading samples/Hello
@@ -57,15 +57,15 @@ export function postNewProject() {
 // Settings > "About Avance..." dialog — {name, version}, version being
 // whatever the running backend's own __version__ (main.py) currently is.
 export function getAbout() {
-  return apiFetch(`${API_URL}/settings/about`)
+  return apiFetch(`${API_URL}/skills/platform/settings/about`)
 }
 
 export function getBackup() {
-  return apiFetch(`${API_URL}/settings/backup`, {}, { parse: 'blob' })
+  return apiFetch(`${API_URL}/skills/platform/settings/backup`, {}, { parse: 'blob' })
 }
 
 export function postRestoreBackup(file) {
-  return apiFetch(`${API_URL}/settings/backup`, {
+  return apiFetch(`${API_URL}/skills/platform/settings/backup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/octet-stream' },
     body: file
@@ -74,7 +74,7 @@ export function postRestoreBackup(file) {
 
 export function activateProject(projectId) {
   return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/activate`, {
-    method: 'PUT'
+    method: 'POST'
   })
 }
 
@@ -103,7 +103,7 @@ export function deleteProject(projectId) {
 // Settings > Manage services > Database — wipes live sessions across
 // every project at once, not just one.
 export function postWipeAllLiveSessions() {
-  return apiFetch(`${API_URL}/settings/database/wipe-live-sessions`, { method: 'POST' })
+  return apiFetch(`${API_URL}/skills/platform/settings/database/wipe-live-sessions`, { method: 'POST' })
 }
 
 // Settings > Manage services > Database — deletes every archive revision,
@@ -111,13 +111,13 @@ export function postWipeAllLiveSessions() {
 // pinned by any session. Returns {success, deleted} — deleted is how many
 // distinct revisions were actually removed.
 export function postCleanUnusedRevisions() {
-  return apiFetch(`${API_URL}/settings/database/clean-unused-revisions`, { method: 'POST' })
+  return apiFetch(`${API_URL}/skills/platform/settings/database/clean-unused-revisions`, { method: 'POST' })
 }
 
 // Settings > Manage services — read-only snapshot of .config.yml's own
 // service sections (see backend AppConfig.public_services_snapshot).
 export function getServicesConfig() {
-  return apiFetch(`${API_URL}/settings/services`)
+  return apiFetch(`${API_URL}/skills/platform/settings/services`)
 }
 
 // Settings > Manage services > AI — each provider's own daily token
@@ -126,7 +126,7 @@ export function getServicesConfig() {
 // history: [{timestamp, values: {label: tokens}, cache_read: {label: tokens}}, ...],
 // cache_read_ratio: {label: 0..1}}.
 export function getAiUsage() {
-  return apiFetch(`${API_URL}/settings/services/ai-usage`)
+  return apiFetch(`${API_URL}/skills/platform/settings/services/ai-usage`)
 }
 
 export function downloadProject(projectId) {
@@ -137,5 +137,5 @@ export function downloadProject(projectId) {
 // time, by run_at per `order` (see db/tasks.py's list_tasks).
 export function getScheduledTasks(status, order = 'asc') {
   const params = new URLSearchParams({ status, order })
-  return apiFetch(`${API_URL}/settings/tasks?${params}`)
+  return apiFetch(`${API_URL}/skills/platform/settings/tasks?${params}`)
 }

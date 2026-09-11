@@ -5,6 +5,8 @@ one section of.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from avance_platform.doc_catalog import DOCS
@@ -37,10 +39,18 @@ def test_the_skills_doc_carries_a_section_from_every_installed_skill(client):
             assert section in content
 
 
-def test_the_skills_doc_names_no_skill_that_is_not_installed(client, tmp_path):
+def test_the_skills_page_carries_only_the_skills_a_build_copied(tmp_path):
     from system import skills
 
-    installed = {entry["package"] for entry in skills.installed()}
+    source_root = tmp_path / "src"
+    source_root.mkdir()
+    real = Path(skills.__file__).resolve().parent.parent
+    for package in ("talk", "listen"):
+        (source_root / package).symlink_to(real / package)
 
-    assert "whatsapp" in installed
-    assert skills.documentation(tmp_path) == ""
+    page = skills.documentation(source_root)
+
+    assert "## Talk" in page
+    assert "## Listen" in page
+    assert "WhatsApp" not in page
+    assert "## Platform" not in page

@@ -9,7 +9,7 @@ const WS_URL = new URL(API_URL + '/core/bus', location.href).href.replace(/^http
 
 export function getCurrentSession(sessionId) {
   const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
-  return apiFetch(`${API_URL}/skills/webchat/session${query}`)
+  return apiFetch(`${API_URL}/skills/webchat/sessions/current${query}`)
 }
 
 export function postCreateSession() {
@@ -79,23 +79,23 @@ export function getTestStatus(projectId) {
 export function postListenTranscribe(audioBlob) {
   const formData = new FormData()
   formData.append('file', audioBlob, 'recording.webm')
-  return apiFetch(`${API_URL}/listen/transcribe`, {
+  return apiFetch(`${API_URL}/skills/listen/transcribe`, {
     method: 'POST',
     body: formData
   })
 }
 
 export function postAction(actionName, sessionId) {
-  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/action`, {
+  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/actions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action_name: actionName })
   })
 }
 
-export function postSessionAudio(sessionId, enabled) {
+export function putSessionAudio(sessionId, enabled) {
   return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/audio`, {
-    method: 'POST',
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled })
   })
@@ -107,9 +107,9 @@ export function getAutoTracking(sessionId) {
   return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/autotracking`)
 }
 
-export function postAutoTracking(sessionId, enabled) {
+export function putAutoTracking(sessionId, enabled) {
   return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/autotracking`, {
-    method: 'POST',
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled })
   })
@@ -119,9 +119,9 @@ export function getActuators(sessionId) {
   return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/actuators`)
 }
 
-export function postActuators(sessionId, enabled) {
+export function putActuators(sessionId, enabled) {
   return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/actuators`, {
-    method: 'POST',
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled })
   })

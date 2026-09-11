@@ -31,7 +31,7 @@ vi.mock('../src/api.js', () => ({
   getSessionState: vi.fn(),
   postAction: vi.fn(),
   getAutoTracking: vi.fn(),
-  postAutoTracking: vi.fn(),
+  putAutoTracking: vi.fn(),
   getAiModels: vi.fn(),
   postAiModelSelection: vi.fn(),
   putMessageReaction: vi.fn(),

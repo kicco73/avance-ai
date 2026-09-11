@@ -68,9 +68,9 @@ def test_switching_projects_right_after_a_restore_does_not_crash(client, hello_p
     )
     assert response.status_code == 200
 
-    response = client.put(f"/api/skills/platform/projects/{hello_project}/activate")
+    response = client.post(f"/api/skills/platform/projects/{hello_project}/activate")
     assert response.status_code == 200
 
     # The bootstrap call the frontend makes right after any switch.
-    response = client.get("/api/skills/webchat/session")
+    response = client.get("/api/skills/webchat/sessions/current")
     assert response.status_code == 200

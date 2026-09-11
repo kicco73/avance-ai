@@ -22,7 +22,7 @@ vi.mock('../src/api.js', () => ({
   getMessages: vi.fn(),
   postAction: vi.fn(),
   getAutoTracking: vi.fn(),
-  postAutoTracking: vi.fn(),
+  putAutoTracking: vi.fn(),
   getAiModels: vi.fn(),
   postAiModelSelection: vi.fn(),
   messageAudioUrl: vi.fn(),

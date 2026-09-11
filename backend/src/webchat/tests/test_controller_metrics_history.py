@@ -13,7 +13,7 @@ pytestmark = pytest.mark.contract
 def test_metrics_history_spans_every_session_chronologically(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
     with Session().impersonate("alice"):
-        older = client.get("/api/skills/webchat/session").json()
+        older = client.get("/api/skills/webchat/sessions/current").json()
         chat_turn(client, older['id'], "hi")
         newer = client.post("/api/skills/webchat/sessions").json()
         chat_turn(client, newer['id'], "hello again")
@@ -31,11 +31,11 @@ def test_metrics_history_spans_every_session_chronologically(client, app_db, hel
 def test_metrics_history_is_scoped_to_the_given_user_and_project(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
     with Session().impersonate("alice"):
-        client.get("/api/skills/webchat/session")
+        client.get("/api/skills/webchat/sessions/current")
 
     app_db.set_active_project_id(hello_project, "carol")
     with Session().impersonate("carol"):
-        session = client.get("/api/skills/webchat/session").json()
+        session = client.get("/api/skills/webchat/sessions/current").json()
         chat_turn(client, session['id'], "hi")
     alice_body = client.get(f"/api/core/projects/{hello_project}/users/alice/metrics-history").json()
     carol_body = client.get(f"/api/core/projects/{hello_project}/users/carol/metrics-history").json()
@@ -48,7 +48,7 @@ def test_metrics_history_is_scoped_to_the_given_user_and_project(client, app_db,
 def test_metrics_history_includes_one_session_start_per_session(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
     with Session().impersonate("alice"):
-        older = client.get("/api/skills/webchat/session").json()
+        older = client.get("/api/skills/webchat/sessions/current").json()
         chat_turn(client, older['id'], "hi")
         client.post("/api/skills/webchat/sessions")
 

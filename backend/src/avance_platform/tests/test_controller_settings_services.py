@@ -29,7 +29,7 @@ def test_get_services_returns_the_configured_snapshot_verbatim(client):
 
 @pytest.mark.contract
 def test_wipe_all_live_sessions_deletes_sessions_across_every_project(client, hello_project):
-    session_id = client.get("/api/skills/webchat/session").json()["id"]
+    session_id = client.get("/api/skills/webchat/sessions/current").json()["id"]
     assert client.get(f"/api/skills/webchat/sessions/{session_id}/messages").status_code == 200
 
     response = client.post("/api/skills/platform/settings/database/wipe-live-sessions")
@@ -51,7 +51,7 @@ def test_clean_unused_revisions_deletes_only_superseded_unpublished_drafts(clien
         headers={"Content-Type": "application/zip"},
     )
     assert response.status_code == 200, response.text
-    assert client.put(f"/api/skills/platform/projects/{project_id}/activate").status_code == 200
+    assert client.post(f"/api/skills/platform/projects/{project_id}/activate").status_code == 200
     assert client.post(f"/api/skills/platform/projects/{project_id}/publish", json={}).status_code == 200  # revision 0 published
 
     assert client.put(f"/api/skills/platform/projects/{project_id}/files/notes.txt", content=b"v1").status_code == 200  # forks to revision 1

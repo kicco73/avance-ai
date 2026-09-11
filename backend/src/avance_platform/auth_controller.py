@@ -49,7 +49,7 @@ class AuthController(BaseController):
         )
         return {"success": True}
 
-    @post("/api/skills/platform/auth/accept-terms", role="pending")
+    @post("/api/skills/platform/auth/terms/acceptance", role="pending")
     def post_accept_terms(self, request: Request, req: AcceptTermsRequest):
         """TermsView.vue's Accept button — creates the User row that
         login() deliberately deferred. Reads the session cookie straight
@@ -94,7 +94,7 @@ class AuthController(BaseController):
         own profile data."""
         return self.auth_service.get_profile(Session().user)
 
-    @put("/api/skills/platform/auth/me/whatsapp-phone-number")
+    @put("/api/skills/platform/auth/me/phone-number")
     def put_whatsapp_phone_number(self, req: SetWhatsAppPhoneNumberRequest):
         try:
             return self.auth_service.set_whatsapp_phone_number(

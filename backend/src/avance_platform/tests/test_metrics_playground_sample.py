@@ -17,7 +17,7 @@ def _upload_and_activate(client):
     response = client.post("/api/skills/platform/projects/upload", content=content, headers={"Content-Type": "application/zip"})
     assert response.status_code == 200, response.text
     project_id = parse_sse_result(response)["project_id"]
-    response = client.put(f"/api/skills/platform/projects/{project_id}/activate")
+    response = client.post(f"/api/skills/platform/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
     response = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
@@ -32,7 +32,7 @@ def _metric_values(client, project_id: str) -> dict[str, float]:
 def test_the_sample_loads_and_starts_at_lobby(client):
     _upload_and_activate(client)
 
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
 
     assert session["start_state"] == "lobby"
 
@@ -43,7 +43,7 @@ def test_metric_values_never_include_a_non_session_scoped_metric(client):
     only context a chat turn's trigger evaluation runs in — so neither
     metric appears here."""
     project_id = _upload_and_activate(client)
-    client.get("/api/skills/webchat/session")
+    client.get("/api/skills/webchat/sessions/current")
 
     values = _metric_values(client, project_id)
 

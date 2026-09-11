@@ -48,7 +48,7 @@ def test_download_has_no_sessions_json_when_there_are_no_imported_sessions(clien
 def test_download_includes_both_live_and_imported_sessions_relabeled_as_imported(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
     with Session().impersonate("alice"):
-        native_session = client.get("/api/skills/webchat/session").json()
+        native_session = client.get("/api/skills/webchat/sessions/current").json()
     assert native_session["type"] == "live"
     resp = client.post(
         f"/api/skills/platform/projects/{hello_project}/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))]
@@ -141,7 +141,7 @@ def test_download_then_reupload_round_trips_a_live_session_from_another_user(cli
     assert resp.status_code == 200, resp.text
     app_db.set_active_project_id(project_id, "alice")
     with Session().impersonate("alice"):
-        live_session = client.get("/api/skills/webchat/session").json()
+        live_session = client.get("/api/skills/webchat/sessions/current").json()
         chat_turn(client, live_session['id'], "hi")
     zip_bytes = client.get(f"/api/skills/platform/projects/{project_id}").content
 

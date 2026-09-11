@@ -157,7 +157,7 @@ def test_reset_cache_clears_the_broadcasters_recorded_state(client, hello_projec
     that completed before the reset keeps reporting 'completed' (nothing
     ever tells the recorded state it's now stale) even though its data
     was just deleted."""
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     session_id = session["id"]
     chat_turn(client, session_id, "hi")
     client.put(f"/api/skills/platform/sessions/{session_id}/labeled", json={"labeled": True})

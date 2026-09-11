@@ -32,7 +32,7 @@ def _upload_activate_publish(client, project_id: str):
     )
     assert response.status_code == 200, response.text
     assert parse_sse_result(response)["project_id"] == project_id
-    assert client.put(f"/api/skills/platform/projects/{project_id}/activate").status_code == 200
+    assert client.post(f"/api/skills/platform/projects/{project_id}/activate").status_code == 200
     assert client.post(f"/api/skills/platform/projects/{project_id}/publish", json={}).status_code == 200
 
 
@@ -100,7 +100,7 @@ def test_revert_is_a_no_op_right_after_upload(client):
         headers={"Content-Type": "application/zip"},
     )
     assert response.status_code == 200, response.text
-    assert client.put("/api/skills/platform/projects/proj/activate").status_code == 200
+    assert client.post("/api/skills/platform/projects/proj/activate").status_code == 200
 
     before = client.get("/api/skills/platform/projects/proj/revision").json()
     assert before["published_revision"] == before["revision"]

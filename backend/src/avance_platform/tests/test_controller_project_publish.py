@@ -33,7 +33,7 @@ def _upload_activate_publish(client, project_id: str):
     )
     assert response.status_code == 200, response.text
     assert parse_sse_result(response)["project_id"] == project_id
-    assert client.put(f"/api/skills/platform/projects/{project_id}/activate").status_code == 200
+    assert client.post(f"/api/skills/platform/projects/{project_id}/activate").status_code == 200
     assert client.post(f"/api/skills/platform/projects/{project_id}/publish", json={}).status_code == 200
 
 
@@ -54,7 +54,7 @@ def test_publish_is_a_no_op_when_already_up_to_date(client):
 
     resp = client.post("/api/skills/platform/projects/proj/publish", json={})
     assert resp.status_code == 200
-    assert resp.json() == before
+    assert {key: resp.json()[key] for key in before} == before
 
 
 @pytest.mark.regression

@@ -86,7 +86,7 @@ class InspectorController(BaseController):
         always auto-tracked (see TrackingService.process)."""
         return {"enabled": self.turn_service.is_auto_tracking_enabled(session_id)}
 
-    @post("/api/skills/platform/sessions/{session_id}/autotracking")
-    def post_autotracking(self, session_id: int, req: AutoTrackingRequest):
+    @put("/api/skills/platform/sessions/{session_id}/autotracking")
+    def put_autotracking(self, session_id: int, req: AutoTrackingRequest):
         self.turn_service.set_auto_tracking_enabled(session_id, req.enabled)
         return {"enabled": self.turn_service.is_auto_tracking_enabled(session_id)}

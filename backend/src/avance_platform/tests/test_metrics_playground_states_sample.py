@@ -18,7 +18,7 @@ def _upload_and_activate(client):
     response = client.post("/api/skills/platform/projects/upload", content=content, headers={"Content-Type": "application/zip"})
     assert response.status_code == 200, response.text
     project_id = parse_sse_result(response)["project_id"]
-    response = client.put(f"/api/skills/platform/projects/{project_id}/activate")
+    response = client.post(f"/api/skills/platform/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
     response = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
@@ -29,7 +29,7 @@ def _upload_and_activate(client):
 def test_the_sample_loads_and_starts_at_lobby(client):
     _upload_and_activate(client)
 
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
 
     assert session["start_state"] == "lobby"
 
@@ -37,14 +37,14 @@ def test_the_sample_loads_and_starts_at_lobby(client):
 @pytest.mark.regression
 def test_firing_notice_mood_actually_moves_to_its_own_dedicated_state(client):
     _upload_and_activate(client)
-    session = client.get("/api/skills/webchat/session").json()
-    move = client.post(f"/api/skills/webchat/sessions/{session['id']}/action", json={"action_name": "warm_up"})
+    session = client.get("/api/skills/webchat/sessions/current").json()
+    move = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "warm_up"})
     assert move.json()["state"]["key"] == "engaged"
 
     # Manual invocation (like clicking the button) never checks the
     # trigger — see Automaton.move — so this exercises the real target
     # state without needing the "mood" signal to actually be >= 70.
-    response = client.post(f"/api/skills/webchat/sessions/{session['id']}/action", json={"action_name": "notice_mood"})
+    response = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "notice_mood"})
 
     assert response.status_code == 200
     assert response.json()["state"]["key"] == "mood_reached"

@@ -29,7 +29,7 @@ def _upload_and_activate(client, project_id: str, yaml_text: str) -> str:
     assert response.status_code == 200, response.text
     returned_id = parse_sse_result(response)["project_id"]
     assert returned_id == project_id
-    response = client.put(f"/api/skills/platform/projects/{returned_id}/activate")
+    response = client.post(f"/api/skills/platform/projects/{returned_id}/activate")
     assert response.status_code == 200, response.text
     return returned_id
 
@@ -48,7 +48,7 @@ def _setup_unpublished_project(app_db, project_id: str, yaml_text: str) -> None:
 def test_regular_session_bootstrap_fails_for_an_unpublished_project(client, app_db):
     _setup_unpublished_project(app_db, "draft_only_1", UNPUBLISHED_PROJECT)
 
-    response = client.get("/api/skills/webchat/session")
+    response = client.get("/api/skills/webchat/sessions/current")
 
     assert response.status_code == 409
     assert "never been published" in response.json()["error"]["message"]
@@ -113,7 +113,7 @@ def test_allow_draft_query_param_no_longer_has_any_effect(client, app_db):
     via a query param — the choice is solely which endpoint is called."""
     _setup_unpublished_project(app_db, "draft_only_5", UNPUBLISHED_PROJECT)
 
-    response = client.get("/api/skills/webchat/session?allow_draft=true")
+    response = client.get("/api/skills/webchat/sessions/current?allow_draft=true")
 
     assert response.status_code == 409
 
@@ -136,7 +136,7 @@ def test_a_test_session_never_appears_in_the_regular_sessions_list(client):
 def test_a_native_session_never_appears_in_the_test_sessions_list(client):
     _upload_and_activate(client, "isolation_2", UNPUBLISHED_PROJECT)
     _publish(client, "isolation_2")
-    native_session = client.get("/api/skills/webchat/session").json()
+    native_session = client.get("/api/skills/webchat/sessions/current").json()
 
     body = client.get("/api/skills/platform/projects/isolation_2/test-sessions").json()
 
@@ -147,7 +147,7 @@ def test_regular_bootstrap_and_test_bootstrap_never_resolve_to_the_same_session(
     _upload_and_activate(client, "isolation_3", UNPUBLISHED_PROJECT)
     _publish(client, "isolation_3")
 
-    native_session = client.get("/api/skills/webchat/session").json()
+    native_session = client.get("/api/skills/webchat/sessions/current").json()
     test_session = client.get("/api/skills/platform/projects/isolation_3/test-sessions/current").json()
 
     assert native_session["id"] != test_session["id"]
@@ -210,6 +210,6 @@ def test_a_turn_against_a_test_session_sees_a_draft_edit_made_after_it_was_creat
         "/api/skills/platform/projects/test_session_sees_live_draft/states/a/actions"
     ).json()
 
-    response = client.post(f"/api/skills/webchat/sessions/{test_session['id']}/action", json={"action_name": new_action["name"]})
+    response = client.post(f"/api/skills/webchat/sessions/{test_session['id']}/actions", json={"action_name": new_action["name"]})
 
     assert response.status_code == 200

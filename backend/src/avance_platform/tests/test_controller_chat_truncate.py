@@ -22,7 +22,7 @@ def test_truncate_rejects_an_unknown_session(client, hello_project):
 
 @pytest.mark.contract
 def test_truncate_rejects_someone_elses_session(client, hello_project):
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     # Reassign ownership directly — no endpoint exists to create another
     # user's session.
     from db.models import ChatSession
@@ -38,7 +38,7 @@ def test_truncate_rejects_someone_elses_session(client, hello_project):
 
 @pytest.mark.contract
 def test_truncate_rejects_a_malformed_timestamp(client, hello_project):
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
 
     response = client.post(f"/api/skills/platform/sessions/{session['id']}/truncate", json={"timestamp": "not-a-timestamp"})
 
@@ -50,7 +50,7 @@ def test_truncate_response_shape_is_a_bare_state_payload(client, hello_project):
     """Truncate returns a bare StatePayload, unlike GET /api/skills/platform/state's
     superset. It never fires init-action, so it carries no "task"
     key, unlike reset's response."""
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
 
     response = client.post(
         f"/api/skills/platform/sessions/{session['id']}/truncate", json={"timestamp": "2099-01-01T00:00:00+00:00"}
@@ -71,13 +71,13 @@ def test_truncate_deletes_trailing_turns_and_rolls_the_live_state_back(client):
     resp = client.post("/api/skills/platform/projects/upload", content=content, headers={"Content-Type": "application/zip"})
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
-    client.put(f"/api/skills/platform/projects/{project_id}/activate")
+    client.post(f"/api/skills/platform/projects/{project_id}/activate")
     client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
 
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     assert session["start_state"] == "welcome"
 
-    action_response = client.post(f"/api/skills/webchat/sessions/{session['id']}/action", json={"action_name": "unit-subjuntive"})
+    action_response = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "unit-subjuntive"})
     assert action_response.status_code == 200
     moved_state = action_response.json()["state"]["key"]
     assert moved_state != "welcome"

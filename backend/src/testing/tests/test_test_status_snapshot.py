@@ -14,7 +14,7 @@ def test_get_test_status_reflects_a_completed_job(client, hello_project):
     live over /api/core/bus (see queue_progress_broadcaster.py), and
     this endpoint only serves the same broadcaster's own last-known-state
     snapshot — a plain GET, pollable, no live connection needed."""
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
     session_id = session["id"]
     chat_turn(client, session_id, "hi")
     client.put(f"/api/skills/platform/sessions/{session_id}/labeled", json={"labeled": True})

@@ -33,8 +33,8 @@ def _upload_and_reach_b(client):
     resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
 
-    session = client.get("/api/skills/webchat/session").json()
-    action_resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/action", json={"action_name": "go"})
+    session = client.get("/api/skills/webchat/sessions/current").json()
+    action_resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "go"})
     assert action_resp.status_code == 200, action_resp.text
     assert action_resp.json()["state"]["key"] == "b"
     return session
@@ -104,7 +104,7 @@ def test_editing_an_unrelated_project_does_not_touch_the_active_ones_conversatio
     assert resp.status_code == 200, resp.text
     # Uploading "other" activates it — reactivate "proj" so the edit
     # below targets a non-active project.
-    client.put("/api/skills/platform/projects/proj/activate")
+    client.post("/api/skills/platform/projects/proj/activate")
 
     resp = client.put(
         "/api/skills/platform/projects/other/files/index.yml",

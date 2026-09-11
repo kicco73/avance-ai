@@ -256,12 +256,12 @@ def test_session_bootstrap_records_origin_init_action_and_a_manual_action_origin
     )
     app_db.publish_project("origin-proj")
     app_db.set_active_project_id("origin-proj", "user")
-    session = client.get("/api/skills/webchat/session").json()
+    session = client.get("/api/skills/webchat/sessions/current").json()
 
     # Opening a session's own first message is what triggers TurnService's
     # bootstrap (_ensure_project_bootstrap), not the session lookup itself.
     client.get(f"/api/skills/webchat/sessions/{session['id']}/messages")
-    response = client.post(f"/api/skills/webchat/sessions/{session['id']}/action", json={"action_name": "advance"})
+    response = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "advance"})
     assert response.status_code == 200, response.text
 
     signals = app_db.get_signals(session["id"])
