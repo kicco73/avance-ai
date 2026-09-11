@@ -64,7 +64,7 @@ function mountComposable(setup) {
 }
 
 describe('useAppBoot', () => {
-  let unmount, currentUserProfile, currentUserRole, labelProjectName, liveChatProjectName,
+  let unmount, currentUserProfile, currentUserRole, landingProjectName,
     pushedView, chatOpen, showProfile, navDirection
 
   beforeEach(() => {
@@ -72,8 +72,7 @@ describe('useAppBoot', () => {
     vi.useFakeTimers()
     currentUserProfile = ref(null)
     currentUserRole = ref(null)
-    labelProjectName = ref(null)
-    liveChatProjectName = ref(null)
+    landingProjectName = ref(null)
     pushedView = ref('chat')
     chatOpen = ref(false)
     showProfile = ref(true)
@@ -87,7 +86,7 @@ describe('useAppBoot', () => {
 
   function mount() {
     const mounted = mountComposable(() => useAppBoot(
-      currentUserProfile, currentUserRole, labelProjectName, liveChatProjectName,
+      currentUserProfile, currentUserRole, landingProjectName,
       pushedView, chatOpen, showProfile, navDirection
     ))
     unmount = mounted.unmount
@@ -161,13 +160,14 @@ describe('useAppBoot', () => {
       expect(s.bootStatus.value).toBe('ready')
     })
 
-    it("a supervisor's landing view resolves their active project into labelProjectName", async () => {
+    it('resolves the active project as where this session landed, whatever screen the role gets', async () => {
+      // One ref, not one per role: the expression that resolves it was
+      // the same in all three branches (see useViewStack/useAppBoot).
       getProjects.mockResolvedValue({ active: 'proj-x', projects: [] })
 
       await bootAs('supervisor')
 
-      expect(labelProjectName.value).toBe('proj-x')
-      expect(liveChatProjectName.value).toBeNull()
+      expect(landingProjectName.value).toBe('proj-x')
     })
 
     it('a 403 sets needsTerms without booting, reporting invite exemption only when the pending-status check says so', async () => {
@@ -243,13 +243,13 @@ describe('useAppBoot', () => {
       await bootAs('user')
       expect(postRedeemInviteCode).toHaveBeenCalledWith('shared-id')
       expect(activateProject).toHaveBeenCalledWith('shared-project')
-      expect(liveChatProjectName.value).toBe('shared-project')
+      expect(landingProjectName.value).toBe('shared-project')
       expect(getProjects).not.toHaveBeenCalled()
       unmount?.()
 
       sharedInvite()
       await bootAs('supervisor')
-      expect(labelProjectName.value).toBe('shared-project')
+      expect(landingProjectName.value).toBe('shared-project')
       expect(getProjects).not.toHaveBeenCalled()
     })
 
@@ -263,7 +263,7 @@ describe('useAppBoot', () => {
       // views — 'edit'/'label'/'manageUsers'/'appStore' — 'chat' was
       // never one of its values).
       expect(chatOpen.value).toBe(true)
-      expect(liveChatProjectName.value).toBe('shared-project')
+      expect(landingProjectName.value).toBe('shared-project')
       expect(loadMessages).toHaveBeenCalled()
     })
 
@@ -281,15 +281,15 @@ describe('useAppBoot', () => {
 
       await bootAs('user')
       expect(activateProject).not.toHaveBeenCalled()
-      expect(liveChatProjectName.value).toBe('proj-fallback')
+      expect(landingProjectName.value).toBe('proj-fallback')
       unmount?.()
 
-      liveChatProjectName.value = null
+      landingProjectName.value = null
       consumeInviteCode.mockReturnValueOnce('stale-id')
       postRedeemInviteCode.mockRejectedValue(new Error('boom'))
 
       await bootAs('user')
-      expect(liveChatProjectName.value).toBe('proj-fallback')
+      expect(landingProjectName.value).toBe('proj-fallback')
     })
   })
 

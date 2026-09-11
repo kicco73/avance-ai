@@ -32,23 +32,38 @@ import { pushedViews } from './skills/registry.js'
 
 const hasSharedInvite = !!peekInviteCode()
 
-const editProjectId = ref(null)
-const editProjectBuildError = ref(null)
-const labelProjectId = ref(null)
-const skillViewProjectId = ref(null)
-const liveChatProjectId = ref(null)
-const operatorSessionId = ref(null)
+// The project this session landed on (see useAppBoot). Whatever screen
+// the role gets, it is about this one until the user picks another.
+const landingProjectId = ref(null)
 const currentUserProfile = ref(null)
 const currentUserRole = ref(null)
 const chatWindowRef = ref(null)
 const customerHomeView = ref(null)
 const dialogOpen = computed(() => !!activeDialog.value)
-const pushedSkillView = computed(() => pushedViews.value.find((entry) => entry.view === pushedView.value) ?? null)
+// Every overlay renders through one <component :is>, whichever side it
+// came from: the ones the core still holds, and whatever the registry
+// collected. They all take the same context, which is the evidence that
+// the context belongs to the core rather than to any of them.
+const CORE_OVERLAYS = [
+  { view: 'edit', component: EditProjectView },
+  { view: 'label', component: LabelProjectView },
+  { view: 'manageUsers', component: ManageUsersView },
+  { view: 'services', component: ServicesView },
+  { view: 'appStore', component: AppStoreView },
+]
+const overlayView = computed(
+  () => [...CORE_OVERLAYS, ...pushedViews.value].find((entry) => entry.view === pushedView.value) ?? null
+)
 
+// Kept whole as well as destructured: a contributed view gets the stack
+// itself — an object with named methods — rather than a handful of the
+// refs and functions inside it, which is how it would end up with twenty
+// props.
+const viewStack = useViewStack(currentUserRole, customerHomeView)
 const {
-  pushedView, chatOpen, homePreviewRole, showProfile, navDirection, slideTransitionName,
+  pushedView, pushedViewContext, chatOpen, homePreviewRole, showProfile, navDirection, slideTransitionName,
   setNavBack, pushView, popPushedView, openHomePreview, closeHomePreview, goHome, openProfile, closeProfile,
-} = useViewStack(currentUserRole, customerHomeView)
+} = viewStack
 
 const { onChatBeforeEnter, onChatEnter, onChatBeforeLeave, onChatLeave } = useChatFlipTransition(navDirection)
 
@@ -67,7 +82,7 @@ const {
   startBootSequence,
   handleLoggedIn, handleTermsAccept, handleTermsReject, handleLogout,
 } = useAppBoot(
-  currentUserProfile, currentUserRole, labelProjectId, liveChatProjectId,
+  currentUserProfile, currentUserRole, landingProjectId,
   pushedView, chatOpen, showProfile, navDirection
 )
 
@@ -75,24 +90,20 @@ const {
 // opening Edit for a non-active project activates it first.
 async function handleModelEdit(projectId, buildError = null) {
   await activateAndRefresh(projectId)
-  editProjectId.value = projectId
-  editProjectBuildError.value = buildError
-  pushView('edit')
+  pushView('edit', { projectId, buildError })
 }
 
 async function handleEditProjectRenamed(projectId) {
   await activateAndRefresh(projectId)
-  editProjectId.value = projectId
+  pushedViewContext.value = { ...pushedViewContext.value, projectId }
 }
 
 function handleSelectLabelSessions(projectId) {
-  labelProjectId.value = projectId
-  pushView('label')
+  pushView('label', { projectId })
 }
 
 function handleOpenSkillView(view, projectId) {
-  skillViewProjectId.value = projectId
-  pushView(view)
+  pushView(view, { projectId })
 }
 
 function handleManageProjectsChat(projectId) {
@@ -101,7 +112,7 @@ function handleManageProjectsChat(projectId) {
 }
 
 function handleLiveChatProjectSelect(projectId) {
-  liveChatProjectId.value = projectId
+  landingProjectId.value = projectId
   handleProjectSwitch(projectId)
 }
 
@@ -119,7 +130,7 @@ function handleSettingsAppStore() {
 
 async function handleLabelProjectSwitch(projectId) {
   await handleProjectSwitch(projectId)
-  labelProjectId.value = projectId
+  landingProjectId.value = projectId
 }
 
 // A human_takeover toast's own "Open" link (see humanTakeoverStore.js) —
@@ -134,8 +145,7 @@ watch(requestedOperatorSession, (request) => {
   // admin's own already-open live chat — without this, both would render
   // at once.
   chatOpen.value = false
-  operatorSessionId.value = request.sessionId
-  pushView('operatorChat')
+  pushView('operatorChat', { sessionId: request.sessionId })
   clearRequestedOperatorSession()
 })
 
@@ -150,6 +160,20 @@ function openStoreFromPreview() {
 }
 
 const profileMenuListeners = { home: goHome, profile: openProfile, logout: handleLogout }
+
+// Everything an overlay may emit, in one place. `close` and the profile
+// menu are the generic half — the rest belong to the screens themselves
+// and go with them when they move into their own skill.
+const overlayListeners = {
+  ...profileMenuListeners,
+  close: popPushedView,
+  back: popPushedView,
+  saved: handleModelEditSaved,
+  renamed: handleEditProjectRenamed,
+  'project-select': handleLabelProjectSwitch,
+  'home-screen': openHomePreview,
+  open: handleManageProjectsChat,
+}
 
 const liveChatListeners = {
   ...profileMenuListeners,
@@ -227,7 +251,7 @@ onBeforeUnmount(() => {
       <LiveChatWindow
         v-if="currentUserRole === 'user'"
         ref="chatWindowRef"
-        :project-id="liveChatProjectId"
+        :project-id="landingProjectId"
         :role="currentUserRole"
         :profile="currentUserProfile"
         v-on="liveChatListeners"
@@ -244,12 +268,17 @@ onBeforeUnmount(() => {
           />
 
           <Transition :name="slideTransitionName">
-            <AppStoreView
-              v-if="pushedView === 'appStore'"
+            <component
+              v-if="overlayView"
+              :is="overlayView.component"
+              :key="`${pushedView}-${pushedViewContext.projectId}-${pushedViewContext.sessionId}`"
+              :project-id="pushedViewContext.projectId"
+              :session-id="pushedViewContext.sessionId"
+              :build-error="pushedViewContext.buildError"
+              :current-user-role="currentUserRole"
               :profile="currentUserProfile"
-              @close="popPushedView"
-              @open="handleManageProjectsChat"
-              v-on="profileMenuListeners"
+              :view-stack="viewStack"
+              v-on="overlayListeners"
             />
           </Transition>
         </div>
@@ -264,7 +293,7 @@ onBeforeUnmount(() => {
           <LiveChatWindow
             v-if="chatOpen"
             ref="chatWindowRef"
-            :project-id="liveChatProjectId"
+            :project-id="landingProjectId"
             :role="currentUserRole"
             :profile="currentUserProfile"
             v-on="liveChatListeners"
@@ -274,8 +303,8 @@ onBeforeUnmount(() => {
 
       <LabelProjectView
         v-else-if="currentUserRole === 'supervisor'"
-        :key="labelProjectId"
-        :project-id="labelProjectId"
+        :key="landingProjectId"
+        :project-id="landingProjectId"
         :profile="currentUserProfile"
         @project-select="handleLabelProjectSwitch"
         v-on="profileMenuListeners"
@@ -295,56 +324,17 @@ onBeforeUnmount(() => {
           />
 
           <Transition :name="slideTransitionName">
-            <EditProjectView
-              v-if="pushedView === 'edit'"
-              :key="editProjectId"
-              :project-id="editProjectId"
-              :build-error="editProjectBuildError"
-              :profile="currentUserProfile"
-              @saved="handleModelEditSaved"
-              @renamed="handleEditProjectRenamed"
-              @back="popPushedView"
-              v-on="profileMenuListeners"
-            />
-            <LabelProjectView
-              v-else-if="pushedView === 'label'"
-              :key="labelProjectId"
-              :project-id="labelProjectId"
-              :profile="currentUserProfile"
-              @close="popPushedView"
-              @project-select="handleLabelProjectSwitch"
-              v-on="profileMenuListeners"
-            />
             <component
-              v-else-if="pushedSkillView"
-              :is="pushedSkillView.component"
-              :key="`${skillViewProjectId}-${operatorSessionId}`"
-              :project-id="skillViewProjectId"
-              :session-id="operatorSessionId"
-              :profile="currentUserProfile"
-              @close="popPushedView"
-              v-on="profileMenuListeners"
-            />
-            <ManageUsersView
-              v-else-if="pushedView === 'manageUsers'"
+              v-if="overlayView"
+              :is="overlayView.component"
+              :key="`${pushedView}-${pushedViewContext.projectId}-${pushedViewContext.sessionId}`"
+              :project-id="pushedViewContext.projectId"
+              :session-id="pushedViewContext.sessionId"
+              :build-error="pushedViewContext.buildError"
               :current-user-role="currentUserRole"
               :profile="currentUserProfile"
-              @close="popPushedView"
-              @home-screen="openHomePreview"
-              v-on="profileMenuListeners"
-            />
-            <ServicesView
-              v-else-if="pushedView === 'services'"
-              :profile="currentUserProfile"
-              @close="popPushedView"
-              v-on="profileMenuListeners"
-            />
-            <AppStoreView
-              v-else-if="pushedView === 'appStore'"
-              :profile="currentUserProfile"
-              @close="popPushedView"
-              @open="handleManageProjectsChat"
-              v-on="profileMenuListeners"
+              :view-stack="viewStack"
+              v-on="overlayListeners"
             />
           </Transition>
         </div>
@@ -359,7 +349,7 @@ onBeforeUnmount(() => {
           <LiveChatWindow
             v-if="chatOpen"
             ref="chatWindowRef"
-            :project-id="liveChatProjectId"
+            :project-id="landingProjectId"
             :role="currentUserRole"
             :profile="currentUserProfile"
             v-on="liveChatListeners"
@@ -380,7 +370,7 @@ onBeforeUnmount(() => {
       <LiveChatWindow
         v-if="homePreviewRole === 'user'"
         role="admin"
-        :project-id="liveChatProjectId"
+        :project-id="landingProjectId"
         :profile="currentUserProfile"
         @project-select="handleLiveChatProjectSelect"
         @project-download="handleModelDownload"
@@ -398,8 +388,8 @@ onBeforeUnmount(() => {
       />
       <LabelProjectView
         v-else-if="homePreviewRole === 'supervisor'"
-        :key="labelProjectId"
-        :project-id="labelProjectId"
+        :key="landingProjectId"
+        :project-id="landingProjectId"
         :profile="currentUserProfile"
         @close="closeHomePreview"
         @project-select="handleLabelProjectSwitch"

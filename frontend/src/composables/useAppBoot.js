@@ -14,11 +14,11 @@ import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateC
 // App.vue's own boot sequence: the backend-readiness ping loop, resolving
 // which view a freshly-booted session lands on, and every navigate-away
 // action (login/logout/terms accept-reject) that re-enters or exits this
-// sequence. `currentUserProfile`/`currentUserRole`/`labelProjectId`/
-// `liveChatProjectId`/`pushedView`/`showProfile`/`navDirection` are
-// App.vue's own — this composable only reads/resolves them.
+// sequence. `currentUserProfile`/`currentUserRole`/`landingProjectId`/
+// `pushedView`/`showProfile`/`navDirection` are App.vue's own — this
+// composable only reads/resolves them.
 export function useAppBoot(
-  currentUserProfile, currentUserRole, labelProjectId, liveChatProjectId,
+  currentUserProfile, currentUserRole, landingProjectId,
   pushedView, chatOpen, showProfile, navDirection
 ) {
   // Initial-boot backend readiness gate — entirely separate from the shared
@@ -215,15 +215,16 @@ export function useAppBoot(
     } catch {
       return // already surfaced via apiFetch; falls back to the chat-live default
     }
+    // The project this session lands on, whatever it lands *in*: the
+    // chat window for a user, the labelling screen for a supervisor,
+    // whatever a contributed home shows for the rest. It used to be two
+    // refs written by three role branches, all resolving the same
+    // expression.
     const sharedProjectId = await activateInvitedProject()
-    if (currentUserRole.value === 'supervisor') {
-      labelProjectId.value = sharedProjectId ?? await getActiveProjectId()
-    }
-    if (currentUserRole.value === 'user') {
-      liveChatProjectId.value = sharedProjectId ?? await getActiveProjectId()
-    }
-    if ((currentUserRole.value === 'admin' || currentUserRole.value === 'customer') && sharedProjectId) {
-      liveChatProjectId.value = sharedProjectId
+    landingProjectId.value = sharedProjectId ?? await getActiveProjectId()
+    // An admin or a customer arriving on somebody's share link lands in
+    // the conversation rather than on their own home screen.
+    if (sharedProjectId && currentUserRole.value !== 'user' && currentUserRole.value !== 'supervisor') {
       chatOpen.value = true
     }
   }
