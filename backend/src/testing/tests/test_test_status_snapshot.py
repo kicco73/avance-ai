@@ -20,13 +20,13 @@ def test_get_test_status_reflects_a_completed_job(client, hello_project):
     client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": True})
 
     target_key = f"batch:session:{session_id}"
-    post_resp = client.post(f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "batch"})
+    post_resp = client.post(f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "batch"})
     assert post_resp.status_code == 200, post_resp.text
 
     deadline = time.monotonic() + 10.0
     matching = None
     while time.monotonic() < deadline:
-        events = client.get(f"/api/projects/{hello_project}/test-status").json()["events"]
+        events = client.get(f"/api/skills/testing/projects/{hello_project}/status").json()["events"]
         matching = next((e for e in events if e.get("key") == target_key), None)
         if matching is not None and matching.get("job_status") in ("completed", "failed"):
             break
@@ -36,6 +36,6 @@ def test_get_test_status_reflects_a_completed_job(client, hello_project):
 
 
 def test_get_test_status_carries_the_test_providers_running_token_total(client, hello_project):
-    body = client.get(f"/api/projects/{hello_project}/test-status").json()
+    body = client.get(f"/api/skills/testing/projects/{hello_project}/status").json()
     assert "tokens" in body
     assert body["tokens"] is None or isinstance(body["tokens"], int)

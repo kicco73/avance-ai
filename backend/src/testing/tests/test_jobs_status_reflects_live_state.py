@@ -82,7 +82,7 @@ def test_get_test_status_returns_the_broadcaster_snapshot(client, hello_project)
         "user", {"key": "batch:root", "job_status": "completed", "queue_status": "exited", "error": None},
     )
 
-    events = client.get(f"/api/projects/{hello_project}/test-status").json()["events"]
+    events = client.get(f"/api/skills/testing/projects/{hello_project}/status").json()["events"]
 
     assert any(m.get("key") == "batch:root" and m.get("job_status") == "completed" for m in events), events
 
@@ -162,7 +162,7 @@ def test_reset_cache_clears_the_broadcasters_recorded_state(client, hello_projec
     chat_turn(client, session_id, "hi")
     client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": True})
 
-    response = client.post(f"/api/projects/{hello_project}/sessions/test", json={"strategy": "turn_by_turn"})
+    response = client.post(f"/api/skills/testing/projects/{hello_project}/runs/sessions", json={"strategy": "turn_by_turn"})
     assert response.status_code == 200, response.text
 
     testing_service = client.app.state.testing_service
@@ -173,7 +173,7 @@ def test_reset_cache_clears_the_broadcasters_recorded_state(client, hello_projec
 
     assert _wait_until(sessions_completed)
 
-    response = client.delete(f"/api/projects/{hello_project}/tests")
+    response = client.delete(f"/api/skills/testing/projects/{hello_project}/tests")
     assert response.status_code == 200, response.text
 
     assert testing_service._status_broadcaster.last_status("turn_by_turn:sessions-branch") is None

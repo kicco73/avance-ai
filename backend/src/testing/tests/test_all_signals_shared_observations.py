@@ -37,13 +37,13 @@ def _make_completed_run(client, hello_project):
     client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": True})
 
     leaf_run = client.post(
-        f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
+        f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
     ).json()
     deadline = time.monotonic() + 5.0
-    run = client.get(f"/api/projects/{hello_project}/tests/{leaf_run['id']}").json()
+    run = client.get(f"/api/skills/testing/projects/{hello_project}/tests/{leaf_run['id']}").json()
     while time.monotonic() < deadline and run["status"] not in ("completed", "failed"):
         time.sleep(0.05)
-        run = client.get(f"/api/projects/{hello_project}/tests/{leaf_run['id']}").json()
+        run = client.get(f"/api/skills/testing/projects/{hello_project}/tests/{leaf_run['id']}").json()
     assert run["status"] == "completed", run
     return session_id, leaf_run["id"]
 

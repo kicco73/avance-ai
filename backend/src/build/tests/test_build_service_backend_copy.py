@@ -365,7 +365,7 @@ def test_a_product_copy_starts_with_no_platform_no_chat_and_no_benchmark(tmp_pat
     """The shape the whole exercise is for: one compiled project, a
     channel, and nothing to author with — and no compiler either, since
     a product serves a package somebody else built. It has no
-    /api/auth/providers and no /api/state, which is why the build's own
+    /api/skills/platform/auth/providers and no /api/skills/platform/state, which is why the build's own
     launch check cannot probe a named route."""
     copy = _copy_backend(tmp_path, ["avance_platform", "build", "webchat", "testing"])
     code, output = _boot(copy)

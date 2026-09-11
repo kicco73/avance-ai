@@ -69,7 +69,7 @@ export function createChatSocket() {
 }
 
 export function getTestStatus(projectId) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/test-status`)
+  return apiFetch(`${API_URL}/skills/testing/projects/${encodeURIComponent(projectId)}/status`)
 }
 
 export function postListenTranscribe(audioBlob) {

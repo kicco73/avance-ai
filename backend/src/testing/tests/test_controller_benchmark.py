@@ -86,7 +86,7 @@ def test_put_expected_state_and_signals_are_409_for_a_non_evaluation_point_messa
 
 @pytest.mark.contract
 def test_get_test_metrics_lists_the_whole_catalog_optionally_scoped_to_a_session_that_must_exist(client, hello_project):
-    response = client.get(f"/api/projects/{hello_project}/tests/metrics")
+    response = client.get(f"/api/skills/testing/projects/{hello_project}/tests/metrics")
 
     assert response.status_code == 200
     body = response.json()
@@ -104,8 +104,8 @@ def test_get_test_metrics_lists_the_whole_catalog_optionally_scoped_to_a_session
         assert set(metric) == {"name", "ui_label", "ui_description", "value", "sample_count"}
 
     session = client.get("/api/chat/session").json()
-    assert client.get(f"/api/projects/{hello_project}/tests/metrics?session_id={session['id']}").status_code == 200
-    assert client.get(f"/api/projects/{hello_project}/tests/metrics?session_id=999999").status_code == 404
+    assert client.get(f"/api/skills/testing/projects/{hello_project}/tests/metrics?session_id={session['id']}").status_code == 200
+    assert client.get(f"/api/skills/testing/projects/{hello_project}/tests/metrics?session_id=999999").status_code == 404
 
 
 @pytest.mark.regression
@@ -116,13 +116,13 @@ def test_get_test_metrics_reflects_annotations_and_deleting_them_clears_only_the
     message_id = chat_turn(client, session['id'], "hi")["assistant_message_id"]
     signal_row_id = app_db.save_signal_snapshot({"foo": 80}, session["id"], message_id=message_id)
 
-    before = {m["name"]: m for m in client.get(f"/api/projects/{hello_project}/tests/metrics").json()}
+    before = {m["name"]: m for m in client.get(f"/api/skills/testing/projects/{hello_project}/tests/metrics").json()}
     assert before["state_accuracy"]["sample_count"] == 0
 
     app_db.set_signal_expected_state(signal_row_id, "Hello")  # hello_project's own init_action.target
     app_db.set_signal_expected_values(signal_row_id, {"foo": 80})
 
-    after = {m["name"]: m for m in client.get(f"/api/projects/{hello_project}/tests/metrics").json()}
+    after = {m["name"]: m for m in client.get(f"/api/skills/testing/projects/{hello_project}/tests/metrics").json()}
     assert after["state_accuracy"]["sample_count"] == 1
     assert after["state_accuracy"]["value"] == 100.0
 

@@ -187,7 +187,7 @@ half is meant to become a message.
 
 | Point | Constant | Target | Asked by | Filled by |
 | --- | --- | --- | --- | --- |
-| `api.state` | `POINT_API_STATE` | the `GET /api/state` payload | `avance_platform.platform_controller` | `listen`, `build` |
+| `api.state` | `POINT_API_STATE` | the `GET /api/skills/platform/state` payload | `avance_platform.platform_controller` | `listen`, `build` |
 | `config.services` | `POINT_CONFIG_SERVICES` | the public services snapshot | `config.py`, `system.config_services` | `talk`, `listen`, `mail`, `whatsapp`, `testing`, `build` |
 | `http.controllers` | `POINT_HTTP_CONTROLLERS` | the list of controllers to route | `controller.py` | `talk`, `listen`, `webchat`, `whatsapp`, `avance_platform`, `testing`, `build` |
 | `core.services` | `POINT_CORE_SERVICES` | the composed core, offered to whoever asks | every skill | `main.py`, `testing` |

@@ -1,4 +1,4 @@
-"""Integration tests for POST/GET /api/projects/{project_name}/tests
+"""Integration tests for POST/GET /api/skills/testing/projects/{project_name}/tests
 — exercises the whole replay pipeline end to end (TestingService,
 TestProcessor, the Job engine) against a real Db and FakeAiService.
 """
@@ -16,11 +16,11 @@ pytestmark = pytest.mark.contract
 def _wait_for_terminal_status(client, project_name, run_id, timeout=5.0, interval=0.05):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        run = client.get(f"/api/projects/{project_name}/tests/{run_id}").json()
+        run = client.get(f"/api/skills/testing/projects/{project_name}/tests/{run_id}").json()
         if run["status"] in ("completed", "failed"):
             return run
         time.sleep(interval)
-    return client.get(f"/api/projects/{project_name}/tests/{run_id}").json()
+    return client.get(f"/api/skills/testing/projects/{project_name}/tests/{run_id}").json()
 
 
 def _make_labeled_session(client):
@@ -34,7 +34,7 @@ def test_create_run_returns_immediately_pending(client, hello_project):
     session_id = _make_labeled_session(client)
 
     response = client.post(
-        f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
+        f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
     )
 
     assert response.status_code == 200, response.text
@@ -55,7 +55,7 @@ def test_turn_by_turn_run_completes_and_produces_results(client, hello_project):
     session_id = _make_labeled_session(client)
 
     run = client.post(
-        f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
+        f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
     ).json()
 
     finished = _wait_for_terminal_status(client, hello_project, run["id"])
@@ -71,7 +71,7 @@ def test_batch_run_completes_and_tracks_batch_segments(client, hello_project):
     session_id = _make_labeled_session(client)
 
     run = client.post(
-        f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "batch"},
+        f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "batch"},
     ).json()
 
     finished = _wait_for_terminal_status(client, hello_project, run["id"])
@@ -87,7 +87,7 @@ def test_whole_project_run_scopes_to_labeled_sessions_only(client, hello_project
     unlabeled = client.get("/api/chat/session").json()
     chat_turn(client, unlabeled['id'], "hi")
     run = client.post(
-        f"/api/projects/{hello_project}/tests", json={"session_id": None, "strategy": "turn_by_turn"},
+        f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": None, "strategy": "turn_by_turn"},
     ).json()
 
     assert run["session_id"] is None
@@ -99,20 +99,20 @@ def test_whole_project_run_scopes_to_labeled_sessions_only(client, hello_project
 
 
 def test_get_run_404_for_unknown_id(client, hello_project):
-    response = client.get(f"/api/projects/{hello_project}/tests/999999")
+    response = client.get(f"/api/skills/testing/projects/{hello_project}/tests/999999")
     assert response.status_code == 404
 
 
 def test_list_runs_defaults_to_whole_project_scope(client, hello_project):
     session_id = _make_labeled_session(client)
     session_run = client.post(
-        f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
+        f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
     ).json()
     project_run = client.post(
-        f"/api/projects/{hello_project}/tests", json={"session_id": None, "strategy": "turn_by_turn"},
+        f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": None, "strategy": "turn_by_turn"},
     ).json()
 
-    runs = client.get(f"/api/projects/{hello_project}/tests").json()
+    runs = client.get(f"/api/skills/testing/projects/{hello_project}/tests").json()
 
     assert [r["id"] for r in runs] == [project_run["id"]]
 
@@ -127,7 +127,7 @@ def test_create_run_rejects_unknown_strategy(client, hello_project):
     session_id = _make_labeled_session(client)
 
     response = client.post(
-        f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "nonsense"},
+        f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "nonsense"},
     )
 
     assert response.status_code == 400
@@ -142,23 +142,23 @@ def test_sessions_aggregation_pools_both_live_and_imported_sessions(client, hell
     imported_id = parse_sse_result(resp)["last_session_id"]
     client.put(f"/api/chat/sessions/{imported_id}/labeled", json={"labeled": True})
 
-    response = client.post(f"/api/projects/{hello_project}/sessions/test", json={"strategy": "turn_by_turn"})
+    response = client.post(f"/api/skills/testing/projects/{hello_project}/runs/sessions", json={"strategy": "turn_by_turn"})
     assert response.status_code == 200, response.text
 
     deadline = time.monotonic() + 5.0
     result = client.get(
-        f"/api/projects/{hello_project}/aggregate-result",
+        f"/api/skills/testing/projects/{hello_project}/aggregations/result",
         params={"kind": "sessions", "strategy": "turn_by_turn"},
     )
     while result.status_code != 200 and time.monotonic() < deadline:
         time.sleep(0.05)
         result = client.get(
-            f"/api/projects/{hello_project}/aggregate-result",
+            f"/api/skills/testing/projects/{hello_project}/aggregations/result",
             params={"kind": "sessions", "strategy": "turn_by_turn"},
         )
     assert result.status_code == 200, result.text
 
-    export = client.get(f"/api/projects/{hello_project}/tests/export").json()
+    export = client.get(f"/api/skills/testing/projects/{hello_project}/tests/export").json()
     sessions_entry = next(entry for entry in export if entry["kind"] == "sessions")
     assert sessions_entry["strategy"] == "turn_by_turn"
     assert sessions_entry["results"]
@@ -166,22 +166,22 @@ def test_sessions_aggregation_pools_both_live_and_imported_sessions(client, hell
     for sid in (live_id, imported_id):
         _wait_for_terminal_status(
             client, hello_project,
-            next(r["id"] for r in client.get(f"/api/projects/{hello_project}/tests?session_id={sid}").json()),
+            next(r["id"] for r in client.get(f"/api/skills/testing/projects/{hello_project}/tests?session_id={sid}").json()),
         )
 
 
 def test_delete_tests_forces_a_fresh_run_instead_of_a_cache_hit(client, hello_project):
     session_id = _make_labeled_session(client)
     first = client.post(
-        f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
+        f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
     ).json()
     _wait_for_terminal_status(client, hello_project, first["id"])
 
-    response = client.delete(f"/api/projects/{hello_project}/tests")
+    response = client.delete(f"/api/skills/testing/projects/{hello_project}/tests")
     assert response.status_code == 200, response.text
-    assert client.get(f"/api/projects/{hello_project}/tests/{first['id']}").status_code == 404
+    assert client.get(f"/api/skills/testing/projects/{hello_project}/tests/{first['id']}").status_code == 404
 
     second = client.post(
-        f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
+        f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
     ).json()
     _wait_for_terminal_status(client, hello_project, second["id"])

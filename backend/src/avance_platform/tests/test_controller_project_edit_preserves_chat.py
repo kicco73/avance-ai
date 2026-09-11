@@ -51,7 +51,7 @@ def test_editing_a_file_without_touching_the_current_state_keeps_the_conversatio
 
     sessions = client.get("/api/projects/proj/sessions").json()
     assert [s["id"] for s in sessions] == [session["id"]]
-    assert client.get("/api/state").json()["key"] == "b"
+    assert client.get("/api/skills/platform/state").json()["key"] == "b"
 
 
 def test_editing_a_file_that_removes_the_current_state_resets_the_conversation(client):
@@ -63,7 +63,7 @@ def test_editing_a_file_that_removes_the_current_state_resets_the_conversation(c
     assert resp.status_code == 200, resp.text
 
     assert client.get("/api/projects/proj/sessions").json() == []
-    assert client.get("/api/state").json()["key"] == "a"
+    assert client.get("/api/skills/platform/state").json()["key"] == "a"
 
 
 def test_editing_a_file_that_renames_the_current_state_resets_the_conversation(client):
@@ -90,7 +90,7 @@ def test_editing_a_file_that_renames_the_current_state_resets_the_conversation(c
     assert resp.status_code == 200, resp.text
 
     assert client.get("/api/projects/proj/sessions").json() == []
-    assert client.get("/api/state").json()["key"] == "a"
+    assert client.get("/api/skills/platform/state").json()["key"] == "a"
 
 
 def test_editing_an_unrelated_project_does_not_touch_the_active_ones_conversation(client):
@@ -114,4 +114,4 @@ def test_editing_an_unrelated_project_does_not_touch_the_active_ones_conversatio
 
     sessions = client.get("/api/projects/proj/sessions").json()
     assert [s["id"] for s in sessions] == [session["id"]]
-    assert client.get("/api/state").json()["key"] == "b"
+    assert client.get("/api/skills/platform/state").json()["key"] == "b"

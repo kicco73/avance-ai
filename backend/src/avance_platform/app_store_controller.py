@@ -18,11 +18,11 @@ class AppStoreController(BaseController):
         self.turn_service = turn_service
         self.platform_service = platform_service
 
-    @get("/api/app-store/apps")
+    @get("/api/skills/platform/app-store/apps")
     def get_apps(self, q: str | None = None):
         return {"apps": self.platform_service.list_app_store_apps(Session().user, q)}
 
-    @post("/api/app-store/apps/{app_id}/install")
+    @post("/api/skills/platform/app-store/apps/{app_id}/install")
     def post_install_app(self, app_id: str):
         try:
             self.platform_service.install_app(Session().user, app_id)
@@ -30,20 +30,20 @@ class AppStoreController(BaseController):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         return {"success": True}
 
-    @delete("/api/app-store/apps/{app_id}/install")
+    @delete("/api/skills/platform/app-store/apps/{app_id}/install")
     def delete_install_app(self, app_id: str):
         self.platform_service.uninstall_app(Session().user, app_id)
         return {"success": True}
 
-    @get("/api/app-store/apps/{app_id}/preview-transcript")
+    @get("/api/skills/platform/app-store/apps/{app_id}/preview-transcript")
     def get_app_preview_transcript(self, app_id: str):
         return {"messages": self.platform_service.get_app_store_preview_messages(app_id)}
 
-    @get("/api/app-store/apps/{app_id}/session-summaries")
+    @get("/api/skills/platform/app-store/apps/{app_id}/session-summaries")
     def get_app_session_summaries(self, app_id: str):
         return {"sessions": self.platform_service.get_app_session_summaries(Session().user, app_id)}
 
-    @get("/api/app-store/apps/{app_id}/files/{file_name:path}/content")
+    @get("/api/skills/platform/app-store/apps/{app_id}/files/{file_name:path}/content")
     def get_app_file_content(self, app_id: str, file_name: str, request: Request):
         try:
             content, content_type = self.platform_service.get_app_store_file_content(app_id, file_name)
@@ -54,15 +54,15 @@ class AppStoreController(BaseController):
             return Response(status_code=HTTPStatus.NOT_MODIFIED, headers={"ETag": etag, "Cache-Control": "no-cache"})
         return Response(content=content, media_type=content_type, headers={"ETag": etag, "Cache-Control": "no-cache"})
 
-    @post("/api/app-store/apps/{app_id}/preview-sessions")
+    @post("/api/skills/platform/app-store/apps/{app_id}/preview-sessions")
     async def post_create_preview_session(self, app_id: str):
         return await self.turn_service.create_preview_session(app_id)
 
-    @get("/api/app-store/apps/{app_id}/preview-sessions/current")
+    @get("/api/skills/platform/app-store/apps/{app_id}/preview-sessions/current")
     async def get_current_preview_session(self, app_id: str, session_id: int | None = None):
         return await self.turn_service.get_current_preview_session_if_any_or_create_new(session_id, app_id)
 
-    @delete("/api/app-store/preview-sessions/{session_id}/env")
+    @delete("/api/skills/platform/app-store/preview-sessions/{session_id}/env")
     async def delete_preview_session_env(self, session_id: int):
         self.turn_service.clear_session_env(session_id)
         return {"success": True}

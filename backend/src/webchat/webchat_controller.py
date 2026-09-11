@@ -5,8 +5,8 @@ registered by webchat/skill.py — so a build without src/webchat/ does not
 answer these routes at all, the same way it has nobody to run a turn.
 
 The split is the URL prefix and nothing cleverer: /api/chat/* is the
-native chat window talking about its own live session; /api/state,
-/api/docs, /api/ai/models and the per-project views stayed behind, in
+native chat window talking about its own live session; /api/skills/platform/state,
+/api/docs, /api/skills/platform/ai/models and the per-project views stayed behind, in
 controllers/platform_controller.py, because WhatsApp and the editor
 need them just as much.
 """

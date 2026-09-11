@@ -1,6 +1,6 @@
 """End-to-end verification that a project's `reactions:` vocabulary is
 read off index.yml and reaches every HTTP surface the frontend actually
-consumes: GET /api/state, a real chat turn's own state payload, the
+consumes: GET /api/skills/platform/state, a real chat turn's own state payload, the
 message list (for a persisted bot-message reaction), and the PUT endpoint
 that sets a user's own reaction on a bot message.
 """
@@ -52,7 +52,7 @@ def reactions_project(client):
 
 
 def test_get_state_carries_the_reactions_vocabulary(client, reactions_project):
-    response = client.get("/api/state")
+    response = client.get("/api/skills/platform/state")
     assert response.status_code == 200
     body = response.json()
 

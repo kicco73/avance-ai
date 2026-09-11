@@ -42,20 +42,20 @@ class SettingsController(BaseController, ProjectCommitMixin):
         self.scheduler_service = scheduler_service
         self.services_config = services_config
 
-    @get("/api/settings/about", role="supervisor")
+    @get("/api/skills/platform/settings/about", role="supervisor")
     def get_about(self):
         """The Settings menu's own "About Avance..." dialog — just the
         display name and running backend version, __version__ in main.py."""
         return {"name": APP_NAME, "version": self.version}
 
-    @get("/api/settings/services", role="admin")
+    @get("/api/skills/platform/settings/services", role="admin")
     def get_services(self):
         """Settings > Manage services — read-only snapshot of
         .config.yml's own service sections (see AppConfig.
         public_services_snapshot), one tab per section on the frontend."""
         return self.services_config
 
-    @get("/api/settings/services/ai-usage", role="admin")
+    @get("/api/skills/platform/settings/services/ai-usage", role="admin")
     def get_ai_usage(self):
         """Settings > Manage services > AI — each ai-service provider's
         own token spend, one point per minute over the trailing 24h (see
@@ -64,11 +64,11 @@ class SettingsController(BaseController, ProjectCommitMixin):
         labels = [f"{p['driver']}/{p['model']}" for p in self.services_config["ai"]["providers"]]
         return self.db.get_ai_token_usage_snapshot(labels)
 
-    @get("/api/settings/backup", role="admin")
+    @get("/api/skills/platform/settings/backup", role="admin")
     async def get_backup(self):
         """Downloads the whole working SQLite database file — every
         project, session, message, and signal — as a restorable backup
-        (see POST /api/settings/backup)."""
+        (see POST /api/skills/platform/settings/backup)."""
         async with self.turn_service.global_exclusive_access():
             content = self.db.export_backup()
         filename = Path(self.db.backup_file_path()).stem + ".sqlite"
@@ -78,7 +78,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    @post("/api/settings/backup", role="admin")
+    @post("/api/skills/platform/settings/backup", role="admin")
     async def post_backup(self, request: Request):
         """Restores the working SQLite database from an uploaded backup
         file, replacing it in place. Wipes whatever the server currently
@@ -92,7 +92,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
             self.turn_service.clear_auto_tracking_overrides()
         return {"success": True}
 
-    @post("/api/settings/database/wipe-live-sessions", role="admin")
+    @post("/api/skills/platform/settings/database/wipe-live-sessions", role="admin")
     async def post_wipe_all_live_sessions(self):
         """Settings > Manage services > Database — deletes every live
         conversation across every project (not just the active one), same
@@ -101,7 +101,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
             self.platform_service.wipe_all_live_sessions()
         return {"success": True}
 
-    @post("/api/settings/database/clean-unused-revisions", role="admin")
+    @post("/api/skills/platform/settings/database/clean-unused-revisions", role="admin")
     async def post_clean_unused_revisions(self):
         """Settings > Manage services > Database — deletes every archive
         revision, across every project, that's neither published, the
@@ -116,14 +116,14 @@ class SettingsController(BaseController, ProjectCommitMixin):
         username = Session().user if not role_satisfies(Session().role, 'supervisor') else None
         return self.platform_service.list_projects(username)
 
-    @get("/api/settings/projects/runtime-status", role="admin")
+    @get("/api/skills/platform/settings/projects/runtime-status", role="admin")
     def get_all_projects_runtime_status(self):
         """One row per project — id/status/paused_reason/revision/
         published_revision — the Settings > Runtime status view's own
         table."""
         return {"projects": self.platform_service.get_runtime_status()}
 
-    @get("/api/settings/warnings", role="admin")
+    @get("/api/skills/platform/settings/warnings", role="admin")
     def get_warnings(self, kind: str | None = None):
         """Manage projects' own "broken project" warnings counter/list —
         a durable audit trail of every SystemWarning this admin has
@@ -131,13 +131,13 @@ class SettingsController(BaseController, ProjectCommitMixin):
         "project_broken"), even past the project actually being fixed."""
         return {"warnings": self.db.list_system_warnings_for_user(Session().user, kind=kind)}
 
-    @delete("/api/settings/warnings/{warning_id}", role="admin")
+    @delete("/api/skills/platform/settings/warnings/{warning_id}", role="admin")
     def delete_warning(self, warning_id: int):
         if not self.db.delete_system_warning(Session().user, warning_id):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"Warning {warning_id} not found.")
         return {"status": "ok"}
 
-    @get("/api/settings/tasks", role="admin")
+    @get("/api/skills/platform/settings/tasks", role="admin")
     def get_scheduled_tasks(self, status: str | None = None, order: str = "asc"):
         """Settings > Manage services > Scheduler — Task rows for one
         status at a time (the frontend's own segmented control), by

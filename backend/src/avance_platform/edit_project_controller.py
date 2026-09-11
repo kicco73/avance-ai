@@ -231,7 +231,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail=str(exc)) from exc
         return {"project_id": project_id}
 
-    @get("/api/project-file-types", role="admin")
+    @get("/api/skills/platform/projects/file-types", role="admin")
     def get_project_file_types(self):
         """Every file type a project can carry — extension, stored content
         type, UI label, kind, folder and upload limit — so the file

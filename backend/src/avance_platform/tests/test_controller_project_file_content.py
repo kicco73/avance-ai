@@ -181,7 +181,7 @@ class TestGetProjectFileContent:
 
 @pytest.mark.contract
 def test_the_file_type_catalog_is_what_the_frontend_reads_instead_of_restating_its_own_patterns(client):
-    payload = client.get("/api/project-file-types").json()
+    payload = client.get("/api/skills/platform/projects/file-types").json()
 
     assert sorted(payload["root_file_names"]) == ["index.css", "index.yml"]
     by_extension = {entry["extension"]: entry for entry in payload["types"]}

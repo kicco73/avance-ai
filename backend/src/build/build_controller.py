@@ -15,7 +15,6 @@ from build import BuildService, CompileError
 from fastapi import HTTPException
 
 from scheduler import SchedulerService
-from system import skills
 from controllers.base_controller import BaseController, get, post
 from pydantic import BaseModel
 
@@ -40,17 +39,10 @@ class BuildController(BaseController):
         except CompileError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/build/skills", role="admin")
-    def get_build_skills(self):
-        """What this backend has installed and a build may leave out —
-        read off the source tree, never a list someone maintains (see
-        skills.installed)."""
-        return {"skills": skills.installed()}
-
     @get("/api/projects/{project_id}/build/skills", role="admin")
     def get_project_build_skills(self, project_id: str):
-        """The same list, plus what this project's own automaton makes
-        mandatory (see BuildService.installed_skills)."""
+        """The installed roster (GET /api/skills) plus what this project's
+        own automaton makes mandatory (see BuildService.installed_skills)."""
         try:
             return self.build_service.installed_skills(project_id)
         except CompileError as exc:

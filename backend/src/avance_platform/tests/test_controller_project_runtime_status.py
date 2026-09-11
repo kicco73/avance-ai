@@ -1,4 +1,4 @@
-"""GET /api/settings/projects/runtime-status, PUT /api/projects/{name}/pause,
+"""GET /api/skills/platform/settings/projects/runtime-status, PUT /api/projects/{name}/pause,
 PUT /api/projects/{name}/resume (ProjectService.get_runtime_status/
 set_manually_paused/set_manually_running)."""
 from __future__ import annotations
@@ -9,7 +9,7 @@ pytestmark = pytest.mark.contract
 
 
 def _status(client) -> dict:
-    response = client.get("/api/settings/projects/runtime-status")
+    response = client.get("/api/skills/platform/settings/projects/runtime-status")
     assert response.status_code == 200
     [row] = response.json()["projects"]
     return row

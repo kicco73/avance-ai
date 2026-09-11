@@ -5,7 +5,7 @@ and AI model selection as Manage services shows it.
 What used to sit here about a *project* moved to
 project/project_controller.py, which is core. What is left is the
 platform itself, and a build without src/avance_platform/ answers none
-of it — including GET /api/state, whose contributors (bus.POINT_API_STATE) then have
+of it — including GET /api/skills/platform/state, whose contributors (bus.POINT_API_STATE) then have
 nobody collecting them, which is the correct outcome rather than an
 empty payload nobody reads.
 """
@@ -17,7 +17,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from automaton.project_services import OptionalService
-from system import bus, skills
+from system import bus
 from system.bus import POINT_API_STATE
 from system.config_services import talk_configured
 
@@ -54,7 +54,7 @@ class PlatformController(BaseController):
         self.project_service = project_service
         self.platform_service = platform_service
 
-    @get("/api/docs/{name}")
+    @get("/api/skills/platform/docs/{name}")
     def get_doc(self, name: str):
         """Raw markdown content of one of src/docs/'s fixed set of
         reference docs — backs each "(?)" documentation button instead
@@ -64,7 +64,7 @@ class PlatformController(BaseController):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"Unknown doc '{name}'.")
         return {"content": (DOCS_DIR / filename).read_text(encoding="utf-8")}
 
-    @get("/api/state")
+    @get("/api/skills/platform/state")
     def get_state(self):
         """Also the frontend's boot/readiness ping — piggybacks
         talk_enabled here, plus whatever a skill contributes (see
@@ -95,37 +95,29 @@ class PlatformController(BaseController):
         # simply isn't in the payload when it isn't.
         return bus.collect(POINT_API_STATE, payload)
 
-    @get("/api/services", role="admin")
-    def get_declarable_services(self):
-        """The services a project may declare a level for, as the
-        Inspector's Project card lists them (see skills.declarable).
-        Here rather than in the build package: the editor asks this on
-        every project, including in a backend that cannot compile."""
-        return {"services": skills.declarable()}
-
-    @get("/api/ai/models")
+    @get("/api/skills/platform/ai/models")
     def get_ai_models(self):
         """The ai-service provider roster (name/model/ui_label/ui_description),
         whether auto mode is on, and which model is in effect right now
         either way — for the chat toolbar's model menu."""
         return self.turn_service.get_ai_models_info()
 
-    @post("/api/ai/models/selection")
+    @post("/api/skills/platform/ai/models/selection")
     def post_ai_model_selection(self, req: AiModelSelectionRequest):
         """Sets which model generate()/generate_stream() use: `index:
         null` for auto (the cascade's fallback order), or `index` into
-        GET /api/ai/models' `models` to pin one directly."""
+        GET /api/skills/platform/ai/models' `models` to pin one directly."""
         try:
             self.turn_service.select_ai_model(req.index)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return self.turn_service.get_ai_models_info()
 
-    @get("/api/ai/models/test")
+    @get("/api/skills/platform/ai/models/test")
     def get_ai_test_models(self):
         return self.turn_service.get_test_ai_models_info()
 
-    @post("/api/ai/models/test/selection")
+    @post("/api/skills/platform/ai/models/test/selection")
     def post_ai_test_model_selection(self, req: AiModelSelectionRequest):
         try:
             self.turn_service.select_test_ai_model(req.index)

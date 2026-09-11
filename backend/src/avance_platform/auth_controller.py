@@ -25,15 +25,15 @@ class AuthController(BaseController):
     def __init__(self, auth_service: AuthService) -> None:
         self.auth_service = auth_service
 
-    @get("/api/auth/providers", role=None)
+    @get("/api/skills/platform/auth/providers", role=None)
     def get_providers(self):
         return {"providers": self.auth_service.public_providers()}
 
-    @get("/api/auth/terms", role=None)
+    @get("/api/skills/platform/auth/terms", role=None)
     def get_terms(self):
         return {"content": TERMS_PATH.read_text(encoding="utf-8")}
 
-    @post("/api/auth/login", role=None)
+    @post("/api/skills/platform/auth/login", role=None)
     def post_login(self, req: LoginRequest, response: Response):
         try:
             token = self.auth_service.login(req.provider, req.credential)
@@ -49,7 +49,7 @@ class AuthController(BaseController):
         )
         return {"success": True}
 
-    @post("/api/auth/accept-terms", role="pending")
+    @post("/api/skills/platform/auth/accept-terms", role="pending")
     def post_accept_terms(self, request: Request, req: AcceptTermsRequest):
         """TermsView.vue's Accept button — creates the User row that
         login() deliberately deferred. Reads the session cookie straight
@@ -73,19 +73,19 @@ class AuthController(BaseController):
     # role="pending": App.vue's own TermsView-vs-InviteRequiredView gate
     # needs this before ever calling accept-terms, for an identity that
     # has no User row yet — same reachability as accept-terms/logout.
-    @get("/api/auth/pending-status", role="pending")
+    @get("/api/skills/platform/auth/pending-status", role="pending")
     def get_pending_status(self):
         return {"invite_exempt": self.auth_service.is_invite_exempt(Session().user)}
 
     # role="pending": logout must stay reachable by an identity that
     # rejected the Terms screen and never got a User row at all — not
     # just by fully registered ones.
-    @post("/api/auth/logout", role="pending")
+    @post("/api/skills/platform/auth/logout", role="pending")
     def post_logout(self, response: Response):
         response.delete_cookie(key=SESSION_COOKIE_NAME)
         return {"success": True}
 
-    @get("/api/auth/me")
+    @get("/api/skills/platform/auth/me")
     def get_me(self):
         """The auth middleware already validated the cookie for this
         request to have reached here at all — Session().user is the
@@ -94,7 +94,7 @@ class AuthController(BaseController):
         own profile data."""
         return self.auth_service.get_profile(Session().user)
 
-    @put("/api/auth/me/whatsapp-phone-number")
+    @put("/api/skills/platform/auth/me/whatsapp-phone-number")
     def put_whatsapp_phone_number(self, req: SetWhatsAppPhoneNumberRequest):
         try:
             return self.auth_service.set_whatsapp_phone_number(
@@ -105,7 +105,7 @@ class AuthController(BaseController):
         except PermissionError as exc:
             raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail=str(exc)) from exc
 
-    @post("/api/auth/erase-data")
+    @post("/api/skills/platform/auth/erase-data")
     def post_erase_data(self, response: Response):
         """ProfileView.vue's "Erase all my data" — deletes the User row
         and everything tied to it (see AuthService.erase_account), then

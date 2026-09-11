@@ -7,7 +7,14 @@ literal at its own depth. So a controller that declares both
 /projects/file-types and /projects/{project_id} gets them in the only
 order FastAPI can dispatch correctly, whatever the two methods are
 called. It used to depend on the method names sorting the right way,
-which is a property nobody could see at the call site."""
+which is a property nobody could see at the call site.
+
+A {name:path} converter is the one wildcard that swallows slashes, so a
+route ending in one has to register after every route that extends it:
+/files/{file_name:path} would otherwise answer
+/files/index.yml/content itself and the real route never be reached.
+Ending in one therefore sorts as if the path continued for one more
+segment, past anything that could follow it."""
 from __future__ import annotations
 
 import inspect
@@ -15,6 +22,7 @@ import inspect
 from fastapi import APIRouter
 
 WILDCARD = "￿"
+GREEDY = ":path}"
 
 
 def route(method: str, path: str, role: str | None = "user", **kwargs):
@@ -56,7 +64,9 @@ class BaseController:
         return sorted(declared, key=lambda route: self._dispatch_order(route[1]))
 
     def _dispatch_order(self, path: str) -> tuple:
-        return tuple(
+        segments = path.split("/")
+        ordered = tuple(
             WILDCARD if segment.startswith("{") else segment
-            for segment in path.split("/")
+            for segment in segments
         )
+        return ordered + (WILDCARD,) * segments[-1].endswith(GREEDY)

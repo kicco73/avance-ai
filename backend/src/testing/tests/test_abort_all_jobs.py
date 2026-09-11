@@ -52,7 +52,7 @@ def test_delete_all_test_jobs_endpoint_calls_abort_all_jobs(client, hello_projec
     calls = []
     monkeypatch.setattr(testing_service, "abort_all_jobs", lambda: calls.append(1))
 
-    response = client.delete(f"/api/projects/{hello_project}/tests/jobs")
+    response = client.delete(f"/api/skills/testing/projects/{hello_project}/tests/jobs")
 
     assert response.status_code == 200, response.text
     assert calls == [1]

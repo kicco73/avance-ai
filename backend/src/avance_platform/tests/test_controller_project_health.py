@@ -109,7 +109,7 @@ def test_a_session_pinned_to_an_old_now_broken_revision_is_flagged_unsupported(c
     row = next(s for s in sessions if s["id"] == session["id"])
     assert row["unsupported_revision"] is True
 
-    runtime_status = client.get("/api/settings/projects/runtime-status").json()["projects"]
+    runtime_status = client.get("/api/skills/platform/settings/projects/runtime-status").json()["projects"]
     flaky_row = next(p for p in runtime_status if p["id"] == "flaky")
     assert flaky_row["status"] == "running"
     assert flaky_row["broken"] == {"published": None, "draft": None}
@@ -133,11 +133,11 @@ def test_own_broken_project_warnings_can_be_dismissed(client, app_db):
     app_db.get_or_create_user("test", "sub-other", "other", "other", None, user_id="other")
     foreign_id = app_db.save_system_warning("other", "p", "project_broken", "nope")
 
-    listed = client.get("/api/settings/warnings?kind=project_broken").json()["warnings"]
+    listed = client.get("/api/skills/platform/settings/warnings?kind=project_broken").json()["warnings"]
     assert [(w["id"], w["file"], w["line"]) for w in listed] == [(warning_id, "index.yml", 2)]
 
-    assert client.delete(f"/api/settings/warnings/{warning_id}").status_code == 200
-    assert client.get("/api/settings/warnings?kind=project_broken").json()["warnings"] == []
-    assert client.delete(f"/api/settings/warnings/{warning_id}").status_code == HTTPStatus.NOT_FOUND
-    assert client.delete(f"/api/settings/warnings/{foreign_id}").status_code == HTTPStatus.NOT_FOUND
+    assert client.delete(f"/api/skills/platform/settings/warnings/{warning_id}").status_code == 200
+    assert client.get("/api/skills/platform/settings/warnings?kind=project_broken").json()["warnings"] == []
+    assert client.delete(f"/api/skills/platform/settings/warnings/{warning_id}").status_code == HTTPStatus.NOT_FOUND
+    assert client.delete(f"/api/skills/platform/settings/warnings/{foreign_id}").status_code == HTTPStatus.NOT_FOUND
     assert len(app_db.get_system_warnings("other", "p")) == 1

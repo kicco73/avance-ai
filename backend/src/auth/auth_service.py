@@ -119,7 +119,7 @@ class AuthService:
         own payload instead, with role=None: role_satisfies() then blocks
         every real route for it (only the "pending"-tier ones — accept-
         terms, logout — stay reachable), which is exactly the gate
-        pingBackend() in App.vue relies on (a 403 off GET /api/state)."""
+        pingBackend() in App.vue relies on (a 403 off GET /api/skills/platform/state)."""
         payload = self._decode(token)
         email = payload.get("email") if payload else None
         # Also catches a still-valid-signature token issued before this

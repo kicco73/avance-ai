@@ -47,13 +47,15 @@ def test_root_play_fires_every_branch_concurrently_without_failing(client, app_d
 
     def launch(name, path):
         Session().user = username
-        response = client.post(f"/api/projects/{hello_project}{path}", json={"strategy": "turn_by_turn"})
+        response = client.post(
+            f"/api/skills/testing/projects/{hello_project}{path}", json={"strategy": "turn_by_turn"}
+        )
         results[name] = response
 
     threads = [
-        threading.Thread(target=launch, args=("sessions", "/sessions/test")),
-        threading.Thread(target=launch, args=("states", "/states/Hello/test")),
-        threading.Thread(target=launch, args=("users", "/users/aggregation")),
+        threading.Thread(target=launch, args=("sessions", "/runs/sessions")),
+        threading.Thread(target=launch, args=("states", "/runs/states/Hello")),
+        threading.Thread(target=launch, args=("users", "/aggregations/users")),
     ]
     for t in threads:
         t.start()
@@ -64,15 +66,15 @@ def test_root_play_fires_every_branch_concurrently_without_failing(client, app_d
         assert response.status_code == 200, (name, response.text)
 
     assert _wait_until(lambda: client.get(
-        f"/api/projects/{hello_project}/aggregate-result",
+        f"/api/skills/testing/projects/{hello_project}/aggregations/result",
         params={"kind": "sessions", "strategy": "turn_by_turn"},
     ).status_code == 200)
     assert _wait_until(lambda: client.get(
-        f"/api/projects/{hello_project}/aggregate-result",
+        f"/api/skills/testing/projects/{hello_project}/aggregations/result",
         params={"kind": "state", "target": "Hello", "strategy": "turn_by_turn"},
     ).status_code == 200)
     assert _wait_until(lambda: client.get(
-        f"/api/projects/{hello_project}/aggregate-result",
+        f"/api/skills/testing/projects/{hello_project}/aggregations/result",
         params={"kind": "users", "strategy": "turn_by_turn"},
     ).status_code == 200)
 
@@ -82,12 +84,12 @@ def test_root_aggregation_resolves_its_full_two_level_dependency_chain(client, a
     _make_labeled_session_for(client, app_db, hello_project, "bob")
 
     response = client.post(
-        f"/api/projects/{hello_project}/root/aggregation", json={"strategy": "turn_by_turn"},
+        f"/api/skills/testing/projects/{hello_project}/aggregations/root", json={"strategy": "turn_by_turn"},
     )
     assert response.status_code == 200, response.text
 
     for kind in ("sessions", "all_states", "users", "all_signals"):
         assert _wait_until(lambda kind=kind: client.get(
-            f"/api/projects/{hello_project}/aggregate-result",
+            f"/api/skills/testing/projects/{hello_project}/aggregations/result",
             params={"kind": kind, "strategy": "turn_by_turn"},
         ).status_code == 200), kind

@@ -46,18 +46,18 @@ def test_root_click_waits_for_a_session_shared_across_branches(client, app_db, h
     alice_session_id = _make_labeled_session(client, app_db, hello_project, "alice")
     bob_session_id = _make_labeled_session(client, app_db, hello_project, "bob")
 
-    response = client.post(f"/api/projects/{hello_project}/root/aggregation", json={"strategy": "batch"})
+    response = client.post(f"/api/skills/testing/projects/{hello_project}/aggregations/root", json={"strategy": "batch"})
     assert response.status_code == 200, response.text
 
     def users_result_ready():
         result = client.get(
-            f"/api/projects/{hello_project}/aggregate-result", params={"kind": "users", "strategy": "batch"},
+            f"/api/skills/testing/projects/{hello_project}/aggregations/result", params={"kind": "users", "strategy": "batch"},
         )
         return result.status_code == 200
 
     assert _wait_until(users_result_ready)
 
     for session_id in (alice_session_id, bob_session_id):
-        runs = client.get(f"/api/projects/{hello_project}/tests", params={"session_id": session_id}).json()
+        runs = client.get(f"/api/skills/testing/projects/{hello_project}/tests", params={"session_id": session_id}).json()
         batch_runs = [run for run in runs if run["strategy"] == "batch"]
         assert batch_runs and all(run["status"] == "completed" for run in batch_runs)

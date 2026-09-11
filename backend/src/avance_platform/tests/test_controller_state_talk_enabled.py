@@ -1,4 +1,4 @@
-"""GET /api/state's own talk_enabled — what the active project's own
+"""GET /api/skills/platform/state's own talk_enabled — what the active project's own
 declared level for the talk service (project.services.talk, see
 automaton/project_services.py) makes of "does the server have a TTS
 provider configured at all" (what the talk package itself declares at

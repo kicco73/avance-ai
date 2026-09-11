@@ -67,10 +67,10 @@ export function useAppBoot(
   // times out on its own against a hung connection, and "timeout" is one of
   // the failure modes this boot check needs to treat the same as "not ready
   // yet". On success, reuses the result directly as the app's current state
-  // (GET /api/state IS the readiness check — nothing else to fetch for it).
+  // (GET /api/skills/platform/state IS the readiness check — nothing else to fetch for it).
   // 'ready': backend is up and this session is a fully registered user.
   // 'pending': backend is up, but this session authenticated without a
-  // matching User row — GET /api/state requires role="user", which a
+  // matching User row — GET /api/skills/platform/state requires role="user", which a
   // pending (role=None) identity's 403 is the only way to reach here (see
   // auth_service.py's own verify_token). Never "still booting": retrying
   // with the same cookie always gets the same 403 back. 'retry': anything

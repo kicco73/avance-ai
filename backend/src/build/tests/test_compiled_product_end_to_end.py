@@ -62,7 +62,7 @@ def test_the_app_store_listing_reports_whether_the_project_is_served_compiled(
     client: TestClient, app, hello_project,
 ):
     def _compiled_flag() -> bool:
-        apps = client.get("/api/app-store/apps").json()["apps"]
+        apps = client.get("/api/skills/platform/app-store/apps").json()["apps"]
         return next(a for a in apps if a["id"] == hello_project)["compiled"]
 
     assert _compiled_flag() is False
