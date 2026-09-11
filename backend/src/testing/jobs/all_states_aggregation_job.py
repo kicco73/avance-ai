@@ -9,7 +9,7 @@ from .serialization import _job_result
 from .state_aggregation_job import StateAggregationJob
 
 if TYPE_CHECKING:
-    from testing.test_service import TestService
+    from testing.testing_service import TestingService
 
 
 class AllStatesAggregationJob(_AggregationJob):
@@ -17,7 +17,7 @@ class AllStatesAggregationJob(_AggregationJob):
     UsersAggregationJob's own docstring for why."""
 
     def __init__(
-        self, service: "TestService", project_id: str, strategy: str, session_ids_by_state: dict[str, list[int]],
+        self, service: "TestingService", project_id: str, strategy: str, session_ids_by_state: dict[str, list[int]],
     ) -> None:
         super().__init__(service, project_id, 'all_states', None, strategy)
         self._session_ids_by_state = session_ids_by_state

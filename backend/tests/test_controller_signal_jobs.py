@@ -1,5 +1,5 @@
 """Integration tests for POST /api/projects/{project_name}/signals/{signal_name}/test,
-exercising TestService.start_signal_job end to end: pooling every
+exercising TestingService.start_signal_job end to end: pooling every
 labeled session project-wide (not scoped by state) and aggregating one
 signal's own accuracy across however many messages annotated it.
 """

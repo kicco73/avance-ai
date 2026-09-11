@@ -13,13 +13,13 @@ from .base import _AggregationJob
 from .serialization import _serialize_metric_result
 
 if TYPE_CHECKING:
-    from testing.test_service import TestService
+    from testing.testing_service import TestingService
 
 
 class PooledAggregationJob(_AggregationJob):
 
     def __init__(
-        self, service: "TestService", project_id: str, kind: str, target: str | None, strategy: str,
+        self, service: "TestingService", project_id: str, kind: str, target: str | None, strategy: str,
         session_ids: list[int],
     ) -> None:
         super().__init__(service, project_id, kind, target, strategy)

@@ -134,7 +134,7 @@ BATCH_OUTPUT_BUDGET_SAFETY_MARGIN = 0.7
 
 def estimate_max_turns_per_call(signal_count: int, max_output_tokens: int) -> int:
     """Shared by TestReplayJob._chunk_into_batches (deciding each batch's
-    real turn grouping upfront) and TestService._count_batch_segments
+    real turn grouping upfront) and TestingService._count_batch_segments
     (the matching upfront step-count estimate) — both use the project's
     full signal count as the worst case, before any state has been
     visited, so the declared step count and the real chunking agree."""

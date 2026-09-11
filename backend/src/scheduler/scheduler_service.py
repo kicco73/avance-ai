@@ -16,8 +16,8 @@ hibernates it in the Task table rather than holding it in memory (see
 persisted_scheduler.py): a restart, a deploy, a crash change nothing
 about when it runs.
 
-Test runs are the deliberate exception: TestService owns its own
-ThrottledJobQueue (see testing/test_service.py), a separate pool with
+Test runs are the deliberate exception: TestingService owns its own
+ThrottledJobQueue (see testing/testing_service.py), a separate pool with
 its own rate limits, so a batch of test replays can never starve an
 interactive job here."""
 from __future__ import annotations

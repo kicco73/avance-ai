@@ -26,7 +26,7 @@ from ai._providers.gemini_provider_v2 import GeminiProvider, REQUEST_TIMEOUT_MS
 from ai.llm_provider import AIServiceConfig
 from ai._providers.openai_provider_v2 import OpenAICompatibleProvider
 
-pytestmark = pytest.mark.contract
+pytestmark = [pytest.mark.contract, pytest.mark.slow]
 
 EXPECTED = '{"text": "hi"}'
 

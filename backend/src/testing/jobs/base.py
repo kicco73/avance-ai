@@ -10,7 +10,7 @@ from system.session import Session
 from testing.data import TestDataBuilder
 
 if TYPE_CHECKING:
-    from testing.test_service import TestService
+    from testing.testing_service import TestingService
 
 
 _NODE_ID_BY_KIND = {
@@ -33,7 +33,7 @@ class _AggregationJob(CancelableJob):
     """Common shape for every aggregation job kind: check the cache first,
     compute, persist, return."""
 
-    def __init__(self, service: "TestService", project_id: str, kind: str, target: str | None, strategy: str) -> None:
+    def __init__(self, service: "TestingService", project_id: str, kind: str, target: str | None, strategy: str) -> None:
         super().__init__(key=f"{strategy}:{_aggregation_node_id(kind, target)}", username=Session().user)
         self._service = service
         self._project_id = project_id

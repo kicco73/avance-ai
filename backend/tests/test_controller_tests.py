@@ -1,5 +1,5 @@
 """Integration tests for POST/GET /api/projects/{project_name}/tests
-— exercises the whole replay pipeline end to end (TestService,
+— exercises the whole replay pipeline end to end (TestingService,
 TestProcessor, the Job engine) against a real Db and FakeAiService.
 """
 from __future__ import annotations

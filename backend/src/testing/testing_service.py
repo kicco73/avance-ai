@@ -1,4 +1,4 @@
-"""TestService creates/tracks a Test — a replay of one annotated session,
+"""TestingService creates/tracks a Test — a replay of one annotated session,
 or every labeled session of a project at once — and the aggregations
 built on top of them (per state, per signal, per user, whole-project).
 Nothing about a job's own execution is persisted: the durable state is
@@ -45,7 +45,7 @@ _SIGNAL_SOURCE_CLASS_BY_STRATEGY: dict[str, type] = {
 }
 
 
-class TestService:
+class TestingService:
 
     def __init__(
         self, db: Db, ai_service: AiService, tracking_service: TrackingService, job_queue: JobQueue,

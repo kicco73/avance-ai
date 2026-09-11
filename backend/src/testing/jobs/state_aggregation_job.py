@@ -10,12 +10,12 @@ from .pooled_aggregation_job import PooledAggregationJob
 from .serialization import _serialize_metric_result
 
 if TYPE_CHECKING:
-    from testing.test_service import TestService
+    from testing.testing_service import TestingService
 
 
 class StateAggregationJob(_AggregationJob):
 
-    def __init__(self, service: "TestService", project_id: str, state_key: str, strategy: str, session_ids: list[int]) -> None:
+    def __init__(self, service: "TestingService", project_id: str, state_key: str, strategy: str, session_ids: list[int]) -> None:
         super().__init__(service, project_id, 'state', state_key, strategy)
         self._state_key = state_key
         self._session_ids = session_ids

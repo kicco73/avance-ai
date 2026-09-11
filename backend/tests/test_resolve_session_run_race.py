@@ -8,7 +8,7 @@ import pytest
 from conftest import chat_turn
 
 from system.session import Session
-from testing.test_service import PooledAggregationJob, TestService
+from testing.testing_service import PooledAggregationJob, TestingService
 
 pytestmark = pytest.mark.contract
 
@@ -34,12 +34,12 @@ def test_resolve_or_construct_session_run_serializes_racing_callers(monkeypatch,
     interleaving deterministically instead of relying on scheduling luck.
     """
     session_id = _make_labeled_session(client, app_db, hello_project, "alice")
-    test_service = client.app.state.test_service
+    testing_service = client.app.state.testing_service
 
     entered = threading.Event()
     release = threading.Event()
     calls: list[int] = []
-    original_list_runs = TestService.list_runs
+    original_list_runs = TestingService.list_runs
 
     def instrumented_list_runs(self, *args, **kwargs):
         calls.append(1)
@@ -48,10 +48,10 @@ def test_resolve_or_construct_session_run_serializes_racing_callers(monkeypatch,
             assert release.wait(timeout=5.0), "test itself never released the first caller"
         return original_list_runs(self, *args, **kwargs)
 
-    monkeypatch.setattr(TestService, "list_runs", instrumented_list_runs)
+    monkeypatch.setattr(TestingService, "list_runs", instrumented_list_runs)
 
-    job_a = PooledAggregationJob(test_service, hello_project, 'sessions', None, 'turn_by_turn', [session_id])
-    job_b = PooledAggregationJob(test_service, hello_project, 'sessions', None, 'turn_by_turn', [session_id])
+    job_a = PooledAggregationJob(testing_service, hello_project, 'sessions', None, 'turn_by_turn', [session_id])
+    job_b = PooledAggregationJob(testing_service, hello_project, 'sessions', None, 'turn_by_turn', [session_id])
     results = {}
 
     def resolve(name, job):
@@ -83,15 +83,15 @@ def test_resolve_or_construct_session_run_serializes_racing_callers(monkeypatch,
 
 def test_resolve_or_construct_session_run_treats_an_aborted_run_as_retryable(client, app_db, hello_project):
     """An aborted run must not be handed back as if it were still live —
-    see TestService._status_for() and TestCache.find(): before those knew
+    see TestingService._status_for() and TestCache.find(): before those knew
     about is_aborted(), a cancelled TestReplayJob kept reporting 'running'
     forever, so the next click got back that same dead job instead of a
     fresh one, and nothing new ever ran."""
     session_id = _make_labeled_session(client, app_db, hello_project, "alice")
-    test_service = client.app.state.test_service
+    testing_service = client.app.state.testing_service
     Session().user = "user"
 
-    job = PooledAggregationJob(test_service, hello_project, 'sessions', None, 'turn_by_turn', [session_id])
+    job = PooledAggregationJob(testing_service, hello_project, 'sessions', None, 'turn_by_turn', [session_id])
     first_run_id, first_job = job._resolve_or_construct_session_run(session_id)
     assert first_job is not None
     first_job.prepare()

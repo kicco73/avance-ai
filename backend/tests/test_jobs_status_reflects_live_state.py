@@ -77,8 +77,8 @@ def test_get_test_status_returns_the_broadcaster_snapshot(client, hello_project)
     """A job that already finished before anyone asked must still be
     visible in the very next snapshot read — the whole point of
     the broadcaster recording rather than only ever forwarding."""
-    test_service = client.app.state.test_service
-    test_service._status_broadcaster.push(
+    testing_service = client.app.state.testing_service
+    testing_service._status_broadcaster.push(
         "user", {"key": "batch:root", "job_status": "completed", "queue_status": "exited", "error": None},
     )
 
@@ -109,14 +109,14 @@ def test_root_shows_running_via_the_broadcaster_even_though_it_never_persists(cl
     """RootAggregationJob never writes a TestAggregateResult of its own
     (see its class) — the only way to ever know it's running is the
     queue's own last broadcast, so it must never be silently dropped."""
-    test_service = client.app.state.test_service
+    testing_service = client.app.state.testing_service
     started = threading.Event()
     release = threading.Event()
     job = _BlockingCancelableJob("batch:root", started, release)
-    test_service._submit(job)
+    testing_service._submit(job)
     assert started.wait(timeout=2.0)
 
-    last = test_service._status_broadcaster.last_status("batch:root")
+    last = testing_service._status_broadcaster.last_status("batch:root")
     assert last["job_status"] == "running"
 
     release.set()
@@ -125,9 +125,9 @@ def test_root_shows_running_via_the_broadcaster_even_though_it_never_persists(cl
 def test_an_individual_state_job_reports_its_own_running_status_via_all_states(monkeypatch, client, hello_project):
     """AllStatesAggregationJob constructs one StateAggregationJob per
     state as a plain dependency, never separately submitted through
-    TestService._submit() — job_queue.py still broadcasts for it directly
+    TestingService._submit() — job_queue.py still broadcasts for it directly
     (see JobQueue.submit's own recursion), so the broadcaster records its
-    real status regardless of whether TestService tracks it anywhere."""
+    real status regardless of whether TestingService tracks it anywhere."""
     started = threading.Event()
     release = threading.Event()
     original_compute = StateAggregationJob._compute
@@ -139,12 +139,12 @@ def test_an_individual_state_job_reports_its_own_running_status_via_all_states(m
 
     monkeypatch.setattr(StateAggregationJob, "_compute", blocking_compute)
 
-    test_service = client.app.state.test_service
-    job = AllStatesAggregationJob(test_service, hello_project, "batch", {"Hello": []})
-    test_service._submit(job)
+    testing_service = client.app.state.testing_service
+    job = AllStatesAggregationJob(testing_service, hello_project, "batch", {"Hello": []})
+    testing_service._submit(job)
     assert started.wait(timeout=2.0)
 
-    last = test_service._status_broadcaster.last_status("batch:state:Hello")
+    last = testing_service._status_broadcaster.last_status("batch:state:Hello")
     assert last["job_status"] == "running"
     assert last["queue_status"] == "running"
 
@@ -165,10 +165,10 @@ def test_reset_cache_clears_the_broadcasters_recorded_state(client, hello_projec
     response = client.post(f"/api/projects/{hello_project}/sessions/test", json={"strategy": "turn_by_turn"})
     assert response.status_code == 200, response.text
 
-    test_service = client.app.state.test_service
+    testing_service = client.app.state.testing_service
 
     def sessions_completed():
-        last = test_service._status_broadcaster.last_status("turn_by_turn:sessions-branch")
+        last = testing_service._status_broadcaster.last_status("turn_by_turn:sessions-branch")
         return last is not None and last["job_status"] == "completed"
 
     assert _wait_until(sessions_completed)
@@ -176,4 +176,4 @@ def test_reset_cache_clears_the_broadcasters_recorded_state(client, hello_projec
     response = client.delete(f"/api/projects/{hello_project}/tests")
     assert response.status_code == 200, response.text
 
-    assert test_service._status_broadcaster.last_status("turn_by_turn:sessions-branch") is None
+    assert testing_service._status_broadcaster.last_status("turn_by_turn:sessions-branch") is None

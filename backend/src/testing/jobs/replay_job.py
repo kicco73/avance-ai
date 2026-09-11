@@ -22,13 +22,13 @@ from tracking.user_facts import UserFacts
 from .serialization import _serialize_metric_result
 
 if TYPE_CHECKING:
-    from testing.test_service import TestService
+    from testing.testing_service import TestingService
 
 
 class TestReplayJob(CancelableJob):
 
     def __init__(
-        self, service: "TestService", run: dict, automaton: Automaton,
+        self, service: "TestingService", run: dict, automaton: Automaton,
         session_ids: list[int], signal_source_cls: type, total: int,
     ) -> None:
         key = (

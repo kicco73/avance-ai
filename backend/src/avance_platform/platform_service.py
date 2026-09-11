@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 from automaton.automaton import Automaton, CompiledAutomaton, ProjectPayload, StatePayload
 from project.web_import_job import WebImportJob
+from system.wiring import construct
 from tracking.sources.url import parse_source_url
 
 if TYPE_CHECKING:
@@ -45,9 +46,10 @@ class PlatformService(object):
     def install(self, core: dict, controllers: list) -> None:
         """Builds this service's own controllers and adds them to the
         router's list — the same shape whatsapp/skill.py's `_WhatsApp`
-        uses, and the reason the skill no longer knows seven controller
-        signatures. `core` is bus.POINT_CORE_SERVICES' registry, read
-        here and not kept: nothing below needs it after construction."""
+        uses. Each one is built from the core registry plus this service
+        under the name they ask for it by (see system/wiring.py), so what
+        is written here is a list of names and not of call sites: adding
+        a parameter to one of them changes that file and nothing here."""
         from avance_platform.app_store_controller import AppStoreController
         from avance_platform.auth_controller import AuthController
         from avance_platform.edit_project_controller import EditProjectController
@@ -56,27 +58,22 @@ class PlatformService(object):
         from avance_platform.settings_controller import SettingsController
         from avance_platform.user_controller import UserController
 
-        turn_service = core["turn_service"]
-        project_service = core["project_service"]
-        scheduler_service = core["scheduler_service"]
-        auth_service = core["auth_service"]
-
+        registry = {**core, "platform_service": self}
         self.controllers = [
-            PlatformController(turn_service, project_service, self),
-            EditProjectController(turn_service, project_service, self, scheduler_service),
-            # Labelling only: the benchmark half of that screen left with
-            # the package that runs it (see testing/testing_controller.py),
-            # so a build without benchmarking still annotates sessions.
-            LabelProjectController(
-                turn_service, self, core["tracking_service"], scheduler_service,
-            ),
-            SettingsController(
-                turn_service, project_service, self, core["db"], core["version"],
-                scheduler_service, core["services_config"],
-            ),
-            AuthController(auth_service),
-            UserController(auth_service),
-            AppStoreController(turn_service, self),
+            construct(controller, registry)
+            for controller in (
+                PlatformController,
+                EditProjectController,
+                # Labelling only: the benchmark half of that screen left
+                # with the package that runs it (see
+                # testing/testing_controller.py), so a build without
+                # benchmarking still annotates sessions.
+                LabelProjectController,
+                SettingsController,
+                AuthController,
+                UserController,
+                AppStoreController,
+            )
         ]
         controllers.extend(self.controllers)
 

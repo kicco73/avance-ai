@@ -9,7 +9,7 @@ from .serialization import _job_result
 from .signal_aggregation_job import SharedObservationsCache, SignalAggregationJob
 
 if TYPE_CHECKING:
-    from testing.test_service import TestService
+    from testing.testing_service import TestingService
 
 
 class AllSignalsAggregationJob(_AggregationJob):
@@ -17,7 +17,7 @@ class AllSignalsAggregationJob(_AggregationJob):
     UsersAggregationJob's own docstring for why."""
 
     def __init__(
-        self, service: "TestService", project_id: str, strategy: str, session_ids: list[int], signal_names: list[str],
+        self, service: "TestingService", project_id: str, strategy: str, session_ids: list[int], signal_names: list[str],
     ) -> None:
         super().__init__(service, project_id, 'all_signals', None, strategy)
         self._session_ids = session_ids

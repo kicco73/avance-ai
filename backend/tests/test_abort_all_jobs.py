@@ -27,8 +27,8 @@ class _FakeCancelableJob(CancelableJob):
 def test_abort_all_jobs_cancels_only_jobs_still_in_flight(client, hello_project):
     """The square "run all" button's stop action must cancel every job
     genuinely still running, but never retroactively flip an already
-    completed one to 'aborted' — see TestService.abort_all_jobs()."""
-    test_service = client.app.state.test_service
+    completed one to 'aborted' — see TestingService.abort_all_jobs()."""
+    testing_service = client.app.state.testing_service
 
     done = _FakeCancelableJob("batch:done")
     done.prepare()
@@ -38,19 +38,19 @@ def test_abort_all_jobs_cancels_only_jobs_still_in_flight(client, hello_project)
     in_flight = _FakeCancelableJob("batch:in-flight")
     in_flight.prepare()
 
-    test_service._jobs_by_key["batch:done"] = done
-    test_service._jobs_by_key["batch:in-flight"] = in_flight
+    testing_service._jobs_by_key["batch:done"] = done
+    testing_service._jobs_by_key["batch:in-flight"] = in_flight
 
-    test_service.abort_all_jobs()
+    testing_service.abort_all_jobs()
 
     assert not done.is_aborted()
     assert in_flight.is_aborted()
 
 
 def test_delete_all_test_jobs_endpoint_calls_abort_all_jobs(client, hello_project, monkeypatch):
-    test_service = client.app.state.test_service
+    testing_service = client.app.state.testing_service
     calls = []
-    monkeypatch.setattr(test_service, "abort_all_jobs", lambda: calls.append(1))
+    monkeypatch.setattr(testing_service, "abort_all_jobs", lambda: calls.append(1))
 
     response = client.delete(f"/api/projects/{hello_project}/tests/jobs")
 

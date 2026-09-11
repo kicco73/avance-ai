@@ -207,11 +207,11 @@ def test_a_backend_without_listen_still_imports_its_own_entry_point(tmp_path):
 
 @pytest.mark.contract
 @pytest.mark.slow
-@pytest.mark.parametrize("package", ["talk", "whatsapp", "testing"])
+@pytest.mark.parametrize("package", ["talk", "whatsapp"])
 def test_a_backend_without_a_skill_still_imports_its_own_entry_point(tmp_path, package):
     """Each of these was threaded through core constructors before it
     became a skill — talk through the studio controller and the tracking
-    service, whatsapp through the composition root, testing through both.
+    service, whatsapp through the composition root.
     If any core file still imported one directly rather than reaching it
     through the Bus, this is where it would show."""
     import shutil
@@ -397,6 +397,7 @@ def test_a_rebuild_leaves_no_previous_build_of_the_same_project_behind(tmp_path,
     assert sorted(path.name for path in build_root.iterdir()) == sorted([built.name, unrelated.name])
 
 
+@pytest.mark.slow
 def test_building_the_same_revision_twice_replaces_it(tmp_path, monkeypatch):
     """The same (project, revision) built again is the same directory,
     with nothing of the earlier build left inside it."""

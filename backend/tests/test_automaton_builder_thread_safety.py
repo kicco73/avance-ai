@@ -33,6 +33,7 @@ def _index_yml(n: int) -> str:
     return f"project:\n  id: p{n}\ninit-action:\n  target: s0\nstates:\n{states}"
 
 
+@pytest.mark.slow
 def test_concurrent_builds_never_interleave_documents():
     documents = [_index_yml(n) for n in range(6)]
     errors: list[BaseException] = []

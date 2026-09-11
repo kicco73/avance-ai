@@ -19,16 +19,16 @@ from controllers.base_controller import BaseController, delete, get, post, put
 from schemas import CreateTestRequest, StateTestRequest
 from system.broadcaster import Broadcaster
 from system.session import Session
-from testing.test_service import TestService
+from testing.testing_service import TestingService
 from turn.turn_service import TurnService
 
 
 class TestingController(BaseController):
 
     def __init__(
-        self, test_service: TestService, progress_broadcaster: Broadcaster, turn_service: TurnService,
+        self, testing_service: TestingService, progress_broadcaster: Broadcaster, turn_service: TurnService,
     ) -> None:
-        self.test_service = test_service
+        self.testing_service = testing_service
         self.progress_broadcaster = progress_broadcaster
         self.turn_service = turn_service
 
@@ -48,7 +48,7 @@ class TestingController(BaseController):
 
     @delete("/api/projects/{project_id}/tests", role="supervisor")
     def delete_tests(self, project_id: str):
-        self.test_service.reset_cache(project_id)
+        self.testing_service.reset_cache(project_id)
         return {"success": True}
 
     @delete("/api/projects/{project_id}/tests/jobs/{job_key}", role="supervisor")
@@ -56,14 +56,14 @@ class TestingController(BaseController):
         """Aborts the running job for job_key (the same "<strategy>:<node_id>"
         string the frontend already computes as its SSE cache key) — a
         no-op if nothing is currently tracked under that key."""
-        self.test_service.abort_job(job_key)
+        self.testing_service.abort_job(job_key)
         return {"success": True}
 
     @delete("/api/projects/{project_id}/tests/jobs", role="supervisor")
     def delete_all_test_jobs(self, project_id: str):
         """Aborts every currently tracked, still in-flight job across every
         node — the square "run all" button's own stop action."""
-        self.test_service.abort_all_jobs()
+        self.testing_service.abort_all_jobs()
         return {"success": True}
 
     @post("/api/projects/{project_id}/tests", role="supervisor")
@@ -75,7 +75,7 @@ class TestingController(BaseController):
         job submitted. TestServiceError is handled globally."""
         username = req.username if req.username is not None else Session().user
         try:
-            return self.test_service.create_run(
+            return self.testing_service.create_run(
                 username, project_id, req.session_id, req.strategy,
             )
         except ValueError as exc:
@@ -83,7 +83,7 @@ class TestingController(BaseController):
 
     @get("/api/projects/{project_id}/tests/export", role="supervisor")
     def get_test_export(self, project_id: str):
-        payload = self.test_service.export_results(project_id)
+        payload = self.testing_service.export_results(project_id)
         content = json.dumps(payload, indent=2).encode("utf-8")
         encoded_project_id = quote(project_id)
         return Response(
@@ -103,7 +103,7 @@ class TestingController(BaseController):
         """One Test, its domain data merged with its Job's
         lifecycle (status/progress/error/timestamps). TestServiceError
         (404 for an unknown test_id) is handled globally."""
-        return self.test_service.get_run(test_id)
+        return self.testing_service.get_run(test_id)
 
     @get("/api/projects/{project_id}/tests", role="supervisor")
     def get_tests(self, project_id: str, session_id: int | None = None, username: str | None = None):
@@ -113,13 +113,13 @@ class TestingController(BaseController):
         that user's runs; omitted, no username filter is applied. Most
         recent first."""
         if username is None:
-            return self.test_service.list_runs(project_id, session_id)
-        return self.test_service.list_runs(project_id, session_id, username)
+            return self.testing_service.list_runs(project_id, session_id)
+        return self.testing_service.list_runs(project_id, session_id, username)
 
     @post("/api/projects/{project_id}/states/{state_key}/test", role="supervisor")
     def post_state_test(self, project_id: str, state_key: str, req: StateTestRequest):
         try:
-            self.test_service.start_job(project_id, state_key, req.strategy)
+            self.testing_service.start_job(project_id, state_key, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
@@ -127,7 +127,7 @@ class TestingController(BaseController):
     @post("/api/projects/{project_id}/signals/{signal_name}/test", role="supervisor")
     def post_signal_test(self, project_id: str, signal_name: str, req: StateTestRequest):
         try:
-            self.test_service.start_signal_job(project_id, signal_name, req.strategy)
+            self.testing_service.start_signal_job(project_id, signal_name, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
@@ -135,7 +135,7 @@ class TestingController(BaseController):
     @post("/api/projects/{project_id}/states/aggregation", role="supervisor")
     def post_states_aggregation(self, project_id: str, req: StateTestRequest):
         try:
-            self.test_service.start_all_states_job(project_id, req.strategy)
+            self.testing_service.start_all_states_job(project_id, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
@@ -143,7 +143,7 @@ class TestingController(BaseController):
     @post("/api/projects/{project_id}/signals/aggregation", role="supervisor")
     def post_signals_aggregation(self, project_id: str, req: StateTestRequest):
         try:
-            self.test_service.start_all_signals_job(project_id, req.strategy)
+            self.testing_service.start_all_signals_job(project_id, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
@@ -151,7 +151,7 @@ class TestingController(BaseController):
     @post("/api/projects/{project_id}/root/aggregation", role="supervisor")
     def post_root_aggregation(self, project_id: str, req: StateTestRequest):
         try:
-            self.test_service.start_root_job(project_id, req.strategy)
+            self.testing_service.start_root_job(project_id, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
@@ -159,7 +159,7 @@ class TestingController(BaseController):
     @post("/api/projects/{project_id}/users/aggregation", role="supervisor")
     def post_users_aggregation(self, project_id: str, req: StateTestRequest):
         try:
-            self.test_service.start_users_aggregation_job(project_id, req.strategy)
+            self.testing_service.start_users_aggregation_job(project_id, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
@@ -167,7 +167,7 @@ class TestingController(BaseController):
     @post("/api/projects/{project_id}/sessions/test", role="supervisor")
     def post_sessions_run(self, project_id: str, req: StateTestRequest):
         try:
-            self.test_service.start_sessions_run_job(project_id, req.strategy)
+            self.testing_service.start_sessions_run_job(project_id, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
@@ -175,14 +175,14 @@ class TestingController(BaseController):
     @post("/api/projects/{project_id}/users/{username}/test", role="supervisor")
     def post_user_sessions_run(self, project_id: str, username: str, req: StateTestRequest):
         try:
-            self.test_service.start_user_sessions_run_job(username, project_id, req.strategy)
+            self.testing_service.start_user_sessions_run_job(username, project_id, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
 
     @get("/api/projects/{project_id}/aggregate-result", role="supervisor")
     def get_aggregate_result(self, project_id: str, kind: str, strategy: str, target: str | None = None):
-        result = self.test_service.get_aggregate_result(project_id, kind, target, strategy)
+        result = self.testing_service.get_aggregate_result(project_id, kind, target, strategy)
         if result is None:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No aggregate result for this key yet.")
         return result

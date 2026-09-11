@@ -11,7 +11,7 @@ from .normalization import BenchmarkNormalizer
 class Statistics(object):
     """The framework's one place that turns a raw list of 0..100-scale
     values into a BenchmarkMetricResult — every BenchmarkMetric.calculate()
-    routes through here, and any other layer (e.g. TestService, computing
+    routes through here, and any other layer (e.g. TestingService, computing
     a single named signal's own accuracy outside the full calculator
     pipeline) should too, rather than re-deriving mean/median/distribution
     by hand."""

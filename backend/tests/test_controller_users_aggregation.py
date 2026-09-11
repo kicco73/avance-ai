@@ -1,5 +1,5 @@
 """Integration tests for POST /api/projects/{project_name}/users/aggregation,
-exercising TestService.start_users_aggregation_job end to end:
+exercising TestingService.start_users_aggregation_job end to end:
 pooling each distinct annotated user's own labeled-session sub-runs, then
 averaging each user's own pooled result across users.
 """
@@ -13,7 +13,7 @@ import pytest
 from conftest import chat_turn
 
 from system.session import Session
-from testing.test_service import UsersAggregationJob
+from testing.testing_service import UsersAggregationJob
 
 pytestmark = pytest.mark.contract
 

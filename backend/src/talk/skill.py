@@ -16,6 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from system import bus
+from system.wiring import construct
 from system.bus import OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, POINT_CONFIG_SERVICES, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
 from system.config_services import ui_section
 from system.logging_factory import LoggerFactory
@@ -78,7 +79,7 @@ class _Talk(_NoTalk):
         from talk.talk_controller import TalkController
 
         core = bus.collect(POINT_CORE_SERVICES, {})
-        controllers.append(TalkController(core["turn_service"], self._service))
+        controllers.append(construct(TalkController, {**core, "talk_service": self._service}))
 
 
 _INSTALLATIONS = {False: _NoTalk, True: _Talk}

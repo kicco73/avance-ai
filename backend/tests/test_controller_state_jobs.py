@@ -1,5 +1,5 @@
 """Integration tests for POST /api/projects/{project_name}/states/{state_key}/test,
-exercising TestService.start_job end to end: launching/reusing
+exercising TestingService.start_job end to end: launching/reusing
 session-scoped sub-runs and aggregating Signal Accuracy.
 """
 from __future__ import annotations

@@ -11,7 +11,7 @@ from .pooled_aggregation_job import PooledAggregationJob
 from .serialization import _serialize_metric_result
 
 if TYPE_CHECKING:
-    from testing.test_service import TestService
+    from testing.testing_service import TestingService
 
 
 class SharedObservationsCache:
@@ -53,7 +53,7 @@ class SignalAggregationJob(_AggregationJob):
     ids instead of holding the whole aggregation."""
 
     def __init__(
-        self, service: "TestService", project_id: str, signal_name: str, strategy: str, session_ids: list[int],
+        self, service: "TestingService", project_id: str, signal_name: str, strategy: str, session_ids: list[int],
         observations_cache: SharedObservationsCache | None = None,
     ) -> None:
         super().__init__(service, project_id, 'signal', signal_name, strategy)

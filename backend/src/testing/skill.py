@@ -15,6 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from system import bus
+from system.wiring import construct
 from system.bus import POINT_CONFIG_SERVICES, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
 from system.config_services import ui_section
 from system.logging_factory import LoggerFactory
@@ -43,7 +44,7 @@ def _install(controllers: list) -> None:
     replays against, and at boot that does not exist yet (see
     bus.POINT_CORE_SERVICES)."""
     from jobs.throttled_job_queue import ThrottledJobQueue
-    from testing.test_service import TestService
+    from testing.testing_service import TestingService
     from testing.testing_controller import TestingController
 
     core = bus.collect(POINT_CORE_SERVICES, {})
@@ -56,11 +57,11 @@ def _install(controllers: list) -> None:
         max_jobs_per_minute=_config.max_tests_per_minute,
         min_job_interval_ms=_config.min_test_interval_ms,
     )
-    service = TestService(
+    service = TestingService(
         core["db"], core["ai_test_service"], core["tracking_service"], queue,
         core["project_service"], broadcaster,
     )
-    controllers.append(TestingController(service, broadcaster, core["turn_service"]))
+    controllers.append(construct(TestingController, {**core, "testing_service": service}))
     logger.info("benchmarking started — up to %d run(s) at a time.", _config.max_concurrent_tests)
 
 

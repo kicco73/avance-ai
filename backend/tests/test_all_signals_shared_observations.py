@@ -15,7 +15,7 @@ import pytest
 from conftest import chat_turn
 
 from jobs.job_queue import JobQueue
-from testing.test_service import AllSignalsAggregationJob
+from testing.testing_service import AllSignalsAggregationJob
 from testing.jobs.base import _AggregationJob
 
 pytestmark = pytest.mark.contract
@@ -60,11 +60,11 @@ def test_all_signals_aggregation_builds_each_runs_observations_only_once(monkeyp
 
     monkeypatch.setattr(_AggregationJob, "_observations_for_run", counting)
 
-    test_service = client.app.state.test_service
+    testing_service = client.app.state.testing_service
     job = AllSignalsAggregationJob(
-        test_service, hello_project, "turn_by_turn", [session_id], ["foo", "bar", "baz"],
+        testing_service, hello_project, "turn_by_turn", [session_id], ["foo", "bar", "baz"],
     )
-    test_service._submit(job)
+    testing_service._submit(job)
 
     assert _wait_until(lambda: job.is_done())
     assert calls == [run_id]
@@ -89,14 +89,14 @@ def test_all_signals_aggregation_coalesces_concurrent_observation_building(monke
 
     monkeypatch.setattr(_AggregationJob, "_observations_for_run", slow_counting)
 
-    test_service = client.app.state.test_service
-    concurrent_queue = JobQueue(max_concurrent=4, broadcaster=test_service._job_queue._broadcaster)
-    monkeypatch.setattr(test_service, "_job_queue", concurrent_queue)
+    testing_service = client.app.state.testing_service
+    concurrent_queue = JobQueue(max_concurrent=4, broadcaster=testing_service._job_queue._broadcaster)
+    monkeypatch.setattr(testing_service, "_job_queue", concurrent_queue)
 
     job = AllSignalsAggregationJob(
-        test_service, hello_project, "turn_by_turn", [session_id], ["a", "b", "c", "d"],
+        testing_service, hello_project, "turn_by_turn", [session_id], ["a", "b", "c", "d"],
     )
-    test_service._submit(job)
+    testing_service._submit(job)
 
     assert _wait_until(lambda: job.is_done(), timeout=5.0)
     assert calls == [run_id]

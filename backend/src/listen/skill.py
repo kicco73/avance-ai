@@ -21,8 +21,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from system import bus
-from system.bus import INPUT_AUDIO, POINT_API_STATE, POINT_CONFIG_SERVICES, POINT_HTTP_CONTROLLERS
+from system.bus import POINT_API_STATE, POINT_CONFIG_SERVICES, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
 from system.config_services import ui_section
+from system.wiring import construct
 from listen import config as listen_config
 from listen.decoder import SpeechDecoder
 from listen.listen_controller import ListenController
@@ -50,7 +51,9 @@ def start(raw: dict, path: Path) -> None:
 
     service = ListenService.from_config(services)
     SpeechDecoder(service).register()
-    bus.contribute(POINT_HTTP_CONTROLLERS, lambda controllers: controllers.append(ListenController(service)))
+    bus.contribute(POINT_HTTP_CONTROLLERS, lambda controllers: controllers.append(
+        construct(ListenController, {**bus.collect(POINT_CORE_SERVICES, {}), "listen_service": service})
+    ))
     bus.contribute(POINT_API_STATE, lambda payload: payload.update({"listen_enabled": service.enabled}))
     logger.info("listen-service started with %d provider(s).", len(services))
 

@@ -25,6 +25,7 @@ from build import config as build_config
 from system import bus
 from system.bus import POINT_AUTOMATON_LOADER, POINT_CONFIG_SERVICES, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
 from system.config_services import ui_section
+from system.wiring import construct
 from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
@@ -67,9 +68,8 @@ def _install(controllers: list) -> None:
     from build.build_controller import BuildController
 
     core = bus.collect(POINT_CORE_SERVICES, {})
-    controllers.append(
-        BuildController(BuildService(core["db"], core["project_service"], core["apps_dir"]))
-    )
+    service = BuildService(core["db"], core["project_service"], core["apps_dir"])
+    controllers.append(construct(BuildController, {**core, "build_service": service}))
     logger.info("build started — a project can be compiled into a package.")
 
 

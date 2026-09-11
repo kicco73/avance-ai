@@ -10,7 +10,7 @@ from .pooled_aggregation_job import PooledAggregationJob
 from .serialization import _job_result
 
 if TYPE_CHECKING:
-    from testing.test_service import TestService
+    from testing.testing_service import TestingService
 
 
 class UsersAggregationJob(_AggregationJob):
@@ -20,7 +20,7 @@ class UsersAggregationJob(_AggregationJob):
     play button standalone (start_user_sessions_run_job) would."""
 
     def __init__(
-        self, service: "TestService", project_id: str, strategy: str, session_ids_by_user: dict[str, list[int]],
+        self, service: "TestingService", project_id: str, strategy: str, session_ids_by_user: dict[str, list[int]],
     ) -> None:
         super().__init__(service, project_id, 'users', None, strategy)
         self._session_ids_by_user = session_ids_by_user

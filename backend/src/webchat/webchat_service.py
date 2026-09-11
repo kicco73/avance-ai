@@ -23,6 +23,7 @@ from system import bus
 from system.bus import CLIENT_INJECTABLE, Message
 from turn.channels import NATIVE_CHAT
 from system.logging_factory import LoggerFactory
+from system.wiring import construct
 from system.ws_notifications import WsNotifications
 from talker import HumanTalker
 from project.project_service import ProjectService
@@ -47,7 +48,7 @@ class WebchatService:
         # The /api/chat/* routes travel with the service that answers
         # them: the skill hands this to POINT_HTTP_CONTROLLERS and a
         # build without this package has nothing to register.
-        self.controller = WebchatController(turn_service)
+        self.controller = construct(WebchatController, {"turn_service": turn_service})
 
     def register(self) -> None:
         for message_type in CLIENT_INJECTABLE:

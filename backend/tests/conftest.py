@@ -40,7 +40,7 @@ from project.archive.automaton_loader import AutomatonLoader
 from build.compiled_automaton_loader import CompiledAutomatonLoader
 from project.project_service import ProjectService
 from system.session import Session
-from testing.test_service import TestService
+from testing.testing_service import TestingService
 from testing.testing_controller import TestingController
 from tracking.actuators import TaskNamespaceFactory
 from tracking.project_files import PROJECT_FILE_CACHE
@@ -283,7 +283,7 @@ def app_db(tmp_path) -> Db:
 
 def make_test_scheduler_service(db: Db, broadcaster=None) -> SchedulerService:
     """A real SchedulerService over a one-worker pool — what every test that
-    needs platform jobs (never a TestService's own throttled pool) shares.
+    needs platform jobs (never a TestingService's own throttled pool) shares.
     Not started: nothing here claims hibernated tasks unless a test
     calls start() itself (see test_task_defer.py)."""
     return SchedulerService(max_concurrent=1, broadcaster=broadcaster if broadcaster is not None else Broadcaster(), db=db)
@@ -325,7 +325,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
     metric_service = MetricService(app_db, project_service)
     progress_broadcaster = Broadcaster(fake_ai_service, batch_window_seconds=DEFAULT_BATCH_WINDOW_SECONDS)
     scheduler_service = make_test_scheduler_service(app_db, progress_broadcaster)
-    # TestService's own pool, as in main.py — never the platform SchedulerService's.
+    # TestingService's own pool, as in main.py — never the platform SchedulerService's.
     test_job_queue = JobQueue(max_concurrent=1, broadcaster=progress_broadcaster)
     namespace_factory = make_test_namespace_factory(app_db, scheduler_service, project_service, fake_ai_service)
     tracking_service = TrackingService(
@@ -335,7 +335,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
         app_db, fake_ai_service, fake_ai_service, project_service, session_manager,
         tracking_service, metric_service, scheduler_service, namespace_factory,
     )
-    test_service = TestService(
+    testing_service = TestingService(
         app_db, fake_ai_service, tracking_service, test_job_queue, project_service, progress_broadcaster,
     )
     # No real providers: this app fixture never goes through AuthMiddleware
@@ -376,7 +376,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
     # Same for testing/skill.py: the benchmark routes travel with the
     # package that runs them, so the harness registers them the same way.
     bus.contribute(POINT_HTTP_CONTROLLERS, lambda controllers: controllers.append(
-        TestingController(test_service, progress_broadcaster, turn_service)
+        TestingController(testing_service, progress_broadcaster, turn_service)
     ))
     tracking_service.set_human_talker_factory(webchat.human_talker_factory)
     # What avance_platform/skill.py does at boot, done here directly: the
@@ -408,7 +408,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
         turn_service, project_service, ws_notifications=ws_notifications,
     )
     fastapi_app.include_router(controller.router)
-    fastapi_app.state.test_service = test_service
+    fastapi_app.state.testing_service = testing_service
     fastapi_app.state.project_service = project_service
     fastapi_app.state.turn_service = turn_service
     fastapi_app.state.db = app_db
@@ -599,7 +599,8 @@ def pytest_sessionfinish(session, exitstatus) -> None:
             stats = _remap_renamed_files(json.loads(raw) if raw else {}, _git_renamed_test_files())
             for entry in stats.values():
                 entry.setdefault("first_run", entry.get("last_run") or now)
-            if _is_full_test_run(session):
+            full_run = _is_full_test_run(session)
+            if full_run:
                 stats = {nodeid: entry for nodeid, entry in stats.items() if nodeid in _test_runs}
             for nodeid, run in _test_runs.items():
                 outcome = run.outcome
@@ -613,7 +614,8 @@ def pytest_sessionfinish(session, exitstatus) -> None:
                     entry["runs"] += 1
                     entry["failures"] += int(outcome == "failed")
                 entry["seconds"] = round(entry.get("seconds", 0.0) + run.seconds, 3)
-                entry["last_seconds"] = round(run.seconds, 3)
+                if full_run:
+                    entry["last_seconds"] = round(run.seconds, 3)
                 entry["last_outcome"] = outcome
                 entry["last_run"] = now
                 if outcome == "failed":

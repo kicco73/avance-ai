@@ -389,7 +389,7 @@ class ProjectMixin:
         ephemeral test session's anchored revision stops meaning anything.
         A labeled one is excluded: labeling freezes it as durable benchmark
         ground truth (same contract as a labeled 'live' session, see
-        TestService._resolve_scope's own `if row['labeled']` gate) — and
+        TestingService._resolve_scope's own `if row['labeled']` gate) — and
         Test.session cascades on delete, so wiping it here would silently
         destroy every TestReplayJob result ever computed against it too."""
         ChatSession.delete().where(

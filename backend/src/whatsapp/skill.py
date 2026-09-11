@@ -19,6 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from system import bus
+from system.wiring import construct
 from system.bus import POINT_CONFIG_SERVICES, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
 from system.config_services import ui_section
 from system.logging_factory import LoggerFactory
@@ -69,7 +70,7 @@ class _WhatsApp(_NoWhatsApp):
             self._config, core["turn_service"], core["db"], core["auth_service"],
         )
         self._service.register()
-        controllers.append(WhatsAppController(self._service))
+        controllers.append(construct(WhatsAppController, {**core, "whatsapp_service": self._service}))
 
     async def uninstall(self) -> None:
         for service in filter(None, [self._service]):

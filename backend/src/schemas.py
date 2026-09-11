@@ -209,9 +209,9 @@ class PublishProjectRequest(BaseModel):
 class CreateTestRequest(BaseModel):
     # None = every labeled session of the project, replayed as one run
     # (same session_id=None|int dual as BenchmarkCalculator). See
-    # TestService.create_run.
+    # TestingService.create_run.
     session_id: int | None = None
-    # 'batch_lite', 'batch', or 'turn_by_turn' — see test_service.py's own
+    # 'batch_lite', 'batch', or 'turn_by_turn' — see testing_service.py's own
     # VALID_STRATEGIES.
     strategy: str
     # None = the requesting user (Session().user), the default. Set to
@@ -220,7 +220,7 @@ class CreateTestRequest(BaseModel):
 
 
 class StateTestRequest(BaseModel):
-    # See TestService.start_job — same VALID_STRATEGIES as
+    # See TestingService.start_job — same VALID_STRATEGIES as
     # CreateTestRequest.strategy.
     strategy: str
 

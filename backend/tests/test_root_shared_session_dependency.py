@@ -4,7 +4,7 @@ underlying session replay. Before the fix, a second branch reaching that
 same session saw its already-existing (still running) row and treated it
 as "nothing to wait for", so its own aggregate could report completed
 before the shared session replay actually finished — see
-TestService._resolve_or_construct_session_run and
+TestingService._resolve_or_construct_session_run and
 JobQueue.submit's own handling of an already-in-flight dependency.
 """
 from __future__ import annotations
