@@ -98,6 +98,9 @@ class _FakeDb:
         })
         return self.messages[-1]["id"]
 
+    def row(self, message_id):
+        return next(m for m in self.messages if m["id"] == message_id)
+
 
 class _FakeAuthService:
     def __init__(self, db: _FakeDb) -> None:
@@ -169,8 +172,12 @@ class _FakeChatService:
         return self.db.get_messages(session_id)
 
     async def prepare_user_initiated_turn(self, session_id):
+        """Returns what it persisted, like the real one: the wrap-up is
+        not in the turn's own reply, so a caller that reports the turn
+        would otherwise never hear about it."""
         if self.wrap_up_message and not self.db.get_messages(session_id):
-            self.db.add(session_id, "assistant", self.wrap_up_message)
+            return [self.db.row(self.db.add(session_id, "assistant", self.wrap_up_message))]
+        return []
 
     def get_state_for_session(self, session_id):
         return self.state
@@ -198,7 +205,13 @@ class _FakeChatService:
             )
         finally:
             self.in_turn = False
-        return {"session_id": session_id, "state": self.state, "assistant_message_id": assistant_id}
+        # `reply` is the turn's own assistant message, exactly one, same
+        # as TrackingProcessor._build_turn_response — and never the
+        # wrap-up that prepare_user_initiated_turn wrote.
+        return {
+            "session_id": session_id, "state": self.state, "assistant_message_id": assistant_id,
+            "reply": [self.db.row(assistant_id)],
+        }
 
     async def apply_manual_action(self, action_name, session_id):
         self.calls.append(("action", Session().user, action_name))
@@ -207,9 +220,10 @@ class _FakeChatService:
             if self.action_error_clears_after_raise:
                 self.action_error = None
             raise error
+        reply = []
         if self.action_reply_message:
-            self.db.add(session_id, "assistant", self.action_reply_message)
-        return {"session_id": session_id, "state": self.state}
+            reply = [self.db.row(self.db.add(session_id, "assistant", self.action_reply_message))]
+        return {"session_id": session_id, "state": self.state, "reply": reply}
 
 
 def _wav(seconds: float = 0.5, rate: int = 22050) -> bytes:

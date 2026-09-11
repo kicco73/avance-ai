@@ -280,12 +280,26 @@ def collect(point: str, target: Any) -> Any:
     them is a response being built while a caller waits for it.
 
     Returns `target` so a call site can say what it means in one line:
-    `return bus.collect(POINT_API_STATE, payload)`."""
+    `return bus.collect(POINT_API_STATE, payload)`.
+
+    A contributor that raises is not survivable and is never swallowed.
+    What a contribution point assembles is the thing the caller is about
+    to act on: the loader a build will read every automaton through, the
+    router it will answer requests with, the services it will wire
+    against. A skill that fails to add its part and is logged past leaves
+    a system that runs, answers, and is wrong — a product whose packaged
+    loader raised here used to fall back to the database loader without
+    a word. The exception travels as the skill raised it; the log line
+    below only says which point and which contributor, because the
+    traceback alone points at a lambda in a skill file."""
     for contributor in _contributors.get(point, ()):
         try:
             contributor(target)
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Contributor to %s failed: %s", point, exc)
+        except Exception:
+            logger.exception(
+                "Contributor %s to %s failed.", getattr(contributor, "__qualname__", contributor), point,
+            )
+            raise
     return target
 
 

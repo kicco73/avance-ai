@@ -361,6 +361,10 @@ class FakeAiService:
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, list[dict]]] = []
+        # The reply's own [audio] text, announced mid-generation the way a
+        # schema provider announces it. None is a provider that never
+        # speaks — what a test wanting a spoken reply sets.
+        self.audio_text: str | None = None
 
     def get_models_info(self) -> dict:
         return {"auto": True, "current_index": 0, "models": []}
@@ -397,11 +401,13 @@ class FakeAiService:
 
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
         # What TurnProtocolUsingSchema actually calls — this fake reports
-        # no metadata of its own (no test here cares about signals/audio/
-        # env extraction; see FakeSchemaAiService in
+        # no metadata of its own beyond audio_text (no test here cares
+        # about signals/env extraction; see FakeSchemaAiService in
         # test_turn_service_evaluation_points.py for that), just the same
         # plain reply text generate_stream above always returned.
         self.calls.append((system_prompt, history))
+        for text in filter(None, [self.audio_text]):
+            on_metadata("audio", text)
         yield "Fake AI reply."
 
     def supports_metadata(self) -> bool:

@@ -399,45 +399,54 @@ class WhatsAppService(object):
 
     async def _attempt_turn(
         self, session_id: int, text: str, on_metadata, audio_wanted: bool,
-    ) -> tuple[str | None, list[dict] | None, str | None, bool]:
-        """(notice, manual_actions, retry_code, answered) for one turn
+    ) -> tuple[str | None, list[dict] | None, str | None, list[dict]]:
+        """(notice, manual_actions, retry_code, messages) for one turn
         attempt — retry_code (session_closed/session_not_found) tells the
         caller to acquire a fresh session and attempt once more.
-        `answered` is False when this turn produced no reply of its own
-        because a turn already running had taken this message along with
-        its own fragments (see TurnService's own coalescing): the reply
-        that covers it has already been sent by that turn, so this one
-        must stay silent rather than send it twice."""
+
+        `messages` is every assistant message this exchange produced, in
+        order: whatever opening the state needed before a turn could run
+        (a chat-blocked state's wrap-up, which the turn's own reply never
+        carries) followed by the turn's own. Empty is meaningful and not
+        a failure — a turn already running had taken this message along
+        with its own fragments (see TurnService's coalescing), answered
+        for all of them, and that reply has already gone out."""
+        prepared = []
         try:
-            await self._turn_service.prepare_user_initiated_turn(session_id)
+            prepared = await self._turn_service.prepare_user_initiated_turn(session_id)
             reply = await self._turn_service.process_turn(
                 session_id, text, on_metadata=on_metadata, audio_wanted=audio_wanted,
             )
-            return None, reply["state"]["manual_actions"], None, reply.get("assistant_message_id") is not None
+            return None, reply["state"]["manual_actions"], None, [*prepared, *reply["reply"]]
         except ServiceError as exc:
             if exc.code == "state_not_chat":
                 state = self._turn_service.get_state_for_session(session_id)
-                return REPLY_NO_CHAT_STATE, state["manual_actions"], None, False
+                return REPLY_NO_CHAT_STATE, state["manual_actions"], None, prepared
             if exc.code in ("session_channel_mismatch", "session_superseded"):
-                return REPLY_SESSION_TAKEN_OVER, None, None, False
+                return REPLY_SESSION_TAKEN_OVER, None, None, prepared
             if exc.code == "turn_in_progress":
-                return REPLY_BUSY, None, None, False
+                return REPLY_BUSY, None, None, prepared
             if exc.code == "project_unavailable":
-                return REPLY_PAUSED, None, None, False
+                return REPLY_PAUSED, None, None, prepared
             if exc.code in ("session_closed", "session_not_found"):
-                return None, None, exc.code, False
+                return None, None, exc.code, prepared
             logger.exception(f"WhatsApp: turn failed on session {session_id}: {exc.message}")
-            return "There was a problem processing your message. Please try again.", None, None, False
+            return "There was a problem processing your message. Please try again.", None, None, prepared
 
     async def _run_turn(self, text: str, spoken: bool = False) -> tuple[list[Reply], list[dict] | None, int | None]:
         """Unlike ChatWindow.vue's own bootstrap, it's the user's text
         that starts or continues the conversation here — no AI-initiated
         opening message runs ahead of it (see TurnService.
-        prepare_user_initiated_turn). Rather than reassembling the reply
-        from process_turn's streaming-oriented result, every assistant
-        message persisted since we started is what gets sent — that also
-        covers a transition's follow-up messages (a chat-blocked state's
-        own wrap-up message)."""
+        prepare_user_initiated_turn).
+
+        What gets sent is what the exchange reported, in the order it
+        reported it. It used to be what the database held: watermark the
+        last message id, run the turn, then read every assistant row
+        persisted since — because the wrap-up message the preparation
+        writes is not in the turn's own reply and there was no other way
+        to find it. Reading the transcript back also meant reading rows
+        this exchange did not write, which is how a coalesced turn had to
+        be detected separately and silenced by hand."""
         session_id, early = await self._bootstrap_exclusive_session()
         if early is not None:
             return early
@@ -445,27 +454,20 @@ class WhatsAppService(object):
         voice_notes = self._voice_notes if self._wants_voice(spoken) else None
         on_metadata = voice_notes.on_metadata if voice_notes is not None else None
 
-        last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
-        notice, manual_actions, retry_code, answered = await self._attempt_turn(
-                session_id, text, on_metadata, voice_notes is not None,
-            )
+        notice, manual_actions, retry_code, messages = await self._attempt_turn(
+            session_id, text, on_metadata, voice_notes is not None,
+        )
         if retry_code is not None:
             session_id, early = await self._bootstrap_exclusive_session()
             if early is not None:
                 return early
-            last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
-            notice, manual_actions, retry_code, answered = await self._attempt_turn(
+            notice, manual_actions, retry_code, messages = await self._attempt_turn(
                 session_id, text, on_metadata, voice_notes is not None,
             )
             if retry_code is not None:
                 notice = REPLY_TECHNICAL_PROBLEM
 
-        if not answered and notice is None:
-            # A turn already in flight answered this message together with
-            # its own; that reply went out with it. Anything persisted
-            # since is exactly that reply, so send nothing.
-            return [], manual_actions, session_id
-        return self._new_assistant_replies(session_id, last_seen_id, notice), manual_actions, session_id
+        return self._replies_from(messages, notice), manual_actions, session_id
 
     async def _attempt_action(
         self, action_id: str, session_id: int,
@@ -518,10 +520,26 @@ class WhatsAppService(object):
         return replies, state["manual_actions"], session_id
 
     def _new_assistant_replies(self, session_id: int, last_seen_id: int, notice: str | None = None) -> list[Reply]:
+        """Still the transcript-reading form, for the one caller that has
+        no result to report from: _bootstrap_replies, which sends
+        whatever a session already had rather than what a turn produced."""
+        return self._replies_from(
+            [
+                m for m in self._db.get_messages(session_id)
+                if m["id"] > last_seen_id and m["role"] == "assistant"
+            ],
+            notice,
+        )
+
+    @staticmethod
+    def _replies_from(messages: list[dict], notice: str | None = None) -> list[Reply]:
+        """Assistant messages as WhatsApp replies, empty ones dropped —
+        a turn can persist a blank assistant row, and an empty WhatsApp
+        message is refused by the Cloud API rather than ignored."""
         replies = [
             Reply(text=to_whatsapp_markdown(m["content"]), audio_text=(m.get("audio_text") or None))
-            for m in self._db.get_messages(session_id)
-            if m["id"] > last_seen_id and m["role"] == "assistant" and (m["content"] or "").strip()
+            for m in messages
+            if (m["content"] or "").strip()
         ]
         if notice:
             replies.append(Reply(notice))

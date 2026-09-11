@@ -704,12 +704,24 @@ class TurnService(object):
 		await self._generate_opening_message_if_needed(session_id, automaton, state)
 		return None
 
-	async def prepare_user_initiated_turn(self, session_id: int) -> None:
+	async def prepare_user_initiated_turn(self, session_id: int) -> list[dict]:
+		"""The project bootstrap a user-initiated turn needs, plus the
+		wrap-up message of a state that cannot take a turn at all — the
+		only thing such a session would ever say. Returns whatever it
+		persisted, because a caller that reports a turn has to report
+		this too: it happened as part of the same exchange, and the turn
+		that follows will not report it — a turn response carries exactly
+		one assistant message, its own (see TrackingProcessor.
+		_build_turn_response). Returned rather than folded into the turn
+		because the turn can fail: the wrap-up is persisted either way and
+		the person is owed it either way."""
 		automaton, state = await self._ensure_project_bootstrap(session_id)
 		if automaton is None:
-			return
-		if state.final or not state.chat_enabled:
-			await self._generate_opening_message_if_needed(session_id, automaton, state)
+			return []
+		if not (state.final or not state.chat_enabled):
+			return []
+		result = await self._generate_opening_message_if_needed(session_id, automaton, state)
+		return list(result["reply"]) if result is not None else []
 
 	def _should_generate_opening_message(self, session_id: int, state: State) -> bool:
 		# A session with an operator (see TaskNamespaceFactory.

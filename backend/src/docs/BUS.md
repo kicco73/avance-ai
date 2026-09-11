@@ -33,6 +33,20 @@ being assembled. Every contribution point is a response being built while
 a caller waits for it, which is why it is synchronous and why `collect`
 returns the target so a call site reads as one line.
 
+A contributor that raises takes the collect down with it, and the
+contributors after it never run. This is the opposite of how a listener
+behaves, and deliberately so: a message is an announcement that has
+already happened, while a contribution point assembles the thing its
+caller is about to act on — the loader a build will read every automaton
+through, the router it will answer requests with, the services it will
+wire against. Each has one chance to be right, and half an assembled
+target is not a target. Logging the failure and carrying on leaves a
+system that runs, answers, and is wrong: a product whose packaged loader
+raised in `POINT_AUTOMATON_LOADER` fell back to the database loader
+without a word. The exception travels as the skill raised it, unwrapped;
+`collect` only adds a log line naming the point and the contributor,
+because the traceback on its own points at a lambda in a skill file.
+
 **`publish_with_bounceback(message, sender)`.** The same delivery, with
 the message handed back to `sender.bounced(message)` when no listener is
 registered for its type — or when it was dropped for looping past

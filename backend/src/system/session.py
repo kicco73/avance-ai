@@ -91,3 +91,37 @@ class Session(object):
             yield
         finally:
             _user.reset(token)
+
+    @contextmanager
+    def for_sender(self, username: str, *, role: str, channel: str | None = None):
+        """The context a message was sent in, re-entered by whoever is
+        handling it.
+
+        A Bus listener does not run inside the request that produced the
+        message. It happens to today — bus.publish awaits each listener
+        in the publisher's own task, so ContextVars propagate — but that
+        is already false for the producers that are not a request at all:
+        system/broadcaster.py publishes onto the main loop from another
+        thread, and tracking/wakeup_service.py from a scheduled job.
+        Both pass `username` on the Message because they had to.
+
+        So a listener establishes its context rather than inheriting it,
+        and the Message is where it comes from: `username` and `channel`
+        travel in the envelope for exactly this. `role` does not, and
+        should not — it is a stored fact, and putting it on the wire
+        would let a channel declare its own caller's privileges. The
+        caller looks it up and passes it in.
+
+        `channel` is left alone when the message has none, so
+        Session().channel keeps raising for a caller that never declared
+        one (see SessionTypeStrategy.caller_channel) rather than
+        answering None and quietly failing a live session's write
+        admission instead."""
+        tokens = [(_user, _user.set(username)), (_role, _role.set(role))]
+        if channel is not None:
+            tokens.append((_channel, _channel.set(channel)))
+        try:
+            yield
+        finally:
+            for variable, token in reversed(tokens):
+                variable.reset(token)
