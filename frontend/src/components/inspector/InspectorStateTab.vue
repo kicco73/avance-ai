@@ -64,6 +64,11 @@ const props = defineProps({
   sessionEndElement: { type: Object, default: null },
   // Test mode only: no edit form, no delete, no "+ Add state" — this tab
   // is a plain read-only viewer for whatever's selected in the Test tree.
+  // IMPORTANT — this flag is the editor pretending to be two components.
+  // Its only caller is the benchmark (skills/testing/TestInfoTab.vue),
+  // which wants a reduced read-only view of a past session and gets this
+  // whole editing surface with its writes switched off. It is also why a
+  // skill still imports an editor screen: see that file's own note.
   readOnly: { type: Boolean, default: false },
   // Estimated input-token cost of selectedElement's own turn prompt (see
   // EditProjectView.vue's own stateTabTokens) — a separate prop rather
