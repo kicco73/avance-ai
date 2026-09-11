@@ -56,8 +56,9 @@ class PlatformService(object):
         from avance_platform.edit_project_controller import EditProjectController
         from avance_platform.inspector_controller import InspectorController
         from avance_platform.label_project_controller import LabelProjectController
+        from avance_platform.server_admin_controller import ServerAdminController
         from avance_platform.settings_controller import SettingsController
-        from avance_platform.user_controller import UserController
+        from avance_platform.deployment_controller import DeploymentController
 
         registry = {**core, "platform_service": self}
         self.controllers = [
@@ -70,8 +71,9 @@ class PlatformService(object):
                 # testing/testing_controller.py), so a build without
                 # benchmarking still annotates sessions.
                 LabelProjectController,
+                ServerAdminController,
                 SettingsController,
-                UserController,
+                DeploymentController,
                 AppStoreController,
             )
         ]

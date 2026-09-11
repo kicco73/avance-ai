@@ -7,33 +7,14 @@ const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 // to point the two halves of one backend at different servers.
 const WS_URL = new URL(API_URL + '/core/bus', location.href).href.replace(/^http/, 'ws')
 
-// EditProjectView's embedded "Test" chat — the one place a session can
-// exist against an unpublished revision. Which revision applies is
-// decided by which endpoint is called, never by a caller-supplied flag.
-export function getCurrentTestSession(sessionId, projectId) {
-  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
-  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/test-sessions/current${query}`)
-}
 
-export function postCreateTestSession(projectId) {
-  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/test-sessions`, { method: 'POST' })
-}
 
 export function getSessions(projectId, includeImported = false) {
   const query = includeImported ? '?include_imported=true' : ''
   return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/sessions${query}`)
 }
 
-// EditProjectView's embedded "Test" chat's own Sessions panel — a
-// separate list from getSessions: a "Test" session never appears there,
-// and a real one never appears here.
-export function getTestSessions(projectId) {
-  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/test-sessions`)
-}
 
-export function postResetTestSessions(projectId) {
-  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/test-sessions/reset`, { method: 'POST' })
-}
 
 export function deleteSession(sessionId) {
   return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
@@ -80,19 +61,7 @@ export function putSessionAudio(sessionId, enabled) {
   })
 }
 
-// "Dev mode: freeze automatic state transitions" — EditProjectView's
-// embedded "Test" chat only, per test session, never global.
-export function getAutoTracking(sessionId) {
-  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/autotracking`)
-}
 
-export function putAutoTracking(sessionId, enabled) {
-  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/autotracking`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled })
-  })
-}
 
 export function getActuators(sessionId) {
   return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/actuators`)
@@ -110,7 +79,7 @@ export function putActuators(sessionId, enabled) {
 // or after `timestamp` in `sessionId`, rolling state back to what it was
 // immediately before. `timestamp` must be a backend-issued ISO string.
 export function postTruncateSession(sessionId, timestamp) {
-  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/truncate`, {
+  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/truncate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ timestamp })

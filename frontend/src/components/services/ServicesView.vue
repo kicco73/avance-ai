@@ -17,7 +17,7 @@ import TaskCard from './TaskCard.vue'
 import { getAiUsage, getScheduledTasks, getServicesConfig } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 import { liveModelStore } from '../../chatStore.js'
-import { servicesTabs } from '../../skills/registry.js'
+import { servicesTabs, servicesTabActions } from '../../skills/registry.js'
 import { fieldLabel } from '../skillkit/serviceFields.js'
 
 defineProps({
@@ -31,16 +31,8 @@ defineProps({
 // pass-through — App.vue owns the actual fetch + confirmation logic for
 // backup restore, same as it always has; this view confirms the wipe
 // itself, same as Manage projects' own per-project wipe used to.
-import { useServerAdminActions } from '../../composables/useServerAdminActions.js'
 const emit = defineEmits(['close', 'home', 'profile', 'logout'])
 
-// The four admin actions this screen offers used to be emitted up to
-// App.vue, which called this same composable and handed them back. They
-// are this screen's own, and App.vue holding them is what kept the shell
-// naming a screen it should not have to know about.
-const {
-  handleWipeAllLiveSessions, handleCleanUnusedRevisions, handleDownloadBackup, handleRestoreBackup,
-} = useServerAdminActions()
 
 // Fallbacks only: every section the backend sends carries its own
 // 'ui-label'/'ui-description' (see AppConfig.public_services_snapshot and
@@ -224,29 +216,7 @@ function providerStatusTitle(index) {
   return isProviderActive(index) ? 'Active provider' : 'Set as the active provider'
 }
 
-async function selectWipeAllLiveSessions() {
-  const ok = await confirmDialog({
-    title: 'Wipe all live sessions',
-    body: 'Delete every live conversation across every project? This cannot be undone.',
-    okLabel: 'Wipe',
-    danger: true
-  })
-  if (!ok) return
-  await handleWipeAllLiveSessions()
-}
 
-// Only ever removes archive revisions that are already unreachable
-// (superseded drafts, never published, no session pinned to them) — safe
-// by construction, unlike the wipe above, so no danger styling.
-async function selectCleanUnusedRevisions() {
-  const ok = await confirmDialog({
-    title: 'Clean unused revisions',
-    body: 'Delete every project revision that is not published and not used by any session? This cannot be undone.',
-    okLabel: 'Clean'
-  })
-  if (!ok) return
-  await handleCleanUnusedRevisions()
-}
 </script>
 
 <template>
@@ -343,22 +313,11 @@ async function selectCleanUnusedRevisions() {
         <div v-show="activeTab === 'database'" class="services-panel">
           <ServicesFieldList :section="services.database" />
 
-          <div class="services-section">
-            <div class="services-actions-row">
-              <button type="button" class="services-action-btn" @click="handleDownloadBackup()">Download backup</button>
-              <label class="services-action-btn services-restore-label">
-                Restore backup...
-                <input
-                  type="file"
-                  accept=".sqlite"
-                  class="services-restore-input"
-                  @change="(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) handleRestoreBackup(f) }"
-                />
-              </label>
-              <button type="button" class="services-action-btn services-action-btn-danger" @click="selectWipeAllLiveSessions">Wipe all live sessions</button>
-              <button type="button" class="services-action-btn" @click="selectCleanUnusedRevisions">Clean unused revisions</button>
-            </div>
-          </div>
+          <component
+            v-for="entry in servicesTabActions.filter((e) => e.tab === 'database')"
+            :key="entry.id"
+            :is="entry.component"
+          />
         </div>
 
         <component

@@ -25,14 +25,6 @@ from system.doc_catalog import DOCS
 
 class SkillsController(BaseController):
 
-    @get("/api/skills", role="admin")
-    def get_skills(self):
-        """Every skill this backend has installed: key, package, ui_label,
-        ui_description, and whether a project may declare a level for it.
-        A caller that wants only the declarable ones filters on that field
-        rather than asking a second endpoint for the same rows."""
-        return {"skills": skills.installed()}
-
     @get("/api/core/docs/{name}")
     def get_doc(self, name: str):
         """Raw markdown of one of src/docs/'s fixed set of reference docs
@@ -47,3 +39,11 @@ class SkillsController(BaseController):
         if doc is None:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"Unknown doc '{name}'.")
         return {"content": doc.render()}
+    @get("/api/skills", role="admin")
+    def get_skills(self):
+        """Every skill this backend has installed: key, package, ui_label,
+        ui_description, and whether a project may declare a level for it.
+        A caller that wants only the declarable ones filters on that field
+        rather than asking a second endpoint for the same rows."""
+        return {"skills": skills.installed()}
+

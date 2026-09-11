@@ -1,4 +1,5 @@
 import AdminHome from './components/AdminHome.vue'
+import ServerOpsActions from './components/ServerOpsActions.vue'
 import CustomerHome from './components/appStore/CustomerHome.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
 import EditProjectView from './components/project/edit/EditProjectView.vue'
@@ -22,3 +23,6 @@ export const pushedViews = [
   { view: 'manageUsers', component: ManageUsersView },
   { view: 'appStore', component: AppStoreView },
 ]
+
+// The deployment operations, offered inside Settings' own Data tab.
+export const servicesTabActions = [{ id: 'platform-server-ops', tab: 'database', component: ServerOpsActions }]

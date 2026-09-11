@@ -30,24 +30,6 @@ class ProjectController(BaseController):
         self.turn_service = turn_service
         self.project_service = project_service
 
-    @get("/api/core/projects")
-    def get_projects(self):
-        """Which projects this caller can see, and which one is active.
-        Every build answers it: a session has to know what it is talking
-        about before it can talk, whether or not an editor was installed
-        to change it."""
-        username = None if role_satisfies(WebSession().role, "supervisor") else WebSession().user
-        return self.project_service.inspector.list_projects(username)
-
-    @post("/api/core/projects/{project_id}/activate")
-    async def activate_project(self, project_id: str):
-        """Makes `project_id` the one this server answers turns for."""
-        try:
-            await self.project_service.activate_project_idempotent(project_id, self._activate_project)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return {"success": True, "project_id": project_id}
-
     @post("/api/core/projects/invitations/{code}", role="user")
     def post_resolve_invite_code(self, code: str):
         """Resolves a "share project" invite code back to the project it
@@ -141,6 +123,15 @@ class ProjectController(BaseController):
             raise
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @get("/api/core/projects")
+    def get_projects(self):
+        """Which projects this caller can see, and which one is active.
+        Every build answers it: a session has to know what it is talking
+        about before it can talk, whether or not an editor was installed
+        to change it."""
+        username = None if role_satisfies(WebSession().role, "supervisor") else WebSession().user
+        return self.project_service.inspector.list_projects(username)
 
     @get("/api/core/projects/file-types")
     def get_project_file_types(self):

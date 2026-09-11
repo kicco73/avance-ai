@@ -73,7 +73,7 @@ def test_deleting_the_active_project_falls_back_to_a_remaining_one_and_degrades_
     hello = _upload(client, "Hello world.zip")
     cat = _upload(client, "Aprendr català.zip")
     client.post(f"/api/skills/platform/projects/{cat}/publish", json={})
-    client.post(f"/api/core/projects/{hello}/activate")
+    client.post(f"/api/skills/platform/projects/{hello}/activate")
 
     assert client.delete(f"/api/skills/platform/projects/{hello}").status_code == 200
 

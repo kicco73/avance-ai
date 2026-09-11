@@ -56,7 +56,7 @@ def _upload_and_activate(client, yaml_text: str) -> str:
     )
     assert response.status_code == 200, response.text
     project_id = parse_sse_result(response)["project_id"]
-    response = client.post(f"/api/core/projects/{project_id}/activate")
+    response = client.post(f"/api/skills/platform/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
     # get_active_automaton_and_state requires a published revision.
     response = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
@@ -176,7 +176,7 @@ def _upload_and_activate_with_archive(client, yaml_text: str, archive_name: str,
     )
     assert response.status_code == 200, response.text
     project_id = parse_sse_result(response)["project_id"]
-    response = client.post(f"/api/core/projects/{project_id}/activate")
+    response = client.post(f"/api/skills/platform/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
     response = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text

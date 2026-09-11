@@ -2,12 +2,6 @@ import { apiFetch } from './core.js'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 
-// Which projects this caller can see, and which one is active. Core:
-// a session has to know what it is talking about before it can talk,
-// whether or not an editor was installed to change it.
-export function getProjects() {
-  return apiFetch(`${API_URL}/core/projects`)
-}
 
 export function activateProject(projectId) {
   return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/activate`, {
@@ -59,15 +53,7 @@ export function getProjectSignals(projectId, stateKey, sessionId) {
   return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/signals${query}`)
 }
 
-export function getUsers() {
-  return apiFetch(`${API_URL}/core/users`)
-}
 
-// Raw markdown content of a fixed reference doc, backing each "(?)" doc
-// button. `name` is one of 'project-specs' / 'metrics' / 'benchmark'.
-export function getDoc(name) {
-  return apiFetch(`${API_URL}/core/docs/${encodeURIComponent(name)}`)
-}
 
 export function getProjectStates(projectId) {
   return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/states`)
@@ -78,6 +64,24 @@ export function getProjectStates(projectId) {
 // expression can reference. Used by TriggerEditor's autocomplete.
 export function getIdentifiers(projectId) {
   return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/identifiers`)
+}
+
+
+// Which projects this caller can see, and which one is active. Core:
+// a session has to know what it is talking about before it can talk,
+// whether or not an editor was installed to change it.
+export function getProjects() {
+  return apiFetch(`${API_URL}/core/projects`)
+}
+
+export function getUsers() {
+  return apiFetch(`${API_URL}/core/users`)
+}
+
+// Raw markdown content of a fixed reference doc, backing each "(?)" doc
+// button. `name` is one of 'project-specs' / 'metrics' / 'benchmark'.
+export function getDoc(name) {
+  return apiFetch(`${API_URL}/core/docs/${encodeURIComponent(name)}`)
 }
 
 // Every file type a project can carry, straight from the backend's own

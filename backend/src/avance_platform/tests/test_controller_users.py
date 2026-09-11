@@ -1,4 +1,4 @@
-"""GET /api/core/users (UserController.get_users / Db.list_users)."""
+"""GET /api/skills/platform/users (UserController.get_users / Db.list_users)."""
 from __future__ import annotations
 
 import pytest
@@ -21,7 +21,7 @@ def test_list_users_includes_a_created_user(client, app_db):
 def test_put_user_role_updates_the_role(client, app_db):
     app_db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
 
-    response = client.put("/api/core/users/alice@example.com/role", json={"role": "supervisor"})
+    response = client.put("/api/skills/platform/users/alice@example.com/role", json={"role": "supervisor"})
 
     assert response.status_code == 200
     assert response.json()["role"] == "supervisor"
@@ -32,6 +32,6 @@ def test_put_user_role_updates_the_role(client, app_db):
 def test_put_user_role_rejects_an_unknown_role(client, app_db):
     app_db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
 
-    response = client.put("/api/core/users/alice@example.com/role", json={"role": "superadmin"})
+    response = client.put("/api/skills/platform/users/alice@example.com/role", json={"role": "superadmin"})
 
     assert response.status_code == 422

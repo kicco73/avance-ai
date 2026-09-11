@@ -1,61 +1,80 @@
 """The frontend's boot state, and its readiness ping.
 
-Core, not platform. It used to be a route of the authoring surface, on
-the reasoning that a build without that surface leaves POINT_API_STATE's
-contributors with nobody collecting them — which is true, and is the
-wrong conclusion: the contributors are skills describing themselves to
-whatever frontend is running, and every build has one. A product with no
-editor still has to tell its own frontend that it is up, which budgets
-apply, and which capabilities are installed.
+Core, because it is the deployment describing itself: which project it
+serves, what state that project is in, which budgets apply, and what each
+installed skill says about itself (bus.POINT_API_STATE). All of that is
+domain — it goes on being true with no panel in the build — and every
+client needs it before it can do anything at all.
 
-It asks only core collaborators. The active state payload comes from
-project_service's own inspector, the budgets from turn_service, and the
-rest is whatever each installed skill contributed about itself.
+What is *not* here, and was for an afternoon: choosing a model, listing
+projects, switching between them. Describing is domain; deciding is a
+panel, and lives with one (see avance_platform/deployment_controller.py).
 """
 from __future__ import annotations
 
-from controllers.base_controller import BaseController, get, post
+from http import HTTPStatus
+
+from fastapi import HTTPException
+
+from controllers.base_controller import BaseController, get
 from project.project_service import ProjectService
 from system import bus
 from system.bus import POINT_API_STATE
+from db import Db
+from scheduler import SchedulerService
 from turn.turn_service import TurnService
+
+
+APP_NAME = "Avance"
 
 
 class ApiStateController(BaseController):
 
-    def __init__(self, turn_service: TurnService, project_service: ProjectService) -> None:
+    def __init__(
+        self, turn_service: TurnService, project_service: ProjectService, db: Db,
+        version: str, scheduler_service: SchedulerService, services_config: dict,
+    ) -> None:
         self.turn_service = turn_service
         self.project_service = project_service
+        self.db = db
+        self.version = version
+        self.scheduler_service = scheduler_service
+        self.services_config = services_config
 
-    @get("/api/core/ai/models")
-    def get_ai_models(self):
-        """The ai-service provider roster (name/model/ui_label/ui_description),
-        whether auto mode is on, and which model is in effect right now
-        either way — for the chat toolbar's model menu."""
-        return self.turn_service.get_ai_models_info()
+    @get("/api/core/settings/about", role="supervisor")
+    def get_about(self):
+        return {"name": APP_NAME, "version": self.version}
 
-    @post("/api/core/ai/models/selection")
-    def post_ai_model_selection(self, req: AiModelSelectionRequest):
-        """Sets which model generate()/generate_stream() use: `index:
-        null` for auto (the cascade's fallback order), or `index` into
-        GET /api/core/ai/models' `models` to pin one directly."""
+    @get("/api/core/settings/services", role="admin")
+    def get_services(self):
+        """Read-only snapshot of .config.yml's own service sections (see
+        AppConfig.public_services_snapshot), one tab per section on the
+        frontend."""
+        return self.services_config
+
+    @get("/api/core/settings/services/ai-usage", role="admin")
+    def get_ai_usage(self):
+        """Each ai-service provider's own token spend, one point per
+        minute over the trailing 24h (see db/ai_usage.py)."""
+        labels = [f"{p['driver']}/{p['model']}" for p in self.services_config["ai"]["providers"]]
+        return self.db.get_ai_token_usage_snapshot(labels)
+
+    @get("/api/core/settings/tasks", role="admin")
+    def get_scheduled_tasks(self, status: str | None = None, order: str = "asc"):
+        """Task rows for one status at a time, by run_at per `order` (see
+        scheduler.SchedulerService.list_tasks). `payload` is omitted: it
+        is the task type's own hydration data, not meant for display."""
         try:
-            self.turn_service.select_ai_model(req.index)
+            tasks = self.scheduler_service.list_tasks(status=status, order=order)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return self.turn_service.get_ai_models_info()
+        return {
+            "tasks": [
+                {key: value for key, value in task.items() if key != "payload"}
+                for task in tasks
+            ]
+        }
 
-    @get("/api/core/ai/models/test")
-    def get_ai_test_models(self):
-        return self.turn_service.get_test_ai_models_info()
-
-    @post("/api/core/ai/models/test/selection")
-    def post_ai_test_model_selection(self, req: AiModelSelectionRequest):
-        try:
-            self.turn_service.select_test_ai_model(req.index)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return self.turn_service.get_test_ai_models_info()
     @get("/api/core/state")
     def get_state(self):
         """No `-> StatePayload` annotation: with no active project/state
@@ -73,6 +92,14 @@ class ApiStateController(BaseController):
         except:
             payload = {}
 
+        # Which project this deployment is serving. A client has to know
+        # what it is talking about before it can talk, and asking the
+        # authoring surface for the list would mean a delivered product
+        # could not find out — it runs one project and this names it.
+        try:
+            payload["project_id"] = self.project_service.get_active_project_id()
+        except Exception:
+            payload["project_id"] = None
         payload["input_token_budget_per_turn"] = self.turn_service.get_input_token_budget_per_turn()
         payload["total_token_budget_per_session"] = self.turn_service.get_total_token_budget_per_session()
         # Whatever else is running adds its own field: listen_enabled
