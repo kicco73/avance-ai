@@ -411,3 +411,24 @@ def test_admitting_a_write_still_refuses_a_caller_with_no_channel_at_all(db):
         _without_a_channel(
             lambda: manager.require_active_session(USERNAME, PROJECT_ID, session["id"], "a")
         )
+
+
+def test_a_live_session_with_no_channel_is_writable_from_nowhere(db):
+    """Why SchemaMigrator._backfill_channel exists. A live session is
+    admitted only by the channel that opened it, so one whose channel is
+    NULL matches nobody — not WhatsApp, not the chat window, not a job.
+    Every live session that predates the channel column would be exactly
+    that if the migration left it NULL, which is what the column default
+    used to prevent."""
+    _setup_project(db)
+    manager = SessionManager(db, open_window_minutes=5)
+    session = _make_open_session(db, NATIVE_CHAT)
+    # The row is edited straight through the model: create_chat_session
+    # refuses to make one this way, which is the point.
+    from db.models import ChatSession
+    ChatSession.update(channel=None).where(ChatSession.id == session["id"]).execute()
+
+    for channel in CHANNELS:
+        Session().channel = channel
+        with pytest.raises(ValueError, match="Session is not active."):
+            manager.require_active_session(USERNAME, PROJECT_ID, session["id"], "a")

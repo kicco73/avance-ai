@@ -32,6 +32,9 @@ def test_create_and_get_chat_session_with_no_channel_of_its_own_and_none_for_an_
     assert session["project_id"] == "proj"
     assert session["start_state"] == "start"
     assert session["end_state"] == "start"
+    # No default any more: this layer stamps whatever the caller
+    # resolved, and a caller with no channel (the editor opening a
+    # test session, an imported transcript) has none to give.
     assert session["channel"] is None
 
     assert db.get_chat_session(_make_session(db, channel="whatsapp-chat"))["channel"] == "whatsapp-chat"

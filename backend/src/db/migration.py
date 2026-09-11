@@ -266,6 +266,7 @@ class SchemaMigrator:
                     operations.append(migrator.drop_column(table, column))
             migrate(*operations)
             self._backfill_answered_by(actual)
+            self._backfill_channel(actual)
             self._database.create_tables(new_models, safe=True)
             # Tables just (re)created above already got every index for
             # free from create_tables()/_rebuild_table's own create_tables
@@ -274,6 +275,25 @@ class SchemaMigrator:
             self._sync_indexes((actual.keys() & expected.keys()) - rebuild_tables, path)
         finally:
             self._database.execute_sql('PRAGMA foreign_keys = ON')
+
+    def _backfill_channel(self, actual: dict[str, set[str]]) -> None:
+        """ChatSession.channel says which channel opened a live session.
+        It used to carry default='native-chat', which backfilled every
+        pre-existing row for free; the column is nullable now (a test,
+        preview or imported session has no channel at all — see
+        turn.sessions.session_type_strategy.SessionTypeStrategy.
+        caller_channel), so the backfill has to be explicit or every live
+        session that predates the column reads as channel-less and stops
+        being writable from anywhere.
+
+        A database old enough to lack the column is older than WhatsApp
+        support, so every live session in it was held in the chat
+        window."""
+        if "ChatSession" not in actual or "channel" in actual["ChatSession"]:
+            return
+        self._database.execute_sql(
+            'UPDATE "ChatSession" SET channel = \'native-chat\' WHERE type = \'live\''
+        )
 
     def _backfill_answered_by(self, actual: dict[str, set[str]]) -> None:
         """Message.answered_by is what says which turn a user message

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from automaton.automaton import Automaton
 from automaton.automaton_builder import AutomatonBuilder
 
 pytestmark = pytest.mark.contract
@@ -16,7 +17,7 @@ pytestmark = pytest.mark.contract
 MINIMAL_STATES = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
 
 
-def _build(project_yaml: str = "project:\n  id: my_project\n") -> object:
+def _build(project_yaml: str = "project:\n  id: my_project\n") -> Automaton:
     return AutomatonBuilder().build({"index.yml": project_yaml + MINIMAL_STATES})
 
 
