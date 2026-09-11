@@ -18,7 +18,7 @@ def test_closing_a_live_session_produces_a_summary(client, app, app_db, hello_pr
     chat_turn(client, session['id'], "hi")
     assert app_db.get_chat_session(session["id"])["ai_summary"] is None
 
-    resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/close")
+    resp = client.post(f"/api/core/sessions/{session['id']}/close")
     assert resp.status_code == 200, resp.text
 
     run_pending_tasks(app)
@@ -30,7 +30,7 @@ def test_closing_a_live_session_also_sets_the_title_and_the_apps_ai_summary(clie
     app_db.install_project("user", hello_project)
     session = client.get("/api/skills/webchat/sessions/current").json()
     chat_turn(client, session['id'], "hi")
-    resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/close")
+    resp = client.post(f"/api/core/sessions/{session['id']}/close")
     assert resp.status_code == 200, resp.text
 
     run_pending_tasks(app)

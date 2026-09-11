@@ -438,11 +438,30 @@ class TurnService(object):
 		return {**state_payload, "manual_actions": manual_actions_for(state_payload["actions"], False)}
 
 	async def get_messages(self, session_id: int, last_n: int | None = None) -> list[dict]:
+		"""The transcript, opening the conversation first if it has not
+		started yet. Not a read: open_if_needed runs the project's opening
+		message as a real turn, through the same write admission gate a
+		typed message goes through — so the caller has to be a channel and
+		has to say which (see turn/sessions/session_type_strategy.py).
+		Whoever is only looking at a transcript wants read_transcript."""
 		self._ownership.require_own_session(session_id)
 		init_message = await self.open_if_needed(session_id)
 		messages = self._db.get_messages(session_id, last_n=last_n)
 		if init_message is not None:
 			messages.insert(0, init_message)
+		return self._with_tool_calls(session_id, messages)
+
+	def read_transcript(self, session_id: int, last_n: int | None = None) -> list[dict]:
+		"""What is already there, and nothing else. The editor's Run panel,
+		the labelling screens, the app store's preview and the testing
+		skill all read histories without being a conversation with anybody
+		— none of them can name a channel, and none of them should start
+		one by looking. A session nobody has opened yet reads as empty
+		here rather than opening under the reader's feet."""
+		self._ownership.require_own_session(session_id)
+		return self._with_tool_calls(session_id, self._db.get_messages(session_id, last_n=last_n))
+
+	def _with_tool_calls(self, session_id: int, messages: list[dict]) -> list[dict]:
 		tool_calls_by_message = self._db.get_tool_calls_by_message(session_id)
 		for message in messages:
 			tool_calls = tool_calls_by_message.get(message["id"])

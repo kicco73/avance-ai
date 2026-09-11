@@ -17,6 +17,7 @@ from system import bus
 from system.bus import POINT_HTTP_CONTROLLERS
 from system.skills_controller import SkillsController
 from system.bus_channel import BusChannel
+from turn.session_controller import SessionController
 from turn.turn_service import TurnService
 
 
@@ -30,7 +31,11 @@ class AvanceController(object):
         self.turn_service = turn_service
         self.project_service = project_service
 
-        controllers = [ProjectController(turn_service, project_service), SkillsController()]
+        controllers = [
+            ProjectController(turn_service, project_service),
+            SessionController(turn_service),
+            SkillsController(),
+        ]
         # And whatever a skill registered for itself: a package that is
         # not in this build contributes nothing, so its routes are not
         # there to answer (see bus.POINT_HTTP_CONTROLLERS, system/skills.py).

@@ -173,7 +173,7 @@ def test_a_manual_new_session_closes_and_supersedes_the_bootstrap_one_rejecting_
 def test_close_session_ends_it_idempotently_without_a_replacement_and_turns_on_it_are_rejected(client, hello_project):
     session = client.get("/api/skills/webchat/sessions/current").json()
 
-    response = client.post(f"/api/skills/webchat/sessions/{session['id']}/close")
+    response = client.post(f"/api/core/sessions/{session['id']}/close")
 
     assert response.status_code == 200
     body = response.json()
@@ -186,7 +186,7 @@ def test_close_session_ends_it_idempotently_without_a_replacement_and_turns_on_i
     assert sessions[session["id"]]["current"] is False
     assert sessions[session["id"]]["open"] is False
 
-    again = client.post(f"/api/skills/webchat/sessions/{session['id']}/close")
+    again = client.post(f"/api/core/sessions/{session['id']}/close")
     assert again.status_code == 200
     assert again.json()["current"] is False
 
@@ -262,7 +262,7 @@ def test_a_turn_succeeds_against_the_active_session_and_delete_removes_it(client
 
     assert chat_turn(client, session['id'], "hi")["session_id"] == session["id"]
 
-    assert client.delete(f"/api/skills/webchat/sessions/{session['id']}").status_code == 200
+    assert client.delete(f"/api/core/sessions/{session['id']}").status_code == 200
     assert client.get(f"/api/core/projects/{hello_project}/sessions").json() == []
 
 

@@ -627,7 +627,7 @@ def test_a_turn_on_someone_elses_session_is_answered_with_an_error_frame(client,
 @pytest.mark.contract
 def test_a_turn_on_a_closed_session_is_answered_with_session_closed(client, hello_project):
     session = client.get("/api/skills/webchat/sessions/current").json()
-    client.post(f"/api/skills/webchat/sessions/{session['id']}/close")
+    client.post(f"/api/core/sessions/{session['id']}/close")
 
     final = chat_turn_frames(client, session["id"], "hi")[-1]
 

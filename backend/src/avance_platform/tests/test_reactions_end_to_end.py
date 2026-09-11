@@ -90,7 +90,7 @@ def test_message_list_and_reaction_endpoint_round_trip(client, reactions_project
     assert assistant_row["reaction"] is None
 
     response = client.put(
-        f"/api/skills/webchat/messages/{assistant_id}/reaction", json={"reaction": "supportive"}
+        f"/api/core/messages/{assistant_id}/reaction", json={"reaction": "supportive"}
     )
     assert response.status_code == 200, response.text
     assert response.json()["reaction"] == "supportive"
@@ -100,13 +100,13 @@ def test_message_list_and_reaction_endpoint_round_trip(client, reactions_project
     assert assistant_row["reaction"] == "supportive"
 
     # Clearing (reaction: null) removes it again.
-    response = client.put(f"/api/skills/webchat/messages/{assistant_id}/reaction", json={"reaction": None})
+    response = client.put(f"/api/core/messages/{assistant_id}/reaction", json={"reaction": None})
     assert response.status_code == 200
     assert response.json()["reaction"] is None
 
 
 def test_reaction_on_someone_elses_message_is_404(client, reactions_project):
-    response = client.put("/api/skills/webchat/messages/999999/reaction", json={"reaction": "supportive"})
+    response = client.put("/api/core/messages/999999/reaction", json={"reaction": "supportive"})
     assert response.status_code == 404
 
 

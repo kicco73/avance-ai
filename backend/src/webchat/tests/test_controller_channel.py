@@ -62,6 +62,23 @@ def test_reading_history_declares_the_channel_as_well(client: TestClient, hello_
     assert response.status_code == 200
 
 
+def test_the_core_transcript_of_the_same_session_needs_no_channel(client: TestClient, hello_project: str):
+    """The counterpart, and the reason turn/session_controller.py has a
+    transcript route of its own. read_transcript returns what is already
+    there and opens nothing, so it never reaches the write admission gate
+    and never asks who is speaking — which is what lets the editor, the
+    labelling screens, the app store's preview and the testing skill read
+    a history without being a channel. The session below is opened by the
+    chat window and read, with no channel at all, straight after."""
+    session = _in_a_fresh_context(lambda: client.get("/api/skills/webchat/sessions/current").json())
+
+    response = _in_a_fresh_context(
+        lambda: client.get(f"/api/core/sessions/{session['id']}/transcript")
+    )
+
+    assert response.status_code == 200
+
+
 def test_a_manual_action_is_admitted_on_the_chat_window_s_channel(
     client: TestClient, hello_project: str
 ):
