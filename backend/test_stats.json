@@ -5636,10 +5636,10 @@
     "first_run": "2026-09-11T16:34:57+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T17:26:26+00:00",
+    "last_run": "2026-09-11T17:28:36+00:00",
     "last_seconds": 1.179,
-    "runs": 13,
-    "seconds": 10.783,
+    "runs": 14,
+    "seconds": 11.373,
     "skips": 0
   },
   "src/webchat/tests/test_webchat_flow.py::test_a_voice_note_on_an_open_connection_runs_the_very_same_turn": {
@@ -5647,10 +5647,10 @@
     "first_run": "2026-09-11T16:34:57+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T17:26:26+00:00",
+    "last_run": "2026-09-11T17:28:36+00:00",
     "last_seconds": 0.796,
-    "runs": 13,
-    "seconds": 9.634,
+    "runs": 14,
+    "seconds": 10.372,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_gone_session_is_retried_once_for_turns_and_actions_reporting_a_technical_problem_if_it_fails_again[session_closed]": {
@@ -5911,10 +5911,10 @@
     "first_run": "2026-09-11T16:32:45+00:00",
     "last_failed": "2026-09-11T16:33:08+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T17:26:26+00:00",
+    "last_run": "2026-09-11T17:28:36+00:00",
     "last_seconds": 0.781,
-    "runs": 16,
-    "seconds": 14.683,
+    "runs": 17,
+    "seconds": 15.357,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_flow.py::test_a_voice_note_is_decoded_runs_the_same_turn_and_comes_back_spoken": {
@@ -5922,10 +5922,10 @@
     "first_run": "2026-09-11T16:33:37+00:00",
     "last_failed": "2026-09-11T16:33:37+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T17:26:26+00:00",
+    "last_run": "2026-09-11T17:28:36+00:00",
     "last_seconds": 0.848,
-    "runs": 14,
-    "seconds": 12.689,
+    "runs": 15,
+    "seconds": 13.345,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_skill.py::test_an_absent_section_or_enabled_false_leaves_the_channel_disabled": {
@@ -14909,9 +14909,9 @@
     "first_run": "2026-09-11T17:19:35+00:00",
     "last_failed": "2026-09-11T17:19:35+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T17:26:56+00:00",
-    "runs": 7,
-    "seconds": 7.159,
+    "last_run": "2026-09-11T17:28:36+00:00",
+    "runs": 9,
+    "seconds": 9.155,
     "skips": 0
   },
   "tests/test_skill_boundaries.py::test_no_skill_imports_another_skill": {
@@ -14919,10 +14919,10 @@
     "first_run": "2026-09-11T17:06:58+00:00",
     "last_failed": "2026-09-11T17:07:14+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T17:26:56+00:00",
+    "last_run": "2026-09-11T17:28:36+00:00",
     "last_seconds": 0.126,
-    "runs": 19,
-    "seconds": 7.907,
+    "runs": 21,
+    "seconds": 8.812,
     "skips": 0
   },
   "tests/test_skill_boundaries.py::test_nothing_outside_a_skill_imports_one": {
@@ -14930,10 +14930,10 @@
     "first_run": "2026-09-11T17:06:58+00:00",
     "last_failed": "2026-09-11T17:07:14+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T17:26:56+00:00",
+    "last_run": "2026-09-11T17:28:36+00:00",
     "last_seconds": 0.371,
-    "runs": 19,
-    "seconds": 10.233,
+    "runs": 21,
+    "seconds": 11.404,
     "skips": 0
   },
   "tests/test_skill_owned_requirements.py::test_a_dependency_only_one_skill_imports_is_claimed_by_that_skill": {
@@ -17196,10 +17196,10 @@
     "first_run": "2026-09-11T10:36:40+00:00",
     "last_failed": "2026-09-11T17:26:14+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T17:26:56+00:00",
+    "last_run": "2026-09-11T17:28:36+00:00",
     "last_seconds": 0.02,
-    "runs": 62,
-    "seconds": 11.028,
+    "runs": 64,
+    "seconds": 11.872,
     "skips": 0
   },
   "tests/test_wiring_contract.py::test_no_controller_takes_a_parameter_it_never_reads": {
@@ -17207,10 +17207,10 @@
     "first_run": "2026-09-11T10:36:40+00:00",
     "last_failed": "2026-09-11T17:26:14+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T17:26:56+00:00",
+    "last_run": "2026-09-11T17:28:36+00:00",
     "last_seconds": 0.283,
-    "runs": 64,
-    "seconds": 9.221,
+    "runs": 66,
+    "seconds": 9.987,
     "skips": 0
   },
   "tests/test_wiring_contract.py::test_the_skills_own_service_is_named_after_the_skill": {
@@ -17218,10 +17218,10 @@
     "first_run": "2026-09-11T10:36:40+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T17:26:56+00:00",
+    "last_run": "2026-09-11T17:28:36+00:00",
     "last_seconds": 0.035,
-    "runs": 62,
-    "seconds": 3.674,
+    "runs": 64,
+    "seconds": 3.75,
     "skips": 0
   }
 }
