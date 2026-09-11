@@ -10,7 +10,7 @@ export function getSignals() {
 // namespace (signal, env, system, session, metric, ...) a trigger/env
 // expression can reference. Used by TriggerEditor's autocomplete.
 export function getIdentifiers(projectId) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/identifiers`)
+  return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/identifiers`)
 }
 
 // `sessionId`'s own store: {memory, action_set, ai_definition} — `memory` is

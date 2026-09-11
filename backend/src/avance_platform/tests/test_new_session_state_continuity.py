@@ -27,10 +27,10 @@ YML = (
 
 
 def _upload_and_publish(client):
-    resp = client.post("/api/projects/upload", content=YML.encode(), headers={"Content-Type": "application/x-yaml"})
+    resp = client.post("/api/skills/platform/projects/upload", content=YML.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
-    resp = client.post(f"/api/projects/{project_id}/publish", json={})
+    resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
     return project_id
 
@@ -76,10 +76,10 @@ CHATLESS_FINAL_YML = (
 
 
 def test_new_live_session_from_a_chatless_final_state_still_resumes_there(client):
-    resp = client.post("/api/projects/upload", content=CHATLESS_FINAL_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+    resp = client.post("/api/skills/platform/projects/upload", content=CHATLESS_FINAL_YML.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
-    resp = client.post(f"/api/projects/{project_id}/publish", json={})
+    resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
 
     session = client.get("/api/chat/session").json()
@@ -96,7 +96,7 @@ def test_new_live_session_from_a_chatless_final_state_still_resumes_there(client
 
 def test_new_test_session_still_restarts_at_init_every_time(client, app_db):
     project_id = _upload_and_publish(client)
-    resp = client.post(f"/api/projects/{project_id}/test-sessions")
+    resp = client.post(f"/api/skills/platform/projects/{project_id}/test-sessions")
     assert resp.status_code == 200, resp.text
     first = resp.json()
     assert first["start_state"] == "a"
@@ -108,7 +108,7 @@ def test_new_test_session_still_restarts_at_init_every_time(client, app_db):
     assert resp.status_code == 200, resp.text
     assert resp.json()["state"]["key"] == "b"
 
-    resp = client.post(f"/api/projects/{project_id}/test-sessions")
+    resp = client.post(f"/api/skills/platform/projects/{project_id}/test-sessions")
     assert resp.status_code == 200, resp.text
     second = resp.json()
     assert second["start_state"] == "a"

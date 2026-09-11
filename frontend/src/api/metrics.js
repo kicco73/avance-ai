@@ -15,17 +15,17 @@ export function getMetrics(projectId, messageId, full, username) {
   if (full) params.set('full', 'true')
   if (username != null) params.set('username', username)
   const query = params.size ? `?${params}` : ''
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/metrics${query}`)
+  return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/metrics${query}`)
 }
 
 export function getUserLatestSignals(projectId, username) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(username)}/latest-signals`)
+  return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(username)}/latest-signals`)
 }
 
 export function getTimeline(projectId, username) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(username)}/timeline`)
+  return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(username)}/timeline`)
 }
 
 export function getMetricsHistory(projectId, username) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(username)}/metrics-history`)
+  return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(username)}/metrics-history`)
 }

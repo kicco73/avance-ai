@@ -38,7 +38,7 @@ vi.mock('../src/api.js', () => ({
   postTruncateSession: vi.fn(),
   getTestChatModels: vi.fn(),
   postTestChatModelSelection: vi.fn(),
-  projectFileContentUrl: vi.fn((p, f, s) => `/api/projects/${p}/files/${f}/content?session_id=${s}`)
+  projectFileContentUrl: vi.fn((p, f, s) => `/api/skills/platform/projects/${p}/files/${f}/content?session_id=${s}`)
 }))
 
 describe('the live chat and the "Run" test chat are genuinely independent stores', () => {

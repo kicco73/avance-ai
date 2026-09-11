@@ -1,6 +1,6 @@
 // Captures a `?invite=<code>` query param at page load — the code half
 // of a project's own invite link (see ShareProjectDialog.vue, which
-// gets it from POST /api/projects/{name}/invites and builds the link
+// gets it from POST /api/skills/platform/projects/{name}/invites and builds the link
 // with buildInviteUrl below) — and strips it from the address bar
 // immediately, so refreshing or re-sharing the same tab afterward
 // doesn't re-trigger it. consumeInviteCode() is the only way anything

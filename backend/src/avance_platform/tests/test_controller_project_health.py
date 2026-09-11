@@ -23,7 +23,7 @@ BROKEN_YML = "not: [valid, yaml: at all"
 def _upload(client, project_id: str, index_yml: str) -> None:
     yml = f"project:\n  id: {project_id}\n{index_yml}"
     response = client.post(
-        "/api/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"},
+        "/api/skills/platform/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"},
     )
     assert response.status_code == 200, response.text
     parse_sse_result(response)
@@ -45,8 +45,8 @@ def test_automaton_derived_endpoints_return_409_project_broken(client, app, app_
     _break_project(app, app_db, "broken")
 
     for path in (
-        "/api/projects/broken/project", "/api/projects/broken/states", "/api/projects/broken/graph",
-        "/api/projects/broken/signals", "/api/projects/broken/env-keys", "/api/projects/broken/identifiers",
+        "/api/skills/platform/projects/broken/project", "/api/skills/platform/projects/broken/states", "/api/skills/platform/projects/broken/graph",
+        "/api/skills/platform/projects/broken/signals", "/api/skills/platform/projects/broken/env-keys", "/api/core/projects/broken/identifiers",
     ):
         response = client.get(path)
         assert response.status_code == HTTPStatus.CONFLICT, (path, response.text)
@@ -57,7 +57,7 @@ def test_put_field_endpoints_return_409_project_broken(client, app, app_db):
     _upload(client, "broken", VALID_YML)
     _break_project(app, app_db, "broken")
 
-    response = client.put("/api/projects/broken/states/a/ui-label", json={"value": "New label"})
+    response = client.put("/api/skills/platform/projects/broken/states/a/ui-label", json={"value": "New label"})
 
     assert response.status_code == HTTPStatus.CONFLICT, response.text
     assert response.json()["error"]["code"] == "project_broken"
@@ -67,20 +67,20 @@ def test_file_endpoints_still_work_on_a_broken_project(client, app, app_db):
     _upload(client, "broken", VALID_YML)
     _break_project(app, app_db, "broken")
 
-    files = client.get("/api/projects/broken/files")
+    files = client.get("/api/skills/platform/projects/broken/files")
     assert files.status_code == 200, files.text
     assert "index.yml" in files.json()["files"]
 
-    content = client.get("/api/projects/broken/files/index.yml")
+    content = client.get("/api/skills/platform/projects/broken/files/index.yml")
     assert content.status_code == 200, content.text
 
     fixed = f"project:\n  id: broken\n{VALID_YML}"
-    saved = client.put("/api/projects/broken/files/index.yml", content=fixed.encode())
+    saved = client.put("/api/skills/platform/projects/broken/files/index.yml", content=fixed.encode())
     assert saved.status_code == 200, saved.text
 
     # The fix just saved builds again — the automaton-derived endpoints
     # must recover without any further action.
-    recovered = client.get("/api/projects/broken/project")
+    recovered = client.get("/api/skills/platform/projects/broken/project")
     assert recovered.status_code == 200, recovered.text
 
 
@@ -95,9 +95,9 @@ def test_a_session_pinned_to_an_old_now_broken_revision_is_flagged_unsupported(c
     # A second, still-valid revision gets published — the session above
     # keeps running against revision 0, exactly as before.
     updated_yml = f"project:\n  id: flaky\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi again\n"
-    saved = client.put("/api/projects/flaky/files/index.yml", content=updated_yml.encode())
+    saved = client.put("/api/skills/platform/projects/flaky/files/index.yml", content=updated_yml.encode())
     assert saved.status_code == 200, saved.text
-    published = client.post("/api/projects/flaky/publish", json={"remap_to": None})
+    published = client.post("/api/skills/platform/projects/flaky/publish", json={"remap_to": None})
     assert published.status_code == 200, published.text
     assert published.json()["published_revision"] == 1
 
@@ -105,7 +105,7 @@ def test_a_session_pinned_to_an_old_now_broken_revision_is_flagged_unsupported(c
     rewrite_archive_content("flaky", "index.yml", 0, BROKEN_YML.encode("utf-8"))
     app.state.turn_service._project_service.manager._automaton_loader.invalidate_cache("flaky")
 
-    sessions = client.get("/api/projects/flaky/sessions").json()
+    sessions = client.get("/api/core/projects/flaky/sessions").json()
     row = next(s for s in sessions if s["id"] == session["id"])
     assert row["unsupported_revision"] is True
 
@@ -117,11 +117,11 @@ def test_a_session_pinned_to_an_old_now_broken_revision_is_flagged_unsupported(c
 
 def test_resume_is_rejected_for_a_project_whose_published_revision_is_broken(client, app, app_db):
     _upload(client, "solo", VALID_YML)
-    paused = client.put("/api/projects/solo/pause")
+    paused = client.put("/api/skills/platform/projects/solo/pause")
     assert paused.status_code == 200, paused.text
     _break_project(app, app_db, "solo")
 
-    response = client.put("/api/projects/solo/resume")
+    response = client.put("/api/skills/platform/projects/solo/resume")
 
     assert response.status_code == HTTPStatus.CONFLICT, response.text
     assert response.json()["error"]["code"] == "project_broken"

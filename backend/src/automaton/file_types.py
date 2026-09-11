@@ -5,7 +5,7 @@ runtime reader and the AI-facing attachment loader report
 (automaton.media_types), the content type an upload is stored with, the
 folder it canonicalizes into and the size it may not exceed
 (project.archive.layout), and the catalog the frontend reads over
-/api/projects/file-types instead of hardcoding its own patterns.
+/api/skills/platform/projects/file-types instead of hardcoding its own patterns.
 """
 from __future__ import annotations
 

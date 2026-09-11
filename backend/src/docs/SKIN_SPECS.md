@@ -28,20 +28,20 @@ A skin is:
 Both are managed through the same project-files API as every other
 project file:
 
-- `GET /api/projects/{project_name}/files` — lists every file, including
+- `GET /api/skills/platform/projects/{project_name}/files` — lists every file, including
   `index.css` and each `aspect/...` asset if present.
-- `PUT /api/projects/{project_name}/files/index.css` — create or edit the
+- `PUT /api/skills/platform/projects/{project_name}/files/index.css` — create or edit the
   stylesheet. Body is the raw CSS text, `Content-Type: text/plain`.
-- `PUT /api/projects/{project_name}/files/<any-image-name>` — create or
+- `PUT /api/skills/platform/projects/{project_name}/files/<any-image-name>` — create or
   edit an asset. Body is the raw image bytes, `Content-Type` must exactly
   match the extension (`image/png`, `image/jpeg`, `image/gif`,
   `image/webp`, or `image/svg+xml`). **Any name you upload under is
   canonicalized to `aspect/<basename>`** — an image extension always
   lands there regardless of what path you PUT it to (see
   `ArchiveLayout.canonicalize_name`).
-- `GET /api/projects/{project_name}/files/index.css/content` and the
+- `GET /api/skills/platform/projects/{project_name}/files/index.css/content` and the
   equivalent for each asset — raw bytes, for fetching/previewing.
-- `DELETE /api/projects/{project_name}/files/index.css` — see §6 for its
+- `DELETE /api/skills/platform/projects/{project_name}/files/index.css` — see §6 for its
   cascade behavior.
 
 In the editor UI (Design tab → file explorer), this is the **"Aspect"**
@@ -105,7 +105,7 @@ client-side:
 
 - **`url(...)` rewriting.** Every relative `url(basename)` is rewritten
   to the asset's actual file-content endpoint
-  (`GET /api/projects/{name}/files/aspect/{basename}/content[?session_id=...]`).
+  (`GET /api/skills/platform/projects/{name}/files/aspect/{basename}/content[?session_id=...]`).
   This is why §2's basename-only rule holds: whatever directory you wrote
   is stripped and replaced regardless. Absolute URLs (`https://...`,
   `data:...`) are left untouched, so an external image/font/data-URI

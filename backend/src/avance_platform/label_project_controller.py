@@ -44,7 +44,7 @@ class LabelProjectController(BaseController):
         self.tracking_service = tracking_service
         self.scheduler_service = scheduler_service
 
-    @post("/api/projects/{project_id}/sessions/import", role="supervisor")
+    @post("/api/skills/platform/projects/{project_id}/sessions/import", role="supervisor")
     async def post_import_sessions(self, project_id: str, files: list[UploadFile]):
         """The "Label sessions" view's own upload button — every selected
         file in one request, whichever mix of a .txt transcript and a
@@ -56,7 +56,7 @@ class LabelProjectController(BaseController):
         job = self.tracking_service.build_import_sessions_job(project_id, uploads)
         return self.scheduler_service.stream_progress(job)
 
-    @delete("/api/projects/{project_id}/sessions/imported", role="supervisor")
+    @delete("/api/skills/platform/projects/{project_id}/sessions/imported", role="supervisor")
     def delete_imported_sessions(self, project_id: str):
         """The "Label sessions" view's own "Delete all imported sessions"
         button — every imported session of the project, across every
@@ -64,7 +64,7 @@ class LabelProjectController(BaseController):
         self.tracking_service.delete_imported_sessions(project_id)
         return {"success": True}
 
-    @get("/api/projects/{project_id}/sessions/export", role="supervisor")
+    @get("/api/skills/platform/projects/{project_id}/sessions/export", role="supervisor")
     def get_export_sessions(self, project_id: str, type: str | None = None):
         """The "Label sessions" view's own "Download all" button — every
         session of `project_id` (native and imported alike, same as
@@ -83,7 +83,7 @@ class LabelProjectController(BaseController):
             },
         )
 
-    @put("/api/projects/{project_id}/sessions/reassign", role="supervisor")
+    @put("/api/skills/platform/projects/{project_id}/sessions/reassign", role="supervisor")
     def put_sessions_reassign(self, project_id: str, req: ReassignSessionsRequest):
         """The "Label sessions" view's drag-and-drop between branches —
         `req.username` is whichever branch the sessions were dropped on,
@@ -91,12 +91,12 @@ class LabelProjectController(BaseController):
         self.tracking_service.reassign_sessions_to_username(req.session_ids, req.username)
         return {"success": True}
 
-    @delete("/api/projects/{project_id}/test-users/{test_user_seq}", role="supervisor")
+    @delete("/api/skills/platform/projects/{project_id}/test-users/{test_user_seq}", role="supervisor")
     def delete_test_user(self, project_id: str, test_user_seq: int):
         self.tracking_service.delete_sessions_by_username(project_id, f"Test user {test_user_seq}")
         return {"success": True}
 
-    @delete("/api/projects/{project_id}/sessions/users/{username}", role="supervisor")
+    @delete("/api/skills/platform/projects/{project_id}/sessions/users/{username}", role="supervisor")
     def delete_user_sessions(self, project_id: str, username: str):
         """The "Label sessions" view's per-branch × button for any
         non-live branch — an arbitrary imported username, not just a

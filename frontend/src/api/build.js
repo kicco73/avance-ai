@@ -6,7 +6,7 @@ const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 // published revision into a package under the backend's own src/build/.
 // The other targets in that step aren't wired to anything yet.
 export function postBuildLocalModule(projectId) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/build/local-module`, { method: 'POST' })
+  return apiFetch(`${API_URL}/skills/build/projects/${encodeURIComponent(projectId)}/local-module`, { method: 'POST' })
 }
 
 // What this backend has installed and a build may leave out, plus the
@@ -14,8 +14,8 @@ export function postBuildLocalModule(projectId) {
 // Both are read on the server: the list is whatever is actually in its
 // source tree, and the rule that task.send_mail needs mail lives in
 // mail, never here.
-export function getBuildSkills(projectId) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/build/skills`)
+export function getBuildRequirements(projectId) {
+  return apiFetch(`${API_URL}/skills/build/projects/${encodeURIComponent(projectId)}/requirements`)
 }
 
 // `excludedSkills` names the packages this build leaves out. Sending the
@@ -27,7 +27,7 @@ export function getBuildSkills(projectId) {
 // chunk the job broadcasts, whose `result` carries the step table (see
 // build/build_job.py). What resolves is the last chunk's report.
 export function postBuildBackendCopy(projectId, excludedSkills = [], onProgress) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/build/backend-copy`, {
+  return apiFetch(`${API_URL}/skills/build/projects/${encodeURIComponent(projectId)}/backend-copy`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ excluded_skills: excludedSkills })

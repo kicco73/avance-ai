@@ -28,7 +28,7 @@ YML_WITHOUT_B = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\
 
 
 def _upload_and_reach_b(client):
-    resp = client.post("/api/projects/upload", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+    resp = client.post("/api/skills/platform/projects/upload", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
 
@@ -47,7 +47,7 @@ def test_editing_the_current_users_stale_state_never_touches_another_users_live_
         bob_action_resp = client.post(f"/api/chat/sessions/{bob_session['id']}/action", json={"action_name": "go"})
         assert bob_action_resp.status_code == 200, bob_action_resp.text
 
-    resp = client.put("/api/projects/proj/files/index.yml", content=YML_WITHOUT_B.encode())
+    resp = client.put("/api/skills/platform/projects/proj/files/index.yml", content=YML_WITHOUT_B.encode())
     assert resp.status_code == 200, resp.text
 
     assert app_db.get_chat_session(my_session_id) is None
@@ -64,20 +64,20 @@ def test_editing_the_current_users_stale_state_never_touches_an_imported_session
         start_state="b", end_state="b", type="imported",
     )
 
-    resp = client.put("/api/projects/proj/files/index.yml", content=YML_WITHOUT_B.encode())
+    resp = client.put("/api/skills/platform/projects/proj/files/index.yml", content=YML_WITHOUT_B.encode())
     assert resp.status_code == 200, resp.text
 
-    assert client.get("/api/projects/proj/sessions").json() == []
+    assert client.get("/api/core/projects/proj/sessions").json() == []
     assert app_db.get_chat_session(imported_id) is not None
 
 
 def test_editing_a_stale_state_deletes_the_current_users_own_test_session(client, app_db):
     project_id, _ = _upload_and_reach_b(client)
-    test_session = client.post(f"/api/projects/{project_id}/test-sessions").json()
+    test_session = client.post(f"/api/skills/platform/projects/{project_id}/test-sessions").json()
     action_resp = client.post(f"/api/chat/sessions/{test_session['id']}/action", json={"action_name": "go"})
     assert action_resp.status_code == 200, action_resp.text
 
-    resp = client.put("/api/projects/proj/files/index.yml", content=YML_WITHOUT_B.encode())
+    resp = client.put("/api/skills/platform/projects/proj/files/index.yml", content=YML_WITHOUT_B.encode())
     assert resp.status_code == 200, resp.text
 
     assert app_db.get_chat_session(test_session["id"]) is None

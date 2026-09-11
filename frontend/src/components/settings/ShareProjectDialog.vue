@@ -1,6 +1,6 @@
 <script setup>
 // Manage projects' own "Share project" — generates a fresh invite (see
-// postCreateInvite, POST /api/projects/{project_id}/invites) every time this
+// postCreateInvite, POST /api/skills/platform/projects/{project_id}/invites) every time this
 // dialog opens, then shows a QR code and copyable link for it: a Web tab
 // (see shareLink.js/useAppBoot.js for the landing half: ?invite=<code>,
 // resolved and activated once the scanning session is authenticated, or

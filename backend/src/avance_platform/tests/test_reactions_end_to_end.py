@@ -41,13 +41,13 @@ states:
 @pytest.fixture
 def reactions_project(client):
     response = client.post(
-        "/api/projects/upload", content=PROJECT_YAML.encode("utf-8"),
+        "/api/skills/platform/projects/upload", content=PROJECT_YAML.encode("utf-8"),
         headers={"Content-Type": "application/x-yaml"},
     )
     assert response.status_code == 200, response.text
     project_id = parse_sse_result(response)["project_id"]
-    assert client.put(f"/api/projects/{project_id}/activate").status_code == 200
-    assert client.post(f"/api/projects/{project_id}/publish", json={}).status_code == 200
+    assert client.put(f"/api/skills/platform/projects/{project_id}/activate").status_code == 200
+    assert client.post(f"/api/skills/platform/projects/{project_id}/publish", json={}).status_code == 200
     return project_id
 
 
@@ -132,13 +132,13 @@ def no_reactions_project(client):
     test_automaton_builder_reactions.py) but Automaton.reactions_enabled_for
     should make a no-op at runtime regardless."""
     response = client.post(
-        "/api/projects/upload", content=NO_REACTIONS_PROJECT_YAML.encode("utf-8"),
+        "/api/skills/platform/projects/upload", content=NO_REACTIONS_PROJECT_YAML.encode("utf-8"),
         headers={"Content-Type": "application/x-yaml"},
     )
     assert response.status_code == 200, response.text
     project_id = parse_sse_result(response)["project_id"]
-    assert client.put(f"/api/projects/{project_id}/activate").status_code == 200
-    assert client.post(f"/api/projects/{project_id}/publish", json={}).status_code == 200
+    assert client.put(f"/api/skills/platform/projects/{project_id}/activate").status_code == 200
+    assert client.post(f"/api/skills/platform/projects/{project_id}/publish", json={}).status_code == 200
     return project_id
 
 

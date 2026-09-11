@@ -15,12 +15,12 @@ from conftest import SAMPLES_DIR
 
 def _upload_and_activate(client):
     content = (SAMPLES_DIR / "Metrics Playground (states).zip").read_bytes()
-    response = client.post("/api/projects/upload", content=content, headers={"Content-Type": "application/zip"})
+    response = client.post("/api/skills/platform/projects/upload", content=content, headers={"Content-Type": "application/zip"})
     assert response.status_code == 200, response.text
     project_id = parse_sse_result(response)["project_id"]
-    response = client.put(f"/api/projects/{project_id}/activate")
+    response = client.put(f"/api/skills/platform/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
-    response = client.post(f"/api/projects/{project_id}/publish", json={})
+    response = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
     return project_id
 

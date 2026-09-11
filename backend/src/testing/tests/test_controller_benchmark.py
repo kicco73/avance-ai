@@ -11,7 +11,7 @@ from conftest import chat_turn
 
 
 def _metrics(client, project_id, query: str = "") -> dict:
-    return {m["name"]: m["value"] for m in client.get(f"/api/projects/{project_id}/metrics{query}").json()}
+    return {m["name"]: m["value"] for m in client.get(f"/api/core/projects/{project_id}/metrics{query}").json()}
 
 
 def _first_message_of_a_second_session(client) -> tuple[int, int]:
@@ -46,7 +46,7 @@ def test_get_metrics_is_the_live_history_unless_pinned_to_a_message_keeping_its_
     # first message's timestamp must not reflect it.
     assert _metrics(client, hello_project, f"?message_id={first_message_id}")["engagement"] <= live["engagement"]
 
-    response = client.get(f"/api/projects/{hello_project}/metrics?message_id={first_message_id}")
+    response = client.get(f"/api/core/projects/{hello_project}/metrics?message_id={first_message_id}")
     assert response.status_code == 200
     body = response.json()
     # Always a one_session context — retention/activity_consistency are
@@ -55,7 +55,7 @@ def test_get_metrics_is_the_live_history_unless_pinned_to_a_message_keeping_its_
     for metric in body:
         assert set(metric) == {"name", "ui_label", "ui_description", "value"}
 
-    assert client.get(f"/api/projects/{hello_project}/metrics?message_id=999999").status_code == 404
+    assert client.get(f"/api/core/projects/{hello_project}/metrics?message_id=999999").status_code == 404
 
 
 @pytest.mark.contract

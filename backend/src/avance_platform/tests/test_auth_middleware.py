@@ -70,7 +70,7 @@ def client(identity, fake_db) -> TestClient:
     def protected():
         return {"user": Session().user}
 
-    @app.get("/api/projects/{project_id}/protected")
+    @app.get("/api/skills/platform/projects/{project_id}/protected")
     def protected_project(project_id: str):
         return {"project_id": project_id}
 
@@ -100,10 +100,10 @@ def test_a_project_scoped_route_is_gated_on_access_for_a_plain_user_and_open_to_
     rather than in each controller method (see
     ProjectService.resolve_invite_link for how access is granted)."""
     client.cookies.set(SESSION_COOKIE_NAME, "good-token")
-    assert client.get("/api/projects/proj-a/protected").status_code == 403
+    assert client.get("/api/skills/platform/projects/proj-a/protected").status_code == 403
 
     fake_db.grant(identity.email, "proj-a")
-    response = client.get("/api/projects/proj-a/protected")
+    response = client.get("/api/skills/platform/projects/proj-a/protected")
     assert response.status_code == 200
     assert response.json()["project_id"] == "proj-a"
 
@@ -111,4 +111,4 @@ def test_a_project_scoped_route_is_gated_on_access_for_a_plain_user_and_open_to_
     client.app.state.auth_service = _FakeAuthService({"admin-token": admin})
     client.cookies.set(SESSION_COOKIE_NAME, "admin-token")
 
-    assert client.get("/api/projects/proj-b/protected").status_code == 200
+    assert client.get("/api/skills/platform/projects/proj-b/protected").status_code == 200

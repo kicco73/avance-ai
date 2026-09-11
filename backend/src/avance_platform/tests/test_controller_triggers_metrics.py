@@ -31,7 +31,7 @@ states:
   a:
     contextual-prompt: "hi"
 """
-    response = client.post("/api/projects/upload", content=_zip_of(content), headers={"Content-Type": "application/zip"})
+    response = client.post("/api/skills/platform/projects/upload", content=_zip_of(content), headers={"Content-Type": "application/zip"})
 
     assert response.status_code == 400
     assert "reserved for core metrics" in response.json()["error"]["message"]

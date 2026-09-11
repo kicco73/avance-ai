@@ -17,7 +17,7 @@ MINIMAL = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n
 
 
 def _upload(client, yml: str):
-    return client.post("/api/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"})
+    return client.post("/api/skills/platform/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"})
 
 
 def _watcher(client, watcher_id: str, family: str, trigger: str):
@@ -65,7 +65,7 @@ def test_changing_a_projects_id_through_the_editor_frees_up_the_old_one(client):
     assert _upload(client, "project:\n  id: old_id\n" + MINIMAL).status_code == 200
 
     resp = client.put(
-        "/api/projects/old_id/files/index.yml",
+        "/api/skills/platform/projects/old_id/files/index.yml",
         content=("project:\n  id: new_id\n" + MINIMAL).encode(),
         headers={"Content-Type": "application/x-yaml"},
     )

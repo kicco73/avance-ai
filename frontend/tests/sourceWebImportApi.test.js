@@ -56,7 +56,7 @@ describe('postSourceWebImport', () => {
 
     expect(fetch).toHaveBeenCalledTimes(1)
     const [url, options] = fetch.mock.calls[0]
-    expect(url).toBe('http://localhost:8000/api/projects/hello%20world/sources/places/web-import')
+    expect(url).toBe('http://localhost:8000/api/skills/platform/projects/hello%20world/sources/places/web-import')
     expect(options.method).toBe('POST')
     expect(JSON.parse(options.body)).toEqual({ query: 'dentists in Barcelona' })
     expect(onProgress.mock.calls.map(([message]) => message.percentage)).toEqual([0, 25, 50, 75, 100])

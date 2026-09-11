@@ -109,18 +109,18 @@ def test_task_prompt_fires_through_the_real_app_end_to_end(client, app):
         "  b:\n"
         "    contextual-prompt: there\n"
     )
-    resp = client.post("/api/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"})
+    resp = client.post("/api/skills/platform/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
-    client.put(f"/api/projects/{project_id}/activate")
-    client.post(f"/api/projects/{project_id}/publish", json={})
+    client.put(f"/api/skills/platform/projects/{project_id}/activate")
+    client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
 
     # A test/draft session, deliberately — "Run actuators" defaults off
     # there (see TaskNamespaceFactory.for_session), which is what makes
     # task.send_mail's own report observable at all: a live session
     # would really try to dial the (dummy, unreachable) SMTP config
     # instead (see test_action_task.py's own module docstring).
-    session = client.post(f"/api/projects/{project_id}/test-sessions").json()
+    session = client.post(f"/api/skills/platform/projects/{project_id}/test-sessions").json()
     action_response = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "go"})
 
     assert action_response.status_code == 200, action_response.text

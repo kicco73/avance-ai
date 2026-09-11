@@ -53,6 +53,7 @@ class PlatformService(object):
         from avance_platform.app_store_controller import AppStoreController
         from avance_platform.auth_controller import AuthController
         from avance_platform.edit_project_controller import EditProjectController
+        from avance_platform.inspector_controller import InspectorController
         from avance_platform.label_project_controller import LabelProjectController
         from avance_platform.platform_controller import PlatformController
         from avance_platform.settings_controller import SettingsController
@@ -64,6 +65,7 @@ class PlatformService(object):
             for controller in (
                 PlatformController,
                 EditProjectController,
+                InspectorController,
                 # Labelling only: the benchmark half of that screen left
                 # with the package that runs it (see
                 # testing/testing_controller.py), so a build without

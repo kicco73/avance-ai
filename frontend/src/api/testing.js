@@ -44,7 +44,7 @@ export function getTestMetrics(projectId) {
 
 // Every real state key of the project's current draft automaton.
 export function getProjectStates(projectId) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/states`)
+  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/states`)
 }
 
 export function postStateTest(projectId, stateKey, strategy) {

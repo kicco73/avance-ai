@@ -27,10 +27,10 @@ TWO_STATE_YML = (
 
 
 def _upload_and_reach_b(client):
-    resp = client.post("/api/projects/upload", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+    resp = client.post("/api/skills/platform/projects/upload", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
-    resp = client.post(f"/api/projects/{project_id}/publish", json={})
+    resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
 
     session = client.get("/api/chat/session").json()
@@ -46,10 +46,10 @@ def test_editing_a_file_without_touching_the_current_state_keeps_the_conversatio
     # Adds an unrelated state "c" — "b" (the one the conversation is
     # actually in) is untouched.
     yml_v2 = TWO_STATE_YML + "  c:\n    contextual-prompt: extra\n"
-    resp = client.put("/api/projects/proj/files/index.yml", content=yml_v2.encode())
+    resp = client.put("/api/skills/platform/projects/proj/files/index.yml", content=yml_v2.encode())
     assert resp.status_code == 200, resp.text
 
-    sessions = client.get("/api/projects/proj/sessions").json()
+    sessions = client.get("/api/core/projects/proj/sessions").json()
     assert [s["id"] for s in sessions] == [session["id"]]
     assert client.get("/api/skills/platform/state").json()["key"] == "b"
 
@@ -59,10 +59,10 @@ def test_editing_a_file_that_removes_the_current_state_resets_the_conversation(c
 
     # The edit removes "b", the state the conversation is currently in.
     yml_v2 = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
-    resp = client.put("/api/projects/proj/files/index.yml", content=yml_v2.encode())
+    resp = client.put("/api/skills/platform/projects/proj/files/index.yml", content=yml_v2.encode())
     assert resp.status_code == 200, resp.text
 
-    assert client.get("/api/projects/proj/sessions").json() == []
+    assert client.get("/api/core/projects/proj/sessions").json() == []
     assert client.get("/api/skills/platform/state").json()["key"] == "a"
 
 
@@ -86,10 +86,10 @@ def test_editing_a_file_that_renames_the_current_state_resets_the_conversation(c
         "  b-renamed:\n"
         "    contextual-prompt: there\n"
     )
-    resp = client.put("/api/projects/proj/files/index.yml", content=yml_v2.encode())
+    resp = client.put("/api/skills/platform/projects/proj/files/index.yml", content=yml_v2.encode())
     assert resp.status_code == 200, resp.text
 
-    assert client.get("/api/projects/proj/sessions").json() == []
+    assert client.get("/api/core/projects/proj/sessions").json() == []
     assert client.get("/api/skills/platform/state").json()["key"] == "a"
 
 
@@ -100,18 +100,18 @@ def test_editing_an_unrelated_project_does_not_touch_the_active_ones_conversatio
     session = _upload_and_reach_b(client)
 
     other_yml = "project:\n  id: other\ninit-action:\n  target: x\nstates:\n  x:\n    contextual-prompt: hi\n"
-    resp = client.post("/api/projects/upload", content=other_yml.encode(), headers={"Content-Type": "application/x-yaml"})
+    resp = client.post("/api/skills/platform/projects/upload", content=other_yml.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
     # Uploading "other" activates it — reactivate "proj" so the edit
     # below targets a non-active project.
-    client.put("/api/projects/proj/activate")
+    client.put("/api/skills/platform/projects/proj/activate")
 
     resp = client.put(
-        "/api/projects/other/files/index.yml",
+        "/api/skills/platform/projects/other/files/index.yml",
         content=b"project:\n  id: other\ninit-action:\n  target: y\nstates:\n  y:\n    contextual-prompt: hi\n",
     )
     assert resp.status_code == 200, resp.text
 
-    sessions = client.get("/api/projects/proj/sessions").json()
+    sessions = client.get("/api/core/projects/proj/sessions").json()
     assert [s["id"] for s in sessions] == [session["id"]]
     assert client.get("/api/skills/platform/state").json()["key"] == "b"

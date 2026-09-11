@@ -52,14 +52,14 @@ def _upload_and_activate(client, yaml_text: str) -> str:
     """Returns the project's own id — always read off the upload's own
     project.id, mandatory now, there is no name to request separately."""
     response = client.post(
-        "/api/projects/upload", content=_zip_of(yaml_text), headers={"Content-Type": "application/zip"}
+        "/api/skills/platform/projects/upload", content=_zip_of(yaml_text), headers={"Content-Type": "application/zip"}
     )
     assert response.status_code == 200, response.text
     project_id = parse_sse_result(response)["project_id"]
-    response = client.put(f"/api/projects/{project_id}/activate")
+    response = client.put(f"/api/skills/platform/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
     # get_active_automaton_and_state requires a published revision.
-    response = client.post(f"/api/projects/{project_id}/publish", json={})
+    response = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
     return project_id
 
@@ -67,7 +67,7 @@ def _upload_and_activate(client, yaml_text: str) -> str:
 def test_returns_one_dict_per_namespace_for_the_active_project(client):
     project_id = _upload_and_activate(client, PROJECT)
 
-    response = client.get(f"/api/projects/{project_id}/identifiers")
+    response = client.get(f"/api/core/projects/{project_id}/identifiers")
 
     assert response.status_code == 200
     body = response.json()
@@ -93,7 +93,7 @@ def test_returns_one_dict_per_namespace_for_the_active_project(client):
 
 
 def test_404_for_a_project_that_does_not_exist(client):
-    response = client.get("/api/projects/does-not-exist/identifiers")
+    response = client.get("/api/core/projects/does-not-exist/identifiers")
 
     assert response.status_code == 404
 
@@ -103,12 +103,12 @@ def test_200_for_a_project_that_exists_but_has_never_been_published(client):
     it must reflect a signal/env key just declared in the draft, even
     before the project's very first publish."""
     response = client.post(
-        "/api/projects/upload", content=_zip_of(PROJECT), headers={"Content-Type": "application/zip"}
+        "/api/skills/platform/projects/upload", content=_zip_of(PROJECT), headers={"Content-Type": "application/zip"}
     )
     assert response.status_code == 200, response.text
     project_id = parse_sse_result(response)["project_id"]
 
-    response = client.get(f"/api/projects/{project_id}/identifiers")
+    response = client.get(f"/api/core/projects/{project_id}/identifiers")
 
     assert response.status_code == 200
     assert response.json()["env"] == {"visits": "How many times this action has fired."}
@@ -136,7 +136,7 @@ def test_automaton_namespace_lists_every_other_project_never_the_active_one(clie
     other_id = _upload_and_activate(client, OTHER_PROJECT)
     project_id = _upload_and_activate(client, PROJECT)  # re-activates identifiers_proj
 
-    response = client.get(f"/api/projects/{project_id}/identifiers")
+    response = client.get(f"/api/core/projects/{project_id}/identifiers")
 
     assert response.status_code == 200
     body = response.json()
@@ -172,13 +172,13 @@ def _upload_and_activate_with_archive(client, yaml_text: str, archive_name: str,
         zf.writestr("index.yml", yaml_text)
         zf.writestr(archive_name, archive_content)
     response = client.post(
-        "/api/projects/upload", content=buffer.getvalue(), headers={"Content-Type": "application/zip"}
+        "/api/skills/platform/projects/upload", content=buffer.getvalue(), headers={"Content-Type": "application/zip"}
     )
     assert response.status_code == 200, response.text
     project_id = parse_sse_result(response)["project_id"]
-    response = client.put(f"/api/projects/{project_id}/activate")
+    response = client.put(f"/api/skills/platform/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
-    response = client.post(f"/api/projects/{project_id}/publish", json={})
+    response = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
     return project_id
 
@@ -186,7 +186,7 @@ def _upload_and_activate_with_archive(client, yaml_text: str, archive_name: str,
 def test_source_namespace_lists_one_entry_per_declared_source(client):
     project_id = _upload_and_activate_with_archive(client, SOURCE_PROJECT, "behaviour/flights.csv", "a,b\n1,2\n")
 
-    response = client.get(f"/api/projects/{project_id}/identifiers")
+    response = client.get(f"/api/core/projects/{project_id}/identifiers")
 
     assert response.status_code == 200
     body = response.json()

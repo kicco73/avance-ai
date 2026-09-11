@@ -29,7 +29,7 @@ class BuildController(BaseController):
         self.build_service = build_service
         self.scheduler_service = scheduler_service
 
-    @post("/api/projects/{project_id}/build/local-module", role="admin")
+    @post("/api/skills/build/projects/{project_id}/local-module", role="admin")
     def post_build_local_module(self, project_id: str):
         """Compiles `project_id`'s published revision into build/<name>/.
         A CompileError is the project's own problem, not a server fault,
@@ -39,7 +39,7 @@ class BuildController(BaseController):
         except CompileError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_id}/build/skills", role="admin")
+    @get("/api/skills/build/projects/{project_id}/requirements", role="admin")
     def get_project_build_skills(self, project_id: str):
         """The installed roster (GET /api/skills) plus what this project's
         own automaton makes mandatory (see BuildService.installed_skills)."""
@@ -48,7 +48,7 @@ class BuildController(BaseController):
         except CompileError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_id}/build/backend-copy", role="admin")
+    @post("/api/skills/build/projects/{project_id}/backend-copy", role="admin")
     async def post_build_backend_copy(self, project_id: str, req: BuildBackendCopyRequest | None = None):
         """`excluded_skills` names the packages this build leaves out.
         Absent means a full build: a client that does not know about a

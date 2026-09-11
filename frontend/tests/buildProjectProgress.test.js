@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, nextTick } from 'vue'
 
 vi.mock('../src/api/build.js', () => ({
-  getBuildSkills: vi.fn().mockResolvedValue({ skills: [], required: [], disabled: [], contradicted: [] }),
+  getBuildRequirements: vi.fn().mockResolvedValue({ skills: [], required: [], disabled: [], contradicted: [] }),
   postBuildBackendCopy: vi.fn(),
   postBuildLocalModule: vi.fn()
 }))

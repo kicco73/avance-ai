@@ -1,8 +1,52 @@
 #!/usr/bin/env python3
+import ast
 import json
 import argparse
 import sys
 from datetime import datetime
+from pathlib import Path
+
+
+class TestSourceSizes:
+    def __init__(self, root):
+        self.root = Path(root)
+        self._by_file = {}
+
+    def size_of(self, node_id):
+        parts = node_id.split("::")
+        file_part = parts[0]
+        name_path = tuple(part.split("[")[0] for part in parts[1:])
+        return self._sizes(file_part).get(name_path, 0)
+
+    def _sizes(self, file_part):
+        cached = self._by_file.get(file_part)
+        if cached is not None:
+            return cached
+        sizes = self._read_sizes(self.root / file_part)
+        self._by_file[file_part] = sizes
+        return sizes
+
+    def _read_sizes(self, path):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+            tree = ast.parse("".join(lines))
+        except Exception:
+            return {}
+        sizes = {}
+        self._collect(tree, (), lines, sizes)
+        return sizes
+
+    def _collect(self, node, prefix, lines, sizes):
+        for child in getattr(node, "body", []):
+            name = getattr(child, "name", None)
+            if name is None:
+                continue
+            key = prefix + (name,)
+            start = child.lineno - 1
+            end = getattr(child, "end_lineno", child.lineno)
+            sizes[key] = sum(len(line) for line in lines[start:end])
+            self._collect(child, key, lines, sizes)
+
 
 def parse_iso_datetime(dt_str):
     if not dt_str:
@@ -30,6 +74,10 @@ def main():
         "--unit", choices=["seconds", "minutes"], default="seconds",
         help="Unità di misura per --max-duration (default: seconds)"
     )
+    parser.add_argument(
+        "--root", "-r", default=None,
+        help="Radice da cui risolvere i path dei test (default: la cartella del file di statistiche)"
+    )
     
     args = parser.parse_args()
     
@@ -47,6 +95,8 @@ def main():
         print(f"Errore nella lettura del file: {e}", file=sys.stderr)
         sys.exit(1)
         
+    sizes = TestSourceSizes(args.root or Path(args.file_path).resolve().parent)
+
     tests = []
     total_suite_duration = 0.0
     for test_name, stats in data.items():
@@ -68,7 +118,8 @@ def main():
             "failures": failures,
             "first_run": first_run_dt,
             "runs": runs,
-            "seconds": seconds
+            "seconds": seconds,
+            "size": sizes.size_of(test_name)
         })
         
     # Gerarchia di ordinamento per identificare i candidati prioritari da ELIMINARE:
@@ -76,11 +127,13 @@ def main():
     # 2. first_run timestamp (decrescente -> prima quelli creati/eseguiti RECENTEMENTE, preservando quelli "antichi")
     # 3. runs (decrescente -> prima quelli eseguiti più volte)
     # 4. seconds (decrescente -> prima quelli che durano di più)
+    # 5. size (decrescente -> prima quelli il cui codice costa più token da leggere)
     tests.sort(key=lambda x: (
         x["failures"],
         -x["first_run"].timestamp(),
         -x["runs"],
-        -x["seconds"]
+        -x["seconds"],
+        -x["size"]
     ))
     
     total_tests = len(tests)
@@ -91,7 +144,7 @@ def main():
         limit_by_percentage = int(round(total_tests * (args.percentage / 100.0)))
         
     # 2. Calcolo limite durata massima
-    by_cost = sorted(tests, key=lambda x: (x["failures"], -x["seconds"]))
+    by_cost = sorted(tests, key=lambda x: (x["failures"], -x["seconds"], -x["size"]))
     limit_by_duration = total_tests
     if args.max_duration is not None:
         target_max_sec = args.max_duration * 60.0 if args.unit == "minutes" else args.max_duration

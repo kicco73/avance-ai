@@ -25,11 +25,11 @@ THREE_STATE_YML = TWO_STATE_YML + "  c:\n    contextual-prompt: new\n"
 
 
 def _upload(client, yml: str, publish: bool = True):
-    client.put("/api/projects/proj/files/index.yml", content=yml.encode(), headers={"Content-Type": "application/x-yaml"}) \
-        if client.get("/api/projects/proj/files/index.yml").status_code == 200 else \
-        client.post("/api/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"})
+    client.put("/api/skills/platform/projects/proj/files/index.yml", content=yml.encode(), headers={"Content-Type": "application/x-yaml"}) \
+        if client.get("/api/skills/platform/projects/proj/files/index.yml").status_code == 200 else \
+        client.post("/api/skills/platform/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"})
     if publish:
-        client.post("/api/projects/proj/publish", json={})
+        client.post("/api/skills/platform/projects/proj/publish", json={})
 
 
 def _fire_action(client, session_id: int) -> None:
@@ -56,8 +56,8 @@ def test_the_graph_follows_the_draft_unless_pinned_to_a_live_sessions_own_publis
     session_id = _pinned_live_session(client)
     _upload(client, THREE_STATE_YML)
 
-    current = client.get("/api/projects/proj/graph")
-    pinned = client.get(f"/api/projects/proj/graph?session_id={session_id}")
+    current = client.get("/api/skills/platform/projects/proj/graph")
+    pinned = client.get(f"/api/skills/platform/projects/proj/graph?session_id={session_id}")
 
     assert current.status_code == 200
     assert _state_keys(current) == {"a", "b", "c"}
@@ -65,19 +65,19 @@ def test_the_graph_follows_the_draft_unless_pinned_to_a_live_sessions_own_publis
     assert _state_keys(pinned) == {"a", "b"}
     assert pinned.json()["revision"] == 0
 
-    assert client.get("/api/projects/proj/graph?session_id=999999").status_code == 404
+    assert client.get("/api/skills/platform/projects/proj/graph?session_id=999999").status_code == 404
 
 
 def test_a_test_session_always_tracks_the_live_draft(client):
     _upload(client, TWO_STATE_YML)
-    response = client.post("/api/projects/proj/test-sessions")
+    response = client.post("/api/skills/platform/projects/proj/test-sessions")
     assert response.status_code == 200, response.text
     _fire_action(client, response.json()["id"])
     test_session_id = response.json()["id"]
 
     _upload(client, THREE_STATE_YML, publish=False)
 
-    response = client.get(f"/api/projects/proj/graph?session_id={test_session_id}")
+    response = client.get(f"/api/skills/platform/projects/proj/graph?session_id={test_session_id}")
 
     assert response.status_code == 200, response.text
     assert _state_keys(response) == {"a", "b", "c"}
@@ -91,8 +91,8 @@ def test_signals_and_env_keys_pin_to_a_sessions_own_revision_the_same_way_the_gr
     session_id = _pinned_live_session(client)
     _upload(client, TWO_STATE_YML + declaration)
 
-    pinned = client.get(f"/api/projects/proj/{route}?session_id={session_id}")
-    current = client.get(f"/api/projects/proj/{route}")
+    pinned = client.get(f"/api/skills/platform/projects/proj/{route}?session_id={session_id}")
+    current = client.get(f"/api/skills/platform/projects/proj/{route}")
 
     assert pinned.json()[payload_key] == []
     assert [name_of(row) for row in current.json()[payload_key]] == [declaration.split(":")[1].split()[0].rstrip(":")]

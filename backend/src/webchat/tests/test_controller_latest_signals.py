@@ -1,4 +1,4 @@
-"""Integration tests for GET /api/projects/{project_name}/users/{username}/latest-signals,
+"""Integration tests for GET /api/core/projects/{project_name}/users/{username}/latest-signals,
 exercising TurnService.get_latest_signal_values end to end: the user's own
 last live session (for the current-state card), and the last valid,
 non-null signal snapshot found anywhere across their session history —
@@ -25,7 +25,7 @@ def test_latest_signals_returns_the_most_recent_sessions_latest_snapshot(client,
         app_db.save_signal_snapshot({"foo": 1}, session["id"])
         app_db.save_signal_snapshot({"foo": 42}, session["id"], message_id=turn["assistant_message_id"])
 
-    response = client.get(f"/api/projects/{hello_project}/users/alice/latest-signals")
+    response = client.get(f"/api/core/projects/{hello_project}/users/alice/latest-signals")
 
     assert response.status_code == 200
     body = response.json()
@@ -41,7 +41,7 @@ def test_latest_signals_falls_back_to_an_earlier_session_when_the_latest_has_non
         app_db.save_signal_snapshot({"foo": 7}, older["id"])
         newer = client.post("/api/chat/sessions").json()
 
-    response = client.get(f"/api/projects/{hello_project}/users/carol/latest-signals")
+    response = client.get(f"/api/core/projects/{hello_project}/users/carol/latest-signals")
 
     assert response.status_code == 200
     body = response.json()
@@ -55,7 +55,7 @@ def test_latest_signals_has_no_values_for_a_session_with_no_signal_snapshot(clie
     with Session().impersonate("bob"):
         session = client.get("/api/chat/session").json()
 
-    response = client.get(f"/api/projects/{hello_project}/users/bob/latest-signals")
+    response = client.get(f"/api/core/projects/{hello_project}/users/bob/latest-signals")
 
     assert response.status_code == 200
     body = response.json()
@@ -65,7 +65,7 @@ def test_latest_signals_has_no_values_for_a_session_with_no_signal_snapshot(clie
 
 
 def test_latest_signals_is_none_for_a_user_with_no_sessions(client, hello_project):
-    response = client.get(f"/api/projects/{hello_project}/users/nobody/latest-signals")
+    response = client.get(f"/api/core/projects/{hello_project}/users/nobody/latest-signals")
 
     assert response.status_code == 200
     assert response.json() == {"last_session": None, "session_id": None, "values": None}

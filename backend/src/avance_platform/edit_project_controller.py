@@ -77,31 +77,31 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         self.platform_service = platform_service
         self.scheduler_service = scheduler_service
 
-    @post("/api/projects/{project_id}/test-sessions", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/test-sessions", role="admin")
     async def post_create_test_session(self, project_id: str):
         """The embedded "Test" chat's explicit "start a new session"
         action — the one place a session may exist against an unpublished
         revision."""
         return await self.turn_service.create_draft_session(project_id)
 
-    @get("/api/projects/{project_id}/test-sessions/current", role="admin")
+    @get("/api/skills/platform/projects/{project_id}/test-sessions/current", role="admin")
     async def get_current_test_session(self, project_id: str, session_id: int | None = None):
         """The embedded "Test" chat's bootstrap endpoint — the
         draft-session equivalent of GET /api/chat/session."""
         return await self.turn_service.get_current_draft_session_if_any_or_create_new(session_id, project_id)
 
-    @get("/api/projects/{project_id}/test-sessions", role="admin")
+    @get("/api/skills/platform/projects/{project_id}/test-sessions", role="admin")
     def get_test_sessions(self, project_id: str):
         """The embedded "Test" chat's own "Sessions" panel listing — the
         draft-session equivalent of GET .../sessions. The two pools never mix."""
         return self.turn_service.list_test_sessions(project_id)
 
-    @post("/api/projects/{project_id}/test-sessions/reset", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/test-sessions/reset", role="admin")
     async def post_reset_test_sessions(self, project_id: str):
         async with self.turn_service.acquire_write(project_id):
             return self.turn_service.reset_test_sessions(project_id)
 
-    @get("/api/projects/{project_id}/states", role="admin")
+    @get("/api/skills/platform/projects/{project_id}/states", role="admin")
     def get_project_states(self, project_id: str):
         """Every real state key of `project_id`'s current draft
         automaton — the "States" branch's own node list (see
@@ -114,7 +114,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_id}/graph", role="supervisor")
+    @get("/api/skills/platform/projects/{project_id}/graph", role="supervisor")
     def get_project_graph(self, project_id: str, session_id: int | None = None):
         """The project's state machine (states as nodes, actions as
         edges), for the Inspect panel graph. `session_id` omitted
@@ -129,7 +129,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_id}/states/{state_name}/tokens", role="supervisor")
+    @get("/api/skills/platform/projects/{project_id}/states/{state_name}/tokens", role="supervisor")
     def get_state_input_tokens(self, project_id: str, state_name: str, session_id: int | None = None):
         """Estimated input-token cost of `state_name`'s own turn prompt,
         for the Inspect panel's detail card — fetched on demand for the
@@ -145,7 +145,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_id}/signals", role="supervisor")
+    @get("/api/skills/platform/projects/{project_id}/signals", role="supervisor")
     def get_project_signals(self, project_id: str, state_key: str | None = None, session_id: int | None = None):
         """Signal definitions for the Inspect panel. `state_key`, when
         given, scopes each signal's `relevant` field to that state's
@@ -160,7 +160,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_id}/env-keys", role="admin")
+    @get("/api/skills/platform/projects/{project_id}/env-keys", role="admin")
     def get_project_env_keys(self, project_id: str, session_id: int | None = None):
         """Declared env-key definitions for the "Edit project" view's
         Inspect panel Env tab. `session_id`: see get_project_graph above."""
@@ -174,7 +174,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_id}/sources", role="admin")
+    @get("/api/skills/platform/projects/{project_id}/sources", role="admin")
     def get_project_sources(self, project_id: str, session_id: int | None = None):
         """Declared source definitions for the "Edit project" view's
         design tree/Inspector Source card. `session_id`: see get_project_graph above."""
@@ -187,7 +187,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_id}/project", role="admin")
+    @get("/api/skills/platform/projects/{project_id}/project", role="admin")
     def get_project_metadata(self, project_id: str):
         """The optional top-level `project:` section of `project_id`'s
         last saved index.yml, for the Inspect panel Info tab."""
@@ -201,7 +201,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_id}/invites", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/invites", role="admin")
     def post_create_invite(self, project_id: str):
         """ShareProjectDialog.vue's own trigger — a fresh Invite row (own
         random code, expiry, max-shares budget — see
@@ -213,7 +213,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
-    @post("/api/projects/by-invite/{code}", role="user")
+    @post("/api/skills/platform/projects/by-invite/{code}", role="user")
     def post_resolve_invite_code(self, code: str):
         """Resolves a "share project" invite code back to the project it
         was generated for. Unlike every other route in this file, open to
@@ -238,7 +238,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         explorer never has to restate them."""
         return ProjectFileTypes.catalog_payload()
 
-    @get("/api/projects/{project_id}/files", role="admin")
+    @get("/api/skills/platform/projects/{project_id}/files", role="admin")
     def get_project_files(self, project_id: str):
         """Text-editable files inside `project_id`'s directory (index.yml
         plus any text attachments), for the "Edit project" view's file
@@ -248,7 +248,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_id}/files/{file_name:path}/content")
+    @get("/api/skills/platform/projects/{project_id}/files/{file_name:path}/content")
     def get_project_file_content(self, project_id: str, file_name: str, request: Request, session_id: int | None = None):
         """Raw bytes of `file_name`'s content, for callers that can't use
         the JSON GET below. ETag'd off the content itself, so an
@@ -275,7 +275,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
     # register in alphabetical method-name order, and this method's own
     # {file_name:path} wildcard (needed for legal/terms.md) would otherwise
     # swallow get_project_file_content's literal "/content" suffix.
-    @get("/api/projects/{project_id}/files/{file_name:path}", role="admin")
+    @get("/api/skills/platform/projects/{project_id}/files/{file_name:path}", role="admin")
     def get_project_file_info(self, project_id: str, file_name: str):
         """{content, can_undo, can_redo} of `file_name`'s current
         content — can_undo/can_redo drive the Undo/Redo buttons. Missing
@@ -291,7 +291,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_id}/files/{file_name:path}/undo", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/files/{file_name:path}/undo", role="admin")
     async def undo_project_file(self, project_id: str, file_name: str, request: Request):
         """Loads a step back into the current user's undo history for
         `file_name` — a pure editor preview: nothing is persisted, and
@@ -306,7 +306,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_id}/files/{file_name:path}/redo", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/files/{file_name:path}/redo", role="admin")
     async def redo_project_file(self, project_id: str, file_name: str, request: Request):
         """Mirror of .../undo, replaying the current user's own redo
         history instead (see ProjectService.redo_project_file)."""
@@ -320,7 +320,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_id}/files/index.yml/ai-edit", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/files/index.yml/ai-edit", role="admin")
     async def post_index_yml_ai_edit(self, project_id: str, req: AiEditRequest):
         """The index.yml editor's AI button: asks the configured AiService
         to rewrite index.yml per `req.instruction`, given the format spec
@@ -338,7 +338,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"content": content}
 
-    @post("/api/projects/{project_id}/files/index.css/ai-edit", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/files/index.css/ai-edit", role="admin")
     async def post_index_css_ai_edit(self, project_id: str, req: AiEditRequest):
         """The index.css (Aspect) editor's AI button — mirror of
         post_index_yml_ai_edit above, see ProjectEditor.
@@ -355,7 +355,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"content": content}
 
-    @delete("/api/projects/{project_id}/history", role="admin")
+    @delete("/api/skills/platform/projects/{project_id}/history", role="admin")
     def clear_project_history(self, project_id: str):
         """Deletes the current user's undo/redo history for every file
         in `project_id` — called when the view opens, so a fresh
@@ -366,7 +366,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         return {"success": True}
 
-    @put("/api/projects/{project_id}/files/{file_name:path}", role="admin")
+    @put("/api/skills/platform/projects/{project_id}/files/{file_name:path}", role="admin")
     async def put_project_file(self, project_id: str, file_name: str, request: Request):
         """Creates or edits one of `project_id`'s files in place —
         stages a copy of the whole project dir, validates, and only on
@@ -385,7 +385,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return result
 
-    @post("/api/projects/{project_id}/files/{file_name:path}/rename", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/files/{file_name:path}/rename", role="admin")
     async def rename_project_file(self, project_id: str, file_name: str, req: RenameProjectFileRequest):
         """Renames one file in place — see ProjectEditor.rename_project_file
         for the auto-rewrite of any index.yml/index.css reference to its
@@ -402,7 +402,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return result
 
-    @delete("/api/projects/{project_id}/files/{file_name:path}", role="admin")
+    @delete("/api/skills/platform/projects/{project_id}/files/{file_name:path}", role="admin")
     async def delete_project_file(self, project_id: str, file_name: str):
         """Deletes one text attachment from `project_id`'s directory —
         index.yml itself is rejected (see ProjectService.delete_project_file)."""
@@ -418,7 +418,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
 
-    @post("/api/projects/{project_id}/legal-terms", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/legal-terms", role="admin")
     async def post_add_legal_terms(self, project_id: str):
         """The file explorer's "New legal" action — seeds a fresh
         legal/terms.md with the platform's skeleton text server-side (see
@@ -437,7 +437,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
     # index.yml structural editing, reusing put_project_file's own path.
     # ------------------------------------------------------------------
 
-    @post("/api/projects/{project_id}/states", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/states", role="admin")
     async def add_state(self, project_id: str):
         try:
             return await self.project_service.add_state(project_id, self._activate_project)
@@ -448,7 +448,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_id}/signals", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/signals", role="admin")
     async def add_signal(self, project_id: str):
         try:
             return await self.project_service.add_signal(project_id, self._activate_project)
@@ -459,7 +459,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_id}/env-keys", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/env-keys", role="admin")
     async def add_env_key(self, project_id: str):
         try:
             return await self.project_service.add_env_key(project_id, self._activate_project)
@@ -470,7 +470,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_id}/sources", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/sources", role="admin")
     async def add_source(self, project_id: str, request: Request, file_name: str | None = None):
         content = await request.body()
         try:
@@ -484,7 +484,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_id}/sources/{source_name}/web-import", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/sources/{source_name}/web-import", role="admin")
     async def post_source_web_import(self, project_id: str, source_name: str, req: WebImportRequest):
         try:
             job = self.platform_service.build_web_import_job(
@@ -496,7 +496,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return self.scheduler_service.stream_progress(job)
 
-    @post("/api/projects/{project_id}/states/{state_name}/actions", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/states/{state_name}/actions", role="admin")
     async def add_action(self, project_id: str, state_name: str):
         try:
             return await self.project_service.add_action(project_id, state_name, self._activate_project)
@@ -507,7 +507,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_id}/states/{state_name}/{field}", role="admin")
+    @put("/api/skills/platform/projects/{project_id}/states/{state_name}/{field}", role="admin")
     async def put_state_field(self, project_id: str, state_name: str, field: str, req: SetProjectFieldRequest):
         if field not in STATE_EDITABLE_FIELDS:
             raise HTTPException(
@@ -526,7 +526,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_id}/states/{state_name}/actions/{action_name}/{field}", role="admin")
+    @put("/api/skills/platform/projects/{project_id}/states/{state_name}/actions/{action_name}/{field}", role="admin")
     async def put_action_field(
         self, project_id: str, state_name: str, action_name: str, field: str, req: SetProjectFieldRequest
     ):
@@ -547,7 +547,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_id}/signals/{signal_name}/{field}", role="admin")
+    @put("/api/skills/platform/projects/{project_id}/signals/{signal_name}/{field}", role="admin")
     async def put_signal_field(self, project_id: str, signal_name: str, field: str, req: SetProjectFieldRequest):
         if field not in SIGNAL_EDITABLE_FIELDS:
             raise HTTPException(
@@ -566,7 +566,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_id}/env-keys/{env_key_name}/{field}", role="admin")
+    @put("/api/skills/platform/projects/{project_id}/env-keys/{env_key_name}/{field}", role="admin")
     async def put_env_key_field(self, project_id: str, env_key_name: str, field: str, req: SetProjectFieldRequest):
         if field not in ENV_KEY_EDITABLE_FIELDS:
             raise HTTPException(
@@ -585,7 +585,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_id}/sources/{source_name}/{field}", role="admin")
+    @put("/api/skills/platform/projects/{project_id}/sources/{source_name}/{field}", role="admin")
     async def put_source_field(self, project_id: str, source_name: str, field: str, req: SetProjectFieldRequest):
         if field not in SOURCE_EDITABLE_FIELDS:
             raise HTTPException(
@@ -604,7 +604,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_id}/init-action/{field}", role="admin")
+    @put("/api/skills/platform/projects/{project_id}/init-action/{field}", role="admin")
     async def put_init_action_field(self, project_id: str, field: str, req: SetProjectFieldRequest):
         """Every editable field of the init-action itself. 'target'
         (moving the automaton's start state) is the one case with its
@@ -626,7 +626,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_id}/project/{field}", role="admin")
+    @put("/api/skills/platform/projects/{project_id}/project/{field}", role="admin")
     async def put_project_field(self, project_id: str, field: str, req: SetProjectFieldRequest):
         if field not in PROJECT_EDITABLE_FIELDS:
             raise HTTPException(
@@ -645,7 +645,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_id}/services/{service}", role="admin")
+    @put("/api/skills/platform/projects/{project_id}/services/{service}", role="admin")
     async def put_service_level(self, project_id: str, service: str, req: SetServiceLevelRequest):
         self.project_service.ensure_project_not_broken(project_id)
         try:
@@ -662,7 +662,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
     # Named to sort alphabetically before put_action_field: routes
     # register in alphabetical method-name order, and put_action_field's
     # {field} wildcard would otherwise swallow this literal "order" segment.
-    @put("/api/projects/{project_id}/states/{state_name}/actions/{action_name}/order", role="admin")
+    @put("/api/skills/platform/projects/{project_id}/states/{state_name}/actions/{action_name}/order", role="admin")
     async def move_action(
         self, project_id: str, state_name: str, action_name: str, req: ReorderActionRequest
     ):
@@ -677,7 +677,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @delete("/api/projects/{project_id}/states/{state_name}", role="admin")
+    @delete("/api/skills/platform/projects/{project_id}/states/{state_name}", role="admin")
     async def delete_state(self, project_id: str, state_name: str):
         try:
             await self.project_service.delete_state(project_id, state_name, self._activate_project)
@@ -691,7 +691,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
 
-    @delete("/api/projects/{project_id}/states/{state_name}/actions/{action_name}", role="admin")
+    @delete("/api/skills/platform/projects/{project_id}/states/{state_name}/actions/{action_name}", role="admin")
     async def delete_action(self, project_id: str, state_name: str, action_name: str):
         try:
             await self.project_service.delete_action(project_id, state_name, action_name, self._activate_project)
@@ -703,7 +703,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
 
-    @delete("/api/projects/{project_id}/signals/{signal_name}", role="admin")
+    @delete("/api/skills/platform/projects/{project_id}/signals/{signal_name}", role="admin")
     async def delete_signal(self, project_id: str, signal_name: str):
         try:
             await self.project_service.delete_signal(project_id, signal_name, self._activate_project)
@@ -715,7 +715,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
 
-    @delete("/api/projects/{project_id}/env-keys/{env_key_name}", role="admin")
+    @delete("/api/skills/platform/projects/{project_id}/env-keys/{env_key_name}", role="admin")
     async def delete_env_key(self, project_id: str, env_key_name: str):
         try:
             await self.project_service.delete_env_key(project_id, env_key_name, self._activate_project)
@@ -729,7 +729,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
 
         return Response(status_code=HTTPStatus.NO_CONTENT)
 
-    @delete("/api/projects/{project_id}/sources/{source_name}", role="admin")
+    @delete("/api/skills/platform/projects/{project_id}/sources/{source_name}", role="admin")
     async def delete_source(self, project_id: str, source_name: str):
         try:
             await self.project_service.delete_source(project_id, source_name, self._activate_project)
@@ -741,7 +741,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
 
-    @get("/api/projects/{project_id}/revision", role="admin")
+    @get("/api/skills/platform/projects/{project_id}/revision", role="admin")
     def get_project_revision(self, project_id: str):
         """{revision, published_revision} — the "Edit project" toolbar's
         own revision display."""
@@ -750,7 +750,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_id}/publish/preview", role="admin")
+    @get("/api/skills/platform/projects/{project_id}/publish/preview", role="admin")
     def get_publish_preview(self, project_id: str):
         """Whether a Publish right now needs an explicit state remap
         first. The Publish button's confirm flow calls this before
@@ -760,7 +760,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_id}/publish", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/publish", role="admin")
     def post_publish_project(self, project_id: str, req: PublishProjectRequest):
         """Freezes the current draft as `project_id`'s published
         revision — see ProjectService.publish_project. `remap_to` is
@@ -774,7 +774,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_id}/revert", role="admin")
+    @post("/api/skills/platform/projects/{project_id}/revert", role="admin")
     async def post_revert_project(self, project_id: str):
         """Discards `project_id`'s entire in-progress draft revision,
         reverting to whatever was last published — see ProjectService.

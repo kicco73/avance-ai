@@ -55,7 +55,7 @@ def test_truncate_response_shape_is_a_bare_state_payload(client, hello_project):
     response = client.post(
         f"/api/chat/sessions/{session['id']}/truncate", json={"timestamp": "2099-01-01T00:00:00+00:00"}
     )
-    reset_response = client.post(f"/api/projects/{hello_project}/test-sessions/reset")
+    reset_response = client.post(f"/api/skills/platform/projects/{hello_project}/test-sessions/reset")
 
     assert response.status_code == 200
     assert "task" not in response.json()
@@ -68,11 +68,11 @@ def test_truncate_deletes_trailing_turns_and_rolls_the_live_state_back(client):
     a manual action, then truncate at that transition's timestamp — the
     transition and the state it produced must both be gone."""
     content = (SAMPLES_DIR / "Aprendr català.zip").read_bytes()
-    resp = client.post("/api/projects/upload", content=content, headers={"Content-Type": "application/zip"})
+    resp = client.post("/api/skills/platform/projects/upload", content=content, headers={"Content-Type": "application/zip"})
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
-    client.put(f"/api/projects/{project_id}/activate")
-    client.post(f"/api/projects/{project_id}/publish", json={})
+    client.put(f"/api/skills/platform/projects/{project_id}/activate")
+    client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
 
     session = client.get("/api/chat/session").json()
     assert session["start_state"] == "welcome"

@@ -17,7 +17,7 @@ def test_metrics_history_spans_every_session_chronologically(client, app_db, hel
         chat_turn(client, older['id'], "hi")
         newer = client.post("/api/chat/sessions").json()
         chat_turn(client, newer['id'], "hello again")
-    response = client.get(f"/api/projects/{hello_project}/users/alice/metrics-history")
+    response = client.get(f"/api/core/projects/{hello_project}/users/alice/metrics-history")
 
     assert response.status_code == 200
     body = response.json()
@@ -37,8 +37,8 @@ def test_metrics_history_is_scoped_to_the_given_user_and_project(client, app_db,
     with Session().impersonate("carol"):
         session = client.get("/api/chat/session").json()
         chat_turn(client, session['id'], "hi")
-    alice_body = client.get(f"/api/projects/{hello_project}/users/alice/metrics-history").json()
-    carol_body = client.get(f"/api/projects/{hello_project}/users/carol/metrics-history").json()
+    alice_body = client.get(f"/api/core/projects/{hello_project}/users/alice/metrics-history").json()
+    carol_body = client.get(f"/api/core/projects/{hello_project}/users/carol/metrics-history").json()
 
     assert len(alice_body["metrics"]) == 1
     assert len(carol_body["metrics"]) == 1
@@ -52,7 +52,7 @@ def test_metrics_history_includes_one_session_start_per_session(client, app_db, 
         chat_turn(client, older['id'], "hi")
         client.post("/api/chat/sessions")
 
-    body = client.get(f"/api/projects/{hello_project}/users/alice/metrics-history").json()
+    body = client.get(f"/api/core/projects/{hello_project}/users/alice/metrics-history").json()
 
     assert len(body["session_starts"]) == 2
     assert body["session_starts"][0]["timestamp"] <= body["session_starts"][1]["timestamp"]
@@ -79,7 +79,7 @@ def test_metrics_history_orders_points_by_end_time_even_when_sessions_overlap(cl
         start_state="Hello", type="live",
     )
 
-    response = client.get(f"/api/projects/{hello_project}/users/dave/metrics-history")
+    response = client.get(f"/api/core/projects/{hello_project}/users/dave/metrics-history")
 
     assert response.status_code == 200
     timestamps = [entry["timestamp"] for entry in response.json()["metrics"]]
@@ -97,13 +97,13 @@ def test_metrics_history_survives_an_imported_transcript_without_timestamps(clie
     from conftest import parse_sse_result, chat_turn
 
     response = client.post(
-        f"/api/projects/{hello_project}/sessions/import",
+        f"/api/skills/platform/projects/{hello_project}/sessions/import",
         files=[("files", ("t.txt", "user: hi\nassistant: hello\n", "text/plain"))],
     )
     assert response.status_code == 200, response.text
     username = app_db.get_chat_session(parse_sse_result(response)["last_session_id"])["username"]
 
-    response = client.get(f"/api/projects/{hello_project}/users/{username}/metrics-history")
+    response = client.get(f"/api/core/projects/{hello_project}/users/{username}/metrics-history")
 
     assert response.status_code == 200, response.text
     assert response.json() == {"metrics": [], "session_starts": []}

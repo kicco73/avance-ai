@@ -27,22 +27,22 @@ project:
 
 
 def _upload_attachment(client, project_id, name="behaviour/notes.md", content="hello notes"):
-    response = client.put(f"/api/projects/{project_id}/files/{name}", content=content)
+    response = client.put(f"/api/skills/platform/projects/{project_id}/files/{name}", content=content)
     assert response.status_code == 200, response.text
     return response.json()
 
 
 def _rename(client, project_id, name, new_name):
-    return client.post(f"/api/projects/{project_id}/files/{name}/rename", json={"new_name": new_name})
+    return client.post(f"/api/skills/platform/projects/{project_id}/files/{name}/rename", json={"new_name": new_name})
 
 
 def _files(client, project_id) -> list[str]:
-    return client.get(f"/api/projects/{project_id}/files").json()["files"]
+    return client.get(f"/api/skills/platform/projects/{project_id}/files").json()["files"]
 
 
 def test_renaming_an_attachment_moves_its_row_and_auto_rewrites_every_index_yml_reference(client, hello_project):
     _upload_attachment(client, hello_project)
-    assert client.put(f"/api/projects/{hello_project}/files/index.yml", content=_INDEX_YML_WITH_ATTACHMENT).status_code == 200
+    assert client.put(f"/api/skills/platform/projects/{hello_project}/files/index.yml", content=_INDEX_YML_WITH_ATTACHMENT).status_code == 200
 
     response = _rename(client, hello_project, "behaviour/notes.md", "memo.md")
 
@@ -54,9 +54,9 @@ def test_renaming_an_attachment_moves_its_row_and_auto_rewrites_every_index_yml_
     files = _files(client, hello_project)
     assert "behaviour/memo.md" in files
     assert "behaviour/notes.md" not in files
-    assert client.get(f"/api/projects/{hello_project}/files/behaviour/notes.md").status_code == 404
+    assert client.get(f"/api/skills/platform/projects/{hello_project}/files/behaviour/notes.md").status_code == 404
 
-    index_yml = client.get(f"/api/projects/{hello_project}/files/index.yml").json()["content"]
+    index_yml = client.get(f"/api/skills/platform/projects/{hello_project}/files/index.yml").json()["content"]
     assert "memo.md" in index_yml
     assert "notes.md" not in index_yml
 
@@ -80,10 +80,10 @@ def test_undo_reverses_a_rename_and_redo_reapplies_it_leaving_the_old_names_own_
     be there once undo moves it back to its old name — nothing migrates
     rows, the old name's stack was simply left untouched."""
     _upload_attachment(client, hello_project, content="v1")
-    client.put(f"/api/projects/{hello_project}/files/behaviour/notes.md", content="v2")
+    client.put(f"/api/skills/platform/projects/{hello_project}/files/behaviour/notes.md", content="v2")
     _rename(client, hello_project, "behaviour/notes.md", "memo.md")
 
-    undo_response = client.post(f"/api/projects/{hello_project}/files/behaviour/memo.md/undo", content="")
+    undo_response = client.post(f"/api/skills/platform/projects/{hello_project}/files/behaviour/memo.md/undo", content="")
     assert undo_response.status_code == 200, undo_response.text
     assert undo_response.json()["renamed_to"] == "behaviour/notes.md"
     assert undo_response.json()["content"] == "v2"
@@ -92,10 +92,10 @@ def test_undo_reverses_a_rename_and_redo_reapplies_it_leaving_the_old_names_own_
     assert "behaviour/memo.md" not in files
 
     # The pre-rename stack is still there under the old name.
-    assert client.get(f"/api/projects/{hello_project}/files/behaviour/notes.md").json()["can_undo"] is True
-    content_undo = client.post(f"/api/projects/{hello_project}/files/behaviour/notes.md/undo", content="v2")
+    assert client.get(f"/api/skills/platform/projects/{hello_project}/files/behaviour/notes.md").json()["can_undo"] is True
+    content_undo = client.post(f"/api/skills/platform/projects/{hello_project}/files/behaviour/notes.md/undo", content="v2")
     assert content_undo.status_code == 200, content_undo.text
     assert content_undo.json()["content"] == "v1"
 
-    redo_response = client.post(f"/api/projects/{hello_project}/files/behaviour/notes.md/redo", content="v1")
+    redo_response = client.post(f"/api/skills/platform/projects/{hello_project}/files/behaviour/notes.md/redo", content="v1")
     assert redo_response.status_code == 200, redo_response.text

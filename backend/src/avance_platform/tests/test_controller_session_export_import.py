@@ -1,4 +1,4 @@
-"""GET /api/projects/{project_name}/sessions/export and POST .../import
+"""GET /api/skills/platform/projects/{project_name}/sessions/export and POST .../import
 — the "Label sessions" view's own "Download all"/upload pair (see
 tracking/session_export.py's own module docstring for the exact shape).
 """
@@ -16,7 +16,7 @@ pytestmark = pytest.mark.contract
 
 def _import_transcript(client, project, text="user: hi there\nassistant: hello, world!\n", title="transcript.txt"):
     response = client.post(
-        f"/api/projects/{project}/sessions/import", files=[("files", (title, text, "text/plain"))]
+        f"/api/skills/platform/projects/{project}/sessions/import", files=[("files", (title, text, "text/plain"))]
     )
     assert response.status_code == 200, response.text
     return parse_sse_result(response)["last_session_id"]
@@ -24,7 +24,7 @@ def _import_transcript(client, project, text="user: hi there\nassistant: hello, 
 
 def _import_json(client, project, sessions: list[dict], filename="sessions.json"):
     response = client.post(
-        f"/api/projects/{project}/sessions/import", files=[("files", (filename, json.dumps(sessions), "application/json"))]
+        f"/api/skills/platform/projects/{project}/sessions/import", files=[("files", (filename, json.dumps(sessions), "application/json"))]
     )
     assert response.status_code == 200, response.text
     return parse_sse_result(response)
@@ -35,7 +35,7 @@ def _messages(client, session_id):
 
 
 def _export(client, project) -> list[dict]:
-    response = client.get(f"/api/projects/{project}/sessions/export")
+    response = client.get(f"/api/skills/platform/projects/{project}/sessions/export")
     assert response.status_code == 200
     return response.json()
 
@@ -131,7 +131,7 @@ def test_a_native_looking_json_session_restores_its_timestamps_states_values_and
     assert exported["messages"][1]["values"] == {"mood": 0.5}
     assert exported["messages"][1]["new_state"] == "Hello"
 
-    sessions = client.get(f"/api/projects/{hello_project}/sessions?include_imported=true").json()
+    sessions = client.get(f"/api/core/projects/{hello_project}/sessions?include_imported=true").json()
     assert len(sessions) == 1
     assert {s["id"]: s for s in sessions}[session_id]["type"] == "imported"
 
@@ -186,7 +186,7 @@ def test_a_mixed_batch_skips_only_the_malformed_sessions_without_aborting_the_re
     session) uploaded together in a single request — the bad session is
     skipped without aborting either the rest of the array or the batch."""
     response = client.post(
-        f"/api/projects/{hello_project}/sessions/import",
+        f"/api/skills/platform/projects/{hello_project}/sessions/import",
         files=[
             ("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain")),
             ("files", ("more.json", json.dumps([
@@ -202,7 +202,7 @@ def test_a_mixed_batch_skips_only_the_malformed_sessions_without_aborting_the_re
     assert {r["ok"] for r in body["results"]} == {True, False}
 
     Session().user = "User 1"
-    titles = {s["title"] for s in client.get(f"/api/projects/{hello_project}/sessions?include_imported=true").json()}
+    titles = {s["title"] for s in client.get(f"/api/core/projects/{hello_project}/sessions?include_imported=true").json()}
     assert "t.txt" in titles
     assert "Good one" in titles
 

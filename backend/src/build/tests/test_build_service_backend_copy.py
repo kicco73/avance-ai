@@ -526,7 +526,7 @@ def test_the_route_streams_the_build_instead_of_waiting_for_it(client, hello_pro
     )
     monkeypatch.setattr(backend_copy.BackendCopy, "report", lambda self: ran.append(self.project_id) or {"path": "x"})
 
-    response = client.post(f"/api/projects/{hello_project}/build/backend-copy", json={"excluded_skills": []})
+    response = client.post(f"/api/skills/build/projects/{hello_project}/backend-copy", json={"excluded_skills": []})
 
     assert response.status_code == 200, response.text
     assert response.headers["content-type"].startswith("text/event-stream")
@@ -543,7 +543,7 @@ def test_a_project_that_cannot_be_built_is_refused_before_any_job_exists(client,
         hello_project, {"index.yml": b"project:\n  id: hello_world\n"}, {"index.yml": "text/yaml"},
     )
 
-    response = client.post(f"/api/projects/{hello_project}/build/backend-copy", json={"excluded_skills": []})
+    response = client.post(f"/api/skills/build/projects/{hello_project}/backend-copy", json={"excluded_skills": []})
 
     assert response.status_code == 400
     assert "publish" in response.json()["error"]["message"]

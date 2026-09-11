@@ -8,7 +8,7 @@
 import { computed, onMounted, ref } from 'vue'
 import AppHeader from '../../AppHeader.vue'
 import ProfileMenu from '../../ProfileMenu.vue'
-import { getBuildSkills, postBuildBackendCopy } from '../../../api/build.js'
+import { getBuildRequirements, postBuildBackendCopy } from '../../../api/build.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -95,7 +95,7 @@ const contradictedLabels = computed(() => skills.value
 onMounted(async () => {
   try {
     const { skills: installed, required: mandatory, disabled: refused, contradicted: conflicting }
-      = await getBuildSkills(props.projectId)
+      = await getBuildRequirements(props.projectId)
     skills.value = installed
     required.value = mandatory
     disabled.value = refused ?? []

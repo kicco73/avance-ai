@@ -111,7 +111,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
             deleted = self.platform_service.clean_unused_revisions()
         return {"success": True, "deleted": deleted}
 
-    @get("/api/projects")
+    @get("/api/skills/platform/projects")
     def get_projects(self):
         username = Session().user if not role_satisfies(Session().role, 'supervisor') else None
         return self.platform_service.list_projects(username)
@@ -155,7 +155,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
             ]
         }
 
-    @put("/api/projects/{project_id}/pause", role="admin")
+    @put("/api/skills/platform/projects/{project_id}/pause", role="admin")
     def put_project_pause(self, project_id: str):
         """An operator's own explicit override — only ever allowed while
         `project_id` is actually running."""
@@ -166,7 +166,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_id}/resume", role="admin")
+    @put("/api/skills/platform/projects/{project_id}/resume", role="admin")
     def put_project_resume(self, project_id: str):
         """The other half of pause above — only ever allowed while
         `project_id` is manually paused (see ProjectService.
@@ -178,9 +178,9 @@ class SettingsController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects", role="admin")
+    @post("/api/skills/platform/projects", role="admin")
     async def post_new_project(self):
-        """"New project" — same effect as POST /api/projects/upload with
+        """"New project" — same effect as POST /api/skills/platform/projects/upload with
         backend/samples/Hello world.zip as the body, minus a real upload
         (see ProjectService.create_new_project — its own project.id is
         always freshly minted, since project.id must be globally unique).
@@ -190,7 +190,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         result, _job = await self.project_service.create_new_project(self._activate_project)
         return result
 
-    @put("/api/projects/{project_id}/activate")
+    @put("/api/skills/platform/projects/{project_id}/activate")
     async def activate_project(self, project_id: str):
         try:
             await self.project_service.activate_project_idempotent(project_id, self._activate_project)
@@ -201,10 +201,10 @@ class SettingsController(BaseController, ProjectCommitMixin):
             "project_id": project_id,
         }
 
-    @get("/api/projects/{project_id}", role="admin")
+    @get("/api/skills/platform/projects/{project_id}", role="admin")
     def get_project(self, project_id: str):
         """Downloads `project_id` as a zip — the read side of POST
-        /api/projects/upload, built so it round-trips back through that
+        /api/skills/platform/projects/upload, built so it round-trips back through that
         endpoint with no transformation. Not restricted to the active project."""
         try:
             content = self.platform_service.export_project_zip(project_id)
@@ -219,7 +219,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
             },
         )
 
-    @post("/api/projects/upload", role="admin")
+    @post("/api/skills/platform/projects/upload", role="admin")
     async def post_upload_project(self, request: Request):
         """Creates a project from a raw body (YAML or zip), or — when its
         own project.id already names an existing project — adds a new
@@ -242,7 +242,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return self.scheduler_service.stream_progress(job)
 
-    @delete("/api/projects/{project_id}", role="admin")
+    @delete("/api/skills/platform/projects/{project_id}", role="admin")
     async def delete_project(self, project_id: str):
 
         try:

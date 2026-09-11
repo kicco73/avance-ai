@@ -1,5 +1,5 @@
 """Tests for the Source card's own "AI Web Import" — POST
-/api/projects/{id}/sources/{name}/web-import, its 4-step WebImportJob
+/api/skills/platform/projects/{id}/sources/{name}/web-import, its 4-step WebImportJob
 (crawl, schema extraction, CSV extraction, import) and the SSE progress
 the same response streams back, ending with the CSV written into the
 source's own archive exactly as a manual upload would leave it."""
@@ -69,13 +69,13 @@ def _install_fakes(app: FastAPI, pages=None, columns=None, csv_text=None, step_s
 
 
 def _add_source(client: TestClient, project_id: str, name_hint: str = "places") -> str:
-    response = client.post(f"/api/projects/{project_id}/sources?file_name={name_hint}", content=b"")
+    response = client.post(f"/api/skills/platform/projects/{project_id}/sources?file_name={name_hint}", content=b"")
     assert response.status_code == 200, response.text
     return response.json()["name"]
 
 
 def _web_import(client: TestClient, project_id: str, source_name: str, query: str):
-    return client.post(f"/api/projects/{project_id}/sources/{source_name}/web-import", json={"query": query})
+    return client.post(f"/api/skills/platform/projects/{project_id}/sources/{source_name}/web-import", json={"query": query})
 
 
 def _sse_messages(response) -> list[dict]:
@@ -110,7 +110,7 @@ def test_web_import_reports_one_quarter_per_step_and_writes_the_csv_into_the_sou
     assert crawler.queries == ["well-reviewed dentists in Barcelona"]
     assert len(ai_service.prompts) == 2
 
-    stored = client.get(f"/api/projects/{hello_project}/files/sources/{source_name}.csv")
+    stored = client.get(f"/api/skills/platform/projects/{hello_project}/files/sources/{source_name}.csv")
     assert stored.status_code == 200, stored.text
     assert stored.json()["content"] == MODEL_CSV
 
@@ -122,7 +122,7 @@ def test_web_import_normalizes_the_model_csv_against_the_extracted_schema(app, c
     response = _web_import(client, hello_project, source_name, "dentists")
 
     assert response.status_code == 200, response.text
-    stored = client.get(f"/api/projects/{hello_project}/files/sources/{source_name}.csv")
+    stored = client.get(f"/api/skills/platform/projects/{hello_project}/files/sources/{source_name}.csv")
     assert stored.json()["content"] == "name,district,rating\nDr. Nuria,Eixample,4.8\nDr. Pau,,\n"
 
 
@@ -145,7 +145,7 @@ def test_a_failing_step_ends_the_stream_as_a_failed_job_leaving_the_source_untou
     final = _sse_messages(response)[-1]
     assert final["queue_status"] == "exited" and final["job_status"] == "failed"
     assert final["error"]
-    stored = client.get(f"/api/projects/{hello_project}/files/sources/{source_name}.csv")
+    stored = client.get(f"/api/skills/platform/projects/{hello_project}/files/sources/{source_name}.csv")
     assert stored.json()["content"] == ""
 
 

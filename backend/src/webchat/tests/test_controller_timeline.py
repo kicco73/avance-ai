@@ -1,4 +1,4 @@
-"""Integration tests for GET /api/projects/{project_name}/users/{username}/timeline,
+"""Integration tests for GET /api/core/projects/{project_name}/users/{username}/timeline,
 exercising TurnService.get_timeline end to end: every real signal
 snapshot and state transition for a user across their whole session
 history, chronological — Manage Users' Timeline tab.
@@ -22,7 +22,7 @@ def test_timeline_signals_span_every_session_chronologically(client, app_db, hel
         newer = client.post("/api/chat/sessions").json()
         app_db.save_signal_snapshot({"foo": 20}, newer["id"])
 
-    response = client.get(f"/api/projects/{hello_project}/users/alice/timeline")
+    response = client.get(f"/api/core/projects/{hello_project}/users/alice/timeline")
 
     assert response.status_code == 200
     body = response.json()
@@ -40,7 +40,7 @@ def test_timeline_excludes_signal_rows_but_still_includes_the_initial_state(clie
             f"/api/chat/messages/{turn['assistant_message_id']}/expected-state", json={"expected_state": "Hello"},
         )
 
-    response = client.get(f"/api/projects/{hello_project}/users/bob/timeline")
+    response = client.get(f"/api/core/projects/{hello_project}/users/bob/timeline")
 
     assert response.status_code == 200
     body = response.json()
@@ -55,7 +55,7 @@ def test_timeline_includes_state_transitions(client, app_db, hello_project):
         client.get(f"/api/chat/sessions/{session['id']}/messages")
         app_db.save_transition(None, "leave", "Goodbye", session["id"], "INFO")
 
-    response = client.get(f"/api/projects/{hello_project}/users/alice/timeline")
+    response = client.get(f"/api/core/projects/{hello_project}/users/alice/timeline")
 
     assert response.status_code == 200
     body = response.json()
@@ -74,7 +74,7 @@ def test_timeline_is_scoped_to_the_given_user_and_project(client, app_db, hello_
         carol_session = client.get("/api/chat/session").json()
         app_db.save_signal_snapshot({"foo": 2}, carol_session["id"])
 
-    response = client.get(f"/api/projects/{hello_project}/users/alice/timeline")
+    response = client.get(f"/api/core/projects/{hello_project}/users/alice/timeline")
 
     assert response.status_code == 200
     body = response.json()

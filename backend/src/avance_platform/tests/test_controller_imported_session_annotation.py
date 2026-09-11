@@ -51,14 +51,14 @@ project:
 
 def _setup_project(client, *, autotracking_on_ai_message: bool) -> int:
     response = client.post(
-        "/api/projects/upload",
+        "/api/skills/platform/projects/upload",
         content=_zip_of({"index.yml": _index_yml(autotracking_on_ai_message=autotracking_on_ai_message)}),
         headers={"Content-Type": "application/zip"},
     )
     assert response.status_code == 200, response.text
     assert parse_sse_result(response)["project_id"] == "proj"
-    assert client.put("/api/projects/proj/activate").status_code == 200
-    assert client.post("/api/projects/proj/publish", json={}).status_code == 200
+    assert client.put("/api/skills/platform/projects/proj/activate").status_code == 200
+    assert client.post("/api/skills/platform/projects/proj/publish", json={}).status_code == 200
     # A live session must exist and already be opened first — otherwise a
     # later GET .../messages for an imported session id would bootstrap
     # the project's live conversation (keyed by project, not session_id).
@@ -71,7 +71,7 @@ def _setup_project(client, *, autotracking_on_ai_message: bool) -> int:
 
 def _import_and_get_messages(client) -> tuple[int, dict]:
     response = client.post(
-        "/api/projects/proj/sessions/import", files=[("files", ("transcript.txt", TRANSCRIPT, "text/plain"))]
+        "/api/skills/platform/projects/proj/sessions/import", files=[("files", ("transcript.txt", TRANSCRIPT, "text/plain"))]
     )
     assert response.status_code == 200, response.text
     session_id = parse_sse_result(response)["last_session_id"]
@@ -148,14 +148,14 @@ states:
     actions: []
 """
     response = client.post(
-        "/api/projects/upload",
+        "/api/skills/platform/projects/upload",
         content=_zip_of({"index.yml": other_index_yml}),
         headers={"Content-Type": "application/zip"},
     )
     assert response.status_code == 200, response.text
     assert parse_sse_result(response)["project_id"] == "other"
-    assert client.put("/api/projects/other/activate").status_code == 200
-    assert client.post("/api/projects/other/publish", json={}).status_code == 200
+    assert client.put("/api/skills/platform/projects/other/activate").status_code == 200
+    assert client.post("/api/skills/platform/projects/other/publish", json={}).status_code == 200
 
     # Still succeeds — "a" is a real state in the *message's own* project
     # ("proj"), regardless of "other" now being the active one.

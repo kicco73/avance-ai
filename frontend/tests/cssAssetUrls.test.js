@@ -24,7 +24,7 @@ beforeAll(async () => {
 describe('resolveCssAssetUrls', () => {
   it('rewrites a relative url(...) to the real, absolute API origin — not a same-origin-relative path', () => {
     const result = resolveCssAssetUrls('.x { background: url(bg.png); }', 'proj')
-    expect(result).toBe('.x { background: url(http://localhost:8000/api/projects/proj/files/aspect%2Fbg.png/content); }')
+    expect(result).toBe('.x { background: url(http://localhost:8000/api/skills/platform/projects/proj/files/aspect%2Fbg.png/content); }')
   })
 
   it('carries a given sessionId onto the rewritten URL, for pinned-revision consistency with the stylesheet itself', () => {
@@ -48,7 +48,7 @@ describe('resolveCssAssetUrls', () => {
     const css = ".a { background: url(a.png); } .b { background: url('b.png'); } .c { background: url(\"c.png\"); }"
     const result = resolveCssAssetUrls(css, 'proj')
     expect(result).toContain('/files/aspect%2Fa.png/content')
-    expect(result).toContain("'http://localhost:8000/api/projects/proj/files/aspect%2Fb.png/content'")
-    expect(result).toContain('"http://localhost:8000/api/projects/proj/files/aspect%2Fc.png/content"')
+    expect(result).toContain("'http://localhost:8000/api/skills/platform/projects/proj/files/aspect%2Fb.png/content'")
+    expect(result).toContain('"http://localhost:8000/api/skills/platform/projects/proj/files/aspect%2Fc.png/content"')
   })
 })

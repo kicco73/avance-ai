@@ -3,7 +3,7 @@ import { apiFetch } from './core.js'
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 
 export function getProjects() {
-  return apiFetch(`${API_URL}/projects`)
+  return apiFetch(`${API_URL}/skills/platform/projects`)
 }
 
 // Settings > Runtime status view's own table — every project's own
@@ -40,18 +40,18 @@ export function putUserRole(userId, role) {
 // respectively, enforced backend-side; a 400 means the status shown was
 // already stale.
 export function putProjectPause(projectId) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/pause`, { method: 'PUT' })
+  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/pause`, { method: 'PUT' })
 }
 
 export function putProjectResume(projectId) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/resume`, { method: 'PUT' })
+  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/resume`, { method: 'PUT' })
 }
 
 // "New project" — same effect server-side as uploading samples/Hello
 // world.zip by hand (see putProject), minus picking an id first (the
 // backend mints a fresh one on its own — project.id must be globally unique).
 export function postNewProject() {
-  return apiFetch(`${API_URL}/projects`, { method: 'POST' })
+  return apiFetch(`${API_URL}/skills/platform/projects`, { method: 'POST' })
 }
 
 // Settings > "About Avance..." dialog — {name, version}, version being
@@ -73,7 +73,7 @@ export function postRestoreBackup(file) {
 }
 
 export function activateProject(projectId) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/activate`, {
+  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/activate`, {
     method: 'PUT'
   })
 }
@@ -87,7 +87,7 @@ export function activateProject(projectId) {
 // ProjectManager.put_project), returned as `result.project_id`.
 export function putProject(file, onProgress, onCommitted) {
   const contentType = /\.zip$/i.test(file.name) ? 'application/zip' : 'application/x-yaml'
-  return apiFetch(`${API_URL}/projects/upload`, {
+  return apiFetch(`${API_URL}/skills/platform/projects/upload`, {
     method: 'POST',
     headers: { 'Content-Type': contentType },
     body: file
@@ -95,7 +95,7 @@ export function putProject(file, onProgress, onCommitted) {
 }
 
 export function deleteProject(projectId) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}`, {
+  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}`, {
     method: 'DELETE'
   })
 }
@@ -130,7 +130,7 @@ export function getAiUsage() {
 }
 
 export function downloadProject(projectId) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}`, {}, { parse: 'blob' })
+  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}`, {}, { parse: 'blob' })
 }
 
 // Settings > Manage services > Scheduler — Task rows for one status at a

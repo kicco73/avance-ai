@@ -136,7 +136,7 @@ def test_create_run_rejects_unknown_strategy(client, hello_project):
 def test_sessions_aggregation_pools_both_live_and_imported_sessions(client, hello_project):
     live_id = _make_labeled_session(client)
     resp = client.post(
-        f"/api/projects/{hello_project}/sessions/import",
+        f"/api/skills/platform/projects/{hello_project}/sessions/import",
         files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))],
     )
     imported_id = parse_sse_result(resp)["last_session_id"]

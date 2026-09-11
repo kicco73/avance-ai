@@ -24,7 +24,7 @@ class ProjectController(BaseController):
         self.turn_service = turn_service
         self.project_service = project_service
 
-    @get("/api/projects/{project_id}/identifiers")
+    @get("/api/core/projects/{project_id}/identifiers")
     def get_identifiers(self, project_id: str):
         """`project_id`'s own identifier registry — every identifier a
         trigger/`env:` expression can reference, one {identifier:
@@ -37,7 +37,7 @@ class ProjectController(BaseController):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_id}/metrics")
+    @get("/api/core/projects/{project_id}/metrics")
     def get_metrics(self, project_id: str, message_id: int | None = None, full: bool = False, username: str | None = None):
         """Core metrics for `project_id`, live or (`message_id` given)
         as of that exact message — no caching. `full`: every core metric,
@@ -50,30 +50,30 @@ class ProjectController(BaseController):
             project_id=project_id, message_id=message_id, full=full, username=username,
         )
 
-    @get("/api/projects/{project_id}/users/{username}/latest-signals")
+    @get("/api/core/projects/{project_id}/users/{username}/latest-signals")
     def get_user_latest_signals(self, project_id: str, username: str):
         """The most recent live session's own latest signal snapshot for
         `username` in `project_id` — Manage Users' Signals tab."""
         return self.turn_service.get_latest_signal_values(project_id, username)
 
-    @get("/api/projects/{project_id}/users/{username}/timeline")
+    @get("/api/core/projects/{project_id}/users/{username}/timeline")
     def get_user_timeline(self, project_id: str, username: str):
         return self.turn_service.get_timeline(project_id, username)
 
-    @get("/api/projects/{project_id}/users/{username}/metrics-history")
+    @get("/api/core/projects/{project_id}/users/{username}/metrics-history")
     def get_user_metrics_history(self, project_id: str, username: str):
         return self.turn_service.get_metrics_history(project_id, username)
 
-    @get("/api/projects/{project_id}/legal-terms-status")
+    @get("/api/core/projects/{project_id}/legal-terms/status")
     def get_legal_terms_status(self, project_id: str):
         return self.turn_service.get_legal_terms_status(project_id)
 
-    @post("/api/projects/{project_id}/accept-terms")
+    @post("/api/core/projects/{project_id}/legal-terms/acceptance")
     def post_accept_chat_terms(self, project_id: str):
         self.turn_service.accept_legal_terms(project_id)
         return {"success": True}
 
-    @get("/api/projects/{project_id}/sessions")
+    @get("/api/core/projects/{project_id}/sessions")
     def get_sessions(self, project_id: str, include_imported: bool = False):
         """Every session for `project_id`, for the "Sessions" side
         panel — see TurnService.list_sessions."""

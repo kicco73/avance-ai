@@ -1,4 +1,4 @@
-"""POST /api/projects/{project_id}/publish — freezes the current draft
+"""POST /api/skills/platform/projects/{project_id}/publish — freezes the current draft
 as the new published revision (see ProjectService.publish_project/
 Db.publish_project). Backs the "Publish" button (see EditProjectView.vue).
 """
@@ -27,32 +27,32 @@ def _zip_of(files: dict[str, str]) -> bytes:
 
 def _upload_activate_publish(client, project_id: str):
     response = client.post(
-        "/api/projects/upload",
+        "/api/skills/platform/projects/upload",
         content=_zip_of({"index.yml": f"project:\n  id: {project_id}\n" + MINIMAL_YML, "notes.txt": "original"}),
         headers={"Content-Type": "application/zip"},
     )
     assert response.status_code == 200, response.text
     assert parse_sse_result(response)["project_id"] == project_id
-    assert client.put(f"/api/projects/{project_id}/activate").status_code == 200
-    assert client.post(f"/api/projects/{project_id}/publish", json={}).status_code == 200
+    assert client.put(f"/api/skills/platform/projects/{project_id}/activate").status_code == 200
+    assert client.post(f"/api/skills/platform/projects/{project_id}/publish", json={}).status_code == 200
 
 
 def test_publish_clears_undo_history(client):
     _upload_activate_publish(client, "proj")
-    client.put(f"/api/projects/proj/files/notes.txt", content=b"edited")
-    assert client.get("/api/projects/proj/files/notes.txt").json()["can_undo"] is True
+    client.put(f"/api/skills/platform/projects/proj/files/notes.txt", content=b"edited")
+    assert client.get("/api/skills/platform/projects/proj/files/notes.txt").json()["can_undo"] is True
 
-    resp = client.post("/api/projects/proj/publish", json={})
+    resp = client.post("/api/skills/platform/projects/proj/publish", json={})
     assert resp.status_code == 200, resp.text
 
-    assert client.get("/api/projects/proj/files/notes.txt").json()["can_undo"] is False
+    assert client.get("/api/skills/platform/projects/proj/files/notes.txt").json()["can_undo"] is False
 
 
 def test_publish_is_a_no_op_when_already_up_to_date(client):
     _upload_activate_publish(client, "proj")
-    before = client.get("/api/projects/proj/revision").json()
+    before = client.get("/api/skills/platform/projects/proj/revision").json()
 
-    resp = client.post("/api/projects/proj/publish", json={})
+    resp = client.post("/api/skills/platform/projects/proj/publish", json={})
     assert resp.status_code == 200
     assert resp.json() == before
 
@@ -60,18 +60,18 @@ def test_publish_is_a_no_op_when_already_up_to_date(client):
 @pytest.mark.regression
 def test_publish_clears_every_users_undo_trail_even_when_the_revision_is_already_published(client):
     _upload_activate_publish(client, "proj")
-    client.put("/api/projects/proj/files/notes.txt", content=b"edited")
-    assert client.get("/api/projects/proj/files/notes.txt").json()["can_undo"] is True
+    client.put("/api/skills/platform/projects/proj/files/notes.txt", content=b"edited")
+    assert client.get("/api/skills/platform/projects/proj/files/notes.txt").json()["can_undo"] is True
     other = User.create(id="other@example.com", email="other@example.com", role="admin")
     EditHistory.create(
         user_id=other.id, project_id="proj", archive_name="notes.txt", kind="undo", seq=0, content=b"theirs",
     )
 
-    assert client.post("/api/projects/proj/publish", json={}).status_code == 200
+    assert client.post("/api/skills/platform/projects/proj/publish", json={}).status_code == 200
     assert not EditHistory.select().where(EditHistory.project_id == "proj").exists()
 
     EditHistory.create(
         user_id=other.id, project_id="proj", archive_name="notes.txt", kind="undo", seq=0, content=b"dangling",
     )
-    assert client.post("/api/projects/proj/publish", json={}).status_code == 200
+    assert client.post("/api/skills/platform/projects/proj/publish", json={}).status_code == 200
     assert not EditHistory.select().where(EditHistory.project_id == "proj").exists()

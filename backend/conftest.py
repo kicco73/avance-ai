@@ -407,7 +407,7 @@ def app(
     )
     # No real providers: this app fixture never goes through AuthMiddleware
     # (that's only wired in main.py's create_app(), not here) or exercises
-    # /api/auth/*, so nothing needs a real Google client id to resolve.
+    # /api/skills/platform/auth/*, so nothing needs a real Google client id to resolve.
     auth_service = AuthService(app_db, [], token_ttl_in_hours=24 * 7, project_service=project_service)
 
     fastapi_app = FastAPI(title="Avance State Engine (test)")
@@ -560,13 +560,13 @@ def hello_project(client: TestClient) -> str:
     installed_skill("avance_platform")
     content = (SAMPLES_DIR / "Hello world.zip").read_bytes()
     response = client.post(
-        "/api/projects/upload", content=content, headers={"Content-Type": "application/zip"}
+        "/api/skills/platform/projects/upload", content=content, headers={"Content-Type": "application/zip"}
     )
     assert response.status_code == 200, response.text
     project_id = parse_sse_result(response)["project_id"]
-    response = client.put(f"/api/projects/{project_id}/activate")
+    response = client.put(f"/api/skills/platform/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
-    response = client.post(f"/api/projects/{project_id}/publish", json={})
+    response = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
     return project_id
 

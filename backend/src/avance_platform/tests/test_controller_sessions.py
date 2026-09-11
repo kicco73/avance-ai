@@ -59,23 +59,23 @@ def _someone_elses_session(app_db, project_name="channel-codes-proj"):
 
 def _import_session(client, project_id) -> int:
     imported = client.post(
-        f"/api/projects/{project_id}/sessions/import", files=[("files", ("transcript.txt", "user: hi\nassistant: hello\n", "text/plain"))]
+        f"/api/skills/platform/projects/{project_id}/sessions/import", files=[("files", ("transcript.txt", "user: hi\nassistant: hello\n", "text/plain"))]
     )
     return parse_sse_result(imported)["last_session_id"]
 
 
 def _upload_and_publish(client, sample: str) -> str:
     content = (SAMPLES_DIR / sample).read_bytes()
-    resp = client.post("/api/projects/upload", content=content, headers={"Content-Type": "application/zip"})
+    resp = client.post("/api/skills/platform/projects/upload", content=content, headers={"Content-Type": "application/zip"})
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
-    resp = client.post(f"/api/projects/{project_id}/publish", json={})
+    resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
     return project_id
 
 
 def _sessions_by_id(client, project_id) -> dict:
-    return {s["id"]: s for s in client.get(f"/api/projects/{project_id}/sessions").json()}
+    return {s["id"]: s for s in client.get(f"/api/core/projects/{project_id}/sessions").json()}
 
 
 def _turn_error(client, session_id) -> dict:
@@ -263,7 +263,7 @@ def test_a_turn_succeeds_against_the_active_session_and_delete_removes_it(client
     assert chat_turn(client, session['id'], "hi")["session_id"] == session["id"]
 
     assert client.delete(f"/api/chat/sessions/{session['id']}").status_code == 200
-    assert client.get(f"/api/projects/{hello_project}/sessions").json() == []
+    assert client.get(f"/api/core/projects/{hello_project}/sessions").json() == []
 
 
 @pytest.mark.regression
@@ -275,7 +275,7 @@ def test_a_turn_rejects_an_idle_session_without_auto_rotating(client, hello_proj
     _turn_error(client, session["id"])
 
     # No silent rotation: nothing new was created on the closed session's behalf.
-    sessions = client.get(f"/api/projects/{hello_project}/sessions").json()
+    sessions = client.get(f"/api/core/projects/{hello_project}/sessions").json()
     assert [s["id"] for s in sessions] == [session["id"]]
 
 
@@ -285,7 +285,7 @@ def test_manual_new_session_starts_at_the_automatons_current_state_not_the_initi
     automaton position currently sits, never silently rewound to
     init_action.target."""
     project_id = _upload_and_publish(client, "Aprendr català.zip")
-    client.put(f"/api/projects/{project_id}/activate")
+    client.put(f"/api/skills/platform/projects/{project_id}/activate")
 
     bootstrap = client.get("/api/chat/session").json()
     assert bootstrap["start_state"] == "welcome"
@@ -300,19 +300,19 @@ def test_manual_new_session_starts_at_the_automatons_current_state_not_the_initi
 
 @pytest.mark.regression
 def test_switching_the_active_project_keeps_the_other_projects_sessions_and_the_list_is_scoped_by_the_url(client, app_db: Db):
-    """GET /api/projects/{project_name}/sessions must return that exact
+    """GET /api/core/projects/{project_name}/sessions must return that exact
     project's own sessions regardless of which project is currently
     active, and switching must never touch another project's sessions."""
     hello = _upload_and_publish(client, "Hello world.zip")
     cat = _upload_and_publish(client, "Aprendr català.zip")
 
-    client.put(f"/api/projects/{hello}/activate")
+    client.put(f"/api/skills/platform/projects/{hello}/activate")
     hello_session = client.get("/api/chat/session").json()
 
-    client.put(f"/api/projects/{cat}/activate")
+    client.put(f"/api/skills/platform/projects/{cat}/activate")
 
     assert app_db.get_chat_session(hello_session["id"]) is not None
-    explicit_hello = client.get(f"/api/projects/{hello}/sessions").json()
+    explicit_hello = client.get(f"/api/core/projects/{hello}/sessions").json()
     assert [s["id"] for s in explicit_hello] == [hello_session["id"]]
     assert all(s["project_id"] == hello for s in explicit_hello)
-    assert all(s["project_id"] == cat for s in client.get(f"/api/projects/{cat}/sessions").json())
+    assert all(s["project_id"] == cat for s in client.get(f"/api/core/projects/{cat}/sessions").json())

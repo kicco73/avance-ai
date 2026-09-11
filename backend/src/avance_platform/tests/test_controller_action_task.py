@@ -33,12 +33,12 @@ YML = (
 
 
 def _upload_and_get_session(client):
-    resp = client.post("/api/projects/upload", content=YML.encode(), headers={"Content-Type": "application/x-yaml"})
+    resp = client.post("/api/skills/platform/projects/upload", content=YML.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
-    resp = client.put(f"/api/projects/{project_id}/activate")
+    resp = client.put(f"/api/skills/platform/projects/{project_id}/activate")
     assert resp.status_code == 200, resp.text
-    resp = client.post(f"/api/projects/{project_id}/publish", json={})
+    resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
     return client.get("/api/chat/session").json()
 

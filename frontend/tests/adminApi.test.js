@@ -45,7 +45,7 @@ describe('putProject', () => {
     vi.unstubAllGlobals()
   })
 
-  it('POSTs the zip to /api/projects/upload, forwards progress, and resolves with the final result', async () => {
+  it('POSTs the zip to /api/skills/platform/projects/upload, forwards progress, and resolves with the final result', async () => {
     fetch.mockResolvedValue(fakeSseResponse([
       { key: 'import:hello', queue_status: 'running', percentage: 50 },
       { key: 'import:hello', queue_status: 'exited', job_status: 'completed', result: { success: true, project_id: 'hello_world' } }
@@ -57,7 +57,7 @@ describe('putProject', () => {
 
     expect(fetch).toHaveBeenCalledTimes(1)
     const [url, options] = fetch.mock.calls[0]
-    expect(url).toBe('http://localhost:8000/api/projects/upload')
+    expect(url).toBe('http://localhost:8000/api/skills/platform/projects/upload')
     expect(options.method).toBe('POST')
     expect(options.headers['Content-Type']).toBe('application/zip')
     expect(options.body).toBe(file)
