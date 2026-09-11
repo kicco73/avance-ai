@@ -31,7 +31,7 @@ class TestingSkill(Skill):
     ui_description = "Benchmark runs and their aggregated results."
 
     def __init__(self) -> None:
-        self._config = None
+        self._config = testing_config.parse({}, Path("."))
 
     def start_service(self, raw: dict, path: Path) -> None:
         self._config = testing_config.parse(raw, path)

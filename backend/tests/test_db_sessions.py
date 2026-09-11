@@ -24,7 +24,7 @@ def _make_session(db, *, username="user", project_name="proj", start=datetime(20
 
 
 @pytest.mark.contract
-def test_create_and_get_chat_session_with_the_channel_defaulting_to_native_chat_and_none_for_an_unknown_id(db):
+def test_create_and_get_chat_session_with_no_channel_of_its_own_and_none_for_an_unknown_id(db):
     session_id = _make_session(db)
 
     session = db.get_chat_session(session_id)
@@ -32,7 +32,7 @@ def test_create_and_get_chat_session_with_the_channel_defaulting_to_native_chat_
     assert session["project_id"] == "proj"
     assert session["start_state"] == "start"
     assert session["end_state"] == "start"
-    assert session["channel"] == "native-chat"
+    assert session["channel"] is None
 
     assert db.get_chat_session(_make_session(db, channel="whatsapp-chat"))["channel"] == "whatsapp-chat"
     assert db.get_chat_session(999999) is None

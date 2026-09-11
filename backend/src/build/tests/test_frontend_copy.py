@@ -41,7 +41,7 @@ def test_an_excluded_package_takes_its_frontend_directory_with_it(tmp_path):
     copy = FrontendCopy(source, tmp_path / "out", ["talk"])
     copy._copy()
 
-    dropped = copy._prune_skills()
+    dropped = copy._prune_skills(copy._excluded_keys())
 
     assert dropped == {"talk"}
     assert not (copy.skills_dir / "talk").exists()
@@ -56,7 +56,7 @@ def test_the_directory_is_named_by_key_where_the_package_is_named_otherwise(tmp_
     copy = FrontendCopy(source, tmp_path / "out", ["avance_platform"])
     copy._copy()
 
-    dropped = copy._prune_skills()
+    dropped = copy._prune_skills(copy._excluded_keys())
 
     assert dropped == {"platform"}
     assert not (copy.skills_dir / "platform").exists()
@@ -67,8 +67,21 @@ def test_a_package_with_no_frontend_of_its_own_drops_nothing(tmp_path):
     copy = FrontendCopy(source, tmp_path / "out", ["mail"])
     copy._copy()
 
-    assert copy._prune_skills() == set()
+    assert copy._prune_skills(copy._excluded_keys()) == set()
     assert sorted(path.name for path in copy.skills_dir.iterdir()) == ["build", "platform", "registry.js", "talk"]
+
+
+def test_a_package_with_no_frontend_directory_is_still_a_name_the_core_may_not_use(tmp_path):
+    """Owning no directory here is not the same as being allowed to stay:
+    the backend package is gone either way, so a core file still calling
+    `/api/skills/<key>/` is a delivery that 404s. This is what let a
+    build ship a frontend calling a platform that was not there."""
+    source = _frontend_tree(tmp_path / "frontend")
+    (source / "src" / "api.js").write_text("fetch(`${API_URL}/skills/platform/settings/services`)")
+    copy = FrontendCopy(source, tmp_path / "out", ["avance_platform"])
+
+    with pytest.raises(FrontendBuildError, match="still names platform"):
+        copy.build()
 
 
 def test_a_delivered_source_still_naming_a_dropped_skill_fails_the_build(tmp_path):

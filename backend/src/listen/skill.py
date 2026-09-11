@@ -57,10 +57,11 @@ class ListenSkill(Skill):
             logger.info("listen-service is not enabled — no decoder, no route.")
             return
 
-        self._service = ListenService.from_config(self._providers)
-        SpeechDecoder(self._service).register()
+        service = ListenService.from_config(self._providers)
+        self._service = service
+        SpeechDecoder(service).register()
         bus.contribute(POINT_API_STATE, lambda payload: payload.update(
-            {"listen_enabled": self._project_listen().narrow(self._service.enabled)}
+            {"listen_enabled": self._project_listen().narrow(service.enabled)}
         ))
         logger.info("listen-service started with %d provider(s).", len(self._providers))
 

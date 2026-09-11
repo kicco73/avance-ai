@@ -1,0 +1,6 @@
+{
+  "include": ["src", "tests", "conftest.py"],
+  "exclude": ["**/node_modules", "**/__pycache__", ".venv", "builds"],
+  "extraPaths": ["src", ".", "tests"],
+  "typeCheckingMode": "basic"
+}

@@ -246,6 +246,21 @@ rather than assuming they match, because `avance_platform` declares
 `key = "platform"`. It prunes after copying rather than through an ignore
 function for the same reason — the translation needs the roster.
 
+The read-back asks the roster, not the directory listing: **owning no
+`frontend/src/skills/<key>/` is not permission to stay.** The backend
+package left either way, so a core file still writing `/api/skills/<key>/`
+is a delivery whose every call 404s. Deriving the names to search from
+"what we managed to delete" is how a build once shipped a frontend calling
+a `platform` that was not there — the directory did not exist, nothing
+was deleted, and nothing was looked for. One substring, `skills/<key>/`,
+covers both the import path and the route.
+
+`platform` is the case that still has no answer: a build may drop
+`avance_platform`, but the authoring frontend it serves — the editor,
+settings, the app store, login, labeling — is spread across the frontend
+core rather than gathered under `src/skills/platform/`, so no build can
+drop it yet. The build now says so and fails; the split is open work.
+
 What it deliberately does not do is compile the frontend. The delivery is
 pruned source, built where it is deployed exactly as the Dockerfile
 already builds it (`npm ci && npm run build`). Compiling here would put an

@@ -19,6 +19,11 @@ logger = LoggerFactory.get_logger(__name__)
 
 VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
+ACTION_FIELDS = {
+    "name", "ui-label", "ui-button", "ui-description",
+    "target", "trigger", "task", "on-exit", "env",
+}
+
 LEGACY_STATE_SOURCE_FIELDS = {
     "tools": "ai-may-read-sources",
     "ai-may-query-sources": "ai-may-read-sources",
@@ -109,6 +114,7 @@ class AutomatonBuilder(object):
         on_exit = raw_action.get("on-exit")
         line = BuildCursor.own_line(raw_action)
         self._at(line, f"states.{key}.actions.{raw_action.get('name', '?')}")
+        self._warn_unknown_action_fields(raw_action)
         return Action(
             name=raw_action["name"],
             ui_description=raw_action.get("ui-description"),
@@ -121,6 +127,17 @@ class AutomatonBuilder(object):
             env=self._build_action_env(raw_action.get("env"), raw_action["name"]),
             line=line,
         )
+
+    def _warn_unknown_action_fields(self, raw_action: dict) -> None:
+        """A field nobody reads is a field that never runs. `on-enter:`
+        held a send_mail call in a published project for four revisions,
+        and the only thing that noticed was a build asked whether mail was
+        required and truthfully answering no."""
+        for field in sorted(set(raw_action) - ACTION_FIELDS):
+            self._cursor.warn(
+                f"Action '{raw_action.get('name', '?')}': '{field}' is not a field an action has, "
+                f"so it is ignored — expected one of {', '.join(sorted(ACTION_FIELDS))}."
+            )
 
     def _build_state_source_lists(self, key: str, raw_state: dict) -> dict[str, list[str]]:
         for legacy_field, replacement in LEGACY_STATE_SOURCE_FIELDS.items():

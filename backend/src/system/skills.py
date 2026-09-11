@@ -22,6 +22,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import pkgutil
+from collections.abc import Awaitable
 from pathlib import Path
 from types import ModuleType
 
@@ -38,22 +39,16 @@ DOC_FILE = "docs/SKILL.md"
 class Skill:
 
     project_declarable = False
+    package = ""
+    key = ""
+    ui_label = ""
+    ui_description = ""
 
-    @property
-    def package(self) -> str:
-        return type(self).__module__.split(".")[0]
-
-    @property
-    def key(self) -> str:
-        return self.package
-
-    @property
-    def ui_label(self) -> str:
-        return self.package.replace("_", " ").title()
-
-    @property
-    def ui_description(self) -> str:
-        return ""
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        cls.package = cls.__module__.split(".")[0]
+        cls.key = cls.key or cls.package
+        cls.ui_label = cls.ui_label or cls.package.replace("_", " ").title()
 
     def start(self, raw: dict, path: Path) -> None:
         self.start_service(raw, path)
@@ -72,10 +67,10 @@ class Skill:
     def section(self, fields: dict) -> dict:
         return {**fields, "ui-label": self.ui_label, "ui-description": self.ui_description}
 
-    def stop(self) -> None:
-        pass
+    def stop(self) -> Awaitable[None] | None:
+        return None
 
-    def required_by(self, automaton, sources: dict[str, str]) -> bool:
+    def required_by(self, automaton, sources: dict[str, str | bytes]) -> bool:
         return False
 
     def requirements(self) -> list[str]:
@@ -172,7 +167,7 @@ def declarable(source_root: Path | None = None) -> list[dict]:
     return [entry for entry in installed(source_root) if entry["declarable"]]
 
 
-def required_for(automaton, sources: dict[str, str], source_root: Path | None = None) -> list[str]:
+def required_for(automaton, sources: dict[str, str | bytes], source_root: Path | None = None) -> list[str]:
     """The packages this project cannot run without: what it declared as
     `required`, plus what each skill works out for itself from what the
     project does (`required_by`) — a `task.send_mail` call requires mail
@@ -192,7 +187,7 @@ def required_for(automaton, sources: dict[str, str], source_root: Path | None = 
     ]
 
 
-def disabled_for(automaton, sources: dict[str, str], source_root: Path | None = None) -> list[str]:
+def disabled_for(automaton, sources: dict[str, str | bytes], source_root: Path | None = None) -> list[str]:
     """The packages this project declared it will not use, and the ones
     it contradicts itself about — a project that declares `mail:
     disabled` and still calls task.send_mail gets the call bounced at
@@ -202,7 +197,7 @@ def disabled_for(automaton, sources: dict[str, str], source_root: Path | None = 
     return [skill.package for skill in discover(source_root) if skill.key in declared]
 
 
-def contradicted_for(automaton, sources: dict[str, str], source_root: Path | None = None) -> list[str]:
+def contradicted_for(automaton, sources: dict[str, str | bytes], source_root: Path | None = None) -> list[str]:
     declared = _declared(automaton).disabled_keys()
     return [
         skill.package

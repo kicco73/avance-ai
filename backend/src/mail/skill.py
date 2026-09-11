@@ -50,13 +50,15 @@ class MailSkill(Skill):
         # one as a parameter" (see bus.POINT_CORE_SERVICES).
         for service in filter(None, [self._service]):
             return service
-        self._service = MailService(self._config, bus.collect(POINT_CORE_SERVICES, {})["scheduler_service"])
-        return self._service
+        for config in filter(None, [self._config]):
+            self._service = MailService(config, bus.collect(POINT_CORE_SERVICES, {})["scheduler_service"])
+            return self._service
+        raise RuntimeError("mail-service is not enabled — task.send_mail can't run.")
 
     def stop(self) -> None:
         bus.unsubscribe(MAIL_SEND, self.on_mail_send)
 
-    def required_by(self, automaton, sources: dict[str, str]) -> bool:
+    def required_by(self, automaton, sources: dict[str, str | bytes]) -> bool:
         """A project that calls task.send_mail cannot run in a build without
         this package: the call would find nobody registered for MAIL_SEND
         and raise where the automaton expects a mail to go out."""

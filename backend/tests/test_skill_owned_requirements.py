@@ -84,7 +84,21 @@ def test_a_dependency_only_one_skill_imports_is_claimed_by_that_skill():
 
 
 def test_requirements_of_answers_only_for_the_packages_it_is_given():
+    # Each skill owns its own lines (see _claims), so the question a build
+    # asks is answered package by package: what one skill claims is in the
+    # answer when it is named, and in nothing else's.
+    claims = _claims()
+    owned = {}
+    for line, (package,) in ((line, owners) for line, owners in claims.items() if len(owners) == 1):
+        owned.setdefault(package, set()).add(line)
+    assert owned, "no skill in this build claims a dependency of its own"
+
     assert skills.requirements_of([]) == []
-    assert skills.requirements_of(["talk"]) == ["piper-tts>=1.6"]
-    assert set(skills.requirements_of(["talk", "mail"])) == {"piper-tts>=1.6", "aiosmtplib>=5.0", "markdown>=3.7"}
-    assert skills.requirements_of(["avance_platform"]) == []
+    for package, lines in owned.items():
+        assert set(skills.requirements_of([package])) == lines
+    assert set(skills.requirements_of(list(owned))) == set().union(*owned.values())
+
+    claimants = {package for owners in claims.values() for package in owners}
+    for skill in skills.discover():
+        if skill.package not in claimants:
+            assert skills.requirements_of([skill.package]) == []

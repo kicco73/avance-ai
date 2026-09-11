@@ -53,8 +53,9 @@ class FrontendCopy:
 
     def build(self) -> dict:
         self._copy()
-        dropped = self._prune_skills()
-        leaked = self._leaked(dropped)
+        excluded_keys = self._excluded_keys()
+        dropped = self._prune_skills(excluded_keys)
+        leaked = self._leaked(excluded_keys)
         if leaked:
             raise FrontendBuildError(
                 f"The copied frontend still names {', '.join(sorted(leaked))} — it was supposed to be left out."
@@ -65,13 +66,21 @@ class FrontendCopy:
         shutil.rmtree(self._destination, ignore_errors=True)
         shutil.copytree(self._source, self._destination, ignore=_FRONTEND_COPY_IGNORE)
 
-    def _prune_skills(self) -> set[str]:
+    def _excluded_keys(self) -> set[str]:
+        """The keys of every excluded package, whether or not it owns a
+        directory here. A skill with no frontend of its own is still gone
+        from the backend, so the frontend must stop naming it just the
+        same — reading the roster instead of the directory listing is
+        what makes that true for `platform`, whose routes the core still
+        calls while `frontend/src/skills/platform/` does not exist."""
         from system import skills
 
         excluded = set(self._excluded_skills)
-        keys = {entry["key"] for entry in skills.installed() if entry["package"] in excluded}
+        return {entry["key"] for entry in skills.installed() if entry["package"] in excluded}
+
+    def _prune_skills(self, excluded_keys: set[str]) -> set[str]:
         dropped = set()
-        for key in keys:
+        for key in excluded_keys:
             directory = self.skills_dir / key
             if not directory.is_dir():
                 continue
@@ -80,10 +89,11 @@ class FrontendCopy:
         logger.info("frontend pruned of %s", ", ".join(sorted(dropped)) or "nothing")
         return dropped
 
-    def _leaked(self, dropped: set[str]) -> set[str]:
-        """Whatever a dropped skill left behind in what is delivered. An
-        import path or a route is what would actually break, or leak: a
-        prose mention of a name is neither."""
+    def _leaked(self, excluded_keys: set[str]) -> set[str]:
+        """Whatever an excluded skill left behind in what is delivered. An
+        import path (`skills/<key>/`) or a route (`/api/skills/<key>/`) is
+        what would actually break, or leak — the same substring covers
+        both. A prose mention of a name is neither."""
         sources = [path for path in self._destination.rglob("*") if path.suffix in _SOURCE_SUFFIXES]
         contents = "\n".join(path.read_text(encoding="utf-8", errors="ignore") for path in sources)
-        return {key for key in dropped if f"skills/{key}/" in contents}
+        return {key for key in excluded_keys if f"skills/{key}/" in contents}

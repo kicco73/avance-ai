@@ -78,6 +78,7 @@ class BuildSkill(Skill):
 
     def _compile_published(self, report: dict) -> None:
         try:
-            report["built"] = self._service.build_local_module(report["project_id"])
+            for service in filter(None, [self._service]):
+                report["built"] = service.build_local_module(report["project_id"])
         except Exception:
             logger.exception("compiling the published revision failed; the publish itself stands")

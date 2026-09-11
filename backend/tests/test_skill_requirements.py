@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pytest
 
+from conftest import installed_skill
 from project.archive.automaton_loader import AutomatonLoader
 from project.archive.layout import ArchiveLayout
 from project.project_service import ProjectService
@@ -68,15 +69,22 @@ def _contradicted(db, project_id: str, task: str, services: dict[str, str] | Non
 
 
 def test_a_project_that_sends_mail_cannot_be_built_without_mail(db):
+    installed_skill("mail")
     assert "mail" in _required(db, "a", "task.send_mail(user.email, 'hi')")
 
 
 def test_a_project_that_messages_whatsapp_cannot_be_built_without_whatsapp(db):
+    installed_skill("whatsapp")
     assert "whatsapp" in _required(db, "b", "task.whatsapp('34600000001', 'hi')")
 
 
 def test_a_declared_required_service_is_required_even_when_nothing_calls_it(db):
+    installed_skill("talk")
     assert "talk" in _required(db, "c", "task.prompt('x')", {"talk": "required"})
+
+
+def test_a_second_skill_declared_required_answers_for_itself(db):
+    installed_skill("listen")
     assert "listen" in _required(db, "c2", "task.prompt('x')", {"listen": "required"})
 
 
@@ -91,16 +99,20 @@ def test_a_project_that_asks_for_nothing_requires_nothing(db):
 
 
 def test_what_a_project_never_calls_is_never_required(db):
+    installed_skill("mail")
+    installed_skill("talk")
     required = _required(db, "f", "task.send_mail(user.email, 'hi')", {"talk": "disabled"})
     assert required == {"mail"}, "only what the automaton actually uses"
 
 
 def test_a_disabled_service_is_reported_as_disabled(db):
+    installed_skill("talk")
     assert _disabled(db, "h", "task.prompt('x')", {"talk": "disabled"}) == {"talk"}
     assert _disabled(db, "i", "task.prompt('x')", {"talk": "required"}) == set()
 
 
 def test_calling_a_service_the_project_disabled_is_a_contradiction(db):
+    installed_skill("mail")
     assert _contradicted(db, "j", "task.send_mail(user.email, 'hi')", {"mail": "disabled"}) == {"mail"}
     assert _contradicted(db, "k", "task.prompt('x')", {"mail": "disabled"}) == set()
 

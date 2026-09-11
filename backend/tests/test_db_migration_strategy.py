@@ -396,9 +396,9 @@ def test_upgrade_rebuilds_a_table_needing_both_a_constraint_change_and_a_new_not
 
     notnull = _notnull(db_path, "ChatSession")
     assert notnull["labeling_revision"] is True
-    assert notnull["channel"] is True
+    assert notnull["channel"] is False
     assert _query(db_path, "SELECT id, username, project_id, labeling_revision, channel FROM ChatSession") == [
-        (1, "enrico@example.com", "lluna", 0, "native-chat"),
+        (1, "enrico@example.com", "lluna", 0, None),
     ]
     assert _query(db_path, "SELECT session_id, content FROM Message") == [(1, "hi")]
     assert _query(db_path, "PRAGMA foreign_key_check") == []

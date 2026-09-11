@@ -98,7 +98,7 @@ class WhatsAppSkill(Skill):
     async def stop(self) -> None:
         await self._installed.uninstall()
 
-    def required_by(self, automaton, sources: dict[str, str]) -> bool:
+    def required_by(self, automaton, sources: dict[str, str | bytes]) -> bool:
         """A project that calls task.whatsapp cannot run in a build without
         this package: the message would be posted with nothing registered to
         carry it, and the call would answer False for every recipient."""
