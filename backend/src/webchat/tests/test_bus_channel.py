@@ -14,10 +14,12 @@ from fastapi import WebSocketDisconnect
 
 from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME
-from system.bus import UI_NOTIFICATION, UI_PROGRESS
+from system import bus
+from system.bus import TURN_ENDED, UI_NOTIFICATION, UI_PROGRESS
 from system.bus_channel import (
     SUPERSEDED_CLOSE_CODE, SWITCHED_TO_OTHER_CLIENT, HumanNotConnectedError, WsConnection, BusChannel,
 )
+from turn.input_listener import TurnInput
 from webchat.webchat_service import WebchatService
 from conftest import chat_socket, chat_turn_frames
 from system.session import Session
@@ -529,6 +531,11 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     db = turn_service_for.db
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     channel = BusChannel(_FakeAuthService())
+    # Two objects now, and the split is the point: core runs the turn and
+    # publishes what it produces, the chat window forwards what is
+    # addressed to a connection it holds (see turn/input_listener.py).
+    db.get_or_create_user(None, None, Session().user, None, None, user_id=Session().user)
+    TurnInput(turn_service, db).register()
     WebchatService(turn_service, None, channel).register()
     websocket = _ScriptedWebSocket(
         [
@@ -571,20 +578,31 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
     db = turn_service_for.db
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     channel = BusChannel(_FakeAuthService())
-    webchat = WebchatService(turn_service, None, channel)
-    webchat.register()
+    db.get_or_create_user(None, None, Session().user, None, None, user_id=Session().user)
+    TurnInput(turn_service, db).register()
+    WebchatService(turn_service, None, channel).register()
     websocket = _ScriptedWebSocket(
         [json.dumps({"type": "input.text", "stream_id": "dropped", "session_id": session["id"], "body": "hello?"})],
     )
+
+    # The turn is core's task now, not this service's, so there is
+    # nothing here to await: the terminal frame it publishes is what says
+    # it finished — and it publishes it whether or not anyone is left to
+    # forward it, which is the whole point of this test.
+    finished = asyncio.Event()
+
+    async def note_the_end(_message):
+        finished.set()
+
+    bus.subscribe(TURN_ENDED, note_the_end)
 
     loop_task = asyncio.create_task(channel.channel_loop(websocket))
     await _wait_for(provider.first_round_started.is_set)
     # The browser goes away mid-generation.
     websocket.disconnect_now.set()
     await asyncio.wait_for(loop_task, 5)
-    turns = list(webchat._turn_tasks)
     provider.release.set()
-    await asyncio.wait_for(asyncio.gather(*turns), 5)
+    await asyncio.wait_for(finished.wait(), 5)
 
     assert [m["role"] for m in db.get_messages(session["id"])] == ["user", "assistant"]
     # The only frame queued before the browser actually left is the

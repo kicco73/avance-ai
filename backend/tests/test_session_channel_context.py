@@ -1,5 +1,5 @@
 """Session().channel has no default (unlike Session().user/role, it used
-to silently resolve to 'native-chat') — reading it outside a request
+to silently resolve to 'webchat') — reading it outside a request
 context raises the same way user/role already do, and every real entry
 point that needs it declares it first.
 
@@ -115,7 +115,7 @@ class _FakeProjectService:
 def test_creating_a_live_session_without_a_channel_fails(db):
     """A caller that never declared one (a job, or any HTTP route that is
     not a channel) must fail loudly instead of silently stamping the
-    session 'native-chat' — the old column default this used to fall
+    session 'webchat' — the old column default this used to fall
     back on."""
     db.ensure_project("proj")
     db.publish_project("proj")

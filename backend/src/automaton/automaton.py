@@ -55,8 +55,6 @@ class Automaton(CoreAutomaton, PayloadsMixin, IntrospectionMixin):
 
 class CompiledAutomaton(CoreAutomaton):
     """Common base every compiled package's own generated automaton class
-    subclasses (see build.compiler, which names that class after the
-    project and composes PayloadsMixin/IntrospectionMixin onto it) —
-    carries no mixins or compiled behaviour of its own, only what
+    subclasses — carries no mixins or compiled behaviour of its own, only what
     isinstance(automaton, CompiledAutomaton) checks against, regardless
     of which package produced the instance."""

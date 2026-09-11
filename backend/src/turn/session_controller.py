@@ -13,10 +13,6 @@ it. Those three reach SessionManager.require_active_session, which is the
 one place a channel decides an outcome (see turn/sessions/
 session_type_strategy.py) — and a caller who cannot name a channel is
 refused there rather than served a default.
-
-Splitting by URL prefix is what put these here in the first place, under
-a package the core frontend then had to name in order to read a
-transcript. A build without src/webchat/ answers every route below.
 """
 from __future__ import annotations
 

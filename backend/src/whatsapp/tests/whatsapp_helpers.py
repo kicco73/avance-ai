@@ -22,7 +22,7 @@ from system.session import Session
 from listen.decoder import SpeechDecoder
 from listen.listen_service import ListenServiceError
 from talk.audio_stream import AudioStream
-from talk.talk_format import PcmWavCodec
+from system.audio_format import PcmWavCodec
 from whatsapp.audio import split_wav
 from whatsapp.whatsapp_service import WhatsAppService
 
@@ -346,7 +346,8 @@ def _build(config=None, talk=None, listen=None):
             ))
 
         bus.subscribe(OUTPUT_SPEECH, speak)
-    service = WhatsAppService(config or _config(), chat, db, auth, client=api)
+    service_config = config or _config()
+    service = WhatsAppService(service_config, chat, db, auth, client=api)
     service.register()
     app = FastAPI()
     # The real app's login wall sits in front of these routes too — they
@@ -354,7 +355,7 @@ def _build(config=None, talk=None, listen=None):
     app.add_middleware(AuthMiddleware)
     from fastapi import APIRouter
     router = APIRouter()
-    WhatsAppController(service).register_routes(router)
+    WhatsAppController(service, service_config).register_routes(router)
     app.include_router(router)
     return TestClient(app), service, chat, db, api
 

@@ -1,10 +1,11 @@
-"""What listens for a person speaking, and answers on the socket they
-spoke from.
+"""The chat window, as a thing that delivers rather than a thing that
+answers.
 
-One object, built once by the skill: it subscribes to every type a
-client is allowed to inject (bus.CLIENT_INJECTABLE) and, for each,
-starts a turn whose frames go back to the connection the message came
-in on — `origin_id`, put there by system.bus_channel.
+One object, built once by the skill. It runs no turns: core listens for
+`input.text` and publishes every frame a turn produces (see
+turn/input_listener.py), and this forwards the ones addressed to a
+connection it holds — `origin_id`, put there by system.bus_channel,
+which this package also tells which channel it speaks on.
 
 It owns the chat window's HTTP surface too (WebchatController), so the
 routes and the thing that serves them are packaged together.
@@ -17,13 +18,12 @@ finds nobody to hand it to.
 """
 from __future__ import annotations
 
-import asyncio
 
 from system import bus
-from system.bus import CLIENT_INJECTABLE, Message
-from turn.channels import NATIVE_CHAT
+from system.bus import (
+    OUTPUT_SPEECH, OUTPUT_TEXT, TURN_ENDED, TURN_FAILED, TURN_STARTED, TURN_TOOL, Message,
+)
 from system.logging_factory import LoggerFactory
-from system.session import Session
 from system.wiring import construct
 from system.bus_channel import BusChannel
 from talker import HumanTalker
@@ -32,9 +32,13 @@ from turn.turn_service import TurnService
 
 from .webchat_controller import WebchatController
 from .bus_human_relay import BusHumanRelay
-from .ws_turn import WsChatTurn
 
 logger = LoggerFactory.get_logger(__name__)
+
+#: What a turn produces, and what this forwards. Not CLIENT_INJECTABLE's
+#: mirror image: that is what a browser may put *on* the Bus, and this is
+#: what comes back.
+TURN_FORWARDED = (TURN_STARTED, OUTPUT_TEXT, OUTPUT_SPEECH, TURN_TOOL, TURN_ENDED, TURN_FAILED)
 
 
 class WebchatService:
@@ -45,46 +49,37 @@ class WebchatService:
     ) -> None:
         self._turn_service = turn_service
         self._notifications = notifications
-        self._turn_tasks: set[asyncio.Task] = set()
         # The /api/skills/webchat/* routes travel with the service that answers
         # them: the skill hands this to POINT_HTTP_CONTROLLERS and a
         # build without this package has nothing to register.
         self.controller = construct(WebchatController, {"turn_service": turn_service})
 
     def register(self) -> None:
-        for message_type in CLIENT_INJECTABLE:
-            bus.subscribe(message_type, self._start_turn)
+        for message_type in TURN_FORWARDED:
+            bus.subscribe(message_type, self._forward)
 
-    async def _start_turn(self, message: Message) -> None:
-        """Only what a person said into one of *these* connections. An
-        `input.text` converted from a voice note on another channel (see
-        listen.decoder) also carries an `origin_id` — the id of the
+    async def _forward(self, message: Message) -> None:
+        """One frame of an answer, onto the connection that is owed it.
+
+        Only what a connection *here* is waiting for. An `input.text`
+        converted from a voice note on another channel (see
+        listen.decoder) carries an `origin_id` too — the id of the
         message it was converted from — so the test is whether that id
         names a connection this socket actually has open, not whether it
         is set.
 
-        The channel is named here and not by the socket: the socket is a
-        way in, and this is the interface listening on it."""
+        The wire carries the Bus's own type names and field names:
+        nothing is translated on the way out, so a listener and a browser
+        read the same message. A dict body is the frame's own fields and
+        is spread; anything else is the body and travels as one."""
         connection_id = message.origin_id
         if connection_id is None or not self._notifications.has_connection(connection_id):
             return
-        Session().channel = NATIVE_CHAT
-
-        def send(payload: dict) -> None:
-            self._notifications.send_to_connection(connection_id, payload)
-
-        turn = WsChatTurn(
-            self._turn_service, send, str(message.stream_id or ""),
-            message.session_id, str(message.body or ""), message.username,
+        body = message.body
+        payload = dict(body) if isinstance(body, dict) else {"body": body}
+        self._notifications.send_to_connection(
+            connection_id, {"type": message.type, "stream_id": message.stream_id or "", **payload},
         )
-        if not turn.accept():
-            return
-        # Not awaited: the turn streams for as long as the model takes,
-        # and bus.publish awaits each listener in order — a turn awaited
-        # here would hold the socket's read loop for the whole reply.
-        task = asyncio.create_task(turn.run())
-        self._turn_tasks.add(task)
-        task.add_done_callback(self._turn_tasks.discard)
 
     def human_talker_factory(
         self, username: str, session_id: int, session_type: str, project_id: str,

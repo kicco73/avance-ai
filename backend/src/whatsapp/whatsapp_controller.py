@@ -15,13 +15,21 @@ from http import HTTPStatus
 from fastapi import BackgroundTasks, HTTPException, Query, Request, Response
 
 from controllers.base_controller import BaseController, get, post
+from whatsapp.config import WhatsAppServiceConfig
+from whatsapp.webhook import SeenMessages, extract_incoming, is_valid_signature, is_valid_verify_token
 from whatsapp.whatsapp_service import WhatsAppService
 
 
 class WhatsAppController(BaseController):
+    """Meta's surface, and nothing past it: the handshake, the signature,
+    the envelope, and the redeliveries Meta sends when this did not
+    answer 200 fast enough. What it hands on is one message a person
+    sent; what happens to it is the service's business."""
 
-    def __init__(self, whatsapp_service: WhatsAppService) -> None:
+    def __init__(self, whatsapp_service: WhatsAppService, whatsapp_config: WhatsAppServiceConfig) -> None:
         self.whatsapp_service = whatsapp_service
+        self._config = whatsapp_config
+        self._seen = SeenMessages()
 
     @get("/api/skills/whatsapp/webhook", role=None)
     def get_webhook_verification(
@@ -32,7 +40,7 @@ class WhatsAppController(BaseController):
     ):
         """Meta's one-time subscription handshake: echo hub.challenge as
         plain text iff the verify token matches ours."""
-        if hub_mode == "subscribe" and self.whatsapp_service.is_valid_verify_token(hub_verify_token):
+        if hub_mode == "subscribe" and is_valid_verify_token(hub_verify_token, self._config.verify_token):
             return Response(content=hub_challenge, media_type="text/plain")
         raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Verify token mismatch.")
 
@@ -42,10 +50,10 @@ class WhatsAppController(BaseController):
         background: Meta retries (and eventually disables) a webhook that
         answers slowly, and a chat turn takes seconds."""
         raw = await request.body()
-        if not self.whatsapp_service.is_valid_signature(raw, request.headers.get("X-Hub-Signature-256")):
+        if not is_valid_signature(raw, request.headers.get("X-Hub-Signature-256"), self._config.app_secret):
             raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Bad signature.")
         payload = await request.json()
-        for message in self.whatsapp_service.extract_incoming(payload):
-            if self.whatsapp_service.accept(message):
+        for message in extract_incoming(payload):
+            if self._seen.check_and_add(message.id):
                 background.add_task(self.whatsapp_service.handle, message)
         return {"status": "ok"}

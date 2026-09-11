@@ -32,7 +32,6 @@ if TYPE_CHECKING:
 # Metrics scoped to "all_sessions_per_user" but not "one_session" — the
 # `metric` namespace's own membership. Excluding "one_session" matters:
 # without it, session-scoped metrics like Engagement would match too.
-# Public (no leading underscore): also used by testing.metrics_provider.TestMetricsProvider.
 def user_scoped_metrics() -> list[MetricCalculator]:
     return [
         metric for metric in AnalyticsCalculator.default_metrics()
@@ -56,8 +55,7 @@ def values_dict(pairs: list[tuple[MetricCalculator, MetricResult]]) -> dict[str,
     is None, not absent. A trigger reading it still evaluates False, the
     same as before and for the same reason as a signal never estimated
     (`None > 3` raises, and a failed trigger is False), but now by
-    comparing a value rather than by failing to resolve a name. Public:
-    also used by testing.metrics_provider.TestMetricsProvider."""
+    comparing a value rather than by failing to resolve a name."""
     # XXX Compiled automaton requirement - do not touch.
     # XXX Absence is what generated Python cannot reproduce without
     # XXX imitating simpleeval's own name resolution; a name that is

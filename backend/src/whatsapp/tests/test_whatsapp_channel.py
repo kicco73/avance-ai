@@ -9,10 +9,11 @@ import pytest
 
 from system.service_error import ServiceError
 from system.session import Session
+from whatsapp.webhook import IncomingMessage, extract_incoming
 from whatsapp.whatsapp_service import (
     REPLY_ACCEPT_TERMS_LABEL, REPLY_BUSY, REPLY_DONE, REPLY_INVALID_ACTION, REPLY_NO_CHAT_STATE, REPLY_NOT_LINKED,
     REPLY_NOT_REGISTERED, REPLY_PAUSED, REPLY_REGISTERED, REPLY_SESSION_TAKEN_OVER, REPLY_TECHNICAL_PROBLEM,
-    REPLY_TERMS_ACCEPTED, REPLY_UNSUPPORTED, IncomingMessage, WhatsAppService,
+    REPLY_TERMS_ACCEPTED, REPLY_UNSUPPORTED,
 )
 from whatsapp.tests.whatsapp_helpers import (  # noqa: F401 — env is a fixture
     LINKED_EMAIL, LINKED_NUMBER, _action, _build, _config, _interactive_payload, _payload, _post, env,
@@ -57,7 +58,7 @@ def test_bad_signatures_status_updates_and_redeliveries_never_produce_a_second_t
     assert chat.calls == [] and api.sent == []
 
     statuses = {"entry": [{"changes": [{"value": {"messaging_product": "whatsapp", "statuses": [{"id": "wamid.x", "status": "delivered"}]}}]}]}
-    assert WhatsAppService.extract_incoming(statuses) == []
+    assert extract_incoming(statuses) == []
 
     _post(client, _payload(msg_id="wamid.dup"))
     _post(client, _payload(msg_id="wamid.dup"))
@@ -280,7 +281,7 @@ def test_five_manual_actions_send_a_list(env):
 
 def test_button_and_list_replies_apply_the_action_as_the_linked_account_while_an_unsupported_reply_is_ignored():
     payload = _interactive_payload(kind="nfm_reply", reply={"response_json": "{}"})
-    [message] = WhatsAppService.extract_incoming(payload)
+    [message] = extract_incoming(payload)
     assert message.type == "interactive" and message.action_id is None
 
     client, _, chat, _, api = _build()

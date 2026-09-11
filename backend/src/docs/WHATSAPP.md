@@ -27,11 +27,15 @@ Meta ──POST /api/skills/whatsapp/webhook──▶ WhatsAppController   (role
 
 ## Files
 
-- `whatsapp/whatsapp_service.py` — identity gate, turn/action orchestration, manual-actions-as-buttons/list, Markdown → WhatsApp flattening, dedup of Meta's redeliveries, per-sender ordering.
+- `whatsapp/whatsapp_service.py` — identity gate, turn/action orchestration, manual-actions-as-buttons/list, per-sender ordering.
+- `whatsapp/webhook.py` — the inbound half of Meta's wire: the envelope it
+  POSTs, the HMAC over it, the redeliveries it sends when the webhook did
+  not answer 200 fast enough, and the CommonMark → WhatsApp flattening.
+  None of it is a conversation, which is why it is not in the service.
 - `whatsapp/cloud_api_client.py` — `send_text` (auto-split over 4096 chars), `send_buttons`/`send_list` (interactive replies), `send_audio`, `upload_media`/`download_media`, and `mark_read`.
 - `whatsapp/audio.py` — WAV (as `TalkService` emits it, streaming header included) → MP3. WhatsApp renders OGG/Opus as a voice note (waveform, mic icon) and any other audio type as a plain audio message with the generic player; the bot's replies go out as MP3 so they show as audio messages. Encoder from PyAV, already installed as faster-whisper's dependency; no ffmpeg binary.
 - `chat/turn_service.py` — `manual_actions` on every state payload reaching a client with a known session (`_with_manual_actions`); `automaton/automaton.py`'s `manual_actions_for` is the actual filter, shared with `tracking/wakeup_service.py`'s own cross-project notification push.
-- `whatsapp/whatsapp_controller.py` — the two webhook routes, under `/api/` so `nginx.conf` needs no change.
+- `whatsapp/whatsapp_controller.py` — the two webhook routes, under `/api/` so `nginx.conf` needs no change. Meta's surface and nothing past it: handshake, signature, envelope, dedup, then one message handed to the service.
 - `config.py` — `WhatsAppServiceConfig` / `whatsapp-service` section (optional, default off; see `.config.example.yml`).
 - `db/models.py` / `db/users.py` — `User.whatsapp_phone_number`, the phone → account link itself.
 - `avance_platform/auth_controller.py` — `PUT /api/core/auth/me/phone-number`, ProfileView.vue's own save action.

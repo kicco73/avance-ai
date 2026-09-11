@@ -8,7 +8,6 @@ from listen.decoder import SpeechDecoder
 from system import bus
 from system.bus import OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, Message
 from talk.audio_stream import AudioStream
-from turn.channels import WHATSAPP_CHAT
 from whatsapp import whatsapp_service as whatsapp_module
 from whatsapp.audio import WHATSAPP_AUDIO_MIME
 from whatsapp.tests.whatsapp_helpers import (
@@ -83,7 +82,7 @@ def test_a_typed_message_runs_a_real_turn_and_the_reply_goes_back_as_text(whatsa
     assert [body for _, body in api.sent] == [REPLY_TEXT, REPLY_TEXT]
     assert {to for to, _ in api.sent} == {LINKED_NUMBER}
     session = _session_of(db, project_id)
-    assert session["channel"] == WHATSAPP_CHAT
+    assert session["channel"] == "whatsapp"
     assert [(m["role"], m["content"]) for m in db.get_messages(session["id"])] == [
         ("assistant", REPLY_TEXT), ("user", "hola"), ("assistant", REPLY_TEXT),
     ]

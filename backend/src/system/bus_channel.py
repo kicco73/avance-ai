@@ -170,6 +170,12 @@ class BusChannel(object):
 
     def __init__(self, auth_service: AuthService) -> None:
         self._auth_service = auth_service
+        # Which channel the interface listening on this socket speaks on,
+        # told to it by that interface at boot (see owned_by). None until
+        # something claims it, and in a build with no such package it
+        # stays None: an anonymous way in, whose messages name no channel
+        # and are therefore admitted to no live session.
+        self._channel: str | None = None
         # The only thing in the process that writes to these sockets, and
         # so the only thing that subscribes on their behalf: a producer
         # publishes a nudge and never holds a connection (see
@@ -344,21 +350,36 @@ class BusChannel(object):
         (see send_to_connection) rather than to every tab this identity
         has open, and `stream_id` names the one exchange over it.
 
-        No channel. This socket is a way in, not a channel: naming one
-        would mean this package knows which interface is listening on
-        it, which is exactly what it stopped knowing. Whoever picks the
-        message up says what channel it is."""
+        The channel is whatever the interface listening here told this
+        socket it was (see owned_by) — this package still does not know
+        which interface that is, and still names no channel of its own.
+        It stamps one because a listener is not the publisher's own call
+        stack: whoever answers this message may be anywhere, and cannot
+        recognise a connection it does not own."""
         message = Message(
             type=frame_type,
             body=str(frame.get("body", "")),
             username=Session().user,
             session_id=frame.get("session_id"),
+            channel=self._channel,
             origin_id=connection.id,
             stream_id=str(frame.get("stream_id", "")),
         )
         task = asyncio.create_task(bus.publish(message))
         self._inbound_tasks.add(task)
         task.add_done_callback(self._inbound_tasks.discard)
+
+    def owned_by(self, channel: str) -> None:
+        """Claimed by the interface that listens here, at boot, naming
+        the channel it speaks on — the one thing about itself this socket
+        cannot work out. One claim, because one interface owns the
+        browser's connection: a second would not mean two channels
+        sharing a socket, it would mean a build with two chat windows.
+
+        Left unclaimed the socket still carries frames; they just arrive
+        with no channel, which is what a build without the package that
+        answers them should look like."""
+        self._channel = channel
 
     def has_connection(self, connection_id: str) -> bool:
         """Whether `connection_id` is one of the connections open here.

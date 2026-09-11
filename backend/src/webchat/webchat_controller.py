@@ -31,8 +31,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from controllers.base_controller import BaseController, get, post
 from schemas import ActionRequest
 from system.session import Session
-from turn.channels import NATIVE_CHAT
 from turn.turn_service import TurnService
+
+
+#: The channel these routes speak on: this package. Not a string that
+#: happens to match it — the skill key is derived from the package name
+#: too (see skills.Skill.__init_subclass__), so there is exactly one
+#: place the name is written down, and it is the directory.
+CHANNEL = __package__
 
 
 # XXX Compiled automaton requirement - do not touch.
@@ -55,7 +61,7 @@ from turn.turn_service import TurnService
 # dependency runs in the request's own task, so the declaration reaches
 # the endpoint whether the endpoint itself is sync or async.
 async def _the_chat_window_is_speaking() -> None:
-    Session().channel = NATIVE_CHAT
+    Session().channel = CHANNEL
 
 
 class WebchatController(BaseController):

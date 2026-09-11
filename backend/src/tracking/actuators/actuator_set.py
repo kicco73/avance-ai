@@ -14,7 +14,6 @@ from automaton.automaton import Action, DeferredExpression, JsSnippet
 from automaton.project_services import ProjectServices
 from automaton.scope import EvaluationScope
 from system.bus import MAIL_SEND, OUTPUT_TEXT, Message
-from turn.channels import WHATSAPP_CHAT
 from system.logging_factory import LoggerFactory
 from scheduler import SchedulerService
 from system.session import Session
@@ -29,6 +28,7 @@ if TYPE_CHECKING:
 
 logger = LoggerFactory.get_logger(__name__)
 
+_WHATSAPP = "whatsapp"
 _SEND_MAIL_SUBJECT = "Notification from Avance"
 
 
@@ -36,7 +36,7 @@ class _NoMailService:
     """What a mail.send coming back undelivered means: either this build
     has no mail-service, or the project declared `mail: disabled` — both
     say the same thing to a task that expected a mail to go out (see
-    mail.skill.required_by and automaton/project_services.py)."""
+    automaton/project_services.py)."""
 
     async def bounced(self, message: Message) -> None:
         raise ValueError("No mail-service available to this project — task.send_mail can't run.")
@@ -233,9 +233,15 @@ class LiveTaskNamespace(TaskNamespace):
         that this project declared `whatsapp: disabled`, which reaches a
         caller as the same "nobody carried it" an unconfigured channel
         always meant here."""
-        return _run_sync(self._services["whatsapp"].publish(Message(
+        # Written once: the service this asks for and the channel the
+        # message is addressed to are the same name, because a channel's
+        # name is the name of the skill that is that channel. This is
+        # still core naming a skill, which the channel set becoming a
+        # contribution is meant to end — but it names it in one place
+        # now instead of two.
+        return _run_sync(self._services[_WHATSAPP].publish(Message(
             type=OUTPUT_TEXT, body=message_md, username=phone_number.strip().lstrip("+"),
-            channel=WHATSAPP_CHAT, project_id=self._dispatcher.project_id,
+            channel=_WHATSAPP, project_id=self._dispatcher.project_id,
         )))
 
     def defer(self, act: Callable[[], None], when: datetime) -> JsSnippet | None:

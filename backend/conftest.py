@@ -20,11 +20,11 @@ from fastapi.testclient import TestClient
 
 from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
-from turn.channels import NATIVE_CHAT
 from turn.turn_service import TurnService
 from turn.ephemeral_env_registry import EphemeralEnvRegistry
 from turn.sessions.session_manager import SessionManager
 from system.bus_channel import WEB_FORWARDED, BusChannel
+from turn.input_listener import TurnInput
 from controller import AvanceController
 from db import Db
 from db.models import User
@@ -320,8 +320,8 @@ def _default_session_user():
     # Session().channel has no per-request middleware in these fixtures
     # (see app()'s own docstring) and Session().impersonate never resets
     # it, so a test that sets it (WhatsApp-channel tests) would otherwise
-    # leak WHATSAPP_CHAT into whichever test runs next in this worker.
-    Session().channel = NATIVE_CHAT
+    # leak "whatsapp" into whichever test runs next in this worker.
+    Session().channel = "webchat"
 
 
 def rewrite_archive_content(project_id: str, archive_name: str, revision: int, content: bytes) -> None:
@@ -529,6 +529,9 @@ def app(
     # One shared connection per identity, as in main.py — the skills that
     # answer a turn collect it from the registry below.
     bus_channel = BusChannel(auth_service)
+    # A channel posts what a person said; this is what answers it. Core,
+    # as in main.py — a build with no chat window still runs turns.
+    TurnInput(turn_service, app_db).register()
     bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({
         "db": app_db,
         "auth_service": auth_service,

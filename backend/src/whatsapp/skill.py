@@ -62,7 +62,9 @@ class _WhatsApp(_NoWhatsApp):
             self._config, core["turn_service"], core["db"], core["auth_service"],
         )
         self._service.register()
-        controllers.append(construct(WhatsAppController, {**core, "whatsapp_service": self._service}))
+        controllers.append(construct(WhatsAppController, {
+            **core, "whatsapp_service": self._service, "whatsapp_config": self._config,
+        }))
 
     async def uninstall(self) -> None:
         for service in filter(None, [self._service]):
@@ -75,7 +77,8 @@ _INSTALLATIONS = {False: _NoWhatsApp, True: _WhatsApp}
 
 class WhatsAppSkill(Skill):
 
-    key = "whatsapp"
+    # No `key`: derived from the package name, which is also this
+    # channel's name in ChatSession.channel.
     ui_label = "WhatsApp"
     ui_description = "Chat channel over the WhatsApp Cloud API."
     project_declarable = True

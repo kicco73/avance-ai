@@ -40,10 +40,7 @@ class EnvPromptBlock:
         """Same as for_state, but the union of every given state's own
         `input` list (declaration order, deduplicated) — for a caller that
         evaluates a group of turns from one snapshot without resolving
-        each turn's own individual state first (see
-        testing.signal_sources.BatchSignalSource, which for the same
-        reason already requests every project signal rather than one
-        state's own triggers)."""
+        each turn's own individual state first."""
         input_names = dict.fromkeys(name for state in states for name in state.input)
         if not input_names:
             return None

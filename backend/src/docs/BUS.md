@@ -130,14 +130,18 @@ and `whatsapp/whatsapp_service.py` (`input.audio` → `input.text`).
 | Type | Constant | Body | Published by | Taken by |
 | --- | --- | --- | --- | --- |
 | `input.audio` | `INPUT_AUDIO` | `bytes`, or an awaitable callable returning them — a voice note nobody decodes is never downloaded | `whatsapp` | `listen.decoder.SpeechDecoder` |
-| `input.text` | `INPUT_TEXT` | `str` — what the person said | `system.bus_channel` (client injection), `listen.decoder` (conversion) | `webchat.WebchatService` (starts a turn, on its own channel only), `whatsapp` (one-shot take) |
-| `output.text` | `OUTPUT_TEXT` | `str` (markdown) | `tracking.actuators` (`task.whatsapp()`) | `whatsapp` (sends it, when `channel` matches) |
-| `output.speech` | `OUTPUT_SPEECH` | `str` — a reply's `[audio]` text | `talker.ai_talker` (wants the audio back), `webchat.ws_turn` (only warms the store) | `talk` |
+| `input.text` | `INPUT_TEXT` | `str` — what the person said | `system.bus_channel` (client injection), `listen.decoder` (conversion) | `turn.input_listener.TurnInput` (runs the turn — core, whichever channel sent it) |
+| `output.text` | `OUTPUT_TEXT` | `str` (markdown) — one chunk of a reply as it is generated, or a whole message from `task.whatsapp()` | `turn.input_listener` (chunks), `tracking.actuators` (`task.whatsapp()`) | `webchat` (forwards to the connection in `origin_id`), `whatsapp` (sends it, when `channel` matches) |
+| `output.speech` | `OUTPUT_SPEECH` | `str` — a reply's `[audio]` text | `talker.ai_talker` (wants the audio back), `turn.input_listener` (announces it; webchat forwards it) | `talk`, `webchat` |
 | `output.audio_stream` | `OUTPUT_AUDIO_STREAM` | `AudioStream` — `chunks()` yields WAV bytes as they are generated, a fresh iterator per consumer | `talk` | `talker.ai_talker` (one-shot take) |
 | `ui.notification` | `UI_NOTIFICATION` | `dict` — a nudge for whoever that identity has open | `tracking.wakeup_service`, `tracking.actuators` | `system.bus_channel` |
 | `ui.human_takeover` | `UI_HUMAN_TAKEOVER` | `{"session_id", "project_id"}` | `tracking.actuators.chat_namespace` | `system.bus_channel` |
 | `ui.system_warning` | `UI_SYSTEM_WARNING` | `dict` — addressed to a role, so the publisher names each recipient | `project.health_notifications` | `system.bus_channel` |
 | `ui.progress` | `UI_PROGRESS` | `dict` — one batch of job progress | `system.broadcaster` | `system.bus_channel` |
+| `turn.started` | `TURN_STARTED` | `{"session_id"}` — a reply is being composed | `turn.input_listener` | `webchat` |
+| `turn.ended` | `TURN_ENDED` | `dict` — the turn's whole result, `reply` included, so a consumer that ignored the chunks has the finished answer | `turn.input_listener` | `webchat` |
+| `turn.failed` | `TURN_FAILED` | `{"message", "detail", "code"}` — the code is core's, the wording a channel's own | `turn.input_listener` | `webchat` |
+| `turn.tool` | `TURN_TOOL` | `dict` — one tool call, `phase` telling start from result | `turn.input_listener` | `webchat` |
 | `mail.send` | `MAIL_SEND` | `{"to", "subject", "body_md"}` | `tracking.actuators` (`task.send_mail`, with bounceback) | `mail` |
 | `turn.started` | `TURN_STARTED` | — | — | — |
 | `turn.ended` | `TURN_ENDED` | — | — | — |
@@ -258,9 +262,40 @@ arrives as an ordinary text from a number, and nothing yet records that
 this number is operating that session. `human_typing` stays a frame: a
 per-connection liveness signal with no other possible producer.
 
-**Who takes an `input.text`.** Every `input.text` reaches every
-listener, including one converted from a voice note on another channel.
-`WebchatService` therefore takes only messages on `NATIVE_CHAT`, the way
-`whatsapp` takes only `WHATSAPP_CHAT` ones for `output.text`. A listener
-for a type that more than one channel publishes has to say which channel
-it serves; the Bus will not guess.
+**Who takes an `input.text`.** Core does: `turn.input_listener.TurnInput`
+is the one listener, whichever channel published the message and whether
+it arrived as text or was converted from a voice note. It runs the turn
+and publishes every frame the turn produces; a channel forwards the ones
+addressed to it and runs nothing.
+
+It used to be the channels, each on its own. `WebchatService` took only
+messages on its own channel and ran the turn itself (`webchat/ws_turn.py`),
+`whatsapp` did the same work its own way, and they did not merely
+duplicate it — they disagreed: one streamed and trusted the turn's
+result, the other reassembled an answer from the database. The
+discriminator is gone with the duplication.
+
+Nothing in `turn/` names a channel. The message says which one it came
+from (`channel`, stamped by the publisher — `system.bus_channel` stamps
+whatever the interface listening on it claimed at boot, see
+`BusChannel.owned_by`), and the frames carry the same `origin_id` and
+`stream_id` back out, which is how a channel picks out its own answer
+without core knowing who is listening. A channel's name is the name of
+the skill that is that channel: `webchat`, `whatsapp`.
+
+`Session().for_sender(username, role=..., channel=...)` is how a listener
+gets a context. It does not inherit one: `publish` awaits each listener
+in the publisher's own task today, so ContextVars happen to propagate,
+but that is already false for `system/broadcaster.py` (another thread,
+another loop) and `tracking/wakeup_service.py` (a scheduled job), both of
+which pass `username` on the Message because they had to. `role` is
+looked up from the database, never taken off the wire — a channel must
+not be able to declare its own caller's privileges.
+
+**Order, when a listener publishes what a turn produces.** It used to be
+free: `on_metadata` is synchronous end to end and the frames went straight
+onto a websocket, so nothing could be overtaken. Publishing is not
+synchronous, and a task per frame would put a stream of chunks on the wire
+in whatever order the loop reached them. `TurnInput` queues them as they
+are made — synchronously, from that same callback — and one task drains
+the queue, awaiting each publish before it takes the next.

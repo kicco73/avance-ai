@@ -1,18 +1,31 @@
-"""End to end, through a real WsChatTurn (see chat/ws_turn.py) and a real
-AiService driven by a fake provider: every frame a turn raises reaches the
-connection in the order it was raised, each with the turn's own turn_id,
-and "turn.ended" always comes last — after every chunk, whether the turn made
-tool calls (a collected round replayed without ever yielding the loop) or
-not. on_metadata is synchronous end to end (see tracking/turn_callbacks.py's
-own OnMetadata): nothing is scheduled, so nothing can be overtaken.
+"""End to end, through the real listener (turn/input_listener.py) and a
+real AiService driven by a fake provider: every frame a turn raises
+reaches the Bus in the order it was raised, each with the turn's own
+stream_id, and "turn.ended" always comes last — after every chunk,
+whether the turn made tool calls (a collected round replayed without ever
+yielding the loop) or not.
+
+What guarantees the order is no longer that nothing is scheduled. It used
+to be: on_metadata is synchronous end to end (see tracking/
+turn_callbacks.py's own OnMetadata) and the frames went straight onto a
+websocket, so nothing could be overtaken. Publishing is not synchronous,
+so the frames are queued as they are made — in order, from that same
+synchronous callback — and one task drains the queue, awaiting each
+publish before taking the next. These tests are what says the queue
+actually does what the synchrony used to.
 """
 from __future__ import annotations
+
+import asyncio
 
 import pytest
 
 from ai.llm_provider import ToolCall, ToolCallsRequested
+from system import bus
+from system.bus import INPUT_TEXT, Message
+from system.session import Session
+from turn.input_listener import TurnInput
 from turn.turn_service import TurnService
-from webchat.ws_turn import WsChatTurn
 from turn_harness import one_state_automaton, turn_service_for  # noqa: F401 — turn_service_for is a fixture
 
 pytestmark = pytest.mark.regression
@@ -49,22 +62,46 @@ class _FakeProvider:
 
 
 
-class _RecordingConnection:
+_TERMINAL = ("turn.ended", "turn.failed")
+
+
+class _Recorder:
+    """Every frame the turn publishes, in arrival order, plus a way to
+    know the turn is over — the listener runs it as its own task, so
+    there is nothing to await from outside."""
+
     def __init__(self) -> None:
-        self.frames: list[dict] = []
+        self.messages: list[Message] = []
+        self.finished = asyncio.Event()
 
-    def send(self, payload: dict) -> None:
-        self.frames.append(payload)
+    async def take(self, message: Message) -> None:
+        self.messages.append(message)
+        if message.type in _TERMINAL:
+            self.finished.set()
 
 
-async def _streamed_events(turn_service: TurnService, text: str) -> list[tuple[str, dict]]:
+async def _streamed_events(turn_service: TurnService, db, text: str) -> list[tuple[str, dict]]:
+    bus._reset_for_tests()
+    # The listener looks the sender's role up rather than taking it off
+    # the wire (see Session.for_sender), so the sender has to exist.
+    db.get_or_create_user(None, None, Session().user, None, None, user_id=Session().user)
     session = await turn_service.get_current_session_if_any_or_create_new(None)
-    connection = _RecordingConnection()
-    turn = WsChatTurn(turn_service, connection.send, "turn-1", session["id"], text)
-    assert turn.accept()
-    await turn.run()
-    assert {frame["stream_id"] for frame in connection.frames} == {"turn-1"}
-    return [(frame["type"], frame) for frame in connection.frames]
+
+    recorder = _Recorder()
+    for message_type in ("turn.started", "output.text", "output.speech", "turn.tool", *_TERMINAL):
+        bus.subscribe(message_type, recorder.take)
+    TurnInput(turn_service, db).register()
+
+    await bus.publish(Message(
+        type=INPUT_TEXT, body=text, username=Session().user,
+        session_id=session["id"], channel="webchat",
+        origin_id="connection-1", stream_id="turn-1",
+    ))
+    await asyncio.wait_for(recorder.finished.wait(), timeout=10)
+
+    assert {m.stream_id for m in recorder.messages} == {"turn-1"}
+    assert {m.origin_id for m in recorder.messages} == {"connection-1"}
+    return [(m.type, m.body if isinstance(m.body, dict) else {"body": m.body}) for m in recorder.messages]
 
 
 def _kinds(events: list[tuple[str, dict]]) -> list[str]:
@@ -83,7 +120,7 @@ async def test_with_declared_sources_every_chunk_of_the_replayed_final_round_pre
         one_state_automaton(with_sources=True, autotracking_on_ai_message=True), _FakeProvider(tool_rounds=1),
     )
 
-    events = await _streamed_events(turn_service, "where's my flight?")
+    events = await _streamed_events(turn_service, turn_service_for.db, "where's my flight?")
 
     kinds = _kinds(events)
     # "turn.started" always precedes generation (see tracking_processor.py's
@@ -102,7 +139,7 @@ async def test_without_sources_and_tracking_after_the_user_message_every_chunk_p
         one_state_automaton(with_sources=False, autotracking_on_ai_message=False), _FakeProvider(tool_rounds=0),
     )
 
-    events = await _streamed_events(turn_service, "hello")
+    events = await _streamed_events(turn_service, turn_service_for.db, "hello")
 
     kinds = _kinds(events)
     assert kinds[-1] == "turn.ended"
@@ -116,7 +153,7 @@ async def test_with_declared_sources_but_no_tool_call_the_answer_streams_then_do
         one_state_automaton(with_sources=True, autotracking_on_ai_message=True), _FakeProvider(tool_rounds=0),
     )
 
-    events = await _streamed_events(turn_service, "hello")
+    events = await _streamed_events(turn_service, turn_service_for.db, "hello")
 
     kinds = _kinds(events)
     assert kinds[-1] == "turn.ended"

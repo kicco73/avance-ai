@@ -2,7 +2,12 @@
 entirely (see TurnService._process_human_turn): no _session_scope lock, no
 TrackingEngine, no auto-generated opening message — the operator's own
 reply is the only thing that produces the assistant message, delivered
-through the exact same 'chunk'/'turn.ended' frames a normal turn uses.
+through the exact same frames a normal turn publishes.
+
+Here rather than in webchat's own tests: none of it is the chat window's
+any more. The turn is run by core (turn/input_listener.py) and a channel
+only forwards what it publishes, so what this defends is true whichever
+channel the person is on.
 """
 from __future__ import annotations
 
@@ -13,13 +18,12 @@ import pytest
 from ai.ai_service import AiService
 from turn.turn_service import TurnService
 from turn.sessions.session_manager import SessionManager
-from webchat.ws_turn import WsChatTurn
 from conftest import make_test_namespace_factory, make_test_scheduler_service
 from db.db import Db
 from metrics.metric_service import MetricService
 from talker.base_talker import BaseTalker
 from test_chat_tool_set_integration import FakeProjectService, PROJECT_ID
-from turn_harness import one_state_automaton
+from turn_harness import drive_turn, one_state_automaton
 from tracking.tracking_service import TrackingService
 
 pytestmark = pytest.mark.contract
@@ -107,12 +111,8 @@ def turn_service_for(tmp_path):
     return make
 
 
-async def _run_turn(turn_service: TurnService, session_id: int, turn_id: str, text: str) -> list[tuple[str, dict]]:
-    connection = _RecordingConnection()
-    turn = WsChatTurn(turn_service, connection.send, turn_id, session_id, text)
-    assert turn.accept()
-    await turn.run()
-    return [(frame["type"], frame) for frame in connection.frames]
+async def _run_turn(turn_service: TurnService, db, session_id: int, turn_id: str, text: str) -> list[tuple[str, dict]]:
+    return await drive_turn(turn_service, db, session_id, turn_id, text)
 
 
 async def test_a_human_operators_reply_arrives_as_the_turns_own_done_frame(turn_service_for):
@@ -122,13 +122,13 @@ async def test_a_human_operators_reply_arrives_as_the_turns_own_done_frame(turn_
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     namespace_factory.set_human_operator(session["id"], OPERATOR)
 
-    events = await _run_turn(turn_service, session["id"], "turn-1", "hello, is anyone there?")
+    events = await _run_turn(turn_service, turn_service_for.db, session["id"], "turn-1", "hello, is anyone there?")
 
     kinds = [event for event, _ in events]
     # _FakeHumanTalker always yields an empty string first (standing in
     # for HumanTalker's own typing-race first yield) — _process_human_turn
-    # dispatches an empty chunk as "typing", never "chunk" (see chat/
-    # ws_turn.py's own on_metadata).
+    # dispatches an empty chunk as "typing", never "chunk" (see
+    # turn/input_listener.py's own on_metadata).
     assert kinds == ["turn.started", "output.text", "turn.ended"]
     assert events[-1][1]["reply"][0]["content"] == "sure, let me check"
     assert events[-1][1]["state_changed"] is False
@@ -148,7 +148,7 @@ async def test_a_human_mode_turn_never_holds_the_session_lock(turn_service_for):
 
     async def first_turn():
         started.set()
-        return await _run_turn(turn_service, session["id"], "turn-1", "first message")
+        return await _run_turn(turn_service, turn_service_for.db, session["id"], "turn-1", "first message")
 
     task = asyncio.create_task(first_turn())
     await started.wait()
@@ -156,7 +156,10 @@ async def test_a_human_mode_turn_never_holds_the_session_lock(turn_service_for):
 
     # The second turn completes without waiting on the first's own reply.
     second_events = await asyncio.wait_for(
-        _run_turn(turn_service, session["id"], "turn-2", "second message, sent before the first is answered"),
+        _run_turn(
+            turn_service, turn_service_for.db, session["id"], "turn-2",
+            "second message, sent before the first is answered",
+        ),
         timeout=1.0,
     )
     assert [event for event, _ in second_events][-1] == "turn.ended"

@@ -131,15 +131,15 @@ def test_a_new_session_is_created_when_none_exists_stamped_with_the_current_chan
     assert session["project_id"] == "proj"
     assert session["start_state"] == "start"
     assert session["end_state"] == "start"
-    assert session["channel"] == "native-chat"
+    assert session["channel"] == "webchat"
     assert manager.is_open(session)
 
-    Session().channel = "whatsapp-chat"
+    Session().channel = "whatsapp"
     try:
         whatsapp = _resolve_or_create(manager, project_service, "user", "proj-a", None, "start")
     finally:
-        Session().channel = "native-chat"
-    assert whatsapp["channel"] == "whatsapp-chat"
+        Session().channel = "webchat"
+    assert whatsapp["channel"] == "whatsapp"
 
 
 @pytest.mark.contract

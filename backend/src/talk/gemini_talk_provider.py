@@ -8,7 +8,7 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types
 
-from talk.talk_format import PcmWavCodec
+from system.audio_format import PcmWavCodec
 from talk.talk_provider import BufferedTalkProvider
 from system.cascade import ProviderError, ProviderRateLimitedError, ProviderUnavailableError
 

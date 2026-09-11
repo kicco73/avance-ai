@@ -15,7 +15,7 @@ from talk.cascading_talk_provider import CascadingTalkProvider
 from talk.gemini_talk_provider import GeminiTalkProvider
 from talk.piper.piper_talk_provider import PiperTalkProvider
 from talk.talk_store import TalkStore
-from talk.talk_format import PcmWavCodec
+from system.audio_format import PcmWavCodec
 
 logger = LoggerFactory.get_logger(__name__)
 

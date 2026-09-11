@@ -68,12 +68,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if not db.user_has_project_access(identity.email, project_id):
                 return self._forbidden_response()
 
-        # No channel is set here. Who is speaking is the caller's own to
-        # declare (see webchat/webchat_controller.py), and most requests
-        # that reach this middleware are the editor, which is not
-        # speaking to anybody: stamping native-chat on all of them put a
-        # skill's channel in core's hands and made every session the
-        # editor opened claim to have come from the chat window.
         Session().user = identity.email
         Session().role = identity.role
         return await call_next(request)

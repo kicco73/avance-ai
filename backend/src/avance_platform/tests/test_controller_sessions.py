@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from turn.channels import NATIVE_CHAT, WHATSAPP_CHAT
 from conftest import chat_turn, chat_turn_error
 from conftest import parse_sse_result
 from db import Db
@@ -53,7 +52,7 @@ def _someone_elses_session(app_db, project_name="channel-codes-proj"):
     return app_db.create_chat_session(
         "someone-else", project_name, app_db.get_project_published_revision(project_name),
         datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
-        start_state="a", end_state="a", type="live", channel=NATIVE_CHAT,
+        start_state="a", end_state="a", type="live", channel="webchat",
     )
 
 
@@ -222,12 +221,12 @@ def test_a_turn_from_another_channel_or_on_a_superseded_session_exposes_the_matc
     # The websocket is the native chat by definition — a turn from another
     # channel only ever reaches TurnService.process_turn directly, the
     # way WhatsAppService does.
-    Session().channel = WHATSAPP_CHAT
+    Session().channel = "whatsapp"
     try:
         with pytest.raises(ServiceError) as raised:
             asyncio.run(client.app.state.turn_service.process_turn(older["id"], "hi"))
     finally:
-        Session().channel = NATIVE_CHAT
+        Session().channel = "webchat"
     assert raised.value.code == "session_channel_mismatch"
 
     # A second live session appearing outside TurnService's own
@@ -236,7 +235,7 @@ def test_a_turn_from_another_channel_or_on_a_superseded_session_exposes_the_matc
     app_db.create_chat_session(
         "user", "channel-codes-proj", app_db.get_project_published_revision("channel-codes-proj"),
         datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
-        start_state="a", end_state="a", type="live", channel=NATIVE_CHAT,
+        start_state="a", end_state="a", type="live", channel="webchat",
     )
     assert _turn_error(client, older["id"])["code"] == "session_superseded"
 

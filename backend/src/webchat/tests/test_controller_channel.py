@@ -15,7 +15,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from system.session import Session
-from turn.channels import NATIVE_CHAT
 
 pytestmark = pytest.mark.contract
 
@@ -37,14 +36,14 @@ def test_a_session_opened_from_the_chat_window_is_stamped_with_its_channel(
 ):
     session = _in_a_fresh_context(lambda: client.get("/api/skills/webchat/sessions/current").json())
 
-    assert session["channel"] == NATIVE_CHAT
+    assert session["channel"] == "webchat"
     assert session["type"] == "live"
 
 
 def test_an_explicit_new_session_is_stamped_too(client: TestClient, hello_project: str):
     session = _in_a_fresh_context(lambda: client.post("/api/skills/webchat/sessions").json())
 
-    assert session["channel"] == NATIVE_CHAT
+    assert session["channel"] == "webchat"
 
 
 def test_reading_history_declares_the_channel_as_well(client: TestClient, hello_project: str):

@@ -15,7 +15,7 @@ import io
 import struct
 from fractions import Fraction
 
-from talk.talk_format import PcmWavCodec
+from system.audio_format import PcmWavCodec
 
 MP3_SAMPLE_RATE = 48000
 MP3_BIT_RATE = 64000

@@ -4,7 +4,7 @@ import io
 
 import pytest
 
-from talk.talk_format import PcmWavCodec
+from system.audio_format import PcmWavCodec
 from whatsapp.audio import WHATSAPP_AUDIO_MIME, Mp3Encoder, split_wav, wav_to_mp3
 from whatsapp.cloud_api_client import split_text
 from whatsapp.whatsapp_service import (

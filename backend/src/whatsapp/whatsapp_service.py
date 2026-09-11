@@ -38,16 +38,11 @@ second one wait in whichever order the event loop picked).
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import hmac
-import re
-import time
 from dataclasses import dataclass
 
 import httpx
 
 from auth.auth_service import AuthService
-from turn.channels import WHATSAPP_CHAT
 from turn.turn_service import TurnService
 from whatsapp.config import WhatsAppServiceConfig
 from db import Db
@@ -58,20 +53,15 @@ from system.bus import INPUT_AUDIO, INPUT_TEXT, OUTPUT_TEXT, Message
 from system.session import Session
 from talker import AiTalker
 from whatsapp.cloud_api_client import WhatsAppCloudApiClient
+from whatsapp.webhook import IncomingMessage, to_whatsapp_markdown
 
 logger = LoggerFactory.get_logger(__name__)
 
-
-@dataclass(frozen=True)
-class IncomingMessage:
-    id: str
-    sender: str  # E.164 digits, no '+', as Meta sends it
-    type: str
-    text: str | None
-    action_id: str | None = None
-    # Meta's media id for an `audio` message (a voice note or an audio
-    # file — both arrive as type "audio"); downloaded on demand.
-    audio_id: str | None = None
+#: The channel this package is. Not a string that happens to match the
+#: directory — the skill key is derived from the package name too (see
+#: skills.Skill.__init_subclass__), so the name is written down once, and
+#: it is the directory.
+CHANNEL = __package__
 
 
 @dataclass(frozen=True)
@@ -138,7 +128,6 @@ class WhatsAppService(object):
         self._client = client or WhatsAppCloudApiClient(
             config.access_token, config.phone_number_id, config.graph_version
         )
-        self._seen = _SeenMessages()
         self._sender_locks: dict[str, asyncio.Lock] = {}
         self._voice_notes = VoiceNoteSynthesizer(self._assistant_talker)
 
@@ -150,7 +139,7 @@ class WhatsAppService(object):
         bus.subscribe(OUTPUT_TEXT, self._send_outbound)
 
     async def _send_outbound(self, message: Message) -> None:
-        for _ in filter(WHATSAPP_CHAT.__eq__, [message.channel]):
+        for _ in filter(CHANNEL.__eq__, [message.channel]):
             await self.send_message(str(message.username), str(message.body), str(message.project_id))
 
     async def close(self) -> None:
@@ -161,50 +150,6 @@ class WhatsAppService(object):
     # ----------------------------------------------------------------- #
     # Webhook plumbing (used by WhatsAppController)
     # ----------------------------------------------------------------- #
-    def is_valid_verify_token(self, token: str) -> bool:
-        return hmac.compare_digest(token, self._config.verify_token)
-
-    def is_valid_signature(self, raw_body: bytes, header: str | None) -> bool:
-        """X-Hub-Signature-256: 'sha256=' + HMAC-SHA256(app secret, raw body)."""
-        if not header or not header.startswith("sha256="):
-            return False
-        expected = hmac.new(self._config.app_secret.encode(), raw_body, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(expected, header[len("sha256="):])
-
-    @staticmethod
-    def extract_incoming(payload: dict) -> list[IncomingMessage]:
-        """Every inbound message in a webhook payload. Status updates
-        (delivered/read receipts) share the same envelope but live under
-        `statuses`, not `messages`, so they simply never show up here."""
-        out: list[IncomingMessage] = []
-        for entry in payload.get("entry", []) or []:
-            for change in entry.get("changes", []) or []:
-                value = change.get("value") or {}
-                if value.get("messaging_product") != "whatsapp":
-                    continue
-                for msg in value.get("messages", []) or []:
-                    message_id, sender = msg.get("id"), msg.get("from")
-                    if not message_id or not sender:
-                        continue
-                    msg_type = msg.get("type") or ""
-                    text = (msg.get("text") or {}).get("body") if msg_type == "text" else None
-                    audio_id = (msg.get("audio") or {}).get("id") if msg_type == "audio" else None
-                    action_id = None
-                    if msg_type == "interactive":
-                        interactive = msg.get("interactive") or {}
-                        reply = interactive.get("button_reply") or interactive.get("list_reply")
-                        action_id = reply.get("id") if reply else None
-                    out.append(IncomingMessage(
-                        id=message_id, sender=sender, type=msg_type, text=text, action_id=action_id,
-                        audio_id=audio_id,
-                    ))
-        return out
-
-    def accept(self, message: IncomingMessage) -> bool:
-        """False for a redelivery of an already-handled message (Meta
-        retries whenever the webhook didn't answer 200 fast enough)."""
-        return self._seen.check_and_add(message.id)
-
     # ----------------------------------------------------------------- #
     # Turn handling
     # ----------------------------------------------------------------- #
@@ -239,7 +184,7 @@ class WhatsAppService(object):
 
         with Session().impersonate(user["id"]):
             Session().role = user["role"]
-            Session().channel = WHATSAPP_CHAT
+            Session().channel = CHANNEL
             if message.type == "interactive" and message.action_id:
                 logger.info(f"WhatsApp: action '{message.action_id}' received ({message.id}) from {message.sender}.")
                 if message.action_id == _ACCEPT_TERMS_ACTION:
@@ -309,7 +254,7 @@ class WhatsAppService(object):
         conversion never has to reconstruct it."""
         return Message(
             type=type, body=body, mime=mime,
-            username=Session().user, channel=WHATSAPP_CHAT, origin_id=message.id,
+            username=Session().user, channel=CHANNEL, origin_id=message.id,
         )
 
     async def _handle_unlinked(self, message: IncomingMessage) -> tuple[list[Reply], list[dict] | None, int | None]:
@@ -335,7 +280,7 @@ class WhatsAppService(object):
         assert user is not None
         with Session().impersonate(user["id"]):
             Session().role = user["role"]
-            Session().channel = WHATSAPP_CHAT
+            Session().channel = CHANNEL
             welcome_texts, manual_actions, session_id = await self._welcome_replies()
             return [Reply(REPLY_REGISTERED), *welcome_texts], manual_actions, session_id
 
@@ -562,7 +507,7 @@ class WhatsAppService(object):
         try:
             # The turn service opens a session on whatever channel is
             # current if this user has none; naming it is ours to do.
-            Session().channel = WHATSAPP_CHAT
+            Session().channel = CHANNEL
             await self._turn_service.record_unsolicited_reply(user["id"], project_id, message_md)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"WhatsApp: task.whatsapp sent to {phone_number} but session logging failed: {exc}")
@@ -714,39 +659,3 @@ def _log_unretrieved_failure(task: "asyncio.Task[bytes]") -> None:
     exc = task.exception()
     if exc is not None:
         logger.warning(f"WhatsApp: voice note synthesis started ahead of the reply failed: {exc}")
-
-
-# --------------------------------------------------------------------- #
-# Helpers
-# --------------------------------------------------------------------- #
-class _SeenMessages(object):
-    def __init__(self, ttl_seconds: int = 3600) -> None:
-        self._ttl = ttl_seconds
-        self._seen: dict[str, float] = {}
-
-    def check_and_add(self, message_id: str) -> bool:
-        now = time.monotonic()
-        if len(self._seen) > 5000:
-            self._seen = {k: t for k, t in self._seen.items() if now - t < self._ttl}
-        if message_id in self._seen and now - self._seen[message_id] < self._ttl:
-            return False
-        self._seen[message_id] = now
-        return True
-
-
-_HEADING = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$", re.MULTILINE)
-_BOLD = re.compile(r"(\*\*|__)(.+?)\1", re.DOTALL)
-_LINK = re.compile(r"\[([^\]]+)\]\((\S+?)\)")
-_BULLET = re.compile(r"^(\s*)[*+]\s+", re.MULTILINE)
-
-
-def to_whatsapp_markdown(text: str) -> str:
-    """The model writes CommonMark (see docs/MARKDOWN_GUIDE.md); WhatsApp
-    only renders *bold*, _italic_, ~strike~, ```mono``` and '- ' lists.
-    Headings become bold lines, links are spelled out, '*' bullets become
-    '-' so they aren't mistaken for bold markers."""
-    text = _LINK.sub(r"\1 (\2)", text)
-    text = _BOLD.sub(r"*\2*", text)
-    text = _HEADING.sub(lambda m: f"*{m.group(1).strip('*_ ')}*", text)
-    text = _BULLET.sub(r"\1- ", text)
-    return text.strip()

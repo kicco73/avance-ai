@@ -9,6 +9,8 @@ that stayed behind.
 """
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from ai.ai_service import AiService
@@ -98,3 +100,53 @@ def turn_service_for(tmp_path):
     # persisted order of messages against.
     make.db = db
     return make
+
+
+#: Every type a turn publishes, and what a test collects to see what one
+#: did — see turn/input_listener.py.
+TURN_FRAMES = ("turn.started", "output.text", "output.speech", "turn.tool", "turn.ended", "turn.failed")
+_TERMINAL = ("turn.ended", "turn.failed")
+
+
+async def drive_turn(turn_service, db, session_id: int, stream_id: str, text: str) -> list[tuple[str, dict]]:
+    """One turn, through the real listener, with the frames it published.
+
+    The listener runs a turn as its own task — a channel that awaited one
+    would hold up everyone else on the Bus — so there is nothing to await
+    from outside and the terminal frame is what says it is over. Frames
+    are picked out by `stream_id`, so two turns can be in flight at once
+    without a test seeing the other's.
+    """
+    from system import bus
+    from system.bus import INPUT_TEXT, Message
+    from system.session import Session
+    from turn.input_listener import TurnInput
+
+    # The listener looks the sender's role up rather than taking it off
+    # the wire (see Session.for_sender), so the sender has to exist.
+    db.get_or_create_user(None, None, Session().user, None, None, user_id=Session().user)
+
+    collected: list = []
+    finished = asyncio.Event()
+
+    async def take(message) -> None:
+        if message.stream_id != stream_id:
+            return
+        collected.append(message)
+        if message.type in _TERMINAL:
+            finished.set()
+
+    for message_type in TURN_FRAMES:
+        bus.subscribe(message_type, take)
+    if not any(getattr(listener, "__self__", None).__class__ is TurnInput for listener in bus.handlers_for(INPUT_TEXT)):
+        TurnInput(turn_service, db).register()
+    try:
+        await bus.publish(Message(
+            type=INPUT_TEXT, body=text, username=Session().user, session_id=session_id,
+            channel="webchat", origin_id=f"connection-{stream_id}", stream_id=stream_id,
+        ))
+        await asyncio.wait_for(finished.wait(), timeout=10)
+    finally:
+        for message_type in TURN_FRAMES:
+            bus.unsubscribe(message_type, take)
+    return [(m.type, m.body if isinstance(m.body, dict) else {"body": m.body}) for m in collected]

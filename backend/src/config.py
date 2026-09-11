@@ -337,10 +337,6 @@ class AppConfig:
     def __init__(self) -> None:
 
         raw, path = self._load_yml()
-        # The file as it was read, kept so a service can parse the part
-        # that belongs to it (see listen/config.py). The core validates
-        # what the core uses; a skill validates its own section when it
-        # starts.
         self.raw = raw
         self.path = path
         if not isinstance(raw, dict):
@@ -466,10 +462,6 @@ class AppConfig:
         }
 
 
-# Two of AppConfig's own parsing helpers, reachable by name: a service
-# that reads its own section of the file (see listen/config.py) needs
-# them and must not reach into a private classmethod. Wrappers rather
-# than a move, so the validation itself stays in one place.
 def parse_ui_fields(entry: dict, driver: str, section: str, i: int, path: Path) -> tuple[str, str | None]:
     return AppConfig._parse_ui_fields(entry, driver, section, i, path)
 

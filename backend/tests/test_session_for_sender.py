@@ -25,10 +25,10 @@ def _fresh(call):
 
 def test_it_sets_the_identity_a_listener_needs_from_nothing_at_all():
     def body():
-        with Session().for_sender("alice@example.com", role="user", channel="whatsapp-chat"):
+        with Session().for_sender("alice@example.com", role="user", channel="whatsapp"):
             return Session().user, Session().role, Session().channel
 
-    assert _fresh(body) == ("alice@example.com", "user", "whatsapp-chat")
+    assert _fresh(body) == ("alice@example.com", "user", "whatsapp")
 
 
 def test_a_message_with_no_channel_leaves_the_channel_undeclared():
@@ -50,13 +50,13 @@ def test_everything_it_set_is_put_back_on_the_way_out():
     another listener. It borrows the context, it does not take it."""
     Session().user = "owner@example.com"
     Session().role = "supervisor"
-    Session().channel = "native-chat"
+    Session().channel = "webchat"
 
-    with Session().for_sender("alice@example.com", role="user", channel="whatsapp-chat"):
+    with Session().for_sender("alice@example.com", role="user", channel="whatsapp"):
         pass
 
     assert (Session().user, Session().role, Session().channel) == (
-        "owner@example.com", "supervisor", "native-chat",
+        "owner@example.com", "supervisor", "webchat",
     )
 
 
@@ -76,9 +76,9 @@ def test_a_channel_left_undeclared_does_not_clobber_one_already_set():
     back a channel it never set."""
     Session().user = "owner@example.com"
     Session().role = "supervisor"
-    Session().channel = "native-chat"
+    Session().channel = "webchat"
 
     with Session().for_sender("alice@example.com", role="user"):
-        assert Session().channel == "native-chat"
+        assert Session().channel == "webchat"
 
-    assert Session().channel == "native-chat"
+    assert Session().channel == "webchat"

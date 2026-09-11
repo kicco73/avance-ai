@@ -150,7 +150,7 @@ def test_upgrade_renames_a_column_back_and_adds_new_not_null_default_columns_via
     _run_sql(renamed, [
         *SEED_PROJECT_AND_USER,
         "INSERT INTO ChatSession (username, user_id, project_id, type, project_revision, labeled, labeling_revision, channel, ai_summary) "
-        "VALUES ('enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0, 'native-chat', 'kept summary')",
+        "VALUES ('enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0, 'webchat', 'kept summary')",
         'ALTER TABLE "ChatSession" RENAME COLUMN "ai_summary" TO "summary"',
     ])
     Db(_url(renamed), migration_strategy="upgrade")
@@ -306,7 +306,7 @@ def test_upgrade_relaxes_a_not_null_constraint_and_preserves_data(tmp_path):
     _run_sql(db_path, [
         *SEED_PROJECT_AND_USER,
         "INSERT INTO ChatSession (username, user_id, project_id, type, project_revision, labeled, labeling_revision, channel) "
-        "VALUES ('enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0, 'native-chat')",
+        "VALUES ('enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0, 'webchat')",
         *_rebuild_user_with_email_not_null(db_path, with_whatsapp=False)[2:],
     ])
 
@@ -316,7 +316,7 @@ def test_upgrade_relaxes_a_not_null_constraint_and_preserves_data(tmp_path):
     assert notnull["email"] is False
     assert "whatsapp_phone_number" in notnull
     assert _query(db_path, "SELECT id, email, role FROM User") == [("enrico@example.com", "enrico@example.com", "user")]
-    assert _query(db_path, "SELECT username, project_id, channel FROM ChatSession") == [("enrico@example.com", "lluna", "native-chat")]
+    assert _query(db_path, "SELECT username, project_id, channel FROM ChatSession") == [("enrico@example.com", "lluna", "webchat")]
     assert _query(db_path, "PRAGMA foreign_key_check") == []
 
 
@@ -401,7 +401,7 @@ def test_upgrade_rebuilds_a_table_needing_both_a_constraint_change_and_a_new_not
     # explicitly instead (see SchemaMigrator._backfill_channel).
     assert notnull["channel"] is False
     assert _query(db_path, "SELECT id, username, project_id, labeling_revision, channel FROM ChatSession") == [
-        (1, "enrico@example.com", "lluna", 0, "native-chat"),
+        (1, "enrico@example.com", "lluna", 0, "webchat"),
     ]
     assert _query(db_path, "SELECT session_id, content FROM Message") == [(1, "hi")]
     assert _query(db_path, "PRAGMA foreign_key_check") == []
@@ -524,3 +524,50 @@ def test_upgrade_moves_archive_content_into_a_shared_file_table_keeping_every_by
     assert db.get_archive_content_type("proj", "notes.txt", revision=1) == "text/plain"
     assert _query(path, 'SELECT COUNT(*) FROM "File"')[0][0] == 2
     assert sorted(_query(path, 'SELECT "size" FROM "File"')) == [(len(b"other bytes"),), (len(b"shared bytes"),)]
+
+
+def test_a_session_opened_before_a_channel_was_named_after_its_skill_is_renamed(tmp_path):
+    """A channel is named after the skill that is that channel, and rows
+    written before that was true say otherwise.
+
+    Nothing about the schema changes when a stored value is renamed, so
+    SchemaMigrator never runs for it — Db does it on every boot instead,
+    and has to, because is_valid_write_target compares the name: left
+    alone, every live session a real user has open would come back on a
+    channel no build answers to and be writable from nowhere.
+    """
+    db_path = tmp_path / "test.db"
+    Db(_url(db_path))
+    _run_sql(db_path, [
+        *SEED_PROJECT_AND_USER,
+        "INSERT INTO ChatSession (id, username, user_id, project_id, type, project_revision, labeled, "
+        "labeling_revision, channel) VALUES "
+        "(1, 'enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0, 'native-chat'), "
+        "(2, 'enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0, 'whatsapp-chat'), "
+        "(3, 'enrico@example.com', 'enrico@example.com', 'lluna', 'test', 1, 0, 0, NULL)",
+    ])
+
+    Db(_url(db_path))
+
+    assert _query(db_path, "SELECT id, channel FROM ChatSession ORDER BY id") == [
+        (1, "webchat"), (2, "whatsapp"), (3, None),
+    ]
+
+
+def test_renaming_the_channels_runs_on_every_boot_and_changes_nothing_the_second_time(tmp_path):
+    """Unconditional and idempotent, like _backfill_projects: there is no
+    schema difference to detect it by, so the only safe shape is one that
+    costs nothing to repeat."""
+    db_path = tmp_path / "test.db"
+    Db(_url(db_path))
+    _run_sql(db_path, [
+        *SEED_PROJECT_AND_USER,
+        "INSERT INTO ChatSession (id, username, user_id, project_id, type, project_revision, labeled, "
+        "labeling_revision, channel) VALUES "
+        "(1, 'enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0, 'webchat')",
+    ])
+
+    Db(_url(db_path))
+    Db(_url(db_path))
+
+    assert _query(db_path, "SELECT id, channel FROM ChatSession") == [(1, "webchat")]

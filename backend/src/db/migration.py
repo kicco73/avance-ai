@@ -287,12 +287,14 @@ class SchemaMigrator:
         being writable from anywhere.
 
         A database old enough to lack the column is older than WhatsApp
-        support, so every live session in it was held in the chat
-        window."""
+        support, so every live session in it was held in the chat window
+        — which is the webchat skill, and so the channel's name (see
+        Db._rename_channels_to_skill_keys for the rows that predate the
+        name and not the column)."""
         if "ChatSession" not in actual or "channel" in actual["ChatSession"]:
             return
         self._database.execute_sql(
-            'UPDATE "ChatSession" SET channel = \'native-chat\' WHERE type = \'live\''
+            'UPDATE "ChatSession" SET channel = \'webchat\' WHERE type = \'live\''
         )
 
     def _backfill_answered_by(self, actual: dict[str, set[str]]) -> None:

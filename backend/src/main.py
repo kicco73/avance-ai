@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from auth.auth_middleware import AuthMiddleware
 from auth.auth_service import AuthService
+from turn.input_listener import TurnInput
 from turn.turn_service import TurnService
 from turn.sessions.session_manager import SessionManager
 from system import bus
@@ -173,6 +174,12 @@ def create_app() -> FastAPI:
             db, ai_live_service, ai_test_service, project_service, session_manager,
             tracking_service, metric_service, scheduler_service, namespace_factory,
         )
+
+        # A channel posts what a person said; this is what answers it.
+        # Core, not a skill: a build with no chat window still runs turns
+        # for WhatsApp, and neither channel knows the other exists (see
+        # turn/input_listener.py).
+        TurnInput(turn_service, db).register()
 
         # A flush runs on a job-worker thread, and a listener that ends
         # up writing to a socket needs this loop rather than that one.

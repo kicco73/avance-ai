@@ -75,6 +75,31 @@ class Db(
         database.create_tables(self._MODELS, safe=True)
         self._create_file_gc_triggers()
         self._backfill_projects()
+        self._rename_channels_to_skill_keys()
+
+    @staticmethod
+    def _rename_channels_to_skill_keys() -> None:
+        """A channel is named after the skill that is that channel, and
+        these two rows were written before that was true.
+
+        Not in SchemaMigrator: renaming a stored *value* changes no
+        column, no constraint and no index, so schema_differs never sees
+        it and migrate() never runs. Left alone, every live session a
+        real user has open comes back on a channel no build answers to —
+        is_valid_write_target compares the name, so the session would be
+        writable from nowhere (the same failure _backfill_channel exists
+        to prevent).
+
+        Unconditional and idempotent, like _backfill_projects above: an
+        indexed equality over a table that has none of these rows after
+        the first boot.
+        """
+        for old_name, new_name in (("native-chat", "webchat"), ("whatsapp-chat", "whatsapp")):
+            renamed = (
+                ChatSession.update(channel=new_name).where(ChatSession.channel == old_name).execute()
+            )
+            if renamed:
+                logger.warning("Renamed %d session(s) from channel '%s' to '%s'.", renamed, old_name, new_name)
 
     def _repair_indexes_if_inconsistent(self) -> None:
         problems = [row[0] for row in database.execute_sql('PRAGMA integrity_check').fetchall()]

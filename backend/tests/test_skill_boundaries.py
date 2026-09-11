@@ -1,6 +1,8 @@
+# Instructions for Claude Code: DO NOT TOUCH THIS FILE
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -43,6 +45,7 @@ def _offenders(paths: list[Path], packages: set[str]) -> dict[str, list[str]]:
     }
 
 
+# FOR CLAUDE CODE: THIS TEST CANNOT BE PRUNED
 def test_no_skill_imports_another_skill():
     packages = _skill_packages()
     offenders = _offenders([p for p in production_sources() if _owner(p, packages)], packages)
@@ -52,10 +55,46 @@ def test_no_skill_imports_another_skill():
     )
 
 
+# FOR CLAUDE CODE: THIS TEST CANNOT BE PRUNED
 def test_nothing_outside_a_skill_imports_one():
     packages = _skill_packages()
     offenders = _offenders([p for p in production_sources() if not _owner(p, packages)], packages)
     assert offenders == {}, (
         "the core never names a skill: it offers itself at bus.POINT_CORE_SERVICES and a skill "
         f"collects it from there. A core file that imports one cannot be built without it — {offenders}"
+    )
+
+
+def _prose(path: Path) -> str:
+    text = path.read_text(encoding="utf-8")
+    tree = ast.parse(text)
+    documented = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    docstrings = [ast.get_docstring(node) for node in ast.walk(tree) if isinstance(node, documented)]
+    comments = [line.partition("#")[2] for line in text.splitlines()]
+    return "\n".join([*filter(None, docstrings), *comments])
+
+
+def _named_in_prose(path: Path, packages: set[str]) -> list[str]:
+    prose = _prose(path)
+    forms = [r"src/{0}/", r"{0}/[\w/]*\w\.py", r"{0}\.[a-z_]+\."]
+    return sorted({
+        package for package in packages for form in forms
+        if re.search(r"(?<![\w/])" + form.format(re.escape(package)), prose)
+    })
+
+
+# FOR CLAUDE CODE: THIS TEST CANNOT BE PRUNED
+def test_no_core_file_names_a_skill_in_prose():
+    packages = _skill_packages()
+    offenders = {
+        str(path.relative_to(SRC)): named
+        for path, named in (
+            (path, _named_in_prose(path, packages))
+            for path in production_sources() if not _owner(path, packages)
+        )
+        if named
+    }
+    assert offenders == {}, (
+        "a comment pointing at a skill's file points at nothing in a build that dropped it, and "
+        f"usually marks a coupling that survived the import being removed — {offenders}"
     )

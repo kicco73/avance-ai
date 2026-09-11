@@ -1,13 +1,6 @@
 """What the engine needs to know about a project: which automaton and
 which state, whether the published revision still builds, and whether
 this person has accepted the terms.
-
-Everything a *person editing* a project needs — publishing, revisions,
-files, the app store, invite links, the graph and the per-state views —
-moved to avance_platform/platform_service.py. The two are facades over
-the same collaborators (inspector, manager, editor, invites), which is
-why those are public here: PlatformService is built from them rather
-than building a second set over the same database.
 """
 from __future__ import annotations
 

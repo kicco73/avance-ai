@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from automaton.automaton import Action, Automaton, State
-from turn.channels import NATIVE_CHAT, WHATSAPP_CHAT
+from turn.channels import CHANNELS
 from turn.turn_service import TurnService
 from turn.errors import TurnServiceError
 from turn.sessions.session_manager import SessionManager
@@ -26,12 +26,11 @@ pytestmark = pytest.mark.contract
 LIVE = get_session_type_strategy('live')
 PROJECT_ID = "channels-proj"
 USERNAME = "user"
-CHANNELS = (NATIVE_CHAT, WHATSAPP_CHAT)
 EXISTING_STATES = ("same_channel_open", "other_channel_open", "expired", "closed", "absent")
 
 
 def _other(channel: str) -> str:
-    return WHATSAPP_CHAT if channel == NATIVE_CHAT else NATIVE_CHAT
+    return "whatsapp" if channel == "webchat" else "webchat"
 
 
 def _automaton() -> Automaton:
@@ -125,7 +124,7 @@ def _make_expired_session(db, manager: SessionManager, *, now=None) -> dict:
     stale = now - manager.open_window - timedelta(seconds=1)
     session_id = db.create_chat_session(
         USERNAME, PROJECT_ID, 0, datetime_start=stale, datetime_end=stale,
-        start_state="a", end_state="a", type="live", channel=NATIVE_CHAT,
+        start_state="a", end_state="a", type="live", channel="webchat",
     )
     return db.get_chat_session(session_id)
 
@@ -134,7 +133,7 @@ def _make_closed_session(db, *, now=None) -> dict:
     now = now or datetime.utcnow()
     session_id = db.create_chat_session(
         USERNAME, PROJECT_ID, 0, datetime_start=now, datetime_end=now,
-        start_state="a", end_state="a", type="live", channel=NATIVE_CHAT,
+        start_state="a", end_state="a", type="live", channel="webchat",
     )
     db.close_chat_session(session_id, now, "manual-user")
     return db.get_chat_session(session_id)
@@ -320,14 +319,14 @@ async def test_takeover_whatsapp_to_web_via_new_session_then_open_if_needed(db):
     still open, taking it over — the fresh web session is genuinely new,
     so open_if_needed's own AI bootstrap fires for it."""
     turn_service = _turn_service(db)
-    Session().channel = WHATSAPP_CHAT
+    Session().channel = "whatsapp"
     whatsapp_session = await turn_service.acquire_exclusive_session()
 
-    Session().channel = NATIVE_CHAT
+    Session().channel = "webchat"
     web_payload = await turn_service.create_session()
 
     assert web_payload["id"] != whatsapp_session["id"]
-    assert web_payload["channel"] == NATIVE_CHAT
+    assert web_payload["channel"] == "webchat"
     closed = db.get_chat_session(whatsapp_session["id"])
     assert closed["closed_at"] is not None
     assert closed["close_reason"] == "channel-switch"
@@ -342,14 +341,14 @@ async def test_takeover_web_to_whatsapp_via_run_turn_then_prepare_user_initiated
     takes it over — prepare_user_initiated_turn never opens with an
     AI-initiated message of its own, unlike the takeover above."""
     turn_service = _turn_service(db)
-    Session().channel = NATIVE_CHAT
+    Session().channel = "webchat"
     web_session = await turn_service.get_current_session_if_any_or_create_new(None)
 
-    Session().channel = WHATSAPP_CHAT
+    Session().channel = "whatsapp"
     whatsapp_payload = await turn_service.acquire_exclusive_session()
 
     assert whatsapp_payload["id"] != web_session["id"]
-    assert whatsapp_payload["channel"] == WHATSAPP_CHAT
+    assert whatsapp_payload["channel"] == "whatsapp"
     closed = db.get_chat_session(web_session["id"])
     assert closed["closed_at"] is not None
     assert closed["close_reason"] == "channel-switch"
@@ -385,7 +384,7 @@ def test_reporting_on_a_session_never_asks_which_channel_the_caller_is_on(db):
     to (see frontend sessionChannels.js's isWritableHere)."""
     _setup_project(db)
     manager = SessionManager(db, open_window_minutes=5)
-    session = _make_open_session(db, WHATSAPP_CHAT)
+    session = _make_open_session(db, "whatsapp")
     turn_service = _turn_service(db, session_manager=manager)
 
     listed = _without_a_channel(lambda: turn_service.list_sessions(PROJECT_ID))
@@ -393,9 +392,9 @@ def test_reporting_on_a_session_never_asks_which_channel_the_caller_is_on(db):
 
     assert [s["id"] for s in listed] == [session["id"]]
     assert listed[0]["current"] is True
-    assert listed[0]["channel"] == WHATSAPP_CHAT
+    assert listed[0]["channel"] == "whatsapp"
     assert renamed["current"] is True
-    assert renamed["channel"] == WHATSAPP_CHAT
+    assert renamed["channel"] == "whatsapp"
 
 
 def test_admitting_a_write_still_refuses_a_caller_with_no_channel_at_all(db):
@@ -405,7 +404,7 @@ def test_admitting_a_write_still_refuses_a_caller_with_no_channel_at_all(db):
     to guess one."""
     _setup_project(db)
     manager = SessionManager(db, open_window_minutes=5)
-    session = _make_open_session(db, NATIVE_CHAT)
+    session = _make_open_session(db, "webchat")
 
     with pytest.raises(RuntimeError, match="outside a request context"):
         _without_a_channel(
@@ -422,7 +421,7 @@ def test_a_live_session_with_no_channel_is_writable_from_nowhere(db):
     used to prevent."""
     _setup_project(db)
     manager = SessionManager(db, open_window_minutes=5)
-    session = _make_open_session(db, NATIVE_CHAT)
+    session = _make_open_session(db, "webchat")
     # The row is edited straight through the model: create_chat_session
     # refuses to make one this way, which is the point.
     from db.models import ChatSession

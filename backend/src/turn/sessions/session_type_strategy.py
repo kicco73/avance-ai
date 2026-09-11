@@ -46,10 +46,7 @@ class SessionTypeStrategy(ABC):
     # Only a live session is a conversation with somebody: a test,
     # preview or imported one is never reached from WhatsApp or from
     # anywhere else, and asking who is speaking would force every editor
-    # route that opens one to answer. auth/auth_middleware.py used to
-    # answer for them, stamping native-chat on every authenticated HTTP
-    # request, which is how core came to name webchat's channel — and
-    # how a build without src/webchat/ still carried it.
+    # route that opens one to answer.
     @abstractmethod
     def caller_channel(self) -> str | None: ...
 
@@ -59,11 +56,7 @@ class SessionTypeStrategy(ABC):
     # argument and not a read of the ambient Session().channel on purpose:
     # only the three conversation operations that authorise a write ever
     # ask this, and each of them runs inside a channel that knows its own
-    # name (webchat/webchat_service.py, whatsapp/whatsapp_service.py).
-    # Reading it here instead would force every caller to have one, which
-    # is what made auth/auth_middleware.py forge native-chat for every
-    # HTTP request — core naming a skill's channel, and a build without
-    # src/webchat/ still carrying the name of its channel.
+    # name. Reading it here instead would force every caller to have one.
     @abstractmethod
     def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool: ...
 
@@ -116,9 +109,7 @@ class LiveSessionStrategy(SessionTypeStrategy):
     def caller_channel(self) -> str | None:
         # Raises when nobody declared one, rather than defaulting: a live
         # session cannot be opened, resumed or written to by a caller who
-        # cannot say where they are speaking from. Each channel names
-        # itself — webchat/webchat_controller.py and webchat_service.py
-        # for the chat window, whatsapp/whatsapp_service.py for WhatsApp.
+        # cannot say where they are speaking from. Each channel names itself.
         return Session().channel
 
     def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool:
