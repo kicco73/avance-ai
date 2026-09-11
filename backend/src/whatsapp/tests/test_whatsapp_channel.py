@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from system.service_error import ServiceError
-from system.session import Session
+from system.web_session import WebSession
 from whatsapp.outbound import REPLY_DONE
 from whatsapp.webhook import IncomingMessage, extract_incoming
 from whatsapp.whatsapp_service import (
@@ -381,7 +381,7 @@ async def test_impersonation_does_not_leak_past_the_turn(env):
     _, service, chat, _, _ = env
     await service.handle(IncomingMessage(id="wamid.9", sender=LINKED_NUMBER, type="text", text="hola"))
     assert chat.calls == [("session", LINKED_EMAIL), ("turn", LINKED_EMAIL)]
-    assert Session().user == "user"
+    assert WebSession().user == "user"
 
 
 def test_a_second_inbound_answered_by_the_turn_already_running_sends_nothing(env):

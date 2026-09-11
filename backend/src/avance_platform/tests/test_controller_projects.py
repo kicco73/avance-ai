@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from conftest import parse_sse_result
-from system.session import Session
+from system.web_session import WebSession
 
 pytestmark = pytest.mark.regression
 
@@ -156,12 +156,12 @@ def test_a_plain_user_only_sees_the_projects_they_have_a_userproject_row_for(app
     everything, per the tests above."""
     hello = _upload(client, "Hello world.zip")
     _upload(client, "Aprendr català.zip")
-    Session().role = "user"
+    WebSession().role = "user"
 
     assert client.get("/api/core/projects").json()["projects"] == []
 
-    Session().role = "supervisor"
-    app_db.record_terms_acceptance(Session().user, hello, archive_id=None)
-    Session().role = "user"
+    WebSession().role = "supervisor"
+    app_db.record_terms_acceptance(WebSession().user, hello, archive_id=None)
+    WebSession().role = "user"
 
     assert [p["id"] for p in client.get("/api/core/projects").json()["projects"]] == [hello]

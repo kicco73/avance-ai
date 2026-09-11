@@ -19,7 +19,7 @@ from metrics.metrics_framework import (
     MetricResult,
 )
 from metrics.metrics_framework import metric_names as _metric_names
-from system.session import Session
+from system.web_session import WebSession
 
 if TYPE_CHECKING:
     # Deferred: project.project_service -> tracking.tracking_engine ->
@@ -93,7 +93,7 @@ class MetricService(object):
         back to the caller's own session. `metrics` omitted uses
         AnalyticsCalculator's own default (scoped to "one_session")."""
         calculator = AnalyticsCalculator(
-            self._db, username or Session().user, project_id or self._project_service.get_active_project_id(),
+            self._db, username or WebSession().user, project_id or self._project_service.get_active_project_id(),
             metrics=metrics, until=until,
         )
         return list(zip(calculator.metrics, calculator.calculate_all()))
@@ -133,7 +133,7 @@ class MetricService(object):
         call unconditionally: no AnalyticsCalculator is built until an
         expression calls one of the namespace's own methods."""
         return UserMetricNamespace(lambda: AnalyticsCalculator(
-            self._db, Session().user, self._project_service.get_active_project_id(),
+            self._db, WebSession().user, self._project_service.get_active_project_id(),
             metrics=user_scoped_metrics(), until=datetime.utcnow(),
         ))
 
@@ -159,10 +159,10 @@ class MetricService(object):
         # to whatever's meaningful for that run (see BenchmarkCalculator's
         # own default "one_session" filtering).
         unfiltered_metrics = BenchmarkCalculator(
-            self._db, Session().user, resolved_project_id, configuration=configuration, session_id=session_id,
+            self._db, WebSession().user, resolved_project_id, configuration=configuration, session_id=session_id,
         ).default_metrics()
         calculator = BenchmarkCalculator(
-            self._db, Session().user, resolved_project_id,
+            self._db, WebSession().user, resolved_project_id,
             configuration=configuration, session_id=session_id, metrics=unfiltered_metrics,
         )
         results = calculator.calculate_all()

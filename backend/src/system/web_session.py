@@ -1,6 +1,18 @@
-"""Request-scoped session state — today just the current user. Durable
-per-user data (e.g. active_project) lives in db.py's User table (see
-db/users.py), not here.
+"""The *web* session: request-scoped state for whoever is calling —
+who they are, what role they have, and which channel they are speaking
+for. It exists only because an HTTP request (or a websocket frame) is
+being served, and dies with it.
+
+Not to be confused with db.models.CoreSession, which is a *conversation*
+between somebody and an automaton — opened by webchat, by whatsapp, or by
+a test, persisted, and outliving any number of requests. The two used to
+share the word "session", which made every sentence about one ambiguous.
+They touch in exactly one place: a channel's own controller writes
+`WebSession().channel` to declare who is speaking, and CoreSession's
+admission rules read it (see turn/sessions/session_type_strategy.py).
+
+Durable per-user data (e.g. active_project) lives in the User table
+(see db/users.py), not here.
 
 Backed by a ContextVar rather than a plain instance attribute: the app
 mixes sync `def` endpoints (run by Starlette in a threadpool) and
@@ -22,16 +34,16 @@ _channel: ContextVar[str] = ContextVar("session_channel")
 _connection_id: ContextVar[str] = ContextVar("session_connection_id")
 
 
-class Session(object):
-    """Singleton: `Session()` always returns the same instance — only
+class WebSession(object):
+    """Singleton: `WebSession()` always returns the same instance — only
     what's behind its `user` property is context-scoped, not the
     instance itself. Unset in the current context (e.g. a test, or any
     code path that never went through the auth middleware) raises
     rather than silently resolving to a placeholder user."""
 
-    _instance: "Session | None" = None
+    _instance: "WebSession | None" = None
 
-    def __new__(cls) -> "Session":
+    def __new__(cls) -> "WebSession":
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -41,7 +53,7 @@ class Session(object):
         try:
             return _user.get()
         except LookupError as exc:
-            raise RuntimeError("Session().user accessed outside an authenticated request context.") from exc
+            raise RuntimeError("WebSession().user accessed outside an authenticated request context.") from exc
 
     @user.setter
     def user(self, value: str) -> None:
@@ -52,7 +64,7 @@ class Session(object):
         try:
             return _role.get()
         except LookupError as exc:
-            raise RuntimeError("Session().role accessed outside an authenticated request context.") from exc
+            raise RuntimeError("WebSession().role accessed outside an authenticated request context.") from exc
 
     @role.setter
     def role(self, value: str) -> None:
@@ -63,7 +75,7 @@ class Session(object):
         try:
             return _channel.get()
         except LookupError as exc:
-            raise RuntimeError("Session().channel accessed outside a request context.") from exc
+            raise RuntimeError("WebSession().channel accessed outside a request context.") from exc
 
     @channel.setter
     def channel(self, value: str) -> None:
@@ -113,7 +125,7 @@ class Session(object):
         caller looks it up and passes it in.
 
         `channel` is left alone when the message has none, so
-        Session().channel keeps raising for a caller that never declared
+        WebSession().channel keeps raising for a caller that never declared
         one (see SessionTypeStrategy.caller_channel) rather than
         answering None and quietly failing a live session's write
         admission instead."""

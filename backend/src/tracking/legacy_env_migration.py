@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from db import Db
-from db.models import ChatSession, Tracking
+from db.models import CoreSession, Tracking
 from system.logging_factory import LoggerFactory
 from project.archive.automaton_loader import AutomatonLoader
 
@@ -40,9 +40,9 @@ def _stray_test_session_env_row_ids(db: Db) -> list[int]:
     rows = (
         Tracking
         .select(Tracking.id)
-        .join(ChatSession, on=Tracking.session == ChatSession.id)
+        .join(CoreSession, on=Tracking.session == CoreSession.id)
         .where(
-            ChatSession.type.in_(_EPHEMERAL_SESSION_TYPES)
+            CoreSession.type.in_(_EPHEMERAL_SESSION_TYPES)
             & (Tracking.env.is_null(False) | Tracking.action_env.is_null(False))
         )
     )
@@ -53,9 +53,9 @@ def _orphan_action_env_keys(db: Db) -> dict[tuple[str, str], set[str]]:
     automaton_loader = AutomatonLoader(db)
     result: dict[tuple[str, str], set[str]] = {}
     pairs = (
-        ChatSession
-        .select(ChatSession.project, ChatSession.username)
-        .where(ChatSession.type == 'live')
+        CoreSession
+        .select(CoreSession.project, CoreSession.username)
+        .where(CoreSession.type == 'live')
         .distinct()
     )
     for row in pairs:

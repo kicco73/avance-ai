@@ -4,7 +4,7 @@ A channel's name is the name of the skill that is that channel — the key
 in its own skill.py, and the segment in its own routes. It used to have a
 second name of its own ('native-chat' for webchat, 'whatsapp-chat' for
 whatsapp), which meant every sentence about a channel was ambiguous: the
-package, or the string in ChatSession.channel? They are the same thing,
+package, or the string in CoreSession.channel? They are the same thing,
 so they have the same name.
 
 The list is still here, and still wrong to be here: core cannot say which

@@ -218,7 +218,7 @@ class CreateTestRequest(BaseModel):
     # 'batch_lite', 'batch', or 'turn_by_turn' — see testing_service.py's own
     # VALID_STRATEGIES.
     strategy: str
-    # None = the requesting user (Session().user), the default. Set to
+    # None = the requesting user (WebSession().user), the default. Set to
     # scope the run to a different user's sessions instead.
     username: str | None = None
 

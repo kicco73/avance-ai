@@ -25,7 +25,7 @@ class WebchatSkill(Skill):
     # No `key`: Skill derives it from the package name (see
     # skills.Skill.__init_subclass__), and the package name is the one
     # name this channel has — the skill key, the route segment, and the
-    # value in ChatSession.channel are all "webchat".
+    # value in CoreSession.channel are all "webchat".
     ui_label = "Web chat"
     ui_description = "Turns over the browser WebSocket."
 

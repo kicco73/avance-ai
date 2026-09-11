@@ -30,7 +30,7 @@ def _archive_content(client, project_name: str, archive_name: str):
 
 class TestAdd:
     def test_state_is_created_with_defaults_and_persisted_and_an_unknown_project_is_404(self, client, hello_project):
-        response = client.post(f"/api/skills/platform/projects/{hello_project}/states")
+        response = client.post(f"/api/core/projects/{hello_project}/states")
         assert response.status_code == 200
         payload = response.json()
         assert payload["key"] == "state-0"
@@ -39,10 +39,10 @@ class TestAdd:
         assert payload["actions"] == []
         assert "state-0:" in _index_yml(client, hello_project)
 
-        assert client.post("/api/skills/platform/projects/does-not-exist/states").status_code == 404
+        assert client.post("/api/core/projects/does-not-exist/states").status_code == 404
 
     def test_signal_is_created_with_defaults_and_persisted(self, client, hello_project):
-        response = client.post(f"/api/skills/platform/projects/{hello_project}/signals")
+        response = client.post(f"/api/core/projects/{hello_project}/signals")
         assert response.status_code == 200
         payload = response.json()
         assert payload["name"] == "new_signal"
@@ -80,7 +80,7 @@ class TestPutStateField:
 
 class TestPutActionField:
     def test_edits_target_ui_description_task_and_trigger_and_clearing_trigger_removes_the_key(self, client, hello_project):
-        client.post(f"/api/skills/platform/projects/{hello_project}/states")
+        client.post(f"/api/core/projects/{hello_project}/states")
         action = client.post(f"/api/skills/platform/projects/{hello_project}/states/Hello/actions").json()
         base = f"/api/skills/platform/projects/{hello_project}/states/Hello/actions/{action['name']}"
 
@@ -142,8 +142,8 @@ class TestPutActionField:
 
 class TestPutSignalField:
     def test_edits_definition_and_ui_description_and_a_ui_label_edit_renames_the_signal(self, client, hello_project):
-        signal = client.post(f"/api/skills/platform/projects/{hello_project}/signals").json()
-        base = f"/api/skills/platform/projects/{hello_project}/signals/{signal['name']}"
+        signal = client.post(f"/api/core/projects/{hello_project}/signals").json()
+        base = f"/api/core/projects/{hello_project}/signals/{signal['name']}"
 
         response = client.put(f"{base}/definition", json={"value": "a real definition"})
         assert response.status_code == 200
@@ -167,7 +167,7 @@ class TestPutInitAction:
         assert response.status_code == 400
         assert "Hello:" in _index_yml(client, hello_project)
 
-        client.post(f"/api/skills/platform/projects/{hello_project}/states")
+        client.post(f"/api/core/projects/{hello_project}/states")
         response = client.put(f"/api/skills/platform/projects/{hello_project}/init-action/target", json={"value": "state-0"})
         assert response.status_code == 200
         assert response.json()["key"] == "state-0"
@@ -213,7 +213,7 @@ class TestPutInitAction:
 
 def test_every_field_endpoint_rejects_a_field_not_on_its_whitelist(client, hello_project):
     action = client.post(f"/api/skills/platform/projects/{hello_project}/states/Hello/actions").json()
-    signal = client.post(f"/api/skills/platform/projects/{hello_project}/signals").json()
+    signal = client.post(f"/api/core/projects/{hello_project}/signals").json()
     source = client.post(f"/api/skills/platform/projects/{hello_project}/sources").json()
 
     for path, value in [
@@ -241,9 +241,9 @@ class TestReorderActions:
 
 class TestDelete:
     def test_removes_a_state_action_or_signal_but_never_the_init_actions_own_target(self, client, hello_project):
-        client.post(f"/api/skills/platform/projects/{hello_project}/states")
+        client.post(f"/api/core/projects/{hello_project}/states")
         action = client.post(f"/api/skills/platform/projects/{hello_project}/states/Hello/actions").json()
-        signal = client.post(f"/api/skills/platform/projects/{hello_project}/signals").json()
+        signal = client.post(f"/api/core/projects/{hello_project}/signals").json()
 
         assert client.delete(f"/api/skills/platform/projects/{hello_project}/states/state-0").status_code == 204
         assert "state-0:" not in _index_yml(client, hello_project)
@@ -252,7 +252,7 @@ class TestDelete:
         assert action["name"] not in _index_yml(client, hello_project)
         assert "Hello:" in _index_yml(client, hello_project)
 
-        assert client.delete(f"/api/skills/platform/projects/{hello_project}/signals/{signal['name']}").status_code == 204
+        assert client.delete(f"/api/core/projects/{hello_project}/signals/{signal['name']}").status_code == 204
         assert f"{signal['name']}:" not in _index_yml(client, hello_project)
 
         assert client.delete(f"/api/skills/platform/projects/{hello_project}/states/Hello").status_code == 400

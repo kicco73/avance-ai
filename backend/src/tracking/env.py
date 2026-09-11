@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from db import Db
-from system.session import Session
+from system.web_session import WebSession
 
 if TYPE_CHECKING:
     # Deferred: project.project_service imports tracking.tracking_engine,
@@ -130,7 +130,7 @@ class PersistedEnv(Env):
         """`project_service`: whatever answers get_active_project_id() —
         the real ProjectService (the request user's active project) or a
         FixedProjectContext pinned to one project. `username`: whose env
-        this is; omitted, the request user (Session().user). Both must be
+        this is; omitted, the request user (WebSession().user). Both must be
         pinned to the *session's own* project and user whenever the
         session being operated on isn't necessarily the request user's
         active-project session — a supervisor opening someone else's
@@ -158,7 +158,7 @@ class PersistedEnv(Env):
         return self._project_service.get_active_project_id()
 
     def _user(self) -> str:
-        return self._username if self._username is not None else Session().user
+        return self._username if self._username is not None else WebSession().user
 
     def memory(self, until: datetime | None = None) -> dict[str, Any]:
         """`until` (naive-but-UTC): as they stood at or before that

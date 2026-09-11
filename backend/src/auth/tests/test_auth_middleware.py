@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from auth.auth_middleware import AuthMiddleware
 from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME
-from system.session import Session
+from system.web_session import WebSession
 
 pytestmark = pytest.mark.contract
 
@@ -38,9 +38,9 @@ class _FakeDb:
 
 @pytest.fixture(autouse=True)
 def _restore_session_user():
-    previous = Session().user
+    previous = WebSession().user
     yield
-    Session().user = previous
+    WebSession().user = previous
 
 
 @pytest.fixture
@@ -68,7 +68,7 @@ def client(identity, fake_db) -> TestClient:
 
     @app.get("/api/protected")
     def protected():
-        return {"user": Session().user}
+        return {"user": WebSession().user}
 
     @app.get("/api/skills/platform/projects/{project_id}/protected")
     def protected_project(project_id: str):

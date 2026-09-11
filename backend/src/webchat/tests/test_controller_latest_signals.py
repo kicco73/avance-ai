@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from system.session import Session
+from system.web_session import WebSession
 
 from conftest import chat_turn
 
@@ -19,7 +19,7 @@ pytestmark = pytest.mark.contract
 
 def test_latest_signals_returns_the_most_recent_sessions_latest_snapshot(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
-    with Session().impersonate("alice"):
+    with WebSession().impersonate("alice"):
         session = client.get("/api/skills/webchat/sessions/current").json()
         turn = chat_turn(client, session['id'], "hi")
         app_db.save_signal_snapshot({"foo": 1}, session["id"])
@@ -36,7 +36,7 @@ def test_latest_signals_returns_the_most_recent_sessions_latest_snapshot(client,
 
 def test_latest_signals_falls_back_to_an_earlier_session_when_the_latest_has_none(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "carol")
-    with Session().impersonate("carol"):
+    with WebSession().impersonate("carol"):
         older = client.get("/api/skills/webchat/sessions/current").json()
         app_db.save_signal_snapshot({"foo": 7}, older["id"])
         newer = client.post("/api/skills/webchat/sessions").json()
@@ -52,7 +52,7 @@ def test_latest_signals_falls_back_to_an_earlier_session_when_the_latest_has_non
 
 def test_latest_signals_has_no_values_for_a_session_with_no_signal_snapshot(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "bob")
-    with Session().impersonate("bob"):
+    with WebSession().impersonate("bob"):
         session = client.get("/api/skills/webchat/sessions/current").json()
 
     response = client.get(f"/api/core/projects/{hello_project}/users/bob/latest-signals")

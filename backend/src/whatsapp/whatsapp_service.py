@@ -25,8 +25,8 @@ webhook, so the account is resolved from the sender's number through
 that User row's own whatsapp_phone_number field (set either from that
 user's own Profile page on the web, or by registering straight from
 WhatsApp — see AuthService.register_via_whatsapp) and impersonated
-(Session().impersonate) for the duration of the turn — the same
-ContextVar-backed Session() every service reads the current user from.
+(WebSession().impersonate) for the duration of the turn — the same
+ContextVar-backed WebSession() every service reads the current user from.
 An unlinked number whose message doesn't resolve to a valid invite code
 either, or an unregistered one, only ever gets a canned reply.
 
@@ -49,7 +49,7 @@ from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
 from system import bus
 from system.bus import INPUT_AUDIO, INPUT_TEXT, OUTPUT_TEXT, Message
-from system.session import Session
+from system.web_session import WebSession
 from talker import AiTalker
 from whatsapp.cloud_api_client import WhatsAppCloudApiClient
 from whatsapp.outbound import REPLY_DONE, Outbound, Reply, replies_from
@@ -164,9 +164,9 @@ class WhatsAppService(object):
         if user.get("role") in (None, "pending"):
             return _notice(REPLY_NOT_REGISTERED)
 
-        with Session().impersonate(user["id"]):
-            Session().role = user["role"]
-            Session().channel = CHANNEL
+        with WebSession().impersonate(user["id"]):
+            WebSession().role = user["role"]
+            WebSession().channel = CHANNEL
             if message.type == "interactive" and message.action_id:
                 logger.info(f"WhatsApp: action '{message.action_id}' received ({message.id}) from {message.sender}.")
                 if message.action_id == _ACCEPT_TERMS_ACTION:
@@ -236,7 +236,7 @@ class WhatsAppService(object):
         conversion never has to reconstruct it."""
         return Message(
             type=type, body=body, mime=mime,
-            username=Session().user, channel=CHANNEL, origin_id=message.id,
+            username=WebSession().user, channel=CHANNEL, origin_id=message.id,
         )
 
     async def _handle_unlinked(self, message: IncomingMessage) -> tuple[list[Reply], list[dict] | None, int | None]:
@@ -260,9 +260,9 @@ class WhatsAppService(object):
         logger.info(f"WhatsApp: {message.sender} registered via invite code.")
         user = self._db.get_user_by_whatsapp_phone_number(message.sender)
         assert user is not None
-        with Session().impersonate(user["id"]):
-            Session().role = user["role"]
-            Session().channel = CHANNEL
+        with WebSession().impersonate(user["id"]):
+            WebSession().role = user["role"]
+            WebSession().channel = CHANNEL
             welcome_texts, manual_actions, session_id = await self._welcome_replies()
             return [Reply(REPLY_REGISTERED), *welcome_texts], manual_actions, session_id
 
@@ -475,7 +475,7 @@ class WhatsAppService(object):
         try:
             # The turn service opens a session on whatever channel is
             # current if this user has none; naming it is ours to do.
-            Session().channel = CHANNEL
+            WebSession().channel = CHANNEL
             await self._turn_service.record_unsolicited_reply(user["id"], project_id, message_md)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"WhatsApp: task.whatsapp sent to {phone_number} but session logging failed: {exc}")

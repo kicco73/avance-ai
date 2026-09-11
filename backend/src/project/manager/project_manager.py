@@ -12,7 +12,7 @@ from automaton.build_error import AutomatonBuildError
 from turn.sessions.session_manager import SessionManager
 from db import Db
 from system.logging_factory import LoggerFactory
-from system.session import Session
+from system.web_session import WebSession
 from tracking.project_files import PROJECT_FILE_CACHE
 from tracking.session_export import SessionExportManager
 from tracking.session_import import SessionImportManager
@@ -149,7 +149,7 @@ class ProjectManager:
         self._db.set_project_observers(project_id, observed_project_ids)
         self._availability.recompute(project_id)
         if project_id == self._inspector.get_active_project_id():
-            username = Session().user
+            username = WebSession().user
             for session_type in ('live', 'test'):
                 session = self._session_manager.get_active_session(username, project_id, type=session_type)
                 if session is not None and session["end_state"] not in automaton.states:
@@ -158,7 +158,7 @@ class ProjectManager:
         return project_id
 
     def reset_test_sessions(self, project_id: str) -> None:
-        self._db.reset_project_for_user(Session().user, project_id, type='test')
+        self._db.reset_project_for_user(WebSession().user, project_id, type='test')
 
     def wipe_all_live_sessions(self) -> None:
         self._db.wipe_live_sessions_for_all_projects()
@@ -222,7 +222,7 @@ class ProjectManager:
     async def activate_project(self, project_id: str, commit: CommitCallback) -> Automaton:
         new_automaton = self._automaton_loader.load(project_id)
         self._db.ensure_project(project_id)
-        self._db.set_active_project_id(project_id, Session().user)
+        self._db.set_active_project_id(project_id, WebSession().user)
         await commit(project_id, new_automaton)
         return new_automaton
 
@@ -270,4 +270,4 @@ class ProjectManager:
             if fallback is not None:
                 await self.activate_project(fallback, commit)
             else:
-                self._db.clear_active_project_id(Session().user)
+                self._db.clear_active_project_id(WebSession().user)

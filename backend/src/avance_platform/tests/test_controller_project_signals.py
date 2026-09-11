@@ -1,4 +1,4 @@
-"""GET /api/skills/platform/projects/{project_id}/signals — see ProjectService.get_project_signals.
+"""GET /api/core/projects/{project_id}/signals — see ProjectService.get_project_signals.
 Each signal's `relevant` field feeds the Inspector's "show only relevant
 signals" filter directly. Scoped to `state_key`'s outgoing actions when
 given, else falls back to every state's triggers combined."""
@@ -92,7 +92,7 @@ def _upload(client, project_id: str, yaml_text: str) -> str:
 def test_signals_report_whether_a_trigger_references_them(client):
     project_id = _upload(client, "relevance_test", PROJECT)
 
-    response = client.get(f"/api/skills/platform/projects/{project_id}/signals")
+    response = client.get(f"/api/core/projects/{project_id}/signals")
 
     assert response.status_code == 200
     by_name = {s["signal"]["name"]: s for s in response.json()["signals"]}
@@ -110,7 +110,7 @@ def test_a_signal_referenced_only_via_env_field_is_also_relevant(client):
     )
     project_id = _upload(client, "relevance_env_test", project)
 
-    response = client.get(f"/api/skills/platform/projects/{project_id}/signals")
+    response = client.get(f"/api/core/projects/{project_id}/signals")
 
     by_name = {s["signal"]["name"]: s for s in response.json()["signals"]}
     assert by_name["score"]["relevant"] is True
@@ -119,7 +119,7 @@ def test_a_signal_referenced_only_via_env_field_is_also_relevant(client):
 def test_without_state_key_relevance_is_every_states_triggers_combined(client):
     project_id = _upload(client, "two_state_test", TWO_STATE_PROJECT)
 
-    response = client.get(f"/api/skills/platform/projects/{project_id}/signals")
+    response = client.get(f"/api/core/projects/{project_id}/signals")
 
     by_name = {s["signal"]["name"]: s for s in response.json()["signals"]}
     assert by_name["progressSignal"]["relevant"] is True
@@ -130,12 +130,12 @@ def test_without_state_key_relevance_is_every_states_triggers_combined(client):
 def test_state_key_scopes_relevance_to_that_states_own_outgoing_triggers(client):
     project_id = _upload(client, "two_state_scoped_test", TWO_STATE_PROJECT)
 
-    response_a = client.get(f"/api/skills/platform/projects/{project_id}/signals?state_key=a")
+    response_a = client.get(f"/api/core/projects/{project_id}/signals?state_key=a")
     by_name_a = {s["signal"]["name"]: s for s in response_a.json()["signals"]}
     assert by_name_a["progressSignal"]["relevant"] is True
     assert by_name_a["moodSignal"]["relevant"] is False
 
-    response_b = client.get(f"/api/skills/platform/projects/{project_id}/signals?state_key=b")
+    response_b = client.get(f"/api/core/projects/{project_id}/signals?state_key=b")
     by_name_b = {s["signal"]["name"]: s for s in response_b.json()["signals"]}
     assert by_name_b["progressSignal"]["relevant"] is False
     assert by_name_b["moodSignal"]["relevant"] is True
@@ -144,7 +144,7 @@ def test_state_key_scopes_relevance_to_that_states_own_outgoing_triggers(client)
 def test_an_unknown_state_key_falls_back_to_every_states_triggers_combined(client):
     project_id = _upload(client, "unknown_state_key_test", TWO_STATE_PROJECT)
 
-    response = client.get(f"/api/skills/platform/projects/{project_id}/signals?state_key=not-a-real-state")
+    response = client.get(f"/api/core/projects/{project_id}/signals?state_key=not-a-real-state")
 
     by_name = {s["signal"]["name"]: s for s in response.json()["signals"]}
     assert by_name["progressSignal"]["relevant"] is True

@@ -27,7 +27,7 @@ and EvaluationScope.for_task):
                            and names assigned by earlier statements when the
                            script is a deferred lambda)
   live proxies             metric, source, automaton, datetime, task —
-                           each re-reads Session().user and the project
+                           each re-reads WebSession().user and the project
                            context whenever it is touched
   absent by construction   session — a task line never sees it, so a
                            deferred call can't depend on a session that
@@ -39,7 +39,7 @@ and a ContextVar user a worker thread never had): it is the frozen part,
 stored verbatim as JSON, plus the live part rebuilt from (username,
 project_id, project_revision, state_key) the way tracking/wakeup_service.py
 rebuilds a scope for a user who is not the current request —
-Session().impersonate(username) and a FixedProjectContext pinned on the
+WebSession().impersonate(username) and a FixedProjectContext pinned on the
 project, at the *revision* the script was written against (published
 revisions are kept in Archive; a later republish never reinterprets a
 pending script). `session_id` rides along only for an immediate run
@@ -59,7 +59,7 @@ from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from jobs import CancelableJob
 from system.logging_factory import LoggerFactory
 from scheduler import Task
-from system.session import Session
+from system.web_session import WebSession
 
 if TYPE_CHECKING:
     from ai import AiService
@@ -236,8 +236,8 @@ class ScopeHydrator(object):
         return ActionTask(key, username, payload, self)
 
     def build_scope(self, username: str, payload: dict[str, Any]) -> EvaluationScope:
-        """Must be called under Session().impersonate(username): every
-        live proxy below reads Session().user lazily."""
+        """Must be called under WebSession().impersonate(username): every
+        live proxy below reads WebSession().user lazily."""
         # Imported here, not at module level: tracking.evaluation_scope ->
         # this package -> these modules -> project_service -> tracking_engine
         # -> tracking.evaluation_scope would otherwise close a circular import.
@@ -287,7 +287,7 @@ class ScopeHydrator(object):
         return scope.for_task(action_name=payload.get("action_name"))
 
     def run(self, username: str, payload: dict[str, Any]) -> str | None:
-        with Session().impersonate(username):
+        with WebSession().impersonate(username):
             scope = self.build_scope(username, payload)
             # XXX Compiled automaton requirement - do not touch.
             # XXX Dispatched on the automaton the scope carries

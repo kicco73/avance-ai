@@ -89,13 +89,13 @@ def test_the_design_view_reads_a_compiled_project_like_any_other(client: TestCli
     it asks for payloads, a graph, signals and per-state token estimates,
     none of which a chat turn goes near."""
     graph_before = client.get(f"/api/skills/platform/projects/{hello_project}/graph").json()
-    signals_before = client.get(f"/api/skills/platform/projects/{hello_project}/signals").json()
+    signals_before = client.get(f"/api/core/projects/{hello_project}/signals").json()
 
     assert client.post(f"/api/skills/build/projects/{hello_project}/local-module").status_code == 200
     assert isinstance(_served_automaton(app, hello_project), CompiledAutomaton)
 
     assert client.get(f"/api/skills/platform/projects/{hello_project}/graph").json() == graph_before
-    assert client.get(f"/api/skills/platform/projects/{hello_project}/signals").json() == signals_before
+    assert client.get(f"/api/core/projects/{hello_project}/signals").json() == signals_before
     assert client.get(f"/api/skills/platform/projects/{hello_project}").status_code == 200
 
 

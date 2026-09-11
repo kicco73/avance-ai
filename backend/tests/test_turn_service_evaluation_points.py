@@ -352,7 +352,7 @@ async def test_message_linking_end_to_end_bootstrap_and_one_real_turn(db, turn_s
 
 @pytest.mark.regression
 async def test_process_turn_touches_the_session_with_the_plain_state_key_not_the_payload(db, turn_service_for):
-    # Regression: touch_session's ChatSession.end_state is a CharField —
+    # Regression: touch_session's CoreSession.end_state is a CharField —
     # passing the full StatePayload dict instead of its "key" silently
     # stores a Python repr there instead of the state key.
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True))

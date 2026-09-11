@@ -8,7 +8,7 @@ from peewee import fn
 
 from system.logging_factory import LoggerFactory
 
-from .models import TRACKING_ORIGINS, ChatSession, Tracking
+from .models import TRACKING_ORIGINS, CoreSession, Tracking
 from .utils import _utc_iso
 
 logger = LoggerFactory.get_logger(__name__)
@@ -26,7 +26,7 @@ class TrackingMixin:
         return row.id
 
     def get_latest_signal_snapshot(self, project_id: str) -> dict | None:
-        row = Tracking.select().join(ChatSession, on=Tracking.session == ChatSession.id).where((ChatSession.project == project_id) & Tracking.values.is_null(False)).order_by(Tracking.timestamp.desc()).first()
+        row = Tracking.select().join(CoreSession, on=Tracking.session == CoreSession.id).where((CoreSession.project == project_id) & Tracking.values.is_null(False)).order_by(Tracking.timestamp.desc()).first()
         if row is None:
             return None
         return json.loads(row.values)
@@ -39,9 +39,9 @@ class TrackingMixin:
         rows = (
             Tracking
             .select()
-            .join(ChatSession, on=Tracking.session == ChatSession.id)
+            .join(CoreSession, on=Tracking.session == CoreSession.id)
             .where(
-                (ChatSession.project == project_id) & (ChatSession.username == username)
+                (CoreSession.project == project_id) & (CoreSession.username == username)
                 & Tracking.env.is_null(True) & Tracking.action_env.is_null(True) & Tracking.tool_calls.is_null(True)
             )
             .order_by(Tracking.timestamp.asc(), Tracking.id.asc())
@@ -63,8 +63,8 @@ class TrackingMixin:
         row = (
             Tracking
             .select()
-            .join(ChatSession, on=Tracking.session == ChatSession.id)
-            .where((ChatSession.project == project_id) & (Tracking.old_state == ''))
+            .join(CoreSession, on=Tracking.session == CoreSession.id)
+            .where((CoreSession.project == project_id) & (Tracking.old_state == ''))
             .order_by(Tracking.timestamp.asc())
             .first()
         )
@@ -132,9 +132,9 @@ class TrackingMixin:
         rows = (
             Tracking
             .select(Tracking.session)
-            .join(ChatSession, on=Tracking.session == ChatSession.id)
+            .join(CoreSession, on=Tracking.session == CoreSession.id)
             .where(
-                (ChatSession.project == project_id) & (ChatSession.labeled == True)
+                (CoreSession.project == project_id) & (CoreSession.labeled == True)
                 & (Tracking.expected_state == state_key)
             )
             .distinct()
@@ -182,11 +182,11 @@ class TrackingMixin:
         self, project_id: str, *, type: str | None=None, real_only: bool=False, until: datetime | None=None,
         username: str | None=None,
     ) -> Tracking | None:
-        query = Tracking.select().join(ChatSession, on=Tracking.session == ChatSession.id).where((ChatSession.project == project_id) & Tracking.new_state.is_null(False))
+        query = Tracking.select().join(CoreSession, on=Tracking.session == CoreSession.id).where((CoreSession.project == project_id) & Tracking.new_state.is_null(False))
         if type is not None:
-            query = query.where(ChatSession.type == type)
+            query = query.where(CoreSession.type == type)
         if username is not None:
-            query = query.where(ChatSession.username == username)
+            query = query.where(CoreSession.username == username)
         if real_only:
             query = query.where(Tracking.old_state != Tracking.new_state)
         if until is not None:
@@ -210,7 +210,7 @@ class TrackingMixin:
         )
         if transition is not None:
             return transition.new_state
-        session = ChatSession.get_or_none(ChatSession.id == session_id)
+        session = CoreSession.get_or_none(CoreSession.id == session_id)
         return session.start_state if session is not None else None
 
     def get_last_transition_timestamp(self, project_id: str, until: datetime | None=None) -> datetime | None:
@@ -250,7 +250,7 @@ class TrackingMixin:
         return self.get_last_transition_timestamp_for_session(session_id)
 
     def get_env(self, project_id: str, user: str, until: datetime | None=None) -> dict:
-        query = Tracking.select(Tracking.env).join(ChatSession, on=Tracking.session == ChatSession.id).where((ChatSession.project == project_id) & (ChatSession.username == user) & Tracking.env.is_null(False))
+        query = Tracking.select(Tracking.env).join(CoreSession, on=Tracking.session == CoreSession.id).where((CoreSession.project == project_id) & (CoreSession.username == user) & Tracking.env.is_null(False))
         if until is not None:
             query = query.where(Tracking.timestamp <= until)
         row = query.order_by(Tracking.timestamp.desc()).first()
@@ -260,7 +260,7 @@ class TrackingMixin:
         Tracking.create(session=session_id, env=json.dumps(env), message=message_id)
 
     def get_action_env(self, project_id: str, user: str, until: datetime | None=None) -> dict:
-        query = Tracking.select(Tracking.action_env).join(ChatSession, on=Tracking.session == ChatSession.id).where((ChatSession.project == project_id) & (ChatSession.username == user) & Tracking.action_env.is_null(False))
+        query = Tracking.select(Tracking.action_env).join(CoreSession, on=Tracking.session == CoreSession.id).where((CoreSession.project == project_id) & (CoreSession.username == user) & Tracking.action_env.is_null(False))
         if until is not None:
             query = query.where(Tracking.timestamp <= until)
         row = query.order_by(Tracking.timestamp.desc()).first()

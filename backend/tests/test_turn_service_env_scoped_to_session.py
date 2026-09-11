@@ -3,7 +3,7 @@
 active project's.
 
 Production bug: TurnService.env was one PersistedEnv keyed on
-ProjectService.get_active_project_id() + Session().user. Opening a
+ProjectService.get_active_project_id() + WebSession().user. Opening a
 session of any *other* project (the Sessions panel, a supervisor
 reading someone's session, WhatsApp) made _apply_declared_env_defaults
 read the active project's env to decide which declared defaults were
@@ -23,7 +23,7 @@ from db.models import Tracking
 from metrics.metric_service import MetricService
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
-from system.session import Session
+from system.web_session import WebSession
 from tracking.env import PersistedEnv
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.tracking_service import TrackingService
@@ -140,7 +140,7 @@ async def test_a_supervisor_opening_someone_elses_session_touches_that_users_env
     # Default fixture identity is "user" with role supervisor. Only the
     # bootstrap half of open_if_needed: the opening-message half is a
     # real turn, which a supervisor rightly can't run on alice's session.
-    assert Session().user == USERNAME
+    assert WebSession().user == USERNAME
     await turn_service._ensure_project_bootstrap(alice_session_id)
 
     assert _env(db, ACTIVE_PROJECT, username="alice").action_set() == {"active_key": "active-default"}

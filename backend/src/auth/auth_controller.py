@@ -18,7 +18,7 @@ from fastapi import HTTPException, Request, Response
 
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from schemas import AcceptTermsRequest, LoginRequest, SetWhatsAppPhoneNumberRequest
-from system.session import Session
+from system.web_session import WebSession
 
 from controllers.base_controller import BaseController, get, post, put
 
@@ -66,7 +66,7 @@ class AuthController(BaseController):
     def post_accept_terms(self, request: Request, req: AcceptTermsRequest):
         """TermsView.vue's Accept button — creates the User row that
         login() deliberately deferred. Reads the session cookie straight
-        off the request (rather than Session(), which only carries email/
+        off the request (rather than WebSession(), which only carries email/
         role) since AuthService.complete_registration needs the full
         identity the token already has: provider/provider_user_id/name/
         picture_url. req.invite_code is the invite that registration must
@@ -89,7 +89,7 @@ class AuthController(BaseController):
     # logout.
     @get("/api/core/auth/pending-status", role="pending")
     def get_pending_status(self):
-        return {"invite_exempt": self.auth_service.is_invite_exempt(Session().user)}
+        return {"invite_exempt": self.auth_service.is_invite_exempt(WebSession().user)}
 
     # role="pending": logout must stay reachable by an identity that
     # rejected the Terms screen and never got a User row at all — not
@@ -102,17 +102,17 @@ class AuthController(BaseController):
     @get("/api/core/auth/me")
     def get_me(self):
         """The auth middleware already validated the cookie for this
-        request to have reached here at all — Session().user is the
+        request to have reached here at all — WebSession().user is the
         email it resolved. Serves both the topbar avatar and
         ProfileView.vue, the only two consumers of the current user's
         own profile data."""
-        return self.auth_service.get_profile(Session().user)
+        return self.auth_service.get_profile(WebSession().user)
 
     @put("/api/core/auth/me/phone-number")
     def put_whatsapp_phone_number(self, req: SetWhatsAppPhoneNumberRequest):
         try:
             return self.auth_service.set_whatsapp_phone_number(
-                Session().user, req.phone_number, req.confirm_merge, role=Session().role,
+                WebSession().user, req.phone_number, req.confirm_merge, role=WebSession().role,
             )
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
@@ -126,6 +126,6 @@ class AuthController(BaseController):
         clears the cookie itself so the now-nonexistent identity can't
         make another request even if the frontend's own follow-up logout
         call never lands."""
-        self.auth_service.erase_account(Session().user)
+        self.auth_service.erase_account(WebSession().user)
         response.delete_cookie(key=SESSION_COOKIE_NAME)
         return {"success": True}

@@ -9,7 +9,7 @@ from turn.channels import CHANNELS
 from system.logging_factory import LoggerFactory
 from tracking.errors import TrackingServiceError
 
-from .models import SESSION_CLOSE_REASONS, ChatSession, Message, Project, Tracking, User
+from .models import SESSION_CLOSE_REASONS, CoreSession, Message, Project, Tracking, User
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -17,13 +17,13 @@ logger = LoggerFactory.get_logger(__name__)
 class SessionMixin:
 
     def chat_session_exists(self, username: str, project_id: str, datetime_start: datetime, datetime_end: datetime) -> bool:
-        return ChatSession.select().where(
-            (ChatSession.username == username) & (ChatSession.project == project_id)
-            & (ChatSession.datetime_start == datetime_start) & (ChatSession.datetime_end == datetime_end)
+        return CoreSession.select().where(
+            (CoreSession.username == username) & (CoreSession.project == project_id)
+            & (CoreSession.datetime_start == datetime_start) & (CoreSession.datetime_end == datetime_end)
         ).exists()
 
     def count_chat_sessions(self, username: str, type: str) -> int:
-        return ChatSession.select().where((ChatSession.username == username) & (ChatSession.type == type)).count()
+        return CoreSession.select().where((CoreSession.username == username) & (CoreSession.type == type)).count()
 
     def create_chat_session(
         self, username: str, project_id: str, revision: int, *,
@@ -49,7 +49,7 @@ class SessionMixin:
         # next_test_user_username below) — user stays null for the
         # latter, since there's no User row to point at.
         user = User.get_or_none(User.id == username)
-        session = ChatSession.create(
+        session = CoreSession.create(
             username=username, user=user, project=project_id, type=type, title=title,
             project_revision=revision,
             datetime_start=datetime_start, datetime_end=datetime_end,
@@ -60,18 +60,18 @@ class SessionMixin:
 
     def next_test_user_username(self, project_id: str) -> str:
         n = 1
-        while ChatSession.select().where(
-            (ChatSession.project == project_id) & (ChatSession.username == f'Test user {n}')
+        while CoreSession.select().where(
+            (CoreSession.project == project_id) & (CoreSession.username == f'Test user {n}')
         ).exists():
             n += 1
         return f'Test user {n}'
 
     @staticmethod
-    def _chat_session_to_dict(session: ChatSession) -> dict:
+    def _chat_session_to_dict(session: CoreSession) -> dict:
         return {'id': session.id, 'username': session.username, 'project_id': session.project_id, 'type': session.type, 'title': session.title, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state, 'project_revision': session.project_revision, 'labeled': session.labeled, 'comment': session.comment, 'channel': session.channel, 'closed_at': session.closed_at, 'close_reason': session.close_reason, 'ai_summary': session.ai_summary}
 
     def get_chat_session(self, session_id: int) -> dict | None:
-        session = ChatSession.get_or_none(ChatSession.id == session_id)
+        session = CoreSession.get_or_none(CoreSession.id == session_id)
         return self._chat_session_to_dict(session) if session is not None else None
 
     @staticmethod
@@ -82,25 +82,25 @@ class SessionMixin:
         if type is None:
             return query
         if isinstance(type, tuple):
-            return query.where(ChatSession.type.in_(type))
-        return query.where(ChatSession.type == type)
+            return query.where(CoreSession.type.in_(type))
+        return query.where(CoreSession.type == type)
 
     @staticmethod
     def _filter_by_username(query, username: str | None):
         if username is None:
             return query
-        return query.where(ChatSession.username == username)
+        return query.where(CoreSession.username == username)
 
     def get_latest_chat_session(
         self, username: str | None, project_id: str, until: datetime | None=None,
         type: str | tuple[str, ...] | None='live',
     ) -> dict | None:
-        query = ChatSession.select().where(ChatSession.project == project_id)
+        query = CoreSession.select().where(CoreSession.project == project_id)
         query = self._filter_by_username(query, username)
         if until is not None:
-            query = query.where(ChatSession.datetime_start <= until)
+            query = query.where(CoreSession.datetime_start <= until)
         query = self._filter_by_type(query, type)
-        session = query.order_by(ChatSession.datetime_start.desc(), ChatSession.id.desc()).first()
+        session = query.order_by(CoreSession.datetime_start.desc(), CoreSession.id.desc()).first()
         return self._chat_session_to_dict(session) if session is not None else None
 
     def get_previous_chat_session(
@@ -112,37 +112,37 @@ class SessionMixin:
         get_latest_chat_session, the answer never changes on a later call
         against the same still-current session. TurnService's own
         legal/terms.md re-notice check relies on exactly that stability."""
-        query = ChatSession.select().where(
-            (ChatSession.project == project_id) & (ChatSession.username == username)
-            & (ChatSession.id < before_session_id)
+        query = CoreSession.select().where(
+            (CoreSession.project == project_id) & (CoreSession.username == username)
+            & (CoreSession.id < before_session_id)
         )
         query = self._filter_by_type(query, type)
-        session = query.order_by(ChatSession.id.desc()).first()
+        session = query.order_by(CoreSession.id.desc()).first()
         return self._chat_session_to_dict(session) if session is not None else None
 
     def list_chat_sessions(
         self, username: str | None, project_id: str, until: datetime | None=None,
         type: str | tuple[str, ...] | None='live',
     ) -> list[dict]:
-        query = ChatSession.select().where(ChatSession.project == project_id)
+        query = CoreSession.select().where(CoreSession.project == project_id)
         query = self._filter_by_username(query, username)
         if until is not None:
-            query = query.where(ChatSession.datetime_start <= until)
+            query = query.where(CoreSession.datetime_start <= until)
         query = self._filter_by_type(query, type)
-        sessions = query.order_by(ChatSession.datetime_start.desc())
+        sessions = query.order_by(CoreSession.datetime_start.desc())
         return [self._chat_session_to_dict(s) for s in sessions]
 
     def get_first_imported_session(self, project_id: str) -> dict | None:
-        session = ChatSession.select().where(
-            (ChatSession.project == project_id) & (ChatSession.type == 'imported')
-        ).order_by(ChatSession.id.asc()).first()
+        session = CoreSession.select().where(
+            (CoreSession.project == project_id) & (CoreSession.type == 'imported')
+        ).order_by(CoreSession.id.asc()).first()
         return self._chat_session_to_dict(session) if session is not None else None
 
     def list_live_sessions_for_revision(self, project_id: str, revision: int) -> list[dict]:
-        sessions = ChatSession.select().where(
-            (ChatSession.project == project_id)
-            & (ChatSession.project_revision == revision)
-            & (ChatSession.type == 'live')
+        sessions = CoreSession.select().where(
+            (CoreSession.project == project_id)
+            & (CoreSession.project_revision == revision)
+            & (CoreSession.type == 'live')
         )
         return [self._chat_session_to_dict(s) for s in sessions]
 
@@ -150,30 +150,30 @@ class SessionMixin:
         """A domain expert's rename for a session — the same field an
         imported session gets seeded from its uploaded filename, just
         editable after the fact for any session."""
-        ChatSession.update(title=title).where(ChatSession.id == session_id).execute()
+        CoreSession.update(title=title).where(CoreSession.id == session_id).execute()
 
     def set_session_comment(self, session_id: int, comment: str | None) -> None:
         """A domain expert's own free-text note on the session as a whole
         (see the "Label sessions" view's own Info tab) — distinct from
         Db.set_signal_comment (Tracking.comment), which is per-message."""
-        ChatSession.update(comment=comment).where(ChatSession.id == session_id).execute()
+        CoreSession.update(comment=comment).where(CoreSession.id == session_id).execute()
 
     def set_session_labeled(self, session_id: int, labeled: bool) -> None:
         """The "Label sessions" view's "Mark done" button — a domain
         expert's explicit, persisted verdict on whether this session's
         been reviewed."""
-        ChatSession.update(labeled=labeled).where(ChatSession.id == session_id).execute()
+        CoreSession.update(labeled=labeled).where(CoreSession.id == session_id).execute()
 
     def get_session_labeling_revision(self, session_id: int) -> int:
-        session = ChatSession.get_or_none(ChatSession.id == session_id)
+        session = CoreSession.get_or_none(CoreSession.id == session_id)
         return session.labeling_revision if session is not None else 0
 
     def bump_session_labeling_revision(self, session_id: int) -> None:
-        ChatSession.update(labeling_revision=ChatSession.labeling_revision + 1).where(ChatSession.id == session_id).execute()
+        CoreSession.update(labeling_revision=CoreSession.labeling_revision + 1).where(CoreSession.id == session_id).execute()
 
     def touch_chat_session(self, session_id: int, datetime_end: datetime, end_state: str | None) -> None:
-        updated = ChatSession.update(datetime_end=datetime_end, end_state=end_state).where(
-            (ChatSession.id == session_id) & ChatSession.closed_at.is_null()
+        updated = CoreSession.update(datetime_end=datetime_end, end_state=end_state).where(
+            (CoreSession.id == session_id) & CoreSession.closed_at.is_null()
         ).execute()
         if updated == 0:
             logger.warning("touch_chat_session(): no open session to touch for session_id=%s.", session_id)
@@ -181,8 +181,8 @@ class SessionMixin:
     def close_chat_session(self, session_id: int, closed_at: datetime, reason: str) -> bool:
         if reason not in SESSION_CLOSE_REASONS:
             raise ValueError(f"Unknown close_reason '{reason}' — expected one of {SESSION_CLOSE_REASONS}.")
-        updated = ChatSession.update(closed_at=closed_at, close_reason=reason).where(
-            (ChatSession.id == session_id) & ChatSession.closed_at.is_null()
+        updated = CoreSession.update(closed_at=closed_at, close_reason=reason).where(
+            (CoreSession.id == session_id) & CoreSession.closed_at.is_null()
         ).execute()
         return updated > 0
 
@@ -190,31 +190,31 @@ class SessionMixin:
         fields = {"ai_summary": summary}
         if title:
             fields["title"] = title
-        ChatSession.update(**fields).where(ChatSession.id == session_id).execute()
+        CoreSession.update(**fields).where(CoreSession.id == session_id).execute()
 
     def get_recent_session_summaries(self, username: str, project_id: str, limit: int = 3) -> list[str]:
         return [
-            row.ai_summary for row in ChatSession.select(ChatSession.ai_summary).where(
-                (ChatSession.username == username) & (ChatSession.project == project_id)
-                & (ChatSession.ai_summary.is_null(False))
-            ).order_by(ChatSession.closed_at.desc()).limit(limit)
+            row.ai_summary for row in CoreSession.select(CoreSession.ai_summary).where(
+                (CoreSession.username == username) & (CoreSession.project == project_id)
+                & (CoreSession.ai_summary.is_null(False))
+            ).order_by(CoreSession.closed_at.desc()).limit(limit)
         ]
 
     def list_session_summaries_for_user_project(self, username: str, project_id: str) -> list[dict]:
         return [
             {"id": row.id, "title": row.title, "ai_summary": row.ai_summary, "closed_at": row.closed_at}
-            for row in ChatSession.select(
-                ChatSession.id, ChatSession.title, ChatSession.ai_summary, ChatSession.closed_at
+            for row in CoreSession.select(
+                CoreSession.id, CoreSession.title, CoreSession.ai_summary, CoreSession.closed_at
             ).where(
-                (ChatSession.username == username) & (ChatSession.project == project_id)
-                & (ChatSession.ai_summary.is_null(False))
-            ).order_by(ChatSession.closed_at.desc())
+                (CoreSession.username == username) & (CoreSession.project == project_id)
+                & (CoreSession.ai_summary.is_null(False))
+            ).order_by(CoreSession.closed_at.desc())
         ]
 
     def delete_chat_session(self, session_id: int) -> None:
         Tracking.delete().where(Tracking.session == session_id).execute()
         Message.delete().where(Message.session == session_id).execute()
-        ChatSession.delete().where(ChatSession.id == session_id).execute()
+        CoreSession.delete().where(CoreSession.id == session_id).execute()
 
     def reassign_sessions_to_username(self, session_ids: list[int], username: str) -> None:
         """The "Label sessions" view's drag-and-drop between branches —
@@ -222,58 +222,58 @@ class SessionMixin:
         that's a "Test user N" branch or any other imported username.
         Imported only: a live session's username is its owner's real,
         authenticated identity, never just a display label to relabel freely."""
-        sessions = list(ChatSession.select().where(ChatSession.id.in_(session_ids)))
+        sessions = list(CoreSession.select().where(CoreSession.id.in_(session_ids)))
         for session in sessions:
             if session.type != 'imported':
                 raise TrackingServiceError(
                     f"Session {session.id} is a live session and can't be reassigned.",
                     status_code=HTTPStatus.CONFLICT,
                 )
-        ChatSession.update(username=username).where(ChatSession.id.in_(session_ids)).execute()
+        CoreSession.update(username=username).where(CoreSession.id.in_(session_ids)).execute()
 
     def delete_sessions_by_username_and_type(self, username: str, type: str) -> list[int]:
         session_ids = [
-            row.id for row in ChatSession.select(ChatSession.id).where(
-                (ChatSession.username == username) & (ChatSession.type == type)
+            row.id for row in CoreSession.select(CoreSession.id).where(
+                (CoreSession.username == username) & (CoreSession.type == type)
             )
         ]
         if not session_ids:
             return []
         Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
         Message.delete().where(Message.session.in_(session_ids)).execute()
-        ChatSession.delete().where(ChatSession.id.in_(session_ids)).execute()
+        CoreSession.delete().where(CoreSession.id.in_(session_ids)).execute()
         return session_ids
 
     def delete_sessions_by_username_and_project(self, username: str, project_id: str) -> None:
         """The "Label sessions" view's per-branch × button, for any
         non-live branch (a Test user or an arbitrary imported username) —
         scoped to this project only, and cleans up Message/Tracking rows
-        too, unlike ChatSession.delete() alone would."""
+        too, unlike CoreSession.delete() alone would."""
         session_ids = [
-            row.id for row in ChatSession.select(ChatSession.id).where(
-                (ChatSession.project == project_id) & (ChatSession.username == username)
+            row.id for row in CoreSession.select(CoreSession.id).where(
+                (CoreSession.project == project_id) & (CoreSession.username == username)
             )
         ]
         if not session_ids:
             return
         Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
         Message.delete().where(Message.session.in_(session_ids)).execute()
-        ChatSession.delete().where(ChatSession.id.in_(session_ids)).execute()
+        CoreSession.delete().where(CoreSession.id.in_(session_ids)).execute()
 
     def delete_imported_sessions(self, project_id: str) -> None:
         """The "Label sessions" view's "Delete all imported sessions"
         button — every imported session of the project, across every
         user, cleaned up the same way delete_chat_session cleans up one."""
         session_ids = [
-            row.id for row in ChatSession.select(ChatSession.id).where(
-                (ChatSession.project == project_id) & (ChatSession.type == 'imported')
+            row.id for row in CoreSession.select(CoreSession.id).where(
+                (CoreSession.project == project_id) & (CoreSession.type == 'imported')
             )
         ]
         if not session_ids:
             return
         Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
         Message.delete().where(Message.session.in_(session_ids)).execute()
-        ChatSession.delete().where(ChatSession.id.in_(session_ids)).execute()
+        CoreSession.delete().where(CoreSession.id.in_(session_ids)).execute()
 
     def truncate_session(self, session_id: int, cutoff: datetime) -> None:
         Tracking.delete().where((Tracking.session == session_id) & (Tracking.timestamp >= cutoff) & (Tracking.old_state.is_null(True) | (Tracking.old_state != ''))).execute()

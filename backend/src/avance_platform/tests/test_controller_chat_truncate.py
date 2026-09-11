@@ -1,4 +1,4 @@
-"""POST /api/skills/platform/sessions/{id}/truncate ("Restart from here",
+"""POST /api/core/sessions/{id}/truncate ("Restart from here",
 TurnService.truncate_session) — exercises the HTTP surface: ownership,
 response shape, and an end-to-end scenario against a real automaton.
 """
@@ -9,14 +9,14 @@ from pathlib import Path
 import pytest
 
 from conftest import parse_sse_result
-from system.session import Session
+from system.web_session import WebSession
 
 from conftest import SAMPLES_DIR
 
 
 @pytest.mark.contract
 def test_truncate_rejects_an_unknown_session(client, hello_project):
-    response = client.post("/api/skills/platform/sessions/999999/truncate", json={"timestamp": "2026-01-01T00:00:00+00:00"})
+    response = client.post("/api/core/sessions/999999/truncate", json={"timestamp": "2026-01-01T00:00:00+00:00"})
     assert response.status_code == 404
 
 
@@ -25,14 +25,14 @@ def test_truncate_rejects_someone_elses_session(client, hello_project):
     session = client.get("/api/skills/webchat/sessions/current").json()
     # Reassign ownership directly — no endpoint exists to create another
     # user's session.
-    from db.models import ChatSession
+    from db.models import CoreSession
 
-    ChatSession.update(username="someone-else").where(ChatSession.id == session["id"]).execute()
+    CoreSession.update(username="someone-else").where(CoreSession.id == session["id"]).execute()
 
     # Only a plain "user" is denied — a supervisor owns every session (see
     # TurnService._owns_session), so this must downgrade the default fixture role.
-    Session().role = "user"
-    response = client.post(f"/api/skills/platform/sessions/{session['id']}/truncate", json={"timestamp": "2026-01-01T00:00:00+00:00"})
+    WebSession().role = "user"
+    response = client.post(f"/api/core/sessions/{session['id']}/truncate", json={"timestamp": "2026-01-01T00:00:00+00:00"})
     assert response.status_code == 404
 
 
@@ -40,7 +40,7 @@ def test_truncate_rejects_someone_elses_session(client, hello_project):
 def test_truncate_rejects_a_malformed_timestamp(client, hello_project):
     session = client.get("/api/skills/webchat/sessions/current").json()
 
-    response = client.post(f"/api/skills/platform/sessions/{session['id']}/truncate", json={"timestamp": "not-a-timestamp"})
+    response = client.post(f"/api/core/sessions/{session['id']}/truncate", json={"timestamp": "not-a-timestamp"})
 
     assert response.status_code == 400
 
@@ -53,7 +53,7 @@ def test_truncate_response_shape_is_a_bare_state_payload(client, hello_project):
     session = client.get("/api/skills/webchat/sessions/current").json()
 
     response = client.post(
-        f"/api/skills/platform/sessions/{session['id']}/truncate", json={"timestamp": "2099-01-01T00:00:00+00:00"}
+        f"/api/core/sessions/{session['id']}/truncate", json={"timestamp": "2099-01-01T00:00:00+00:00"}
     )
     reset_response = client.post(f"/api/skills/platform/projects/{hello_project}/test-sessions/reset")
 
@@ -82,15 +82,15 @@ def test_truncate_deletes_trailing_turns_and_rolls_the_live_state_back(client):
     moved_state = action_response.json()["state"]["key"]
     assert moved_state != "welcome"
 
-    signals = client.get(f"/api/skills/platform/sessions/{session['id']}/signals").json()
+    signals = client.get(f"/api/core/sessions/{session['id']}/signals").json()
     transition = next(s for s in signals if s["new_state"] == moved_state)
 
     truncate_response = client.post(
-        f"/api/skills/platform/sessions/{session['id']}/truncate", json={"timestamp": transition["timestamp"]}
+        f"/api/core/sessions/{session['id']}/truncate", json={"timestamp": transition["timestamp"]}
     )
     assert truncate_response.status_code == 200
     assert truncate_response.json()["key"] == "welcome"
 
     assert client.get("/api/core/state").json()["key"] == "welcome"
-    remaining_signals = client.get(f"/api/skills/platform/sessions/{session['id']}/signals").json()
+    remaining_signals = client.get(f"/api/core/sessions/{session['id']}/signals").json()
     assert all(s["new_state"] != moved_state for s in remaining_signals)

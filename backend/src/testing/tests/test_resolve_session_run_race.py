@@ -7,19 +7,19 @@ import pytest
 
 from conftest import chat_turn
 
-from system.session import Session
+from system.web_session import WebSession
 from testing.testing_service import PooledAggregationJob, TestingService
 
 pytestmark = pytest.mark.contract
 
 
 def _make_labeled_session(client, app_db, project_name, username):
-    Session().user = username
+    WebSession().user = username
     app_db.set_active_project_id(project_name, username)
     session = client.get("/api/skills/webchat/sessions/current").json()
     chat_turn(client, session['id'], "hi")
     client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})
-    Session().user = "user"
+    WebSession().user = "user"
     return session["id"]
 
 
@@ -55,7 +55,7 @@ def test_resolve_or_construct_session_run_serializes_racing_callers(monkeypatch,
     results = {}
 
     def resolve(name, job):
-        Session().user = "user"
+        WebSession().user = "user"
         results[name] = job._resolve_or_construct_session_run(session_id)
 
     first = threading.Thread(target=resolve, args=("first", job_a))
@@ -89,7 +89,7 @@ def test_resolve_or_construct_session_run_treats_an_aborted_run_as_retryable(cli
     fresh one, and nothing new ever ran."""
     session_id = _make_labeled_session(client, app_db, hello_project, "alice")
     testing_service = client.app.state.testing_service
-    Session().user = "user"
+    WebSession().user = "user"
 
     job = PooledAggregationJob(testing_service, hello_project, 'sessions', None, 'turn_by_turn', [session_id])
     first_run_id, first_job = job._resolve_or_construct_session_run(session_id)

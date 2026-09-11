@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from system.session import Session
+from system.web_session import WebSession
 
 pytestmark = pytest.mark.contract
 
@@ -52,22 +52,22 @@ def test_resolving_a_code_reports_its_project_or_none_rather_than_404ing(client,
 
 class TestPostResolveInviteCodeAsUser:
     """The default test session role (supervisor) isn't gated by
-    UserProject, so these override Session().role directly — same
+    UserProject, so these override WebSession().role directly — same
     pattern as test_controller_chat_truncate.py's own role downgrade."""
 
     def test_a_valid_link_grants_access_while_an_expired_one_is_forbidden_without_existing_access(self, app_db, client, hello_project):
         code = _create_invite(client, hello_project)["code"]
         app_db.create_invite("EXPIR1", hello_project, None, datetime.utcnow() - timedelta(days=1), max_shares=3)
-        Session().role = "user"
+        WebSession().role = "user"
 
         expired = client.post("/api/core/projects/invitations/EXPIR1")
         assert expired.status_code == 403
-        assert app_db.user_has_project_access(Session().user, hello_project) is False
+        assert app_db.user_has_project_access(WebSession().user, hello_project) is False
 
         response = client.post(f"/api/core/projects/invitations/{code}")
         assert response.status_code == 200
         assert response.json() == {"project_id": hello_project}
-        assert app_db.user_has_project_access(Session().user, hello_project) is True
+        assert app_db.user_has_project_access(WebSession().user, hello_project) is True
 
         # Revisiting a project already accessible ignores expiry entirely.
         assert client.post("/api/core/projects/invitations/EXPIR1").status_code == 200

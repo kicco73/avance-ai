@@ -149,14 +149,14 @@ def test_upgrade_renames_a_column_back_and_adds_new_not_null_default_columns_via
     Db(_url(renamed))
     _run_sql(renamed, [
         *SEED_PROJECT_AND_USER,
-        "INSERT INTO ChatSession (username, user_id, project_id, type, project_revision, labeled, labeling_revision, channel, ai_summary) "
+        "INSERT INTO CoreSession (username, user_id, project_id, type, project_revision, labeled, labeling_revision, channel, ai_summary) "
         "VALUES ('enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0, 'webchat', 'kept summary')",
-        'ALTER TABLE "ChatSession" RENAME COLUMN "ai_summary" TO "summary"',
+        'ALTER TABLE "CoreSession" RENAME COLUMN "ai_summary" TO "summary"',
     ])
     Db(_url(renamed), migration_strategy="upgrade")
-    assert "summary" not in _columns(renamed, "ChatSession")
-    assert "ai_summary" in _columns(renamed, "ChatSession")
-    assert _query(renamed, "SELECT ai_summary FROM ChatSession") == [("kept summary",)]
+    assert "summary" not in _columns(renamed, "CoreSession")
+    assert "ai_summary" in _columns(renamed, "CoreSession")
+    assert _query(renamed, "SELECT ai_summary FROM CoreSession") == [("kept summary",)]
 
     tokens = tmp_path / "tokens.db"
     Db(_url(tokens))
@@ -249,8 +249,8 @@ def test_boot_refuses_a_database_corrupted_beyond_its_indexes_and_upgrade_refuse
 
     inexpressible = tmp_path / "test.db"
     Db(_url(inexpressible))
-    _drop_indexes(inexpressible, "ChatSession")
-    _run_sql(inexpressible, ['ALTER TABLE "ChatSession" DROP COLUMN "username"'])
+    _drop_indexes(inexpressible, "CoreSession")
+    _run_sql(inexpressible, ['ALTER TABLE "CoreSession" DROP COLUMN "username"'])
     with pytest.raises(Exception):
         Db(_url(inexpressible), migration_strategy="upgrade")
     assert len(_backups(tmp_path, "test")) == 1
@@ -305,7 +305,7 @@ def test_upgrade_relaxes_a_not_null_constraint_and_preserves_data(tmp_path):
     Db(_url(db_path))
     _run_sql(db_path, [
         *SEED_PROJECT_AND_USER,
-        "INSERT INTO ChatSession (username, user_id, project_id, type, project_revision, labeled, labeling_revision, channel) "
+        "INSERT INTO CoreSession (username, user_id, project_id, type, project_revision, labeled, labeling_revision, channel) "
         "VALUES ('enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0, 'webchat')",
         *_rebuild_user_with_email_not_null(db_path, with_whatsapp=False)[2:],
     ])
@@ -316,7 +316,7 @@ def test_upgrade_relaxes_a_not_null_constraint_and_preserves_data(tmp_path):
     assert notnull["email"] is False
     assert "whatsapp_phone_number" in notnull
     assert _query(db_path, "SELECT id, email, role FROM User") == [("enrico@example.com", "enrico@example.com", "user")]
-    assert _query(db_path, "SELECT username, project_id, channel FROM ChatSession") == [("enrico@example.com", "lluna", "webchat")]
+    assert _query(db_path, "SELECT username, project_id, channel FROM CoreSession") == [("enrico@example.com", "lluna", "webchat")]
     assert _query(db_path, "PRAGMA foreign_key_check") == []
 
 
@@ -371,9 +371,9 @@ def test_upgrade_rebuilds_a_table_needing_both_a_constraint_change_and_a_new_not
     _run_sql(db_path, [
         *SEED_PROJECT_AND_USER,
         "PRAGMA legacy_alter_table = ON",
-        'ALTER TABLE "ChatSession" RENAME TO "ChatSession__old__"',
+        'ALTER TABLE "CoreSession" RENAME TO "CoreSession__old__"',
         "PRAGMA legacy_alter_table = OFF",
-        "CREATE TABLE ChatSession ("
+        "CREATE TABLE CoreSession ("
         "id INTEGER NOT NULL PRIMARY KEY, "
         "username VARCHAR(255) NOT NULL, "
         "user_id VARCHAR(255) REFERENCES User(id), "
@@ -386,21 +386,21 @@ def test_upgrade_rebuilds_a_table_needing_both_a_constraint_change_and_a_new_not
         "labeled INTEGER NOT NULL, "
         "comment TEXT, "
         "labeling_revision INTEGER)",
-        "INSERT INTO ChatSession (id, username, user_id, project_id, type, project_revision, labeled, labeling_revision) "
+        "INSERT INTO CoreSession (id, username, user_id, project_id, type, project_revision, labeled, labeling_revision) "
         "VALUES (1, 'enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0)",
-        "DROP TABLE ChatSession__old__",
+        "DROP TABLE CoreSession__old__",
         "INSERT INTO Message (role, content, session_id) VALUES ('user', 'hi', 1)",
     ])
 
     Db(_url(db_path), migration_strategy="upgrade")
 
-    notnull = _notnull(db_path, "ChatSession")
+    notnull = _notnull(db_path, "CoreSession")
     assert notnull["labeling_revision"] is True
     # channel is nullable — a test, preview or imported session has none
     # — so the live rows that predate the column are backfilled
     # explicitly instead (see SchemaMigrator._backfill_channel).
     assert notnull["channel"] is False
-    assert _query(db_path, "SELECT id, username, project_id, labeling_revision, channel FROM ChatSession") == [
+    assert _query(db_path, "SELECT id, username, project_id, labeling_revision, channel FROM CoreSession") == [
         (1, "enrico@example.com", "lluna", 0, "webchat"),
     ]
     assert _query(db_path, "SELECT session_id, content FROM Message") == [(1, "hi")]
@@ -540,7 +540,7 @@ def test_a_session_opened_before_a_channel_was_named_after_its_skill_is_renamed(
     Db(_url(db_path))
     _run_sql(db_path, [
         *SEED_PROJECT_AND_USER,
-        "INSERT INTO ChatSession (id, username, user_id, project_id, type, project_revision, labeled, "
+        "INSERT INTO CoreSession (id, username, user_id, project_id, type, project_revision, labeled, "
         "labeling_revision, channel) VALUES "
         "(1, 'enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0, 'native-chat'), "
         "(2, 'enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0, 'whatsapp-chat'), "
@@ -549,7 +549,7 @@ def test_a_session_opened_before_a_channel_was_named_after_its_skill_is_renamed(
 
     Db(_url(db_path))
 
-    assert _query(db_path, "SELECT id, channel FROM ChatSession ORDER BY id") == [
+    assert _query(db_path, "SELECT id, channel FROM CoreSession ORDER BY id") == [
         (1, "webchat"), (2, "whatsapp"), (3, None),
     ]
 
@@ -562,7 +562,7 @@ def test_renaming_the_channels_runs_on_every_boot_and_changes_nothing_the_second
     Db(_url(db_path))
     _run_sql(db_path, [
         *SEED_PROJECT_AND_USER,
-        "INSERT INTO ChatSession (id, username, user_id, project_id, type, project_revision, labeled, "
+        "INSERT INTO CoreSession (id, username, user_id, project_id, type, project_revision, labeled, "
         "labeling_revision, channel) VALUES "
         "(1, 'enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0, 'webchat')",
     ])
@@ -570,4 +570,4 @@ def test_renaming_the_channels_runs_on_every_boot_and_changes_nothing_the_second
     Db(_url(db_path))
     Db(_url(db_path))
 
-    assert _query(db_path, "SELECT id, channel FROM ChatSession") == [(1, "webchat")]
+    assert _query(db_path, "SELECT id, channel FROM CoreSession") == [(1, "webchat")]

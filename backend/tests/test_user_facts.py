@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from system.session import Session
+from system.web_session import WebSession
 from tracking.user_facts import UserFacts
 
 pytestmark = pytest.mark.contract
@@ -48,7 +48,7 @@ def test_reflects_role_and_active_project_changes(db):
 
 @pytest.mark.regression
 def test_is_empty_for_an_identity_with_no_user_row_yet(db):
-    with Session().impersonate("nobody@example.com"):
+    with WebSession().impersonate("nobody@example.com"):
         facts = UserFacts(db).as_dict()
 
     assert facts == {}
@@ -57,10 +57,10 @@ def test_is_empty_for_an_identity_with_no_user_row_yet(db):
 @pytest.mark.regression
 def test_reads_session_user_lazily_not_at_construction(db):
     """Matches PersistedEnv/SessionFacts: constructed once,
-    re-reads Session().user on every call — so Session().impersonate(...)
+    re-reads WebSession().user on every call — so WebSession().impersonate(...)
     (wakeup_service.py) scopes an already-built UserFacts correctly too."""
     facts = UserFacts(db)
     assert facts.as_dict()["email"] == "user"
 
-    with Session().impersonate("nobody@example.com"):
+    with WebSession().impersonate("nobody@example.com"):
         assert facts.as_dict() == {}

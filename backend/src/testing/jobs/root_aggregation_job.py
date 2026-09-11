@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from jobs import CancelableJob
-from system.session import Session
+from system.web_session import WebSession
 
 if TYPE_CHECKING:
     from testing.testing_service import TestingService
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 class RootAggregationJob(CancelableJob):
 
     def __init__(self, service: "TestingService", strategy: str, branch_jobs: list[CancelableJob]) -> None:
-        super().__init__(key=f"{strategy}:root", username=Session().user)
+        super().__init__(key=f"{strategy}:root", username=WebSession().user)
         self._service = service
         self._branch_jobs = tuple(branch_jobs)
 

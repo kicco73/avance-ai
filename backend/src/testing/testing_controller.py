@@ -18,7 +18,7 @@ from fastapi import HTTPException, Response
 from controllers.base_controller import BaseController, delete, get, post, put
 from schemas import CreateTestRequest, StateTestRequest
 from system.broadcaster import Broadcaster
-from system.session import Session
+from system.web_session import WebSession
 from testing.testing_service import TestingService
 from turn.turn_service import TurnService
 
@@ -73,7 +73,7 @@ class TestingController(BaseController):
         whose exact (project/annotation state, strategy) was already
         replayed to completion, that cached run directly, with no new
         job submitted. TestServiceError is handled globally."""
-        username = req.username if req.username is not None else Session().user
+        username = req.username if req.username is not None else WebSession().user
         try:
             return self.testing_service.create_run(
                 username, project_id, req.session_id, req.strategy,

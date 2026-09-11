@@ -1,5 +1,5 @@
 """A revision already stored in the Archive table must stay loadable
-forever — ChatSession.project_revision pins every native/imported
+forever — CoreSession.project_revision pins every native/imported
 session to the revision published when it was created, and every
 endpoint touching such a session (state, messages, timeline, tests…)
 builds that exact revision. When AutomatonBuilder started requiring

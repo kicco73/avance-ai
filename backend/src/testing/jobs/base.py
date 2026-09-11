@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from jobs import CancelableJob
 from metrics.metrics_framework.benchmark_metrics.dto import BenchmarkConfiguration
 from metrics.metrics_framework.benchmark_metrics.observations import BenchmarkObservationBuilder
-from system.session import Session
+from system.web_session import WebSession
 from testing.data import TestDataBuilder
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ class _AggregationJob(CancelableJob):
     compute, persist, return."""
 
     def __init__(self, service: "TestingService", project_id: str, kind: str, target: str | None, strategy: str) -> None:
-        super().__init__(key=f"{strategy}:{_aggregation_node_id(kind, target)}", username=Session().user)
+        super().__init__(key=f"{strategy}:{_aggregation_node_id(kind, target)}", username=WebSession().user)
         self._service = service
         self._project_id = project_id
         self._kind = kind

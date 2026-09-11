@@ -5,7 +5,7 @@ from typing import Any
 
 from peewee import SQL, IntegrityError
 
-from .models import ChatSession, EditHistory, Invite, Project, SystemWarning, Test, User, UserProject, database
+from .models import CoreSession, EditHistory, Invite, Project, SystemWarning, Test, User, UserProject, database
 from .utils import _utc_iso
 
 _ADMIN_EMAILS = {"enrico.carniani@gmail.com", "itinococalero@gmail.com"}
@@ -97,7 +97,7 @@ class UserMixin:
         }
 
     def count_sessions_for_user(self, user_id: str) -> int:
-        return ChatSession.select().where(ChatSession.user == user_id).count()
+        return CoreSession.select().where(CoreSession.user == user_id).count()
 
     def merge_user_accounts(self, target_id: str, absorbed_id: str, whatsapp_phone_number: str) -> None:
         """Absorbs `absorbed_id` into `target_id`: every row that points
@@ -108,8 +108,8 @@ class UserMixin:
         an admin wants to link already claimed by another account, with
         that admin's explicit confirmation."""
         with database.atomic():
-            ChatSession.update(user=target_id).where(ChatSession.user == absorbed_id).execute()
-            ChatSession.update(username=target_id).where(ChatSession.username == absorbed_id).execute()
+            CoreSession.update(user=target_id).where(CoreSession.user == absorbed_id).execute()
+            CoreSession.update(username=target_id).where(CoreSession.username == absorbed_id).execute()
             Test.update(user=target_id).where(Test.user == absorbed_id).execute()
             Test.update(username=target_id).where(Test.username == absorbed_id).execute()
             SystemWarning.update(user_id=target_id).where(SystemWarning.user_id == absorbed_id).execute()
@@ -183,11 +183,11 @@ class UserMixin:
 
     def erase_user_data(self, email: str) -> None:
         """ProfileView.vue's "Erase all my data" — deleting the User row
-        is now enough on its own: ChatSession.user/Test.user/
+        is now enough on its own: CoreSession.user/Test.user/
         SystemWarning.user_id/EditHistory.user_id are real FKs onto it with
         on_delete='CASCADE' (see models.py), which in turn cascades
         further to Message/Tracking/TestObservation
-        via their own existing FKs onto ChatSession/Test.
+        via their own existing FKs onto CoreSession/Test.
 
         Deleting the User row last would matter if anything above still
         needed to look it up mid-delete — nothing does, so this is just

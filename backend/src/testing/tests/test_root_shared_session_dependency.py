@@ -15,13 +15,13 @@ import pytest
 
 from conftest import chat_turn
 
-from system.session import Session
+from system.web_session import WebSession
 
 pytestmark = pytest.mark.contract
 
 
 def _make_labeled_session(client, app_db, project_name, username):
-    Session().user = username
+    WebSession().user = username
     # activate_project_idempotent needs an already-active project to
     # compare against — set_active_project_id directly is the same
     # effect for a brand new username with no chat history yet.
@@ -29,7 +29,7 @@ def _make_labeled_session(client, app_db, project_name, username):
     session = client.get("/api/skills/webchat/sessions/current").json()
     chat_turn(client, session['id'], "hi")
     client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})
-    Session().user = "user"
+    WebSession().user = "user"
     return session["id"]
 
 

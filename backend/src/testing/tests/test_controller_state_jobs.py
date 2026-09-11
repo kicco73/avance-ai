@@ -80,6 +80,6 @@ def test_get_aggregate_result_404_for_an_unknown_key(client, hello_project):
 
 
 def test_get_project_states_lists_real_state_keys(client, hello_project):
-    response = client.get(f"/api/skills/platform/projects/{hello_project}/states")
+    response = client.get(f"/api/core/projects/{hello_project}/states")
     assert response.status_code == 200
     assert response.json() == ["Hello"]

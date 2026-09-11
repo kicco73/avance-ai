@@ -23,14 +23,16 @@ from http import HTTPStatus
 from fastapi import HTTPException
 
 from controllers.base_controller import BaseController, delete, get, post, put
-from schemas import ActionRequest, ActuatorsRequest, AudioEnabledRequest, ReactionRequest
+from schemas import ActionRequest, ActuatorsRequest, AudioEnabledRequest, ReactionRequest, TruncateSessionRequest
+from project.project_service import ProjectService
 from turn.turn_service import TurnService
 
 
 class SessionController(BaseController):
 
-    def __init__(self, turn_service: TurnService) -> None:
+    def __init__(self, turn_service: TurnService, project_service: ProjectService) -> None:
         self.turn_service = turn_service
+        self.project_service = project_service
 
     def register_routes(self, router: APIRouter) -> None:
         for method, path, kwargs, member in self._declared_routes():
@@ -77,7 +79,7 @@ class SessionController(BaseController):
             await self.turn_service.truncate_session(session_id, req.timestamp)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return self.platform_service.get_active_state_payload()
+        return self.project_service.inspector.get_active_state_payload()
 
     @get("/api/core/sessions/{session_id}/state")
     def get_session_state(self, session_id: int):

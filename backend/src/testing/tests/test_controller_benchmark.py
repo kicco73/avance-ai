@@ -27,11 +27,11 @@ def _first_message_of_a_second_session(client) -> tuple[int, int]:
 def test_get_session_signals_returns_the_full_event_log_and_404s_for_an_unknown_session(client, hello_project):
     session = client.get("/api/skills/webchat/sessions/current").json()
 
-    response = client.get(f"/api/skills/platform/sessions/{session['id']}/signals")
+    response = client.get(f"/api/core/sessions/{session['id']}/signals")
     assert response.status_code == 200
     assert response.json() == []  # "Hello world" declares no signals/triggers
 
-    assert client.get("/api/skills/platform/sessions/999999/signals").status_code == 404
+    assert client.get("/api/core/sessions/999999/signals").status_code == 404
 
 
 @pytest.mark.contract
@@ -143,12 +143,12 @@ def test_annotating_a_later_sessions_own_start_materializes_a_signals_row_that_c
     "" -> start_state Tracking row — a later session has nothing real to
     annotate against until an expert actually tries."""
     session_id, first_message_id = _first_message_of_a_second_session(client)
-    assert client.get(f"/api/skills/platform/sessions/{session_id}/signals").json() == []
+    assert client.get(f"/api/core/sessions/{session_id}/signals").json() == []
 
     response = client.put(f"/api/skills/platform/messages/{first_message_id}/expected-state", json={"expected_state": "Hello"})
 
     assert response.status_code == 200
-    signals = client.get(f"/api/skills/platform/sessions/{session_id}/signals").json()
+    signals = client.get(f"/api/core/sessions/{session_id}/signals").json()
     assert len(signals) == 1
     assert signals[0]["old_state"] == ""
     assert signals[0]["message_id"] == first_message_id
@@ -158,7 +158,7 @@ def test_annotating_a_later_sessions_own_start_materializes_a_signals_row_that_c
 
     assert response.status_code == 200
     assert response.json() is None
-    assert client.get(f"/api/skills/platform/sessions/{session_id}/signals").json() == []
+    assert client.get(f"/api/core/sessions/{session_id}/signals").json() == []
 
 
 @pytest.mark.regression
@@ -171,14 +171,14 @@ def test_annotating_the_first_sessions_own_start_links_the_unlinked_init_row_to_
     assert messages
     first_message_id = messages[0]["id"]
 
-    signals = client.get(f"/api/skills/platform/sessions/{session['id']}/signals").json()
+    signals = client.get(f"/api/core/sessions/{session['id']}/signals").json()
     init_row = next(row for row in signals if row["old_state"] == "")
     assert init_row["message_id"] is None
 
     response = client.put(f"/api/skills/platform/messages/{first_message_id}/expected-state", json={"expected_state": "Hello"})
 
     assert response.status_code == 200
-    signals = client.get(f"/api/skills/platform/sessions/{session['id']}/signals").json()
+    signals = client.get(f"/api/core/sessions/{session['id']}/signals").json()
     init_row = next(row for row in signals if row["old_state"] == "")
     assert init_row["message_id"] == first_message_id
     assert init_row["expected_state"] == "Hello"

@@ -6,7 +6,7 @@ from http import HTTPStatus
 from auth.roles import role_satisfies
 from turn.errors import TurnServiceError
 from db import Db
-from system.session import Session
+from system.web_session import WebSession
 
 
 class SessionOwnership:
@@ -15,9 +15,9 @@ class SessionOwnership:
 
     @staticmethod
     def owns_session(session_username: str) -> bool:
-        if session_username == Session().user:
+        if session_username == WebSession().user:
             return True
-        return role_satisfies(Session().role, 'supervisor')
+        return role_satisfies(WebSession().role, 'supervisor')
 
     def require_session(self, session_id: int) -> dict:
         session = self._db.get_chat_session(session_id)

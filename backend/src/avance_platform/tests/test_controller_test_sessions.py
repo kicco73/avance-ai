@@ -10,7 +10,7 @@ import contextvars
 import pytest
 
 from conftest import parse_sse_result, chat_turn
-from system.session import Session
+from system.web_session import WebSession
 
 pytestmark = pytest.mark.regression
 
@@ -222,13 +222,13 @@ def test_a_test_session_opened_from_the_editor_has_no_channel(client):
     """The editor is not a channel and has none to declare. It used to
     get native-chat anyway, from AuthMiddleware, so every test session
     claimed to have been opened from the chat window. Run in a context of
-    its own so the suite's own Session().channel default cannot supply
+    its own so the suite's own WebSession().channel default cannot supply
     what the route no longer does."""
     _upload_and_activate(client, "no_channel_1", UNPUBLISHED_PROJECT)
 
     def open_one():
-        Session().user = "user"
-        Session().role = "supervisor"
+        WebSession().user = "user"
+        WebSession().role = "supervisor"
         return client.post("/api/skills/platform/projects/no_channel_1/test-sessions").json()
 
     session = contextvars.Context().run(open_one)

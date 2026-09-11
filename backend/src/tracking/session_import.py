@@ -111,7 +111,7 @@ class SessionImportManager:
                 self._import_message(session_id, message)
         except (KeyError, TypeError):
             # No transaction of its own — cleaned up by hand instead, so a
-            # malformed session never leaves a message-less ChatSession row
+            # malformed session never leaves a message-less CoreSession row
             # behind for a retrying caller to mistake for a genuine one.
             self._db.delete_chat_session(session_id)
             raise

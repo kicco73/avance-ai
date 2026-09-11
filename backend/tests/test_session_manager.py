@@ -6,7 +6,7 @@ import pytest
 
 from turn.sessions.session_manager import SessionManager
 from turn.sessions.session_type_strategy import get_session_type_strategy
-from system.session import Session
+from system.web_session import WebSession
 
 LIVE = get_session_type_strategy('live')
 
@@ -134,11 +134,11 @@ def test_a_new_session_is_created_when_none_exists_stamped_with_the_current_chan
     assert session["channel"] == "webchat"
     assert manager.is_open(session)
 
-    Session().channel = "whatsapp"
+    WebSession().channel = "whatsapp"
     try:
         whatsapp = _resolve_or_create(manager, project_service, "user", "proj-a", None, "start")
     finally:
-        Session().channel = "webchat"
+        WebSession().channel = "webchat"
     assert whatsapp["channel"] == "whatsapp"
 
 

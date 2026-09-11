@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from db.models import ChatSession, Message
+from db.models import CoreSession, Message
 
 
 def _make_session(db, *, username="user", project_name="proj", start=datetime(2026, 1, 1, 10, 0, 0), end=None, start_state="start", end_state=None, **kwargs):
@@ -64,8 +64,8 @@ def test_create_chat_session_rejects_a_nonexistent_project_and_stamps_whatever_r
 
     # project_revision isn't in the public dict (see _chat_session_to_dict) —
     # read it straight off the model instead.
-    assert ChatSession.get_by_id(draft_session_id).project_revision == 1
-    assert ChatSession.get_by_id(normal_session_id).project_revision == 0
+    assert CoreSession.get_by_id(draft_session_id).project_revision == 1
+    assert CoreSession.get_by_id(normal_session_id).project_revision == 0
 
 
 @pytest.mark.regression
@@ -135,7 +135,7 @@ def test_reset_project_deletes_every_users_sessions_and_messages_while_reset_for
 
 @pytest.mark.regression
 def test_delete_chat_session_removes_it_and_its_data_leaving_other_sessions_alone_with_the_fk_cascade_enforced_by_sqlite(db):
-    """A raw ChatSession delete (bypassing delete_chat_session) must still
+    """A raw CoreSession delete (bypassing delete_chat_session) must still
     cascade to Message, proving FK enforcement is on for this connection."""
     keep = _make_session(db, start=datetime(2026, 1, 1, 9, 0, 0))
     doomed = _make_session(db)
@@ -152,7 +152,7 @@ def test_delete_chat_session_removes_it_and_its_data_leaving_other_sessions_alon
     assert db.get_chat_session(keep) is not None
     assert [m["content"] for m in db.get_messages(keep)] == ["keep me"]
 
-    ChatSession.delete().where(ChatSession.id == raw).execute()
+    CoreSession.delete().where(CoreSession.id == raw).execute()
     assert Message.select().where(Message.session == raw).count() == 0
 
 

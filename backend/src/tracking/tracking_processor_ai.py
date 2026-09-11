@@ -1,4 +1,4 @@
-from system.session import Session
+from system.web_session import WebSession
 
 from .tracking_processor import OutVariables, TrackingProcessor
 
@@ -26,7 +26,7 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 			# still leaves a real, queryable row.
 			self.out.tracking_id = self._tracking_engine.apply_transition(
 				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
-				origin='trigger', username=Session().user, project_id=self.user.project_id,
+				origin='trigger', username=WebSession().user, project_id=self.user.project_id,
 				output_values=self.metadata.output,
 			)
 

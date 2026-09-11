@@ -9,7 +9,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from jobs import CancelableJob
-from system.session import Session
+from system.web_session import WebSession
 
 from .types import CommitCallback
 from .web_import_crawler import CrawledPage
@@ -43,7 +43,7 @@ class WebImportJob(CancelableJob):
         self._archive_name = archive_name
         self._query = query
         self._commit = commit
-        self._owner = Session().user
+        self._owner = WebSession().user
         self._pages: list[CrawledPage] | None = None
         self._columns: list[str] | None = None
         self._csv: str | None = None
@@ -141,7 +141,7 @@ class WebImportJob(CancelableJob):
         self._rows = max(len(self._csv.strip().split("\n")) - 1, 0)
 
     async def _put_archive(self, content: str) -> None:
-        with Session().impersonate(self._owner):
+        with WebSession().impersonate(self._owner):
             await self._editor.put_project_file(self._project_id, self._archive_name, content, None, self._commit)
 
 

@@ -4,7 +4,7 @@ and says so itself.
 AuthMiddleware used to say it for them — and for every other
 authenticated HTTP request in the system, the editor's included. These
 tests run their requests inside a context of their own, so the suite's
-own Session().channel default (see conftest's _default_session_user)
+own WebSession().channel default (see conftest's _default_session_user)
 cannot stand in for what the controller actually declares.
 """
 from __future__ import annotations
@@ -14,7 +14,7 @@ import contextvars
 import pytest
 from fastapi.testclient import TestClient
 
-from system.session import Session
+from system.web_session import WebSession
 
 pytestmark = pytest.mark.contract
 
@@ -24,8 +24,8 @@ def _in_a_fresh_context(call):
     (see its docstring), so the identity has to be restated here; the
     channel deliberately is not."""
     def run():
-        Session().user = "user"
-        Session().role = "supervisor"
+        WebSession().user = "user"
+        WebSession().role = "supervisor"
         return call()
 
     return contextvars.Context().run(run)

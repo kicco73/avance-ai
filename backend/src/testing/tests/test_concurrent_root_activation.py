@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from system.session import Session
+from system.web_session import WebSession
 
 from conftest import chat_turn
 
@@ -23,7 +23,7 @@ def _wait_until(predicate, timeout=8.0, interval=0.05):
 
 def _make_labeled_session_for(client, app_db, project_id, username):
     app_db.set_active_project_id(project_id, username)
-    with Session().impersonate(username):
+    with WebSession().impersonate(username):
         session = client.get("/api/skills/webchat/sessions/current").json()
         turn = chat_turn(client, session['id'], "hi")
         client.put(
@@ -43,10 +43,10 @@ def test_root_play_fires_every_branch_concurrently_without_failing(client, app_d
     # (set by AuthMiddleware); a bare threading.Thread here would not
     # inherit the calling thread's contextvars at all, so each thread
     # establishes its own — same username this test is already running as.
-    username = Session().user
+    username = WebSession().user
 
     def launch(name, path):
-        Session().user = username
+        WebSession().user = username
         response = client.post(
             f"/api/skills/testing/projects/{hello_project}{path}", json={"strategy": "turn_by_turn"}
         )

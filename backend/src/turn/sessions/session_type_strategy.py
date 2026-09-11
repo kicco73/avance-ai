@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from system.session import Session
+from system.web_session import WebSession
 
 if TYPE_CHECKING:
     from automaton.automaton import Automaton
@@ -53,7 +53,7 @@ class SessionTypeStrategy(ABC):
     # XXX Compiled automaton requirement - do not touch.
     # XXX Whether this specific session may be written to (a chat turn or
     # manual action applied to it) *from `channel`*. The channel is an
-    # argument and not a read of the ambient Session().channel on purpose:
+    # argument and not a read of the ambient WebSession().channel on purpose:
     # only the three conversation operations that authorise a write ever
     # ask this, and each of them runs inside a channel that knows its own
     # name. Reading it here instead would force every caller to have one.
@@ -110,7 +110,7 @@ class LiveSessionStrategy(SessionTypeStrategy):
         # Raises when nobody declared one, rather than defaulting: a live
         # session cannot be opened, resumed or written to by a caller who
         # cannot say where they are speaking from. Each channel names itself.
-        return Session().channel
+        return WebSession().channel
 
     def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool:
         # A live session belongs to exactly one channel for its whole

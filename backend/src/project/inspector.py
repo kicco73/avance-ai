@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from automaton.automaton import Action, Automaton, ProjectPayload, State, StatePayload
 from automaton.identifier_registry import IdentifierRegistry
 from db import Db
-from system.session import Session
+from system.web_session import WebSession
 from tracking.sources import driver_class_for
 from tracking.tracking_engine import TrackingEngine
 
@@ -137,7 +137,7 @@ class ProjectInspector:
         """The current session user's active project id, read fresh from
         the DB every time. Raises if nothing is active, e.g. never
         activated anything or the active project was since deleted."""
-        project_id = self._db.get_active_project_id(Session().user)
+        project_id = self._db.get_active_project_id(WebSession().user)
         if project_id is None:
             raise FileNotFoundError("No project is currently active.")
         return project_id

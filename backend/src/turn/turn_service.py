@@ -15,7 +15,7 @@ from ai import AiService
 from system.keyed_lock_registry import KeyedLockRegistry
 from project.archive.layout import CACHE_DIR
 from system.project_rw_lock import ProjectRwLock
-from system.session import Session
+from system.web_session import WebSession
 
 from tracking.actuators import TaskNamespace, TaskNamespaceFactory
 from tracking.automaton_namespace import AutomatonNamespace
@@ -119,7 +119,7 @@ class TurnService(object):
 
 	@property
 	def _username(self) -> str:
-		return Session().user
+		return WebSession().user
 
 	def get_message_audio_text(self, message_id: int) -> str | None:
 		return self._db.get_message_audio_text(message_id)
@@ -775,7 +775,7 @@ class TurnService(object):
 			automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
 			tracking_engine, _ = self._tracking_engine_for_session(session["id"])
 			tracking_engine.apply_action_env(
-				automaton, action, {}, source_state_key, username=Session().user, project_id=project_id,
+				automaton, action, {}, source_state_key, username=WebSession().user, project_id=project_id,
 				session_id=session["id"],
 			)
 			reply, fresh_state_payload = await self._messages_for_transition(

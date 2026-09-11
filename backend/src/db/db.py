@@ -26,7 +26,7 @@ from .tasks import TaskMixin
 from playhouse.db_url import connect, parse as parse_db_url
 
 from .models import (
-    AiTokenUsage, Archive, ChatSession, EditHistory, File, Invite, Message,
+    AiTokenUsage, Archive, CoreSession, EditHistory, File, Invite, Message,
     Project, ProjectObserverIndex, Settings, User, StateRemap, SystemWarning, Task, Test,
     TestAggregateResult, TestObservation, Tracking, UserProject,
     database,
@@ -55,7 +55,7 @@ class Db(
 
     _SQLITE_MAGIC = b"SQLite format 3\x00"
     _MODELS = (
-        Project, ChatSession, Message, User, Tracking, File, Archive, EditHistory, StateRemap,
+        Project, CoreSession, Message, User, Tracking, File, Archive, EditHistory, StateRemap,
         Test, TestObservation, TestAggregateResult, SystemWarning,
         ProjectObserverIndex, Settings, UserProject, Invite, AiTokenUsage, Task,
     )
@@ -96,7 +96,7 @@ class Db(
         """
         for old_name, new_name in (("native-chat", "webchat"), ("whatsapp-chat", "whatsapp")):
             renamed = (
-                ChatSession.update(channel=new_name).where(ChatSession.channel == old_name).execute()
+                CoreSession.update(channel=new_name).where(CoreSession.channel == old_name).execute()
             )
             if renamed:
                 logger.warning("Renamed %d session(s) from channel '%s' to '%s'.", renamed, old_name, new_name)
@@ -142,7 +142,7 @@ class Db(
 
     @staticmethod
     def _backfill_projects() -> None:
-        ids = {row.project_id for row in ChatSession.select(ChatSession.project).distinct()}
+        ids = {row.project_id for row in CoreSession.select(CoreSession.project).distinct()}
         ids |= {row.project_id for row in Archive.select(Archive.project).distinct()}
         for project_id in ids:
             Project.get_or_create(id=project_id, defaults={'revision': 0, 'published_revision': None})

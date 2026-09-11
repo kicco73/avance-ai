@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from db import Db, _utc_iso
 from metrics.metric_namespace import SessionMetricNamespace
 from metrics.metrics_framework import AnalyticsCalculator
-from system.session import Session
+from system.web_session import WebSession
 
 if TYPE_CHECKING:
     # Deferred: project.project_service -> tracking.tracking_engine ->
@@ -74,7 +74,7 @@ class SessionFacts(object):
         now = self._now()
         if now is None:
             return None
-        username = Session().user
+        username = WebSession().user
         project_id = self._project_service.get_active_project_id()
         session = self._db.get_latest_chat_session(username, project_id, until=self._replay_bound())
         if session is None:
@@ -85,7 +85,7 @@ class SessionFacts(object):
         now = self._now()
         if now is None:
             return None
-        username = Session().user
+        username = WebSession().user
         project_id = self._project_service.get_active_project_id()
         # index 0 is the current/most recent session (as of `now`) —
         # "last" means the one immediately before it, most-recent-first
@@ -98,7 +98,7 @@ class SessionFacts(object):
         now = self._now()
         if now is None:
             return None
-        username = Session().user
+        username = WebSession().user
         project_id = self._project_service.get_active_project_id()
         return len(self._db.list_chat_sessions(username, project_id, until=self._replay_bound()))
 
@@ -113,7 +113,7 @@ class SessionFacts(object):
 
     def _build_session_metric_calculator(self) -> AnalyticsCalculator:
         now = self._now()
-        username = Session().user
+        username = WebSession().user
         project_id = self._project_service.get_active_project_id()
         session = self._db.get_latest_chat_session(username, project_id, until=self._replay_bound())
         since = session["datetime_start"] if session is not None else None

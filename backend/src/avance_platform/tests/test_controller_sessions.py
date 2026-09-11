@@ -10,7 +10,7 @@ from conftest import chat_turn, chat_turn_error
 from conftest import parse_sse_result
 from db import Db
 from system.service_error import ServiceError
-from system.session import Session
+from system.web_session import WebSession
 
 CHANNEL_CODES_PROJECT_YAML = """
 project:
@@ -83,7 +83,7 @@ def _turn_error(client, session_id) -> dict:
 
 @pytest.mark.regression
 def test_bootstrap_creates_a_session_whose_annotations_title_and_comment_round_trip_into_the_list(client, hello_project):
-    """has_annotations reflects ChatSession.labeled directly, per session."""
+    """has_annotations reflects CoreSession.labeled directly, per session."""
     response = client.get("/api/skills/webchat/sessions/current")
     assert response.status_code == 200
     session = response.json()
@@ -221,12 +221,12 @@ def test_a_turn_from_another_channel_or_on_a_superseded_session_exposes_the_matc
     # The websocket is the native chat by definition — a turn from another
     # channel only ever reaches TurnService.process_turn directly, the
     # way WhatsAppService does.
-    Session().channel = "whatsapp"
+    WebSession().channel = "whatsapp"
     try:
         with pytest.raises(ServiceError) as raised:
             asyncio.run(client.app.state.turn_service.process_turn(older["id"], "hi"))
     finally:
-        Session().channel = "webchat"
+        WebSession().channel = "webchat"
     assert raised.value.code == "session_channel_mismatch"
 
     # A second live session appearing outside TurnService's own

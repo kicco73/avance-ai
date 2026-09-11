@@ -37,7 +37,7 @@ from scheduler import SchedulerService
 from metrics.metric_service import MetricService
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
-from system.session import Session
+from system.web_session import WebSession
 from tracking.actuators import TaskNamespaceFactory
 from tracking.project_files import PROJECT_FILE_CACHE
 from tracking.tracking_service import TrackingService
@@ -173,16 +173,16 @@ def installed_skill(package: str) -> None:
 @contextmanager
 def chat_socket(client: TestClient, username: str | None = None):
     """The one chat channel a browser has (see system/bus_channel.py),
-    opened as the current Session().user (or `username`): the User row
+    opened as the current WebSession().user (or `username`): the User row
     and a real session cookie are minted here, since the `app` fixture
     never goes through AuthMiddleware and the websocket handshake checks
     the cookie itself."""
     app = client.app
-    username = username or Session().user
+    username = username or WebSession().user
     app.state.db.get_or_create_user("test", f"sub-{username}", username, username, None)
     # A row another path created first (a FK-driven placeholder) may
     # carry no email — verify_token resolves the identity off that column.
-    User.update(email=username, role=Session().role).where(User.id == username).execute()
+    User.update(email=username, role=WebSession().role).where(User.id == username).execute()
     identity = AuthenticatedUser(provider_user_id=f"sub-{username}", email=username, name=username, picture_url=None)
     token = app.state.auth_service._issue_token(identity, "test")
     # A turn typed into the browser is answered by webchat and by nothing
@@ -315,13 +315,13 @@ def _reset_project_file_cache():
 
 @pytest.fixture(autouse=True)
 def _default_session_user():
-    Session().user = "user"
-    Session().role = "supervisor"
-    # Session().channel has no per-request middleware in these fixtures
-    # (see app()'s own docstring) and Session().impersonate never resets
+    WebSession().user = "user"
+    WebSession().role = "supervisor"
+    # WebSession().channel has no per-request middleware in these fixtures
+    # (see app()'s own docstring) and WebSession().impersonate never resets
     # it, so a test that sets it (WhatsApp-channel tests) would otherwise
     # leak "whatsapp" into whichever test runs next in this worker.
-    Session().channel = "webchat"
+    WebSession().channel = "webchat"
 
 
 def rewrite_archive_content(project_id: str, archive_name: str, revision: int, content: bytes) -> None:
@@ -344,8 +344,8 @@ def db() -> Db:
     a brand new connection.
 
     Seeds a User row for "user" — _default_session_user's own default
-    Session().user — since EditHistory.user_id/SystemWarning.user_id/
-    ChatSession.user/Test.user are now real FKs onto User (see
+    WebSession().user — since EditHistory.user_id/SystemWarning.user_id/
+    CoreSession.user/Test.user are now real FKs onto User (see
     models.py): anything writing one of those under the default session
     identity needs a matching row to reference."""
     instance = Db("sqlite:///:memory:")
@@ -627,8 +627,8 @@ class _FixedSessionMiddleware:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
-            Session().user = "user"
-            Session().role = "supervisor"
+            WebSession().user = "user"
+            WebSession().role = "supervisor"
         await self.app(scope, receive, send)
 
 

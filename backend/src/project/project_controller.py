@@ -19,7 +19,7 @@ from automaton.file_types import ProjectFileTypes
 from automaton.build_error import AutomatonBuildError
 from auth.roles import role_satisfies
 from controllers.base_controller import BaseController, get, post
-from system.session import Session
+from system.web_session import WebSession
 from project.project_service import ProjectService
 from turn.turn_service import TurnService
 
@@ -36,7 +36,7 @@ class ProjectController(BaseController):
         Every build answers it: a session has to know what it is talking
         about before it can talk, whether or not an editor was installed
         to change it."""
-        username = None if role_satisfies(Session().role, "supervisor") else Session().user
+        username = None if role_satisfies(WebSession().role, "supervisor") else WebSession().user
         return self.project_service.inspector.list_projects(username)
 
     @post("/api/core/projects/{project_id}/activate")
@@ -61,7 +61,7 @@ class ProjectController(BaseController):
         Core because the link is the product's own front door: somebody
         opening a shared conversation has no editor in the picture."""
         try:
-            project_id = self.project_service.invites.resolve_invite_link(code, Session().user, Session().role)
+            project_id = self.project_service.invites.resolve_invite_link(code, WebSession().user, WebSession().role)
         except PermissionError as exc:
             raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail=str(exc)) from exc
         return {"project_id": project_id}

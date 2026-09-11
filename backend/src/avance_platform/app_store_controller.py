@@ -7,7 +7,7 @@ from fastapi import HTTPException, Request, Response
 
 from turn.turn_service import TurnService
 from avance_platform.platform_service import PlatformService
-from system.session import Session
+from system.web_session import WebSession
 
 from controllers.base_controller import BaseController, delete, get, post
 
@@ -20,19 +20,19 @@ class AppStoreController(BaseController):
 
     @get("/api/skills/platform/app-store/apps")
     def get_apps(self, q: str | None = None):
-        return {"apps": self.platform_service.list_app_store_apps(Session().user, q)}
+        return {"apps": self.platform_service.list_app_store_apps(WebSession().user, q)}
 
     @post("/api/skills/platform/app-store/apps/{app_id}/install")
     def post_install_app(self, app_id: str):
         try:
-            self.platform_service.install_app(Session().user, app_id)
+            self.platform_service.install_app(WebSession().user, app_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         return {"success": True}
 
     @delete("/api/skills/platform/app-store/apps/{app_id}/install")
     def delete_install_app(self, app_id: str):
-        self.platform_service.uninstall_app(Session().user, app_id)
+        self.platform_service.uninstall_app(WebSession().user, app_id)
         return {"success": True}
 
     @get("/api/skills/platform/app-store/apps/{app_id}/preview-transcript")
@@ -41,7 +41,7 @@ class AppStoreController(BaseController):
 
     @get("/api/skills/platform/app-store/apps/{app_id}/session-summaries")
     def get_app_session_summaries(self, app_id: str):
-        return {"sessions": self.platform_service.get_app_session_summaries(Session().user, app_id)}
+        return {"sessions": self.platform_service.get_app_session_summaries(WebSession().user, app_id)}
 
     @get("/api/skills/platform/app-store/apps/{app_id}/files/{file_name:path}/content")
     def get_app_file_content(self, app_id: str, file_name: str, request: Request):

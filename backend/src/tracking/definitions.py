@@ -10,7 +10,7 @@ from automaton.automaton import Automaton, SignalPayload
 from db import Db
 from system.logging_factory import LoggerFactory
 from project.project_service import ProjectService
-from system.session import Session
+from system.web_session import WebSession
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -29,7 +29,7 @@ class Signals(object):
         return self._project_service.get_active_automaton()
 
     def _active_project_id(self) -> str:
-        project_id = self._db.get_active_project_id(Session().user)
+        project_id = self._db.get_active_project_id(WebSession().user)
         if project_id is None:
             raise ValueError("No active project")
         return project_id

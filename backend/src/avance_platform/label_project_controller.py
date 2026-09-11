@@ -15,7 +15,7 @@ from fastapi import HTTPException, Response, UploadFile
 from turn.turn_service import TurnService
 from avance_platform.platform_service import PlatformService
 from scheduler import SchedulerService
-from system.session import Session
+from system.web_session import WebSession
 from tracking.tracking_service import TrackingService
 from schemas import (
     CommentRequest,
@@ -69,7 +69,7 @@ class LabelProjectController(BaseController):
         ever, when `type` is omitted), or only `type` ('live' |
         'imported') when given — SessionsTree.vue always passes one,
         narrowing to whichever tab is currently showing."""
-        payload = self.tracking_service.export_sessions(Session().user, project_id, type=type or ('live', 'imported'))
+        payload = self.tracking_service.export_sessions(WebSession().user, project_id, type=type or ('live', 'imported'))
         content = json.dumps(payload, indent=2).encode("utf-8")
         encoded_project_id = quote(project_id)
         suffix = f"-{type}" if type else ""

@@ -15,7 +15,7 @@ from system.logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from scheduler import SchedulerService
-from system.session import Session
+from system.web_session import WebSession
 from tracking.actuators import TaskNamespaceFactory
 from tracking.automaton_namespace import AutomatonNamespace
 from tracking.env import PersistedEnv
@@ -101,13 +101,13 @@ class WakeupService:
         automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
 
         # PersistedEnv/MetricService/SessionFacts/UserFacts/AutomatonNamespace
-        # all read Session().user themselves now — pinned to the observer
+        # all read WebSession().user themselves now — pinned to the observer
         # being woken (never whatever's live for this job's own context),
         # then restored. project_context stands in for the *live* active
         # project these would otherwise resolve, staying fixed on
         # observer_project_id instead — a wake-up must never silently
         # evaluate against whatever project happens to be active right now.
-        with Session().impersonate(username):
+        with WebSession().impersonate(username):
             project_context = FixedProjectContext(project_id=observer_project_id)
             env = PersistedEnv(self._db, project_context, session["id"])
             metrics = MetricService(self._db, project_context)

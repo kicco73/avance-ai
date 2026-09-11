@@ -12,7 +12,7 @@ from typing import Any
 
 from db.db import Db
 from project.project_service import ProjectService
-from system.session import Session
+from system.web_session import WebSession
 
 
 class AutomatonNamespace:
@@ -38,7 +38,7 @@ class _ScopedAutomatonNamespace:
     def __getattr__(self, project_id: str) -> "_ProjectProxy":
         if project_id.startswith("__"):
             raise AttributeError(project_id)
-        return _ProjectProxy(self._db, self._project_service, Session().user, self._caller_family, project_id)
+        return _ProjectProxy(self._db, self._project_service, WebSession().user, self._caller_family, project_id)
 
 
 class _ProjectProxy:

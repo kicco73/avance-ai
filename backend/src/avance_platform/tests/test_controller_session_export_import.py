@@ -9,7 +9,7 @@ import json
 import pytest
 
 from conftest import parse_sse_result
-from system.session import Session
+from system.web_session import WebSession
 
 pytestmark = pytest.mark.contract
 
@@ -121,7 +121,7 @@ def test_a_native_looking_json_session_restores_its_timestamps_states_values_and
     assert second["results"][0]["ok"] is False
     assert second["last_session_id"] is None
 
-    Session().user = "User 1"
+    WebSession().user = "User 1"
     [exported] = _export(client, hello_project)
     assert exported["timestamp"] == "2026-01-01T10:00:00+00:00"
     assert exported["start_state"] == "Hello"
@@ -165,15 +165,15 @@ def test_closed_at_close_reason_and_origin_round_trip_and_default_to_none_when_a
     }
 
     assert _import_json(client, hello_project, [closed])["results"][0]["ok"] is True
-    Session().user = "User 1"
+    WebSession().user = "User 1"
     [exported] = _export(client, hello_project)
     assert exported["closed_at"] == "2026-01-01T10:05:00+00:00"
     assert exported["close_reason"] == "manual-user"
     assert exported["messages"][1]["origin"] == "trigger"
 
-    Session().user = "user"
+    WebSession().user = "user"
     _import_json(client, hello_project, [never_closed])
-    Session().user = "User 2"
+    WebSession().user = "User 2"
     [bare] = _export(client, hello_project)
     assert bare["closed_at"] is None
     assert bare["close_reason"] is None
@@ -201,7 +201,7 @@ def test_a_mixed_batch_skips_only_the_malformed_sessions_without_aborting_the_re
     assert len(body["results"]) == 3
     assert {r["ok"] for r in body["results"]} == {True, False}
 
-    Session().user = "User 1"
+    WebSession().user = "User 1"
     titles = {s["title"] for s in client.get(f"/api/core/projects/{hello_project}/sessions?include_imported=true").json()}
     assert "t.txt" in titles
     assert "Good one" in titles

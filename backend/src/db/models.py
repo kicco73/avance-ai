@@ -88,7 +88,12 @@ SESSION_CLOSE_REASONS = (
 )
 
 
-class ChatSession(BaseModel):
+class CoreSession(BaseModel):
+    # A conversation between somebody and an automaton: opened by a
+    # channel, persisted, outliving any number of requests. Distinct from
+    # system/web_session.py's WebSession, which is the request-scoped
+    # identity of whoever is calling right now — the two carried the same
+    # word until they carried these two.
     id = AutoField()
     username = CharField()
     # Nullable: a live session's own creator, when they're a real
@@ -137,7 +142,7 @@ class ChatSession(BaseModel):
     ai_summary = TextField(null=True)
 
     class Meta:
-        table_name = 'ChatSession'
+        table_name = 'CoreSession'
         indexes = ((('username', 'project', 'datetime_start', 'datetime_end'), False), (('username', 'project', 'start_state', 'end_state'), False))
 
 class Message(BaseModel):
@@ -171,7 +176,7 @@ class Message(BaseModel):
     # assistant message, and nullable like every other column added after
     # the fact (see cache_read_tokens above).
     answered_by = IntegerField(null=True)
-    session = ForeignKeyField(ChatSession, null=False, backref='messages', on_delete='CASCADE')
+    session = ForeignKeyField(CoreSession, null=False, backref='messages', on_delete='CASCADE')
 
     class Meta:
         table_name = 'Message'
@@ -187,7 +192,7 @@ TRACKING_ORIGINS = ('trigger', 'manual', 'system', 'init-action', 'tool', 'outpu
 
 class Tracking(BaseModel):
     id = AutoField()
-    session = ForeignKeyField(ChatSession, null=False, backref='tracking', on_delete='CASCADE')
+    session = ForeignKeyField(CoreSession, null=False, backref='tracking', on_delete='CASCADE')
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
     values = TextField(null=True)
     env = TextField(null=True)
@@ -281,7 +286,7 @@ class StateRemap(BaseModel):
 class Test(BaseModel):
     id = AutoField()
     username = CharField(null=True)
-    # Nullable for the same reason as ChatSession.user above — this run's
+    # Nullable for the same reason as CoreSession.user above — this run's
     # own username may be a real registered account or an imported
     # transcript's synthetic identity. Needed as its own FK (not just
     # reachable via session below) because session is itself null for a
@@ -291,11 +296,11 @@ class Test(BaseModel):
     # None means "every labeled session of the project", never a single
     # unresolved session — same dual as BenchmarkCalculator(session_id=
     # None|int) (see metrics/metrics_framework/benchmark_metrics/calculator.py).
-    session = ForeignKeyField(ChatSession, null=True, backref='tests', on_delete='CASCADE')
+    session = ForeignKeyField(CoreSession, null=True, backref='tests', on_delete='CASCADE')
     strategy = CharField()
     # The project's own draft edit count at the moment this run was
     # created — captured once, up front, regardless of which revision is
-    # published (see ChatSession.project_revision, same idea).
+    # published (see CoreSession.project_revision, same idea).
     project_draft_edit_count = IntegerField(null=False)
     session_labeling_revision = IntegerField(null=True)
     # Only ever set for strategy='batch'/'batch_lite' — stays null for 'turn_by_turn'.
@@ -316,7 +321,7 @@ class TestObservation(BaseModel):
     can never be mistaken for (or overwrite) real conversation data."""
     id = AutoField()
     run = ForeignKeyField(Test, null=False, backref='observations', on_delete='CASCADE')
-    session = ForeignKeyField(ChatSession, null=False, backref='test_observations', on_delete='CASCADE')
+    session = ForeignKeyField(CoreSession, null=False, backref='test_observations', on_delete='CASCADE')
     message = ForeignKeyField(Message, null=True, backref='test_observations', on_delete='SET NULL')
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
     values = TextField(null=True)
@@ -351,8 +356,8 @@ class SystemWarning(BaseModel):
     that resolved to None at runtime instead of raising — one of three
     failure kinds ('project_not_found', 'no_session', 'env_key_not_declared')."""
     id = AutoField()
-    # Not nullable: unlike ChatSession/Test's own username, this
-    # is always Session().user (see tracking/automaton_namespace.py's
+    # Not nullable: unlike CoreSession/Test's own username, this
+    # is always WebSession().user (see tracking/automaton_namespace.py's
     # AutomatonNamespace) — a real registered account is the only thing
     # ever authenticated enough to reach this code path at all.
     user_id = ForeignKeyField(User, field='id', backref='system_warnings', on_delete='CASCADE')
@@ -412,7 +417,7 @@ class EditHistory(BaseModel):
     named EditHistory (not just History) to read unambiguously as project-
     file edit history, not e.g. chat/session history."""
     id = AutoField()
-    # Not nullable: always Session().user (see project/editor.py's own
+    # Not nullable: always WebSession().user (see project/editor.py's own
     # undo_project_file/redo_project_file) — project editing requires a
     # real registered account, never an imported/synthetic identity.
     user_id = ForeignKeyField(User, field='id', backref='edit_history_entries', on_delete='CASCADE')

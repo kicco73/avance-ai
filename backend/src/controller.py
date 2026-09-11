@@ -37,7 +37,7 @@ class AvanceController(object):
 
         controllers = [
             ProjectController(turn_service, project_service),
-            SessionController(turn_service),
+            SessionController(turn_service, project_service),
             ApiStateController(turn_service, project_service),
             construct(ServerAdminController, bus.collect(POINT_CORE_SERVICES, {})),
             SkillsController(),

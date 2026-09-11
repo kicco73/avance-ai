@@ -119,12 +119,12 @@ async def drive_turn(turn_service, db, session_id: int, stream_id: str, text: st
     """
     from system import bus
     from system.bus import INPUT_TEXT, Message
-    from system.session import Session
+    from system.web_session import WebSession
     from turn.input_listener import TurnInput
 
     # The listener looks the sender's role up rather than taking it off
     # the wire (see Session.for_sender), so the sender has to exist.
-    db.get_or_create_user(None, None, Session().user, None, None, user_id=Session().user)
+    db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
 
     collected: list = []
     finished = asyncio.Event()
@@ -142,7 +142,7 @@ async def drive_turn(turn_service, db, session_id: int, stream_id: str, text: st
         TurnInput(turn_service, db).register()
     try:
         await bus.publish(Message(
-            type=INPUT_TEXT, body=text, username=Session().user, session_id=session_id,
+            type=INPUT_TEXT, body=text, username=WebSession().user, session_id=session_id,
             channel="webchat", origin_id=f"connection-{stream_id}", stream_id=stream_id,
         ))
         await asyncio.wait_for(finished.wait(), timeout=10)

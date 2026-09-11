@@ -96,7 +96,7 @@ def test_a_missing_index_css_is_204_no_content_while_any_other_missing_file_is_4
 def test_an_aspect_image_upload_is_readable_back_raw_by_its_bare_name_too(client, hello_project):
     assert _put_png(client, hello_project).status_code == 200
 
-    response = client.get(f"/api/skills/platform/projects/{hello_project}/files/logo.png/content")
+    response = client.get(f"/api/core/projects/{hello_project}/files/logo.png/content")
     assert response.status_code == 200
     assert response.content == PNG_MAGIC
     assert response.headers["content-type"] == "image/png"
@@ -126,17 +126,17 @@ def test_index_css_save_rejects_a_missing_relative_reference_but_accepts_existin
 
 class TestGetProjectFileContent:
     def test_serves_the_current_draft_with_an_etag_that_round_trips_to_a_304_and_404s_an_unknown_file(self, client, hello_project):
-        assert client.get(f"/api/skills/platform/projects/{hello_project}/files/does-not-exist.png/content").status_code == 404
+        assert client.get(f"/api/core/projects/{hello_project}/files/does-not-exist.png/content").status_code == 404
 
         _put_css(client, hello_project, b"body { color: red; }")
         _put_css(client, hello_project, b"body { color: blue; }")
 
-        first = client.get(f"/api/skills/platform/projects/{hello_project}/files/index.css/content")
+        first = client.get(f"/api/core/projects/{hello_project}/files/index.css/content")
         assert first.status_code == 200
         assert first.content == b"body { color: blue; }"
         etag = first.headers["etag"]
 
-        second = client.get(f"/api/skills/platform/projects/{hello_project}/files/index.css/content", headers={"If-None-Match": etag})
+        second = client.get(f"/api/core/projects/{hello_project}/files/index.css/content", headers={"If-None-Match": etag})
         assert second.status_code == 304
 
     def test_a_live_session_stays_pinned_to_its_own_published_revision(self, client):
@@ -155,8 +155,8 @@ class TestGetProjectFileContent:
         _put_css(client, "proj", b"body { color: blue; }")
         client.post("/api/skills/platform/projects/proj/publish", json={})
 
-        pinned = client.get(f"/api/skills/platform/projects/proj/files/index.css/content?session_id={session_id}")
-        current = client.get("/api/skills/platform/projects/proj/files/index.css/content")
+        pinned = client.get(f"/api/core/projects/proj/files/index.css/content?session_id={session_id}")
+        current = client.get("/api/core/projects/proj/files/index.css/content")
 
         assert pinned.content == b"body { color: red; }"
         assert current.content == b"body { color: blue; }"
@@ -174,14 +174,14 @@ class TestGetProjectFileContent:
         # session must still see this, unlike a live/native one.
         _put_css(client, "proj", b"body { color: green; }")
 
-        response = client.get(f"/api/skills/platform/projects/proj/files/index.css/content?session_id={test_session_id}")
+        response = client.get(f"/api/core/projects/proj/files/index.css/content?session_id={test_session_id}")
 
         assert response.content == b"body { color: green; }"
 
 
 @pytest.mark.contract
 def test_the_file_type_catalog_is_what_the_frontend_reads_instead_of_restating_its_own_patterns(client):
-    payload = client.get("/api/skills/platform/projects/file-types").json()
+    payload = client.get("/api/core/projects/file-types").json()
 
     assert sorted(payload["root_file_names"]) == ["index.css", "index.yml"]
     by_extension = {entry["extension"]: entry for entry in payload["types"]}
@@ -199,7 +199,7 @@ def test_the_file_type_catalog_is_what_the_frontend_reads_instead_of_restating_i
 def test_an_mp3_uploads_into_aspect_and_is_served_back_as_audio(client, hello_project):
     assert _put_mp3(client, hello_project).status_code == 200
 
-    response = client.get(f"/api/skills/platform/projects/{hello_project}/files/aspect/title.mp3/content")
+    response = client.get(f"/api/core/projects/{hello_project}/files/aspect/title.mp3/content")
     assert response.status_code == 200
     assert response.content == MP3_MAGIC
     assert response.headers["content-type"] == "audio/mpeg"

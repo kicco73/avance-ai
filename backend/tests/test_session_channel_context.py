@@ -1,4 +1,4 @@
-"""Session().channel has no default (unlike Session().user/role, it used
+"""WebSession().channel has no default (unlike WebSession().user/role, it used
 to silently resolve to 'webchat') — reading it outside a request
 context raises the same way user/role already do, and every real entry
 point that needs it declares it first.
@@ -23,7 +23,7 @@ from auth.auth_service import SESSION_COOKIE_NAME
 from automaton.automaton import Action, Automaton, State
 from turn.sessions.session_manager import SessionManager
 from turn.sessions.session_type_strategy import get_session_type_strategy
-from system.session import Session
+from system.web_session import WebSession
 
 pytestmark = pytest.mark.contract
 
@@ -35,7 +35,7 @@ def test_reading_channel_outside_a_request_context_raises():
     ctx = contextvars.Context()
 
     with pytest.raises(RuntimeError, match="outside a request context"):
-        ctx.run(lambda: Session().channel)
+        ctx.run(lambda: WebSession().channel)
 
 
 class _FakeAuthService:
@@ -63,9 +63,9 @@ def test_the_middleware_authenticates_and_declares_no_channel():
     @app.get("/api/protected")
     def protected():
         try:
-            return {"user": Session().user, "channel": Session().channel}
+            return {"user": WebSession().user, "channel": WebSession().channel}
         except RuntimeError:
-            return {"user": Session().user, "channel": "<never declared>"}
+            return {"user": WebSession().user, "channel": "<never declared>"}
 
     def call():
         client = TestClient(app)

@@ -12,7 +12,7 @@ import pytest
 
 from conftest import chat_turn
 
-from system.session import Session
+from system.web_session import WebSession
 from testing.testing_service import UsersAggregationJob
 
 pytestmark = pytest.mark.contract
@@ -46,7 +46,7 @@ def _make_labeled_session_for(client, app_db, project_name, username):
     # project first, which raises for a user who's never activated
     # anything yet — unrelated to what's under test here.
     app_db.set_active_project_id(project_name, username)
-    with Session().impersonate(username):
+    with WebSession().impersonate(username):
         session = client.get("/api/skills/webchat/sessions/current").json()
         chat_turn(client, session['id'], "hi")
         client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})

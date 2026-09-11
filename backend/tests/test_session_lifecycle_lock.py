@@ -16,7 +16,7 @@ from turn.turn_service import TurnService
 from turn.sessions.session_manager import SessionManager
 from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
-from system.session import Session
+from system.web_session import WebSession
 from tracking.tracking_service import TrackingService
 
 pytestmark = pytest.mark.contract
@@ -124,11 +124,11 @@ async def test_concurrent_acquire_exclusive_session_from_different_channels_seri
     lock.hold = asyncio.Event()
 
     async def native_call():
-        Session().channel = "webchat"
+        WebSession().channel = "webchat"
         return await turn_service.acquire_exclusive_session()
 
     async def whatsapp_call():
-        Session().channel = "whatsapp"
+        WebSession().channel = "whatsapp"
         return await turn_service.acquire_exclusive_session()
 
     first = asyncio.create_task(native_call())
@@ -159,11 +159,11 @@ async def test_get_current_session_concurrent_with_acquire_exclusive_session_nev
     lock.hold = asyncio.Event()
 
     async def bootstrap_call():
-        Session().channel = "webchat"
+        WebSession().channel = "webchat"
         return await turn_service.get_current_session_if_any_or_create_new(None)
 
     async def exclusive_call():
-        Session().channel = "webchat"
+        WebSession().channel = "webchat"
         return await turn_service.acquire_exclusive_session()
 
     first = asyncio.create_task(bootstrap_call())

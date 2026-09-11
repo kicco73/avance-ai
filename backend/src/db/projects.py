@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .models import (
-    Archive, ChatSession, EditHistory, File, Invite, Message, Project, ProjectObserverIndex, StateRemap,
+    Archive, CoreSession, EditHistory, File, Invite, Message, Project, ProjectObserverIndex, StateRemap,
     SystemWarning, Test, TestAggregateResult, Tracking, User, UserProject, database,
 )
 
@@ -35,7 +35,7 @@ class ProjectMixin:
         try:
             with database.atomic():
                 Project.update(id=new_id).where(Project.id == old_id).execute()
-                ChatSession.update(project=new_id).where(ChatSession.project == old_id).execute()
+                CoreSession.update(project=new_id).where(CoreSession.project == old_id).execute()
                 Archive.update(project=new_id).where(Archive.project == old_id).execute()
                 Invite.update(project=new_id).where(Invite.project == old_id).execute()
                 UserProject.update(project=new_id).where(UserProject.project == old_id).execute()
@@ -74,26 +74,26 @@ class ProjectMixin:
         Project.update(ui_label=ui_label, ui_description=ui_description).where(Project.id == project_id).execute()
 
     def reset_project(self, project_id: str) -> None:
-        session_ids = ChatSession.select(ChatSession.id).where(ChatSession.project == project_id)
+        session_ids = CoreSession.select(CoreSession.id).where(CoreSession.project == project_id)
         Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
         Message.delete().where(Message.session.in_(session_ids)).execute()
-        ChatSession.delete().where(ChatSession.project == project_id).execute()
+        CoreSession.delete().where(CoreSession.project == project_id).execute()
 
     def reset_project_for_user(self, username: str, project_id: str, type: str) -> None:
-        session_ids = ChatSession.select(ChatSession.id).where(
-            (ChatSession.username == username) & (ChatSession.project == project_id) & (ChatSession.type == type)
+        session_ids = CoreSession.select(CoreSession.id).where(
+            (CoreSession.username == username) & (CoreSession.project == project_id) & (CoreSession.type == type)
         )
         Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
         Message.delete().where(Message.session.in_(session_ids)).execute()
-        ChatSession.delete().where(
-            (ChatSession.username == username) & (ChatSession.project == project_id) & (ChatSession.type == type)
+        CoreSession.delete().where(
+            (CoreSession.username == username) & (CoreSession.project == project_id) & (CoreSession.type == type)
         ).execute()
 
     def wipe_live_sessions_for_all_projects(self) -> None:
-        session_ids = ChatSession.select(ChatSession.id).where(ChatSession.type == 'live')
+        session_ids = CoreSession.select(CoreSession.id).where(CoreSession.type == 'live')
         Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
         Message.delete().where(Message.session.in_(session_ids)).execute()
-        ChatSession.delete().where(ChatSession.type == 'live').execute()
+        CoreSession.delete().where(CoreSession.type == 'live').execute()
 
     def _current_revision(self, project_id: str) -> int:
         project = Project.get_or_none(Project.id == project_id)
@@ -392,9 +392,9 @@ class ProjectMixin:
         TestingService._resolve_scope's own `if row['labeled']` gate) — and
         Test.session cascades on delete, so wiping it here would silently
         destroy every TestReplayJob result ever computed against it too."""
-        ChatSession.delete().where(
-            (ChatSession.project == project_id) & (ChatSession.type == 'test')
-            & (ChatSession.labeled == False)
+        CoreSession.delete().where(
+            (CoreSession.project == project_id) & (CoreSession.type == 'test')
+            & (CoreSession.labeled == False)
         ).execute()
 
     def publish_project(self, project_id: str) -> None:
@@ -431,7 +431,7 @@ class ProjectMixin:
         """Settings > Manage services > Data > "Clean unused revisions" —
         deletes every Archive row belonging to a revision that's neither
         a project's current draft/published revision nor pinned by any
-        session (see ChatSession.project_revision), across every project
+        session (see CoreSession.project_revision), across every project
         at once. Frees space accumulated by _ensure_draft_revision's own
         fork-on-edit and import_new_revision's history of superseded
         uploads. Returns how many distinct revisions were removed (a
@@ -443,8 +443,8 @@ class ProjectMixin:
                 if project.published_revision is not None:
                     keep_revisions.add(project.published_revision)
                 keep_revisions |= {
-                    row.project_revision for row in ChatSession.select(ChatSession.project_revision).where(
-                        ChatSession.project == project.id
+                    row.project_revision for row in CoreSession.select(CoreSession.project_revision).where(
+                        CoreSession.project == project.id
                     ).distinct()
                 }
                 stale_revisions = {

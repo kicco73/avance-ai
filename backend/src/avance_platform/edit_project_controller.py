@@ -22,7 +22,7 @@ from schemas import (
     SetProjectFieldRequest, SetServiceLevelRequest,
     WebImportRequest,
 )
-from system.session import Session
+from system.web_session import WebSession
 
 from controllers.base_controller import BaseController, delete, get, post, put
 from .project_commit_mixin import ProjectCommitMixin
@@ -165,7 +165,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         reused. {code, expires_at, max_shares, whatsapp_url}; whatsapp_url
         is null unless whatsapp-service is configured."""
         try:
-            return self.platform_service.create_invite(project_id, Session().user)
+            return self.platform_service.create_invite(project_id, WebSession().user)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
@@ -345,7 +345,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
     # index.yml structural editing, reusing put_project_file's own path.
     # ------------------------------------------------------------------
 
-    @post("/api/skills/platform/projects/{project_id}/states", role="admin")
+    @post("/api/core/projects/{project_id}/states", role="admin")
     async def add_state(self, project_id: str):
         try:
             return await self.project_service.add_state(project_id, self._activate_project)
@@ -356,7 +356,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/skills/platform/projects/{project_id}/signals", role="admin")
+    @post("/api/core/projects/{project_id}/signals", role="admin")
     async def add_signal(self, project_id: str):
         try:
             return await self.project_service.add_signal(project_id, self._activate_project)
@@ -455,7 +455,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/skills/platform/projects/{project_id}/signals/{signal_name}/{field}", role="admin")
+    @put("/api/core/projects/{project_id}/signals/{signal_name}/{field}", role="admin")
     async def put_signal_field(self, project_id: str, signal_name: str, field: str, req: SetProjectFieldRequest):
         if field not in SIGNAL_EDITABLE_FIELDS:
             raise HTTPException(
@@ -611,7 +611,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
 
-    @delete("/api/skills/platform/projects/{project_id}/signals/{signal_name}", role="admin")
+    @delete("/api/core/projects/{project_id}/signals/{signal_name}", role="admin")
     async def delete_signal(self, project_id: str, signal_name: str):
         try:
             await self.project_service.delete_signal(project_id, signal_name, self._activate_project)

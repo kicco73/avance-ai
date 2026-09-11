@@ -18,7 +18,7 @@ from turn.sessions.session_manager import SessionManager
 from turn.sessions.session_type_strategy import get_session_type_strategy
 from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
-from system.session import Session
+from system.web_session import WebSession
 from tracking.tracking_service import TrackingService
 
 pytestmark = pytest.mark.contract
@@ -160,7 +160,7 @@ def test_get_current_session_if_any_or_create_new_matrix(db, channel, state_name
     _setup_project(db)
     manager = SessionManager(db, open_window_minutes=5)
     project_service = _FakeProjectService(_automaton())
-    Session().channel = channel
+    WebSession().channel = channel
     existing = _build_existing(db, manager, channel, state_name)
 
     result = manager.get_current_session_if_any_or_create_new(
@@ -199,7 +199,7 @@ def test_acquire_exclusive_session_matrix(db, channel, state_name):
     _setup_project(db)
     manager = SessionManager(db, open_window_minutes=5)
     project_service = _FakeProjectService(_automaton())
-    Session().channel = channel
+    WebSession().channel = channel
     existing = _build_existing(db, manager, channel, state_name)
 
     result = manager.acquire_exclusive_session(LIVE, project_service, USERNAME, PROJECT_ID, "a")
@@ -237,7 +237,7 @@ def test_acquire_exclusive_session_matrix(db, channel, state_name):
 async def test_create_session_matrix(db, channel, state_name):
     _setup_project(db)
     manager = SessionManager(db, open_window_minutes=5)
-    Session().channel = channel
+    WebSession().channel = channel
     existing = _build_existing(db, manager, channel, state_name)
     turn_service = _turn_service(db, session_manager=manager)
 
@@ -275,7 +275,7 @@ _REJECTION_MESSAGES = {
 async def test_process_turn_with_explicit_session_id_matrix(db, channel, state_name):
     _setup_project(db)
     manager = SessionManager(db, open_window_minutes=5)
-    Session().channel = channel
+    WebSession().channel = channel
     existing = _build_existing(db, manager, channel, state_name)
     turn_service = _turn_service(db, session_manager=manager)
 
@@ -296,7 +296,7 @@ async def test_process_turn_with_explicit_session_id_matrix(db, channel, state_n
 async def test_apply_manual_action_matrix(db, channel, state_name):
     _setup_project(db)
     manager = SessionManager(db, open_window_minutes=5)
-    Session().channel = channel
+    WebSession().channel = channel
     existing = _build_existing(db, manager, channel, state_name)
     turn_service = _turn_service(db, session_manager=manager)
 
@@ -319,10 +319,10 @@ async def test_takeover_whatsapp_to_web_via_new_session_then_open_if_needed(db):
     still open, taking it over — the fresh web session is genuinely new,
     so open_if_needed's own AI bootstrap fires for it."""
     turn_service = _turn_service(db)
-    Session().channel = "whatsapp"
+    WebSession().channel = "whatsapp"
     whatsapp_session = await turn_service.acquire_exclusive_session()
 
-    Session().channel = "webchat"
+    WebSession().channel = "webchat"
     web_payload = await turn_service.create_session()
 
     assert web_payload["id"] != whatsapp_session["id"]
@@ -341,10 +341,10 @@ async def test_takeover_web_to_whatsapp_via_run_turn_then_prepare_user_initiated
     takes it over — prepare_user_initiated_turn never opens with an
     AI-initiated message of its own, unlike the takeover above."""
     turn_service = _turn_service(db)
-    Session().channel = "webchat"
+    WebSession().channel = "webchat"
     web_session = await turn_service.get_current_session_if_any_or_create_new(None)
 
-    Session().channel = "whatsapp"
+    WebSession().channel = "whatsapp"
     whatsapp_payload = await turn_service.acquire_exclusive_session()
 
     assert whatsapp_payload["id"] != web_session["id"]
@@ -360,16 +360,16 @@ async def test_takeover_web_to_whatsapp_via_run_turn_then_prepare_user_initiated
 # -- Reporting vs. admitting: only one of the two is a channel question ------
 
 def _without_a_channel(call):
-    """Runs `call` in a brand-new context, where Session().channel was
+    """Runs `call` in a brand-new context, where WebSession().channel was
     never set — what every caller looks like once auth/auth_middleware.py
-    stops forging native-chat for each HTTP request. Session().channel
+    stops forging native-chat for each HTTP request. WebSession().channel
     raises there rather than defaulting, so any read on the way through
     fails loudly instead of quietly answering for somebody else."""
     context = contextvars.Context()
 
     def run():
-        Session().user = USERNAME
-        Session().role = "supervisor"
+        WebSession().user = USERNAME
+        WebSession().role = "supervisor"
         return call()
 
     return context.run(run)
@@ -424,10 +424,10 @@ def test_a_live_session_with_no_channel_is_writable_from_nowhere(db):
     session = _make_open_session(db, "webchat")
     # The row is edited straight through the model: create_chat_session
     # refuses to make one this way, which is the point.
-    from db.models import ChatSession
-    ChatSession.update(channel=None).where(ChatSession.id == session["id"]).execute()
+    from db.models import CoreSession
+    CoreSession.update(channel=None).where(CoreSession.id == session["id"]).execute()
 
     for channel in CHANNELS:
-        Session().channel = channel
+        WebSession().channel = channel
         with pytest.raises(ValueError, match="Session is not active."):
             manager.require_active_session(USERNAME, PROJECT_ID, session["id"], "a")

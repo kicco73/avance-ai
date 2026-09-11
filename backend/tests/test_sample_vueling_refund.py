@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from project.archive.automaton_loader import AutomatonLoader
-from system.session import Session
+from system.web_session import WebSession
 from tracking.env import Env
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
@@ -58,7 +58,7 @@ def _scope(db, automaton, state_key: str, email: str, env: Env | None = None) ->
     project_service = FixedProjectContext(project_id=PROJECT_ID)
     metrics = MetricService(db, project_service)
     builder = EvaluationScopeBuilder(env or Env(), metrics, SessionFacts(db, project_service), UserFacts(db), db)
-    with Session().impersonate(email):
+    with WebSession().impersonate(email):
         return builder.build(automaton, state_key, {})
 
 

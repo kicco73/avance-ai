@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from automaton.automaton import State
 from system.logging_factory import LoggerFactory
-from system.session import Session
+from system.web_session import WebSession
 from tracking.tracking_processor import OutVariables, TrackingProcessor
 
 
@@ -94,7 +94,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			# sees it as the current value like any other action_set write.
 			self._tracking_engine.apply_action_env(
 				self.user.automaton, self.out.action, self.metadata.signals, self.user.state.key,
-				username=Session().user, project_id=self.user.project_id, session_id=self.user.session_id,
+				username=WebSession().user, project_id=self.user.project_id, session_id=self.user.session_id,
 				output_values=self.metadata.output,
 			)
 
@@ -121,14 +121,14 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 				self.out.tracking_id = self._tracking_engine.record_transition(
 					self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
 					message_id=self.user.message_id if has_real_user_message else None,
-					origin='trigger', username=Session().user, project_id=self.user.project_id,
+					origin='trigger', username=WebSession().user, project_id=self.user.project_id,
 					output_values=self.metadata.output,
 				)
 			else:
 				self.out.tracking_id = self._tracking_engine.apply_transition(
 					self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
 					message_id=self.user.message_id if has_real_user_message else None,
-					origin='trigger', username=Session().user, project_id=self.user.project_id,
+					origin='trigger', username=WebSession().user, project_id=self.user.project_id,
 					output_values=self.metadata.output,
 				)
 			self.out.tracking_linked_to_message = has_real_user_message

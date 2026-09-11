@@ -69,7 +69,7 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "CREATE TABLE Project (id TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER, "
         "is_paused INTEGER, paused_reason TEXT, manually_paused INTEGER, "
         "ui_label TEXT, ui_description TEXT, draft_edit_count INTEGER)",
-        "CREATE TABLE ChatSession (id INTEGER PRIMARY KEY, username TEXT, user_id TEXT, project_id TEXT, "
+        "CREATE TABLE CoreSession (id INTEGER PRIMARY KEY, username TEXT, user_id TEXT, project_id TEXT, "
         "type TEXT, title TEXT, project_revision INTEGER, datetime_start TEXT, datetime_end TEXT, "
         "start_state TEXT, end_state TEXT, labeled INTEGER, comment TEXT, labeling_revision INTEGER, channel TEXT, "
         "closed_at TEXT, close_reason TEXT, ai_summary TEXT)",

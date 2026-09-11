@@ -21,7 +21,7 @@ def test_put_comment_sets_and_is_visible_in_session_signals(client, hello_projec
 
     assert response.status_code == 200
     assert response.json()["comment"] == "Worth a second look."
-    signals = client.get(f"/api/skills/platform/sessions/{session['id']}/signals").json()
+    signals = client.get(f"/api/core/sessions/{session['id']}/signals").json()
     row = next(r for r in signals if r["message_id"] == message_id)
     assert row["comment"] == "Worth a second look."
 

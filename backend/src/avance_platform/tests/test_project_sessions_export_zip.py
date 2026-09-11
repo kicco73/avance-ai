@@ -12,7 +12,7 @@ import zipfile
 import pytest
 
 from conftest import parse_sse_result, chat_turn
-from system.session import Session
+from system.web_session import WebSession
 
 pytestmark = pytest.mark.contract
 
@@ -47,7 +47,7 @@ def test_download_has_no_sessions_json_when_there_are_no_imported_sessions(clien
 
 def test_download_includes_both_live_and_imported_sessions_relabeled_as_imported(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
-    with Session().impersonate("alice"):
+    with WebSession().impersonate("alice"):
         native_session = client.get("/api/skills/webchat/sessions/current").json()
     assert native_session["type"] == "live"
     resp = client.post(
@@ -94,7 +94,7 @@ def test_uploading_a_zip_with_sessions_json_imports_them_automatically(client):
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
 
-    Session().user = "User 1"
+    WebSession().user = "User 1"
     sessions = client.get(f"/api/core/projects/{project_id}/sessions?include_imported=true").json()
     assert len(sessions) == 1
     assert sessions[0]["type"] == "imported"
@@ -140,7 +140,7 @@ def test_download_then_reupload_round_trips_a_live_session_from_another_user(cli
     resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
     app_db.set_active_project_id(project_id, "alice")
-    with Session().impersonate("alice"):
+    with WebSession().impersonate("alice"):
         live_session = client.get("/api/skills/webchat/sessions/current").json()
         chat_turn(client, live_session['id'], "hi")
     zip_bytes = client.get(f"/api/skills/platform/projects/{project_id}").content
@@ -189,7 +189,7 @@ def test_a_malformed_individual_session_is_skipped_others_still_import(client):
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
 
-    Session().user = "User 1"
+    WebSession().user = "User 1"
     sessions = client.get(f"/api/core/projects/{project_id}/sessions?include_imported=true").json()
     assert len(sessions) == 1
     assert sessions[0]["title"] == "Good one"

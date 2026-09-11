@@ -78,7 +78,7 @@ _INSTALLATIONS = {False: _NoWhatsApp, True: _WhatsApp}
 class WhatsAppSkill(Skill):
 
     # No `key`: derived from the package name, which is also this
-    # channel's name in ChatSession.channel.
+    # channel's name in CoreSession.channel.
     ui_label = "WhatsApp"
     ui_description = "Chat channel over the WhatsApp Cloud API."
     project_declarable = True

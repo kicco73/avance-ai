@@ -76,7 +76,7 @@ describe("chatSkin.js's shared index.css skin loader, driven by the live store",
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/skills/platform/projects/proj/files/index.css/content?session_id=1',
+      '/api/core/projects/proj/files/index.css/content?session_id=1',
       expect.objectContaining({ credentials: 'include', cache: 'no-store' })
     )
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
@@ -119,7 +119,7 @@ describe("chatSkin.js's shared index.css skin loader, driven by the live store",
 
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     expect(fetchMock).toHaveBeenLastCalledWith(
-      '/api/skills/platform/projects/proj-b/files/index.css/content?session_id=2',
+      '/api/core/projects/proj-b/files/index.css/content?session_id=2',
       expect.anything()
     )
     expect(currentSkinStyleTags()).toHaveLength(1)

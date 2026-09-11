@@ -8,7 +8,7 @@ from turn.turn_service import TurnService, TurnServiceError
 from turn.sessions.session_manager import SessionManager
 from conftest import make_test_scheduler_service
 from metrics.metric_service import MetricService
-from system.session import Session
+from system.web_session import WebSession
 from tracking.tracking_service import TrackingService
 
 
@@ -64,7 +64,7 @@ async def test_get_messages_raises_for_a_deleted_session(turn_service, db):
 async def test_get_messages_raises_for_someone_elses_session(turn_service, db):
     # Only a plain "user" is denied — a supervisor owns every session (see
     # TurnService._owns_session), so this must downgrade the default fixture role.
-    Session().role = "user"
+    WebSession().role = "user"
     db.ensure_project("proj")
     db.publish_project("proj")
     session_id = db.create_chat_session(
@@ -89,7 +89,7 @@ def test_delete_session_raises_for_unknown_session(turn_service):
 def test_delete_session_raises_for_someone_elses_session(turn_service, db):
     # Only a plain "user" is denied — a supervisor owns every session (see
     # TurnService._owns_session), so this must downgrade the default fixture role.
-    Session().role = "user"
+    WebSession().role = "user"
     db.ensure_project("proj")
     db.publish_project("proj")
     session_id = db.create_chat_session(

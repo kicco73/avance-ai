@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator
 
 from system import bus
 from system.bus import OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, Message
-from system.session import Session
+from system.web_session import WebSession
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 
 from .base_talker import BaseTalker
@@ -73,7 +73,7 @@ class AiTalker(BaseTalker):
 		bus.subscribe(OUTPUT_AUDIO_STREAM, take)
 		try:
 			await bus.publish(Message(
-				type=OUTPUT_SPEECH, body=text, username=Session().user, origin_id=origin,
+				type=OUTPUT_SPEECH, body=text, username=WebSession().user, origin_id=origin,
 			))
 		finally:
 			bus.unsubscribe(OUTPUT_AUDIO_STREAM, take)

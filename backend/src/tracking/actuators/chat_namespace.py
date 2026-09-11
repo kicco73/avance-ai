@@ -9,7 +9,7 @@ from automaton.automaton import JsSnippet
 from system.logging_factory import LoggerFactory
 from system import bus
 from system.bus import UI_HUMAN_TAKEOVER, UI_NOTIFICATION, Message
-from system.session import Session
+from system.web_session import WebSession
 
 from .actuator_set import _run_sync
 
@@ -74,7 +74,7 @@ class ChatNamespace(ABC):
         otherwise published whether or not any interface is listening."""
         if self._factory is None or self._session_id is None:
             return
-        _run_sync(bus.publish(Message(type=UI_NOTIFICATION, username=Session().user, body={"task": snippet_text})))
+        _run_sync(bus.publish(Message(type=UI_NOTIFICATION, username=WebSession().user, body={"task": snippet_text})))
 
     @abstractmethod
     def switch_to_human(self, user_id: str) -> JsSnippet | None:

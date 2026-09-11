@@ -9,7 +9,7 @@ import pytest
 from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
-from system.session import Session
+from system.web_session import WebSession
 
 pytestmark = pytest.mark.regression
 
@@ -53,14 +53,14 @@ def _save(db, content: str) -> None:
 
 def _session(db, revision: int, start_state: str, type: str = "live") -> int:
     return db.create_chat_session(
-        username=Session().user, project_id=PROJECT_ID, revision=revision, start_state=start_state, type=type,
+        username=WebSession().user, project_id=PROJECT_ID, revision=revision, start_state=start_state, type=type,
     )
 
 
 @pytest.fixture
 def project_service(db) -> ProjectService:
     db.ensure_project(PROJECT_ID)
-    db.set_active_project_id(PROJECT_ID, Session().user)
+    db.set_active_project_id(PROJECT_ID, WebSession().user)
     return ProjectService(db, AutomatonLoader(db), SessionManager(db))
 
 

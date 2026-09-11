@@ -13,7 +13,7 @@ from events import EnvChanged, publish
 from system import bus
 from system.bus import POINT_SPOKEN_REPLY
 from system.logging_factory import LoggerFactory
-from system.session import Session
+from system.web_session import WebSession
 from automaton.project_services import ProjectServices
 from tracking.spoken_reply import SpokenReply
 from talker import AiTalker
@@ -255,7 +255,7 @@ class TrackingProcessor(object):
 		if output_for_env:
 			self.env.update_action_set(output_for_env, origin="output")
 			for key, value in output_for_env.items():
-				publish(EnvChanged(username=Session().user, project_id=self.user.project_id, key=key, value=value))
+				publish(EnvChanged(username=WebSession().user, project_id=self.user.project_id, key=key, value=value))
 
 		# Every fragment this turn took is answered by the reply just saved
 		# — what keeps the next turn from picking any of them up again.
@@ -413,7 +413,7 @@ class TrackingProcessor(object):
 			f"input-token-budget-per-turn cap. Heaviest: {heaviest}."
 		)
 		logger.warning(message)
-		self.db.save_system_warning(Session().user, self.user.project_id, "input_budget_exceeded", message)
+		self.db.save_system_warning(WebSession().user, self.user.project_id, "input_budget_exceeded", message)
 		raise TurnServiceError(
 			f"This turn's own system prompt alone is ~{estimate.total_tokens} tokens, over the "
 			f"{budget}-token cap.",

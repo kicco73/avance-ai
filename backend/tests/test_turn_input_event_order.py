@@ -23,7 +23,7 @@ import pytest
 from ai.llm_provider import ToolCall, ToolCallsRequested
 from system import bus
 from system.bus import INPUT_TEXT, Message
-from system.session import Session
+from system.web_session import WebSession
 from turn.input_listener import TurnInput
 from turn.turn_service import TurnService
 from turn_harness import one_state_automaton, turn_service_for  # noqa: F401 — turn_service_for is a fixture
@@ -84,7 +84,7 @@ async def _streamed_events(turn_service: TurnService, db, text: str) -> list[tup
     bus._reset_for_tests()
     # The listener looks the sender's role up rather than taking it off
     # the wire (see Session.for_sender), so the sender has to exist.
-    db.get_or_create_user(None, None, Session().user, None, None, user_id=Session().user)
+    db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
     session = await turn_service.get_current_session_if_any_or_create_new(None)
 
     recorder = _Recorder()
@@ -93,7 +93,7 @@ async def _streamed_events(turn_service: TurnService, db, text: str) -> list[tup
     TurnInput(turn_service, db).register()
 
     await bus.publish(Message(
-        type=INPUT_TEXT, body=text, username=Session().user,
+        type=INPUT_TEXT, body=text, username=WebSession().user,
         session_id=session["id"], channel="webchat",
         origin_id="connection-1", stream_id="turn-1",
     ))

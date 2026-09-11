@@ -18,7 +18,7 @@ from system.bus import OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, Message
 from whatsapp.config import WhatsAppServiceConfig
 from whatsapp.whatsapp_controller import WhatsAppController
 from system.service_error import ServiceError
-from system.session import Session
+from system.web_session import WebSession
 from listen.decoder import SpeechDecoder
 from listen.listen_service import ListenServiceError
 from talk.audio_stream import AudioStream
@@ -119,7 +119,7 @@ class _FakeAuthService:
 
 
 class _FakeChatService:
-    """Records who it was called as (Session().user) and lets a test
+    """Records who it was called as (WebSession().user) and lets a test
     script the session bootstrap payload, the current state's own
     actions/manual_actions, and the turn/action outcome."""
 
@@ -154,7 +154,7 @@ class _FakeChatService:
         self.announced_audio_text: str | None = None
 
     async def acquire_exclusive_session(self):
-        self.calls.append(("session", Session().user))
+        self.calls.append(("session", WebSession().user))
         return self.session_payload
 
     def get_legal_terms_status(self, project_name):
@@ -183,7 +183,7 @@ class _FakeChatService:
         return self.state
 
     async def process_turn(self, session_id, text, on_metadata=None, audio_wanted=True):
-        self.calls.append(("turn", Session().user))
+        self.calls.append(("turn", WebSession().user))
         if self.turn_error is not None:
             error = self.turn_error
             if self.turn_error_clears_after_raise:
@@ -214,7 +214,7 @@ class _FakeChatService:
         }
 
     async def apply_manual_action(self, action_name, session_id):
-        self.calls.append(("action", Session().user, action_name))
+        self.calls.append(("action", WebSession().user, action_name))
         if self.action_error is not None:
             error = self.action_error
             if self.action_error_clears_after_raise:

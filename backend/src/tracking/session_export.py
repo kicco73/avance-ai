@@ -9,7 +9,7 @@ import json
 from auth.roles import role_satisfies
 from db import Db
 from db.utils import _utc_iso
-from system.session import Session
+from system.web_session import WebSession
 
 
 class SessionExportManager:
@@ -31,7 +31,7 @@ class SessionExportManager:
     def _owns_session(username: str, session_username: str) -> bool:
         if session_username == username:
             return True
-        return session_username.startswith('Test user ') and role_satisfies(Session().role, 'supervisor')
+        return session_username.startswith('Test user ') and role_satisfies(WebSession().role, 'supervisor')
 
     def _export_session(self, session: dict) -> dict:
         session_id = session['id']

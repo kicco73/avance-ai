@@ -22,7 +22,7 @@ from system.bus_channel import (
 from turn.input_listener import TurnInput
 from webchat.webchat_service import WebchatService
 from conftest import chat_socket, chat_turn_frames
-from system.session import Session
+from system.web_session import WebSession
 from turn_harness import one_state_automaton, turn_service_for  # noqa: F401 — a pytest fixture, used by name
 
 pytestmark = pytest.mark.contract
@@ -37,7 +37,7 @@ class _FakeAuthService:
 
 @pytest.fixture(autouse=True)
 def _session_user():
-    session = Session()
+    session = WebSession()
     previous = session.user
     session.user = USERNAME
     yield
@@ -534,7 +534,7 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     # Two objects now, and the split is the point: core runs the turn and
     # publishes what it produces, the chat window forwards what is
     # addressed to a connection it holds (see turn/input_listener.py).
-    db.get_or_create_user(None, None, Session().user, None, None, user_id=Session().user)
+    db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
     TurnInput(turn_service, db).register()
     WebchatService(turn_service, None, channel).register()
     websocket = _ScriptedWebSocket(
@@ -578,7 +578,7 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
     db = turn_service_for.db
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     channel = BusChannel(_FakeAuthService())
-    db.get_or_create_user(None, None, Session().user, None, None, user_id=Session().user)
+    db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
     TurnInput(turn_service, db).register()
     WebchatService(turn_service, None, channel).register()
     websocket = _ScriptedWebSocket(

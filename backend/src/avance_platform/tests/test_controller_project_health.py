@@ -45,8 +45,8 @@ def test_automaton_derived_endpoints_return_409_project_broken(client, app, app_
     _break_project(app, app_db, "broken")
 
     for path in (
-        "/api/skills/platform/projects/broken/project", "/api/skills/platform/projects/broken/states", "/api/skills/platform/projects/broken/graph",
-        "/api/skills/platform/projects/broken/signals", "/api/skills/platform/projects/broken/env-keys", "/api/core/projects/broken/identifiers",
+        "/api/skills/platform/projects/broken/project", "/api/core/projects/broken/states", "/api/skills/platform/projects/broken/graph",
+        "/api/core/projects/broken/signals", "/api/skills/platform/projects/broken/env-keys", "/api/core/projects/broken/identifiers",
     ):
         response = client.get(path)
         assert response.status_code == HTTPStatus.CONFLICT, (path, response.text)

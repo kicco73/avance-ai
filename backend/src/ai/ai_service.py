@@ -22,7 +22,7 @@ from ai.llm_provider import (
 from ai._providers.cascading_llm_provider import AutoLiveLLMProvider, AutoTestLLMProvider
 from ai._providers import gemini_provider_v2, openai_provider_v2, anthropic_provider_v2
 from db import Db
-from system.session import Session
+from system.web_session import WebSession
 from token_estimate import estimate_tokens
 from system.logging_factory import LoggerFactory
 
@@ -424,7 +424,7 @@ class AiService(object):
 				f"{round_number}, ~{total} tokens total. Heaviest accumulated tool result(s): {heaviest_text}."
 			)
 			logger.warning(warning_message)
-			self._db.save_system_warning(Session().user, tool_set.project_id, "input_budget_exceeded", warning_message)
+			self._db.save_system_warning(WebSession().user, tool_set.project_id, "input_budget_exceeded", warning_message)
 		raise TurnServiceError(
 			message, status_code=HTTPStatus.REQUEST_ENTITY_TOO_LARGE, code="input_budget_exceeded",
 		)

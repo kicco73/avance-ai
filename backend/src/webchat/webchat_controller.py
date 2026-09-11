@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from controllers.base_controller import BaseController, get, post
 from schemas import ActionRequest
-from system.session import Session
+from system.web_session import WebSession
 from turn.turn_service import TurnService
 
 
@@ -61,7 +61,7 @@ CHANNEL = __package__
 # dependency runs in the request's own task, so the declaration reaches
 # the endpoint whether the endpoint itself is sync or async.
 async def _the_chat_window_is_speaking() -> None:
-    Session().channel = CHANNEL
+    WebSession().channel = CHANNEL
 
 
 class WebchatController(BaseController):

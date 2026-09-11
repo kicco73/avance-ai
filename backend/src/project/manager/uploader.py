@@ -13,7 +13,7 @@ from automaton.build_error import AutomatonBuildError
 from automaton.file_types import ProjectFileTypes
 from db import Db
 from system.logging_factory import LoggerFactory
-from system.session import Session
+from system.web_session import WebSession
 from tracking.session_import import SessionImportManager
 
 from ..archive.automaton_loader import AutomatonLoader
@@ -151,7 +151,7 @@ class ProjectUploader:
         if not is_new_project:
             self._db.reset_project(project_id)
         self._db.import_new_revision(project_id, revision, files_bytes, content_types)
-        self._db.set_active_project_id(project_id, Session().user)
+        self._db.set_active_project_id(project_id, WebSession().user)
         await self._manager.finalize_update(
             project_id, automaton, commit, is_new_project=is_new_project, old_family=old_family,
         )

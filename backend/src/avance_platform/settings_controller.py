@@ -23,7 +23,7 @@ from db import Db
 from avance_platform.platform_service import PlatformService
 from project.project_service import ProjectService
 from scheduler import SchedulerService
-from system.session import Session
+from system.web_session import WebSession
 
 from controllers.base_controller import BaseController, delete, get, post, put
 from .project_commit_mixin import ProjectCommitMixin
@@ -58,11 +58,11 @@ class SettingsController(BaseController, ProjectCommitMixin):
         a durable audit trail of every SystemWarning this admin has
         received (see project/health_notifications.py for kind=
         "project_broken"), even past the project actually being fixed."""
-        return {"warnings": self.db.list_system_warnings_for_user(Session().user, kind=kind)}
+        return {"warnings": self.db.list_system_warnings_for_user(WebSession().user, kind=kind)}
 
     @delete("/api/skills/platform/settings/warnings/{warning_id}", role="admin")
     def delete_warning(self, warning_id: int):
-        if not self.db.delete_system_warning(Session().user, warning_id):
+        if not self.db.delete_system_warning(WebSession().user, warning_id):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"Warning {warning_id} not found.")
         return {"status": "ok"}
 

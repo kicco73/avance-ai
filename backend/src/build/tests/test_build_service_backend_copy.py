@@ -80,7 +80,7 @@ def test_pruning_drops_every_other_project_and_what_belongs_to_it(db, tmp_path):
     try:
         project_ids = {row[0] for row in connection.execute("SELECT id FROM Project")}
         assert project_ids == {PROJECT_A}
-        session_projects = {row[0] for row in connection.execute("SELECT project_id FROM ChatSession")}
+        session_projects = {row[0] for row in connection.execute("SELECT project_id FROM CoreSession")}
         assert session_projects == {PROJECT_A}
         message_count = connection.execute("SELECT COUNT(*) FROM Message").fetchone()[0]
         assert message_count == 1

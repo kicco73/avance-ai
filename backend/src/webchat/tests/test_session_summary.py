@@ -1,6 +1,6 @@
 """Closing a live session queues SessionReportTask (session_report_task.py),
 which renders the session's turns/signals into a prompt, calls
-AiService.prompt(), and stores the result on ChatSession.ai_summary.
+AiService.prompt(), and stores the result on CoreSession.ai_summary.
 """
 from __future__ import annotations
 

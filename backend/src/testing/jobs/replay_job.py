@@ -7,7 +7,7 @@ from automaton.automaton import Automaton
 from turn.sessions.env_for_session import env_for_session
 from jobs import CancelableJob
 from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalculator
-from system.session import Session
+from system.web_session import WebSession
 from testing.data import TestDataBuilder
 from testing.metrics_provider import TestMetricsProvider
 from testing.processor import TestProcessor
@@ -35,7 +35,7 @@ class TestReplayJob(CancelableJob):
             f"{run['strategy']}:session:{run['session_id']}" if run['session_id'] is not None
             else f"{run['strategy']}:pooled-replay"
         )
-        super().__init__(key=key, username=Session().user)
+        super().__init__(key=key, username=WebSession().user)
         self._service = service
         self._run = run
         self._automaton = automaton
@@ -68,7 +68,7 @@ class TestReplayJob(CancelableJob):
         return "; ".join(self._warnings) if self._warnings else None
 
     async def _run_next_step(self) -> None:
-        with Session().impersonate(self._run['username']):
+        with WebSession().impersonate(self._run['username']):
             while not self._pending_batches:
                 if self._current_session_id is not None:
                     self._close_current_session()

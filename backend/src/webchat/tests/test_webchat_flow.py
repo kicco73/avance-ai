@@ -6,7 +6,7 @@ from conftest import FakeAiService, chat_socket, chat_turn_frames, installed_ski
 from listen.decoder import SpeechDecoder
 from system import bus
 from system.bus import INPUT_AUDIO, Message
-from system.session import Session
+from system.web_session import WebSession
 from talk.talk_provider import StreamingTalkProvider
 from talk.talk_service import TalkService
 
@@ -102,8 +102,8 @@ def test_a_voice_note_on_an_open_connection_runs_the_very_same_turn(webchat):
             connection_id = _only_connection(client).id
 
             async def speak_into_the_socket() -> None:
-                Session().user = "user"
-                Session().role = "supervisor"
+                WebSession().user = "user"
+                WebSession().role = "supervisor"
                 await bus.publish(Message(
                     type=INPUT_AUDIO, body=VOICE_NOTE, mime="audio/ogg", username="user",
                     session_id=session_id, origin_id=connection_id, stream_id="t1",

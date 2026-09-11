@@ -12,7 +12,7 @@ from system import bus
 
 from system.bus import CLIENT_INJECTABLE, UI_HUMAN_TAKEOVER, UI_NOTIFICATION, UI_SYSTEM_WARNING, UI_PROGRESS, Message
 from auth.roles import role_satisfies
-from system.session import Session
+from system.web_session import WebSession
 
 logger = logging.getLogger(__name__)
 
@@ -215,15 +215,15 @@ class BusChannel(object):
         if identity is None or identity.role is None:
             await websocket.close(code=4401)
             return
-        Session().user = identity.email
-        Session().role = identity.role
+        WebSession().user = identity.email
+        WebSession().role = identity.role
 
-        username = Session().user
+        username = WebSession().user
         cap = MAX_CONNECTIONS_PER_ADMIN if role_satisfies(identity.role, "admin") else MAX_CONNECTIONS_PER_USER
         await websocket.accept()
         logger.info(f"accepted websocket for {username}")
         connection = WsConnection(websocket)
-        Session().connection_id = connection.id
+        WebSession().connection_id = connection.id
         self._connections.setdefault(username, []).append(connection)
         self._supersede_over_cap(username, cap)
         writer = asyncio.create_task(connection.write_loop())
@@ -359,7 +359,7 @@ class BusChannel(object):
         message = Message(
             type=frame_type,
             body=str(frame.get("body", "")),
-            username=Session().user,
+            username=WebSession().user,
             session_id=frame.get("session_id"),
             channel=self._channel,
             origin_id=connection.id,

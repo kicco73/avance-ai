@@ -13,7 +13,7 @@ from automaton.build_error import AutomatonBuildError
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
 from db import ContentRestored, Db, FileRenamed
 from system.logging_factory import LoggerFactory
-from system.session import Session
+from system.web_session import WebSession
 from tracking.project_files import PROJECT_FILE_CACHE
 
 from .inspector import ProjectInspector
@@ -156,7 +156,7 @@ class ProjectEditor:
         if content is None:
             raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_id}'.")
         content_type = self._db.get_archive_content_type(project_id, file_name)
-        user = Session().user
+        user = WebSession().user
         file_type = ProjectFileTypes.of(file_name)
         media_type = file_type.media_type
         # None for binary content — raw bytes aren't JSON-serializable; the
@@ -338,7 +338,7 @@ class ProjectEditor:
             raise ValueError(f"Invalid project update: {exc}") from exc
 
         if to_persist is not None:
-            self._db.save_project_file(Session().user, project_id, file_name, to_save, content_type)
+            self._db.save_project_file(WebSession().user, project_id, file_name, to_save, content_type)
         project_id = await self._manager.finalize_update(project_id, new_automaton, commit, old_family=old_family)
 
         return {"success": True, "project_id": project_id, **self._file_undo_redo_info(project_id, file_name)}
@@ -416,7 +416,7 @@ class ProjectEditor:
         except Exception as exc:
             raise ValueError(f"Invalid project update: {exc}") from exc
 
-        self._db.rename_project_file(Session().user, project_id, old_name, new_name, updated_files, content_types)
+        self._db.rename_project_file(WebSession().user, project_id, old_name, new_name, updated_files, content_types)
         project_id = await self._manager.finalize_update(project_id, new_automaton, commit)
 
         return {
@@ -541,7 +541,7 @@ class ProjectEditor:
         def operation(editor: AutomatonYamlEditor) -> SourcePayload:
             payload = editor.add_source(name_hint)
             archive_name = self._source_archive(payload["name"])
-            self._db.save_project_file(Session().user, project_id, archive_name, content, "text/csv")
+            self._db.save_project_file(WebSession().user, project_id, archive_name, content, "text/csv")
             return editor.set_source_field(payload["name"], "url", f"avance:{archive_name}")
         return await self._edit_index_yml(project_id, commit, operation)
 
@@ -567,7 +567,7 @@ class ProjectEditor:
             new_archive = self._source_archive(new_name)
             if old_archive not in self._db.list_archives(project_id):
                 return payload
-            self._db.rename_project_file(Session().user, project_id, old_archive, new_archive)
+            self._db.rename_project_file(WebSession().user, project_id, old_archive, new_archive)
             return editor.set_source_field(new_name, "url", f"avance:{new_archive}")
         return await self._edit_index_yml(project_id, commit, operation)
 
@@ -598,7 +598,7 @@ class ProjectEditor:
                 "success": True, "project_id": project_id, "renamed_to": outcome.active_name,
                 **self._file_undo_redo_info(project_id, outcome.active_name),
             }
-        user = Session().user
+        user = WebSession().user
         return {
             "success": True,
             "project_id": project_id,
@@ -622,7 +622,7 @@ class ProjectEditor:
         is_text = ProjectFileTypes.of(file_name).text
         raw_content = content.encode("utf-8") if is_text and isinstance(content, str) else content
 
-        user = Session().user
+        user = WebSession().user
         outcome = self._db.undo_project_file(user, project_id, file_name, raw_content)
         if outcome is None:
             raise ValueError(f"Nothing to undo for file '{file_name}'.")
@@ -642,7 +642,7 @@ class ProjectEditor:
         is_text = ProjectFileTypes.of(file_name).text
         raw_content = content.encode("utf-8") if is_text and isinstance(content, str) else content
 
-        user = Session().user
+        user = WebSession().user
         outcome = self._db.redo_project_file(user, project_id, file_name, raw_content)
         if outcome is None:
             raise ValueError(f"Nothing to redo for file '{file_name}'.")
@@ -654,7 +654,7 @@ class ProjectEditor:
         in `project_id`, so a fresh editing session starts clean."""
         if project_id not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_id}' does not exist.")
-        self._db.clear_history(Session().user, project_id)
+        self._db.clear_history(WebSession().user, project_id)
 
     @staticmethod
     def _check_editable_file_name(file_name: str) -> None:

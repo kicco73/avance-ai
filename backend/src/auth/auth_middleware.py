@@ -29,7 +29,7 @@ from starlette.routing import Match
 
 from auth.auth_service import SESSION_COOKIE_NAME
 from auth.roles import role_satisfies
-from system.session import Session
+from system.web_session import WebSession
 
 # FastAPI's own default doc routes (main.py never disables them) — they
 # never go through a controller's get/post decorators, so they can never
@@ -68,8 +68,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if not db.user_has_project_access(identity.email, project_id):
                 return self._forbidden_response()
 
-        Session().user = identity.email
-        Session().role = identity.role
+        WebSession().user = identity.email
+        WebSession().role = identity.role
         return await call_next(request)
 
     @staticmethod

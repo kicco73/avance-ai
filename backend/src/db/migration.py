@@ -72,7 +72,7 @@ class SchemaMigrator:
         unique=True field (ForeignKeyField defaults to index=True), plus
         every Meta.indexes entry, with field names resolved to their
         actual DB column names (Meta.indexes lists Python field names,
-        e.g. ChatSession's bare 'project' for column 'project_id')."""
+        e.g. CoreSession's bare 'project' for column 'project_id')."""
         result: dict[str, dict[tuple[str, ...], bool]] = {}
         for model in self._models:
             meta = model._meta
@@ -133,7 +133,7 @@ class SchemaMigrator:
     # renamed away. User.active_project_id's own column name never
     # changes (already right) — only its stored *value* needs the cascade.
     _PROJECT_NAME_COLUMNS: tuple[tuple[str, str, str], ...] = (
-        ('ChatSession', 'project_name', 'project_id'),
+        ('CoreSession', 'project_name', 'project_id'),
         ('Archive', 'project_name', 'project_id'),
         ('Invite', 'project_name', 'project_id'),
         ('UserProject', 'project_name', 'project_id'),
@@ -205,7 +205,7 @@ class SchemaMigrator:
     # diff below, so a rename never reads as "drop old, add empty new"
     # and loses the column's existing values.
     _COLUMN_RENAMES: tuple[tuple[str, str, str], ...] = (
-        ('ChatSession', 'summary', 'ai_summary'),
+        ('CoreSession', 'summary', 'ai_summary'),
     )
 
     def migrate_archive_content_to_file(self, actual: dict[str, set[str]]) -> None:
@@ -277,7 +277,7 @@ class SchemaMigrator:
             self._database.execute_sql('PRAGMA foreign_keys = ON')
 
     def _backfill_channel(self, actual: dict[str, set[str]]) -> None:
-        """ChatSession.channel says which channel opened a live session.
+        """CoreSession.channel says which channel opened a live session.
         It used to carry default='native-chat', which backfilled every
         pre-existing row for free; the column is nullable now (a test,
         preview or imported session has no channel at all — see
@@ -291,10 +291,10 @@ class SchemaMigrator:
         — which is the webchat skill, and so the channel's name (see
         Db._rename_channels_to_skill_keys for the rows that predate the
         name and not the column)."""
-        if "ChatSession" not in actual or "channel" in actual["ChatSession"]:
+        if "CoreSession" not in actual or "channel" in actual["CoreSession"]:
             return
         self._database.execute_sql(
-            'UPDATE "ChatSession" SET channel = \'webchat\' WHERE type = \'live\''
+            'UPDATE "CoreSession" SET channel = \'webchat\' WHERE type = \'live\''
         )
 
     def _backfill_answered_by(self, actual: dict[str, set[str]]) -> None:

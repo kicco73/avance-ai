@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 
 from conftest import parse_sse_result
-from system.session import Session
+from system.web_session import WebSession
 
 pytestmark = pytest.mark.regression
 
@@ -42,7 +42,7 @@ def test_editing_the_current_users_stale_state_never_touches_another_users_live_
     project_id, my_session_id = _upload_and_reach_b(client)
 
     app_db.set_active_project_id(project_id, "bob")
-    with Session().impersonate("bob"):
+    with WebSession().impersonate("bob"):
         bob_session = client.get("/api/skills/webchat/sessions/current").json()
         bob_action_resp = client.post(f"/api/skills/webchat/sessions/{bob_session['id']}/actions", json={"action_name": "go"})
         assert bob_action_resp.status_code == 200, bob_action_resp.text

@@ -5,14 +5,14 @@ from datetime import datetime
 import pytest
 
 from conftest import chat_turn
-from system.session import Session
+from system.web_session import WebSession
 
 pytestmark = pytest.mark.contract
 
 
 def test_metrics_history_spans_every_session_chronologically(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
-    with Session().impersonate("alice"):
+    with WebSession().impersonate("alice"):
         older = client.get("/api/skills/webchat/sessions/current").json()
         chat_turn(client, older['id'], "hi")
         newer = client.post("/api/skills/webchat/sessions").json()
@@ -30,11 +30,11 @@ def test_metrics_history_spans_every_session_chronologically(client, app_db, hel
 
 def test_metrics_history_is_scoped_to_the_given_user_and_project(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
-    with Session().impersonate("alice"):
+    with WebSession().impersonate("alice"):
         client.get("/api/skills/webchat/sessions/current")
 
     app_db.set_active_project_id(hello_project, "carol")
-    with Session().impersonate("carol"):
+    with WebSession().impersonate("carol"):
         session = client.get("/api/skills/webchat/sessions/current").json()
         chat_turn(client, session['id'], "hi")
     alice_body = client.get(f"/api/core/projects/{hello_project}/users/alice/metrics-history").json()
@@ -47,7 +47,7 @@ def test_metrics_history_is_scoped_to_the_given_user_and_project(client, app_db,
 
 def test_metrics_history_includes_one_session_start_per_session(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
-    with Session().impersonate("alice"):
+    with WebSession().impersonate("alice"):
         older = client.get("/api/skills/webchat/sessions/current").json()
         chat_turn(client, older['id'], "hi")
         client.post("/api/skills/webchat/sessions")

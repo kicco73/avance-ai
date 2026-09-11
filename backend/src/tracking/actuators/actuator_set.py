@@ -16,7 +16,7 @@ from automaton.scope import EvaluationScope
 from system.bus import MAIL_SEND, OUTPUT_TEXT, Message
 from system.logging_factory import LoggerFactory
 from scheduler import SchedulerService
-from system.session import Session
+from system.web_session import WebSession
 
 from .action_task import ActionTask, ScopeHydrator
 
@@ -196,7 +196,7 @@ class TaskDispatcher(object):
     def schedule_now(self, action: Action, scope: EvaluationScope, *, session_id: int | None) -> None:
         self._check_project(scope)
         task = ActionTask.now(
-            action, scope, username=Session().user, namespace_kind=self._namespace_kind, session_id=session_id,
+            action, scope, username=WebSession().user, namespace_kind=self._namespace_kind, session_id=session_id,
             hydrator=self._hydrator,
         )
         self._scheduler_service.schedule(task, datetime.now(timezone.utc))
@@ -204,7 +204,7 @@ class TaskDispatcher(object):
     def schedule_later(self, act: DeferredExpression, when: datetime) -> None:
         self._check_project(act.scope)
         task = ActionTask.later(
-            act, when, username=Session().user, namespace_kind=self._namespace_kind, hydrator=self._hydrator,
+            act, when, username=WebSession().user, namespace_kind=self._namespace_kind, hydrator=self._hydrator,
         )
         self._scheduler_service.schedule(task, when)
 
@@ -222,7 +222,7 @@ class LiveTaskNamespace(TaskNamespace):
 
     def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
         _run_sync(self._services["mail"].deliver(Message(
-            type=MAIL_SEND, username=Session().user,
+            type=MAIL_SEND, username=WebSession().user,
             body={"to": to, "subject": _SEND_MAIL_SUBJECT, "body_md": body_md},
         ), _NoMailService()))
         return None
