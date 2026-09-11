@@ -31,7 +31,6 @@ const props = defineProps({
 
 defineEmits(['project-select', 'project-download', 'manage-projects', 'home', 'profile', 'logout'])
 
-const chatViewRef = ref(null)
 const termsPending = ref(null)
 const termsContent = ref('')
 const checkFailed = ref(false)
@@ -129,9 +128,6 @@ onBeforeUnmount(() => {
   restoreCanvasColor(previousCanvasColor)
 })
 
-defineExpose({
-  refreshProjectsMenu: () => chatViewRef.value?.refreshProjectsMenu()
-})
 </script>
 
 <template>
@@ -147,7 +143,6 @@ defineExpose({
     />
     <ChatView
       v-else-if="termsPending === false"
-      ref="chatViewRef"
       :hide-sessions-panel="hideSessionsPanel"
       :role="role"
       :profile="profile"

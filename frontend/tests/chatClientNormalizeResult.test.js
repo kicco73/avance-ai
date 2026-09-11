@@ -31,8 +31,8 @@ describe('sendMessage normalizes the full turn response', () => {
     const pending = chatClient.sendMessage('hi', 1)
 
     sockets[0].emit({
-      type: 'done',
-      turn_id: turnIdOf(sockets[0]),
+      type: 'turn.ended',
+      stream_id: turnIdOf(sockets[0]),
       reply: [{ id: 5, content: 'Hello.', timestamp: 't' }],
       user_message_id: 42,
       user_message_reaction: 'listening',

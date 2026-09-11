@@ -52,7 +52,7 @@ describe('a turn interrupted by a dropped socket', () => {
     ])
 
     const sendPromise = chatStore.handleSend('where is my flight?')
-    await vi.waitFor(() => expect(sockets[0].sent.some((f) => f.type === 'turn')).toBe(true))
+    await vi.waitFor(() => expect(sockets[0].sent.some((f) => f.type === 'input.text')).toBe(true))
 
     sockets[0].close()
     await vi.advanceTimersByTimeAsync(1000)
@@ -68,7 +68,7 @@ describe('a turn interrupted by a dropped socket', () => {
     api.getMessages.mockResolvedValue([])
 
     const sendPromise = chatStore.handleSend('never arrived')
-    await vi.waitFor(() => expect(sockets[0].sent.some((f) => f.type === 'turn')).toBe(true))
+    await vi.waitFor(() => expect(sockets[0].sent.some((f) => f.type === 'input.text')).toBe(true))
 
     sockets[0].close()
     await vi.advanceTimersByTimeAsync(1000)

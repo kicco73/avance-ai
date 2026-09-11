@@ -72,7 +72,7 @@ describe('the notification bus runs a pushed task script once, globally', () => 
     // What the channel handed the bus: it subscribes the first time
     // anyone subscribes to it.
     expect(chatChannel.subscribe).toHaveBeenCalledTimes(1)
-    expect(chatChannel.subscribe.mock.calls[0][0]).toBe('notification')
+    expect(chatChannel.subscribe.mock.calls[0][0]).toBe('ui.notification')
     return chatChannel.subscribe.mock.calls[0][1]
   }
 

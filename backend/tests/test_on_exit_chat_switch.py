@@ -11,7 +11,7 @@ import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
 from system.ws_notifications import WsNotifications
-from conftest import make_test_namespace_factory, make_test_scheduler_service
+from conftest import FakeWebSocket, make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
 from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
@@ -52,12 +52,6 @@ states:
 """
 
 
-class _FakeWebSocket:
-    def __init__(self):
-        self.sent: list[dict] = []
-
-    def send(self, payload: dict):
-        self.sent.append(payload)
 
 
 def _publish(db, project_service: ProjectService, on_exit: str) -> None:
@@ -107,7 +101,7 @@ def _session(db, project_service: ProjectService) -> int:
 
 def test_switch_to_human_from_on_exit_records_the_operator_and_pages_them(wired):
     db, project_service, factory, ws_notifications = wired
-    admin_socket = _FakeWebSocket()
+    admin_socket = FakeWebSocket()
     ws_notifications._connections["admin"] = [admin_socket]
     _publish(db, project_service, "chat.switch_to_human('admin')")
     session_id = _session(db, project_service)
@@ -133,7 +127,7 @@ def test_a_fake_chat_namespace_suppresses_switch_to_human_and_reports_it(wired):
     """Test session with "Run actuators" off: nobody is actually paged
     — same suppress-and-report shape task.* gets for send_mail/whatsapp/defer."""
     db, project_service, factory, ws_notifications = wired
-    user_socket = _FakeWebSocket()
+    user_socket = FakeWebSocket()
     ws_notifications._connections[USERNAME] = [user_socket]
     _publish(db, project_service, "chat.switch_to_human('admin')")
     session_id = _session(db, project_service)
@@ -151,7 +145,7 @@ def test_a_mixed_on_exit_script_writes_env_and_pushes_a_chat_notification_synchr
     """No background ActionTask involved at all — the push happens
     inline, in the same call that applies the env write."""
     db, project_service, factory, ws_notifications = wired
-    user_socket = _FakeWebSocket()
+    user_socket = FakeWebSocket()
     ws_notifications._connections[USERNAME] = [user_socket]
     _publish(db, project_service, "env.counter = env.counter + 1\nchat.celebrate()\nchat.notify('Nice!', 'Done.')")
     session_id = _session(db, project_service)

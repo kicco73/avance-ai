@@ -83,8 +83,6 @@ const {
 
 const emit = defineEmits(['project-select', 'project-download', 'manage-projects', 'home', 'profile', 'logout'])
 
-const projectsMenuRef = ref(null)
-
 // The header's own back arrow — only an admin (pushed *over*
 // ManageProjectsView) or a customer (pushed *over* AppStoreView, see
 // App.vue) has anywhere to pop back to; a plain user's chat is their whole
@@ -97,7 +95,6 @@ const chatInputRef = ref(null)
 const recording = ref(false)
 
 defineExpose({
-  refreshProjectsMenu: () => projectsMenuRef.value?.refresh(),
   focus: () => chatInputRef.value?.focus()
 })
 
@@ -310,7 +307,6 @@ watch(
       </template>
       <template #right>
         <ProjectsMenu
-          ref="projectsMenuRef"
           session-actions
           :close-session-disabled="!selectedSessionActive"
           @select="(name) => emit('project-select', name)"

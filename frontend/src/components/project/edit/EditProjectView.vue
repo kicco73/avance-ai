@@ -210,7 +210,7 @@ const inspectorTabs = computed(() => {
 const inspectorActiveTab = ref('states')
 
 const stateTabTokensKey = computed(() => (mode.value === 'test' ? autoSelectedStateKey.value : selectedStateKey.value))
-const { stateTabTokens, refreshStateTabTokens } = useStateTabTokens(props.projectId, stateTabTokensKey)
+const { stateTabTokens } = useStateTabTokens(props.projectId, stateTabTokensKey)
 
 async function ensureDraftChatSession() {
   await loadMessages()
@@ -256,9 +256,6 @@ async function refreshAfterProjectEdit() {
   if (runOpen.value && !chatLoading.value) await ensureDraftChatSession()
   if (inspecting.value) await inspectorRef.value?.refresh()
   resyncSelectedGraphElement()
-  refreshCatalog()
-  refreshProjectRevision()
-  refreshStateTabTokens()
 }
 
 const unsubscribeProjectChanged = onProjectChanged((changedProjectId) => {

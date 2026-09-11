@@ -136,6 +136,18 @@ class BackendCopy:
             self.assembling, ", ".join(self.excluded_skills) or "nothing",
         )
         shutil.copytree(BACKEND_DIR, self.assembling, ignore=_ignore_for(self.excluded_skills))
+        self._write_requirements()
+
+    def _write_requirements(self) -> None:
+        """A skill's directory is left out by the copy above; the lines it
+        owns in the shared requirements.txt have to be taken out here, or
+        a product built without Talk still asks pip for piper-tts."""
+        from system import skills
+
+        dropped = set(skills.requirements_of(self.excluded_skills))
+        path = self.assembling / "requirements.txt"
+        kept = [line for line in path.read_text().splitlines() if line.strip() not in dropped]
+        path.write_text("\n".join(kept) + "\n")
 
     def install_automaton(self) -> None:
         from project.archive.layout import ArchiveLayout

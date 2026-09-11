@@ -83,6 +83,9 @@ class TalkSkill(Skill):
     ui_description = "Text to speech."
     project_declarable = True
 
+    def requirements(self) -> list[str]:
+        return ["piper-tts>=1.6"]
+
     def __init__(self) -> None:
         self._providers = []
         self._installed = _NoTalk([])

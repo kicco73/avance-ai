@@ -9,6 +9,7 @@ import { buildAvailable } from '../buildAvailability.js'
 import PublishRemapDialog from '../components/settings/PublishRemapDialog.vue'
 import { aboutDialog, confirmDialog, customDialog, infoDialog } from '../dialogStore.js'
 import { handleStateChange, loadMessages, clearChatUi } from '../chatStore.js'
+import { emitProjectsChanged } from '../projectChangeEvents.js'
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob)
@@ -25,7 +26,7 @@ function downloadBlob(blob, filename) {
 // that means "no remap needed", which is a perfectly good publish.
 const CANCELLED = Symbol('publish cancelled')
 
-export function useProjectAdminActions(chatWindowRef, manageProjectsView) {
+export function useProjectAdminActions() {
   const modelUploadInput = ref(null)
   const uploadingProject = ref(false)
   const uploadProgress = ref(null)
@@ -34,8 +35,7 @@ export function useProjectAdminActions(chatWindowRef, manageProjectsView) {
 
   async function refreshStateAndProjects() {
     const newState = await getState()
-    chatWindowRef.value?.refreshProjectsMenu()
-    manageProjectsView.value?.refresh()
+    await emitProjectsChanged()
     handleStateChange(newState)
   }
 

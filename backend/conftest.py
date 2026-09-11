@@ -452,10 +452,17 @@ def app(
 
 class FakeWebSocket:
     """Just enough to stand in for a WsConnection in WsNotifications'
-    username -> connection registry — push only calls send on it."""
+    username -> connection registry: push only calls send on it, and a
+    Bus event only reaches a connection that registered for its type —
+    this one stands in for a browser, so it registers for everything the
+    socket may export (see WsNotifications._exportable)."""
 
     def __init__(self):
+        self.id = "fake-connection"
         self.sent: list[dict] = []
+
+    def wants(self, event_type: str) -> bool:
+        return event_type in WEB_FORWARDED
 
     def send(self, payload: dict):
         self.sent.append(payload)

@@ -14,7 +14,7 @@ import pytest
 from automaton.automaton_builder import AutomatonBuilder
 from system.ws_notifications import WsNotifications
 from events import StateChanged, publish
-from conftest import make_test_namespace_factory, make_test_scheduler_service
+from conftest import FakeWebSocket, make_test_namespace_factory, make_test_scheduler_service
 from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
@@ -90,16 +90,6 @@ class _FakeTrackingService:
         return session_id not in self._disabled
 
 
-class _FakeWebSocket:
-    """Just enough to stand in for a real connection in WsAdapter's
-    username -> WebSocket _connections registry — push only calls
-    send_json on it."""
-
-    def __init__(self):
-        self.sent: list[dict] = []
-
-    def send(self, payload: dict):
-        self.sent.append(payload)
 
 
 def _both_projects(db, project_service, *, observed_moved: bool = True) -> dict:
@@ -164,7 +154,7 @@ class TestWsAdapterPush:
 
     def _connected(self):
         ws_notifications = WsNotifications(auth_service=None)
-        websocket = _FakeWebSocket()
+        websocket = FakeWebSocket()
         ws_notifications._connections[USERNAME] = [websocket]
         return ws_notifications, websocket
 

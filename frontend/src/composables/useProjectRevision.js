@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getProjectRevision, postRevertProject } from '../api.js'
 import { confirmDialog } from '../dialogStore.js'
+import { onProjectChanged } from '../projectChangeEvents.js'
 
 // EditProjectView.vue's revision control: which revision the draft is,
 // which one is published, and the one action the editor still owns over
@@ -25,6 +26,12 @@ export function useProjectRevision(projectId, currentFileName, activeEditor, sel
       // already surfaced via apiFetch
     }
   }
+
+  // A save can fork the draft, so every edit moves this pair — observed
+  // here rather than re-announced by each place that edits something.
+  onBeforeUnmount(onProjectChanged((changedProjectId) => {
+    if (changedProjectId === projectId) return refreshProjectRevision()
+  }))
 
   // A draft ahead of what's published — the whole reason the menu has
   // anything in it.

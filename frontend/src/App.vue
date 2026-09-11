@@ -41,7 +41,6 @@ const operatorSessionId = ref(null)
 const currentUserProfile = ref(null)
 const currentUserRole = ref(null)
 const chatWindowRef = ref(null)
-const manageProjectsView = ref(null)
 const customerHomeView = ref(null)
 const dialogOpen = computed(() => !!activeDialog.value)
 
@@ -57,7 +56,7 @@ const {
   triggerModelUpload, handleNewProject, handleModelUploadChange, handleModelEditSaved, handleProjectSwitch,
   activateAndRefresh, handleModelDownload, handleModelDelete, handlePublishProject, handleWipeAllLiveSessions,
   handleCleanUnusedRevisions, handleDownloadBackup, handleRestoreBackup, handleShowAbout,
-} = useProjectAdminActions(chatWindowRef, manageProjectsView)
+} = useProjectAdminActions()
 
 const {
   bootStatus, needsTerms, termsError, inviteExempt,
@@ -281,7 +280,6 @@ onBeforeUnmount(() => {
       <template v-else-if="currentUserRole === 'admin'">
         <div class="view-flip-base" :class="flipBaseClass">
           <ManageProjectsView
-            ref="manageProjectsView"
             :uploading="uploadingProject"
             :upload-progress="uploadProgress"
             :upload-project-id="uploadProjectId"

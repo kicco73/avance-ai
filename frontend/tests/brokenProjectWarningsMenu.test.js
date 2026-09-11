@@ -1,6 +1,6 @@
 // BrokenProjectWarningsMenu.vue as a consumer of the shared channel: a
 // project breaking or being fixed reaches every admin as a pushed
-// system_warning frame, and the counter moves without waiting for this
+// ui.system_warning frame, and the counter moves without waiting for this
 // view to be refreshed. Clicking a row hands the caller the file/line the
 // build failed on, so EditProjectView can open the editor right there.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -56,14 +56,14 @@ describe('BrokenProjectWarningsMenu.vue', () => {
     await vi.waitFor(() => expect(container.querySelector('.warnings-item')).not.toBeNull())
   }
 
-  it('subscribes to system_warning frames and reloads when a project breaks', async () => {
+  it('subscribes to ui.system_warning frames and reloads when a project breaks', async () => {
     const { pushedFrame } = await mountMenu([warning(1, 'p')])
 
-    expect(subscribe.mock.calls[0][0]).toBe('system_warning')
+    expect(subscribe.mock.calls[0][0]).toBe('ui.system_warning')
     expect(container.querySelector('.warnings-count').textContent).toBe('1')
     api.getProjectBrokenWarnings.mockResolvedValue({ warnings: [warning(1, 'p'), warning(2, 'q')] })
 
-    pushedFrame({ type: 'system_warning', kind: 'project_broken', project_id: 'q', message: 'nope' })
+    pushedFrame({ type: 'ui.system_warning', kind: 'project_broken', project_id: 'q', message: 'nope' })
 
     await vi.waitFor(() => expect(container.querySelector('.warnings-count').textContent).toBe('2'))
   })
@@ -72,7 +72,7 @@ describe('BrokenProjectWarningsMenu.vue', () => {
     const { pushedFrame } = await mountMenu([warning(1, 'p'), warning(2, 'q')])
     api.getProjectBrokenWarnings.mockClear()
 
-    pushedFrame({ type: 'system_warning', kind: 'project_fixed', project_id: 'p' })
+    pushedFrame({ type: 'ui.system_warning', kind: 'project_fixed', project_id: 'p' })
 
     await vi.waitFor(() => expect(container.querySelector('.warnings-count').textContent).toBe('1'))
     expect(api.getProjectBrokenWarnings).not.toHaveBeenCalled()

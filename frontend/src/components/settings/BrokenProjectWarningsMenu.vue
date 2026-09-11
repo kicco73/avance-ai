@@ -4,6 +4,7 @@ import '../../styles/headerMenu.css'
 import { deleteProjectBrokenWarning, getProjectBrokenWarnings } from '../../api.js'
 import { chatChannel } from '../../chatChannel.js'
 import { useOutsideClickClose } from '../../composables/useOutsideClickClose.js'
+import { onProjectsChanged } from '../../projectChangeEvents.js'
 
 const props = defineProps({
   metadataById: { type: Object, required: true }
@@ -38,6 +39,9 @@ const unsubscribe = chatChannel.subscribe('ui.system_warning', (frame) => {
 })
 
 onBeforeUnmount(unsubscribe)
+// A project deleted or re-uploaded can clear a warning without any frame
+// being pushed for it — the catalog's own event covers that half.
+onBeforeUnmount(onProjectsChanged(load))
 
 function toggleMenu() {
   toggle()

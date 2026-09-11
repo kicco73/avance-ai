@@ -13,12 +13,17 @@ files it references by name (§6).
 
 **The WebSocket is the one and only transport for chat, and every future
 chat feature is built on it.** There is no HTTP or SSE fallback, and no
-alternative endpoint: a user message travels as a `turn` frame on the
-single `/ws/notifications` connection a page holds, and that turn's own
-`chunk`, `tool`, `done` and `error` frames come back on the same socket,
-each carrying the `turn_id` the client minted — the only correlation
-there is. Everything else (manual actions, session bootstrap, history,
-project management) stays plain HTTP.
+alternative endpoint: a user message travels as an `input.text` frame on
+the single `/ws/notifications` connection a page holds, and that turn's
+own `output.text`, `turn.tool`, `turn.ended` and `turn.failed` frames
+come back on the same socket, each carrying the `stream_id` the client
+minted — the only correlation there is. Everything else (manual actions,
+session bootstrap, history, project management) stays plain HTTP.
+
+That socket is also the Bus's reach into the browser, and it behaves
+like the Bus: a client is sent only the event types it registered for,
+with a `subscribe` frame naming them and an `unsubscribe` frame dropping
+them again (see `docs/BUS.md`). Being connected is not being subscribed.
 
 The order of a conversation is the order of the frames on that socket:
 the server reads them one at a time and persists each user message right
@@ -700,7 +705,7 @@ there's nothing to defer. Five methods exist:
   renders `body_md` (markdown) in the app's existing generic dialog
   (DialogHost.vue) rather than a toast — no title, closed via its × button.
   Every `on-exit:` line's own joined snippet text reaches the browser
-  over the websocket as a single `notification` frame — the exact same
+  over the websocket as a single `ui.notification` frame — the exact same
   frame shape `task:`'s own tunneled calls use (§5.4), just pushed
   inline instead of from a background worker.
 - `chat.switch_to_human(user_id)` — hands the session to a person:
@@ -747,7 +752,7 @@ hibernated in the database as a task due immediately and executed by a
 background worker — `task.prompt` is a model call and
 `task.send_mail` a network call, and neither belongs in a chat
 turn's own response time. Whatever the script tunnels reaches the
-browser over the websocket as a `notification` frame, a moment after
+browser over the websocket as a `ui.notification` frame, a moment after
 the turn's own response, never inside it; a script that fails to
 evaluate is logged and its task settles with nothing to push, exactly
 as the in-turn evaluation used to skip a failing line. `task.defer`

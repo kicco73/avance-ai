@@ -76,7 +76,7 @@ describe('useTestExecutionTree', () => {
       expect(s.selectedNodeId.value).toBe('root')
       expect(emit).toHaveBeenCalledWith('select', 'root')
       expect(getTestStatus).toHaveBeenCalledWith('proj')
-      expect(chatChannel.subscribe).toHaveBeenCalledWith('test_update', s.handleTestEvent)
+      expect(chatChannel.subscribe).toHaveBeenCalledWith('ui.progress', s.handleTestEvent)
       await vi.waitFor(() => expect(s.currentStrategyStatuses.value['state:greeting']).toBe('running'))
 
       unmount()

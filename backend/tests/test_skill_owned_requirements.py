@@ -1,0 +1,121 @@
+from __future__ import annotations
+
+from importlib.metadata import packages_distributions
+from pathlib import Path
+
+import pytest
+
+from system import skills
+
+pytestmark = pytest.mark.contract
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+SRC = BACKEND_DIR / "src"
+REQUIREMENTS = BACKEND_DIR / "requirements.txt"
+
+
+def _lines(text: str) -> list[str]:
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def _distribution(line: str) -> str:
+    for separator in (">=", "==", "<=", "~=", ">", "<", "["):
+        line = line.split(separator)[0]
+    return line.strip().replace("_", "-").lower()
+
+
+def _modules_by_distribution() -> dict[str, set[str]]:
+    by_distribution: dict[str, set[str]] = {}
+    for module, distributions in packages_distributions().items():
+        for distribution in distributions:
+            by_distribution.setdefault(distribution.replace("_", "-").lower(), set()).add(module)
+    return by_distribution
+
+
+def _packages_importing(modules: set[str]) -> set[str]:
+    importing = set()
+    for path in SRC.rglob("*.py"):
+        if "tests" in path.relative_to(SRC).parts:
+            continue
+        text = path.read_text(errors="replace")
+        if any(f"import {module}" in text for module in modules):
+            importing.add(path.relative_to(SRC).parts[0])
+    return importing
+
+
+def _claims() -> dict[str, list[str]]:
+    claims: dict[str, list[str]] = {}
+    for skill in skills.discover():
+        for line in skill.requirements():
+            claims.setdefault(line, []).append(skill.package)
+    return claims
+
+
+def test_every_line_a_skill_claims_is_really_in_the_shared_file():
+    present = _lines(REQUIREMENTS.read_text())
+    missing = [line for line in _claims() if line not in present]
+
+    assert missing == [], f"claimed by a skill but absent from requirements.txt: {missing}"
+
+
+def test_no_two_skills_claim_the_same_dependency():
+    shared = {line: owners for line, owners in _claims().items() if len(owners) > 1}
+
+    assert shared == {}, f"a line cannot leave with one skill and stay with another: {shared}"
+
+
+def test_a_dependency_only_one_skill_imports_is_claimed_by_that_skill():
+    packages = {skill.package for skill in skills.discover()}
+    by_distribution = _modules_by_distribution()
+    claims = _claims()
+    unclaimed = []
+    for line in _lines(REQUIREMENTS.read_text()):
+        modules = by_distribution.get(_distribution(line))
+        if not modules:
+            continue
+        importers = _packages_importing(modules)
+        if importers <= packages and len(importers) == 1 and line not in claims:
+            unclaimed.append((line, next(iter(importers))))
+
+    assert unclaimed == [], (
+        "imported by one skill and by nothing else, yet claimed by nobody, "
+        f"so a build without that skill still asks pip for it: {unclaimed}"
+    )
+
+
+def test_requirements_of_answers_only_for_the_packages_it_is_given():
+    assert skills.requirements_of([]) == []
+    assert skills.requirements_of(["talk"]) == ["piper-tts>=1.6"]
+    assert set(skills.requirements_of(["talk", "mail"])) == {"piper-tts>=1.6", "aiosmtplib>=5.0", "markdown>=3.7"}
+    assert skills.requirements_of(["avance_platform"]) == []
+
+
+def test_a_build_without_a_skill_writes_a_requirements_file_without_its_line(tmp_path, monkeypatch):
+    import build.backend_copy as backend_copy
+
+    monkeypatch.setattr(backend_copy, "BUILDS_DIR", tmp_path / "builds")
+    copy = backend_copy.BackendCopy(None, "p", 1, "p", ["talk"])
+    monkeypatch.setattr(type(copy), "assembling", property(lambda self: tmp_path / "assembling"))
+    (tmp_path / "assembling").mkdir()
+    (tmp_path / "assembling" / "requirements.txt").write_text(REQUIREMENTS.read_text())
+
+    copy._write_requirements()
+
+    written = _lines((tmp_path / "assembling" / "requirements.txt").read_text())
+    assert "piper-tts>=1.6" not in written
+    assert "faster-whisper>=1.0" in written
+    assert "fastapi>=0.115" in written
+
+
+def test_a_build_that_leaves_nothing_out_writes_the_file_unchanged(tmp_path, monkeypatch):
+    import build.backend_copy as backend_copy
+
+    monkeypatch.setattr(backend_copy, "BUILDS_DIR", tmp_path / "builds")
+    copy = backend_copy.BackendCopy(None, "p", 1, "p", [])
+    monkeypatch.setattr(type(copy), "assembling", property(lambda self: tmp_path / "assembling"))
+    (tmp_path / "assembling").mkdir()
+    (tmp_path / "assembling" / "requirements.txt").write_text(REQUIREMENTS.read_text())
+
+    copy._write_requirements()
+
+    assert _lines((tmp_path / "assembling" / "requirements.txt").read_text()) == _lines(REQUIREMENTS.read_text())

@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ref } from 'vue'
 
 vi.mock('../src/api.js', () => ({
   getState: vi.fn().mockResolvedValue({}),
@@ -33,14 +32,16 @@ import { getPublishPreview, postPublishProject } from '../src/api.js'
 import { postBuildLocalModule } from '../src/api/build.js'
 import { confirmDialog, customDialog, infoDialog } from '../src/dialogStore.js'
 import { setBuildAvailable } from '../src/buildAvailability.js'
+import { onProjectsChanged } from '../src/projectChangeEvents.js'
 import { useProjectAdminActions } from '../src/composables/useProjectAdminActions.js'
 
 describe('handlePublishProject', () => {
-  let manageProjectsView
+  let catalogChanges
 
   function actions() {
-    manageProjectsView = ref({ refresh: vi.fn() })
-    return useProjectAdminActions(ref(null), manageProjectsView)
+    catalogChanges = []
+    onProjectsChanged(() => catalogChanges.push('changed'))
+    return useProjectAdminActions()
   }
 
   beforeEach(() => {
@@ -56,7 +57,9 @@ describe('handlePublishProject', () => {
 
     expect(postPublishProject).toHaveBeenCalledWith('proj', null)
     expect(postBuildLocalModule).toHaveBeenCalledWith('proj')
-    expect(manageProjectsView.value.refresh).toHaveBeenCalled()
+    // Publishing moves the catalog, and whoever displays it observes
+    // that fact rather than being poked through a component ref.
+    expect(catalogChanges).toEqual(['changed'])
     expect(infoDialog).toHaveBeenCalledWith(expect.objectContaining({
       body: 'Published revision 4. Compiled into proj_r4.'
     }))

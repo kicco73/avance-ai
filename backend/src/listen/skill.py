@@ -41,6 +41,9 @@ class ListenSkill(Skill):
     ui_description = "Speech to text."
     project_declarable = True
 
+    def requirements(self) -> list[str]:
+        return ["faster-whisper>=1.0"]
+
     def __init__(self) -> None:
         self._providers = None
         self._service = None

@@ -53,7 +53,7 @@ export function installFakeChatSocket(api) {
 }
 
 export function turnIdOf(socket, index = 0) {
-  return socket.sent.filter((f) => f.type === 'turn')[index].turn_id
+  return socket.sent.filter((f) => f.type === 'input.text')[index].stream_id
 }
 
 export const noopApi = () => ({ createChatSocket: vi.fn() })

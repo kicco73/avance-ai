@@ -14,6 +14,7 @@ from fastapi import WebSocketDisconnect
 
 from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME
+from system.bus import UI_NOTIFICATION, UI_PROGRESS
 from system.ws_notifications import (
     SUPERSEDED_CLOSE_CODE, SWITCHED_TO_OTHER_CLIENT, HumanNotConnectedError, WsConnection, WsNotifications,
 )
@@ -69,9 +70,20 @@ class _FakeWebSocket:
 
 
 class _RecordingConnection:
-    def __init__(self):
+    def __init__(self, *subscriptions: str):
+        self.id = "conn"
         self.sent: list[dict] = []
         self.closed = False
+        self._subscriptions = set(subscriptions)
+
+    def subscribe(self, event_types):
+        self._subscriptions.update(event_types)
+
+    def unsubscribe(self, event_types):
+        self._subscriptions.difference_update(event_types)
+
+    def wants(self, event_type: str) -> bool:
+        return event_type in self._subscriptions
 
     def send(self, payload: dict):
         self.sent.append(payload)
@@ -132,6 +144,56 @@ class TestPush:
 
         assert asyncio.run(channel.push(USERNAME, {"type": "human_prompt"}, exclude_connection_id="conn-1")) is False
         assert only.sent == []
+
+
+class TestPushEvent:
+    """A Bus event reaches a connection only once that connection
+    registered for its type — being connected is not being subscribed."""
+
+    def test_reaches_only_the_connections_that_registered_for_that_type(self):
+        channel = WsNotifications(_FakeAuthService())
+        subscribed = _RecordingConnection(UI_NOTIFICATION)
+        other_type = _RecordingConnection(UI_PROGRESS)
+        deaf = _RecordingConnection()
+        channel._connections[USERNAME] = [subscribed, other_type, deaf]
+
+        payload = {"type": UI_NOTIFICATION, "project_name": "proj"}
+        assert asyncio.run(channel.push_event(USERNAME, UI_NOTIFICATION, payload)) is True
+        assert subscribed.sent == [payload]
+        assert other_type.sent == []
+        assert deaf.sent == []
+
+    def test_returns_false_when_the_only_connection_never_registered(self):
+        channel = WsNotifications(_FakeAuthService())
+        channel._connections[USERNAME] = [_RecordingConnection()]
+
+        assert asyncio.run(channel.push_event(USERNAME, UI_NOTIFICATION, {"type": UI_NOTIFICATION})) is False
+
+
+class TestRegistration:
+    def test_a_subscribe_frame_registers_only_the_exportable_types_and_unsubscribe_drops_them(self):
+        channel = WsNotifications(_FakeAuthService())
+        connection = _RecordingConnection()
+
+        channel._handle_frame(
+            connection, json.dumps({"type": "subscribe", "events": [UI_NOTIFICATION, "input.text", "turn.ended"]})
+        )
+        assert connection.wants(UI_NOTIFICATION) is True
+        assert connection.wants("input.text") is False
+        assert connection.wants("turn.ended") is False
+
+        channel._handle_frame(connection, json.dumps({"type": "unsubscribe", "events": [UI_NOTIFICATION]}))
+        assert connection.wants(UI_NOTIFICATION) is False
+
+    def test_a_malformed_events_field_registers_nothing(self):
+        channel = WsNotifications(_FakeAuthService())
+        connection = _RecordingConnection()
+
+        channel._handle_frame(connection, json.dumps({"type": "subscribe"}))
+        channel._handle_frame(connection, json.dumps({"type": "subscribe", "events": UI_NOTIFICATION}))
+        channel._handle_frame(connection, json.dumps({"type": "subscribe", "events": [{"a": 1}]}))
+
+        assert connection.wants(UI_NOTIFICATION) is False
 
 
 class TestChannelLoop:

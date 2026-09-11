@@ -8,6 +8,7 @@ import { setCanvasColor, restoreCanvasColor } from '../../canvasColor.js'
 import { findIconFile } from '../../projectIcon.js'
 import { ensureProjectFileTypes } from '../../projectFileTypes.js'
 import { useHeaderLogoFit } from '../../composables/useHeaderLogoFit.js'
+import { onProjectsChanged } from '../../projectChangeEvents.js'
 import SettingsMenu from './SettingsMenu.vue'
 import StatusToggleButton from './StatusToggleButton.vue'
 import ProfileMenu from '../ProfileMenu.vue'
@@ -50,7 +51,6 @@ const togglingProject = ref(null)
 const metadataById = ref({})
 const iconFileById = ref({})
 const iconFailedById = ref({})
-const warningsMenu = ref(null)
 
 const appStoreAppById = ref({})
 const selectedProjectId = ref(null)
@@ -105,11 +105,6 @@ async function load() {
   } finally {
     loading.value = false
   }
-}
-
-function refresh() {
-  load()
-  warningsMenu.value?.refresh()
 }
 
 function projectTitle(id) {
@@ -215,11 +210,14 @@ onMounted(() => {
   previousCanvasColor = setCanvasColor('#ffffff')
 })
 
+// The list is a view of the catalog, so it follows the catalog's own
+// event rather than waiting to be told by whoever changed it.
+onBeforeUnmount(onProjectsChanged(load))
+
 onBeforeUnmount(() => {
   restoreCanvasColor(previousCanvasColor)
 })
 
-defineExpose({ refresh })
 </script>
 
 <template>
@@ -234,7 +232,7 @@ defineExpose({ refresh })
             @app-store="emit('app-store')"
           />
           <AddProjectMenu @new-project="emit('new-project')" @upload="emit('upload')" />
-          <BrokenProjectWarningsMenu ref="warningsMenu" :metadata-by-id="metadataById" @open="openWarning" />
+          <BrokenProjectWarningsMenu :metadata-by-id="metadataById" @open="openWarning" />
           <span class="manage-projects-env-tag" :class="envTag.className">{{ envTag.label }}</span>
         </div>
       </template>

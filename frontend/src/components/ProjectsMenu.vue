@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { onProjectsChanged } from '../projectChangeEvents.js'
 import { getProjects } from '../api.js'
 
 // `selectedName`, when given, overrides which project the button label and
@@ -66,8 +67,10 @@ async function toggle() {
 }
 
 onMounted(loadProjects)
+// The catalog moving (a project created, deleted, renamed, published) is
+// a fact this menu observes, never something its owner has to hand it.
+onBeforeUnmount(onProjectsChanged(loadProjects))
 
-defineExpose({ refresh: loadProjects })
 
 function selectProject(name) {
   open.value = false

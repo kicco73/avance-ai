@@ -1,5 +1,6 @@
-import { ref } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
 import { getProjectGraph } from '../api.js'
+import { onProjectChanged } from '../projectChangeEvents.js'
 import { clearApiError, setApiWarning } from '../errorStore.js'
 import { refreshIdentifierRegistry } from '../identifierRegistry.js'
 import { refreshProjectFiles } from '../projectFiles.js'
@@ -46,6 +47,13 @@ export function useProjectCatalog(projectId) {
     refreshIdentifierRegistry(projectId)
     refreshProjectFiles(projectId)
   }
+
+  // Every edit to this project re-derives the catalog: the owner of the
+  // data observes the fact, rather than whoever made the edit remembering
+  // to call back here.
+  onBeforeUnmount(onProjectChanged((changedProjectId) => {
+    if (changedProjectId === projectId) return refreshCatalog()
+  }))
 
   return {
     validStateKeys, availableStates, projectBroken, buildWarnings,

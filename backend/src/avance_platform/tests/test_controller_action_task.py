@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from system.ws_notifications import WsNotifications
-from conftest import parse_sse_result
+from conftest import FakeWebSocket, parse_sse_result
 
 pytestmark = pytest.mark.contract
 
@@ -32,14 +32,6 @@ YML = (
 )
 
 
-class _FakeWebSocket:
-    def __init__(self):
-        self.sent: list[dict] = []
-
-    def send(self, payload: dict):
-        self.sent.append(payload)
-
-
 def _upload_and_get_session(client):
     resp = client.post("/api/projects/upload", content=YML.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
@@ -51,11 +43,11 @@ def _upload_and_get_session(client):
     return client.get("/api/chat/session").json()
 
 
-def _attach_websocket(app, username: str) -> _FakeWebSocket:
+def _attach_websocket(app, username: str) -> FakeWebSocket:
     """Same idea as conftest.run_pending_tasks, but wired up before the
     action fires — on-exit's own chat.* push happens synchronously,
     inside the /action request itself, never through the job queue."""
-    websocket = _FakeWebSocket()
+    websocket = FakeWebSocket()
     ws_notifications = WsNotifications(auth_service=None)
     ws_notifications._connections[username] = [websocket]
     return websocket

@@ -29,7 +29,7 @@ import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
 from system.ws_notifications import WsNotifications
-from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
+from conftest import FakeWebSocket, FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from db import Db
 from db.models import Task as TaskRow, User
 from metrics.metric_service import MetricService
@@ -106,12 +106,6 @@ def _wait_until(predicate, timeout=3.0, interval=0.01) -> bool:
     return predicate()
 
 
-class _FakeWebSocket:
-    def __init__(self):
-        self.sent: list[dict] = []
-
-    def send(self, payload: dict):
-        self.sent.append(payload)
 
 
 _live_services: list[SchedulerService] = []
@@ -145,7 +139,7 @@ def _publish(db: Db, project_service: ProjectService, index_yml: str) -> None:
     asyncio.run(project_service.manager.finalize_update(PROJECT, automaton, commit))
 
 
-def _process(db: Db, websocket: _FakeWebSocket | None = None, *, start: bool = False, ai_service=None):
+def _process(db: Db, websocket: FakeWebSocket | None = None, *, start: bool = False, ai_service=None):
     """One "process": a SchedulerService, a ProjectService and a namespace
     factory over `db`, wired the way main.py does — started only when
     asked, since a not-yet-started service is exactly what a process
@@ -242,7 +236,7 @@ def test_a_task_is_hibernated_as_a_task_due_now_not_run_inline(file_db):
 
 
 def test_a_task_reports_a_suppressed_send_mail_over_the_websocket_in_fake_mode(file_db):
-    websocket = _FakeWebSocket()
+    websocket = FakeWebSocket()
     _, project_service, factory = _process(file_db, websocket, start=True)
     _publish(file_db, project_service, _yml("task.send_mail(user.name, 'welcome')"))
 
@@ -262,7 +256,7 @@ def test_task_prompt_runs_inside_the_task_with_the_firing_sessions_history(file_
     reply text is only observable here via the fake-mode wrapper's own
     `to` argument (see this file's module docstring) — task.prompt's
     result is passed as `to` deliberately, just to make it visible."""
-    websocket = _FakeWebSocket()
+    websocket = FakeWebSocket()
     ai_service = FakeAiService()
     _, project_service, factory = _process(file_db, websocket, start=True, ai_service=ai_service)
     _publish(file_db, project_service, _yml("task.send_mail(task.prompt('Recap the last exchange.'), 'note')"))
@@ -282,7 +276,7 @@ def test_task_prompt_runs_inside_the_task_with_the_firing_sessions_history(file_
 def test_a_fake_task_namespaces_task_still_runs_as_a_task_and_reports(file_db):
     """Test session with "Run actuators" off: send_mail/whatsapp are
     both suppressed and reported through the same task path."""
-    websocket = _FakeWebSocket()
+    websocket = FakeWebSocket()
     _, project_service, factory = _process(file_db, websocket, start=True)
     _publish(file_db, project_service, _yml("task.send_mail(user.email, 'hi')\n          task.whatsapp('34600000001', 'hi')"))
     automaton = project_service.get_automaton(PROJECT, file_db.get_project_published_revision(PROJECT))
@@ -312,7 +306,7 @@ def test_a_task_survives_a_restart_and_runs_against_an_equivalent_environment(fi
     # The process that accepted it is gone (never started claiming);
     # meanwhile the user is renamed.
     User.update(name="Grace").where(User.id == USERNAME).execute()
-    websocket = _FakeWebSocket()
+    websocket = FakeWebSocket()
 
     _process(file_db, websocket, start=True)
 
@@ -364,7 +358,7 @@ def test_a_deferred_call_runs_after_a_restart_against_the_frozen_scope(file_db):
     assert inner["payload"]["snapshot"]["user"]["name"] == "Ada"
     User.update(name="Grace").where(User.id == USERNAME).execute()
     _due_now(inner["key"])
-    websocket = _FakeWebSocket()
+    websocket = FakeWebSocket()
 
     _process(file_db, websocket, start=True)
 
@@ -383,7 +377,7 @@ def test_a_deferred_lambda_sees_names_assigned_earlier_in_the_same_script(file_d
     inner = next(r for r in file_db.list_tasks() if r["status"] == "pending")
     assert inner["payload"]["snapshot"]["extra"] == {"greeting": "hello Ada"}
     _due_now(inner["key"])
-    websocket = _FakeWebSocket()
+    websocket = FakeWebSocket()
 
     _process(file_db, websocket, start=True)
 
@@ -399,7 +393,7 @@ def test_the_task_runs_against_the_revision_it_was_written_for(file_db):
     (row,) = file_db.list_tasks()
     _publish(file_db, project_service, _yml("task.send_mail(user.name, 'new')").replace("ui-label: A", "ui-label: A2"))
     assert file_db.get_project_published_revision(PROJECT) != row["payload"]["project_revision"]
-    websocket = _FakeWebSocket()
+    websocket = FakeWebSocket()
 
     _process(file_db, websocket, start=True)
 
@@ -429,7 +423,7 @@ def test_a_task_never_sees_a_session(file_db):
     (row,) = file_db.list_tasks()
     payload = {**row["payload"], "script": "task.send_mail(user.name, session.number_of_user_sessions())"}
     TaskRow.update(payload=json.dumps(payload)).where(TaskRow.key == row["key"]).execute()
-    websocket = _FakeWebSocket()
+    websocket = FakeWebSocket()
 
     _process(file_db, websocket, start=True)
 

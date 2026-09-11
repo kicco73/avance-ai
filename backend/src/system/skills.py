@@ -77,6 +77,9 @@ class Skill:
     def required_by(self, automaton, sources: dict[str, str]) -> bool:
         return False
 
+    def requirements(self) -> list[str]:
+        return []
+
 
 _skills: dict[str, Skill] = {}
 _started: list[Skill] = []
@@ -134,6 +137,21 @@ def installed(source_root: Path | None = None) -> list[dict]:
             "declarable": bool(skill.project_declarable),
         }
         for skill in discover(source_root)
+    ]
+
+
+def requirements_of(packages: list[str], source_root: Path | None = None) -> list[str]:
+    """The dependency lines that belong to the named packages. A skill
+    owns its own directory — that is what a build copies or does not —
+    but `requirements.txt` is shared, so the lines in it that exist only
+    for one skill have to be claimed by that skill or they belong to
+    nobody, and a product built without Talk still asks for piper-tts."""
+    wanted = set(packages)
+    return [
+        line
+        for skill in discover(source_root)
+        if skill.package in wanted
+        for line in skill.requirements()
     ]
 
 

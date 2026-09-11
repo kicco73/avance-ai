@@ -150,14 +150,38 @@ as `ui.notification`. A turn's own frames (`output.text`,
 `output.speech`, `turn.*`) go out under the same names, so a listener and
 a browser read the same message.
 
-Three frame types are the socket's own and never touch the Bus:
-`human_prompt` outbound, `human_reply` / `human_typing` inbound. They
-belong to one operator answering one prompt over one connection (see
-`talker.human_talker`). An inbound one is honoured only when the
-connection it arrived on belongs to the identity the prompt was actually
-sent to — those frames carry a `session_id`, which any other signed-in
-user could name just as well. See *Open points*: the outbound half is
-meant to become a message.
+### A browser registers, like any other listener
+
+Being connected is not being subscribed. A client asks for the types it
+wants with a `subscribe` frame and drops them with `unsubscribe`:
+
+```json
+{"type": "subscribe", "events": ["ui.notification", "ui.progress"]}
+{"type": "unsubscribe", "events": ["ui.progress"]}
+```
+
+Both name types out of `WEB_FORWARDED` and nothing else — a type outside
+it is refused and logged, since registering for one would otherwise be a
+way to *read* an internal type, the same hole `CLIENT_INJECTABLE` closes
+on the way in. The registration lives on the connection, so a browser
+restates it on every (re)connection; nothing is remembered for a socket
+that went away.
+
+`push_event` is the delivery that honours it, and the only path a Bus
+message takes to a browser (`_forward_to_web`). Plain `push` stays the
+*addressed* path — a frame that belongs to this socket rather than to
+the Bus (`human_prompt`), sent to an identity's connections whether or
+not they registered for anything.
+
+Five frame types are the socket's own and never touch the Bus:
+`subscribe` / `unsubscribe` inbound (the registration above),
+`human_prompt` outbound, `human_reply` / `human_typing` inbound. The
+last three belong to one operator answering one prompt over one
+connection (see `talker.human_talker`). An inbound one is honoured only
+when the connection it arrived on belongs to the identity the prompt was
+actually sent to — those frames carry a `session_id`, which any other
+signed-in user could name just as well. See *Open points*: the outbound
+half is meant to become a message.
 
 ## Contribution points
 

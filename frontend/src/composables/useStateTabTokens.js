@@ -1,5 +1,6 @@
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { getStateInputTokens } from '../api.js'
+import { onProjectChanged } from '../projectChangeEvents.js'
 
 export function useStateTabTokens(projectId, stateKey) {
   const stateTabTokens = ref(null)
@@ -21,6 +22,11 @@ export function useStateTabTokens(projectId, stateKey) {
   }
 
   watch(stateKey, refreshStateTabTokens, { immediate: true })
+  // An edit can change what a state's turn costs without changing which
+  // state is selected, so the key alone is not enough to watch.
+  onBeforeUnmount(onProjectChanged((changedProjectId) => {
+    if (changedProjectId === projectId) return refreshStateTabTokens()
+  }))
 
-  return { stateTabTokens, refreshStateTabTokens }
+  return { stateTabTokens }
 }
