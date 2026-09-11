@@ -211,7 +211,9 @@ The rule is what makes a 404 readable — `/api/skills/talk/*` going quiet
 is a build without `backend/src/talk/`, not a bug — so a new route goes
 under its own skill's key. That is checked, not remembered:
 `backend/tests/test_route_ownership.py` reads the decorators and fails on
-a route declared outside its package's prefix.
+a route declared outside its package's prefix. The full rule, what was
+decided against and why, and the failure modes of the migration itself are in
+[`backend/src/docs/API.md`](backend/src/docs/API.md).
 
 There is no route list to maintain: the authoritative one is the
 decorators themselves, grouped here by area. Every endpoint scoped to a
