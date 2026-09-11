@@ -11308,14 +11308,14 @@
     "skips": 0
   },
   "tests/test_db_migration_strategy.py::test_upgrade_rebuilds_a_table_needing_both_a_constraint_change_and_a_new_not_null_column": {
-    "failures": 0,
+    "failures": 1,
     "first_run": "2026-09-02T07:53:58+00:00",
-    "last_failed": null,
-    "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_failed": "2026-09-11T15:08:36+00:00",
+    "last_outcome": "failed",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 0.155,
-    "runs": 66,
-    "seconds": 9.254,
+    "runs": 67,
+    "seconds": 9.388,
     "skips": 0
   },
   "tests/test_db_migration_strategy.py::test_upgrade_relaxes_a_constraint_even_when_every_column_already_matches": {
@@ -11363,14 +11363,14 @@
     "skips": 0
   },
   "tests/test_db_sessions.py::test_create_and_get_chat_session_with_the_channel_defaulting_to_native_chat_and_none_for_an_unknown_id": {
-    "failures": 0,
+    "failures": 1,
     "first_run": "2026-09-06T07:54:14+00:00",
-    "last_failed": null,
-    "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_failed": "2026-09-11T15:08:36+00:00",
+    "last_outcome": "failed",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 0.028,
-    "runs": 63,
-    "seconds": 1.664,
+    "runs": 64,
+    "seconds": 1.684,
     "skips": 0
   },
   "tests/test_db_sessions.py::test_create_chat_session_rejects_a_nonexistent_project_and_stamps_whatever_revision_the_caller_resolved": {
@@ -11719,10 +11719,10 @@
     "first_run": "2026-09-11T13:59:44+00:00",
     "last_failed": "2026-09-11T14:00:58+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 0.068,
-    "runs": 8,
-    "seconds": 1.522,
+    "runs": 9,
+    "seconds": 1.657,
     "skips": 0
   },
   "tests/test_frontend_calls_real_routes.py::test_the_frontend_actually_was_scanned": {
@@ -11730,10 +11730,10 @@
     "first_run": "2026-09-11T13:59:44+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 0.013,
-    "runs": 8,
-    "seconds": 0.253,
+    "runs": 9,
+    "seconds": 0.262,
     "skips": 0
   },
   "tests/test_gemini_provider_tools.py::test_a_plain_text_answer_still_streams_when_tools_are_offered_and_a_call_with_no_id_gets_one_generated": {
@@ -14645,10 +14645,10 @@
     "first_run": "2026-09-11T12:17:09+00:00",
     "last_failed": "2026-09-11T12:17:43+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 1.084,
-    "runs": 23,
-    "seconds": 35.114,
+    "runs": 24,
+    "seconds": 36.032,
     "skips": 0
   },
   "tests/test_skill_owned_requirements.py::test_every_line_a_skill_claims_is_really_in_the_shared_file": {
@@ -14656,10 +14656,10 @@
     "first_run": "2026-09-11T12:17:09+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 0.005,
-    "runs": 21,
-    "seconds": 4.43,
+    "runs": 22,
+    "seconds": 4.863,
     "skips": 0
   },
   "tests/test_skill_owned_requirements.py::test_no_two_skills_claim_the_same_dependency": {
@@ -14667,10 +14667,10 @@
     "first_run": "2026-09-11T12:17:09+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 0.003,
-    "runs": 21,
-    "seconds": 0.117,
+    "runs": 22,
+    "seconds": 0.121,
     "skips": 0
   },
   "tests/test_skill_owned_requirements.py::test_requirements_of_answers_only_for_the_packages_it_is_given": {
@@ -14678,10 +14678,10 @@
     "first_run": "2026-09-11T12:17:09+00:00",
     "last_failed": "2026-09-11T12:17:52+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 0.01,
-    "runs": 21,
-    "seconds": 0.297,
+    "runs": 22,
+    "seconds": 0.306,
     "skips": 0
   },
   "tests/test_skill_requirements.py::test_a_declared_required_service_is_required_even_when_nothing_calls_it": {
@@ -14689,10 +14689,10 @@
     "first_run": "2026-09-11T10:37:52+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 0.044,
-    "runs": 34,
-    "seconds": 2.194,
+    "runs": 35,
+    "seconds": 2.231,
     "skips": 0
   },
   "tests/test_skill_requirements.py::test_a_disabled_service_is_reported_as_disabled": {
@@ -14700,10 +14700,10 @@
     "first_run": "2026-09-11T10:37:52+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 0.047,
-    "runs": 34,
-    "seconds": 2.246,
+    "runs": 35,
+    "seconds": 2.283,
     "skips": 0
   },
   "tests/test_skill_requirements.py::test_a_project_that_asks_for_nothing_requires_nothing": {
@@ -14711,10 +14711,10 @@
     "first_run": "2026-09-09T13:58:59+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 0.032,
-    "runs": 56,
-    "seconds": 1.919,
+    "runs": 57,
+    "seconds": 1.944,
     "skips": 0
   },
   "tests/test_skill_requirements.py::test_a_project_that_messages_whatsapp_cannot_be_built_without_whatsapp": {
@@ -14722,10 +14722,10 @@
     "first_run": "2026-09-09T13:58:59+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 0.034,
-    "runs": 56,
-    "seconds": 1.881,
+    "runs": 57,
+    "seconds": 1.907,
     "skips": 0
   },
   "tests/test_skill_requirements.py::test_a_project_that_sends_mail_cannot_be_built_without_mail": {
@@ -14733,10 +14733,10 @@
     "first_run": "2026-09-09T13:58:59+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 0.032,
-    "runs": 57,
-    "seconds": 6.099,
+    "runs": 58,
+    "seconds": 6.128,
     "skips": 0
   },
   "tests/test_skill_requirements.py::test_calling_a_service_the_project_disabled_is_a_contradiction": {
@@ -14744,10 +14744,10 @@
     "first_run": "2026-09-11T10:37:52+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 0.047,
-    "runs": 34,
-    "seconds": 2.052,
+    "runs": 35,
+    "seconds": 2.09,
     "skips": 0
   },
   "tests/test_skill_requirements.py::test_optional_and_disabled_declarations_never_make_a_service_required": {
@@ -14755,10 +14755,10 @@
     "first_run": "2026-09-11T10:37:52+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 0.061,
-    "runs": 34,
-    "seconds": 2.928,
+    "runs": 35,
+    "seconds": 2.975,
     "skips": 0
   },
   "tests/test_skill_requirements.py::test_the_deprecated_talk_enabled_flag_still_says_required_or_disabled": {
@@ -14766,10 +14766,10 @@
     "first_run": "2026-09-11T10:37:52+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 0.04,
-    "runs": 34,
-    "seconds": 1.777,
+    "runs": 35,
+    "seconds": 1.808,
     "skips": 0
   },
   "tests/test_skill_requirements.py::test_what_a_project_never_calls_is_never_required": {
@@ -14777,10 +14777,10 @@
     "first_run": "2026-09-09T13:58:59+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-11T14:54:05+00:00",
+    "last_run": "2026-09-11T15:08:36+00:00",
     "last_seconds": 0.03,
-    "runs": 56,
-    "seconds": 1.969,
+    "runs": 57,
+    "seconds": 1.994,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::TestPerSessionReadCache::test_a_session_reads_through_its_own_cache_copy_frozen_at_first_read_while_no_session_reads_canonical": {
