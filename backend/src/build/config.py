@@ -1,11 +1,16 @@
-"""The platform's own section of the configuration file.
+"""Build's own section of the configuration file.
 
 `project-service.compiled-automaton` is read here rather than in
 config.py because it is a question only this package can answer: whether
 to serve a project's published revision from a compiled package when one
 exists, falling back to the interpreted automaton otherwise. A backend
-without this package has no such choice to make, and should not carry
-the setting that makes it.
+without this package has never built a package and has no such choice to
+make, so it should not carry the setting that makes it.
+
+The key still sits under `project-service` because that is where it has
+always been and an existing config.yml should keep working. It would
+read better under `build-service`, which already carries apps-dir —
+worth doing, but as its own change rather than smuggled into this one.
 """
 from __future__ import annotations
 

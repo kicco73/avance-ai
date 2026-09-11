@@ -28,7 +28,7 @@ just one of its fields.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable
 
 from system.logging_factory import LoggerFactory
@@ -43,7 +43,7 @@ INPUT_TEXT = "input.text"
 # written reply, the text meant to be spoken, the audio itself.
 OUTPUT_TEXT = "output.text"
 OUTPUT_SPEECH = "output.speech"
-OUTPUT_AUDIO = "output.audio"
+OUTPUT_AUDIO_STREAM = "output.audio_stream"
 
 # Something one identity's interfaces may want to show — a task's own
 # snippet, a state that moved while nobody was looking. Not content and
@@ -143,6 +143,11 @@ class Message:
     converted_from: str | None = None
     #: Media type of `body` where that is not implied by `type`.
     mime: str | None = None
+    #: The interface's own name for this one exchange, where it has one —
+    #: a websocket turn's stream_id. Correlation, like origin_id, which is
+    #: why it travels in the envelope: the body of an `input.text` is the
+    #: text, and one type must not have two body shapes.
+    stream_id: str | None = None
     conversions: int = 0
 
     def converted(self, type: str, body: Any, mime: str | None = None) -> "Message":

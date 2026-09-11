@@ -3,6 +3,7 @@ also IS a TalkProvider: calling generate() looks like calling a single
 provider, with retry/cascading, caching, and live-generation dedup hidden inside."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from typing import AsyncIterator
 
@@ -32,6 +33,7 @@ class TalkService(TalkProvider):
     def __init__(self, provider: TalkProvider) -> None:
         self._provider = provider
         self._store = TalkStore()
+        self._warming: set[asyncio.Task] = set()
 
     @classmethod
     def from_config(cls, talk_service_config: list[TalkServiceConfig]) -> "TalkService":
@@ -50,11 +52,31 @@ class TalkService(TalkProvider):
             )
         return cls._PROVIDER_CLASSES[service.driver](api_key=service.key, model=service.model)
 
+    @staticmethod
+    def _key(text: str) -> str:
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    def start(self, text: str) -> None:
+        """Begins generating `text` now, into the store, so a consumer
+        that asks later joins it from the first chunk instead of waiting
+        for a generation that starts only when asked."""
+        key = self._key(text)
+        if self._store.get_live_generation(key) is not None or self._store.has(key):
+            return
+        live = self._store.start_live_generation(key)
+        task = asyncio.create_task(self._drain(key, text, live))
+        self._warming.add(task)
+        task.add_done_callback(self._warming.discard)
+
+    async def _drain(self, key: str, text: str, live) -> None:
+        async for _ in self._produce(key, text, live):
+            pass
+
     async def generate(self, text: str) -> AsyncIterator[bytes]:
         """WAV-framed bytes for `text`, content-addressed by a hash of
         `text` so a repeat request joins an in-flight generation or hits
         the cache. Never raises: a failure just ends the stream, logged."""
-        key = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        key = self._key(text)
 
         live = self._store.get_live_generation(key)
         if live is not None:
@@ -67,7 +89,10 @@ class TalkService(TalkProvider):
             yield cached
             return
 
-        live = self._store.start_live_generation(key)
+        async for chunk in self._produce(key, text, self._store.start_live_generation(key)):
+            yield chunk
+
+    async def _produce(self, key: str, text: str, live) -> AsyncIterator[bytes]:
         pcm_chunks: list[bytes] = []
         sample_rate = PcmWavCodec.DEFAULT_SAMPLE_RATE
         header_sent = False

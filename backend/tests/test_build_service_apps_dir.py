@@ -16,7 +16,7 @@ from project.archive.packages import package_dir, staging_dir
 from build.build_service import BuildService, module_name_for
 from build.compiler import CompileError
 from db import Db
-from avance_platform.compiled_automaton_loader import CompiledAutomatonLoader
+from build.compiled_automaton_loader import CompiledAutomatonLoader
 
 PROJECT_ID = "demo"
 INDEX = """

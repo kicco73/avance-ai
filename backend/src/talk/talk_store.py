@@ -74,6 +74,9 @@ class TalkStore(object):
     def get_live_generation(self, key: str) -> LiveTalkGeneration | None:
         return self._live.get(key)
 
+    def has(self, key: str) -> bool:
+        return (self._base_dir / f"{key}.wav").is_file()
+
     def save(self, key: str, data: bytes) -> None:
         self._base_dir.mkdir(parents=True, exist_ok=True)
         (self._base_dir / f"{key}.wav").write_bytes(data)

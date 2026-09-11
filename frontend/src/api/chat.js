@@ -89,6 +89,14 @@ export function postAction(actionName, sessionId) {
   })
 }
 
+export function postSessionAudio(sessionId, enabled) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/audio`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled })
+  })
+}
+
 // "Dev mode: freeze automatic state transitions" — EditProjectView's
 // embedded "Test" chat only, per test session, never global.
 export function getAutoTracking(sessionId) {

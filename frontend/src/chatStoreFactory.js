@@ -1,6 +1,7 @@
 import { computed, nextTick, ref } from 'vue'
 import {
   getMessages, getSessionState, postAction, getAutoTracking, postAutoTracking, getActuators, postActuators,
+  postSessionAudio,
   postTruncateSession, deleteSession, postCloseSession, putMessageReaction, postListenTranscribe, messageAudioUrl,
 } from './api.js'
 import { sendMessage as sendChatMessage, onConnectionState, getConnectionState } from './chatClient.js'
@@ -173,6 +174,7 @@ export function createChatStore({
     state.value = session.state
     if (useAutoTracking) await loadAutoTracking()
     if (useActuatorsToggle) await loadActuators()
+    await syncAudioPreference()
     return session.id
   }
 
@@ -231,6 +233,7 @@ export function createChatStore({
     if (session.id === currentSessionId.value) return
     currentSessionId.value = session.id
     selectedSessionActive.value = session.active
+    syncAudioPreference()
     messages.value = []
     historyLoaded.value = false
     try {
@@ -324,8 +327,18 @@ export function createChatStore({
     }
   }
 
+  async function syncAudioPreference() {
+    if (currentSessionId.value == null) return
+    try {
+      await postSessionAudio(currentSessionId.value, audioEnabled.value)
+    } catch {
+      // A preference the next turn re-sends; never worth an error toast.
+    }
+  }
+
   function toggleAudio() {
     audioEnabled.value = !audioEnabled.value
+    syncAudioPreference()
     if (audioEnabled.value) {
       // Inside this same click gesture — every narration from here on,
       // including the one about to play below, happens well outside one.

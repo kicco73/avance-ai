@@ -17,10 +17,10 @@ talk-service.
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
 from system import bus
-from system.bus import OUTPUT_AUDIO, OUTPUT_SPEECH, Message
+from system.bus import OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, Message
 from system.session import Session
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 
@@ -60,22 +60,23 @@ class AiTalker(BaseTalker):
 
 	async def talk(self, text: str) -> AsyncIterator[bytes]:
 		"""Text-to-speech for one reply: `output.speech` goes out, and
-		whatever `output.audio` comes back on this exchange's own origin
-		is the answer. Yields nothing when nobody is registered to
-		speak — the same "no audio, send the text" the caller already
-		handles."""
+		whatever `output.audio_stream` comes back on this exchange's own
+		origin is the answer, drained here chunk by chunk as it is
+		generated. Yields nothing when nobody is registered to speak —
+		the same "no audio, send the text" the caller already handles."""
 		origin = f"speech:{uuid.uuid4()}"
-		answers: dict[str, bytes] = {}
+		streams: dict[str, Any] = {}
 
 		async def take(message: Message) -> None:
-			answers[str(message.origin_id)] = bytes(message.body)
+			streams[str(message.origin_id)] = message.body
 
-		bus.subscribe(OUTPUT_AUDIO, take)
+		bus.subscribe(OUTPUT_AUDIO_STREAM, take)
 		try:
 			await bus.publish(Message(
 				type=OUTPUT_SPEECH, body=text, username=Session().user, origin_id=origin,
 			))
 		finally:
-			bus.unsubscribe(OUTPUT_AUDIO, take)
-		for chunk in filter(None, [answers.get(origin)]):
-			yield chunk
+			bus.unsubscribe(OUTPUT_AUDIO_STREAM, take)
+		for stream in filter(None, [streams.get(origin)]):
+			async for chunk in stream.chunks():
+				yield chunk

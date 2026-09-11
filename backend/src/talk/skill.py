@@ -16,9 +16,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from system import bus
-from system.bus import OUTPUT_AUDIO, OUTPUT_SPEECH, POINT_CONFIG_SERVICES, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
+from system.bus import OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, POINT_CONFIG_SERVICES, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
 from system.logging_factory import LoggerFactory
 from talk import config as talk_config
+from talk.audio_stream import AudioStream
 from talk.talk_service import TalkService
 
 logger = LoggerFactory.get_logger(__name__)
@@ -61,11 +62,15 @@ class _Talk(_NoTalk):
         bus.unsubscribe(OUTPUT_SPEECH, self.speak)
 
     async def speak(self, message: bus.Message) -> None:
-        """The WAV for one reply's spoken text, published back as
-        `output.audio` on the same envelope — the requester takes it back
-        by origin, never by holding a reference to this package."""
-        audio = b"".join([chunk async for chunk in self._service.generate(str(message.body))])
-        await bus.publish(message.converted(OUTPUT_AUDIO, audio, mime="audio/wav"))
+        """Starts generating one reply's spoken text and publishes the
+        generation itself as `output.audio_stream` on the same envelope —
+        the requester takes it back by origin and drains it chunk by
+        chunk, never holding a reference to this package. A build where
+        nobody takes it still warms the store, which is how the web's own
+        audio route gets it (see talk_controller.TalkController)."""
+        text = str(message.body)
+        self._service.start(text)
+        await bus.publish(message.converted(OUTPUT_AUDIO_STREAM, AudioStream(self._service, text), mime="audio/wav"))
 
     def install_controller(self, controllers: list) -> None:
         from talk.talk_controller import TalkController

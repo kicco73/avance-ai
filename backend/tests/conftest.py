@@ -31,12 +31,13 @@ from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
 from system import bus
 from system.bus import POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
 from avance_platform import skill as platform_skill
+from build import skill as build_skill
 from system.broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
 from jobs.job_queue import JobQueue
 from scheduler import SchedulerService
 from metrics.metric_service import MetricService
 from project.archive.automaton_loader import AutomatonLoader
-from avance_platform.compiled_automaton_loader import CompiledAutomatonLoader
+from build.compiled_automaton_loader import CompiledAutomatonLoader
 from project.project_service import ProjectService
 from system.session import Session
 from testing.test_service import TestService
@@ -386,6 +387,10 @@ def app(app_db: Db, fake_ai_service: FakeAiService, tmp_path, compiled_automata:
         "version": "test-version",
     }))
     platform_skill.start({}, Path("."))
+    # The Build view's routes travel with the compiler now (see
+    # build/skill.py); the loader is chosen here directly, so this
+    # only needs the controller half.
+    build_skill.start({}, Path("."))
     controller = AvanceController(
         turn_service, project_service, ws_notifications=ws_notifications,
     )

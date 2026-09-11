@@ -155,6 +155,7 @@ class TrackingProcessor(object):
 			  user_variables: UserVariables,
 			  auto_tracking_enabled: bool = True,
 			  talk_enabled: bool = True,
+			  audio_wanted: bool = True,
 			  input_token_budget_per_turn: int | None = 16000,
 			  assistant_talker: "BaseTalker | None" = None,
 		):
@@ -170,6 +171,7 @@ class TrackingProcessor(object):
 		self.user = user_variables
 		self.auto_tracking_enabled = auto_tracking_enabled
 		self.talk_enabled = talk_enabled
+		self.audio_wanted = audio_wanted
 		self.input_token_budget_per_turn = input_token_budget_per_turn
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder, auto_tracking_enabled)
 
@@ -492,12 +494,12 @@ class TrackingProcessor(object):
 		started in. OutputPrompt is always first, before signals (so output
 		values are available to triggers when signals arrive)."""
 		has_to_evaluate_signals_before_ai_reply = not self.user.automaton.autotracking_on_ai_message
-		talk_enabled = self.talk_enabled and self.user.automaton.talk_enabled
+		talk_enabled = self.talk_enabled and self.user.automaton.talk_enabled and self.audio_wanted
 		logger.info(
 			"build_turn_prompt talk_enabled: project=%r revision=%s session=%s system_talk_enabled=%s "
-			"automaton_talk_enabled=%s -> %s",
+			"automaton_talk_enabled=%s audio_wanted=%s -> %s",
 			self.user.project_id, self.user.automaton.revision, self.user.session_id, self.talk_enabled,
-			self.user.automaton.talk_enabled, talk_enabled,
+			self.user.automaton.talk_enabled, self.audio_wanted, talk_enabled,
 		)
 		reactions_enabled = self.user.automaton.reactions_enabled_for(self.user.state)
 

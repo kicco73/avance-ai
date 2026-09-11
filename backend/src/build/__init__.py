@@ -1,4 +1,15 @@
-"""Turning a project into a compiled package.
+"""Turning a project into a compiled package, and serving one back.
+
+A skill: `backend/src/build/` is what a build either copies or does not.
+Without it a backend cannot compile anything and cannot serve a compiled
+package — it has no Build view, no /api/build routes, and reads every
+project from its Archive rows. The editor still works; there is simply
+nothing to press.
+
+compiled_automaton_loader.py is here rather than with the authoring
+surface because it is a capability of this service and of nothing else:
+choosing a compiled package over the interpreted automaton only means
+something where packages are produced.
 
 compiler.py does the work — literal Python for the project's structure,
 its prompts apart in prompt.py, its archives verbatim in data/ — and

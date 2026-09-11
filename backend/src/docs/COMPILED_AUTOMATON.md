@@ -188,7 +188,7 @@ build-service:
 
 `main.py` reads the switch and builds either the ordinary
 `AutomatonLoader` or `CompiledAutomatonLoader`
-(`avance_platform/compiled_automaton_loader.py`), then injects it into
+(`build/compiled_automaton_loader.py`), then injects it into
 `ProjectService`. `ProjectService` no longer builds a loader itself:
 which one this subsystem runs on is the caller's choice.
 

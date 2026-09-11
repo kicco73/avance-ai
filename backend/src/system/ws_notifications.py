@@ -41,6 +41,13 @@ MAX_CONNECTIONS_PER_ADMIN = 2
 # talker.human_talker.HumanTalker), not a production SLA.
 HUMAN_REPLY_TIMEOUT_SECONDS = 300.0
 
+# What this socket is allowed to carry out of the Bus, and the whole of
+# the translation it does on the way: none. A frame reaching the browser
+# is the message that was published, under its own type — this object is
+# the Bus's reach into a web client, with a filter on what may leave, not
+# a second vocabulary (see docs/BUS.md).
+WEB_FORWARDED = (UI_NOTIFICATION, UI_HUMAN_TAKEOVER, UI_SYSTEM_WARNING, UI_TEST_UPDATE)
+
 
 class HumanReplyTimeoutError(Exception):
     """No connection of the target user answered a human_prompt within
@@ -149,10 +156,8 @@ class WsNotifications(object):
         # so the only thing that subscribes on their behalf: a producer
         # publishes a nudge and never holds a connection (see
         # _forward_notification).
-        bus.subscribe(UI_NOTIFICATION, self._forward_notification)
-        bus.subscribe(UI_HUMAN_TAKEOVER, self._forward_human_takeover)
-        bus.subscribe(UI_SYSTEM_WARNING, self._forward_system_warning)
-        bus.subscribe(UI_TEST_UPDATE, self._forward_test_update)
+        for message_type in WEB_FORWARDED:
+            bus.subscribe(message_type, self._forward_to_web)
         # username -> every open connection of that identity, oldest
         # first — see the class docstring for the cap.
         self._connections: dict[str, list[WsConnection]] = {}
@@ -305,29 +310,13 @@ class WsNotifications(object):
                     return True
         return False
 
-    async def _forward_notification(self, message: Message) -> None:
-        """Whatever wants to nudge one identity's open interfaces reaches
-        them here, and only here: the socket is this object's business,
-        and a producer that publishes a nudge never learns whether anyone
-        was connected (see bus.UI_NOTIFICATION)."""
-        if message.username:
-            await self.push(message.username, {"type": "notification", **(message.body or {})})
-
-    async def _forward_system_warning(self, message: Message) -> None:
-        """Addressed to a role rather than to a person, so the publisher
-        names each recipient and this only delivers (see
-        bus.UI_SYSTEM_WARNING)."""
-        if message.username:
-            await self.push(message.username, {"type": "system_warning", **(message.body or {})})
-
-    async def _forward_test_update(self, message: Message) -> None:
-        if message.username:
-            await self.push(message.username, {"type": "test_update", **(message.body or {})})
-
-    async def _forward_human_takeover(self, message: Message) -> None:
-        body = message.body or {}
-        if message.username:
-            await self.send_human_takeover(message.username, body["session_id"], body["project_id"])
+    async def _forward_to_web(self, message: Message) -> None:
+        """Every WEB_FORWARDED message, to that identity's open
+        connections, under its own type. The socket is this object's
+        business, and a producer never learns whether anyone was
+        connected (see bus.UI_NOTIFICATION)."""
+        for username in filter(None, [message.username]):
+            await self.push(username, {"type": message.type, **(message.body or {})})
 
     async def push(self, username: str, payload: dict, exclude_connection_id: str | None = None) -> bool:
         """Sends `payload` to every one of `username`'s open connections
@@ -405,7 +394,7 @@ class WsNotifications(object):
         offline operator just doesn't get it live, same as any other
         push — get_human_operator(session_id) is queryable state, not a
         one-shot event, so they still see it once they open the session."""
-        await self.push(username, {"type": "human_takeover", "session_id": session_id, "project_id": project_id})
+        await self.push(username, {"type": UI_HUMAN_TAKEOVER, "session_id": session_id, "project_id": project_id})
 
     async def await_human_reply(self, prompt_id: str) -> str:
         """The WsHumanRelay.receive() primitive: waits for the

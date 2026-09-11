@@ -1,6 +1,6 @@
 """GET /api/state's own talk_enabled — the AND of "does the server have
-a TTS provider configured at all" (anything registered to speak, i.e. a
-listener for bus.OUTPUT_SPEECH) and "does the active project itself opt in"
+a TTS provider configured at all" (what the talk package itself declares
+at bus.POINT_CONFIG_SERVICES) and "does the active project itself opt in"
 (its own automaton.talk_enabled, defaulting true) — the chat toolbar's
 audio/spoken-text icons (ChatInput.vue) read this one combined flag.
 """
@@ -9,15 +9,16 @@ from __future__ import annotations
 import pytest
 
 from system import bus
-from system.bus import OUTPUT_SPEECH
+from system.bus import POINT_CONFIG_SERVICES
 from avance_platform.platform_controller import PlatformController
 
 pytestmark = pytest.mark.contract
 
 
-async def _speaks(message) -> None:
-    """Stands in for the talk skill: registered for output.speech, which
-    is the whole of what "the server can speak" means here."""
+def _declare_talk_configured() -> None:
+    """Stands in for the talk skill's own _Talk.install(), which is what
+    says "this server has a TTS provider" (see talk/config.py)."""
+    bus.contribute(POINT_CONFIG_SERVICES, lambda snapshot: snapshot.update({"talk": {"enabled": True}}))
 
 
 class _FakeAutomaton:
@@ -54,7 +55,7 @@ class _FakeChatService:
 
 def _controller(*, talk_service_configured: bool, project_talk_enabled: bool) -> PlatformController:
     if talk_service_configured:
-        bus.subscribe(OUTPUT_SPEECH, _speaks)
+        _declare_talk_configured()
     return PlatformController(
         turn_service=_FakeChatService(),
         project_service=_FakeProjectService(project_talk_enabled),
@@ -78,7 +79,7 @@ def test_talk_disabled_when_the_server_has_no_provider_even_if_the_project_opts_
 
 
 def test_defaults_to_the_server_flag_when_there_is_no_active_project():
-    bus.subscribe(OUTPUT_SPEECH, _speaks)
+    _declare_talk_configured()
     controller = PlatformController(
         turn_service=_FakeChatService(),
         project_service=_NoActiveProjectService(),

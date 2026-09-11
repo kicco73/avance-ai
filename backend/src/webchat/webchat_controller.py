@@ -21,6 +21,7 @@ from project.project_service import ProjectService
 from schemas import (
     ActionRequest,
     ActuatorsRequest,
+    AudioEnabledRequest,
     AutoTrackingRequest,
     ReactionRequest,
     SetEnvValueRequest,
@@ -125,6 +126,15 @@ class WebchatController(BaseController):
     def post_autotracking(self, session_id: int, req: AutoTrackingRequest):
         self.turn_service.set_auto_tracking_enabled(session_id, req.enabled)
         return {"enabled": self.turn_service.is_auto_tracking_enabled(session_id)}
+
+    @get("/api/chat/sessions/{session_id}/audio")
+    def get_session_audio(self, session_id: int):
+        return {"enabled": self.turn_service.is_audio_enabled(session_id)}
+
+    @post("/api/chat/sessions/{session_id}/audio")
+    def post_session_audio(self, session_id: int, req: AudioEnabledRequest):
+        self.turn_service.set_audio_enabled(session_id, req.enabled)
+        return {"enabled": self.turn_service.is_audio_enabled(session_id)}
 
     @get("/api/chat/sessions/{session_id}/actuators")
     def get_actuators(self, session_id: int):

@@ -19,8 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from system import bus
-from system.bus import POINT_AUTOMATON_LOADER, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
-from avance_platform import config as platform_config
+from system.bus import POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
 from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
@@ -31,34 +30,17 @@ LABEL = "Platform — editor, benchmark, admin"
 
 def start(raw: dict, path: Path) -> None:
     bus.contribute(POINT_HTTP_CONTROLLERS, _install)
-    if platform_config.serves_compiled(raw, path):
-        bus.contribute(POINT_AUTOMATON_LOADER, _choose_compiled_loader)
-
-
-def _choose_compiled_loader(choice) -> None:
-    """Compiled when there is a package for the published revision,
-    interpreted otherwise — the choosing is the platform's, which is why
-    the class that does it lives here (see
-    avance_platform/compiled_automaton_loader.py)."""
-    from avance_platform.compiled_automaton_loader import CompiledAutomatonLoader
-
-    choice.replace(
-        CompiledAutomatonLoader(choice.db, choice.apps_dir, session_manager=choice.session_manager),
-        KEY,
-    )
 
 
 def _install(controllers: list) -> None:
     from avance_platform.app_store_controller import AppStoreController
     from avance_platform.auth_controller import AuthController
-    from avance_platform.build_controller import BuildController
     from avance_platform.edit_project_controller import EditProjectController
     from avance_platform.label_project_controller import LabelProjectController
     from avance_platform.platform_controller import PlatformController
     from avance_platform.platform_service import PlatformService
     from avance_platform.settings_controller import SettingsController
     from avance_platform.user_controller import UserController
-    from build import BuildService
 
     core = bus.collect(POINT_CORE_SERVICES, {})
     turn_service = core["turn_service"]
@@ -73,11 +55,6 @@ def _install(controllers: list) -> None:
     controllers.extend([
         PlatformController(turn_service, project_service, platform_service),
         EditProjectController(turn_service, project_service, platform_service, scheduler_service),
-        # XXX Compiled automaton requirement - do not touch.
-        # XXX The Build view's Target step, wired to a real compile. The
-        # directory it writes into is the one CompiledAutomatonLoader
-        # reads from — one setting (build-service.apps-dir), never two.
-        BuildController(BuildService(db, project_service, core["apps_dir"])),
         # Labelling only: the benchmark half of that screen left with the
         # package that runs it (see testing/testing_controller.py), so a
         # build without benchmarking still annotates sessions.

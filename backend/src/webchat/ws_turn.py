@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from system.bus import OUTPUT_SPEECH, OUTPUT_TEXT, TURN_ENDED, TURN_FAILED, TURN_STARTED, TURN_TOOL
+import asyncio
+
+from system import bus
+from system.bus import OUTPUT_SPEECH, OUTPUT_TEXT, TURN_ENDED, TURN_FAILED, TURN_STARTED, TURN_TOOL, Message
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
 from turn.turn_service import TurnService
@@ -15,13 +18,17 @@ class WsChatTurn(object):
     its own task (run), every frame it produces sent on the connection
     with this turn's own stream_id — the only correlation there is."""
 
-    def __init__(self, turn_service: TurnService, send, turn_id: str, session_id, text: str) -> None:
+    def __init__(
+        self, turn_service: TurnService, send, turn_id: str, session_id, text: str, username: str = "",
+    ) -> None:
         self._turn_service = turn_service
         self._send_frame = send
         self._turn_id = turn_id
         self._session_id = session_id
         self._text = text
+        self._username = username
         self._user_message_id: int | None = None
+        self._warmings: set[asyncio.Task] = set()
 
     def _send(self, frame_type: str, payload: dict) -> None:
         # The wire carries the Bus's own type names and field names —
@@ -37,6 +44,7 @@ class WsChatTurn(object):
 
     def on_metadata(self, key: str, value) -> None:
         if key == "audio":
+            self._warm_audio(value)
             self._send(OUTPUT_SPEECH, {"body": value})
         elif key == "chunk":
             self._send(OUTPUT_TEXT, {"body": value})
@@ -72,10 +80,22 @@ class WsChatTurn(object):
         self._text = text
         return True
 
+    def _warm_audio(self, text) -> None:
+        # The browser asks for this audio only once the bubble is on
+        # screen; publishing here starts the synthesis while the rest of
+        # the reply is still streaming, and the route joins it.
+        task = asyncio.create_task(bus.publish(Message(
+            type=OUTPUT_SPEECH, body=str(text), username=self._username,
+            session_id=self._session_id, origin_id=self._turn_id,
+        )))
+        self._warmings.add(task)
+        task.add_done_callback(self._warmings.discard)
+
     async def run(self) -> None:
         try:
             result = await self._turn_service.process_turn(
                 self._session_id, self._text, on_metadata=self.on_metadata, user_message_id=self._user_message_id,
+                audio_wanted=self._turn_service.is_audio_enabled(self._session_id),
             )
             self._send(TURN_ENDED, result)
         except ServiceError as exc:

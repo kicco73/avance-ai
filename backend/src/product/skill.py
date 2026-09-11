@@ -7,13 +7,14 @@ build that includes `backend/src/product/` reads its project out of the
 single compiled package beside it and never opens the Archive tables; a
 build that does not, does what it has always done.
 
-A build that also contains the authoring platform is not a product, and
-this stands down for it: the editor writes revisions, so the loader that
-reads them has to win. Standing down rather than racing matters because
-every build copies src/ whole — this package is in a backend until
-somebody unticks it, and a backend that refuses to start because two
-packages both claimed the loader would be the normal case, not the
-exceptional one.
+A build that also contains src/build/ is not a product, and this stands
+down for it: a backend that can compile chooses per project and per
+revision whether a package or the interpreted automaton answers, and
+that decision is finer than this one. Standing down rather than racing
+matters because every build copies src/ whole — this package is in a
+backend until somebody unticks it, and a backend that refused to start
+because two packages both claimed the loader would be the normal case,
+not the exceptional one.
 """
 from __future__ import annotations
 
@@ -37,9 +38,9 @@ def _choose_packaged_loader(choice) -> None:
     from project.archive.packaged_automaton_loader import PackagedAutomatonLoader
     from system import skills
 
-    if any(skill["package"] == "avance_platform" for skill in skills.installed()):
+    if any(skill["package"] == "build" for skill in skills.installed()):
         logger.info(
-            "avance_platform is installed, so this backend is a platform and not a product — "
+            "build is installed, so this backend can compile and can serve what it compiled — "
             "leaving the automaton loader to it."
         )
         return

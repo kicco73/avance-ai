@@ -67,6 +67,9 @@ class TrackingService(object):
 		# 'test' session, never global: a native/imported session is
 		# always auto-tracked. Absent = enabled.
 		self._disabled_test_sessions: set[int] = set()
+		# Per session, set by the chat client's own audio toggle: absent =
+		# no spoken reply wanted, so the turn's prompt never asks for one.
+		self._audio_sessions: set[int] = set()
 		self._human_talker_factory: HumanTalkerFactory | None = None
 
 	def set_human_talker_factory(self, factory: HumanTalkerFactory) -> None:
@@ -97,6 +100,15 @@ class TrackingService(object):
 			self._disabled_test_sessions.discard(session_id)
 		else:
 			self._disabled_test_sessions.add(session_id)
+
+	def is_audio_enabled(self, session_id: int) -> bool:
+		return session_id in self._audio_sessions
+
+	def set_audio_enabled(self, session_id: int, enabled: bool) -> None:
+		if enabled:
+			self._audio_sessions.add(session_id)
+		else:
+			self._audio_sessions.discard(session_id)
 
 	def clear_auto_tracking_overrides(self) -> None:
 		"""A full DB restore can reuse session ids the in-memory freeze
@@ -286,6 +298,7 @@ class TrackingService(object):
 		ai_service: AiService,
 		on_metadata: OnMetadata | None = None,
 		user_message_ids: list[int] | None = None,
+		audio_wanted: bool = True,
 		):
 
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
@@ -329,6 +342,7 @@ class TrackingService(object):
 			env, self._db, user_vars,
 			auto_tracking_enabled=self.is_auto_tracking_enabled(session_id) if is_test_session else True,
 			talk_enabled=self._talk_enabled,
+			audio_wanted=audio_wanted,
 			input_token_budget_per_turn=self._input_token_budget_per_turn,
 		)
 

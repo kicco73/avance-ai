@@ -63,7 +63,7 @@ class WebchatService:
 
         turn = WsChatTurn(
             self._turn_service, send, str(body.get("stream_id", "")),
-            message.session_id, str(body.get("text", "")),
+            message.session_id, str(body.get("text", "")), message.username,
         )
         if not turn.accept():
             return

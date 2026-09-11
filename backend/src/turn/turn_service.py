@@ -536,6 +536,14 @@ class TurnService(object):
 		self._ownership.require_own_session(session_id)
 		self._tracking_service.set_auto_tracking_enabled(session_id, enabled)
 
+	def is_audio_enabled(self, session_id: int) -> bool:
+		self._ownership.require_own_session(session_id)
+		return self._tracking_service.is_audio_enabled(session_id)
+
+	def set_audio_enabled(self, session_id: int, enabled: bool) -> None:
+		self._ownership.require_own_session(session_id)
+		self._tracking_service.set_audio_enabled(session_id, enabled)
+
 	def _with_manual_actions(self, session_id: int, state_payload: dict) -> dict:
 		auto_tracking_enabled = self.is_auto_tracking_enabled(session_id)
 		return {**state_payload, "manual_actions": manual_actions_for(state_payload["actions"], auto_tracking_enabled)}
@@ -768,6 +776,7 @@ class TurnService(object):
 		text: str | None = None,
 		on_metadata: OnMetadata | None = None,
 		user_message_id: int | None = None,
+		audio_wanted: bool = True,
 	) -> dict:
 		"""`user_message_id` is set when the transport already persisted
 		this message (the websocket does, the moment it read the frame —
@@ -782,7 +791,7 @@ class TurnService(object):
 		if operator is not None:
 			return await self._process_human_turn(session_id, operator, on_metadata, user_message_id)
 		async with self._session_scope(project_id, session_id):
-			return await self._process_turn_body(session_id, text, on_metadata, user_message_id)
+			return await self._process_turn_body(session_id, text, on_metadata, user_message_id, audio_wanted)
 
 	async def _process_human_turn(
 		self, session_id: int, operator: str, on_metadata: OnMetadata | None, user_message_id: int | None,
@@ -842,6 +851,7 @@ class TurnService(object):
 		text: str | None = None,
 		on_metadata: OnMetadata | None = None,
 		user_message_id: int | None = None,
+		audio_wanted: bool = True,
 	) -> dict:
 		session = self._db.get_chat_session(session_id)
 		if session is None:
@@ -859,7 +869,7 @@ class TurnService(object):
 			return self._already_answered_response(session_id, automaton, state, user_message_id)
 		reply = await self._tracking_service._process(
 			session_id, [f["content"] for f in fragments], ai_service, on_metadata,
-			user_message_ids=[f["id"] for f in fragments],
+			user_message_ids=[f["id"] for f in fragments], audio_wanted=audio_wanted,
 		)
 		self._session_manager.touch_session(reply['session_id'], reply['state']['key'])
 		reply['state'] = self._with_manual_actions(session_id, reply['state'])

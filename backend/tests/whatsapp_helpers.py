@@ -14,13 +14,14 @@ from fastapi.testclient import TestClient
 
 from auth.auth_middleware import AuthMiddleware
 from system import bus
-from system.bus import OUTPUT_AUDIO, OUTPUT_SPEECH, Message
+from system.bus import OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, Message
 from whatsapp.config import WhatsAppServiceConfig
 from whatsapp.whatsapp_controller import WhatsAppController
 from system.service_error import ServiceError
 from system.session import Session
 from listen.decoder import SpeechDecoder
 from listen.listen_service import ListenServiceError
+from talk.audio_stream import AudioStream
 from talk.talk_format import PcmWavCodec
 from whatsapp.audio import split_wav
 from whatsapp.whatsapp_service import WhatsAppService
@@ -174,7 +175,7 @@ class _FakeChatService:
     def get_state_for_session(self, session_id):
         return self.state
 
-    async def process_turn(self, session_id, text, on_metadata=None):
+    async def process_turn(self, session_id, text, on_metadata=None, audio_wanted=True):
         self.calls.append(("turn", Session().user))
         if self.turn_error is not None:
             error = self.turn_error
@@ -326,8 +327,9 @@ def _build(config=None, talk=None, listen=None):
     bus._listeners[OUTPUT_SPEECH] = []
     if talk is not None:
         async def speak(message: Message) -> None:
-            audio = b"".join([chunk async for chunk in talk.generate(str(message.body))])
-            await bus.publish(message.converted(OUTPUT_AUDIO, audio, mime="audio/wav"))
+            await bus.publish(message.converted(
+                OUTPUT_AUDIO_STREAM, AudioStream(talk, str(message.body)), mime="audio/wav",
+            ))
 
         bus.subscribe(OUTPUT_SPEECH, speak)
     service = WhatsAppService(config or _config(), chat, db, auth, client=api)

@@ -398,7 +398,7 @@ class WhatsAppService(object):
         return session_payload["id"], None
 
     async def _attempt_turn(
-        self, session_id: int, text: str, on_metadata,
+        self, session_id: int, text: str, on_metadata, audio_wanted: bool,
     ) -> tuple[str | None, list[dict] | None, str | None, bool]:
         """(notice, manual_actions, retry_code, answered) for one turn
         attempt — retry_code (session_closed/session_not_found) tells the
@@ -410,7 +410,9 @@ class WhatsAppService(object):
         must stay silent rather than send it twice."""
         try:
             await self._turn_service.prepare_user_initiated_turn(session_id)
-            reply = await self._turn_service.process_turn(session_id, text, on_metadata=on_metadata)
+            reply = await self._turn_service.process_turn(
+                session_id, text, on_metadata=on_metadata, audio_wanted=audio_wanted,
+            )
             return None, reply["state"]["manual_actions"], None, reply.get("assistant_message_id") is not None
         except ServiceError as exc:
             if exc.code == "state_not_chat":
@@ -444,13 +446,17 @@ class WhatsAppService(object):
         on_metadata = voice_notes.on_metadata if voice_notes is not None else None
 
         last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
-        notice, manual_actions, retry_code, answered = await self._attempt_turn(session_id, text, on_metadata)
+        notice, manual_actions, retry_code, answered = await self._attempt_turn(
+                session_id, text, on_metadata, voice_notes is not None,
+            )
         if retry_code is not None:
             session_id, early = await self._bootstrap_exclusive_session()
             if early is not None:
                 return early
             last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
-            notice, manual_actions, retry_code, answered = await self._attempt_turn(session_id, text, on_metadata)
+            notice, manual_actions, retry_code, answered = await self._attempt_turn(
+                session_id, text, on_metadata, voice_notes is not None,
+            )
             if retry_code is not None:
                 notice = REPLY_TECHNICAL_PROBLEM
 
