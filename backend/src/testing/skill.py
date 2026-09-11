@@ -16,13 +16,15 @@ from pathlib import Path
 
 from system import bus
 from system.bus import POINT_CONFIG_SERVICES, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
+from system.config_services import ui_section
 from system.logging_factory import LoggerFactory
 from testing import config as testing_config
 
 logger = LoggerFactory.get_logger(__name__)
 
 KEY = "testing"
-LABEL = "Benchmarking — test runs and aggregation"
+UI_LABEL = "Testing"
+UI_DESCRIPTION = "Benchmark runs and their aggregated results."
 
 _config = None
 
@@ -31,7 +33,7 @@ def start(raw: dict, path: Path) -> None:
     global _config
     _config = testing_config.parse(raw, path)
     bus.contribute(POINT_CONFIG_SERVICES, lambda snapshot: snapshot.update(
-        {KEY: testing_config.public_fields(_config)}
+        {KEY: ui_section(UI_LABEL, UI_DESCRIPTION, testing_config.public_fields(_config))}
     ))
     bus.contribute(POINT_HTTP_CONTROLLERS, _install)
 

@@ -26,7 +26,8 @@ from system.logging_factory import LoggerFactory
 logger = LoggerFactory.get_logger(__name__)
 
 KEY = "platform"
-LABEL = "Platform — editor, benchmark, admin"
+UI_LABEL = "Platform"
+UI_DESCRIPTION = "Editor, benchmark and admin for the authoring app."
 
 
 def start(raw: dict, path: Path) -> None:

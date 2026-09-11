@@ -20,13 +20,15 @@ from pathlib import Path
 
 from system import bus
 from system.bus import POINT_CONFIG_SERVICES, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
+from system.config_services import ui_section
 from system.logging_factory import LoggerFactory
 from whatsapp import config as whatsapp_config
 
 logger = LoggerFactory.get_logger(__name__)
 
 KEY = "whatsapp"
-LABEL = "WhatsApp — chat channel"
+UI_LABEL = "WhatsApp"
+UI_DESCRIPTION = "Chat channel over the WhatsApp Cloud API."
 
 
 class _NoWhatsApp:
@@ -43,7 +45,7 @@ class _NoWhatsApp:
 
     def _contribute_config(self) -> None:
         bus.contribute(POINT_CONFIG_SERVICES, lambda snapshot: snapshot.update(
-            {KEY: whatsapp_config.public_fields(self._config)}
+            {KEY: ui_section(UI_LABEL, UI_DESCRIPTION, whatsapp_config.public_fields(self._config))}
         ))
 
 

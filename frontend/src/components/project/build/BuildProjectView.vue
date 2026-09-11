@@ -133,8 +133,13 @@ async function runBuild() {
                 class="build-skill-toggle"
                 :disabled="isRequired(skill)"
               >
-              <span>{{ skill.label }}</span>
-              <span v-if="isRequired(skill)" class="build-skill-required">this project uses it</span>
+              <span class="build-skill-text">
+                <span class="build-skill-name">
+                  {{ skill.ui_label }}
+                  <span v-if="isRequired(skill)" class="build-skill-required">this project uses it</span>
+                </span>
+                <span v-if="skill.ui_description" class="build-skill-description">{{ skill.ui_description }}</span>
+              </span>
             </label>
             <code class="build-skill-package">src/{{ skill.package }}</code>
           </li>
@@ -205,7 +210,7 @@ async function runBuild() {
 
 .build-skill-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
   padding: 0.5rem 0.75rem;
@@ -215,14 +220,33 @@ async function runBuild() {
 
 .build-skill-label {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   cursor: pointer;
+}
+
+.build-skill-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.build-skill-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.build-skill-description {
+  font-size: 0.78rem;
+  color: #7b8794;
+  line-height: 1.35;
 }
 
 .build-skill-toggle {
   width: 1rem;
   height: 1rem;
+  margin-top: 0.15rem;
   cursor: pointer;
 }
 

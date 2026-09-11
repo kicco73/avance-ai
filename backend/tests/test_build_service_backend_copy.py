@@ -154,7 +154,7 @@ def test_the_installed_skills_are_read_off_the_source_tree():
 
     assert {entry["package"] for entry in installed} >= {"listen"}
     listen = next(entry for entry in installed if entry["package"] == "listen")
-    assert listen["key"] == "listen" and listen["label"]
+    assert listen["key"] == "listen" and listen["ui_label"] and listen["ui_description"]
 
 
 @pytest.mark.contract

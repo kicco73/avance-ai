@@ -8,6 +8,7 @@ from ruamel.yaml import YAML
 from system import bus
 from ai import AIServiceConfig
 from system.bus import POINT_CONFIG_SERVICES
+from system.config_services import ui_section
 
 # Default home for compiled packages: backend/apps, beside src/ rather
 # than inside it — a built package is generated data, not source, and it
@@ -429,13 +430,13 @@ class AppConfig:
         as-is (admin-only route) for Manage services' masked/revealable
         fields."""
         snapshot = {
-            "chat": {
+            "chat": ui_section("Chat", "Session limits and token budgets for every conversation.", {
                 "max-session-duration-in-minutes": self.max_session_duration_in_minutes,
                 "input-token-budget-per-turn": self.input_token_budget_per_turn,
                 "total-token-budget-per-session": self.total_token_budget_per_session,
                 "project-file-cache-bytes": self.project_file_cache_bytes,
-            },
-            "ai": {
+            }),
+            "ai": ui_section("AI", "Language model providers and the live cascade between them.", {
                 "max-output-tokens": self.ai_services[0].max_output_tokens,
                 "providers": [
                     {
@@ -444,11 +445,11 @@ class AppConfig:
                     }
                     for p in self.ai_services
                 ],
-            },
-            "database": {
+            }),
+            "database": ui_section("Data", "Database connection, backups and stored sessions.", {
                 "url": _redact_database_url(self.database_url),
                 "migration-strategy": self.database_migration_strategy,
-            },
+            }),
             "build": self._public_build_service_fields(),
         }
         # Whatever else is running adds its own section: a service the

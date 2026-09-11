@@ -49,13 +49,16 @@ def discover(source_root: Path | None = None) -> list[ModuleType]:
 def installed(source_root: Path | None = None) -> list[dict]:
     """What a build can choose to leave out, as the Build view lists it:
     the package name — which is also the directory a build either copies
-    or does not — and a label to show. Derived from what is on disk, so a
-    skill added tomorrow appears without anyone maintaining a list."""
+    or does not — and the same `UI_LABEL`/`UI_DESCRIPTION` the service
+    shows under Manage services, so one service reads as one thing in
+    both places. Derived from what is on disk, so a skill added tomorrow
+    appears without anyone maintaining a list."""
     return [
         {
             "key": getattr(module, "KEY", module.__name__.split(".")[0]),
             "package": module.__name__.split(".")[0],
-            "label": getattr(module, "LABEL", module.__name__.split(".")[0].replace("_", " ").title()),
+            "ui_label": getattr(module, "UI_LABEL", module.__name__.split(".")[0].replace("_", " ").title()),
+            "ui_description": getattr(module, "UI_DESCRIPTION", ""),
         }
         for module in discover(source_root)
     ]

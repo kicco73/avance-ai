@@ -22,6 +22,7 @@ from pathlib import Path
 
 from system import bus
 from system.bus import INPUT_AUDIO, POINT_API_STATE, POINT_CONFIG_SERVICES, POINT_HTTP_CONTROLLERS
+from system.config_services import ui_section
 from listen import config as listen_config
 from listen.decoder import SpeechDecoder
 from listen.listen_controller import ListenController
@@ -31,7 +32,8 @@ from system.logging_factory import LoggerFactory
 logger = LoggerFactory.get_logger(__name__)
 
 KEY = "listen"
-LABEL = "Listen — speech to text"
+UI_LABEL = "Listen"
+UI_DESCRIPTION = "Speech to text."
 
 
 def start(raw: dict, path: Path) -> None:
@@ -40,7 +42,7 @@ def start(raw: dict, path: Path) -> None:
     about speech-to-text answers "nobody" from then on."""
     services = listen_config.parse(raw, path)
     bus.contribute(POINT_CONFIG_SERVICES, lambda snapshot: snapshot.update(
-        {KEY: listen_config.public_fields(services)}
+        {KEY: ui_section(UI_LABEL, UI_DESCRIPTION, listen_config.public_fields(services))}
     ))
     if services is None:
         logger.info("listen-service is not enabled — no decoder, no route.")

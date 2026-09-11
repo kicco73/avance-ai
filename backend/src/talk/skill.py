@@ -17,6 +17,7 @@ from pathlib import Path
 
 from system import bus
 from system.bus import OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, POINT_CONFIG_SERVICES, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
+from system.config_services import ui_section
 from system.logging_factory import LoggerFactory
 from talk import config as talk_config
 from talk.audio_stream import AudioStream
@@ -25,7 +26,8 @@ from talk.talk_service import TalkService
 logger = LoggerFactory.get_logger(__name__)
 
 KEY = "talk"
-LABEL = "Talk — text to speech"
+UI_LABEL = "Talk"
+UI_DESCRIPTION = "Text to speech."
 
 
 class _NoTalk:
@@ -42,7 +44,7 @@ class _NoTalk:
 
     def _contribute_config(self) -> None:
         bus.contribute(POINT_CONFIG_SERVICES, lambda snapshot: snapshot.update(
-            {KEY: talk_config.public_fields(self._providers)}
+            {KEY: ui_section(UI_LABEL, UI_DESCRIPTION, talk_config.public_fields(self._providers))}
         ))
 
 

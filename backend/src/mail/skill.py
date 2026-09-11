@@ -4,6 +4,7 @@ from pathlib import Path
 
 from system import bus
 from system.bus import MAIL_SEND, POINT_CONFIG_SERVICES, POINT_CORE_SERVICES
+from system.config_services import ui_section
 from system.logging_factory import LoggerFactory
 from mail import config as mail_config
 from mail.mail_service import MailService
@@ -11,14 +12,15 @@ from mail.mail_service import MailService
 logger = LoggerFactory.get_logger(__name__)
 
 KEY = "mail"
-LABEL = "Mail"
+UI_LABEL = "Mail"
+UI_DESCRIPTION = "Sends email on behalf of a project."
 
 _listener = None
 
 
 def start(raw: dict, path: Path) -> None:
     config = mail_config.parse(raw, path)
-    bus.contribute(POINT_CONFIG_SERVICES, lambda snapshot: snapshot.update({KEY: mail_config.public_fields(config)}))
+    bus.contribute(POINT_CONFIG_SERVICES, lambda snapshot: snapshot.update({KEY: ui_section(UI_LABEL, UI_DESCRIPTION, mail_config.public_fields(config))}))
     if config is None:
         logger.info("mail-service is not enabled — task.send_mail can't run.")
         return

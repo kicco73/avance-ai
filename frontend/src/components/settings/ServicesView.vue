@@ -29,17 +29,36 @@ defineProps({
 // itself, same as Manage projects' own per-project wipe used to.
 const emit = defineEmits(['close', 'download-backup', 'restore-backup', 'wipe-live-sessions', 'clean-unused-revisions', 'home', 'profile', 'logout'])
 
+// Fallbacks only: every section the backend sends carries its own
+// 'ui-label'/'ui-description' (see AppConfig.public_services_snapshot and
+// each skill's own UI_LABEL), and `tabs` below prefers those — what shows
+// here is what the Build view shows for the same service. Scheduler has no
+// config section of its own, so its text stays local.
 const TABS = [
   { id: 'ai', label: 'AI' },
   { id: 'chat', label: 'Chat' },
   { id: 'testing', label: 'Testing' },
-  { id: 'scheduler', label: 'Scheduler' },
+  { id: 'scheduler', label: 'Scheduler', description: 'Deferred work the platform runs on its own clock.' },
   { id: 'talk', label: 'Talk' },
   { id: 'listen', label: 'Listen' },
   { id: 'whatsapp', label: 'WhatsApp' },
   { id: 'database', label: 'Data' },
   { id: 'build', label: 'Build' }
 ]
+
+const tabs = computed(() => TABS.map((tab) => ({
+  ...tab,
+  label: services.value?.[tab.id]?.['ui-label'] || tab.label,
+  description: services.value?.[tab.id]?.['ui-description'] || tab.description || ''
+})))
+
+const activeDescription = computed(() => tabs.value.find((tab) => tab.id === activeTab.value)?.description || '')
+
+// The two 'ui-' keys are the section's own label and description, shown
+// by the tab itself — never as one more read-only field.
+function configFields(section) {
+  return Object.entries(section).filter(([key]) => !key.startsWith('ui-'))
+}
 
 const WHATSAPP_MASKED_FIELDS = ['verify-token', 'app-secret', 'access-token']
 const WHATSAPP_PLAIN_FIELDS = ['phone-number-id', 'phone-number', 'invite-prefix', 'graph-version', 'voice-replies']
@@ -250,7 +269,7 @@ async function selectCleanUnusedRevisions() {
 
     <div class="services-tabs">
       <button
-        v-for="tab in TABS"
+        v-for="tab in tabs"
         :key="tab.id"
         class="services-tab-btn"
         :class="{ 'services-tab-btn-active': activeTab === tab.id }"
@@ -264,17 +283,18 @@ async function selectCleanUnusedRevisions() {
     </div>
 
     <div class="services-body">
+      <p v-if="activeDescription" class="services-tab-description">{{ activeDescription }}</p>
       <p v-if="loading" class="services-status">Loading…</p>
       <template v-else-if="services">
         <div v-show="activeTab === 'chat'" class="services-panel">
-          <div v-for="[key, value] in Object.entries(services.chat)" :key="key" class="services-field">
+          <div v-for="[key, value] in configFields(services.chat)" :key="key" class="services-field">
             <label class="services-field-label">{{ fieldLabel(key) }}</label>
             <input class="services-field-input" type="text" :value="value" disabled />
           </div>
         </div>
 
         <div v-show="activeTab === 'testing'" class="services-panel">
-          <div v-for="[key, value] in Object.entries(services.testing)" :key="key" class="services-field">
+          <div v-for="[key, value] in configFields(services.testing)" :key="key" class="services-field">
             <label class="services-field-label">{{ fieldLabel(key) }}</label>
             <input class="services-field-input" type="text" :value="value" disabled />
           </div>
@@ -384,7 +404,7 @@ async function selectCleanUnusedRevisions() {
         </div>
 
         <div v-show="activeTab === 'database'" class="services-panel">
-          <div v-for="[key, value] in Object.entries(services.database)" :key="key" class="services-field">
+          <div v-for="[key, value] in configFields(services.database)" :key="key" class="services-field">
             <label class="services-field-label">{{ fieldLabel(key) }}</label>
             <input class="services-field-input" type="text" :value="value" disabled />
           </div>
@@ -499,6 +519,13 @@ async function selectCleanUnusedRevisions() {
   overflow-y: auto;
   padding: 1.25rem;
   padding-bottom: calc(1.25rem + var(--safe-area-bottom));
+}
+
+.services-tab-description {
+  margin: 0 0 1rem;
+  font-size: 0.82rem;
+  color: #777;
+  line-height: 1.4;
 }
 
 .services-status {

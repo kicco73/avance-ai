@@ -21,7 +21,8 @@ from system.logging_factory import LoggerFactory
 logger = LoggerFactory.get_logger(__name__)
 
 KEY = "webchat"
-LABEL = "Native chat — turns over the browser socket"
+UI_LABEL = "Native chat"
+UI_DESCRIPTION = "Turns over the browser WebSocket."
 
 
 def start(raw: dict, path: Path) -> None:

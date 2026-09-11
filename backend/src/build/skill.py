@@ -23,19 +23,26 @@ from pathlib import Path
 
 from build import config as build_config
 from system import bus
-from system.bus import POINT_AUTOMATON_LOADER, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
+from system.bus import POINT_AUTOMATON_LOADER, POINT_CONFIG_SERVICES, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
+from system.config_services import ui_section
 from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 
 KEY = "build"
-LABEL = "Build — compile a project into a package"
+UI_LABEL = "Build"
+UI_DESCRIPTION = "Compiles a project into a standalone package."
 
 
 def start(raw: dict, path: Path) -> None:
     bus.contribute(POINT_HTTP_CONTROLLERS, _install)
+    bus.contribute(POINT_CONFIG_SERVICES, _describe_section)
     if build_config.serves_compiled(raw, path):
         bus.contribute(POINT_AUTOMATON_LOADER, _choose_compiled_loader)
+
+
+def _describe_section(snapshot: dict) -> None:
+    snapshot[KEY] = ui_section(UI_LABEL, UI_DESCRIPTION, snapshot.get(KEY, {}))
 
 
 def _choose_compiled_loader(choice) -> None:

@@ -27,7 +27,8 @@ from system.logging_factory import LoggerFactory
 logger = LoggerFactory.get_logger(__name__)
 
 KEY = "product"
-LABEL = "Compiled product — serve one packaged project"
+UI_LABEL = "Product"
+UI_DESCRIPTION = "Serves one compiled project."
 
 
 def start(raw: dict, path: Path) -> None:
