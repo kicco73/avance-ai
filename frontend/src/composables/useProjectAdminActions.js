@@ -1,12 +1,11 @@
 import { ref } from 'vue'
 import {
-  getState, putProject, postNewProject, activateProject, deleteProject, postWipeAllLiveSessions,
-  postCleanUnusedRevisions, downloadProject, getBackup, postRestoreBackup, getAbout,
+  getState, putProject, postNewProject, activateProject, deleteProject, downloadProject,
   getPublishPreview, postPublishProject
 } from '../api.js'
 import PublishRemapDialog from '../components/settings/PublishRemapDialog.vue'
-import { aboutDialog, confirmDialog, customDialog, infoDialog } from '../dialogStore.js'
-import { handleStateChange, loadMessages, clearChatUi } from '../chatStore.js'
+import { confirmDialog, customDialog, infoDialog } from '../dialogStore.js'
+import { handleStateChange, loadMessages } from '../chatStore.js'
 import { emitProjectsChanged } from '../projectChangeEvents.js'
 
 function downloadBlob(blob, filename) {
@@ -171,65 +170,10 @@ export function useProjectAdminActions() {
     return published.built ? `${head} Compiled into ${published.built.module}.` : head
   }
 
-  async function handleWipeAllLiveSessions() {
-    try {
-      await postWipeAllLiveSessions()
-    } catch {
-      // already surfaced via apiFetch
-    }
-  }
-
-  async function handleCleanUnusedRevisions() {
-    let deleted
-    try {
-      ({ deleted } = await postCleanUnusedRevisions())
-    } catch {
-      return
-    }
-    await infoDialog({
-      title: 'Clean unused revisions',
-      body: deleted > 0 ? `Deleted ${deleted} unused revision${deleted === 1 ? '' : 's'}.` : 'No unused revisions found.'
-    })
-  }
-
-  async function handleDownloadBackup() {
-    try {
-      downloadBlob(await getBackup(), 'avance-backup.sqlite')
-    } catch {
-      // already surfaced via apiFetch
-    }
-  }
-
-  async function handleRestoreBackup(file) {
-    const ok = await confirmDialog({
-      title: 'Restore backup',
-      body: 'Restore this backup? This replaces the entire working database (all projects, sessions, and messages) and cannot be undone.',
-      okLabel: 'Restore',
-      danger: true
-    })
-    if (!ok) return
-    clearChatUi()
-    try {
-      await postRestoreBackup(file)
-      await refreshStateAndProjects()
-    } catch {
-      // already surfaced via apiFetch
-    }
-  }
-
-  async function handleShowAbout() {
-    try {
-      const about = await getAbout()
-      await aboutDialog({ version: about.version })
-    } catch {
-      // already surfaced via apiFetch
-    }
-  }
 
   return {
     modelUploadInput, uploadingProject, uploadProgress, uploadProjectId, uploadIconReady,
     triggerModelUpload, handleNewProject, handleModelUploadChange, handleModelEditSaved, handleProjectSwitch,
-    activateAndRefresh, handleModelDownload, handleModelDelete, handlePublishProject, handleWipeAllLiveSessions,
-    handleCleanUnusedRevisions, handleDownloadBackup, handleRestoreBackup, handleShowAbout,
+    activateAndRefresh, handleModelDownload, handleModelDelete, handlePublishProject,
   }
 }

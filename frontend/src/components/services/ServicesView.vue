@@ -31,7 +31,7 @@ defineProps({
 // pass-through — App.vue owns the actual fetch + confirmation logic for
 // backup restore, same as it always has; this view confirms the wipe
 // itself, same as Manage projects' own per-project wipe used to.
-import { useProjectAdminActions } from '../../composables/useProjectAdminActions.js'
+import { useServerAdminActions } from '../../composables/useServerAdminActions.js'
 const emit = defineEmits(['close', 'home', 'profile', 'logout'])
 
 // The four admin actions this screen offers used to be emitted up to
@@ -40,7 +40,7 @@ const emit = defineEmits(['close', 'home', 'profile', 'logout'])
 // naming a screen it should not have to know about.
 const {
   handleWipeAllLiveSessions, handleCleanUnusedRevisions, handleDownloadBackup, handleRestoreBackup,
-} = useProjectAdminActions()
+} = useServerAdminActions()
 
 // Fallbacks only: every section the backend sends carries its own
 // 'ui-label'/'ui-description' (see AppConfig.public_services_snapshot and

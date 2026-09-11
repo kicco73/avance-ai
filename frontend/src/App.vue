@@ -9,7 +9,7 @@ import InviteRequiredView from './components/InviteRequiredView.vue'
 import ProfileView from './components/ProfileView.vue'
 import ManageProjectsView from './components/settings/ManageProjectsView.vue'
 import ManageUsersView from './components/settings/ManageUsersView.vue'
-import ServicesView from './components/settings/ServicesView.vue'
+import ServicesView from './components/services/ServicesView.vue'
 import AppStoreView from './components/appStore/AppStoreView.vue'
 import CustomerHome from './components/appStore/CustomerHome.vue'
 import SplashScreen from './components/SplashScreen.vue'
@@ -26,6 +26,7 @@ import { useAppBoot } from './composables/useAppBoot.js'
 import { useChatFlipTransition } from './composables/useChatFlipTransition.js'
 import { useViewStack } from './composables/useViewStack.js'
 import { useProjectAdminActions } from './composables/useProjectAdminActions.js'
+import { useServerAdminActions } from './composables/useServerAdminActions.js'
 import { peekInviteCode } from './shareLink.js'
 import { pushedViews } from './skills/registry.js'
 
@@ -54,8 +55,12 @@ const { onChatBeforeEnter, onChatEnter, onChatBeforeLeave, onChatLeave } = useCh
 const {
   modelUploadInput, uploadingProject, uploadProgress, uploadProjectId, uploadIconReady,
   triggerModelUpload, handleNewProject, handleModelUploadChange, handleModelEditSaved, handleProjectSwitch,
-  activateAndRefresh, handleModelDownload, handleModelDelete, handlePublishProject, handleShowAbout,
+  activateAndRefresh, handleModelDownload, handleModelDelete, handlePublishProject,
 } = useProjectAdminActions()
+
+// "About Avance..." reads the running version off /api/core/settings —
+// the server, not the project being authored (see useServerAdminActions).
+const { handleShowAbout } = useServerAdminActions()
 
 const {
   bootStatus, needsTerms, termsError, inviteExempt,
