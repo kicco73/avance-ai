@@ -1,4 +1,4 @@
-"""GET /api/skills/platform/settings/tasks (SchedulerService.list_tasks, Settings >
+"""GET /api/core/settings/tasks (SchedulerService.list_tasks, Settings >
 Manage services > Scheduler)."""
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def test_scheduled_tasks_lists_every_task_soonest_first(client, app_db, hello_pr
         {"secret": "internal"}, "First task", "Runs first",
     )
 
-    response = client.get("/api/skills/platform/settings/tasks")
+    response = client.get("/api/core/settings/tasks")
 
     assert response.status_code == 200
     tasks = response.json()["tasks"]
@@ -36,7 +36,7 @@ def test_scheduled_tasks_lists_every_task_soonest_first(client, app_db, hello_pr
 
 @pytest.mark.contract
 def test_scheduled_tasks_empty_when_none_pending(client):
-    response = client.get("/api/skills/platform/settings/tasks")
+    response = client.get("/api/core/settings/tasks")
 
     assert response.status_code == 200
     assert response.json()["tasks"] == []

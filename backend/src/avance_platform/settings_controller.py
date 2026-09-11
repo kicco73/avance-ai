@@ -1,8 +1,13 @@
-"""The Settings menu's own backend surface — whole-database backup/
-restore, Manage projects' own table (runtime status, manual pause/
-resume), and a project's lifecycle as a whole object (list, create,
-switch, download/upload, delete) rather than any one field inside it
-(see edit_project_controller.py for that half).
+"""Managing *projects* from the Settings menu: Manage projects' own table
+(runtime status, manual pause/resume), the broken-project warnings it
+counts, and a project's lifecycle as a whole object (list, create, switch,
+download/upload, delete) rather than any one field inside it (see
+edit_project_controller.py for that half).
+
+Running the *server* left for ServerAdminController: backup and
+restore, wiping live sessions, clearing unused revisions, the scheduler's
+queue, the services snapshot. An operator needs those whether or not an
+editor was ever installed, and none of them touches a project's contents.
 """
 from __future__ import annotations
 
@@ -31,85 +36,14 @@ class SettingsController(BaseController, ProjectCommitMixin):
 
     def __init__(
         self, turn_service: TurnService, project_service: ProjectService,
-        platform_service: PlatformService, db: Db, version: str,
-        scheduler_service: SchedulerService, services_config: dict,
+        platform_service: PlatformService, db: Db, scheduler_service: SchedulerService,
     ) -> None:
+        # Read by ProjectCommitMixin rather than by anything below.
         self.turn_service = turn_service
         self.project_service = project_service
         self.platform_service = platform_service
         self.db = db
-        self.version = version
         self.scheduler_service = scheduler_service
-        self.services_config = services_config
-
-    @get("/api/skills/platform/settings/about", role="supervisor")
-    def get_about(self):
-        """The Settings menu's own "About Avance..." dialog — just the
-        display name and running backend version, __version__ in main.py."""
-        return {"name": APP_NAME, "version": self.version}
-
-    @get("/api/skills/platform/settings/services", role="admin")
-    def get_services(self):
-        """Settings > Manage services — read-only snapshot of
-        .config.yml's own service sections (see AppConfig.
-        public_services_snapshot), one tab per section on the frontend."""
-        return self.services_config
-
-    @get("/api/skills/platform/settings/services/ai-usage", role="admin")
-    def get_ai_usage(self):
-        """Settings > Manage services > AI — each ai-service provider's
-        own token spend, one point per minute over the trailing 24h (see
-        db/ai_usage.py), fetched once when the panel opens, same as
-        get_services above: {today, history}."""
-        labels = [f"{p['driver']}/{p['model']}" for p in self.services_config["ai"]["providers"]]
-        return self.db.get_ai_token_usage_snapshot(labels)
-
-    @get("/api/skills/platform/settings/backup", role="admin")
-    async def get_backup(self):
-        """Downloads the whole working SQLite database file — every
-        project, session, message, and signal — as a restorable backup
-        (see POST /api/skills/platform/settings/backup)."""
-        async with self.turn_service.global_exclusive_access():
-            content = self.db.export_backup()
-        filename = Path(self.db.backup_file_path()).stem + ".sqlite"
-        return Response(
-            content=content,
-            media_type="application/octet-stream",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
-
-    @post("/api/skills/platform/settings/backup", role="admin")
-    async def post_backup(self, request: Request):
-        """Restores the working SQLite database from an uploaded backup
-        file, replacing it in place. Wipes whatever the server currently
-        has (all projects, sessions, messages)."""
-        content = await request.body()
-        async with self.turn_service.global_exclusive_access():
-            try:
-                self.db.restore_backup(content)
-            except ValueError as exc:
-                raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-            self.turn_service.clear_auto_tracking_overrides()
-        return {"success": True}
-
-    @post("/api/skills/platform/settings/database/wipe-live-sessions", role="admin")
-    async def post_wipe_all_live_sessions(self):
-        """Settings > Manage services > Database — deletes every live
-        conversation across every project (not just the active one), same
-        global scope as the backup endpoints above."""
-        async with self.turn_service.global_exclusive_access():
-            self.platform_service.wipe_all_live_sessions()
-        return {"success": True}
-
-    @post("/api/skills/platform/settings/database/clean-unused-revisions", role="admin")
-    async def post_clean_unused_revisions(self):
-        """Settings > Manage services > Database — deletes every archive
-        revision, across every project, that's neither published, the
-        current draft, nor pinned by any session (see
-        ProjectService.clean_unused_revisions)."""
-        async with self.turn_service.global_exclusive_access():
-            deleted = self.platform_service.clean_unused_revisions()
-        return {"success": True, "deleted": deleted}
 
     @get("/api/skills/platform/projects")
     def get_projects(self):
@@ -136,24 +70,6 @@ class SettingsController(BaseController, ProjectCommitMixin):
         if not self.db.delete_system_warning(Session().user, warning_id):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"Warning {warning_id} not found.")
         return {"status": "ok"}
-
-    @get("/api/skills/platform/settings/tasks", role="admin")
-    def get_scheduled_tasks(self, status: str | None = None, order: str = "asc"):
-        """Settings > Manage services > Scheduler — Task rows for one
-        status at a time (the frontend's own segmented control), by
-        run_at per `order` (see scheduler.SchedulerService.list_tasks).
-        `payload` is omitted: it's the task type's own internal
-        hydration data, not meant for display."""
-        try:
-            tasks = self.scheduler_service.list_tasks(status=status, order=order)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return {
-            "tasks": [
-                {key: value for key, value in task.items() if key != "payload"}
-                for task in tasks
-            ]
-        }
 
     @post("/api/skills/platform/projects/{project_id}/pause", role="admin")
     def put_project_pause(self, project_id: str):

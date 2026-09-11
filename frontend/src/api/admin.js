@@ -57,15 +57,15 @@ export function postNewProject() {
 // Settings > "About Avance..." dialog — {name, version}, version being
 // whatever the running backend's own __version__ (main.py) currently is.
 export function getAbout() {
-  return apiFetch(`${API_URL}/skills/platform/settings/about`)
+  return apiFetch(`${API_URL}/core/settings/about`)
 }
 
 export function getBackup() {
-  return apiFetch(`${API_URL}/skills/platform/settings/backup`, {}, { parse: 'blob' })
+  return apiFetch(`${API_URL}/core/settings/backup`, {}, { parse: 'blob' })
 }
 
 export function postRestoreBackup(file) {
-  return apiFetch(`${API_URL}/skills/platform/settings/backup`, {
+  return apiFetch(`${API_URL}/core/settings/backup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/octet-stream' },
     body: file
@@ -103,7 +103,7 @@ export function deleteProject(projectId) {
 // Settings > Manage services > Database — wipes live sessions across
 // every project at once, not just one.
 export function postWipeAllLiveSessions() {
-  return apiFetch(`${API_URL}/skills/platform/settings/database/wipe-live-sessions`, { method: 'POST' })
+  return apiFetch(`${API_URL}/core/settings/database/wipe-live-sessions`, { method: 'POST' })
 }
 
 // Settings > Manage services > Database — deletes every archive revision,
@@ -111,13 +111,13 @@ export function postWipeAllLiveSessions() {
 // pinned by any session. Returns {success, deleted} — deleted is how many
 // distinct revisions were actually removed.
 export function postCleanUnusedRevisions() {
-  return apiFetch(`${API_URL}/skills/platform/settings/database/clean-unused-revisions`, { method: 'POST' })
+  return apiFetch(`${API_URL}/core/settings/database/clean-unused-revisions`, { method: 'POST' })
 }
 
 // Settings > Manage services — read-only snapshot of .config.yml's own
 // service sections (see backend AppConfig.public_services_snapshot).
 export function getServicesConfig() {
-  return apiFetch(`${API_URL}/skills/platform/settings/services`)
+  return apiFetch(`${API_URL}/core/settings/services`)
 }
 
 // Settings > Manage services > AI — each provider's own daily token
@@ -126,7 +126,7 @@ export function getServicesConfig() {
 // history: [{timestamp, values: {label: tokens}, cache_read: {label: tokens}}, ...],
 // cache_read_ratio: {label: 0..1}}.
 export function getAiUsage() {
-  return apiFetch(`${API_URL}/skills/platform/settings/services/ai-usage`)
+  return apiFetch(`${API_URL}/core/settings/services/ai-usage`)
 }
 
 export function downloadProject(projectId) {
@@ -137,5 +137,5 @@ export function downloadProject(projectId) {
 // time, by run_at per `order` (see db/tasks.py's list_tasks).
 export function getScheduledTasks(status, order = 'asc') {
   const params = new URLSearchParams({ status, order })
-  return apiFetch(`${API_URL}/skills/platform/settings/tasks?${params}`)
+  return apiFetch(`${API_URL}/core/settings/tasks?${params}`)
 }

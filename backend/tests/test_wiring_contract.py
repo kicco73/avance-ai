@@ -60,9 +60,22 @@ def _controller_classes():
 
 
 def _skill_service_names() -> set[str]:
-    """`<key>_service` for every installed skill — what a skill offers
-    its own controllers alongside the core registry."""
-    return {f"{skill.key}_service" for skill in skills.discover()}
+    """What a skill hands its own controllers alongside the core
+    registry: every literal key in a `construct(...)` call inside its
+    package, plus `<key>_service` for a skill that builds one some other
+    way. Read off the source, like the core registry above."""
+    offered = {f"{skill.key}_service" for skill in skills.discover()}
+    for skill in skills.discover():
+        for path in (SRC / skill.package).rglob("*.py"):
+            for node in ast.walk(ast.parse(path.read_text())):
+                if not isinstance(node, ast.Call) or getattr(node.func, "id", None) != "construct":
+                    continue
+                offered.update(
+                    key.value
+                    for inner in ast.walk(node) if isinstance(inner, ast.Dict)
+                    for key in inner.keys if isinstance(key, ast.Constant) and isinstance(key.value, str)
+                )
+    return offered
 
 
 def test_every_controller_asks_only_for_names_something_offers():
@@ -79,11 +92,40 @@ def test_every_controller_asks_only_for_names_something_offers():
     )
 
 
+def _self_reads(node) -> set:
+    return {
+        attribute.attr
+        for attribute in ast.walk(node)
+        if isinstance(attribute, ast.Attribute)
+        and isinstance(attribute.value, ast.Name)
+        and attribute.value.id == "self"
+        and isinstance(attribute.ctx, ast.Load)
+    }
+
+
+def _stored_as(init) -> dict[str, set[str]]:
+    """parameter -> the self attributes it is assigned to, so a
+    dependency kept under a different name (self._config = whatsapp_config)
+    is found by what reads it, not by what it was called."""
+    stored: dict[str, set[str]] = {}
+    for node in ast.walk(init):
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Name):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Attribute) and getattr(target.value, "id", None) == "self":
+                stored.setdefault(node.value.id, set()).add(target.attr)
+    return stored
+
+
 def test_no_controller_takes_a_parameter_it_never_reads():
     """A dependency that exists only to be assigned to self is not a
     dependency. It matters more now than it did: wiring by name turns
     every parameter into a declared requirement, and this is what keeps
-    a dead one from being declared forever."""
+    a dead one from being declared forever.
+
+    A mixin counts as a reader. SettingsController assigns turn_service
+    for ProjectCommitMixin and never names it again in its own file — the
+    dependency is real, and reading one file could not see it."""
     dead = {}
     for path in sorted(SRC.rglob("*_controller.py")):
         for node in ast.parse(path.read_text()).body:
@@ -95,15 +137,19 @@ def test_no_controller_takes_a_parameter_it_never_reads():
             if init is None:
                 continue
             parameters = [argument.arg for argument in init.args.args if argument.arg != "self"]
-            read = {
-                attribute.attr
-                for attribute in ast.walk(node)
-                if isinstance(attribute, ast.Attribute)
-                and isinstance(attribute.value, ast.Name)
-                and attribute.value.id == "self"
-                and isinstance(attribute.ctx, ast.Load)
+            stored = _stored_as(init)
+            read = _self_reads(node) | {
+                attribute
+                for base in node.bases if isinstance(base, ast.Name)
+                for sibling in path.parent.glob("*.py")
+                for other in ast.parse(sibling.read_text()).body
+                if isinstance(other, ast.ClassDef) and other.name == base.id
+                for attribute in _self_reads(other)
             }
-            never_read = [name for name in parameters if name not in read]
+            never_read = [
+                name for name in parameters
+                if name not in read and not (stored.get(name, set()) & read)
+            ]
             if never_read:
                 dead[node.name] = never_read
 

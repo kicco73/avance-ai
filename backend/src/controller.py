@@ -16,7 +16,9 @@ from project.project_controller import ProjectController
 from project.project_service import ProjectService
 from system import bus
 from system.bus import POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
+from system.wiring import construct
 from system.api_state_controller import ApiStateController
+from system.server_admin_controller import ServerAdminController
 from system.skills_controller import SkillsController
 from system.bus_channel import BusChannel
 from turn.session_controller import SessionController
@@ -37,6 +39,7 @@ class AvanceController(object):
             ProjectController(turn_service, project_service),
             SessionController(turn_service),
             ApiStateController(turn_service, project_service),
+            construct(ServerAdminController, bus.collect(POINT_CORE_SERVICES, {})),
             SkillsController(),
         ]
         # Signing in is not part of the authoring surface: the middleware

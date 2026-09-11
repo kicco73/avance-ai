@@ -77,7 +77,7 @@ def test_a_package_with_no_frontend_directory_is_still_a_name_the_core_may_not_u
     `/api/skills/<key>/` is a delivery that 404s. This is what let a
     build ship a frontend calling a platform that was not there."""
     source = _frontend_tree(tmp_path / "frontend")
-    (source / "src" / "api.js").write_text("fetch(`${API_URL}/skills/platform/settings/services`)")
+    (source / "src" / "api.js").write_text("fetch(`${API_URL}/skills/platform/projects`)")
     copy = FrontendCopy(source, tmp_path / "out", ["avance_platform"])
 
     with pytest.raises(FrontendBuildError, match="still names platform"):

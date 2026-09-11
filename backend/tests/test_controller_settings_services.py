@@ -18,7 +18,7 @@ def _zip_of(files: dict[str, str]) -> bytes:
 
 @pytest.mark.contract
 def test_get_services_returns_the_configured_snapshot_verbatim(client):
-    response = client.get("/api/skills/platform/settings/services")
+    response = client.get("/api/core/settings/services")
 
     assert response.status_code == 200
     body = response.json()
@@ -32,7 +32,7 @@ def test_wipe_all_live_sessions_deletes_sessions_across_every_project(client, he
     session_id = client.get("/api/skills/webchat/sessions/current").json()["id"]
     assert client.get(f"/api/skills/webchat/sessions/{session_id}/messages").status_code == 200
 
-    response = client.post("/api/skills/platform/settings/database/wipe-live-sessions")
+    response = client.post("/api/core/settings/database/wipe-live-sessions")
 
     assert response.status_code == 200
     assert response.json()["success"] is True
@@ -59,7 +59,7 @@ def test_clean_unused_revisions_deletes_only_superseded_unpublished_drafts(clien
 
     assert client.put(f"/api/skills/platform/projects/{project_id}/files/notes.txt", content=b"v2").status_code == 200  # forks to revision 2 (draft)
 
-    response = client.post("/api/skills/platform/settings/database/clean-unused-revisions")
+    response = client.post("/api/core/settings/database/clean-unused-revisions")
 
     assert response.status_code == 200
     body = response.json()

@@ -238,7 +238,7 @@ def test_the_composition_root_names_no_controller_a_build_could_leave_out(tmp_pa
     source = (_Path(__file__).resolve().parents[2] / "controller.py").read_text()
 
     for core_controller in ("ProjectController", "SessionController", "AuthController",
-                            "ApiStateController", "SkillsController"):
+                            "ApiStateController", "ServerAdminController", "SkillsController"):
         assert core_controller in source, core_controller
     for left_out in ("EditProjectController", "SettingsController", "InspectorController",
                      "BuildController", "AppStoreController", "LabelProjectController",

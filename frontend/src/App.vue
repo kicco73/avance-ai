@@ -54,8 +54,7 @@ const { onChatBeforeEnter, onChatEnter, onChatBeforeLeave, onChatLeave } = useCh
 const {
   modelUploadInput, uploadingProject, uploadProgress, uploadProjectId, uploadIconReady,
   triggerModelUpload, handleNewProject, handleModelUploadChange, handleModelEditSaved, handleProjectSwitch,
-  activateAndRefresh, handleModelDownload, handleModelDelete, handlePublishProject, handleWipeAllLiveSessions,
-  handleCleanUnusedRevisions, handleDownloadBackup, handleRestoreBackup, handleShowAbout,
+  activateAndRefresh, handleModelDownload, handleModelDelete, handlePublishProject, handleShowAbout,
 } = useProjectAdminActions()
 
 const {
@@ -333,10 +332,6 @@ onBeforeUnmount(() => {
               v-else-if="pushedView === 'services'"
               :profile="currentUserProfile"
               @close="popPushedView"
-              @download-backup="handleDownloadBackup"
-              @restore-backup="handleRestoreBackup"
-              @wipe-live-sessions="handleWipeAllLiveSessions"
-              @clean-unused-revisions="handleCleanUnusedRevisions"
               v-on="profileMenuListeners"
             />
             <AppStoreView

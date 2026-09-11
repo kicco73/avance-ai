@@ -31,7 +31,16 @@ defineProps({
 // pass-through — App.vue owns the actual fetch + confirmation logic for
 // backup restore, same as it always has; this view confirms the wipe
 // itself, same as Manage projects' own per-project wipe used to.
-const emit = defineEmits(['close', 'download-backup', 'restore-backup', 'wipe-live-sessions', 'clean-unused-revisions', 'home', 'profile', 'logout'])
+import { useProjectAdminActions } from '../../composables/useProjectAdminActions.js'
+const emit = defineEmits(['close', 'home', 'profile', 'logout'])
+
+// The four admin actions this screen offers used to be emitted up to
+// App.vue, which called this same composable and handed them back. They
+// are this screen's own, and App.vue holding them is what kept the shell
+// naming a screen it should not have to know about.
+const {
+  handleWipeAllLiveSessions, handleCleanUnusedRevisions, handleDownloadBackup, handleRestoreBackup,
+} = useProjectAdminActions()
 
 // Fallbacks only: every section the backend sends carries its own
 // 'ui-label'/'ui-description' (see AppConfig.public_services_snapshot and
@@ -223,7 +232,7 @@ async function selectWipeAllLiveSessions() {
     danger: true
   })
   if (!ok) return
-  emit('wipe-live-sessions')
+  await handleWipeAllLiveSessions()
 }
 
 // Only ever removes archive revisions that are already unreachable
@@ -236,7 +245,7 @@ async function selectCleanUnusedRevisions() {
     okLabel: 'Clean'
   })
   if (!ok) return
-  emit('clean-unused-revisions')
+  await handleCleanUnusedRevisions()
 }
 </script>
 
@@ -336,14 +345,14 @@ async function selectCleanUnusedRevisions() {
 
           <div class="services-section">
             <div class="services-actions-row">
-              <button type="button" class="services-action-btn" @click="emit('download-backup')">Download backup</button>
+              <button type="button" class="services-action-btn" @click="handleDownloadBackup()">Download backup</button>
               <label class="services-action-btn services-restore-label">
                 Restore backup...
                 <input
                   type="file"
                   accept=".sqlite"
                   class="services-restore-input"
-                  @change="(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) emit('restore-backup', f) }"
+                  @change="(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) handleRestoreBackup(f) }"
                 />
               </label>
               <button type="button" class="services-action-btn services-action-btn-danger" @click="selectWipeAllLiveSessions">Wipe all live sessions</button>
