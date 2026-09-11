@@ -71,8 +71,9 @@ class AuthController(BaseController):
         return {"success": True}
 
     # role="pending": App.vue's own TermsView-vs-InviteRequiredView gate
-    # needs this before ever calling accept-terms, for an identity that
-    # has no User row yet — same reachability as accept-terms/logout.
+    # needs this before ever posting terms/acceptance, for an identity
+    # that has no User row yet — same reachability as that route and
+    # logout.
     @get("/api/skills/platform/auth/pending-status", role="pending")
     def get_pending_status(self):
         return {"invite_exempt": self.auth_service.is_invite_exempt(Session().user)}
