@@ -90,7 +90,7 @@ def test_bootstrap_creates_a_session_whose_annotations_title_and_comment_round_t
     session = response.json()
     assert session["project_id"] == hello_project
     assert session["open"] is True
-    assert session["active"] is True
+    assert session["current"] is True
     assert session["has_annotations"] is False
     assert session["comment"] is None
     assert _sessions_by_id(client, hello_project)[session["id"]]["has_annotations"] is False
@@ -123,12 +123,12 @@ def test_labeled_title_and_comment_work_for_an_imported_session_which_is_never_a
     response = client.put(f"/api/skills/platform/sessions/{session_id}/labeled", json={"labeled": True})
     assert response.status_code == 200
     assert response.json()["has_annotations"] is True
-    assert response.json()["active"] is False
+    assert response.json()["current"] is False
     assert client.put(f"/api/skills/platform/sessions/{session_id}/labeled", json={"labeled": False}).json()["has_annotations"] is False
 
     title_resp = client.put(f"/api/skills/platform/sessions/{session_id}/title", json={"title": "Renamed import"})
     assert title_resp.status_code == 200
-    assert title_resp.json()["active"] is False
+    assert title_resp.json()["current"] is False
 
     comment_resp = client.put(f"/api/skills/platform/sessions/{session_id}/comment", json={"comment": "note"})
     assert comment_resp.status_code == 200
@@ -149,15 +149,15 @@ def test_a_manual_new_session_closes_and_supersedes_the_bootstrap_one_rejecting_
     newer = client.post("/api/skills/webchat/sessions").json()
 
     assert newer["id"] != older["id"]
-    assert newer["active"] is True
+    assert newer["current"] is True
     sessions = _sessions_by_id(client, hello_project)
     # "New session" explicitly closes whatever was open before creating
     # the new one — the older session is closed, not just superseded.
     assert sessions[older["id"]]["open"] is False
-    assert sessions[older["id"]]["active"] is False
+    assert sessions[older["id"]]["current"] is False
     assert sessions[older["id"]]["close_reason"] == "force-new-session"
     assert sessions[newer["id"]]["open"] is True
-    assert sessions[newer["id"]]["active"] is True
+    assert sessions[newer["id"]]["current"] is True
 
     error = _turn_error(client, older["id"])
     assert "closed" in error["message"].lower()
@@ -178,17 +178,17 @@ def test_close_session_ends_it_idempotently_without_a_replacement_and_turns_on_i
     assert response.status_code == 200
     body = response.json()
     assert body["id"] == session["id"]
-    assert body["active"] is False
+    assert body["current"] is False
     assert body["open"] is False
     assert body["close_reason"] == "manual-user"
     sessions = _sessions_by_id(client, hello_project)
     assert set(sessions) == {session["id"]}
-    assert sessions[session["id"]]["active"] is False
+    assert sessions[session["id"]]["current"] is False
     assert sessions[session["id"]]["open"] is False
 
     again = client.post(f"/api/skills/webchat/sessions/{session['id']}/close")
     assert again.status_code == 200
-    assert again.json()["active"] is False
+    assert again.json()["current"] is False
 
     assert _turn_error(client, session["id"])["code"] == "session_closed"
 

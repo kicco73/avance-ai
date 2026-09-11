@@ -4,8 +4,6 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from system.session import Session
-
 if TYPE_CHECKING:
     from automaton.automaton import Automaton
     from turn.sessions.session_manager import SessionManager
@@ -29,11 +27,30 @@ class SessionTypeStrategy(ABC):
     @abstractmethod
     def resolve_session(self, session_manager: "SessionManager", username: str, project_id: str) -> dict | None: ...
 
-    # Whether this specific session may currently be written to (a chat
-    # turn or manual action applied to it) — `active_session` is whatever
-    # currently occupies this type's active-slot pool, if any.
+    # Whether this session is the one this type's active-slot pool
+    # currently holds — `active_session` is whatever occupies that pool,
+    # if any. Deliberately channel-free: it is the half of writability
+    # that has nothing to do with where a caller is speaking from, and
+    # it is what every session payload reports (see TurnService.
+    # _session_payload's "current"). Session listings, titles, comments
+    # and the close button all go through here, and none of them is a
+    # channel at all.
     @abstractmethod
-    def is_valid_write_target(self, session: dict, active_session: dict | None) -> bool: ...
+    def is_current(self, session: dict, active_session: dict | None) -> bool: ...
+
+    # XXX Compiled automaton requirement - do not touch.
+    # XXX Whether this specific session may be written to (a chat turn or
+    # manual action applied to it) *from `channel`*. The channel is an
+    # argument and not a read of the ambient Session().channel on purpose:
+    # only the three conversation operations that authorise a write ever
+    # ask this, and each of them runs inside a channel that knows its own
+    # name (webchat/webchat_service.py, whatsapp/whatsapp_service.py).
+    # Reading it here instead would force every caller to have one, which
+    # is what made auth/auth_middleware.py forge native-chat for every
+    # HTTP request — core naming a skill's channel, and a build without
+    # src/webchat/ still carrying the name of its channel.
+    @abstractmethod
+    def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool: ...
 
     # The state a brand-new session of this type should start in — each
     # strategy resolves this itself via project_service, using whatever
@@ -78,11 +95,16 @@ class LiveSessionStrategy(SessionTypeStrategy):
     def resolve_session(self, session_manager: "SessionManager", username: str, project_id: str) -> dict | None:
         return session_manager.get_active_session(username, project_id, type=self.type_name)
 
-    def is_valid_write_target(self, session: dict, active_session: dict | None) -> bool:
-        return (
-            active_session is not None and active_session["id"] == session["id"]
-            and session["channel"] == Session().channel
-        )
+    def is_current(self, session: dict, active_session: dict | None) -> bool:
+        return active_session is not None and active_session["id"] == session["id"]
+
+    def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool:
+        # A live session belongs to exactly one channel for its whole
+        # life: whoever opened it. Another channel writing to it would
+        # interleave two conversations into one transcript, so it has to
+        # supersede the session instead (see SessionManager.
+        # acquire_exclusive_session's "channel-switch").
+        return self.is_current(session, active_session) and session["channel"] == channel
 
     def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
         automaton, state = project_service.get_automaton_and_state(project_id, type=self.type_name, username=username)
@@ -117,7 +139,10 @@ class TestSessionStrategy(SessionTypeStrategy):
     def resolve_session(self, session_manager: "SessionManager", username: str, project_id: str) -> dict | None:
         return session_manager.get_active_session(username, project_id, type=self.type_name)
 
-    def is_valid_write_target(self, session: dict, active_session: dict | None) -> bool:
+    def is_current(self, session: dict, active_session: dict | None) -> bool:
+        return True
+
+    def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool:
         return True
 
     def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
@@ -141,7 +166,10 @@ class PreviewSessionStrategy(SessionTypeStrategy):
     def resolve_session(self, session_manager: "SessionManager", username: str, project_id: str) -> dict | None:
         return session_manager.get_active_session(username, project_id, type=self.type_name)
 
-    def is_valid_write_target(self, session: dict, active_session: dict | None) -> bool:
+    def is_current(self, session: dict, active_session: dict | None) -> bool:
+        return True
+
+    def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool:
         return True
 
     def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
@@ -167,7 +195,10 @@ class ImportedSessionStrategy(SessionTypeStrategy):
             "An imported session is never resolved-or-created — it only ever exists via import."
         )
 
-    def is_valid_write_target(self, session: dict, active_session: dict | None) -> bool:
+    def is_current(self, session: dict, active_session: dict | None) -> bool:
+        return False
+
+    def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool:
         return False
 
     def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:

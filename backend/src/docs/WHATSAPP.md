@@ -31,10 +31,10 @@ Meta ──POST /api/skills/whatsapp/webhook──▶ WhatsAppController   (role
 - `whatsapp/cloud_api_client.py` — `send_text` (auto-split over 4096 chars), `send_buttons`/`send_list` (interactive replies), `send_audio`, `upload_media`/`download_media`, and `mark_read`.
 - `whatsapp/audio.py` — WAV (as `TalkService` emits it, streaming header included) → MP3. WhatsApp renders OGG/Opus as a voice note (waveform, mic icon) and any other audio type as a plain audio message with the generic player; the bot's replies go out as MP3 so they show as audio messages. Encoder from PyAV, already installed as faster-whisper's dependency; no ffmpeg binary.
 - `chat/turn_service.py` — `manual_actions` on every state payload reaching a client with a known session (`_with_manual_actions`); `automaton/automaton.py`'s `manual_actions_for` is the actual filter, shared with `tracking/wakeup_service.py`'s own cross-project notification push.
-- `controllers/whatsapp_controller.py` — the two webhook routes, under `/api/` so `nginx.conf` needs no change.
+- `whatsapp/whatsapp_controller.py` — the two webhook routes, under `/api/` so `nginx.conf` needs no change.
 - `config.py` — `WhatsAppServiceConfig` / `whatsapp-service` section (optional, default off; see `.config.example.yml`).
 - `db/models.py` / `db/users.py` — `User.whatsapp_phone_number`, the phone → account link itself.
-- `controllers/auth_controller.py` — `PUT /api/skills/platform/auth/me/whatsapp-phone-number`, ProfileView.vue's own save action.
+- `avance_platform/auth_controller.py` — `PUT /api/skills/platform/auth/me/whatsapp-phone-number`, ProfileView.vue's own save action.
 - `auth/auth_service.py` — `register_via_whatsapp`, the WhatsApp-native signup path (shares `_register_with_invite` with the web's own `complete_registration`).
 - `project/invites.py` — `whatsapp_url` on a created invite's payload, `ShareProjectDialog.vue`'s WhatsApp QR.
 - `tracking/actuators/actuator_set.py` — `task.whatsapp(phone_number, message_md)`, the proactive-send entry point (see below).

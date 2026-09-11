@@ -12,7 +12,6 @@ empty payload nobody reads.
 from __future__ import annotations
 
 from http import HTTPStatus
-from pathlib import Path
 
 from fastapi import HTTPException
 
@@ -22,25 +21,13 @@ from system.bus import POINT_API_STATE
 from system.config_services import talk_configured
 
 from turn.turn_service import TurnService
+from avance_platform.doc_catalog import DOCS
 from avance_platform.platform_service import PlatformService
 from project.project_service import ProjectService
 from schemas import AiModelSelectionRequest
 
 from controllers.base_controller import BaseController, get, post
 
-# Slug -> filename under src/docs/ — a fixed allow-list, not a raw path
-# built from the request, so get_doc can never be tricked into reading
-# anything outside this directory.
-DOC_FILES = {
-    "project-specs": "PROJECT_SPECS.md",
-    "metrics": "METRICS.md",
-    "benchmark": "BENCHMARK.md",
-    "markdown-guide": "MARKDOWN_GUIDE.md",
-    "session-specs": "SESSION_SPECS.md",
-    "skin-specs": "SKIN_SPECS.md",
-    "skills": "SKILLS.md",
-}
-DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
 
 
 class PlatformController(BaseController):
@@ -60,10 +47,10 @@ class PlatformController(BaseController):
         """Raw markdown content of one of src/docs/'s fixed set of
         reference docs — backs each "(?)" documentation button instead
         of duplicating it into the frontend bundle. Unknown `name` is a 404."""
-        filename = DOC_FILES.get(name)
-        if filename is None:
+        doc = DOCS.get(name)
+        if doc is None:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"Unknown doc '{name}'.")
-        return {"content": (DOCS_DIR / filename).read_text(encoding="utf-8")}
+        return {"content": doc.render()}
 
     @get("/api/skills/platform/state")
     def get_state(self):

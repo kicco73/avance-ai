@@ -10,8 +10,9 @@ audio on. What the *editor* does to a session — env, output, signals,
 the dev-mode autotracking switch — left for
 avance_platform/inspector_controller.py, where it belonged all along.
 The first split of this file went by URL prefix, which is not what says
-who a route belongs to: avance_platform/label_project_controller.py
-serves eleven of its own under /api/skills/webchat/ too.
+who a route belongs to — it let the editor's routes leave with the chat
+window's, and left two of the chat window's own behind in the labelling
+controller, where a build without an editor would have lost them.
 """
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ from http import HTTPStatus
 
 from fastapi import HTTPException
 
-from controllers.base_controller import BaseController, get, post, put
+from controllers.base_controller import BaseController, delete, get, post, put
 from schemas import ActionRequest, ActuatorsRequest, AudioEnabledRequest, ReactionRequest
 from turn.turn_service import TurnService
 
@@ -41,6 +42,22 @@ class WebchatController(BaseController):
         """Explicit "start a new session" action — always creates one,
         superseding whichever session was previously current."""
         return await self.turn_service.create_session()
+
+    @delete("/api/skills/webchat/sessions/{session_id}")
+    def delete_session(self, session_id: int):
+        """Deletes a session and all its messages/signals. Raises
+        TurnServiceError (404) if it doesn't exist or belongs to someone
+        else — handled by the global exception handler."""
+        self.turn_service.delete_session(session_id)
+        return {"success": True}
+
+    @post("/api/skills/webchat/sessions/{session_id}/close")
+    async def post_close_session(self, session_id: int):
+        """The live chat's own "Close session" option — ends session_id
+        without starting a replacement (see post_create_session above for
+        that). Raises TurnServiceError (404) if it doesn't exist or
+        belongs to someone else."""
+        return await self.turn_service.close_session(session_id)
 
     @get("/api/skills/webchat/sessions/{session_id}/state")
     def get_session_state(self, session_id: int):

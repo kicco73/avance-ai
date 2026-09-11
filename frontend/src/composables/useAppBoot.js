@@ -6,6 +6,7 @@ import { requireLogin } from '../authStore.js'
 import { confirmDialog } from '../dialogStore.js'
 import { consumeInviteCode, peekInviteCode } from '../shareLink.js'
 import { setBuildAvailable } from '../buildAvailability.js'
+import { loadSkillRoster } from '../skillRoster.js'
 import { setCapabilities, setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../chatStore.js'
 
 // App.vue's own boot sequence: the backend-readiness ping loop, resolving
@@ -85,6 +86,7 @@ export function useAppBoot(
       setInputTokenBudgetPerTurn(newState.input_token_budget_per_turn ?? null)
       setTotalTokenBudgetPerSession(newState.total_token_budget_per_session ?? null)
       handleStateChange(newState)
+      await loadSkillRoster()
       return 'ready'
     } catch (err) {
       if (err.status === 403) return 'pending'

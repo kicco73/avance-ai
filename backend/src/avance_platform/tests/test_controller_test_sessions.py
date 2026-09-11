@@ -71,7 +71,7 @@ def test_test_session_bootstrap_succeeds_for_an_unpublished_project(client, app_
     assert response.status_code == 200
     body = response.json()
     assert body["project_id"] == "draft_only_3"
-    assert body["active"] is True
+    assert body["current"] is True
 
 
 def test_current_test_session_resumes_the_most_recent_one_instead_of_creating_a_new_one(client):
@@ -151,12 +151,12 @@ def test_regular_bootstrap_and_test_bootstrap_never_resolve_to_the_same_session(
     test_session = client.get("/api/skills/platform/projects/isolation_3/test-sessions/current").json()
 
     assert native_session["id"] != test_session["id"]
-    # Each is "active" only within its own pool.
-    assert native_session["active"] is True
-    assert test_session["active"] is True
+    # Each is "current" only within its own pool.
+    assert native_session["current"] is True
+    assert test_session["current"] is True
 
 
-def test_every_test_session_is_reported_active_not_just_the_most_recent(client):
+def test_every_test_session_is_reported_current_not_just_the_most_recent(client):
     _upload_and_activate(client, "isolation_5", UNPUBLISHED_PROJECT)
     _publish(client, "isolation_5")
     first = client.post("/api/skills/platform/projects/isolation_5/test-sessions").json()
@@ -165,8 +165,8 @@ def test_every_test_session_is_reported_active_not_just_the_most_recent(client):
     body = client.get("/api/skills/platform/projects/isolation_5/test-sessions").json()
 
     by_id = {s["id"]: s for s in body}
-    assert by_id[first["id"]]["active"] is True
-    assert by_id[second["id"]]["active"] is True
+    assert by_id[first["id"]]["current"] is True
+    assert by_id[second["id"]]["current"] is True
 
 
 def test_a_chat_turn_against_a_test_session_is_accepted_as_active(client):

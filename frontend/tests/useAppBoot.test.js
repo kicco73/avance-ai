@@ -27,6 +27,9 @@ vi.mock('../src/shareLink.js', () => ({
   consumeInviteCode: vi.fn(() => null),
   peekInviteCode: vi.fn(() => null),
 }))
+vi.mock('../src/skillRoster.js', () => ({
+  loadSkillRoster: vi.fn(),
+}))
 vi.mock('../src/chatStore.js', () => ({
   setCapabilities: vi.fn(),
   setInputTokenBudgetPerTurn: vi.fn(),
@@ -42,6 +45,7 @@ import { clearApiError } from '../src/errorStore.js'
 import { requireLogin } from '../src/authStore.js'
 import { confirmDialog } from '../src/dialogStore.js'
 import { consumeInviteCode, peekInviteCode } from '../src/shareLink.js'
+import { loadSkillRoster } from '../src/skillRoster.js'
 import { setCapabilities, setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../src/chatStore.js'
 import { useAppBoot } from '../src/composables/useAppBoot.js'
 
@@ -131,6 +135,7 @@ describe('useAppBoot', () => {
       })
 
       expect(setCapabilities).toHaveBeenCalledWith({ talkAvailable: true, micAvailable: true })
+      expect(loadSkillRoster).toHaveBeenCalled()
       expect(setInputTokenBudgetPerTurn).toHaveBeenCalledWith(8000)
       expect(setTotalTokenBudgetPerSession).toHaveBeenCalledWith(200000)
       expect(handleStateChange).toHaveBeenCalled()

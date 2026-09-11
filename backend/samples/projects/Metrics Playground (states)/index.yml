@@ -30,7 +30,7 @@ avance-version: "1.7.0"
 #
 # How to exercise each branch from "engaged" (FIFO priority: only the
 # first branch whose trigger is true actually fires each turn, but every
-# branch's result is visible via POST /api/triggers/preview regardless):
+# branch's result is visible in the preview regardless):
 #
 # - notice_mood: send a message with a clearly positive tone — "mood" is
 #   re-estimated by the AI every user turn.

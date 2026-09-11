@@ -110,8 +110,23 @@ describe('skill boundaries', () => {
     expect(offenders).toEqual([])
   })
 
-  it('keeps the api barrel free of skill routes', () => {
-    expect(readFileSync(join(SRC, 'api.js'), 'utf8')).not.toContain('skills/')
+  it('keeps the api barrel free of skill modules', () => {
+    expect(readFileSync(join(SRC, 'api.js'), 'utf8')).not.toContain('./skills/')
+  })
+
+  it('lets a skill call its own routes and no others', () => {
+    const offenders = []
+    for (const key of skillKeys) {
+      for (const path of sourceFilesUnder(join(SKILLS, key))) {
+        const text = readFileSync(path, 'utf8')
+        for (const [route] of text.matchAll(/\$\{API_URL\}(\/[a-z0-9-]+(?:\/[a-z0-9-]+)?)/g)) {
+          const prefix = route.replace('${API_URL}', '')
+          if (prefix.startsWith('/core/') || prefix === `/skills/${key}`) continue
+          offenders.push(`${relative(ROOT, path)} calls ${prefix}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
   })
 
   it('reaches a skill only through the registry glob', () => {

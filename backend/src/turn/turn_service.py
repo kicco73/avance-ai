@@ -144,7 +144,7 @@ class TurnService(object):
 	def _strip_timestamps(history: list[dict]) -> list[dict]:
 		return [{"role": m["role"], "content": m["content"]} for m in history]
 
-	def _session_payload(self, session: dict, *, active: bool) -> dict:
+	def _session_payload(self, session: dict, *, current: bool) -> dict:
 		return {
 			"id": session["id"],
 			"username": session["username"],
@@ -160,7 +160,13 @@ class TurnService(object):
 			"closed_at": _utc_iso(session["closed_at"]),
 			"close_reason": session["close_reason"],
 			"open": self._session_manager.is_open(session),
-			"active": active,
+			# Whether this is the session its type's active slot holds —
+			# nothing about whether *you* may write to it. Writability is
+			# this AND the session having been opened on your own channel,
+			# which `channel` above already says: the client knows which
+			# channel it is, this service does not (see
+			# SessionTypeStrategy.is_current).
+			"current": current,
 			"has_annotations": session["labeled"],
 			"comment": session["comment"],
 			"ai_summary": session["ai_summary"],
@@ -214,10 +220,10 @@ class TurnService(object):
 			return {"legal_terms_pending": True, "project_id": project_id}
 		return None
 
-	def _session_response(self, session: dict, *, active: bool) -> dict:
+	def _session_response(self, session: dict, *, current: bool) -> dict:
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
 		state_payload = self._with_manual_actions(session["id"], automaton.get_state_payload(state))
-		return {**self._session_payload(session, active=active), "state": state_payload}
+		return {**self._session_payload(session, current=current), "state": state_payload}
 
 	async def _get_current_session_if_any_or_create_new_of_type(
 		self, strategy: SessionTypeStrategy, project_id: str, session_id: int | None
@@ -236,7 +242,9 @@ class TurnService(object):
 				)
 			except ValueError as exc:
 				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		return self._session_response(session, active=session["channel"] == Session().channel)
+		# Current by construction: get_current_session_if_any_or_create_new
+		# either resolved this type's active session or created one.
+		return self._session_response(session, current=True)
 
 	async def get_current_session_if_any_or_create_new(self, session_id: int | None) -> dict:
 		project_id = self._active_project_id
@@ -268,7 +276,7 @@ class TurnService(object):
 				)
 			except ValueError as exc:
 				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		return self._session_response(session, active=True)
+		return self._session_response(session, current=True)
 
 	async def record_unsolicited_reply(self, username: str, project_id: str, content: str) -> None:
 		"""An assistant message a channel sent on its own initiative,
@@ -300,7 +308,7 @@ class TurnService(object):
 			except ValueError as exc:
 				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		automaton = self._project_service.get_automaton_for_session(session["id"])
-		payload = self._session_payload(session, active=True)
+		payload = self._session_payload(session, current=True)
 		if strategy.task_for_new_session(automaton) is not None:
 			self._schedule_task(automaton, automaton.init_action, session["id"], project_id)
 		return payload
@@ -335,7 +343,7 @@ class TurnService(object):
 		active = self._session_manager.get_active_session(self._username, project_id, type=active_type)
 		return [
 			{
-				**self._session_payload(s, active=get_session_type_strategy(s["type"]).is_valid_write_target(s, active)),
+				**self._session_payload(s, current=get_session_type_strategy(s["type"]).is_current(s, active)),
 				"unsupported_revision": self._session_revision_unsupported(s),
 			}
 			for s in sessions
@@ -374,7 +382,7 @@ class TurnService(object):
 		assert session is not None
 		strategy = get_session_type_strategy(session["type"])
 		active_session = self._session_manager.get_active_session(self._username, session["project_id"], type=session["type"])
-		return self._session_payload(session, active=strategy.is_valid_write_target(session, active_session))
+		return self._session_payload(session, current=strategy.is_current(session, active_session))
 
 	def set_session_title(self, session_id: int, title: str | None) -> dict:
 		self._ownership.require_own_session(session_id)

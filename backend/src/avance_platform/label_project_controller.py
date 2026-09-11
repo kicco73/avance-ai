@@ -104,22 +104,6 @@ class LabelProjectController(BaseController):
         self.tracking_service.delete_sessions_by_username(project_id, username)
         return {"success": True}
 
-    @delete("/api/skills/webchat/sessions/{session_id}")
-    def delete_session(self, session_id: int):
-        """Deletes a session and all its messages/signals. Raises
-        TurnServiceError (404) if it doesn't exist or belongs to someone
-        else — handled by the global exception handler."""
-        self.turn_service.delete_session(session_id)
-        return {"success": True}
-
-    @post("/api/skills/webchat/sessions/{session_id}/close")
-    async def post_close_session(self, session_id: int):
-        """The live chat's own "Close session" option — ends session_id
-        without starting a replacement (see chat_controller.py's own
-        POST /api/skills/webchat/sessions for that). Raises TurnServiceError (404)
-        if it doesn't exist or belongs to someone else."""
-        return await self.turn_service.close_session(session_id)
-
     @put("/api/skills/platform/sessions/{session_id}/labeled", role="supervisor")
     def put_session_labeled(self, session_id: int, req: SetSessionLabeledRequest):
         """The "Label sessions" view's "Mark done" button. Raises

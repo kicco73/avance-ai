@@ -32,6 +32,7 @@ from system.logging_factory import LoggerFactory
 logger = LoggerFactory.get_logger(__name__)
 
 SKILL_MODULE = "skill"
+DOC_FILE = "docs/SKILL.md"
 
 
 class Skill:
@@ -79,6 +80,13 @@ class Skill:
 
     def requirements(self) -> list[str]:
         return []
+
+    def documentation(self) -> str:
+        path = Path(inspect.getfile(type(self))).resolve().parent / DOC_FILE
+        try:
+            return path.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            return ""
 
 
 _skills: dict[str, Skill] = {}
@@ -138,6 +146,11 @@ def installed(source_root: Path | None = None) -> list[dict]:
         }
         for skill in discover(source_root)
     ]
+
+
+def documentation(source_root: Path | None = None) -> str:
+    sections = [skill.documentation() for skill in discover(source_root)]
+    return "\n\n".join(section for section in sections if section)
 
 
 def requirements_of(packages: list[str], source_root: Path | None = None) -> list[str]:

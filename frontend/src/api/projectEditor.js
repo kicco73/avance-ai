@@ -85,15 +85,6 @@ export function putServiceLevel(projectId, service, level) {
   )
 }
 
-// The services a project may declare a level for, as this backend has
-// them installed — name, label and description all read off the server's
-// own source tree. There is no endpoint for this subset: the skills
-// collection already carries `declarable` on every row, so this filters
-// what it has rather than asking a second question about the same rows.
-export async function getDeclarableServices() {
-  const { skills } = await apiFetch(`${API_URL}/skills`)
-  return { services: skills.filter(skill => skill.declarable) }
-}
 
 // Every file type a project can carry, straight from the backend's own
 // catalog (automaton.file_types) — see projectFileTypes.js.

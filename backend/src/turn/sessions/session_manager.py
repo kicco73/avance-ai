@@ -125,7 +125,12 @@ class SessionManager(object):
             raise SessionNotWritable("Session is closed.", code="session_closed")
         strategy = get_session_type_strategy(session["type"])
         active = self.get_active_session(username, project_id, type=session["type"])
-        if not strategy.is_valid_write_target(session, active):
+        # The one place a channel genuinely decides an outcome: this is
+        # an authorised write, and Session().channel here is whoever is
+        # actually speaking — set by the channel's own service (see
+        # webchat/webchat_service.py and whatsapp/whatsapp_service.py),
+        # never by a transport guessing on their behalf.
+        if not strategy.is_valid_write_target(session, active, Session().channel):
             if active is None or active["id"] != session["id"]:
                 raise SessionNotWritable("Session is not active.", code="session_superseded")
             raise SessionNotWritable("Session is not active.", code="session_channel_mismatch")

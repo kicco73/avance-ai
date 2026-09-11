@@ -2,7 +2,7 @@
 assembled — every reserved namespace, plus every core metric as a bare
 top-level name. Constructed once and shared by every caller that needs
 this scope: TrackingEngine's auto-tracking trigger-eval/env-apply paths,
-and /api/triggers/preview's live what-if preview off already-known
+and the live what-if preview off already-known
 signal values."""
 from __future__ import annotations
 
@@ -62,7 +62,7 @@ class EvaluationScopeBuilder(object):
         self._chat_namespace = chat_namespace if chat_namespace is not None else FakeChatNamespace()
         # Optional — task.prompt() only actually runs a generation
         # call once this is given; every caller with no real AiService
-        # (test replay, /api/triggers/preview) omits it, so task.prompt()
+        # (test replay, the live what-if preview) omits it, so task.prompt()
         # there just returns "" rather than doing real work.
         self._ai_service = ai_service
 

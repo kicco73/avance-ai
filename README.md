@@ -24,10 +24,14 @@ backend/
     main.py                 entrypoint: wires everything below, exposes
                              the REST API and a shared /api/core/bus
                              socket (chat turns still go over REST/SSE)
-    controller.py            composition root — merges the 4 screen-scoped
-                             controllers below onto one router
-    controllers/             every REST route, one file per FE screen
-                             (chat/edit_project/label_project/settings)
+    controller.py            composition root — one router, holding only
+                             what no skill owns; every other controller
+                             arrives from the skill that registers it
+    controllers/             the route decorators and their registration
+                             order, nothing screen-specific. A skill's own
+                             routes live in the skill's package, so a build
+                             that leaves the directory out leaves the
+                             routes out with it
     chat/                    turn processing, auto-tracking, sessions
     automaton/                index.yml parsing + the DFA itself
     project/                  project CRUD/activation/validation
@@ -195,16 +199,30 @@ only read once at process start).
 
 ## What the API covers
 
-The full, authoritative route list is `backend/src/controllers/` (one file
-per FE screen) — grouped here by area. Every endpoint scoped to a project
-or a session takes that id as a URL path segment, never a query param or
-request-body field:
+**The first segment after `/api/` names whoever answers.** A skill's key
+(`/api/skills/platform/…`, `/api/skills/webchat/…`, `/api/skills/testing/…`,
+`/api/skills/build/…`, `/api/skills/talk/…`, `/api/skills/listen/…`,
+`/api/skills/whatsapp/…`) or `core` for what no skill owns
+(`/api/core/…`), which every build answers. `GET /api/skills` is the one
+route outside every prefix, and has to be: it is the list of which
+prefixes exist at all.
+
+The rule is what makes a 404 readable — `/api/skills/talk/*` going quiet
+is a build without `backend/src/talk/`, not a bug — so a new route goes
+under its own skill's key. That is checked, not remembered:
+`backend/tests/test_route_ownership.py` reads the decorators and fails on
+a route declared outside its package's prefix.
+
+There is no route list to maintain: the authoritative one is the
+decorators themselves, grouped here by area. Every endpoint scoped to a
+project or a session takes that id as a URL path segment, never a query
+param or request-body field:
 
 | Area | Examples |
 | --- | --- |
-| Chat | `GET/POST /api/skills/webchat/session(s)`, `DELETE /api/skills/webchat/sessions/{id}`, `GET /api/skills/webchat/sessions/{id}/messages`, `POST /api/skills/webchat/sessions/{id}/action`, `POST /api/skills/webchat/reset`. Sending a message is **not** an endpoint: a turn travels as a `turn` frame on the `/api/core/bus` websocket, the chat's only transport (see `backend/src/docs/PROJECT_SPECS.md` §0) |
+| Chat | `GET/POST /api/skills/webchat/session(s)`, `DELETE /api/skills/webchat/sessions/{id}`, `GET /api/skills/webchat/sessions/{id}/messages`, `POST /api/skills/webchat/sessions/{id}/action`. Sending a message is **not** an endpoint: a turn travels as a `turn` frame on the `/api/core/bus` websocket, the chat's only transport (see `backend/src/docs/PROJECT_SPECS.md` §0) |
 | Auto-tracking | `GET/POST /api/skills/platform/sessions/{id}/autotracking` — "Dev mode: freeze automatic state transitions", scoped to one 'test' session (EditProjectView.vue's own embedded "Test" chat); a native/imported session is always auto-tracked |
-| Live analytics | `GET /api/skills/platform/inspector/signals` (last computed signal values, active project), `GET /api/core/projects/{project_id}/metrics` (metrics_framework, computed on demand), `POST /api/triggers/preview` |
+| Live analytics | `GET /api/skills/platform/inspector/signals` (last computed signal values, active project), `GET /api/core/projects/{project_id}/metrics` (metrics_framework, computed on demand) |
 | AI model | `GET /api/skills/platform/ai/models`, `POST /api/skills/platform/ai/models/selection` |
 | Voice | `GET /api/skills/talk/messages/{id}/audio` (TTS), `POST /api/skills/listen/transcribe` (STT) |
 | Projects | `GET/POST /api/skills/platform/projects`, `POST /api/skills/platform/projects/upload` (create or add a revision — see `backend/src/docs/PROJECT_SPECS.md` §2.2), `PUT /api/skills/platform/projects/{project_id}/activate`, `GET/DELETE /api/skills/platform/projects/{project_id}`, `GET /api/skills/platform/projects/{project_id}/graph`, `GET /api/skills/platform/projects/{project_id}/signals`, `GET /api/core/projects/{project_id}/sessions`, `GET /api/core/projects/{project_id}/identifiers` |

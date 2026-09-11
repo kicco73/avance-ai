@@ -5,6 +5,7 @@ plain bootstrap (get_current_session_if_any_or_create_new).
 """
 from __future__ import annotations
 
+import contextvars
 from datetime import datetime, timedelta
 
 import pytest
@@ -61,6 +62,9 @@ class _FakeProjectService:
         return self._automaton, self._automaton.states["a"]
 
     def get_automaton_for_session(self, session_id):
+        return self._automaton
+
+    def get_automaton(self, project_id, revision):
         return self._automaton
 
     def get_active_project_id(self):
@@ -352,3 +356,58 @@ async def test_takeover_web_to_whatsapp_via_run_turn_then_prepare_user_initiated
 
     await turn_service.prepare_user_initiated_turn(whatsapp_payload["id"])
     assert db.get_messages(whatsapp_payload["id"]) == []
+
+
+# -- Reporting vs. admitting: only one of the two is a channel question ------
+
+def _without_a_channel(call):
+    """Runs `call` in a brand-new context, where Session().channel was
+    never set — what every caller looks like once auth/auth_middleware.py
+    stops forging native-chat for each HTTP request. Session().channel
+    raises there rather than defaulting, so any read on the way through
+    fails loudly instead of quietly answering for somebody else."""
+    context = contextvars.Context()
+
+    def run():
+        Session().user = USERNAME
+        Session().role = "supervisor"
+        return call()
+
+    return context.run(run)
+
+
+def test_reporting_on_a_session_never_asks_which_channel_the_caller_is_on(db):
+    """Session listings, titles and comments are served to the editor,
+    which is not a channel and has none to declare. They report `current`
+    — is this the session its type's active slot holds — and `channel`,
+    and leave writability to whoever is asking: a live session opened over
+    WhatsApp is perfectly current and still not the chat window's to write
+    to (see frontend sessionChannels.js's isWritableHere)."""
+    _setup_project(db)
+    manager = SessionManager(db, open_window_minutes=5)
+    session = _make_open_session(db, WHATSAPP_CHAT)
+    turn_service = _turn_service(db, session_manager=manager)
+
+    listed = _without_a_channel(lambda: turn_service.list_sessions(PROJECT_ID))
+    renamed = _without_a_channel(lambda: turn_service.set_session_title(session["id"], "Renamed"))
+
+    assert [s["id"] for s in listed] == [session["id"]]
+    assert listed[0]["current"] is True
+    assert listed[0]["channel"] == WHATSAPP_CHAT
+    assert renamed["current"] is True
+    assert renamed["channel"] == WHATSAPP_CHAT
+
+
+def test_admitting_a_write_still_refuses_a_caller_with_no_channel_at_all(db):
+    """The other half, and the reason `channel` is an argument to
+    is_valid_write_target rather than a read inside it: a write has to say
+    who is speaking. A caller that cannot name its channel is not allowed
+    to guess one."""
+    _setup_project(db)
+    manager = SessionManager(db, open_window_minutes=5)
+    session = _make_open_session(db, NATIVE_CHAT)
+
+    with pytest.raises(RuntimeError, match="outside a request context"):
+        _without_a_channel(
+            lambda: manager.require_active_session(USERNAME, PROJECT_ID, session["id"], "a")
+        )

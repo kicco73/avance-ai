@@ -12,7 +12,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import MessageBubble from './MessageBubble.vue'
 import ActionButtons from './ActionButtons.vue'
-import { getMessages, getOperatorState, postAction } from '../../api/skills/webchat.js'
+import { getMessages, getOperatorState, postAction } from '../../api/chat.js'
 import { busChannel } from '../../busChannel.js'
 import { getHumanPromptForSession, removeHumanPrompt } from '../../humanPromptStore.js'
 
