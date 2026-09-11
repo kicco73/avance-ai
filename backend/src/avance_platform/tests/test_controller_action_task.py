@@ -95,7 +95,7 @@ def test_state_payload_never_carries_on_exit_itself(client):
 def test_get_state_has_no_task_since_nothing_just_fired(client):
     _upload_and_get_session(client)
 
-    resp = client.get("/api/skills/platform/state")
+    resp = client.get("/api/core/state")
 
     assert resp.status_code == 200
     assert "task" not in resp.json()

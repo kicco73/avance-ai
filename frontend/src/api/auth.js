@@ -3,7 +3,7 @@ import { apiFetch } from './core.js'
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 
 export function getState(signal) {
-  return apiFetch(`${API_URL}/skills/platform/state`, { signal })
+  return apiFetch(`${API_URL}/core/state`, { signal })
 }
 
 // `credential` is the Google Identity Services ID token JWT off the

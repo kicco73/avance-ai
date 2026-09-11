@@ -53,7 +53,7 @@ def test_app_keeps_working_after_a_rejected_restore(client, tmp_path):
     wrong = _make_sqlite_bytes(tmp_path, "wrong.db", ["CREATE TABLE unrelated (id INTEGER PRIMARY KEY)"])
     client.post("/api/skills/platform/settings/backup", content=wrong, headers={"Content-Type": "application/octet-stream"})
 
-    assert client.get("/api/skills/platform/state").status_code == 200
+    assert client.get("/api/core/state").status_code == 200
 
 
 @pytest.mark.regression

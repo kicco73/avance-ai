@@ -10,7 +10,7 @@ What it registers:
   - its own `listen-service` section, parsed by listen/config.py
   - a decoder on the Bus for `input.audio` (listen/decoder.py)
   - its own route (listen/listen_controller.py)
-  - `listen_enabled` on GET /api/skills/platform/state, read from the service itself at
+  - `listen_enabled` on GET /api/core/state, read from the service itself at
     the moment the answer is built — the model loads in a background
     thread, so this is False for the first moments after boot and True
     afterwards, without anyone caching a stale answer

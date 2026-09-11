@@ -1,7 +1,7 @@
 <script setup>
 // Full-viewport gate shown between a successful login and the app itself,
 // for a session that authenticated but has no User row yet (see
-// App.vue's own pingBackend — a 403 off GET /api/skills/platform/state is the signal).
+// App.vue's own pingBackend — a 403 off GET /api/core/state is the signal).
 // Same visual register as LoginView.vue. Accept creates the row
 // (postAcceptTerms) and lets App.vue resume booting; Reject logs out
 // with no row ever created — no trace of the attempt.

@@ -1,7 +1,7 @@
 <script setup>
 // Shown instead of TermsView.vue for a session that authenticated but
 // has no User row yet (see App.vue's own pingBackend — a 403 off GET
-// /api/skills/platform/state) AND arrived with no "share project" invite link (see
+// /api/core/state) AND arrived with no "share project" invite link (see
 // shareLink.js's peekInviteCode — App.vue picks between this and
 // TermsView based on it). Self-registration is invite-only now
 // (AuthService.complete_registration refuses an invite code that

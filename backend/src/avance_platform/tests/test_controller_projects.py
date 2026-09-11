@@ -62,7 +62,7 @@ def test_a_fresh_install_has_no_active_project_and_still_reports_the_configured_
     assert projects["projects"] == []
     assert projects["active"] is None
 
-    state = client.get("/api/skills/platform/state")
+    state = client.get("/api/core/state")
     assert state.status_code == 200
     assert "key" not in state.json()
     assert state.json()["input_token_budget_per_turn"] == 16000
@@ -84,7 +84,7 @@ def test_deleting_the_active_project_falls_back_to_a_remaining_one_and_degrades_
     assert client.get("/api/skills/webchat/sessions/current").status_code == 200
 
     assert client.delete(f"/api/skills/platform/projects/{cat}").status_code == 200
-    state = client.get("/api/skills/platform/state")
+    state = client.get("/api/core/state")
     assert state.status_code == 200
     assert "key" not in state.json()
     assert client.get("/api/skills/platform/projects").json()["active"] is None

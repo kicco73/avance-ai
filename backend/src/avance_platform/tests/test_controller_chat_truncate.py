@@ -47,7 +47,7 @@ def test_truncate_rejects_a_malformed_timestamp(client, hello_project):
 
 @pytest.mark.contract
 def test_truncate_response_shape_is_a_bare_state_payload(client, hello_project):
-    """Truncate returns a bare StatePayload, unlike GET /api/skills/platform/state's
+    """Truncate returns a bare StatePayload, unlike GET /api/core/state's
     superset. It never fires init-action, so it carries no "task"
     key, unlike reset's response."""
     session = client.get("/api/skills/webchat/sessions/current").json()
@@ -91,6 +91,6 @@ def test_truncate_deletes_trailing_turns_and_rolls_the_live_state_back(client):
     assert truncate_response.status_code == 200
     assert truncate_response.json()["key"] == "welcome"
 
-    assert client.get("/api/skills/platform/state").json()["key"] == "welcome"
+    assert client.get("/api/core/state").json()["key"] == "welcome"
     remaining_signals = client.get(f"/api/skills/platform/sessions/{session['id']}/signals").json()
     assert all(s["new_state"] != moved_state for s in remaining_signals)

@@ -224,16 +224,23 @@ def test_webchat_is_offered_as_something_a_build_can_leave_out(tmp_path):
 
 
 def test_the_composition_root_names_no_controller_a_build_could_leave_out(tmp_path):
-    """AvanceController builds one controller — the per-project views,
-    which every build answers. Everything else arrives through
-    bus.POINT_HTTP_CONTROLLERS, so a package that is not in the build
-    contributes nothing and its routes are simply not there."""
+    """AvanceController builds the handful every build answers however it
+    was cut: the per-project views, what addresses a session by id,
+    signing in, the boot state, and the skills roster. Everything else
+    arrives through bus.POINT_HTTP_CONTROLLERS, so a package that is not
+    in the build contributes nothing and its routes are simply not there.
+
+    AuthController is named here on purpose, and used not to be: it was
+    registered by avance_platform, so a product built without an editor
+    could not log anybody in (see auth/auth_controller.py)."""
     from pathlib import Path as _Path
 
     source = (_Path(__file__).resolve().parents[2] / "controller.py").read_text()
 
-    assert "ProjectController" in source
-    for left_out in ("EditProjectController", "SettingsController", "AuthController",
+    for core_controller in ("ProjectController", "SessionController", "AuthController",
+                            "ApiStateController", "SkillsController"):
+        assert core_controller in source, core_controller
+    for left_out in ("EditProjectController", "SettingsController", "InspectorController",
                      "BuildController", "AppStoreController", "LabelProjectController",
                      "UserController", "PlatformController"):
         assert left_out not in source, left_out
@@ -314,7 +321,7 @@ def test_a_product_copy_starts_with_no_platform_no_chat_and_no_benchmark(tmp_pat
     """The shape the whole exercise is for: one compiled project, a
     channel, and nothing to author with — and no compiler either, since
     a product serves a package somebody else built. It has no
-    /api/core/auth/providers and no /api/skills/platform/state, which is why the build's own
+    /api/core/auth/providers and no /api/core/state, which is why the build's own
     launch check cannot probe a named route."""
     copy = _copy_backend(tmp_path, ["avance_platform", "build", "webchat", "testing"])
     code, output = _boot(copy)

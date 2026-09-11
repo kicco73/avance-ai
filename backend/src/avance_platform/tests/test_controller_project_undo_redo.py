@@ -184,7 +184,7 @@ def test_undo_does_not_reset_or_reload_the_active_conversation(client):
     yml_v2 = TWO_STATE_YML + "  c:\n    contextual-prompt: extra\n"
     resp = client.put("/api/skills/platform/projects/proj2/files/index.yml", content=yml_v2.encode())
     assert resp.status_code == 200, resp.text
-    assert client.get("/api/skills/platform/state").json()["key"] == "b"
+    assert client.get("/api/core/state").json()["key"] == "b"
 
     undo_resp = client.post("/api/skills/platform/projects/proj2/files/index.yml/undo", content=yml_v2.encode())
     assert undo_resp.status_code == 200, undo_resp.text
@@ -192,4 +192,4 @@ def test_undo_does_not_reset_or_reload_the_active_conversation(client):
     # The conversation is completely untouched by the undo preview.
     sessions = client.get("/api/core/projects/proj2/sessions").json()
     assert [s["id"] for s in sessions] == [session["id"]]
-    assert client.get("/api/skills/platform/state").json()["key"] == "b"
+    assert client.get("/api/core/state").json()["key"] == "b"
