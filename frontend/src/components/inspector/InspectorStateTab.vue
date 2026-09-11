@@ -1,14 +1,18 @@
 <script setup>
-// The Inspector's "Info" tab: the project's id/ui-label/ui-description on top,
-// then either the shared Graph selection's detail card — a state OR an action,
-// whichever is actually selected — plus "+ Add state"/"+ Add action" (Behavior
-// node open), or the currently browsed file's read-only card (anything else —
-// see isBehaviorContext). Owns its own project-metadata fetch, but not the
-// selection itself.
-import { computed, onMounted, ref, watch } from 'vue'
-import { getProjectMetadata } from '../../api.js'
+// The Inspector's "Info" tab: the shared Graph selection's detail card —
+// a state OR an action, whichever is actually selected — plus "+ Add
+// state"/"+ Add action" (Behavior node open), or the currently browsed
+// file's read-only card (anything else — see isBehaviorContext). Owns
+// neither the selection nor any fetch of its own.
+//
+// The project card used to be here, with the platform route that feeds
+// it. It is the editor's alone, so it left for
+// project/edit/EditorStateTab.vue, which mounts this tab underneath it.
+// That is what lets a second screen mount this one without dragging an
+// editing surface behind it — see `readOnly` below for who that is and
+// what they should get instead.
+import { computed, ref, watch } from 'vue'
 import InspectorDetailCard from './InspectorDetailCard.vue'
-import InspectorProjectCard from './InspectorProjectCard.vue'
 import InspectorFileCard from './InspectorFileCard.vue'
 import InspectorSourceCard from './InspectorSourceCard.vue'
 import SessionDetailCard from './SessionDetailCard.vue'
@@ -65,10 +69,11 @@ const props = defineProps({
   // Test mode only: no edit form, no delete, no "+ Add state" — this tab
   // is a plain read-only viewer for whatever's selected in the Test tree.
   // IMPORTANT — this flag is the editor pretending to be two components.
-  // Its only caller is the benchmark (skills/testing/TestInfoTab.vue),
-  // which wants a reduced read-only view of a past session and gets this
-  // whole editing surface with its writes switched off. It is also why a
-  // skill still imports an editor screen: see that file's own note.
+  // Its only caller is the benchmark screen, which wants a reduced
+  // read-only view of a past session and gets this whole editing surface
+  // with its writes switched off instead. It is also the last reason a
+  // skill still imports one of the editor's own screens; that file
+  // carries the other half of this note.
   readOnly: { type: Boolean, default: false },
   // Estimated input-token cost of selectedElement's own turn prompt (see
   // EditProjectView.vue's own stateTabTokens) — a separate prop rather
@@ -79,8 +84,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'select', 'select-attachment', 'jump-to-attachment', 'set-field', 'set-project-field',
-  'set-service-level', 'delete',
+  'select', 'select-attachment', 'jump-to-attachment', 'set-field', 'delete',
   'add-state', 'add-action', 'delete-file', 'rename-file', 'open-actions-order',
   'set-source-field', 'delete-source'
 ])
@@ -127,26 +131,6 @@ watch(elementIdentity, (identity) => {
   open.value = identity != null && props.recentlyAddedKey === identity
 })
 
-const projectMetadata = ref(null)
-
-async function loadProjectMetadata() {
-  try {
-    projectMetadata.value = (await getProjectMetadata(props.projectId)).project
-  } catch {
-    // already surfaced via apiFetch
-  }
-}
-
-// Inspector.vue's own registerTab dispatch — same "reload on demand, the shell
-// never knows why" contract every other self-fetching tab (InspectorSignalsTab.vue/
-// InspectorEnvKeysTab.vue) implements.
-async function refresh() {
-  await loadProjectMetadata()
-}
-
-defineExpose({ refresh })
-
-onMounted(loadProjectMetadata)
 </script>
 
 <template>
@@ -157,13 +141,6 @@ onMounted(loadProjectMetadata)
       :deleting="deletingSource === selectedSource?.name"
       @set-field="(field, value) => emit('set-source-field', field, value)"
       @delete="emit('delete-source', selectedSource)"
-    />
-    <InspectorProjectCard
-      v-if="!readOnly && !selectedElement && !isSourceContext && !sourcesRootSelected"
-      :project="projectMetadata"
-      :editable="!readOnly"
-      @set-field="(field, value) => emit('set-project-field', field, value)"
-      @set-service-level="(service, level) => emit('set-service-level', service, level)"
     />
     <InspectorFileCard
       v-if="showFileCard"

@@ -1,6 +1,5 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
-import { putSessionTitle, putSessionComment } from '../../api.js'
 import { vAutosize } from './textareaAutosize.js'
 import { handleEnterNext } from './enterToNextField.js'
 import CardMenu from './CardMenu.vue'
@@ -15,7 +14,13 @@ const props = defineProps({
   totalTokenBudgetPerSession: { type: Number, default: null }
 })
 
-const emit = defineEmits(['updated', 'delete'])
+// The card renders a session; saving one is the screen's business, the
+// same way every other card here reports a field and lets its owner
+// write it. Keeping the two writes inside meant importing platform's own
+// routes into a card that a read-only screen also mounts — the import
+// was the coupling, not the behaviour, since `editable` already returned
+// before either call could run.
+const emit = defineEmits(['set-title', 'set-comment', 'delete'])
 
 const expanded = ref(false)
 const editTitle = ref('')
@@ -46,16 +51,14 @@ async function toggle() {
   }
 }
 
-async function onUpdateTitle() {
+function onUpdateTitle() {
   if (editTitle.value === (props.session.title ?? '')) return
-  await putSessionTitle(props.session.id, editTitle.value)
-  emit('updated')
+  emit('set-title', props.session.id, editTitle.value)
 }
 
-async function onUpdateComment() {
+function onUpdateComment() {
   if (editComment.value === (props.session.comment ?? '')) return
-  await putSessionComment(props.session.id, editComment.value)
-  emit('updated')
+  emit('set-comment', props.session.id, editComment.value)
 }
 
 const { width: tokensBarWidth, level: tokensBarLevel } = useTokensBar(

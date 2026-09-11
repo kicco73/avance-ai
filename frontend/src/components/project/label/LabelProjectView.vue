@@ -11,7 +11,7 @@ import InspectorGraphTab from '../../inspector/InspectorGraphTab.vue'
 import InspectorSignalsTab from '../../inspector/InspectorSignalsTab.vue'
 import InspectorUserInfoCard from '../../skillkit/InspectorUserInfoCard.vue'
 import SessionDetailCard from '../../inspector/SessionDetailCard.vue'
-import { getProjectGraph, putSessionLabeled, getUsers } from '../../../api.js'
+import { getProjectGraph, putSessionLabeled, putSessionTitle, putSessionComment, getUsers } from '../../../api.js'
 import { sessions, sessionsLoading, loadSessions, refreshSessionsQuietly } from '../../../chatStore.js'
 import { commentForMessage } from '../../../testTimeline.js'
 import { useResizablePanel } from '../../../composables/useResizablePanel.js'
@@ -209,6 +209,16 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleWindowResize)
 })
+
+async function handleSetSessionTitle(sessionId, title) {
+  await putSessionTitle(sessionId, title)
+  await refreshSessionsQuietly(true, props.projectId)
+}
+
+async function handleSetSessionComment(sessionId, comment) {
+  await putSessionComment(sessionId, comment)
+  await refreshSessionsQuietly(true, props.projectId)
+}
 </script>
 
 <template>
@@ -327,7 +337,8 @@ onBeforeUnmount(() => {
               <SessionDetailCard
                 :session="currentSession"
                 deletable
-                @updated="refreshSessionsQuietly(true, props.projectId)"
+                @set-title="handleSetSessionTitle"
+                @set-comment="handleSetSessionComment"
                 @delete="handleDeleteSession"
               />
             </div>

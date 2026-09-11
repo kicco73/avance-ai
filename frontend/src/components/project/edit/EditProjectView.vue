@@ -13,7 +13,7 @@ import InspectorMetricsTab from '../../inspector/InspectorMetricsTab.vue'
 import InspectorEnvTab from '../../inspector/InspectorEnvTab.vue'
 import InspectorEnvKeysTab from '../../inspector/InspectorEnvKeysTab.vue'
 import InspectorStateIOTab from '../../inspector/InspectorStateIOTab.vue'
-import InspectorStateTab from '../../inspector/InspectorStateTab.vue'
+import EditorStateTab from './EditorStateTab.vue'
 import ActionsOrderDialog from '../../inspector/ActionsOrderDialog.vue'
 import SessionDetailCard from '../../inspector/SessionDetailCard.vue'
 import ModelMenu from '../../ModelMenu.vue'
@@ -28,6 +28,7 @@ import { useIndexYmlEditing } from '../../../composables/useIndexYmlEditing.js'
 import { useProjectCatalog } from '../../../composables/useProjectCatalog.js'
 import { useLiveRunTimeline } from '../../../composables/useLiveRunTimeline.js'
 import { useStateTabTokens } from '../../../composables/useStateTabTokens.js'
+import { putSessionTitle, putSessionComment } from '../../../api.js'
 import { onProjectChanged } from '../../../projectChangeEvents.js'
 import { projectModes } from '../../../skills/registry.js'
 import { setApiWarning } from '../../../errorStore.js'
@@ -414,6 +415,16 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleWindowResize)
 })
+
+async function handleSetSessionTitle(sessionId, title) {
+  await putSessionTitle(sessionId, title)
+  await refreshSessionsQuietly()
+}
+
+async function handleSetSessionComment(sessionId, comment) {
+  await putSessionComment(sessionId, comment)
+  await refreshSessionsQuietly()
+}
 </script>
 
 <template>
@@ -520,7 +531,8 @@ onBeforeUnmount(() => {
               <SessionDetailCard
                 v-if="runCurrentSession"
                 :session="runCurrentSession"
-                @updated="refreshSessionsQuietly"
+                @set-title="handleSetSessionTitle"
+                @set-comment="handleSetSessionComment"
               />
               <InspectorGraphTab
                 :ref="registerTab('states')"
@@ -544,7 +556,7 @@ onBeforeUnmount(() => {
               />
             </template>
             <template #tab-state="{ registerTab }">
-              <InspectorStateTab
+              <EditorStateTab
                 :ref="registerTab('state')"
                 :project-id="projectId"
                 :selected-element="selectedGraphElement"
