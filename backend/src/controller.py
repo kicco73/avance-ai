@@ -18,6 +18,7 @@ from system import bus
 from system.bus import POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
 from system.wiring import construct
 from system.api_state_controller import ApiStateController
+from system.deployment_info_controller import DeploymentInfoController
 from system.skills_controller import SkillsController
 from system.bus_channel import BusChannel
 from turn.session_controller import SessionController
@@ -37,7 +38,8 @@ class AvanceController(object):
         controllers = [
             ProjectController(turn_service, project_service),
             SessionController(turn_service, project_service),
-            construct(ApiStateController, bus.collect(POINT_CORE_SERVICES, {})),
+            ApiStateController(turn_service, project_service),
+            construct(DeploymentInfoController, bus.collect(POINT_CORE_SERVICES, {})),
             SkillsController(),
         ]
         # Signing in is not part of the authoring surface: the middleware

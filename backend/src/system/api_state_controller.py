@@ -12,68 +12,18 @@ panel, and lives with one (see avance_platform/deployment_controller.py).
 """
 from __future__ import annotations
 
-from http import HTTPStatus
-
-from fastapi import HTTPException
-
 from controllers.base_controller import BaseController, get
 from project.project_service import ProjectService
 from system import bus
 from system.bus import POINT_API_STATE
-from db import Db
-from scheduler import SchedulerService
 from turn.turn_service import TurnService
-
-
-APP_NAME = "Avance"
 
 
 class ApiStateController(BaseController):
 
-    def __init__(
-        self, turn_service: TurnService, project_service: ProjectService, db: Db,
-        version: str, scheduler_service: SchedulerService, services_config: dict,
-    ) -> None:
+    def __init__(self, turn_service: TurnService, project_service: ProjectService) -> None:
         self.turn_service = turn_service
         self.project_service = project_service
-        self.db = db
-        self.version = version
-        self.scheduler_service = scheduler_service
-        self.services_config = services_config
-
-    @get("/api/core/settings/about", role="supervisor")
-    def get_about(self):
-        return {"name": APP_NAME, "version": self.version}
-
-    @get("/api/core/settings/services", role="admin")
-    def get_services(self):
-        """Read-only snapshot of .config.yml's own service sections (see
-        AppConfig.public_services_snapshot), one tab per section on the
-        frontend."""
-        return self.services_config
-
-    @get("/api/core/settings/services/ai-usage", role="admin")
-    def get_ai_usage(self):
-        """Each ai-service provider's own token spend, one point per
-        minute over the trailing 24h (see db/ai_usage.py)."""
-        labels = [f"{p['driver']}/{p['model']}" for p in self.services_config["ai"]["providers"]]
-        return self.db.get_ai_token_usage_snapshot(labels)
-
-    @get("/api/core/settings/tasks", role="admin")
-    def get_scheduled_tasks(self, status: str | None = None, order: str = "asc"):
-        """Task rows for one status at a time, by run_at per `order` (see
-        scheduler.SchedulerService.list_tasks). `payload` is omitted: it
-        is the task type's own hydration data, not meant for display."""
-        try:
-            tasks = self.scheduler_service.list_tasks(status=status, order=order)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return {
-            "tasks": [
-                {key: value for key, value in task.items() if key != "payload"}
-                for task in tasks
-            ]
-        }
 
     @get("/api/core/state")
     def get_state(self):
