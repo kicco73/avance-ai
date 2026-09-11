@@ -1,5 +1,12 @@
 # Working in this repo
 
+## Answers
+
+Keep them very short. Answer what was asked and stop. No preamble, no recap
+of what you just did, no restating the question. A few lines is normal; a
+wall of text is not. Detail belongs in the code and in `backend/src/docs/`,
+not in the reply.
+
 The conventions live in `backend/src/docs/`, one file per subject, and they
 are written to be read before the code they describe:
 
