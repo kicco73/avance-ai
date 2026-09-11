@@ -37,9 +37,9 @@ def _wait_for_run_terminal(client, project_name, run_id, timeout=5.0, interval=0
 
 
 def _make_labeled_session(client):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     chat_turn(client, session['id'], "hi")
-    client.put(f"/api/chat/sessions/{session['id']}/labeled", json={"labeled": True})
+    client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})
     return session["id"]
 
 

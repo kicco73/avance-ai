@@ -10,7 +10,7 @@ in the web UI's Sessions panel, "Label sessions", metrics, etc. exactly
 like one started in the browser.
 
 ```text
-Meta ──POST /api/whatsapp/webhook──▶ WhatsAppController   (role=None, HMAC-verified,
+Meta ──POST /api/skills/whatsapp/webhook──▶ WhatsAppController   (role=None, HMAC-verified,
                                          │                  answers 200 immediately)
                                          ▼ background task
                                     WhatsAppService.handle
@@ -134,7 +134,7 @@ same as the web's own "New session" button does when it finds one open
 (`"force-new-session"` if that's already on the web's own channel,
 `"channel-switch"` otherwise). A client that merely bootstraps without
 intent to write (`get_current_session_if_any_or_create_new`, the web's own
-`GET /api/chat/session`) never closes anything: a session from the other
+`GET /api/skills/webchat/session`) never closes anything: a session from the other
 channel comes back as-is, exposed with `active: false` — read-only until
 that client explicitly starts a new one.
 
@@ -177,4 +177,4 @@ logged and swallowed; it never flips a successful send back to `False`.
 2. *API Setup*: note the **Phone Number ID** (test number is fine to start; add your phone among the test recipients).
 3. Business Manager → System User → generate a permanent token with `whatsapp_business_messaging`.
 4. *App settings → Basic*: **App Secret**.
-5. *WhatsApp → Configuration → Webhook*: URL `https://<host>/api/whatsapp/webhook`, your `verify-token`, subscribe to **messages**. The backend must already be up with `enabled: true` — Meta does the verification GET on save.
+5. *WhatsApp → Configuration → Webhook*: URL `https://<host>/api/skills/whatsapp/webhook`, your `verify-token`, subscribe to **messages**. The backend must already be up with `enabled: true` — Meta does the verification GET on save.

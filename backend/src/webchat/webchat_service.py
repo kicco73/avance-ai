@@ -46,7 +46,7 @@ class WebchatService:
         self._turn_service = turn_service
         self._notifications = notifications
         self._turn_tasks: set[asyncio.Task] = set()
-        # The /api/chat/* routes travel with the service that answers
+        # The /api/skills/webchat/* routes travel with the service that answers
         # them: the skill hands this to POINT_HTTP_CONTROLLERS and a
         # build without this package has nothing to register.
         self.controller = construct(WebchatController, {"turn_service": turn_service})

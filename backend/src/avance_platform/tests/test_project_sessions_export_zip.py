@@ -48,7 +48,7 @@ def test_download_has_no_sessions_json_when_there_are_no_imported_sessions(clien
 def test_download_includes_both_live_and_imported_sessions_relabeled_as_imported(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
     with Session().impersonate("alice"):
-        native_session = client.get("/api/chat/session").json()
+        native_session = client.get("/api/skills/webchat/session").json()
     assert native_session["type"] == "live"
     resp = client.post(
         f"/api/skills/platform/projects/{hello_project}/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))]
@@ -99,7 +99,7 @@ def test_uploading_a_zip_with_sessions_json_imports_them_automatically(client):
     assert len(sessions) == 1
     assert sessions[0]["type"] == "imported"
     assert sessions[0]["title"] == "Reference transcript"
-    messages = client.get(f"/api/chat/sessions/{sessions[0]['id']}/messages").json()
+    messages = client.get(f"/api/skills/webchat/sessions/{sessions[0]['id']}/messages").json()
     assert [m["content"] for m in messages] == ["hi", "hello"]
 
 
@@ -141,7 +141,7 @@ def test_download_then_reupload_round_trips_a_live_session_from_another_user(cli
     assert resp.status_code == 200, resp.text
     app_db.set_active_project_id(project_id, "alice")
     with Session().impersonate("alice"):
-        live_session = client.get("/api/chat/session").json()
+        live_session = client.get("/api/skills/webchat/session").json()
         chat_turn(client, live_session['id'], "hi")
     zip_bytes = client.get(f"/api/skills/platform/projects/{project_id}").content
 

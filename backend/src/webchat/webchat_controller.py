@@ -11,7 +11,7 @@ the dev-mode autotracking switch — left for
 avance_platform/inspector_controller.py, where it belonged all along.
 The first split of this file went by URL prefix, which is not what says
 who a route belongs to: avance_platform/label_project_controller.py
-serves eleven of its own under /api/chat/ too.
+serves eleven of its own under /api/skills/webchat/ too.
 """
 from __future__ import annotations
 
@@ -29,59 +29,59 @@ class WebchatController(BaseController):
     def __init__(self, turn_service: TurnService) -> None:
         self.turn_service = turn_service
 
-    @get("/api/chat/session")
+    @get("/api/skills/webchat/session")
     async def get_current_session(self, session_id: int | None = None):
         """Bootstrap endpoint: resolves (or creates) the active project's
         current writable session. Always a real, published-revision
         session — see the test-sessions/current endpoint for the draft equivalent."""
         return await self.turn_service.get_current_session_if_any_or_create_new(session_id)
 
-    @post("/api/chat/sessions")
+    @post("/api/skills/webchat/sessions")
     async def post_create_session(self):
         """Explicit "start a new session" action — always creates one,
         superseding whichever session was previously current."""
         return await self.turn_service.create_session()
 
-    @get("/api/chat/sessions/{session_id}/state")
+    @get("/api/skills/webchat/sessions/{session_id}/state")
     def get_session_state(self, session_id: int):
         return self.turn_service.get_state_for_session(session_id)
 
-    @get("/api/chat/sessions/{session_id}/operator-state")
+    @get("/api/skills/webchat/sessions/{session_id}/operator-state")
     def get_operator_state(self, session_id: int):
         """HumanOperatorChatView.vue's own state read — see TurnService.
         get_state_for_operator."""
         return self.turn_service.get_state_for_operator(session_id)
 
-    @get("/api/chat/sessions/{session_id}/messages")
+    @get("/api/skills/webchat/sessions/{session_id}/messages")
     async def get_messages(self, session_id: int):
         return await self.turn_service.get_messages(session_id)
 
-    @post("/api/chat/sessions/{session_id}/action")
+    @post("/api/skills/webchat/sessions/{session_id}/action")
     async def post_action(self, session_id: int, req: ActionRequest):
         try:
             return await self.turn_service.apply_manual_action(req.action_name, session_id)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/chat/sessions/{session_id}/audio")
+    @get("/api/skills/webchat/sessions/{session_id}/audio")
     def get_session_audio(self, session_id: int):
         return {"enabled": self.turn_service.is_audio_enabled(session_id)}
 
-    @post("/api/chat/sessions/{session_id}/audio")
+    @post("/api/skills/webchat/sessions/{session_id}/audio")
     def post_session_audio(self, session_id: int, req: AudioEnabledRequest):
         self.turn_service.set_audio_enabled(session_id, req.enabled)
         return {"enabled": self.turn_service.is_audio_enabled(session_id)}
 
-    @get("/api/chat/sessions/{session_id}/actuators")
+    @get("/api/skills/webchat/sessions/{session_id}/actuators")
     def get_actuators(self, session_id: int):
         return {"enabled": self.turn_service.is_actuators_enabled(session_id)}
 
-    @post("/api/chat/sessions/{session_id}/actuators")
+    @post("/api/skills/webchat/sessions/{session_id}/actuators")
     def post_actuators(self, session_id: int, req: ActuatorsRequest):
         self.turn_service.set_actuators_enabled(session_id, req.enabled)
         return {"enabled": self.turn_service.is_actuators_enabled(session_id)}
 
-    @put("/api/chat/messages/{message_id}/reaction")
+    @put("/api/skills/webchat/messages/{message_id}/reaction")
     def put_message_reaction(self, message_id: int, req: ReactionRequest):
         """Sets or (reaction: null) clears the user's own reaction to
         message_id — a bot message, chosen from the active project's

@@ -41,7 +41,7 @@ def test_a_project_serves_interpreted_until_it_is_built_and_compiled_after(
     client: TestClient, app, hello_project, tmp_path,
 ):
     assert type(_served_automaton(app, hello_project)).__name__ == "Automaton"
-    before = chat_turn(client, client.get("/api/chat/session").json()["id"], "hello")
+    before = chat_turn(client, client.get("/api/skills/webchat/session").json()["id"], "hello")
     assert before["reply"][0]["content"]
     assert before["state"]["key"] == "Hello"
 
@@ -53,7 +53,7 @@ def test_a_project_serves_interpreted_until_it_is_built_and_compiled_after(
     )
 
     assert isinstance(_served_automaton(app, hello_project), CompiledAutomaton)
-    after = chat_turn(client, client.get("/api/chat/session").json()["id"], "hello")
+    after = chat_turn(client, client.get("/api/skills/webchat/session").json()["id"], "hello")
     assert after["reply"][0]["content"] == before["reply"][0]["content"]
     assert after["state"] == before["state"], "the same turn, the same answer, from a package"
 

@@ -89,7 +89,7 @@ def test_a_session_pinned_to_an_old_now_broken_revision_is_flagged_unsupported(c
     and builds fine) — only the one session still pinned to the older,
     since-superseded revision that broke is affected."""
     _upload(client, "flaky", VALID_YML)
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     assert session["project_revision"] == 0
 
     # A second, still-valid revision gets published — the session above

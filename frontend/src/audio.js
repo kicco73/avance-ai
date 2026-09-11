@@ -2,7 +2,7 @@ import { notify } from './toastStore.js'
 
 // iOS Safari rejects any AudioContext playback that isn't triggered
 // directly inside a user gesture (NotAllowedError) — and, separately,
-// can't play narration from /api/chat/messages/{id}/audio through an
+// can't play narration from /api/skills/talk/messages/{id}/audio through an
 // HTMLAudioElement at all: that endpoint is a WAV with an indeterminate
 // length ("streaming") header (see backend's talk_format.py
 // PcmWavCodec.streaming_header — RIFF/data chunk sizes are the

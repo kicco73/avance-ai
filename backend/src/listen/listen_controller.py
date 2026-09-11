@@ -20,7 +20,7 @@ class ListenController(BaseController):
     def __init__(self, listen_service: ListenService) -> None:
         self.listen_service = listen_service
 
-    @post("/api/listen/transcribe")
+    @post("/api/skills/listen/transcribe")
     async def post_listen_transcribe(self, file: UploadFile):
         """Isolated verification endpoint: not wired into process_turn or
         the chat frontend — a voice note reaches a turn through the Bus

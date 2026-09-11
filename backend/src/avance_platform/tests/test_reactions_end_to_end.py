@@ -67,7 +67,7 @@ def test_get_state_carries_the_reactions_vocabulary(client, reactions_project):
 
 
 def test_chat_turn_response_state_carries_reactions_too(client, reactions_project):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
 
     turn = chat_turn(client, session['id'], "hi")
 
@@ -78,35 +78,35 @@ def test_chat_turn_response_state_carries_reactions_too(client, reactions_projec
 
 
 def test_message_list_and_reaction_endpoint_round_trip(client, reactions_project):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     turn = chat_turn(client, session['id'], "hi")
     assistant_id = turn["assistant_message_id"]
 
     # Freshly generated — no reaction set yet, but the field must already
     # be present (null), not missing, so the frontend's `message.reaction`
     # read never silently falls back to undefined.
-    rows = client.get(f"/api/chat/sessions/{session['id']}/messages").json()
+    rows = client.get(f"/api/skills/webchat/sessions/{session['id']}/messages").json()
     assistant_row = next(r for r in rows if r["id"] == assistant_id)
     assert assistant_row["reaction"] is None
 
     response = client.put(
-        f"/api/chat/messages/{assistant_id}/reaction", json={"reaction": "supportive"}
+        f"/api/skills/webchat/messages/{assistant_id}/reaction", json={"reaction": "supportive"}
     )
     assert response.status_code == 200, response.text
     assert response.json()["reaction"] == "supportive"
 
-    rows = client.get(f"/api/chat/sessions/{session['id']}/messages").json()
+    rows = client.get(f"/api/skills/webchat/sessions/{session['id']}/messages").json()
     assistant_row = next(r for r in rows if r["id"] == assistant_id)
     assert assistant_row["reaction"] == "supportive"
 
     # Clearing (reaction: null) removes it again.
-    response = client.put(f"/api/chat/messages/{assistant_id}/reaction", json={"reaction": None})
+    response = client.put(f"/api/skills/webchat/messages/{assistant_id}/reaction", json={"reaction": None})
     assert response.status_code == 200
     assert response.json()["reaction"] is None
 
 
 def test_reaction_on_someone_elses_message_is_404(client, reactions_project):
-    response = client.put("/api/chat/messages/999999/reaction", json={"reaction": "supportive"})
+    response = client.put("/api/skills/webchat/messages/999999/reaction", json={"reaction": "supportive"})
     assert response.status_code == 404
 
 
@@ -159,12 +159,12 @@ def test_a_states_reactions_enabled_has_no_effect_without_a_declared_reactions_s
 
     fake_ai_service.generate_stream_with_metadata = generate_stream_with_metadata_and_reaction
 
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     turn = chat_turn(client, session['id'], "hi")
     user_message_id = turn["user_message_id"]
 
     assert turn["user_message_reaction"] is None
-    rows = client.get(f"/api/chat/sessions/{session['id']}/messages").json()
+    rows = client.get(f"/api/skills/webchat/sessions/{session['id']}/messages").json()
     user_row = next(r for r in rows if r["id"] == user_message_id)
     assert user_row["reaction"] is None
 
@@ -181,7 +181,7 @@ def test_bots_own_reaction_is_captured_and_persisted_on_the_users_message(client
 
     fake_ai_service.generate_stream_with_metadata = generate_stream_with_metadata_and_reaction
 
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     turn = chat_turn(client, session['id'], "hi")
     user_message_id = turn["user_message_id"]
     assert user_message_id is not None
@@ -191,7 +191,7 @@ def test_bots_own_reaction_is_captured_and_persisted_on_the_users_message(client
     # without waiting on a full messages refetch to notice the DB write.
     assert turn["user_message_reaction"] == "supportive"
 
-    rows = client.get(f"/api/chat/sessions/{session['id']}/messages").json()
+    rows = client.get(f"/api/skills/webchat/sessions/{session['id']}/messages").json()
     user_row = next(r for r in rows if r["id"] == user_message_id)
     assistant_row = next(r for r in rows if r["id"] == turn["assistant_message_id"])
 

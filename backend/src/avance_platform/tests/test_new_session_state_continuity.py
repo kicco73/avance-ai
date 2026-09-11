@@ -37,14 +37,14 @@ def _upload_and_publish(client):
 
 def test_new_live_session_resumes_the_users_current_state_not_init(client):
     _upload_and_publish(client)
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     assert session["state"]["key"] == "a"
 
-    resp = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "go"})
+    resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/action", json={"action_name": "go"})
     assert resp.status_code == 200, resp.text
     assert resp.json()["state"]["key"] == "b"
 
-    resp = client.post("/api/chat/sessions")
+    resp = client.post("/api/skills/webchat/sessions")
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["start_state"] == "b"
@@ -54,7 +54,7 @@ def test_new_live_session_resumes_the_users_current_state_not_init(client):
     # it (exactly what the frontend's loadMessages() does right after
     # creating it) must still read "b" off the session's own persisted
     # start_state, not fall back to init for lack of a transition to read.
-    resp = client.get(f"/api/chat/session?session_id={body['id']}")
+    resp = client.get(f"/api/skills/webchat/session?session_id={body['id']}")
     assert resp.status_code == 200, resp.text
     assert resp.json()["state"]["key"] == "b"
 
@@ -82,14 +82,14 @@ def test_new_live_session_from_a_chatless_final_state_still_resumes_there(client
     resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
 
-    session = client.get("/api/chat/session").json()
-    client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "go"})
+    session = client.get("/api/skills/webchat/session").json()
+    client.post(f"/api/skills/webchat/sessions/{session['id']}/action", json={"action_name": "go"})
 
-    resp = client.post("/api/chat/sessions")
+    resp = client.post("/api/skills/webchat/sessions")
     assert resp.status_code == 200, resp.text
     new_session_id = resp.json()["id"]
 
-    resp = client.get(f"/api/chat/session?session_id={new_session_id}")
+    resp = client.get(f"/api/skills/webchat/session?session_id={new_session_id}")
     assert resp.status_code == 200, resp.text
     assert resp.json()["state"]["key"] == "crisis"
 
@@ -104,7 +104,7 @@ def test_new_test_session_still_restarts_at_init_every_time(client, app_db):
     assert "task" not in first
     assert [t["payload"]["script"].strip() for t in app_db.list_tasks()] == ["task.send_mail(user.email, 'hi')"]
 
-    resp = client.post(f"/api/chat/sessions/{first['id']}/action", json={"action_name": "go"})
+    resp = client.post(f"/api/skills/webchat/sessions/{first['id']}/action", json={"action_name": "go"})
     assert resp.status_code == 200, resp.text
     assert resp.json()["state"]["key"] == "b"
 

@@ -23,7 +23,7 @@ class WhatsAppController(BaseController):
     def __init__(self, whatsapp_service: WhatsAppService) -> None:
         self.whatsapp_service = whatsapp_service
 
-    @get("/api/whatsapp/webhook", role=None)
+    @get("/api/skills/whatsapp/webhook", role=None)
     def get_webhook_verification(
         self,
         hub_mode: str = Query(alias="hub.mode"),
@@ -36,7 +36,7 @@ class WhatsAppController(BaseController):
             return Response(content=hub_challenge, media_type="text/plain")
         raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Verify token mismatch.")
 
-    @post("/api/whatsapp/webhook", role=None)
+    @post("/api/skills/whatsapp/webhook", role=None)
     async def post_webhook(self, request: Request, background: BackgroundTasks):
         """Answers 200 right away and does the actual turn in the
         background: Meta retries (and eventually disables) a webhook that

@@ -29,14 +29,14 @@ def test_get_services_returns_the_configured_snapshot_verbatim(client):
 
 @pytest.mark.contract
 def test_wipe_all_live_sessions_deletes_sessions_across_every_project(client, hello_project):
-    session_id = client.get("/api/chat/session").json()["id"]
-    assert client.get(f"/api/chat/sessions/{session_id}/messages").status_code == 200
+    session_id = client.get("/api/skills/webchat/session").json()["id"]
+    assert client.get(f"/api/skills/webchat/sessions/{session_id}/messages").status_code == 200
 
     response = client.post("/api/skills/platform/settings/database/wipe-live-sessions")
 
     assert response.status_code == 200
     assert response.json()["success"] is True
-    assert client.get(f"/api/chat/sessions/{session_id}/messages").status_code == 404
+    assert client.get(f"/api/skills/webchat/sessions/{session_id}/messages").status_code == 404
 
     # The project definition itself is untouched — only its live sessions.
     assert client.get(f"/api/skills/platform/projects/{hello_project}").status_code == 200

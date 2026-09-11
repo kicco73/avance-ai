@@ -49,9 +49,9 @@ def _upload_activate_and_establish_state(client, project_name: str):
     assert client.put(f"/api/skills/platform/projects/{project_name}/activate").status_code == 200
     assert client.post(f"/api/skills/platform/projects/{project_name}/publish", json={}).status_code == 200
 
-    session_response = client.get("/api/chat/session")
+    session_response = client.get("/api/skills/webchat/session")
     assert session_response.status_code == 200, session_response.text
-    action_response = client.post(f"/api/chat/sessions/{session_response.json()['id']}/action", json={"action_name": "go"})
+    action_response = client.post(f"/api/skills/webchat/sessions/{session_response.json()['id']}/action", json={"action_name": "go"})
     assert action_response.status_code == 200, action_response.text
 
 
@@ -80,7 +80,7 @@ def test_publish_deletes_every_unlabeled_test_session_even_when_nothing_actually
     risking one surviving under a coincidentally matching revision."""
     _upload_activate_and_establish_state(client, "proj")
     labeled_id = _create_test_session(client, "proj")
-    assert client.put(f"/api/chat/sessions/{labeled_id}/labeled", json={"labeled": True}).status_code == 200
+    assert client.put(f"/api/skills/platform/sessions/{labeled_id}/labeled", json={"labeled": True}).status_code == 200
     unlabeled_id = _create_test_session(client, "proj")
     assert unlabeled_id in _test_session_ids(client, "proj")
 
@@ -101,7 +101,7 @@ def test_revert_deletes_every_unlabeled_test_session_but_only_when_there_was_a_d
 
     _edit_draft(client, "proj")
     labeled_id = _create_test_session(client, "proj")
-    assert client.put(f"/api/chat/sessions/{labeled_id}/labeled", json={"labeled": True}).status_code == 200
+    assert client.put(f"/api/skills/platform/sessions/{labeled_id}/labeled", json={"labeled": True}).status_code == 200
     unlabeled_id = _create_test_session(client, "proj")
     assert unlabeled_id in _test_session_ids(client, "proj")
 
@@ -112,7 +112,7 @@ def test_revert_deletes_every_unlabeled_test_session_but_only_when_there_was_a_d
 
 def test_native_and_imported_sessions_are_both_unaffected_by_publish(client):
     _upload_activate_and_establish_state(client, "proj")
-    native_session_id = client.get("/api/chat/session").json()["id"]
+    native_session_id = client.get("/api/skills/webchat/session").json()["id"]
     response = client.post(
         "/api/skills/platform/projects/proj/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: hello\n", "text/plain"))]
     )

@@ -32,7 +32,7 @@ def _metric_values(client, project_id: str) -> dict[str, float]:
 def test_the_sample_loads_and_starts_at_lobby(client):
     _upload_and_activate(client)
 
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
 
     assert session["start_state"] == "lobby"
 
@@ -43,7 +43,7 @@ def test_metric_values_never_include_a_non_session_scoped_metric(client):
     only context a chat turn's trigger evaluation runs in — so neither
     metric appears here."""
     project_id = _upload_and_activate(client)
-    client.get("/api/chat/session")
+    client.get("/api/skills/webchat/session")
 
     values = _metric_values(client, project_id)
 

@@ -24,9 +24,9 @@ def _wait_for_terminal_status(client, project_name, run_id, timeout=5.0, interva
 
 
 def _make_labeled_session(client):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     chat_turn(client, session['id'], "hi")
-    client.put(f"/api/chat/sessions/{session['id']}/labeled", json={"labeled": True})
+    client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})
     return session["id"]
 
 
@@ -84,7 +84,7 @@ def test_batch_run_completes_and_tracks_batch_segments(client, hello_project):
 def test_whole_project_run_scopes_to_labeled_sessions_only(client, hello_project):
     _make_labeled_session(client)
     # An unlabeled session must never be pulled into a whole-project run.
-    unlabeled = client.get("/api/chat/session").json()
+    unlabeled = client.get("/api/skills/webchat/session").json()
     chat_turn(client, unlabeled['id'], "hi")
     run = client.post(
         f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": None, "strategy": "turn_by_turn"},
@@ -140,7 +140,7 @@ def test_sessions_aggregation_pools_both_live_and_imported_sessions(client, hell
         files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))],
     )
     imported_id = parse_sse_result(resp)["last_session_id"]
-    client.put(f"/api/chat/sessions/{imported_id}/labeled", json={"labeled": True})
+    client.put(f"/api/skills/platform/sessions/{imported_id}/labeled", json={"labeled": True})
 
     response = client.post(f"/api/skills/testing/projects/{hello_project}/runs/sessions", json={"strategy": "turn_by_turn"})
     assert response.status_code == 200, response.text

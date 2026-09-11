@@ -49,7 +49,7 @@ def test_pause_and_resume_both_404_for_an_unknown_project(client):
 def test_a_manually_paused_project_blocks_chat_the_same_as_an_automatic_pause(client, hello_project):
     client.put(f"/api/skills/platform/projects/{hello_project}/pause")
 
-    response = client.get("/api/chat/session")
+    response = client.get("/api/skills/webchat/session")
 
     assert response.status_code == 200
     body = response.json()

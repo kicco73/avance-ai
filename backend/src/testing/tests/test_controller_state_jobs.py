@@ -26,13 +26,13 @@ def _wait_for_aggregate_result(client, project_name, kind, strategy, target=None
 
 
 def _make_session_annotated_at_hello(client, *, labeled=False):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     turn = chat_turn(client, session['id'], "hi")
     client.put(
-        f"/api/chat/messages/{turn['assistant_message_id']}/expected-state", json={"expected_state": "Hello"},
+        f"/api/skills/platform/messages/{turn['assistant_message_id']}/expected-state", json={"expected_state": "Hello"},
     )
     if labeled:
-        client.put(f"/api/chat/sessions/{session['id']}/labeled", json={"labeled": True})
+        client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})
     return session["id"]
 
 

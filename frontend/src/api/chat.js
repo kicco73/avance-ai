@@ -5,11 +5,11 @@ const WS_URL = import.meta.env.VITE_WS_URL ?? `${location.protocol === 'https:' 
 
 export function getCurrentSession(sessionId) {
   const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
-  return apiFetch(`${API_URL}/chat/session${query}`)
+  return apiFetch(`${API_URL}/skills/webchat/session${query}`)
 }
 
 export function postCreateSession() {
-  return apiFetch(`${API_URL}/chat/sessions`, { method: 'POST' })
+  return apiFetch(`${API_URL}/skills/webchat/sessions`, { method: 'POST' })
 }
 
 // EditProjectView's embedded "Test" chat — the one place a session can
@@ -41,19 +41,19 @@ export function postResetTestSessions(projectId) {
 }
 
 export function deleteSession(sessionId) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
+  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
 }
 
 export function postCloseSession(sessionId) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/close`, { method: 'POST' })
+  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/close`, { method: 'POST' })
 }
 
 export function getMessages(sessionId) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/messages`)
+  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/messages`)
 }
 
 export function getSessionState(sessionId) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/state`)
+  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/state`)
 }
 
 // HumanOperatorChatView.vue's own state read — see ChatService.
@@ -61,7 +61,7 @@ export function getSessionState(sessionId) {
 // operator is attached, regardless of this session's own is_auto_tracking_
 // enabled flag, and this is never sent to the customer's own chat.
 export function getOperatorState(sessionId) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/operator-state`)
+  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/operator-state`)
 }
 
 export function createChatSocket() {
@@ -82,7 +82,7 @@ export function postListenTranscribe(audioBlob) {
 }
 
 export function postAction(actionName, sessionId) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/action`, {
+  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/action`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action_name: actionName })
@@ -90,7 +90,7 @@ export function postAction(actionName, sessionId) {
 }
 
 export function postSessionAudio(sessionId, enabled) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/audio`, {
+  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/audio`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled })
@@ -100,11 +100,11 @@ export function postSessionAudio(sessionId, enabled) {
 // "Dev mode: freeze automatic state transitions" — EditProjectView's
 // embedded "Test" chat only, per test session, never global.
 export function getAutoTracking(sessionId) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/autotracking`)
+  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/autotracking`)
 }
 
 export function postAutoTracking(sessionId, enabled) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/autotracking`, {
+  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/autotracking`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled })
@@ -112,11 +112,11 @@ export function postAutoTracking(sessionId, enabled) {
 }
 
 export function getActuators(sessionId) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/actuators`)
+  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/actuators`)
 }
 
 export function postActuators(sessionId, enabled) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/actuators`, {
+  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/actuators`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled })
@@ -124,14 +124,14 @@ export function postActuators(sessionId, enabled) {
 }
 
 export function messageAudioUrl(messageId) {
-  return `${API_URL}/chat/messages/${messageId}/audio`
+  return `${API_URL}/skills/talk/messages/${messageId}/audio`
 }
 
 // "Restart from here": deletes every message (and its Signals rows) at
 // or after `timestamp` in `sessionId`, rolling state back to what it was
 // immediately before. `timestamp` must be a backend-issued ISO string.
 export function postTruncateSession(sessionId, timestamp) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/truncate`, {
+  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/truncate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ timestamp })

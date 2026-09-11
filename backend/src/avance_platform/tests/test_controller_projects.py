@@ -81,7 +81,7 @@ def test_deleting_the_active_project_falls_back_to_a_remaining_one_and_degrades_
     assert projects["projects"] == [{"id": cat, "is_paused": False, "ui_label": None}]
     assert projects["active"] == cat
     # The fallback must actually be activated, not just recorded by id.
-    assert client.get("/api/chat/session").status_code == 200
+    assert client.get("/api/skills/webchat/session").status_code == 200
 
     assert client.delete(f"/api/skills/platform/projects/{cat}").status_code == 200
     state = client.get("/api/skills/platform/state")
@@ -139,7 +139,7 @@ def test_new_project_creates_activates_and_de_duplicates_the_hello_world_templat
     # It's actually usable, not just a stored blob — already published by
     # the upload itself, but re-publishing must stay a harmless no-op.
     assert client.post("/api/skills/platform/projects/hello_world/publish", json={}).status_code == 200
-    assert client.get("/api/chat/session").status_code == 200
+    assert client.get("/api/skills/webchat/session").status_code == 200
 
     assert client.post("/api/skills/platform/projects").json()["project_id"] == "hello_world_2"
     assert client.post("/api/skills/platform/projects").json()["project_id"] == "hello_world_3"

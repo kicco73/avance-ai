@@ -47,9 +47,9 @@ def _make_labeled_session_for(client, app_db, project_name, username):
     # anything yet — unrelated to what's under test here.
     app_db.set_active_project_id(project_name, username)
     with Session().impersonate(username):
-        session = client.get("/api/chat/session").json()
+        session = client.get("/api/skills/webchat/session").json()
         chat_turn(client, session['id'], "hi")
-        client.put(f"/api/chat/sessions/{session['id']}/labeled", json={"labeled": True})
+        client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})
     return session["id"]
 
 

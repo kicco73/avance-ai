@@ -31,10 +31,10 @@ def _wait_until(predicate, timeout=5.0, interval=0.02):
 
 
 def _make_completed_run(client, hello_project):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     session_id = session["id"]
     chat_turn(client, session_id, "hi")
-    client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": True})
+    client.put(f"/api/skills/platform/sessions/{session_id}/labeled", json={"labeled": True})
 
     leaf_run = client.post(
         f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},

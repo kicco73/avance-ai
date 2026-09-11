@@ -1,4 +1,4 @@
-"""POST /api/chat/sessions/{id}/truncate ("Restart from here",
+"""POST /api/skills/platform/sessions/{id}/truncate ("Restart from here",
 TurnService.truncate_session) — exercises the HTTP surface: ownership,
 response shape, and an end-to-end scenario against a real automaton.
 """
@@ -16,13 +16,13 @@ from conftest import SAMPLES_DIR
 
 @pytest.mark.contract
 def test_truncate_rejects_an_unknown_session(client, hello_project):
-    response = client.post("/api/chat/sessions/999999/truncate", json={"timestamp": "2026-01-01T00:00:00+00:00"})
+    response = client.post("/api/skills/platform/sessions/999999/truncate", json={"timestamp": "2026-01-01T00:00:00+00:00"})
     assert response.status_code == 404
 
 
 @pytest.mark.contract
 def test_truncate_rejects_someone_elses_session(client, hello_project):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     # Reassign ownership directly — no endpoint exists to create another
     # user's session.
     from db.models import ChatSession
@@ -32,15 +32,15 @@ def test_truncate_rejects_someone_elses_session(client, hello_project):
     # Only a plain "user" is denied — a supervisor owns every session (see
     # TurnService._owns_session), so this must downgrade the default fixture role.
     Session().role = "user"
-    response = client.post(f"/api/chat/sessions/{session['id']}/truncate", json={"timestamp": "2026-01-01T00:00:00+00:00"})
+    response = client.post(f"/api/skills/platform/sessions/{session['id']}/truncate", json={"timestamp": "2026-01-01T00:00:00+00:00"})
     assert response.status_code == 404
 
 
 @pytest.mark.contract
 def test_truncate_rejects_a_malformed_timestamp(client, hello_project):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
 
-    response = client.post(f"/api/chat/sessions/{session['id']}/truncate", json={"timestamp": "not-a-timestamp"})
+    response = client.post(f"/api/skills/platform/sessions/{session['id']}/truncate", json={"timestamp": "not-a-timestamp"})
 
     assert response.status_code == 400
 
@@ -50,10 +50,10 @@ def test_truncate_response_shape_is_a_bare_state_payload(client, hello_project):
     """Truncate returns a bare StatePayload, unlike GET /api/skills/platform/state's
     superset. It never fires init-action, so it carries no "task"
     key, unlike reset's response."""
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
 
     response = client.post(
-        f"/api/chat/sessions/{session['id']}/truncate", json={"timestamp": "2099-01-01T00:00:00+00:00"}
+        f"/api/skills/platform/sessions/{session['id']}/truncate", json={"timestamp": "2099-01-01T00:00:00+00:00"}
     )
     reset_response = client.post(f"/api/skills/platform/projects/{hello_project}/test-sessions/reset")
 
@@ -74,23 +74,23 @@ def test_truncate_deletes_trailing_turns_and_rolls_the_live_state_back(client):
     client.put(f"/api/skills/platform/projects/{project_id}/activate")
     client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
 
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     assert session["start_state"] == "welcome"
 
-    action_response = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "unit-subjuntive"})
+    action_response = client.post(f"/api/skills/webchat/sessions/{session['id']}/action", json={"action_name": "unit-subjuntive"})
     assert action_response.status_code == 200
     moved_state = action_response.json()["state"]["key"]
     assert moved_state != "welcome"
 
-    signals = client.get(f"/api/chat/sessions/{session['id']}/signals").json()
+    signals = client.get(f"/api/skills/platform/sessions/{session['id']}/signals").json()
     transition = next(s for s in signals if s["new_state"] == moved_state)
 
     truncate_response = client.post(
-        f"/api/chat/sessions/{session['id']}/truncate", json={"timestamp": transition["timestamp"]}
+        f"/api/skills/platform/sessions/{session['id']}/truncate", json={"timestamp": transition["timestamp"]}
     )
     assert truncate_response.status_code == 200
     assert truncate_response.json()["key"] == "welcome"
 
     assert client.get("/api/skills/platform/state").json()["key"] == "welcome"
-    remaining_signals = client.get(f"/api/chat/sessions/{session['id']}/signals").json()
+    remaining_signals = client.get(f"/api/skills/platform/sessions/{session['id']}/signals").json()
     assert all(s["new_state"] != moved_state for s in remaining_signals)

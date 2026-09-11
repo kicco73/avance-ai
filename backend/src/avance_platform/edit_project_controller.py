@@ -87,7 +87,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
     @get("/api/skills/platform/projects/{project_id}/test-sessions/current", role="admin")
     async def get_current_test_session(self, project_id: str, session_id: int | None = None):
         """The embedded "Test" chat's bootstrap endpoint — the
-        draft-session equivalent of GET /api/chat/session."""
+        draft-session equivalent of GET /api/skills/webchat/session."""
         return await self.turn_service.get_current_draft_session_if_any_or_create_new(session_id, project_id)
 
     @get("/api/skills/platform/projects/{project_id}/test-sessions", role="admin")

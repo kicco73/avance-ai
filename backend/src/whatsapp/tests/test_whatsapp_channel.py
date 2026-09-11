@@ -45,9 +45,9 @@ def _cloud_api_client(handler):
 
 def test_verification_handshake_echoes_the_challenge_and_rejects_a_wrong_token(env):
     client, *_ = env
-    ok = client.get("/api/whatsapp/webhook", params={"hub.mode": "subscribe", "hub.verify_token": "my-verify-token", "hub.challenge": "42"})
+    ok = client.get("/api/skills/whatsapp/webhook", params={"hub.mode": "subscribe", "hub.verify_token": "my-verify-token", "hub.challenge": "42"})
     assert ok.status_code == HTTPStatus.OK and ok.text == "42"
-    wrong = client.get("/api/whatsapp/webhook", params={"hub.mode": "subscribe", "hub.verify_token": "nope", "hub.challenge": "42"})
+    wrong = client.get("/api/skills/whatsapp/webhook", params={"hub.mode": "subscribe", "hub.verify_token": "nope", "hub.challenge": "42"})
     assert wrong.status_code == HTTPStatus.FORBIDDEN
 
 

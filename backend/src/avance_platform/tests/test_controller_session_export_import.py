@@ -31,7 +31,7 @@ def _import_json(client, project, sessions: list[dict], filename="sessions.json"
 
 
 def _messages(client, session_id):
-    return client.get(f"/api/chat/sessions/{session_id}/messages").json()
+    return client.get(f"/api/skills/webchat/sessions/{session_id}/messages").json()
 
 
 def _export(client, project) -> list[dict]:
@@ -46,14 +46,14 @@ def test_export_covers_every_session_of_the_project_native_and_imported_alike_wi
     chat) and imported alike, not just the imported ones."""
     assert _export(client, hello_project) == []
 
-    native_session = client.get("/api/chat/session").json()
+    native_session = client.get("/api/skills/webchat/session").json()
     session_id = _import_transcript(client, hello_project)
     user_message_id = _messages(client, session_id)[0]["id"]
-    client.put(f"/api/chat/messages/{user_message_id}/expected-state", json={"expected_state": "Hello"})
-    client.put(f"/api/chat/messages/{user_message_id}/comment", json={"comment": "worth reviewing"})
-    client.put(f"/api/chat/sessions/{session_id}/title", json={"title": "My export"})
-    client.put(f"/api/chat/sessions/{session_id}/comment", json={"comment": "session-wide note"})
-    client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": True})
+    client.put(f"/api/skills/platform/messages/{user_message_id}/expected-state", json={"expected_state": "Hello"})
+    client.put(f"/api/skills/platform/messages/{user_message_id}/comment", json={"comment": "worth reviewing"})
+    client.put(f"/api/skills/platform/sessions/{session_id}/title", json={"title": "My export"})
+    client.put(f"/api/skills/platform/sessions/{session_id}/comment", json={"comment": "session-wide note"})
+    client.put(f"/api/skills/platform/sessions/{session_id}/labeled", json={"labeled": True})
 
     exported = _export(client, hello_project)
     assert len(exported) == 2
@@ -75,8 +75,8 @@ def test_export_covers_every_session_of_the_project_native_and_imported_alike_wi
 def test_an_export_round_trips_back_through_import_with_its_messages_and_their_own_tool_calls_intact(client, app_db, hello_project):
     session_id = _import_transcript(client, hello_project)
     user_message_id = _messages(client, session_id)[0]["id"]
-    client.put(f"/api/chat/messages/{user_message_id}/expected-state", json={"expected_state": "Hello"})
-    client.put(f"/api/chat/sessions/{session_id}/title", json={"title": "Original"})
+    client.put(f"/api/skills/platform/messages/{user_message_id}/expected-state", json={"expected_state": "Hello"})
+    client.put(f"/api/skills/platform/sessions/{session_id}/title", json={"title": "Original"})
     tool_calls = [{"name": "source_flights_select", "arguments": {"value": "paris"}, "result": "row"}]
     app_db.record_tool_calls(session_id, tool_calls, message_id=user_message_id)
 

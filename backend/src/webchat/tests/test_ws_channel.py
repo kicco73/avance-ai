@@ -596,7 +596,7 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
 
 @pytest.mark.regression
 def test_every_outgoing_frame_of_a_turn_carries_its_turn_id_and_chunks_precede_done(client, hello_project):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
 
     frames = chat_turn_frames(client, session["id"], "hi", turn_id="abc-123")
 
@@ -612,7 +612,7 @@ def test_every_outgoing_frame_of_a_turn_carries_its_turn_id_and_chunks_precede_d
 
 @pytest.mark.contract
 def test_a_turn_on_someone_elses_session_is_answered_with_an_error_frame(client, hello_project, app_db):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
 
     with chat_socket(client, username="intruder") as ws:
         ws.send_json({"type": "input.text", "stream_id": "x", "session_id": session["id"], "body": "hi"})
@@ -626,8 +626,8 @@ def test_a_turn_on_someone_elses_session_is_answered_with_an_error_frame(client,
 
 @pytest.mark.contract
 def test_a_turn_on_a_closed_session_is_answered_with_session_closed(client, hello_project):
-    session = client.get("/api/chat/session").json()
-    client.post(f"/api/chat/sessions/{session['id']}/close")
+    session = client.get("/api/skills/webchat/session").json()
+    client.post(f"/api/skills/webchat/sessions/{session['id']}/close")
 
     final = chat_turn_frames(client, session["id"], "hi")[-1]
 

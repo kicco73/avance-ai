@@ -2,7 +2,7 @@
 package is in the build.
 
 It used to live in controllers/chat_controller.py, which meant a build
-without `src/talk/` still answered GET /api/chat/messages/{id}/audio —
+without `src/talk/` still answered GET /api/skills/talk/messages/{id}/audio —
 with a 503, but it answered, and a route that answers is a route that
 says the feature exists. Here the route is registered by talk/skill.py
 (bus.POINT_HTTP_CONTROLLERS) and leaving the package out leaves nothing
@@ -30,7 +30,7 @@ class TalkController(BaseController):
         self.turn_service = turn_service
         self.talk_service = talk_service
 
-    @get("/api/chat/messages/{message_id}/audio")
+    @get("/api/skills/talk/messages/{message_id}/audio")
     def get_message_audio(self, message_id: int, request: Request):
         """Generates (or replays a cached/in-flight) audio for message_id,
         streaming-compatible. 404 if the message had no [audio] tag — the

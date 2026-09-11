@@ -85,7 +85,7 @@ def _turn_error(client, session_id) -> dict:
 @pytest.mark.regression
 def test_bootstrap_creates_a_session_whose_annotations_title_and_comment_round_trip_into_the_list(client, hello_project):
     """has_annotations reflects ChatSession.labeled directly, per session."""
-    response = client.get("/api/chat/session")
+    response = client.get("/api/skills/webchat/session")
     assert response.status_code == 200
     session = response.json()
     assert session["project_id"] == hello_project
@@ -95,22 +95,22 @@ def test_bootstrap_creates_a_session_whose_annotations_title_and_comment_round_t
     assert session["comment"] is None
     assert _sessions_by_id(client, hello_project)[session["id"]]["has_annotations"] is False
 
-    response = client.put(f"/api/chat/sessions/{session['id']}/labeled", json={"labeled": True})
+    response = client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})
     assert response.status_code == 200
     assert response.json()["has_annotations"] is True
     assert _sessions_by_id(client, hello_project)[session["id"]]["has_annotations"] is True
-    assert client.get(f"/api/chat/session?session_id={session['id']}").json()["has_annotations"] is True
+    assert client.get(f"/api/skills/webchat/session?session_id={session['id']}").json()["has_annotations"] is True
 
-    response = client.put(f"/api/chat/sessions/{session['id']}/title", json={"title": "My session"})
+    response = client.put(f"/api/skills/platform/sessions/{session['id']}/title", json={"title": "My session"})
     assert response.status_code == 200
     assert response.json()["title"] == "My session"
     assert _sessions_by_id(client, hello_project)[session["id"]]["title"] == "My session"
-    assert client.put(f"/api/chat/sessions/{session['id']}/title", json={"title": "   "}).json()["title"] is None
+    assert client.put(f"/api/skills/platform/sessions/{session['id']}/title", json={"title": "   "}).json()["title"] is None
 
-    response = client.put(f"/api/chat/sessions/{session['id']}/comment", json={"comment": "Worth a second look."})
+    response = client.put(f"/api/skills/platform/sessions/{session['id']}/comment", json={"comment": "Worth a second look."})
     assert response.status_code == 200
     assert response.json()["comment"] == "Worth a second look."
-    assert client.put(f"/api/chat/sessions/{session['id']}/comment", json={"comment": None}).json()["comment"] is None
+    assert client.put(f"/api/skills/platform/sessions/{session['id']}/comment", json={"comment": None}).json()["comment"] is None
 
 
 @pytest.mark.regression
@@ -120,33 +120,33 @@ def test_labeled_title_and_comment_work_for_an_imported_session_which_is_never_a
     path these updates use."""
     session_id = _import_session(client, hello_project)
 
-    response = client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": True})
+    response = client.put(f"/api/skills/platform/sessions/{session_id}/labeled", json={"labeled": True})
     assert response.status_code == 200
     assert response.json()["has_annotations"] is True
     assert response.json()["active"] is False
-    assert client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": False}).json()["has_annotations"] is False
+    assert client.put(f"/api/skills/platform/sessions/{session_id}/labeled", json={"labeled": False}).json()["has_annotations"] is False
 
-    title_resp = client.put(f"/api/chat/sessions/{session_id}/title", json={"title": "Renamed import"})
+    title_resp = client.put(f"/api/skills/platform/sessions/{session_id}/title", json={"title": "Renamed import"})
     assert title_resp.status_code == 200
     assert title_resp.json()["active"] is False
 
-    comment_resp = client.put(f"/api/chat/sessions/{session_id}/comment", json={"comment": "note"})
+    comment_resp = client.put(f"/api/skills/platform/sessions/{session_id}/comment", json={"comment": "note"})
     assert comment_resp.status_code == 200
     assert comment_resp.json()["comment"] == "note"
 
 
 @pytest.mark.contract
 def test_title_close_and_delete_reject_an_unknown_session(client, hello_project):
-    assert client.put("/api/chat/sessions/999999/title", json={"title": "x"}).status_code == 404
-    assert client.post("/api/chat/sessions/999999/close").status_code == 404
-    assert client.delete("/api/chat/sessions/999999").status_code == 404
+    assert client.put("/api/skills/platform/sessions/999999/title", json={"title": "x"}).status_code == 404
+    assert client.post("/api/skills/webchat/sessions/999999/close").status_code == 404
+    assert client.delete("/api/skills/webchat/sessions/999999").status_code == 404
 
 
 @pytest.mark.regression
 def test_a_manual_new_session_closes_and_supersedes_the_bootstrap_one_rejecting_turns_and_actions_on_it(client, hello_project):
-    older = client.get("/api/chat/session").json()
+    older = client.get("/api/skills/webchat/session").json()
 
-    newer = client.post("/api/chat/sessions").json()
+    newer = client.post("/api/skills/webchat/sessions").json()
 
     assert newer["id"] != older["id"]
     assert newer["active"] is True
@@ -163,7 +163,7 @@ def test_a_manual_new_session_closes_and_supersedes_the_bootstrap_one_rejecting_
     assert "closed" in error["message"].lower()
     assert error["code"] == "session_closed"
 
-    response = client.post(f"/api/chat/sessions/{older['id']}/action", json={"action_name": "chat"})
+    response = client.post(f"/api/skills/webchat/sessions/{older['id']}/action", json={"action_name": "chat"})
     assert response.status_code == 409
     assert "closed" in response.json()["error"]["message"].lower()
     assert response.json()["error"]["code"] == "session_closed"
@@ -171,9 +171,9 @@ def test_a_manual_new_session_closes_and_supersedes_the_bootstrap_one_rejecting_
 
 @pytest.mark.regression
 def test_close_session_ends_it_idempotently_without_a_replacement_and_turns_on_it_are_rejected(client, hello_project):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
 
-    response = client.post(f"/api/chat/sessions/{session['id']}/close")
+    response = client.post(f"/api/skills/webchat/sessions/{session['id']}/close")
 
     assert response.status_code == 200
     body = response.json()
@@ -186,7 +186,7 @@ def test_close_session_ends_it_idempotently_without_a_replacement_and_turns_on_i
     assert sessions[session["id"]]["active"] is False
     assert sessions[session["id"]]["open"] is False
 
-    again = client.post(f"/api/chat/sessions/{session['id']}/close")
+    again = client.post(f"/api/skills/webchat/sessions/{session['id']}/close")
     assert again.status_code == 200
     assert again.json()["active"] is False
 
@@ -200,7 +200,7 @@ def test_someone_elses_session_exposes_session_not_found_on_turns_and_actions(cl
 
     assert _turn_error(client, session_id)["code"] == "session_not_found"
 
-    response = client.post(f"/api/chat/sessions/{session_id}/action", json={"action_name": "advance"})
+    response = client.post(f"/api/skills/webchat/sessions/{session_id}/action", json={"action_name": "advance"})
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "session_not_found"
 
@@ -208,8 +208,8 @@ def test_someone_elses_session_exposes_session_not_found_on_turns_and_actions(cl
 @pytest.mark.contract
 def test_a_turn_in_a_non_chat_state_exposes_state_not_chat(client, app_db):
     _setup_channel_codes_project(app_db)
-    session = client.get("/api/chat/session").json()
-    client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "advance"})
+    session = client.get("/api/skills/webchat/session").json()
+    client.post(f"/api/skills/webchat/sessions/{session['id']}/action", json={"action_name": "advance"})
 
     assert _turn_error(client, session["id"])["code"] == "state_not_chat"
 
@@ -217,7 +217,7 @@ def test_a_turn_in_a_non_chat_state_exposes_state_not_chat(client, app_db):
 @pytest.mark.contract
 def test_a_turn_from_another_channel_or_on_a_superseded_session_exposes_the_matching_code(client, app_db):
     _setup_channel_codes_project(app_db)
-    older = client.get("/api/chat/session").json()
+    older = client.get("/api/skills/webchat/session").json()
 
     # The websocket is the native chat by definition — a turn from another
     # channel only ever reaches TurnService.process_turn directly, the
@@ -243,12 +243,12 @@ def test_a_turn_from_another_channel_or_on_a_superseded_session_exposes_the_matc
 
 async def test_manual_action_exposes_turn_in_progress_code(client, app_db):
     _setup_channel_codes_project(app_db)
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     turn_service = client.app.state.turn_service
     lock = turn_service._session_locks.get(str(session["id"]))
     await lock.acquire()
     try:
-        response = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "advance"})
+        response = client.post(f"/api/skills/webchat/sessions/{session['id']}/action", json={"action_name": "advance"})
     finally:
         lock.release()
 
@@ -258,17 +258,17 @@ async def test_manual_action_exposes_turn_in_progress_code(client, app_db):
 
 @pytest.mark.regression
 def test_a_turn_succeeds_against_the_active_session_and_delete_removes_it(client, hello_project):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
 
     assert chat_turn(client, session['id'], "hi")["session_id"] == session["id"]
 
-    assert client.delete(f"/api/chat/sessions/{session['id']}").status_code == 200
+    assert client.delete(f"/api/skills/webchat/sessions/{session['id']}").status_code == 200
     assert client.get(f"/api/core/projects/{hello_project}/sessions").json() == []
 
 
 @pytest.mark.regression
 def test_a_turn_rejects_an_idle_session_without_auto_rotating(client, hello_project, app_db: Db):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     stale_end = datetime.utcnow() - timedelta(hours=2)
     app_db.touch_chat_session(session["id"], stale_end, session["end_state"])
 
@@ -287,15 +287,15 @@ def test_manual_new_session_starts_at_the_automatons_current_state_not_the_initi
     project_id = _upload_and_publish(client, "Aprendr català.zip")
     client.put(f"/api/skills/platform/projects/{project_id}/activate")
 
-    bootstrap = client.get("/api/chat/session").json()
+    bootstrap = client.get("/api/skills/webchat/session").json()
     assert bootstrap["start_state"] == "welcome"
 
-    action_response = client.post(f"/api/chat/sessions/{bootstrap['id']}/action", json={"action_name": "unit-subjuntive"})
+    action_response = client.post(f"/api/skills/webchat/sessions/{bootstrap['id']}/action", json={"action_name": "unit-subjuntive"})
     assert action_response.status_code == 200
     current_state = action_response.json()["state"]["key"]
     assert current_state != "welcome"
 
-    assert client.post("/api/chat/sessions").json()["start_state"] == current_state
+    assert client.post("/api/skills/webchat/sessions").json()["start_state"] == current_state
 
 
 @pytest.mark.regression
@@ -307,7 +307,7 @@ def test_switching_the_active_project_keeps_the_other_projects_sessions_and_the_
     cat = _upload_and_publish(client, "Aprendr català.zip")
 
     client.put(f"/api/skills/platform/projects/{hello}/activate")
-    hello_session = client.get("/api/chat/session").json()
+    hello_session = client.get("/api/skills/webchat/session").json()
 
     client.put(f"/api/skills/platform/projects/{cat}/activate")
 

@@ -3,7 +3,7 @@ import { apiFetch } from './core.js'
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 
 export function getSignals() {
-  return apiFetch(`${API_URL}/chat/signals`)
+  return apiFetch(`${API_URL}/skills/platform/inspector/signals`)
 }
 
 // `projectId`'s identifier registry — {identifier: description} per
@@ -22,7 +22,7 @@ export function getIdentifiers(projectId) {
 // session is always current — it keeps no history to look back through).
 export function getEnv(sessionId, messageId) {
   const query = messageId != null ? `?message_id=${encodeURIComponent(messageId)}` : ''
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/env${query}`)
+  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/env${query}`)
 }
 
 // This turn's own raw structured `output` field values — {output: {...}}. Unlike
@@ -31,13 +31,13 @@ export function getEnv(sessionId, messageId) {
 // omitted, the session's latest. Read-only — output is never edited here.
 export function getOutput(sessionId, messageId) {
   const query = messageId != null ? `?message_id=${encodeURIComponent(messageId)}` : ''
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/output${query}`)
+  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/output${query}`)
 }
 
 // Edits (or adds) one memory key — always current, there's no editing
 // history. Returns the same {memory, action_set, ai_definition} shape as getEnv.
 export function putEnvValue(sessionId, key, value) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/env/${encodeURIComponent(key)}`, {
+  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/env/${encodeURIComponent(key)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ value })
@@ -45,7 +45,7 @@ export function putEnvValue(sessionId, key, value) {
 }
 
 export function deleteEnvValue(sessionId, key) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/env/${encodeURIComponent(key)}`, {
+  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/env/${encodeURIComponent(key)}`, {
     method: 'DELETE'
   })
 }
@@ -53,7 +53,7 @@ export function deleteEnvValue(sessionId, key) {
 // Wipes every memory and action-set env key at once. Returns the same
 // {memory, action_set, ai_definition} shape as getEnv.
 export function clearEnv(sessionId) {
-  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/env`, {
+  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/env`, {
     method: 'DELETE'
   })
 }

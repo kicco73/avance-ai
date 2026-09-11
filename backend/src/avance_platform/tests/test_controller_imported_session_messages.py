@@ -1,4 +1,4 @@
-"""GET /api/chat/messages for an imported session must not 409, even when
+"""GET /api/skills/webchat/messages for an imported session must not 409, even when
 the live conversation's current state is final/chat:false —
 TurnService.open_if_needed returns immediately for imported sessions.
 """
@@ -45,9 +45,9 @@ def test_reading_an_imported_sessions_messages_survives_a_final_live_state(clien
     assert client.post("/api/skills/platform/projects/proj/publish", json={}).status_code == 200
 
     # Bootstraps the live conversation into its final, no-chat state.
-    native = client.post("/api/chat/sessions")
+    native = client.post("/api/skills/webchat/sessions")
     assert native.status_code == 200, native.text
-    assert client.get(f"/api/chat/sessions/{native.json()['id']}/messages").status_code == 200
+    assert client.get(f"/api/skills/webchat/sessions/{native.json()['id']}/messages").status_code == 200
 
     imported = client.post(
         "/api/skills/platform/projects/proj/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: hello\n", "text/plain"))]
@@ -55,7 +55,7 @@ def test_reading_an_imported_sessions_messages_survives_a_final_live_state(clien
     assert imported.status_code == 200, imported.text
     session_id = parse_sse_result(imported)["last_session_id"]
 
-    resp = client.get(f"/api/chat/sessions/{session_id}/messages")
+    resp = client.get(f"/api/skills/webchat/sessions/{session_id}/messages")
     assert resp.status_code == 200, resp.text
     messages = resp.json()
     assert [m["role"] for m in messages] == ["user", "assistant"]

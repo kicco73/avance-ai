@@ -13,27 +13,27 @@ pytestmark = pytest.mark.contract
 
 @pytest.mark.contract
 def test_put_comment_sets_and_is_visible_in_session_signals(client, hello_project):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     turn = chat_turn(client, session['id'], "hi")
     message_id = turn["assistant_message_id"]
 
-    response = client.put(f"/api/chat/messages/{message_id}/comment", json={"comment": "Worth a second look."})
+    response = client.put(f"/api/skills/platform/messages/{message_id}/comment", json={"comment": "Worth a second look."})
 
     assert response.status_code == 200
     assert response.json()["comment"] == "Worth a second look."
-    signals = client.get(f"/api/chat/sessions/{session['id']}/signals").json()
+    signals = client.get(f"/api/skills/platform/sessions/{session['id']}/signals").json()
     row = next(r for r in signals if r["message_id"] == message_id)
     assert row["comment"] == "Worth a second look."
 
 
 @pytest.mark.contract
 def test_put_comment_clears_with_null(client, hello_project):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     turn = chat_turn(client, session['id'], "hi")
     message_id = turn["assistant_message_id"]
-    client.put(f"/api/chat/messages/{message_id}/comment", json={"comment": "note"})
+    client.put(f"/api/skills/platform/messages/{message_id}/comment", json={"comment": "note"})
 
-    response = client.put(f"/api/chat/messages/{message_id}/comment", json={"comment": None})
+    response = client.put(f"/api/skills/platform/messages/{message_id}/comment", json={"comment": None})
 
     assert response.status_code == 200
     assert response.json()["comment"] is None
@@ -41,14 +41,14 @@ def test_put_comment_clears_with_null(client, hello_project):
 
 @pytest.mark.contract
 def test_put_comment_strips_whitespace_and_treats_blank_as_clear(client, hello_project):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     turn = chat_turn(client, session['id'], "hi")
     message_id = turn["assistant_message_id"]
 
-    padded = client.put(f"/api/chat/messages/{message_id}/comment", json={"comment": "  spaced out  "})
+    padded = client.put(f"/api/skills/platform/messages/{message_id}/comment", json={"comment": "  spaced out  "})
     assert padded.json()["comment"] == "spaced out"
 
-    blank = client.put(f"/api/chat/messages/{message_id}/comment", json={"comment": "   "})
+    blank = client.put(f"/api/skills/platform/messages/{message_id}/comment", json={"comment": "   "})
     assert blank.json()["comment"] is None
 
 
@@ -56,11 +56,11 @@ def test_put_comment_strips_whitespace_and_treats_blank_as_clear(client, hello_p
 def test_put_comment_succeeds_for_a_non_evaluation_point_message(client, hello_project):
     """A comment is never gated on evaluation-point status, unlike
     expected-state (see test_controller_benchmark.py)."""
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     turn = chat_turn(client, session['id'], "hi")
     message_id = turn["assistant_message_id"]
 
-    response = client.put(f"/api/chat/messages/{message_id}/comment", json={"comment": "still commentable"})
+    response = client.put(f"/api/skills/platform/messages/{message_id}/comment", json={"comment": "still commentable"})
 
     assert response.status_code == 200
     assert response.json()["comment"] == "still commentable"
@@ -68,22 +68,22 @@ def test_put_comment_succeeds_for_a_non_evaluation_point_message(client, hello_p
 
 @pytest.mark.contract
 def test_put_comment_is_404_for_an_unknown_message(client, hello_project):
-    response = client.put("/api/chat/messages/999999/comment", json={"comment": "note"})
+    response = client.put("/api/skills/platform/messages/999999/comment", json={"comment": "note"})
     assert response.status_code == 404
 
 
 @pytest.mark.regression
 def test_put_comment_does_not_disturb_expected_state_on_the_same_row(client, hello_project):
-    session = client.get("/api/chat/session").json()
+    session = client.get("/api/skills/webchat/session").json()
     chat_turn(client, session['id'], "hi")
     # Picks the side with a real Tracking row, so the comment is written
     # alongside an existing expected_state rather than a bare row.
     session_id = session["id"]
-    messages = client.get(f"/api/chat/sessions/{session_id}/messages").json()
+    messages = client.get(f"/api/skills/webchat/sessions/{session_id}/messages").json()
     user_message_id = next(m["id"] for m in messages if m["role"] == "user")
-    client.put(f"/api/chat/messages/{user_message_id}/expected-state", json={"expected_state": "Hello"})
+    client.put(f"/api/skills/platform/messages/{user_message_id}/expected-state", json={"expected_state": "Hello"})
 
-    response = client.put(f"/api/chat/messages/{user_message_id}/comment", json={"comment": "context for the reviewer"})
+    response = client.put(f"/api/skills/platform/messages/{user_message_id}/comment", json={"comment": "context for the reviewer"})
 
     assert response.status_code == 200
     body = response.json()

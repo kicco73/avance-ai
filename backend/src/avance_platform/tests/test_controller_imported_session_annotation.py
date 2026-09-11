@@ -62,10 +62,10 @@ def _setup_project(client, *, autotracking_on_ai_message: bool) -> int:
     # A live session must exist and already be opened first — otherwise a
     # later GET .../messages for an imported session id would bootstrap
     # the project's live conversation (keyed by project, not session_id).
-    session_resp = client.post("/api/chat/sessions")
+    session_resp = client.post("/api/skills/webchat/sessions")
     assert session_resp.status_code == 200, session_resp.text
     session_id = session_resp.json()["id"]
-    assert client.get(f"/api/chat/sessions/{session_id}/messages").status_code == 200
+    assert client.get(f"/api/skills/webchat/sessions/{session_id}/messages").status_code == 200
     return session_id
 
 
@@ -75,7 +75,7 @@ def _import_and_get_messages(client) -> tuple[int, dict]:
     )
     assert response.status_code == 200, response.text
     session_id = parse_sse_result(response)["last_session_id"]
-    messages = client.get(f"/api/chat/sessions/{session_id}/messages").json()
+    messages = client.get(f"/api/skills/webchat/sessions/{session_id}/messages").json()
     by_role = {m["role"]: m for m in messages}
     assert set(by_role) == {"user", "assistant"}
     return session_id, by_role
@@ -86,7 +86,7 @@ def test_allows_annotating_the_user_message_regardless_of_autotracking_side(clie
     _, by_role = _import_and_get_messages(client)
 
     resp = client.put(
-        f"/api/chat/messages/{by_role['user']['id']}/expected-state", json={"expected_state": "a"}
+        f"/api/skills/platform/messages/{by_role['user']['id']}/expected-state", json={"expected_state": "a"}
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["expected_state"] == "a"
@@ -97,7 +97,7 @@ def test_allows_annotating_the_assistant_message_regardless_of_autotracking_side
     _, by_role = _import_and_get_messages(client)
 
     resp = client.put(
-        f"/api/chat/messages/{by_role['assistant']['id']}/expected-state", json={"expected_state": "a"}
+        f"/api/skills/platform/messages/{by_role['assistant']['id']}/expected-state", json={"expected_state": "a"}
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["expected_state"] == "a"
@@ -108,7 +108,7 @@ def test_expected_signals_can_also_be_annotated_on_an_imported_session(client):
     _, by_role = _import_and_get_messages(client)
 
     resp = client.put(
-        f"/api/chat/messages/{by_role['user']['id']}/expected-signals", json={"expected_values": {"mood": 80}}
+        f"/api/skills/platform/messages/{by_role['user']['id']}/expected-signals", json={"expected_values": {"mood": 80}}
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["expected_values"] == '{"mood": 80}'
@@ -122,7 +122,7 @@ def test_a_native_sessions_message_is_unaffected_by_the_imported_fallback(client
     user_message_id = chat_turn(client, native_session_id, "hi")["user_message_id"]
 
     resp = client.put(
-        f"/api/chat/messages/{user_message_id}/expected-state", json={"expected_state": "a"}
+        f"/api/skills/platform/messages/{user_message_id}/expected-state", json={"expected_state": "a"}
     )
     assert resp.status_code == 409, resp.text
 
@@ -159,12 +159,12 @@ states:
 
     # Still succeeds — "a" is a real state in the *message's own* project
     # ("proj"), regardless of "other" now being the active one.
-    resp = client.put(f"/api/chat/messages/{message_id}/expected-state", json={"expected_state": "a"})
+    resp = client.put(f"/api/skills/platform/messages/{message_id}/expected-state", json={"expected_state": "a"})
     assert resp.status_code == 200, resp.text
     assert resp.json()["expected_state"] == "a"
 
     # And a state that's real in "other" but not in "proj" must still be
     # rejected — validation is scoped to "proj", never to "whatever is
     # active", in both directions.
-    resp = client.put(f"/api/chat/messages/{message_id}/expected-state", json={"expected_state": "x"})
+    resp = client.put(f"/api/skills/platform/messages/{message_id}/expected-state", json={"expected_state": "x"})
     assert resp.status_code == 422, resp.text

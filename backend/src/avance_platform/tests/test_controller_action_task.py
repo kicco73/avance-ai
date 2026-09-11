@@ -40,7 +40,7 @@ def _upload_and_get_session(client):
     assert resp.status_code == 200, resp.text
     resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
-    return client.get("/api/chat/session").json()
+    return client.get("/api/skills/webchat/session").json()
 
 
 def _attach_websocket(app, username: str) -> FakeWebSocket:
@@ -57,7 +57,7 @@ def test_manual_action_pushes_its_on_exits_own_chat_snippets_synchronously(clien
     session = _upload_and_get_session(client)
     websocket = _attach_websocket(app, session["username"])
 
-    resp = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "go-loud"})
+    resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/action", json={"action_name": "go-loud"})
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -72,7 +72,7 @@ def test_manual_action_pushes_its_on_exits_own_chat_snippets_synchronously(clien
 def test_manual_action_without_on_exit_reports_none_even_for_the_same_target_state(client, app_db):
     session = _upload_and_get_session(client)
 
-    resp = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "go-quiet"})
+    resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/action", json={"action_name": "go-quiet"})
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -85,7 +85,7 @@ def test_state_payload_never_carries_on_exit_itself(client):
     """on-exit is per-action, never present on the state payload itself."""
     session = _upload_and_get_session(client)
 
-    resp = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "go-loud"})
+    resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/action", json={"action_name": "go-loud"})
 
     assert "on-exit" not in resp.json()["state"]
     for action in resp.json()["state"]["actions"]:

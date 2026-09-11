@@ -104,7 +104,7 @@ class LabelProjectController(BaseController):
         self.tracking_service.delete_sessions_by_username(project_id, username)
         return {"success": True}
 
-    @delete("/api/chat/sessions/{session_id}")
+    @delete("/api/skills/webchat/sessions/{session_id}")
     def delete_session(self, session_id: int):
         """Deletes a session and all its messages/signals. Raises
         TurnServiceError (404) if it doesn't exist or belongs to someone
@@ -112,33 +112,33 @@ class LabelProjectController(BaseController):
         self.turn_service.delete_session(session_id)
         return {"success": True}
 
-    @post("/api/chat/sessions/{session_id}/close")
+    @post("/api/skills/webchat/sessions/{session_id}/close")
     async def post_close_session(self, session_id: int):
         """The live chat's own "Close session" option — ends session_id
         without starting a replacement (see chat_controller.py's own
-        POST /api/chat/sessions for that). Raises TurnServiceError (404)
+        POST /api/skills/webchat/sessions for that). Raises TurnServiceError (404)
         if it doesn't exist or belongs to someone else."""
         return await self.turn_service.close_session(session_id)
 
-    @put("/api/chat/sessions/{session_id}/labeled", role="supervisor")
+    @put("/api/skills/platform/sessions/{session_id}/labeled", role="supervisor")
     def put_session_labeled(self, session_id: int, req: SetSessionLabeledRequest):
         """The "Label sessions" view's "Mark done" button. Raises
         TurnServiceError (404) for an unknown/not-yours session_id."""
         return self.turn_service.mark_session_labeled(session_id, req.labeled)
 
-    @put("/api/chat/sessions/{session_id}/title", role="supervisor")
+    @put("/api/skills/platform/sessions/{session_id}/title", role="supervisor")
     def put_session_title(self, session_id: int, req: SetSessionTitleRequest):
         """The "Label sessions" view's own Info tab — see TurnService.
         set_session_title. Same 404 convention as put_session_labeled."""
         return self.turn_service.set_session_title(session_id, req.title)
 
-    @put("/api/chat/sessions/{session_id}/comment", role="supervisor")
+    @put("/api/skills/platform/sessions/{session_id}/comment", role="supervisor")
     def put_session_comment(self, session_id: int, req: CommentRequest):
         """The "Label sessions" view's Info tab — a whole-session note,
         distinct from put_message_comment's per-message one below."""
         return self.turn_service.set_session_comment(session_id, req.comment)
 
-    @post("/api/chat/sessions/{session_id}/truncate", role="supervisor")
+    @post("/api/skills/platform/sessions/{session_id}/truncate", role="supervisor")
     async def post_truncate_session(self, session_id: int, req: TruncateSessionRequest):
         """"Restart from here": the live state may have moved backward,
         so the fresh payload is read back only once the mutation itself
@@ -149,35 +149,35 @@ class LabelProjectController(BaseController):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return self.platform_service.get_active_state_payload()
 
-    @get("/api/chat/sessions/{session_id}/signals", role="supervisor")
+    @get("/api/skills/platform/sessions/{session_id}/signals", role="supervisor")
     def get_session_signals(self, session_id: int):
         """The full Tracking event log for `session_id` (snapshots and
         transitions, chronological) — the "Label sessions" view
         reconstructs the timeline entirely client-side from this call."""
         return self.turn_service.get_session_signals(session_id)
 
-    @put("/api/chat/messages/{message_id}/expected-state", role="supervisor")
+    @put("/api/skills/platform/messages/{message_id}/expected-state", role="supervisor")
     def put_message_expected_state(self, message_id: int, req: ExpectedStateRequest):
         """Sets or (expected_state: null) clears message_id's expert-
         annotated expected state — the "Label sessions" view's States
         tab. TurnServiceError (404/409/422) is handled globally."""
         return self.turn_service.set_message_expected_state(message_id, req.expected_state)
 
-    @put("/api/chat/messages/{message_id}/expected-signals", role="supervisor")
+    @put("/api/skills/platform/messages/{message_id}/expected-signals", role="supervisor")
     def put_message_expected_signals(self, message_id: int, req: ExpectedSignalsRequest):
         """Sets or clears message_id's expert-annotated expected signal
         values — the "Label sessions" view's Signals tab. Same error
         handling as put_message_expected_state."""
         return self.turn_service.set_message_expected_signals(message_id, req.expected_values)
 
-    @put("/api/chat/messages/{message_id}/comment", role="supervisor")
+    @put("/api/skills/platform/messages/{message_id}/comment", role="supervisor")
     def put_message_comment(self, message_id: int, req: CommentRequest):
         """Sets or (comment: null/empty) clears message_id's expert-left
         free-text comment. Unlike the expected-state/signals endpoints,
         every message is a legitimate target: no 409 here, only 404."""
         return self.turn_service.set_message_comment(message_id, req.comment)
 
-    @delete("/api/chat/sessions/{session_id}/annotations", role="supervisor")
+    @delete("/api/skills/platform/sessions/{session_id}/annotations", role="supervisor")
     def delete_session_annotations(self, session_id: int):
         """Clears every expert annotation across session_id's Tracking
         rows — the "Label sessions" view's "Unlabel all" action.

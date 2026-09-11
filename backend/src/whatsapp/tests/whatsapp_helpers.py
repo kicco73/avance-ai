@@ -362,6 +362,6 @@ def voice_env():
 def _post(client, payload, signature=None):
     body = json.dumps(payload).encode()
     return client.post(
-        "/api/whatsapp/webhook", content=body,
+        "/api/skills/whatsapp/webhook", content=body,
         headers={"Content-Type": "application/json", "X-Hub-Signature-256": signature if signature is not None else _sign(body)},
     )

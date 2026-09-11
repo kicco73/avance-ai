@@ -33,8 +33,8 @@ def _upload_and_reach_b(client):
     resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
 
-    session = client.get("/api/chat/session").json()
-    action_resp = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "go"})
+    session = client.get("/api/skills/webchat/session").json()
+    action_resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/action", json={"action_name": "go"})
     assert action_resp.status_code == 200, action_resp.text
     assert action_resp.json()["state"]["key"] == "b"
     return session
