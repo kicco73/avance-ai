@@ -159,13 +159,16 @@ class Broadcaster:
         if messages:
             self._deliver(username, messages)
 
+    def total_tokens(self) -> int | None:
+        return self._ai_service.get_total_tokens() if self._ai_service is not None else None
+
     def _deliver(self, username: str, messages: list[dict]) -> None:
         with self._lock:
             connections = list(self._connections.get(username, {}).items())
         listeners = self._listeners()
         if not connections and not listeners:
             return
-        tokens = self._ai_service.get_total_tokens() if self._ai_service is not None else None
+        tokens = self.total_tokens()
         for message in messages:
             enriched = message if tokens is None else {**message, "tokens": tokens}
             for connection, loop in connections:

@@ -79,11 +79,12 @@ export function useIndexYmlEditing(
   }
 
   function handleSetProjectField(field, value) {
-    guardedAction(`edit "${field}"`, async () => {
+    return guardedAction(`edit "${field}"`, async () => {
       try {
-        await putProjectField(projectId, field, value)
+        return await putProjectField(projectId, field, value)
       } catch {
         // already surfaced via apiFetch
+        return undefined
       }
     })
   }

@@ -402,14 +402,14 @@ class ProjectMixin:
         match. The explicit is_null() branch matters: SQL's NULL !=
         revision is NULL, not true, so a plain != would skip the first publish."""
         with database.atomic():
-            changed = Project.update(published_revision=Project.revision).where(
+            Project.update(published_revision=Project.revision).where(
                 (Project.id == project_id)
                 & (Project.published_revision.is_null() | (Project.published_revision != Project.revision))
             ).execute()
-            if changed:
-                EditHistory.delete().where(EditHistory.project_id == project_id).execute()
-            # Runs unconditionally: a stale Test session must never
-            # survive even a no-op double-fired publish.
+            # Both run unconditionally, and for every user, not just
+            # whoever pressed Publish: no stale Test session and no
+            # pre-publish undo trail survives a no-op double-fired publish.
+            EditHistory.delete().where(EditHistory.project_id == project_id).execute()
             self.delete_draft_test_sessions(project_id)
 
     def revert_to_published(self, project_id: str) -> None:

@@ -79,6 +79,9 @@ function formatNumber(value) {
   return typeof value === 'number' ? value.toFixed(2) : '—'
 }
 
+const annotatedSessions = computed(() => sessions.value.filter((session) => session.has_annotations))
+const nothingToTest = computed(() => !annotatedSessions.value.length)
+
 const {
   tokensBurnt, nodeLastResult, selectedNodeId, selectedRun, selectedRunLoading,
   currentStrategyStatuses, currentStrategyProgress,
@@ -125,7 +128,8 @@ onMounted(() => {
             type="button"
             class="tests-panel-root-btn"
             :class="currentStrategyBusy ? 'tests-panel-root-btn-busy' : 'tests-panel-root-btn-idle'"
-            :title="currentStrategyBusy ? 'Stop all' : 'Run all suite'"
+            :disabled="nothingToTest && !currentStrategyBusy"
+            :title="currentStrategyBusy ? 'Stop all' : (nothingToTest ? 'No annotated session to analyse' : 'Run all suite')"
             @click="onActivateRoot"
           >
             <svg v-if="currentStrategyBusy" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -150,7 +154,7 @@ onMounted(() => {
       <p v-if="sessionsLoading || statesLoading || signalsLoading" class="tests-panel-tree-status">Loading…</p>
       <TestsTree
         v-else
-        :sessions="sessions"
+        :sessions="annotatedSessions"
         :states="projectStates"
         :signals="projectSignals"
         :statuses="currentStrategyStatuses"

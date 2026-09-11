@@ -34,6 +34,19 @@ const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000]
 export const SWITCHED_TO_OTHER_CLIENT = 'switched_to_other_client'
 export const SUPERSEDED_CLOSE_CODE = 4410
 
+// Mirrors backend system/ws_notifications.py's own WEB_FORWARDED: the
+// Bus events this socket may carry out, and so the only ones worth
+// registering for. Subscribing to one of these tells the server so — a
+// connection is sent nothing it did not ask for — while every other
+// frame type (a turn's own output.text/turn.*, human_prompt, pong) is
+// this channel's local routing only and never leaves as a registration.
+export const SERVER_EVENTS = [
+  'ui.notification',
+  'ui.human_takeover',
+  'ui.system_warning',
+  'ui.progress'
+]
+
 class ChatChannel {
   constructor() {
     this._socket = null
@@ -59,14 +72,43 @@ class ChatChannel {
 
   // `handler(frame)` for every inbound frame of this `type`, as many
   // subscribers per type as ask for it. Returns an unsubscribe function.
+  // For a SERVER_EVENTS type this is a real registration on the server
+  // too: the first local subscriber makes the socket ask for it, and the
+  // last one to go makes it drop it again.
   subscribe(type, handler) {
     let handlers = this._subscribers.get(type)
     if (handlers === undefined) {
       handlers = new Set()
       this._subscribers.set(type, handlers)
     }
+    const wasEmpty = handlers.size === 0
     handlers.add(handler)
-    return () => handlers.delete(handler)
+    if (wasEmpty) this._register('subscribe', type)
+    return () => {
+      handlers.delete(handler)
+      if (handlers.size === 0) this._register('unsubscribe', type)
+    }
+  }
+
+  // The types anything is currently listening for, out of what the
+  // server can actually export — derived from the subscriber registry
+  // itself rather than tracked alongside it, so the two can never
+  // disagree about what this connection wants.
+  _registeredEvents() {
+    return SERVER_EVENTS.filter((type) => (this._subscribers.get(type)?.size ?? 0) > 0)
+  }
+
+  _register(action, type) {
+    if (!SERVER_EVENTS.includes(type)) return
+    this.send({ type: action, events: [type] })
+  }
+
+  // Every registration, restated on a socket that just opened: the
+  // server keeps them per connection, so a reconnection starts deaf
+  // until this runs.
+  _registerAll() {
+    const events = this._registeredEvents()
+    if (events.length) this.send({ type: 'subscribe', events })
   }
 
   // `handler(state, { reconnected })` on every transition. Returns an
@@ -239,6 +281,7 @@ class ChatChannel {
         this._reconnectAttempt = 0
         this._everConnected = true
         this._startHeartbeat(ws)
+        this._registerAll()
         this._setConnectionState('open', { reconnected: hadConnectedBefore })
         resolve(ws)
       }

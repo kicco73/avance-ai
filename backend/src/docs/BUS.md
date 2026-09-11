@@ -166,7 +166,7 @@ meant to become a message.
 | `api.state` | `POINT_API_STATE` | the `GET /api/state` payload | `avance_platform.platform_controller` | `listen`, `build` |
 | `config.services` | `POINT_CONFIG_SERVICES` | the public services snapshot | `config.py`, `system.config_services` | `talk`, `listen`, `mail`, `whatsapp`, `testing`, `build` |
 | `http.controllers` | `POINT_HTTP_CONTROLLERS` | the list of controllers to route | `controller.py` | `talk`, `listen`, `webchat`, `whatsapp`, `avance_platform`, `testing`, `build` |
-| `core.services` | `POINT_CORE_SERVICES` | the composed core, offered to whoever asks | every skill | `main.py` |
+| `core.services` | `POINT_CORE_SERVICES` | the composed core, offered to whoever asks | every skill | `main.py`, `testing` |
 | `automaton.loader` | `POINT_AUTOMATON_LOADER` | which loader answers "give me this project's automaton" | `main.py` | `avance_platform`, `product` |
 
 `core.services` runs the other way from the rest: a skill starts at boot,
@@ -176,6 +176,13 @@ a skill collects it from inside work that runs later — a
 `http.controllers` contributor, or the first message it handles. Nothing
 declares a dependency and nothing orders anything; the only rule is that
 a collect must not run before `main.py` has contributed.
+
+A skill may contribute to it too, and `testing` does: the service it
+builds for itself (`TestingService`) is offered back under its own name,
+so anything composed after it — the test harness above all — finds it
+the same way it finds `db` or `turn_service`, instead of the skill
+having to hand it somewhere. Only the skill that built a service can
+offer it, and only after `register_controllers` has run.
 
 ## Availability
 

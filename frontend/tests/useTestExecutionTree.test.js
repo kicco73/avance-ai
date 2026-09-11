@@ -127,12 +127,19 @@ describe('useTestExecutionTree', () => {
   })
 
   describe('handleTestEvent', () => {
-    it('tracks tokens off any message, and fetches an aggregate result only for completed non-root, non-session nodes', async () => {
+    it('reports tokens burnt since the run was launched, and fetches an aggregate result only for completed non-root, non-session nodes', async () => {
       getAggregateResult.mockResolvedValue({ name: 'state_accuracy', value: 0.9 })
+      getTestStatus.mockResolvedValue({ events: [], tokens: 1000 })
       const s = mount()
+      await vi.waitFor(() => expect(getTestStatus).toHaveBeenCalled())
 
-      s.handleTestEvent({ key: 'batch:root', job_status: 'running', queue_status: 'running', tokens: 1234 })
-      expect(s.tokensBurnt.value).toBe(1234)
+      s.handleTestEvent({ key: 'batch:root', job_status: 'completed', queue_status: 'exited', tokens: 1100 })
+      expect(s.tokensBurnt.value).toBe(0)
+
+      await s.onActivate('root')
+      s.handleTestEvent({ key: 'batch:root', job_status: 'running', queue_status: 'running', tokens: 1500 })
+      expect(s.tokensBurnt.value).toBe(400)
+
       s.handleTestEvent({ key: 'batch:root', job_status: 'completed', queue_status: 'exited' })
       s.handleTestEvent({ key: 'batch:state:greeting', job_status: 'running', queue_status: 'running' })
       expect(getAggregateResult).not.toHaveBeenCalled()

@@ -44,6 +44,12 @@ HUMAN_REPLY_TIMEOUT_SECONDS = 300.0
 # is the message that was published, under its own type — this object is
 # the Bus's reach into a web client, with a filter on what may leave, not
 # a second vocabulary (see docs/BUS.md).
+#
+# It is also the allowlist a client registers against: a browser asks for
+# the types it wants with a `subscribe` frame and drops them with
+# `unsubscribe`, and only what it registered for is ever sent to it (see
+# WsConnection.wants/push_event). A type outside this tuple is refused —
+# registering for one would otherwise be a way to read an internal type.
 WEB_FORWARDED = (UI_NOTIFICATION, UI_HUMAN_TAKEOVER, UI_SYSTEM_WARNING, UI_PROGRESS)
 
 
@@ -73,6 +79,20 @@ class WsConnection(object):
         self._outgoing: asyncio.Queue[dict | None] = asyncio.Queue()
         self._closed = False
         self._close_code: int | None = None
+        # What this client asked to be told about, empty until it says so
+        # (see WsNotifications._exportable): a socket is a bus connection,
+        # and a bus delivers to whoever registered, not to whoever is
+        # merely connected.
+        self._subscriptions: set[str] = set()
+
+    def subscribe(self, event_types: list[str]) -> None:
+        self._subscriptions.update(event_types)
+
+    def unsubscribe(self, event_types: list[str]) -> None:
+        self._subscriptions.difference_update(event_types)
+
+    def wants(self, event_type: str) -> bool:
+        return event_type in self._subscriptions
 
     @property
     def closed(self) -> bool:
@@ -253,12 +273,30 @@ class WsNotifications(object):
             # frame is simply not answered, which is what a build with no
             # chat installed looks like from here.
             self._publish_client_frame(connection, frame_type, frame)
+        elif frame_type == "subscribe":
+            connection.subscribe(self._exportable(frame.get("events")))
+        elif frame_type == "unsubscribe":
+            connection.unsubscribe(self._exportable(frame.get("events")))
         elif frame_type == "human_reply":
             self._resolve_human_reply_for_session(connection, frame.get("session_id"), str(frame.get("text", "")))
         elif frame_type == "human_typing":
             self._notify_typing_for_session(connection, frame.get("session_id"))
         else:
             logger.debug(f"ignoring an unknown websocket frame type: {frame_type!r}")
+
+    def _exportable(self, events) -> list[str]:
+        """The subset of what a client asked for that this socket is
+        allowed to carry out of the Bus. Anything else is refused rather
+        than registered: WEB_FORWARDED is the export allowlist, and a
+        client naming an internal type would otherwise turn a
+        registration into a way to read one."""
+        if not isinstance(events, list):
+            return []
+        wanted = [event for event in events if isinstance(event, str)]
+        refused = [event for event in wanted if event not in WEB_FORWARDED]
+        if refused:
+            logger.warning(f"refusing a websocket registration for non-exportable types: {refused}")
+        return [event for event in wanted if event in WEB_FORWARDED]
 
     def _username_of(self, connection: WsConnection) -> str | None:
         for username, connections in self._connections.items():
@@ -347,32 +385,48 @@ class WsNotifications(object):
         return False
 
     async def _forward_to_web(self, message: Message) -> None:
-        """Every WEB_FORWARDED message, to that identity's open
-        connections, under its own type. The socket is this object's
-        business, and a producer never learns whether anyone was
-        connected (see bus.UI_NOTIFICATION)."""
+        """Every WEB_FORWARDED message, to that identity's connections
+        that registered for its type, under that same type. The socket is
+        this object's business, and a producer never learns whether
+        anyone was connected, let alone subscribed (see
+        bus.UI_NOTIFICATION)."""
         for username in filter(None, [message.username]):
-            await self.push(username, {"type": message.type, **(message.body or {})})
+            await self.push_event(username, message.type, {"type": message.type, **(message.body or {})})
+
+    async def push_event(self, username: str, event_type: str, payload: dict) -> bool:
+        """One Bus event, to `username`'s connections that registered for
+        it (see WsConnection.wants) — never to a connection that merely
+        exists. False means nobody was listening for it, which is an
+        ordinary outcome, not an error."""
+        return self._send_to(
+            [connection for connection in self._connections.get(username, []) if connection.wants(event_type)],
+            payload,
+        )
 
     async def push(self, username: str, payload: dict, exclude_connection_id: str | None = None) -> bool:
         """Sends `payload` to every one of `username`'s open connections
         — a dormant/fully-disconnected user just gets False back, no
-        exception. `exclude_connection_id` skips one connection (see
+        exception. This is the addressed path, for a frame that belongs
+        to this socket rather than to the Bus (human_prompt): a Bus event
+        goes through push_event above, which delivers only to whoever
+        registered. `exclude_connection_id` skips one connection (see
         Session.connection_id): used so the tab that triggered a turn
         doesn't also receive its own human_prompt. `async def` only to
         keep every existing `await push(...)` call site unchanged; the
         body itself never actually awaits (WsConnection.send() enqueues
         synchronously)."""
-        connections = self._connections.get(username)
-        if not connections:
-            return False
-        sent = False
+        return self._send_to(
+            [
+                connection for connection in self._connections.get(username, [])
+                if connection.id != exclude_connection_id
+            ],
+            payload,
+        )
+
+    def _send_to(self, connections: list[WsConnection], payload: dict) -> bool:
         for connection in connections:
-            if exclude_connection_id is not None and connection.id == exclude_connection_id:
-                continue
             connection.send(payload)
-            sent = True
-        return sent
+        return bool(connections)
 
     async def send_human_prompt(
         self,
@@ -431,7 +485,10 @@ class WsNotifications(object):
         offline operator just doesn't get it live, same as any other
         push — get_human_operator(session_id) is queryable state, not a
         one-shot event, so they still see it once they open the session."""
-        await self.push(username, {"type": UI_HUMAN_TAKEOVER, "session_id": session_id, "project_id": project_id})
+        await self.push_event(
+            username, UI_HUMAN_TAKEOVER,
+            {"type": UI_HUMAN_TAKEOVER, "session_id": session_id, "project_id": project_id},
+        )
 
     async def await_human_reply(self, prompt_id: str) -> str:
         """The WsHumanRelay.receive() primitive: waits for the

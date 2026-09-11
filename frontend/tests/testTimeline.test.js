@@ -8,6 +8,7 @@ import {
   nearestMessageIdAtOrBefore,
   resolveTransitionRow,
   resultingStateKeyFor,
+  latestSignalValues,
   signalValuesAsOf,
   signalValuesFor,
   stateAsOf,
@@ -82,6 +83,18 @@ describe('signalValuesAsOf', () => {
     expect(signalValuesAsOf(log, [], '2026-01-01T10:00:07')).toEqual({ risk: { value: 0, error: null } })
     expect(signalValuesAsOf(log, [], '2026-01-01T10:00:10')).toEqual({ risk: { value: 100, error: null } })
     expect(signalValuesAsOf(log, [], '2026-01-01T09:00:00')).toEqual({})
+  })
+})
+
+describe('latestSignalValues', () => {
+  it('reports the session log\'s own last evaluated values, and nothing at all for a log with none', () => {
+    expect(latestSignalValues([])).toEqual({})
+    expect(latestSignalValues([transitionRow(1, { timestamp: '2026-01-01T10:00:00', values: null })])).toEqual({})
+    expect(latestSignalValues([
+      transitionRow(1, { timestamp: '2026-01-01T10:00:00', values: JSON.stringify({ risk: 0 }) }),
+      transitionRow(2, { timestamp: '2026-01-01T10:00:10', values: JSON.stringify({ risk: 100 }) }),
+      transitionRow(3, { timestamp: '2026-01-01T10:00:20', values: null })
+    ])).toEqual({ risk: { value: 100, error: null } })
   })
 })
 

@@ -86,6 +86,17 @@ class TestPutProjectField:
         assert response.status_code == 200
         assert response.json()["id"] == "hello_id"
 
+    def test_reports_the_project_id_the_save_settled_on_so_a_rename_can_be_followed(self, client, hello_project):
+        response = client.put(f"/api/projects/{hello_project}/project/ui-label", json={"value": "Hello"})
+        assert response.status_code == 200
+        assert response.json()["project_id"] == hello_project
+
+        response = client.put(f"/api/projects/{hello_project}/project/id", json={"value": "renamed_here"})
+        assert response.status_code == 200
+        assert response.json()["project_id"] == "renamed_here"
+        assert client.get(f"/api/projects/{hello_project}/project").status_code == 404
+        assert client.get("/api/projects/renamed_here/project").status_code == 200
+
     def test_general_prompt_is_stored_at_the_top_level_and_clearing_it_removes_the_key(self, client, hello_project):
         response = client.put(
             f"/api/projects/{hello_project}/project/general-prompt", json={"value": "Always be polite."}

@@ -25,10 +25,6 @@ const props = defineProps({
   uploading: { type: Boolean, default: false },
   creatingFile: { type: Boolean, default: false },
   explorerWidth: { type: Number, required: true },
-  // Gates mounting IndexYmlEditorPanel/CodeEditor: each loads its content
-  // as soon as it mounts, so without this they could race the project's
-  // undo/redo history being cleared on entry.
-  historyCleared: { type: Boolean, default: false },
   currentFileIsMedia: { type: Boolean, default: false },
   // A .txt/.md attachment — gets MdEditorPanel instead of the bare
   // CodeEditor fallback below.
@@ -116,101 +112,98 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
     <div class="split-divider" @mousedown="emit('start-explorer-drag', $event)"></div>
 
     <div class="edit-project-editor-pane">
-      <p v-if="!historyCleared" class="edit-project-status">Loading…</p>
-      <template v-else>
-        <div v-if="sourcesRootSelected" class="edit-project-source-empty-state">
-          <span class="edit-project-source-empty-icon">
-            <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-          </span>
-          <p>Select a source, or add one.</p>
-        </div>
-        <SourceContentPanel
-          v-if="currentSourceName"
-          :key="currentSourceName"
-          ref="sourceContentPanelRef"
-          :project-id="projectId"
-          :file-name="currentSourceArchiveName"
-          :source-name="currentSourceName"
-          @saved="emit('saved', $event)"
-        />
-        <!-- Stays mounted (v-show): its InspectorGraph resolves the
-             Inspector's State/Actions selection, which unmounting would
-             drop whenever another file/source is viewed. -->
-        <IndexYmlEditorPanel
-          v-show="noSourceSelection && currentFileName === 'index.yml'"
-          ref="indexYmlEditorRef"
-          :project-id="projectId"
-          :attachment-files="attachmentFiles"
-          :highlighted-state-key="highlightedStateKey"
-          :auto-jump-on-highlight-change="true"
-          :fired-action-edge="firedActionEdge"
-          :selected-element="selectedElement"
-          :current-revision="currentRevision"
-          @jump-to-definition="emit('jump-to-definition', $event)"
-          @select="emit('select', $event)"
-          @saved="emit('saved', $event)"
-        />
-        <IndexCssEditorPanel
-          v-show="noSourceSelection && currentFileName === 'index.css'"
-          ref="indexCssEditorRef"
-          :project-id="projectId"
-          :files="files"
-          @saved="emit('saved', $event)"
-        />
-        <AspectMediaPanel
-          v-if="noSourceSelection && currentFileIsMedia"
-          :key="currentFileName"
-          :file-name="currentFileName"
-          :content-url="projectFileContentUrl(projectId, currentFileName)"
-        />
-        <MdEditorPanel
-          v-else-if="noSourceSelection && currentFileIsMarkdown"
-          :key="currentFileName"
-          ref="mdEditorRef"
-          :project-id="projectId"
-          :file-name="currentFileName"
-          :initial-segment="currentFileName === justAddedFileName ? 'edit' : 'preview'"
-          @saved="emit('saved', $event)"
-          @renamed="emit('renamed', $event)"
-        />
-        <div
-          v-else-if="noSourceSelection && currentFileName !== 'index.yml' && currentFileName !== 'index.css'"
-          class="edit-project-editor-attachment"
-        >
-          <div class="edit-project-editor-toolbar">
-            <span class="edit-project-editor-filename">{{ currentFileName }}</span>
-            <div class="edit-project-editor-toolbar-actions">
-              <button
-                class="undo-redo-btn"
-                title="Undo"
-                :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canUndo"
-                @click="codeEditorRef?.undo()"
-              >↺</button>
-              <button
-                class="undo-redo-btn"
-                title="Redo"
-                :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canRedo"
-                @click="codeEditorRef?.redo()"
-              >↻</button>
-              <button
-                class="save-btn"
-                :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.isDirty"
-                @click="codeEditorRef?.save()"
-              >{{ codeEditorRef?.saving ? 'Saving…' : 'Save' }}</button>
-            </div>
-          </div>
-          <div class="edit-project-editor-content">
-            <CodeEditor
-              :key="currentFileName"
-              ref="codeEditorRef"
-              :project-id="projectId"
-              :file-name="currentFileName"
-              @saved="emit('saved', $event)"
-              @renamed="emit('renamed', $event)"
-            />
+      <div v-if="sourcesRootSelected" class="edit-project-source-empty-state">
+        <span class="edit-project-source-empty-icon">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </span>
+        <p>Select a source, or add one.</p>
+      </div>
+      <SourceContentPanel
+        v-if="currentSourceName"
+        :key="currentSourceName"
+        ref="sourceContentPanelRef"
+        :project-id="projectId"
+        :file-name="currentSourceArchiveName"
+        :source-name="currentSourceName"
+        @saved="emit('saved', $event)"
+      />
+      <!-- Stays mounted (v-show): its InspectorGraph resolves the
+           Inspector's State/Actions selection, which unmounting would
+           drop whenever another file/source is viewed. -->
+      <IndexYmlEditorPanel
+        v-show="noSourceSelection && currentFileName === 'index.yml'"
+        ref="indexYmlEditorRef"
+        :project-id="projectId"
+        :attachment-files="attachmentFiles"
+        :highlighted-state-key="highlightedStateKey"
+        :auto-jump-on-highlight-change="true"
+        :fired-action-edge="firedActionEdge"
+        :selected-element="selectedElement"
+        :current-revision="currentRevision"
+        @jump-to-definition="emit('jump-to-definition', $event)"
+        @select="emit('select', $event)"
+        @saved="emit('saved', $event)"
+      />
+      <IndexCssEditorPanel
+        v-show="noSourceSelection && currentFileName === 'index.css'"
+        ref="indexCssEditorRef"
+        :project-id="projectId"
+        :files="files"
+        @saved="emit('saved', $event)"
+      />
+      <AspectMediaPanel
+        v-if="noSourceSelection && currentFileIsMedia"
+        :key="currentFileName"
+        :file-name="currentFileName"
+        :content-url="projectFileContentUrl(projectId, currentFileName)"
+      />
+      <MdEditorPanel
+        v-else-if="noSourceSelection && currentFileIsMarkdown"
+        :key="currentFileName"
+        ref="mdEditorRef"
+        :project-id="projectId"
+        :file-name="currentFileName"
+        :initial-segment="currentFileName === justAddedFileName ? 'edit' : 'preview'"
+        @saved="emit('saved', $event)"
+        @renamed="emit('renamed', $event)"
+      />
+      <div
+        v-else-if="noSourceSelection && currentFileName !== 'index.yml' && currentFileName !== 'index.css'"
+        class="edit-project-editor-attachment"
+      >
+        <div class="edit-project-editor-toolbar">
+          <span class="edit-project-editor-filename">{{ currentFileName }}</span>
+          <div class="edit-project-editor-toolbar-actions">
+            <button
+              class="undo-redo-btn"
+              title="Undo"
+              :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canUndo"
+              @click="codeEditorRef?.undo()"
+            >↺</button>
+            <button
+              class="undo-redo-btn"
+              title="Redo"
+              :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canRedo"
+              @click="codeEditorRef?.redo()"
+            >↻</button>
+            <button
+              class="save-btn"
+              :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.isDirty"
+              @click="codeEditorRef?.save()"
+            >{{ codeEditorRef?.saving ? 'Saving…' : 'Save' }}</button>
           </div>
         </div>
-      </template>
+        <div class="edit-project-editor-content">
+          <CodeEditor
+            :key="currentFileName"
+            ref="codeEditorRef"
+            :project-id="projectId"
+            :file-name="currentFileName"
+            @saved="emit('saved', $event)"
+            @renamed="emit('renamed', $event)"
+          />
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -235,7 +228,6 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
 .save-btn:hover:not(:disabled) { background: #256428; }
 .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .edit-project-editor-content { flex: 1; min-height: 0; display: flex; }
-.edit-project-status { margin: auto; color: #444; }
 .edit-project-source-empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.4rem; padding: 1rem; text-align: center; color: #777; }
 .edit-project-source-empty-icon { color: #3949ab; opacity: 0.6; }
 .edit-project-source-empty-state p { margin: 0; font-size: 0.9rem; }

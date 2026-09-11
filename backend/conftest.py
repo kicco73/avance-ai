@@ -21,14 +21,14 @@ from turn.channels import NATIVE_CHAT
 from turn.turn_service import TurnService
 from turn.ephemeral_env_registry import EphemeralEnvRegistry
 from turn.sessions.session_manager import SessionManager
-from system.ws_notifications import WsNotifications
+from system.ws_notifications import WEB_FORWARDED, WsNotifications
 from controller import AvanceController
 from db import Db
 from db.models import User
 from error_handlers import ApiErrorHandlers
 from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
 from system import bus, skills
-from system.bus import POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
+from system.bus import POINT_CORE_SERVICES
 from system.broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
 from scheduler import SchedulerService
 from metrics.metric_service import MetricService
@@ -40,8 +40,21 @@ from tracking.project_files import PROJECT_FILE_CACHE
 from tracking.tracking_service import TrackingService
 
 BACKEND_DIR = Path(__file__).resolve().parent
+SRC_ROOT = BACKEND_DIR / "src"
 SAMPLES_DIR = BACKEND_DIR / "samples" / "projects"
 TEST_STATS_PATH = BACKEND_DIR / "test_stats.json"
+
+
+def production_sources() -> "list[Path]":
+    """Every .py under src/ that is not itself a test. A skill's tests
+    live inside its package now (see docs/TESTS.md), so a contract that
+    scans the source tree for what production code is allowed to do has
+    to say which files it means: a test reaching into an internal on
+    purpose is not a boundary being crossed."""
+    return [
+        path for path in SRC_ROOT.rglob("*.py")
+        if "tests" not in path.parts and not path.name.startswith("test_")
+    ]
 
 
 class _TestRun:
@@ -104,6 +117,10 @@ def chat_socket(client: TestClient, username: str | None = None):
     # and no frame ever comes back.
     installed_skill("webchat")
     with client.websocket_connect("/ws/notifications", headers={"cookie": f"{SESSION_COOKIE_NAME}={token}"}) as ws:
+        # A browser is told nothing it did not register for (see
+        # WsNotifications._exportable) — this helper stands in for one,
+        # so it registers for everything the socket may export.
+        ws.send_json({"type": "subscribe", "events": list(WEB_FORWARDED)})
         yield ws
 
 
@@ -450,7 +467,6 @@ def run_pending_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0
     and returns the frames the browser would have received. Stops the
     service afterwards so its thread never outlives the test."""
     import time
-    factory = app.state.namespace_factory
     websocket = FakeWebSocket()
     ws_notifications = WsNotifications(auth_service=None)
     ws_notifications._connections[username] = [websocket]

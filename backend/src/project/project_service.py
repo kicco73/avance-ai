@@ -235,7 +235,7 @@ class ProjectService(object):
     async def set_init_action_field(self, project_id: str, field: str, value, commit: CommitCallback):
         return await self.editor.set_init_action_field(project_id, field, value, commit)
 
-    async def set_project_field(self, project_id: str, field: str, value, commit: CommitCallback) -> ProjectPayload:
+    async def set_project_field(self, project_id: str, field: str, value, commit: CommitCallback) -> dict:
         return await self.editor.set_project_field(project_id, field, value, commit)
 
     async def set_service_level(

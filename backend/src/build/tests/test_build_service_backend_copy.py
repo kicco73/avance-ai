@@ -11,6 +11,7 @@ import build.backend_copy as backend_copy
 from build.backend_copy import STEPS, _prune_database_to_project
 from build.build_service import BuildService, module_name_for
 from build.compiler import CompileError
+from conftest import parse_sse_result
 from db import Db
 
 PROJECT_A = "keep_me"
@@ -382,8 +383,8 @@ def test_every_installed_skill_starts_with_the_configuration_and_nothing_else(tm
 
     from system import skills
 
-    for module in skills.discover():
-        assert list(inspect.signature(module.start).parameters) == ["raw", "path"], module.__name__
+    for skill in skills.discover():
+        assert list(inspect.signature(skill.start).parameters) == ["raw", "path"], skill.package
 
 
 def _build_service_for(tmp_path, monkeypatch, build_root):
@@ -444,6 +445,26 @@ async def test_building_the_same_revision_twice_replaces_it(tmp_path, monkeypatc
     assert [path.name for path in build_root.iterdir()] == [second.name]
 
 
+@pytest.mark.slow
+@pytest.mark.spawns_a_build
+async def test_a_build_ends_by_running_its_own_suite_for_real(tmp_path, monkeypatch):
+    """The whole thing, no fakes: a backend is built and then its own
+    pytest run has to pass before the build does. Minutes, and it builds
+    a backend that would otherwise build a backend — which is what the
+    marker is for (see pytest.ini, build/backend_copy.py)."""
+    build_root = tmp_path / "builds"
+    monkeypatch.setattr(backend_copy, "BUILDS_DIR", build_root)
+    db_path = tmp_path / "avance.db"
+    source_db = Db(f"sqlite:///{db_path}")
+    source_db.get_or_create_user("test", "sub-user", "user", "user", None)
+    _publish(source_db, PROJECT_A)
+
+    result = await _build_and_test(BuildService(source_db, _Service(source_db), tmp_path / "apps"), PROJECT_A)
+
+    assert result["tests"]["passed"], result["tests"]["output"]
+    assert "passed" in result["tests"]["summary"]
+
+
 @pytest.mark.contract
 def test_the_last_step_of_a_build_is_running_the_built_backends_own_tests():
     assert [step.key for step in STEPS][-1] == "tests"
@@ -490,3 +511,39 @@ async def test_a_build_whose_own_tests_fail_is_a_failed_build(tmp_path, monkeypa
         copy.run_tests()
 
     assert copy.report()["tests"]["passed"] is False
+
+
+def test_the_route_streams_the_build_instead_of_waiting_for_it(client, hello_project, monkeypatch):
+    """A backend copy is minutes, so the response is the job's own
+    progress and the last chunk carries the report (see
+    SchedulerService.stream_progress). Driven here over one trivial step:
+    what is being checked is the wiring, not the copying."""
+    import build.build_job as build_job
+
+    ran = []
+    monkeypatch.setattr(
+        build_job, "STEPS", (backend_copy.BuildStep("only", "The only step", "report"),),
+    )
+    monkeypatch.setattr(backend_copy.BackendCopy, "report", lambda self: ran.append(self.project_id) or {"path": "x"})
+
+    response = client.post(f"/api/projects/{hello_project}/build/backend-copy", json={"excluded_skills": []})
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert parse_sse_result(response)["steps"] == [
+        {"key": "only", "label": "The only step", "status": "done"},
+    ]
+    assert ran and ran[0] == hello_project
+
+
+def test_a_project_that_cannot_be_built_is_refused_before_any_job_exists(client, hello_project, app):
+    """The 400 the panel shows verbatim, still a 400 now that the build
+    itself streams: nothing has started when this answers."""
+    app.state.db.save_project_files(
+        hello_project, {"index.yml": b"project:\n  id: hello_world\n"}, {"index.yml": "text/yaml"},
+    )
+
+    response = client.post(f"/api/projects/{hello_project}/build/backend-copy", json={"excluded_skills": []})
+
+    assert response.status_code == 400
+    assert "publish" in response.json()["error"]["message"]

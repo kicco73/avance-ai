@@ -435,14 +435,18 @@ class ProjectEditor:
             raise ValueError(f"'{LEGAL_TERMS_FILE_NAME}' already exists.")
         return await self.put_project_file(project_id, LEGAL_TERMS_FILE_NAME, LEGAL_TERMS_SKELETON, None, commit)
 
+    async def _edit_index_yml_returning_project_id(self, project_id: str, commit: CommitCallback, operation):
+        current = self._file_undo_redo_info(project_id, "index.yml")["content"]
+        editor = AutomatonYamlEditor(current)
+        result = operation(editor)
+        saved = await self.put_project_file(project_id, "index.yml", editor.serialize(), None, commit)
+        return result, saved["project_id"]
+
     async def _edit_index_yml(self, project_id: str, commit: CommitCallback, operation):
         """Runs `operation(editor: AutomatonYamlEditor) -> T` against
         `project_id`'s index.yml text, persists it via put_project_file,
         and returns `operation`'s own result untouched."""
-        current = self._file_undo_redo_info(project_id, "index.yml")["content"]
-        editor = AutomatonYamlEditor(current)
-        result = operation(editor)
-        await self.put_project_file(project_id, "index.yml", editor.serialize(), None, commit)
+        result, _ = await self._edit_index_yml_returning_project_id(project_id, commit, operation)
         return result
 
     async def add_state(self, project_id: str, commit: CommitCallback) -> StatePayload:
@@ -480,10 +484,11 @@ class ProjectEditor:
             project_id, commit, lambda editor: editor.set_init_action_field(field, value)
         )
 
-    async def set_project_field(self, project_id: str, field: str, value, commit: CommitCallback) -> ProjectPayload:
-        return await self._edit_index_yml(
+    async def set_project_field(self, project_id: str, field: str, value, commit: CommitCallback) -> dict:
+        payload, saved_project_id = await self._edit_index_yml_returning_project_id(
             project_id, commit, lambda editor: editor.set_project_field(field, value)
         )
+        return {**payload, "project_id": saved_project_id}
 
     async def set_service_level(
         self, project_id: str, service: str, level: str, commit: CommitCallback

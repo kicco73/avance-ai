@@ -204,14 +204,6 @@ export function deleteProjectFile(projectId, fileName) {
   })
 }
 
-// Clears the current user's undo/redo history for every file in the
-// project, so a fresh editing session never inherits a previous trail.
-export function clearProjectHistory(projectId) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/history`, {
-    method: 'DELETE'
-  })
-}
-
 export function postAddLegalTerms(projectId) {
   return projectFetch(projectId, `${API_URL}/projects/${encodeURIComponent(projectId)}/legal-terms`, { method: 'POST' })
 }

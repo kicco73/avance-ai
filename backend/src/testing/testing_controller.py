@@ -189,4 +189,7 @@ class TestingController(BaseController):
 
     @get("/api/projects/{project_id}/test-status", role="supervisor")
     def get_test_status(self, project_id: str):
-        return {"events": self.progress_broadcaster.snapshot()}
+        return {
+            "events": self.progress_broadcaster.snapshot(),
+            "tokens": self.progress_broadcaster.total_tokens(),
+        }

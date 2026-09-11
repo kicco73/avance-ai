@@ -33,7 +33,6 @@ import { useLiveRunTimeline } from '../../../composables/useLiveRunTimeline.js'
 import { useTestModeSelection } from '../../../composables/useTestModeSelection.js'
 import { useStateTabTokens } from '../../../composables/useStateTabTokens.js'
 import { onProjectChanged } from '../../../projectChangeEvents.js'
-import { clearProjectHistory } from '../../../api.js'
 import { setApiWarning } from '../../../errorStore.js'
 import { chooseDialog, customDialog } from '../../../dialogStore.js'
 import { totalTokenBudgetPerSession } from '../../../chatStore.js'
@@ -42,7 +41,10 @@ import { setTestProject, testStore, testChatModelStore, loadTestChatModels } fro
 
 // `runSessions` is the "Run" tab's own draft session pool, unrelated to
 // chatStore's project-wide `sessions` catalog used by useTestModeSelection.
-const { currentSessionId, turnCount, loadMessages, loadSessions, sessions: runSessions, refreshSessionsQuietly } = testStore
+const {
+  currentSessionId, turnCount, chatLoading, loadMessages, loadSessions,
+  sessions: runSessions, refreshSessionsQuietly,
+} = testStore
 
 const props = defineProps({
   projectId: {
@@ -55,7 +57,7 @@ const props = defineProps({
 
 setTestProject(props.projectId)
 
-const emit = defineEmits(['saved', 'back', 'home', 'profile', 'logout'])
+const emit = defineEmits(['saved', 'renamed', 'back', 'home', 'profile', 'logout'])
 
 const {
   filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile, renamingFile,
@@ -176,7 +178,7 @@ const {
 
 const {
   signalsLog, selected, runChatRef, timeline,
-  refreshSignalsLog, refreshSessionStartState, refreshSignalValues, isStateGone,
+  refreshSignalsLog, refreshSessionStartState, isStateGone,
   selectMessage, selectTransition, highlightedStateKey, firedActionEdge, untilMessageId, envEditable,
   effectiveSignalValues, restartAndPrefill, restartAndResend,
 } = useLiveRunTimeline(props.projectId, mode, validStateKeys)
@@ -251,6 +253,7 @@ function resyncSelectedGraphElement() {
 async function refreshAfterProjectEdit() {
   await indexYmlEditorRef.value?.refresh(false)
   await indexYmlEditorRef.value?.reloadCode()
+  if (runOpen.value && !chatLoading.value) await ensureDraftChatSession()
   if (inspecting.value) await inspectorRef.value?.refresh()
   resyncSelectedGraphElement()
   refreshCatalog()
@@ -285,6 +288,20 @@ function handleTabSelect(element) {
   if (!element) return
   if (element.kind === 'state') jumpSilently({ kind: 'state', stateKey: element.data.id })
   else jumpSilently({ kind: 'action', stateKey: element.data.matchStateKey, actionName: element.data.actionName })
+}
+
+function followProjectRename(result) {
+  const renamedTo = result?.project_id
+  if (renamedTo && renamedTo !== props.projectId) emit('renamed', renamedTo)
+}
+
+async function handleProjectFieldSet(field, value) {
+  followProjectRename(await handleSetProjectField(field, value))
+}
+
+function handleProjectFileSaved(result) {
+  handleFileSaved(result)
+  followProjectRename(result)
 }
 
 function handleSetSelectedElementField(field, value) {
@@ -338,7 +355,7 @@ function handleBack() {
 
 async function openInspect() {
   await nextTick()
-  await refreshSignalValues()
+  await refreshSignalsLog()
 }
 
 function handleInspectorCollapsedChange(collapsed) {
@@ -355,7 +372,6 @@ watch(turnCount, () => {
   selected.value = null
   refreshSignalsLog()
   if (!inspecting.value) return
-  refreshSignalValues()
   inspectorRef.value?.refresh()
   if (editorOpen.value) indexYmlEditorRef.value?.refresh(false)
 })
@@ -374,9 +390,6 @@ watch(currentSessionId, () => {
   if (inspecting.value) nextTick(() => inspectorRef.value?.refresh())
 })
 
-// Gates mounting the editors until clearProjectHistory has finished.
-const historyCleared = ref(false)
-
 onMounted(async () => {
   loadFiles()
   loadSources()
@@ -390,13 +403,6 @@ onMounted(async () => {
   }
   if (inspecting.value) openInspect()
   window.addEventListener('resize', handleWindowResize)
-  try {
-    await clearProjectHistory(props.projectId)
-  } catch {
-    // already surfaced via apiFetch
-  } finally {
-    historyCleared.value = true
-  }
   if (props.buildError?.file === 'index.yml') {
     await nextTick()
     indexYmlEditorRef.value?.showBuildError(props.buildError.line)
@@ -449,7 +455,6 @@ onBeforeUnmount(() => {
           :uploading="uploading"
           :creating-file="creatingFile"
           :explorer-width="explorerWidth"
-          :history-cleared="historyCleared"
           :current-file-is-media="currentFileIsMedia"
           :current-file-is-markdown="currentFileIsMarkdown"
           :highlighted-state-key="highlightedStateKey"
@@ -472,7 +477,7 @@ onBeforeUnmount(() => {
           @upload-file="handleUploadFileOrSource"
           @jump-to-definition="jumpSilently"
           @select="selectedGraphElement = $event"
-          @saved="handleFileSaved"
+          @saved="handleProjectFileSaved"
           @renamed="handleFileRenamedByHistory"
         />
 
@@ -521,8 +526,18 @@ onBeforeUnmount(() => {
                 :auto-jump-on-highlight-change="true"
                 :fired-action-edge="firedActionEdge"
                 :editable-files="files"
+                :editable="true"
+                :available-states="availableStates"
+                :recently-added-key="recentlyAddedKey"
+                :state-tokens="stateTabTokens"
+                :save-field="handleSetSelectedElementField"
                 @jump-to-definition="jumpToDefinition"
                 @select-attachment="selectFile"
+                @jump-to-attachment="handleJumpToAttachment"
+                @select="handleTabSelect"
+                @set-field="handleSetSelectedElementField"
+                @delete="handleDeleteSelectedElement"
+                @open-actions-order="handleOpenActionsOrder"
               />
             </template>
             <template #tab-state="{ registerTab }">
@@ -559,7 +574,7 @@ onBeforeUnmount(() => {
                 @jump-to-attachment="handleJumpToAttachment"
                 @set-field="handleSetSelectedElementField"
                 :save-field="handleSetSelectedElementField"
-                @set-project-field="handleSetProjectField"
+                @set-project-field="handleProjectFieldSet"
                 @set-service-level="handleSetServiceLevel"
                 @delete="handleDeleteSelectedElement"
                 @open-actions-order="handleOpenActionsOrder"
@@ -579,7 +594,7 @@ onBeforeUnmount(() => {
                 :ref="registerTab('signals')"
                 :project-id="projectId"
                 :signal-values="effectiveSignalValues"
-                :editable-files="mode === 'edit' ? files : null"
+                :editable-files="mode === 'test' ? null : files"
                 :state-key="mode === 'edit' ? selectedStateKey : highlightedStateKey"
                 :recently-added-key="recentlyAddedKey"
                 @jump-to-definition="jumpSilently"

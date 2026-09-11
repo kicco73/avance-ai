@@ -8,8 +8,8 @@ and a build without this package simply has nobody registered — which
 the publisher learns from the posting itself, never by asking first.
 
 Configured or not is two objects, not a branch: `_Talk` registers a
-synthesizer, a route and its Manage services section; `_NoTalk`
-registers only the section, saying it is off.
+synthesizer and a route; `_NoTalk` registers neither, and the skill's
+own Manage services section says it is off either way.
 """
 from __future__ import annotations
 
@@ -17,19 +17,14 @@ from pathlib import Path
 
 from system import bus
 from system.wiring import construct
-from system.bus import OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, POINT_CONFIG_SERVICES, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
-from system.config_services import ui_section
+from system.bus import OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, POINT_CORE_SERVICES
 from system.logging_factory import LoggerFactory
+from system.skills import Skill
 from talk import config as talk_config
 from talk.audio_stream import AudioStream
 from talk.talk_service import TalkService
 
 logger = LoggerFactory.get_logger(__name__)
-
-KEY = "talk"
-UI_LABEL = "Talk"
-UI_DESCRIPTION = "Text to speech."
-PROJECT_DECLARABLE = True
 
 
 class _NoTalk:
@@ -38,16 +33,13 @@ class _NoTalk:
         self._providers = providers
 
     def install(self) -> None:
-        self._contribute_config()
         logger.info("talk-service is not enabled — no audio.")
 
     def uninstall(self) -> None:
         pass
 
-    def _contribute_config(self) -> None:
-        bus.contribute(POINT_CONFIG_SERVICES, lambda snapshot: snapshot.update(
-            {KEY: ui_section(UI_LABEL, UI_DESCRIPTION, talk_config.public_fields(self._providers))}
-        ))
+    def install_controller(self, controllers: list) -> None:
+        pass
 
 
 class _Talk(_NoTalk):
@@ -57,9 +49,7 @@ class _Talk(_NoTalk):
         self._service = TalkService.from_config(providers)
 
     def install(self) -> None:
-        self._contribute_config()
         bus.subscribe(OUTPUT_SPEECH, self.speak)
-        bus.contribute(POINT_HTTP_CONTROLLERS, self.install_controller)
         logger.info("talk-service started with %d provider(s).", len(self._providers))
 
     def uninstall(self) -> None:
@@ -84,15 +74,29 @@ class _Talk(_NoTalk):
 
 
 _INSTALLATIONS = {False: _NoTalk, True: _Talk}
-_installed = _NoTalk([])
 
 
-def start(raw: dict, path: Path) -> None:
-    global _installed
-    providers = talk_config.parse(raw, path)
-    _installed = _INSTALLATIONS[bool(providers)](providers)
-    _installed.install()
+class TalkSkill(Skill):
 
+    key = "talk"
+    ui_label = "Talk"
+    ui_description = "Text to speech."
+    project_declarable = True
 
-def stop() -> None:
-    _installed.uninstall()
+    def __init__(self) -> None:
+        self._providers = []
+        self._installed = _NoTalk([])
+
+    def start_service(self, raw: dict, path: Path) -> None:
+        self._providers = talk_config.parse(raw, path)
+        self._installed = _INSTALLATIONS[bool(self._providers)](self._providers)
+        self._installed.install()
+
+    def describe_section(self, snapshot: dict) -> None:
+        snapshot[self.key] = self.section(talk_config.public_fields(self._providers))
+
+    def register_controllers(self, controllers: list) -> None:
+        self._installed.install_controller(controllers)
+
+    def stop(self) -> None:
+        self._installed.uninstall()

@@ -1,1 +1,0 @@
-"""product's own tests. They live inside the package because the package is what a build copies or does not: leave the skill out and its tests are not there to run (see system/skills.py, build/backend_copy.py)."""

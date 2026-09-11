@@ -21,58 +21,61 @@ from __future__ import annotations
 from pathlib import Path
 
 from system import bus
-from system.bus import POINT_API_STATE, POINT_CONFIG_SERVICES, POINT_CORE_SERVICES, POINT_HTTP_CONTROLLERS
+from system.bus import POINT_API_STATE, POINT_CORE_SERVICES
 from automaton.project_services import OptionalService
-from system.config_services import ui_section
 from system.wiring import construct
 from listen import config as listen_config
 from listen.decoder import SpeechDecoder
 from listen.listen_controller import ListenController
 from listen.listen_service import ListenService
 from system.logging_factory import LoggerFactory
+from system.skills import Skill
 
 logger = LoggerFactory.get_logger(__name__)
 
-KEY = "listen"
-UI_LABEL = "Listen"
-UI_DESCRIPTION = "Speech to text."
-PROJECT_DECLARABLE = True
 
+class ListenSkill(Skill):
 
-def start(raw: dict, path: Path) -> None:
-    """Called once at boot with the configuration file as it was read.
-    Absent or disabled section: nothing registers, and every question
-    about speech-to-text answers "nobody" from then on."""
-    services = listen_config.parse(raw, path)
-    bus.contribute(POINT_CONFIG_SERVICES, lambda snapshot: snapshot.update(
-        {KEY: ui_section(UI_LABEL, UI_DESCRIPTION, listen_config.public_fields(services))}
-    ))
-    if services is None:
-        logger.info("listen-service is not enabled — no decoder, no route.")
-        return
+    key = "listen"
+    ui_label = "Listen"
+    ui_description = "Speech to text."
+    project_declarable = True
 
-    service = ListenService.from_config(services)
-    SpeechDecoder(service).register()
-    bus.contribute(POINT_HTTP_CONTROLLERS, lambda controllers: controllers.append(
-        construct(ListenController, {**bus.collect(POINT_CORE_SERVICES, {}), "listen_service": service})
-    ))
-    bus.contribute(POINT_API_STATE, lambda payload: payload.update(
-        {"listen_enabled": _project_listen().narrow(service.enabled)}
-    ))
-    logger.info("listen-service started with %d provider(s).", len(services))
+    def __init__(self) -> None:
+        self._providers = None
+        self._service = None
 
+    def start_service(self, raw: dict, path: Path) -> None:
+        """Called once at boot with the configuration file as it was read.
+        Absent or disabled section: nothing registers, and every question
+        about speech-to-text answers "nobody" from then on."""
+        self._providers = listen_config.parse(raw, path)
+        if self._providers is None:
+            logger.info("listen-service is not enabled — no decoder, no route.")
+            return
 
-def _project_listen() -> OptionalService:
-    """What the active project declared about this service — the same
-    "a project can only narrow the server's own switch" the talk level
-    gets in PlatformController.get_state. No active project (or none
-    loadable) declares nothing, which is `optional`."""
-    try:
-        return bus.collect(POINT_CORE_SERVICES, {})["project_service"].get_active_automaton().services[KEY]
-    except Exception:  # noqa: BLE001
-        return OptionalService()
+        self._service = ListenService.from_config(self._providers)
+        SpeechDecoder(self._service).register()
+        bus.contribute(POINT_API_STATE, lambda payload: payload.update(
+            {"listen_enabled": self._project_listen().narrow(self._service.enabled)}
+        ))
+        logger.info("listen-service started with %d provider(s).", len(self._providers))
 
+    def describe_section(self, snapshot: dict) -> None:
+        snapshot[self.key] = self.section(listen_config.public_fields(self._providers))
 
-def stop() -> None:
-    """Nothing to release: the decoder holds no connection and the
-    provider's own model is freed with the process."""
+    def register_controllers(self, controllers: list) -> None:
+        for service in filter(None, [self._service]):
+            controllers.append(construct(
+                ListenController, {**bus.collect(POINT_CORE_SERVICES, {}), "listen_service": service}
+            ))
+
+    def _project_listen(self) -> OptionalService:
+        """What the active project declared about this service — the same
+        "a project can only narrow the server's own switch" the talk level
+        gets in PlatformController.get_state. No active project (or none
+        loadable) declares nothing, which is `optional`."""
+        try:
+            return bus.collect(POINT_CORE_SERVICES, {})["project_service"].get_active_automaton().services[self.key]
+        except Exception:  # noqa: BLE001
+            return OptionalService()

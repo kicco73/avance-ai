@@ -18,11 +18,13 @@ import { confirmDialog } from '../dialogStore.js'
 export function useTestExecutionTree(projectId, strategy, sessions, projectSignals, emit) {
   let unsubscribeTestUpdates = null
 
-  // Running total of AI tokens consumed so far — piggybacked onto every
-  // test-update message by the backend's QueueProgressBroadcaster (see
-  // AiService.get_total_tokens), not fetched separately.
-  const tokensBurntByStrategy = ref({})
-  const tokensBurnt = computed(() => tokensBurntByStrategy.value[strategy.value] ?? 0)
+  const tokensTotal = ref(null)
+  const tokensBaselineByStrategy = ref({})
+  const tokensBurnt = computed(() => {
+    const baseline = tokensBaselineByStrategy.value[strategy.value]
+    if (tokensTotal.value == null || baseline == null) return 0
+    return Math.max(0, tokensTotal.value - baseline)
+  })
 
   // Every cache below is keyed by `${strategy}:${nodeId}`, never nodeId
   // alone — turn_by_turn and batch results aren't comparable, so switching
@@ -164,9 +166,7 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     const eventStrategy = key.slice(0, separatorIndex)
     const nodeId = key.slice(separatorIndex + 1)
 
-    if (typeof message.tokens === 'number') {
-      tokensBurntByStrategy.value = { ...tokensBurntByStrategy.value, [eventStrategy]: message.tokens }
-    }
+    if (typeof message.tokens === 'number') tokensTotal.value = message.tokens
     if (nodeId.startsWith('session:')) {
       if (selectedNodeId.value === nodeId && strategy.value === eventStrategy) loadSelectedRun(nodeId)
       return
@@ -292,6 +292,11 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     // Snapshot the strategy at launch time — every job this dispatches is
     // pinned to it regardless of whether the dropdown changes before they finish.
     const activeStrategy = strategy.value
+    if (!currentStrategyBusy.value) {
+      tokensBaselineByStrategy.value = {
+        ...tokensBaselineByStrategy.value, [activeStrategy]: tokensTotal.value ?? 0
+      }
+    }
     if (nodeId.startsWith('session:')) {
       await activateSessionLeaf(nodeId, activeStrategy)
     } else if (nodeId.startsWith('state:')) {
@@ -433,7 +438,7 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
       await deleteTests(projectId)
       nodeEvents.value = {}
       nodeLastResult.value = {}
-      tokensBurntByStrategy.value = {}
+      tokensBaselineByStrategy.value = {}
       selectedRun.value = null
       if (selectedNodeId.value && isRunNode(selectedNodeId.value)) {
         await loadSelectedRun(selectedNodeId.value)
@@ -451,14 +456,16 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     // so there's never anything already selected to defer to here.
     onSelect('root')
     // Live updates arrive over the shared /ws/notifications connection
-    // (see chatChannel.js's test_update frames) regardless of which page is open;
+    // (the Bus's own ui.progress, see backend system/broadcaster.py)
+    // regardless of which page is open;
     // the snapshot fetched here just catches this node up on whatever
     // happened before this component existed — handleTestEvent needs no
     // special-casing for it, it's shaped exactly like a live update.
     // Registered before the await, so a live update landing mid-fetch is
     // never clobbered by the (now stale) snapshot value for that same key.
-    unsubscribeTestUpdates = chatChannel.subscribe('ui.test_update', handleTestEvent)
-    const { events } = await getTestStatus(projectId)
+    unsubscribeTestUpdates = chatChannel.subscribe('ui.progress', handleTestEvent)
+    const { events, tokens } = await getTestStatus(projectId)
+    if (typeof tokens === 'number') tokensTotal.value = tokens
     events.forEach((message) => {
       if (!(message.key in nodeEvents.value)) handleTestEvent(message)
     })

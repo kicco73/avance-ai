@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
+from conftest import SRC_ROOT, production_sources
 
 ALLOWED_DATETIME_END_READERS = {
     "db/models.py",
@@ -19,7 +17,6 @@ ALLOWED_DATETIME_END_READERS = {
     "metrics/metrics_framework/timeline.py",
     "metrics/metrics_framework/metrics/state_stability.py",
     "metrics/metrics_framework/benchmark_metrics/calculator.py",
-    "metrics/metrics_framework/benchmark_metrics/test_benchmark_metrics.py",
     "testing/data.py",
 }
 
@@ -28,9 +25,8 @@ ALLOWED_DATETIME_END_READERS = {
 def test_datetime_end_is_only_read_by_the_allowlisted_files():
     offenders = sorted(
         path.relative_to(SRC_ROOT).as_posix()
-        for path in SRC_ROOT.rglob("*.py")
-        if "tests" not in path.parts
-        and "datetime_end" in path.read_text(encoding="utf-8")
+        for path in production_sources()
+        if "datetime_end" in path.read_text(encoding="utf-8")
         and path.relative_to(SRC_ROOT).as_posix() not in ALLOWED_DATETIME_END_READERS
     )
     assert not offenders, (

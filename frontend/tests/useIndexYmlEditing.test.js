@@ -88,9 +88,11 @@ describe('useIndexYmlEditing', () => {
     expect(selectedGraphElement.value).toEqual({ kind: 'state', data: { id: 'greeting' } })
 
     selectedGraphElement.value = null
-    await s.handleSetProjectField('id', 'my-project')
+    putProjectField.mockResolvedValue({ id: 'my-project', project_id: 'my-project' })
+    const result = await s.handleSetProjectField('id', 'my-project')
     expect(putProjectField).toHaveBeenCalledWith('proj', 'id', 'my-project')
     expect(selectedGraphElement.value).toBeNull()
+    expect(result).toEqual({ id: 'my-project', project_id: 'my-project' })
   })
 
   describe('handleSetActionField', () => {

@@ -60,9 +60,9 @@ def _controller_classes():
 
 
 def _skill_service_names() -> set[str]:
-    """`<KEY>_service` for every installed skill — what a skill offers
+    """`<key>_service` for every installed skill — what a skill offers
     its own controllers alongside the core registry."""
-    return {f"{getattr(module, 'KEY', '')}_service" for module in skills.discover()}
+    return {f"{skill.key}_service" for skill in skills.discover()}
 
 
 def test_every_controller_asks_only_for_names_something_offers():
@@ -111,7 +111,7 @@ def test_no_controller_takes_a_parameter_it_never_reads():
 
 
 def test_the_skills_own_service_is_named_after_the_skill():
-    """`<KEY>_service`, so a skill's controllers can ask for their own
+    """`<key>_service`, so a skill's controllers can ask for their own
     service by a name derived from the skill rather than agreed
     per-package (see system/wiring.py)."""
     core = _core_service_names()
@@ -119,8 +119,7 @@ def test_the_skills_own_service_is_named_after_the_skill():
         own = {name for name in requirements(controller) if name.endswith("_service")} - core
         if not own:
             continue
-        keys = {getattr(module, "KEY", None) for module in skills.discover()
-                if module.__name__.split(".")[0] == package}
+        keys = {skill.key for skill in skills.discover() if skill.package == package}
         expected = {f"{key}_service" for key in keys if key}
         assert own <= expected or not expected, (
             f"{controller.__name__} asks for {sorted(own)}; "

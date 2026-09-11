@@ -77,6 +77,11 @@ async function handleModelEdit(projectId, buildError = null) {
   pushView('edit')
 }
 
+async function handleEditProjectRenamed(projectId) {
+  await activateAndRefresh(projectId)
+  editProjectId.value = projectId
+}
+
 function handleSelectLabelSessions(projectId) {
   labelProjectId.value = projectId
   pushView('label')
@@ -295,6 +300,7 @@ onBeforeUnmount(() => {
               :build-error="editProjectBuildError"
               :profile="currentUserProfile"
               @saved="handleModelEditSaved"
+              @renamed="handleEditProjectRenamed"
               @back="popPushedView"
               v-on="profileMenuListeners"
             />

@@ -11,7 +11,7 @@ from system.session import Session
 
 pytestmark = pytest.mark.regression
 
-SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
+from conftest import SAMPLES_DIR
 MINIMAL_YML = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
 
 

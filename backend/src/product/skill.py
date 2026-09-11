@@ -23,31 +23,28 @@ from pathlib import Path
 from system import bus
 from system.bus import POINT_AUTOMATON_LOADER
 from system.logging_factory import LoggerFactory
+from system.skills import Skill
 
 logger = LoggerFactory.get_logger(__name__)
 
-KEY = "product"
-UI_LABEL = "Product"
-UI_DESCRIPTION = "Serves one compiled project."
 
+class ProductSkill(Skill):
 
-def start(raw: dict, path: Path) -> None:
-    bus.contribute(POINT_AUTOMATON_LOADER, _choose_packaged_loader)
+    key = "product"
+    ui_label = "Product"
+    ui_description = "Serves one compiled project."
 
+    def start_service(self, raw: dict, path: Path) -> None:
+        bus.contribute(POINT_AUTOMATON_LOADER, self._choose_packaged_loader)
 
-def _choose_packaged_loader(choice) -> None:
-    from project.archive.packaged_automaton_loader import PackagedAutomatonLoader
-    from system import skills
+    def _choose_packaged_loader(self, choice) -> None:
+        from project.archive.packaged_automaton_loader import PackagedAutomatonLoader
+        from system import skills
 
-    if any(skill["package"] == "build" for skill in skills.installed()):
-        logger.info(
-            "build is installed, so this backend can compile and can serve what it compiled — "
-            "leaving the automaton loader to it."
-        )
-        return
-    choice.replace(PackagedAutomatonLoader(choice.apps_dir), KEY)
-
-
-def stop() -> None:
-    """Nothing to release: the package is imported once and freed with
-    the process."""
+        if any(skill["package"] == "build" for skill in skills.installed()):
+            logger.info(
+                "build is installed, so this backend can compile and can serve what it compiled — "
+                "leaving the automaton loader to it."
+            )
+            return
+        choice.replace(PackagedAutomatonLoader(choice.apps_dir), self.key)

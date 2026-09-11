@@ -11,7 +11,7 @@ import pytest
 from conftest import parse_sse_result
 from system.session import Session
 
-SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
+from conftest import SAMPLES_DIR
 
 
 @pytest.mark.contract

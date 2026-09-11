@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from ai.llm_provider import ToolCall, ToolCallsRequested
-from automaton.automaton import Automaton
+from turn.turn_service import TurnService
 from webchat.ws_turn import WsChatTurn
 from turn_harness import one_state_automaton, turn_service_for  # noqa: F401 — turn_service_for is a fixture
 

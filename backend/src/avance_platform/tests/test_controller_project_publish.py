@@ -10,6 +10,7 @@ import zipfile
 import pytest
 
 from conftest import parse_sse_result
+from db.models import EditHistory, User
 
 pytestmark = pytest.mark.contract
 
@@ -54,3 +55,23 @@ def test_publish_is_a_no_op_when_already_up_to_date(client):
     resp = client.post("/api/projects/proj/publish", json={})
     assert resp.status_code == 200
     assert resp.json() == before
+
+
+@pytest.mark.regression
+def test_publish_clears_every_users_undo_trail_even_when_the_revision_is_already_published(client):
+    _upload_activate_publish(client, "proj")
+    client.put("/api/projects/proj/files/notes.txt", content=b"edited")
+    assert client.get("/api/projects/proj/files/notes.txt").json()["can_undo"] is True
+    other = User.create(id="other@example.com", email="other@example.com", role="admin")
+    EditHistory.create(
+        user_id=other.id, project_id="proj", archive_name="notes.txt", kind="undo", seq=0, content=b"theirs",
+    )
+
+    assert client.post("/api/projects/proj/publish", json={}).status_code == 200
+    assert not EditHistory.select().where(EditHistory.project_id == "proj").exists()
+
+    EditHistory.create(
+        user_id=other.id, project_id="proj", archive_name="notes.txt", kind="undo", seq=0, content=b"dangling",
+    )
+    assert client.post("/api/projects/proj/publish", json={}).status_code == 200
+    assert not EditHistory.select().where(EditHistory.project_id == "proj").exists()

@@ -15,9 +15,8 @@ import { computed, ref } from 'vue'
 import TestNodeButton from './TestNodeButton.vue'
 
 const props = defineProps({
-  // Full session list (see chatStore.js's sessions, fetched with
-  // include_imported=true upstream) — filtered here to has_annotations,
-  // the only ones the "Sessions" branch ever shows.
+  // The annotated sessions the "Sessions" branch shows — already filtered
+  // upstream (see ProjectTestPanel.vue's own annotatedSessions).
   sessions: { type: Array, required: true },
   // Every real state key of the project's current draft automaton (see
   // api.js's getProjectStates).
@@ -48,13 +47,13 @@ function toggleUserExpanded(username) {
   expandedUsers.value[username] = !isUserExpanded(username)
 }
 
-const annotatedSessions = computed(() => props.sessions.filter((s) => s.has_annotations))
+const nothingToTest = computed(() => !props.sessions.length)
 
 // One entry per distinct username among annotated sessions, each carrying
 // its own annotated sessions — the "Users" branch's own two-level shape.
 const usersByUsername = computed(() => {
   const grouped = new Map()
-  for (const session of annotatedSessions.value) {
+  for (const session of props.sessions) {
     if (!grouped.has(session.username)) grouped.set(session.username, [])
     grouped.get(session.username).push(session)
   }
@@ -70,6 +69,7 @@ function progressFor(nodeId) {
 }
 
 const FINAL_SESSION_REASON = 'Result is final for the current project and annotation state'
+const NOTHING_TO_TEST_REASON = 'No annotated session to analyse'
 function sessionButtonDisabled(session) {
   const status = statusFor(`session:${session.id}`)
   return status === 'ok' || status === 'warning'
@@ -87,7 +87,7 @@ function formatSessionTimestamp(iso) {
 
 const flatNodeIds = computed(() => {
   const ids = ['sessions-branch']
-  if (isExpanded('sessions')) ids.push(...annotatedSessions.value.map((s) => `session:${s.id}`))
+  if (isExpanded('sessions')) ids.push(...props.sessions.map((s) => `session:${s.id}`))
   ids.push('states-branch')
   if (isExpanded('states')) ids.push(...props.states.map((key) => `state:${key}`))
   ids.push('users-branch')
@@ -132,11 +132,12 @@ function onEnterKey() {
 // arrow is the keyboard equivalent of clicking the selected node's play
 // button, so it must respect the exact same conditions.
 function canActivate(nodeId) {
+  if (nothingToTest.value) return false
   const status = statusFor(nodeId)
   if (status === 'pending' || status === 'running') return false
   if (nodeId.startsWith('session:')) {
     const sessionId = Number(nodeId.slice('session:'.length))
-    const session = annotatedSessions.value.find((s) => s.id === sessionId)
+    const session = props.sessions.find((s) => s.id === sessionId)
     if (session && sessionButtonDisabled(session)) return false
   }
   return true
@@ -162,7 +163,7 @@ function onRightArrowKey() {
           <div class="tests-tree-node-row">
             <button class="tests-tree-caret" :class="{ 'tests-tree-caret-open': isExpanded('sessions') }" title="Toggle" @click="toggleExpanded('sessions')">▸</button>
             <div class="tests-tree-item">
-              <TestNodeButton :status="statusFor('sessions-branch')" :progress="progressFor('sessions-branch')" @activate="emit('activate', 'sessions-branch')" @abort="emit('abort', 'sessions-branch')" />
+              <TestNodeButton :status="statusFor('sessions-branch')" :progress="progressFor('sessions-branch')" :disabled="nothingToTest" :disabled-reason="NOTHING_TO_TEST_REASON" @activate="emit('activate', 'sessions-branch')" @abort="emit('abort', 'sessions-branch')" />
               <button
                 type="button"
                 class="tests-tree-row"
@@ -177,13 +178,13 @@ function onRightArrowKey() {
 
           <div class="tests-tree-children-wrap" :class="{ 'tests-tree-children-wrap-open': isExpanded('sessions') }">
           <ul class="tests-tree-children tests-tree-children-leaf">
-            <li v-if="!annotatedSessions.length" class="tests-tree-empty">No annotated sessions yet.</li>
-            <li v-for="session in annotatedSessions" :key="session.id" class="tests-tree-node">
+            <li v-if="nothingToTest" class="tests-tree-empty">No annotated sessions yet.</li>
+            <li v-for="session in sessions" :key="session.id" class="tests-tree-node">
               <div class="tests-tree-item">
                 <TestNodeButton
                   :status="statusFor(`session:${session.id}`)"
                   :progress="progressFor(`session:${session.id}`)"
-                  :disabled="sessionButtonDisabled(session)"
+                  :disabled="nothingToTest || sessionButtonDisabled(session)"
                   :disabled-reason="FINAL_SESSION_REASON"
                   @activate="emit('activate', `session:${session.id}`)"
                   @abort="emit('abort', `session:${session.id}`)"
@@ -208,7 +209,7 @@ function onRightArrowKey() {
           <div class="tests-tree-node-row">
             <button class="tests-tree-caret" :class="{ 'tests-tree-caret-open': isExpanded('states') }" title="Toggle" @click="toggleExpanded('states')">▸</button>
             <div class="tests-tree-item">
-              <TestNodeButton :status="statusFor('states-branch')" :progress="progressFor('states-branch')" @activate="emit('activate', 'states-branch')" @abort="emit('abort', 'states-branch')" />
+              <TestNodeButton :status="statusFor('states-branch')" :progress="progressFor('states-branch')" :disabled="nothingToTest" :disabled-reason="NOTHING_TO_TEST_REASON" @activate="emit('activate', 'states-branch')" @abort="emit('abort', 'states-branch')" />
               <button
                 type="button"
                 class="tests-tree-row"
@@ -229,6 +230,8 @@ function onRightArrowKey() {
                 <TestNodeButton
                   :status="statusFor(`state:${stateKey}`)"
                   :progress="progressFor(`state:${stateKey}`)"
+                  :disabled="nothingToTest"
+                  :disabled-reason="NOTHING_TO_TEST_REASON"
                   @activate="emit('activate', `state:${stateKey}`)"
                   @abort="emit('abort', `state:${stateKey}`)"
                 />
@@ -251,7 +254,7 @@ function onRightArrowKey() {
           <div class="tests-tree-node-row">
             <button class="tests-tree-caret" :class="{ 'tests-tree-caret-open': isExpanded('users') }" title="Toggle" @click="toggleExpanded('users')">▸</button>
             <div class="tests-tree-item">
-              <TestNodeButton :status="statusFor('users-branch')" :progress="progressFor('users-branch')" @activate="emit('activate', 'users-branch')" @abort="emit('abort', 'users-branch')" />
+              <TestNodeButton :status="statusFor('users-branch')" :progress="progressFor('users-branch')" :disabled="nothingToTest" :disabled-reason="NOTHING_TO_TEST_REASON" @activate="emit('activate', 'users-branch')" @abort="emit('abort', 'users-branch')" />
               <button
                 type="button"
                 class="tests-tree-row"
@@ -274,6 +277,8 @@ function onRightArrowKey() {
                   <TestNodeButton
                     :status="statusFor(`user:${user.username}`)"
                     :progress="progressFor(`user:${user.username}`)"
+                    :disabled="nothingToTest"
+                    :disabled-reason="NOTHING_TO_TEST_REASON"
                     @activate="emit('activate', `user:${user.username}`)"
                     @abort="emit('abort', `user:${user.username}`)"
                   />
@@ -296,7 +301,7 @@ function onRightArrowKey() {
                     <TestNodeButton
                       :status="statusFor(`session:${session.id}`)"
                       :progress="progressFor(`session:${session.id}`)"
-                      :disabled="sessionButtonDisabled(session)"
+                      :disabled="nothingToTest || sessionButtonDisabled(session)"
                       :disabled-reason="FINAL_SESSION_REASON"
                       @activate="emit('activate', `session:${session.id}`)"
                       @abort="emit('abort', `session:${session.id}`)"
@@ -324,7 +329,7 @@ function onRightArrowKey() {
           <div class="tests-tree-node-row">
             <button class="tests-tree-caret" :class="{ 'tests-tree-caret-open': isExpanded('signals') }" title="Toggle" @click="toggleExpanded('signals')">▸</button>
             <div class="tests-tree-item">
-              <TestNodeButton :status="statusFor('signals-branch')" :progress="progressFor('signals-branch')" @activate="emit('activate', 'signals-branch')" @abort="emit('abort', 'signals-branch')" />
+              <TestNodeButton :status="statusFor('signals-branch')" :progress="progressFor('signals-branch')" :disabled="nothingToTest" :disabled-reason="NOTHING_TO_TEST_REASON" @activate="emit('activate', 'signals-branch')" @abort="emit('abort', 'signals-branch')" />
               <button
                 type="button"
                 class="tests-tree-row"
@@ -345,6 +350,8 @@ function onRightArrowKey() {
                 <TestNodeButton
                   :status="statusFor(`signal:${signal.name}`)"
                   :progress="progressFor(`signal:${signal.name}`)"
+                  :disabled="nothingToTest"
+                  :disabled-reason="NOTHING_TO_TEST_REASON"
                   @activate="emit('activate', `signal:${signal.name}`)"
                   @abort="emit('abort', `signal:${signal.name}`)"
                 />

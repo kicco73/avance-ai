@@ -33,7 +33,7 @@ states:
     chat-enabled: false
 """
 
-SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
+from conftest import SAMPLES_DIR
 
 
 def _setup_channel_codes_project(app_db, project_name="channel-codes-proj"):

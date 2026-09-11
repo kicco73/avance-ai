@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import SAMPLES_DIR
+
 from conftest import parse_sse_result, chat_turn
 
 # retention/activity_consistency are scoped to {all_sessions_per_user,
@@ -50,10 +52,9 @@ def test_engagement_rises_after_sending_messages(client, hello_project):
 
 @pytest.mark.contract
 def test_metrics_are_scoped_to_the_url_project(client):
-    samples_dir = Path(__file__).resolve().parent.parent / "samples" / "projects"
     names = {}
     for key, sample in (("hello", "Hello world.zip"), ("cat", "Aprendr català.zip")):
-        content = (samples_dir / sample).read_bytes()
+        content = (SAMPLES_DIR / sample).read_bytes()
         resp = client.post("/api/projects/upload", content=content, headers={"Content-Type": "application/zip"})
         assert resp.status_code == 200, resp.text
         names[key] = parse_sse_result(resp)["project_id"]

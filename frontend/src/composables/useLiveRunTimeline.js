@@ -1,6 +1,6 @@
 import { computed, nextTick, ref } from 'vue'
-import { getSessions, getSessionSignals, getSignals } from '../api.js'
-import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../testTimeline.js'
+import { getSessions, getSessionSignals } from '../api.js'
+import { buildTimeline, highlightedStateKeyFor, latestSignalValues, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../testTimeline.js'
 import { testStore } from '../testChatStore.js'
 
 // The "Run" tab's live conversation as a clickable message+transition
@@ -9,7 +9,6 @@ import { testStore } from '../testChatStore.js'
 export function useLiveRunTimeline(projectId, mode, validStateKeys) {
   const { state: runState, messages, currentSessionId, draft, handleSend, handleTruncateFrom } = testStore
 
-  const signalValueByName = ref({})
   const signalsLog = ref([])
   const sessionStartState = ref(null)
   const selected = ref(null)
@@ -45,15 +44,6 @@ export function useLiveRunTimeline(projectId, mode, validStateKeys) {
     try {
       const allSessions = await getSessions(projectId)
       sessionStartState.value = allSessions.find((s) => s.id === currentSessionId.value)?.start_state ?? null
-    } catch {
-      // already surfaced via apiFetch
-    }
-  }
-
-  async function refreshSignalValues() {
-    try {
-      const nextValues = await getSignals()
-      signalValueByName.value = Object.fromEntries(nextValues.map((s) => [s.name, { value: s.value, error: s.error }]))
     } catch {
       // already surfaced via apiFetch
     }
@@ -106,9 +96,11 @@ export function useLiveRunTimeline(projectId, mode, validStateKeys) {
     !selected.value || (selected.value.kind === 'message' && selected.value.message.id === latestMessageId.value)
   )
 
-  const effectiveSignalValues = computed(() =>
-    selected.value ? signalValuesFor(selected.value, signalsLog.value, rawLiveMessages.value) : signalValueByName.value
-  )
+  const effectiveSignalValues = computed(() => (
+    selected.value
+      ? signalValuesFor(selected.value, signalsLog.value, rawLiveMessages.value)
+      : latestSignalValues(signalsLog.value)
+  ))
 
   async function restartAndPrefill(message) {
     await handleTruncateFrom(message.timestamp)
@@ -126,7 +118,7 @@ export function useLiveRunTimeline(projectId, mode, validStateKeys) {
 
   return {
     signalsLog, sessionStartState, selected, runChatRef, timeline,
-    refreshSignalsLog, refreshSessionStartState, refreshSignalValues, isStateGone,
+    refreshSignalsLog, refreshSessionStartState, isStateGone,
     selectMessage, selectTransition, highlightedStateKey, firedActionEdge, untilMessageId, envEditable,
     effectiveSignalValues, restartAndPrefill, restartAndResend,
   }

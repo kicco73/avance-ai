@@ -238,6 +238,13 @@ export function resultingStateKeyFor(selected, timeline, sessionStartState) {
     : stateAsOf(timeline, sessionStartState, orderKey(message.timestamp, message.id))
 }
 
+export function latestSignalValues(signalsLog) {
+  for (let index = signalsLog.length - 1; index >= 0; index--) {
+    if (signalsLog[index].values != null) return valuesToSignalValues(signalsLog[index].values)
+  }
+  return {}
+}
+
 // The signal values the Inspector should show for the current selection.
 // `rawMessages` is only consulted by the last-resort fallback below —
 // every other branch already has what it needs on `selected`/`signalsLog`.

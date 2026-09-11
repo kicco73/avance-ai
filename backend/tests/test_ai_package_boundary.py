@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.contract
+from conftest import SRC_ROOT as SRC, production_sources
 
-SRC = Path(__file__).resolve().parent.parent / "src"
+pytestmark = pytest.mark.contract
 
 
 def _imported_modules(path: Path) -> set[str]:
@@ -30,7 +30,7 @@ def _imported_modules(path: Path) -> set[str]:
 
 def test_nothing_outside_the_ai_package_imports_a_provider():
     offenders = {}
-    for path in SRC.rglob("*.py"):
+    for path in production_sources():
         if path.is_relative_to(SRC / "ai"):
             continue
         leaks = {name for name in _imported_modules(path) if name.startswith("ai._providers")}
@@ -43,7 +43,7 @@ def test_the_public_surface_is_the_only_thing_the_app_imports_from_ai():
     """Consumers import from `ai` itself, never a submodule — so the
     package can rearrange its insides without touching them."""
     offenders = {}
-    for path in SRC.rglob("*.py"):
+    for path in production_sources():
         if path.is_relative_to(SRC / "ai"):
             continue
         submodules = {name for name in _imported_modules(path) if name.startswith("ai.")}

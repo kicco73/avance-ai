@@ -57,7 +57,7 @@ class BuildController(BaseController):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @post("/api/projects/{project_id}/build/backend-copy", role="admin")
-    def post_build_backend_copy(self, project_id: str, req: BuildBackendCopyRequest | None = None):
+    async def post_build_backend_copy(self, project_id: str, req: BuildBackendCopyRequest | None = None):
         """`excluded_skills` names the packages this build leaves out.
         Absent means a full build: a client that does not know about a
         skill can never drop one by accident.
@@ -68,7 +68,12 @@ class BuildController(BaseController):
         the same response and the last chunk carries the report (see
         SchedulerService.stream_progress). What cannot be built at all —
         a project with unpublished changes — is still a 400 here, before
-        any job exists."""
+        any job exists.
+
+        `async` deliberately: the progress connection is an asyncio queue
+        bound to the loop it is created on, and a sync handler runs in a
+        threadpool with no loop at all — same reason the upload and import
+        routes are async."""
         try:
             job = self.build_service.backend_copy_job(project_id, req.excluded_skills if req else None)
         except CompileError as exc:

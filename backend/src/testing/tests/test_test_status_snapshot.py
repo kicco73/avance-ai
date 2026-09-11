@@ -33,3 +33,9 @@ def test_get_test_status_reflects_a_completed_job(client, hello_project):
         time.sleep(0.1)
 
     assert matching is not None and matching.get("job_status") in ("completed", "failed"), matching
+
+
+def test_get_test_status_carries_the_test_providers_running_token_total(client, hello_project):
+    body = client.get(f"/api/projects/{hello_project}/test-status").json()
+    assert "tokens" in body
+    assert body["tokens"] is None or isinstance(body["tokens"], int)

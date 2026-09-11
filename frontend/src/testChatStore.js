@@ -15,6 +15,7 @@ import { createChatStore } from './chatStoreFactory.js'
 let projectId = null
 export function setTestProject(name) {
   projectId = name
+  testStore.clearChatUi()
 }
 
 export const testStore = createChatStore({
