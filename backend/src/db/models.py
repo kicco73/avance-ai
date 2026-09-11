@@ -249,6 +249,14 @@ class Archive(BaseModel):
     revision = IntegerField(null=False, default=0)
     hash = ForeignKeyField(File, field='hash', column_name='hash', backref='archives', null=False, on_delete='RESTRICT')
 
+    @property
+    def content(self) -> bytes:
+        return self.hash.content
+
+    @property
+    def content_type(self) -> str:
+        return self.hash.content_type
+
     class Meta:
         table_name = 'Archive'
         # One row per revision — a published revision's own rows are never

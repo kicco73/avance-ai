@@ -142,14 +142,14 @@ class ProjectMixin:
 
     def get_archive(self, project_id: str, archive_name: str, revision: int | None = None) -> bytes | None:
         row = self.get_archive_row(project_id, archive_name, revision=revision)
-        return row.hash.content if row is not None else None
+        return row.content if row is not None else None
 
     def get_archive_content_by_id(self, archive_id: int) -> bytes | None:
         """By row id — for a reference held elsewhere (e.g.
         UserProject.accepted_terms_id) to a row that may since have been
         superseded by a copy under a newer revision."""
         row = Archive.get_or_none(Archive.id == archive_id)
-        return row.hash.content if row is not None else None
+        return row.content if row is not None else None
 
     def get_archive_content_type(self, project_id: str, archive_name: str, revision: int | None = None) -> str | None:
         if revision is None:
@@ -157,13 +157,13 @@ class ProjectMixin:
         row = Archive.get_or_none(
             (Archive.project == project_id) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
         )
-        return row.hash.content_type if row is not None else None
+        return row.content_type if row is not None else None
 
     def get_archives(self, project_id: str, revision: int | None = None) -> dict:
         if revision is None:
             revision = self._current_revision(project_id)
         return {
-            row.archive_name: row.hash.content
+            row.archive_name: row.content
             for row in Archive.select(Archive.archive_name, File.content).join(File).where(
                 (Archive.project == project_id) & (Archive.revision == revision)
             )

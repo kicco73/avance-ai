@@ -29,7 +29,7 @@ just one of its fields.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Protocol
 
 from system.logging_factory import LoggerFactory
 
@@ -219,6 +219,32 @@ async def publish(message: Message) -> bool:
         except Exception as exc:  # noqa: BLE001
             logger.exception("Bus listener for %s failed: %s", message.type, exc)
     return bool(listeners)
+
+
+class Sender(Protocol):
+    """Whoever posts with publish_with_bounceback. A message no listener
+    was registered for comes back here, which is how a producer learns
+    that nothing in this build can do the thing — by delivery, in the
+    same shape everything else arrives in, and not by asking first."""
+
+    async def bounced(self, message: Message) -> None:
+        ...
+
+
+async def publish_with_bounceback(message: Message, sender: Sender) -> None:
+    """Posts `message`, and hands it back to `sender.bounced` when no
+    listener is registered for its type (or when it was dropped for
+    looping past MAX_CONVERSIONS). Nothing is asked of the registry
+    beforehand and nothing is returned to branch on: "undeliverable" is
+    itself a delivery, so a producer writes what to do about it once, in
+    a method with a name, instead of at every call site.
+
+    A listener never declines a message: subscribing to a type already
+    declares what it wants. The Bus guarantees routing, not semantics —
+    a listener registered for a type that produces nothing useful is a
+    bug in that listener, not a state this can report."""
+    if not await publish(message):
+        await sender.bounced(message)
 
 
 def _body_summary(message: Message) -> str:

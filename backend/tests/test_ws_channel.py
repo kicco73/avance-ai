@@ -322,6 +322,28 @@ class TestHumanPrompt:
 
         asyncio.run(scenario())
 
+    def test_only_the_operator_who_was_asked_can_answer(self):
+        """Any signed-in user can name a session_id; the reply is only a
+        reply when it comes from the identity the prompt went to."""
+        channel = WsNotifications(_FakeAuthService())
+        operator = _RecordingConnection()
+        operator.id = "conn-1"
+        intruder = _RecordingConnection()
+        intruder.id = "conn-2"
+        channel._connections[USERNAME] = [operator]
+        channel._connections["someone-else@example.com"] = [intruder]
+
+        async def scenario():
+            prompt_id = await channel.send_human_prompt(USERNAME, session_id=1, prompt_text="what do I say?")
+            channel._handle_frame(intruder, json.dumps({"type": "human_reply", "session_id": 1, "text": "nonsense"}))
+            channel._handle_frame(intruder, json.dumps({"type": "human_typing", "session_id": 1}))
+            assert not channel._pending_human_replies[prompt_id].done()
+            assert not channel._pending_typing_events[prompt_id].is_set()
+            channel._handle_frame(operator, json.dumps({"type": "human_reply", "session_id": 1, "text": "say hi"}))
+            return await channel.await_human_reply(prompt_id)
+
+        assert asyncio.run(scenario()) == "say hi"
+
     def test_await_human_reply_clears_the_sessions_current_prompt(self):
         channel = WsNotifications(_FakeAuthService())
         connection = _RecordingConnection()

@@ -30,6 +30,15 @@ logger = LoggerFactory.get_logger(__name__)
 
 _SEND_MAIL_SUBJECT = "Notification from Avance"
 
+
+class _NoMailService:
+    """What a mail.send coming back undelivered means: this build has no
+    mail-service, so a project that calls task.send_mail cannot run here
+    (see mail.skill.required_by)."""
+
+    async def bounced(self, message: Message) -> None:
+        raise ValueError("No 'mail-service' section in .config.yml — task.send_mail can't run.")
+
 _T = TypeVar("_T")
 
 
@@ -195,12 +204,10 @@ class LiveTaskNamespace(TaskNamespace):
         super().__init__(dispatcher, factory)
 
     def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
-        if not bus.handlers_for(MAIL_SEND):
-            raise ValueError("No 'mail-service' section in .config.yml — task.send_mail can't run.")
-        _run_sync(bus.publish(Message(
+        _run_sync(bus.publish_with_bounceback(Message(
             type=MAIL_SEND, username=Session().user,
             body={"to": to, "subject": _SEND_MAIL_SUBJECT, "body_md": body_md},
-        )))
+        ), _NoMailService()))
         return None
 
     def whatsapp(self, phone_number: str, message_md: str) -> bool:

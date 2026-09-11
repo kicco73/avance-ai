@@ -175,6 +175,11 @@ class WsNotifications(object):
         # have seen (see send_human_prompt's own docstring).
         self._current_prompt_for_session: dict[int, str] = {}
         self._session_for_prompt: dict[str, int] = {}
+        # prompt_id -> the identity that prompt was actually sent to. A
+        # reply is only a reply when it comes from them: without this,
+        # anyone who guessed a session_id awaiting a human could answer
+        # in their place.
+        self._operator_for_prompt: dict[str, str] = {}
 
     async def channel_loop(self, websocket: WebSocket) -> None:
         token = websocket.cookies.get(SESSION_COOKIE_NAME)
@@ -251,22 +256,46 @@ class WsNotifications(object):
             # chat installed looks like from here.
             self._publish_client_frame(connection, frame_type, frame)
         elif frame_type == "human_reply":
-            self._resolve_human_reply_for_session(frame.get("session_id"), str(frame.get("text", "")))
+            self._resolve_human_reply_for_session(connection, frame.get("session_id"), str(frame.get("text", "")))
         elif frame_type == "human_typing":
-            self._notify_typing_for_session(frame.get("session_id"))
+            self._notify_typing_for_session(connection, frame.get("session_id"))
         else:
             logger.debug(f"ignoring an unknown websocket frame type: {frame_type!r}")
 
-    def _resolve_human_reply_for_session(self, session_id, text: str) -> None:
+    def _username_of(self, connection: WsConnection) -> str | None:
+        for username, connections in self._connections.items():
+            if connection in connections:
+                return username
+        return None
+
+    def _prompt_awaiting(self, connection: WsConnection, session_id) -> str | None:
+        """The prompt this session is waiting on, but only when it is
+        this very connection's identity that was asked: the operator's
+        own frames carry session_id, which any other signed-in user
+        could name just as well."""
         prompt_id = self._current_prompt_for_session.get(session_id)
+        if prompt_id is None:
+            return None
+        operator = self._operator_for_prompt.get(prompt_id)
+        sender = self._username_of(connection)
+        if operator != sender:
+            logger.warning(
+                "ignoring a human frame for session %s from %s: %s was the one asked.",
+                session_id, sender, operator,
+            )
+            return None
+        return prompt_id
+
+    def _resolve_human_reply_for_session(self, connection: WsConnection, session_id, text: str) -> None:
+        prompt_id = self._prompt_awaiting(connection, session_id)
         if prompt_id is None:
             return
         future = self._pending_human_replies.get(prompt_id)
         if future is not None and not future.done():
             future.set_result(text)
 
-    def _notify_typing_for_session(self, session_id) -> None:
-        prompt_id = self._current_prompt_for_session.get(session_id)
+    def _notify_typing_for_session(self, connection: WsConnection, session_id) -> None:
+        prompt_id = self._prompt_awaiting(connection, session_id)
         if prompt_id is None:
             return
         event = self._pending_typing_events.get(prompt_id)
@@ -374,6 +403,7 @@ class WsNotifications(object):
         self._pending_typing_events[prompt_id] = asyncio.Event()
         self._current_prompt_for_session[session_id] = prompt_id
         self._session_for_prompt[prompt_id] = session_id
+        self._operator_for_prompt[prompt_id] = username
         return prompt_id
 
     async def send_human_takeover(self, username: str, session_id: int, project_id: str) -> None:
@@ -404,6 +434,7 @@ class WsNotifications(object):
         finally:
             self._pending_human_replies.pop(prompt_id, None)
             self._pending_typing_events.pop(prompt_id, None)
+            self._operator_for_prompt.pop(prompt_id, None)
             session_id = self._session_for_prompt.pop(prompt_id, None)
             if session_id is not None and self._current_prompt_for_session.get(session_id) == prompt_id:
                 del self._current_prompt_for_session[session_id]

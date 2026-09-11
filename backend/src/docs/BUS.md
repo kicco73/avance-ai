@@ -16,7 +16,7 @@ everything its handler needs, and something is expected to happen to it.
 
 Use `events/` to announce. Use the Bus to hand work over.
 
-## Three mechanisms
+## Four mechanisms
 
 **`subscribe(type, listener)` / `publish(message)`.** The delivery path.
 `publish` awaits each listener in subscription order; a listener that
@@ -33,9 +33,25 @@ being assembled. Every contribution point is a response being built while
 a caller waits for it, which is why it is synchronous and why `collect`
 returns the target so a call site reads as one line.
 
+**`publish_with_bounceback(message, sender)`.** The same delivery, with
+the message handed back to `sender.bounced(message)` when no listener is
+registered for its type — or when it was dropped for looping past
+`MAX_CONVERSIONS`. Nothing is asked of the registry beforehand and
+nothing is returned to branch on: *undeliverable* is itself a delivery,
+so a producer writes what it means once, in a method with a name,
+instead of at every call site. `Sender` is a Protocol; the sender is an
+object, never a callback.
+
+A listener may **not** decline a message per delivery. Subscribing to a
+type already declares what it wants, and "try to deliver, handlers may
+refuse" only moves one conditional at the producer into one in every
+consumer. The Bus guarantees routing, not semantics: a listener
+registered for `output.speech` that produces no audio is a bug in that
+listener, not a state the Bus should model.
+
 **`handlers_for(type)`.** Answers "who would take a message of this type,
-right now". Kept for the three call sites listed under *Open points*
-below, and not to be used in new code.
+right now". Kept for the two call sites listed under *Open points*
+below, and not to be used in new code — publish and let it bounce.
 
 ## The envelope is the message
 
@@ -97,7 +113,7 @@ and `whatsapp/whatsapp_service.py` (`input.audio` → `input.text`).
 | `ui.human_takeover` | `UI_HUMAN_TAKEOVER` | `{"session_id", "project_id"}` | `tracking.actuators.chat_namespace` | `system.ws_notifications` |
 | `ui.system_warning` | `UI_SYSTEM_WARNING` | `dict` — addressed to a role, so the publisher names each recipient | `project.health_notifications` | `system.ws_notifications` |
 | `ui.test_update` | `UI_TEST_UPDATE` | `dict` — one batch of benchmark progress | `system.broadcaster` | `system.ws_notifications` |
-| `mail.send` | `MAIL_SEND` | `{"to", "subject", "body_md"}` | `tracking.actuators` (`task.send_mail`) | `mail` |
+| `mail.send` | `MAIL_SEND` | `{"to", "subject", "body_md"}` | `tracking.actuators` (`task.send_mail`, with bounceback) | `mail` |
 | `turn.started` | `TURN_STARTED` | — | — | — |
 | `turn.ended` | `TURN_ENDED` | — | — | — |
 | `turn.failed` | `TURN_FAILED` | — | — | — |
@@ -123,10 +139,14 @@ as `ui.notification`. A turn's own frames (`output.text`,
 `output.speech`, `turn.*`) go out under the same names, so a listener and
 a browser read the same message.
 
-Two frame types are the socket's own and never touch the Bus:
-`human_reply` / `human_typing` inbound and `human_prompt` outbound, which
+Three frame types are the socket's own and never touch the Bus:
+`human_prompt` outbound, `human_reply` / `human_typing` inbound. They
 belong to one operator answering one prompt over one connection (see
-`talker.human_talker`).
+`talker.human_talker`). An inbound one is honoured only when the
+connection it arrived on belongs to the identity the prompt was actually
+sent to — those frames carry a `session_id`, which any other signed-in
+user could name just as well. See *Open points*: the outbound half is
+meant to become a message.
 
 ## Contribution points
 
@@ -155,25 +175,32 @@ provider" (see `system/config_services.py:talk_configured`). Whether a
 
 ## Open points
 
-**Bounceback.** `publish_with_bounceback(message, sender)` is designed
-and not built: the message would be returned to its sender when no
-listener is registered for its type, so a producer learns "nobody can do
-this" as a delivery rather than as a boolean it must branch on. A
-listener would never decline a message per-delivery — subscribing to a
-type already declares what it wants, and "handlers may refuse" only
-relocates one conditional at the producer into one in every consumer. The
-Bus guarantees routing, not semantics: a listener registered for
-`output.speech` that produces no audio is a bug in that listener, not a
-state the Bus should model. `publish` would stay for genuine
-fire-and-forget (`ui.notification`), and its `bool` return would go —
-a bool return is an `if` at every call site, and `task.whatsapp()`
-currently propagates it into project YAML.
+**`publish`'s `bool` return is to go.** It exists only for callers that
+predate bounceback. A bool return is an `if` at every call site, and
+`task.whatsapp()` propagates its own all the way into project YAML.
+`publish` stays for genuine fire-and-forget (`ui.notification`, where
+whether anything is listening is not the producer's business); every
+caller that wants an answer moves to `publish_with_bounceback`.
 
-**`handlers_for` is to be removed.** Three call sites remain:
-`system/broadcaster.py` (an optimisation, not a capability question),
-`tracking/actuators/actuator_set.py` (`task.send_mail`, which
-`publish`'s own return value already answers) and
-`whatsapp/whatsapp_service.py` (which of two failure notices to send).
+**`handlers_for` is to be removed.** Two call sites remain:
+`system/broadcaster.py` (an optimisation, not a capability question —
+the fix is a deferred body, so that wanting the message is what costs)
+and `whatsapp/whatsapp_service.py` (which of two failure notices to
+send, decided after the fact).
+
+**Reaching a human over any medium.** `HumanRelay` is already a
+medium-agnostic Protocol and `HumanTalker` names no transport, but
+`TrackingService.set_human_talker_factory` holds a single slot written at
+boot by `webchat/skill.py` — one slot, one medium, chosen before anyone
+knows who the operator is. The intent is to publish `human.prompt`
+addressed to the operator and let any medium that can reach them answer:
+several may answer at once and the first reply wins (the take-back
+filters by prompt id), and "nobody can reach this person" becomes the
+bounce that today is webchat's local `HumanNotConnectedError`. What the
+Bus does not solve is the inbound leg — an operator's WhatsApp reply
+arrives as an ordinary text from a number, and nothing yet records that
+this number is operating that session. `human_typing` stays a frame: a
+per-connection liveness signal with no other possible producer.
 
 **Who takes an `input.text`.** Every `input.text` reaches every
 listener, including one converted from a voice note on another channel.
