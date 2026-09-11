@@ -17,7 +17,6 @@ from turn.turn_service import TurnService
 from turn.sessions.session_manager import SessionManager
 from system import bus
 from system.bus import POINT_AUTOMATON_LOADER, POINT_CORE_SERVICES
-from system.config_services import talk_configured
 from system.bus_channel import BusChannel
 from system import skills
 from config import AppConfig
@@ -166,7 +165,6 @@ def create_app() -> FastAPI:
         # TurnService depend on ai_service/metric_service directly, never each other.
         tracking_service = TrackingService(
             db, project_service, metric_service, namespace_factory,
-            talk_enabled=talk_configured(),
             input_token_budget_per_turn=config.input_token_budget_per_turn,
             total_token_budget_per_session=config.total_token_budget_per_session,
         )

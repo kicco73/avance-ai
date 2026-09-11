@@ -14,12 +14,10 @@ rest is whatever each installed skill contributed about itself.
 """
 from __future__ import annotations
 
-from automaton.project_services import OptionalService
 from controllers.base_controller import BaseController, get
 from project.project_service import ProjectService
 from system import bus
 from system.bus import POINT_API_STATE
-from system.config_services import talk_configured
 from turn.turn_service import TurnService
 
 
@@ -32,24 +30,20 @@ class ApiStateController(BaseController):
     @get("/api/core/state")
     def get_state(self):
         """No `-> StatePayload` annotation: with no active project/state
-        the payload lacks those fields. `talk_enabled` is what the active
-        project's own declared level (project.services.talk — see
-        automaton/project_services.py) makes of the server's own
-        talk-service switch: a project can only narrow it, never turn it
-        on. The chat toolbar's audio/spoken-text icons read that one
-        combined flag rather than checking the project's setting
-        separately."""
+        the payload lacks those fields.
+
+        Every `<skill>_enabled` flag the chat toolbar reads is that
+        skill's own contribution, `talk_enabled` included — it used to be
+        the one exception, computed here from a name this file had no
+        business knowing. What each of them means is unchanged: the active
+        project's own declared level (project.services.<key>, see
+        automaton/project_services.py) narrowing the server's own switch,
+        never widening it."""
         try:
             payload = self.project_service.inspector.get_active_state_payload()
         except:
             payload = {}
 
-        try:
-            project_talk = self.project_service.get_active_automaton().services["talk"]
-        except:
-            project_talk = OptionalService()
-
-        payload["talk_enabled"] = project_talk.narrow(talk_configured())
         payload["input_token_budget_per_turn"] = self.turn_service.get_input_token_budget_per_turn()
         payload["total_token_budget_per_session"] = self.turn_service.get_total_token_budget_per_session()
         # Whatever else is running adds its own field: listen_enabled

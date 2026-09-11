@@ -205,11 +205,23 @@ half is meant to become a message.
 
 | Point | Constant | Target | Asked by | Filled by |
 | --- | --- | --- | --- | --- |
-| `api.state` | `POINT_API_STATE` | the `GET /api/skills/platform/state` payload | `avance_platform.platform_controller` | `listen`, `build` |
+| `api.state` | `POINT_API_STATE` | the `GET /api/core/state` payload | `system.api_state_controller` | `talk`, `listen`, `build` |
 | `config.services` | `POINT_CONFIG_SERVICES` | the public services snapshot | `config.py`, `system.config_services` | `talk`, `listen`, `mail`, `whatsapp`, `testing`, `build` |
 | `http.controllers` | `POINT_HTTP_CONTROLLERS` | the list of controllers to route | `controller.py` | `talk`, `listen`, `webchat`, `whatsapp`, `avance_platform`, `testing`, `build` |
 | `core.services` | `POINT_CORE_SERVICES` | the composed core, offered to whoever asks | every skill | `main.py`, `testing` |
 | `automaton.loader` | `POINT_AUTOMATON_LOADER` | which loader answers "give me this project's automaton" | `main.py` | `avance_platform`, `product` |
+| `turn.spoken_reply` | `POINT_SPOKEN_REPLY` | `SpokenReply` — what the project declared, and whether this turn wants audio at all; a contributor that can speak calls `ask()` | `tracking.tracking_processor` | `talk` |
+
+Every `<skill>_enabled` field in the state payload is that skill's own
+contribution, `talk_enabled` included. It used to be the exception:
+`system/api_state_controller.py` computed it from `services["talk"]` and
+a `talk_configured()` helper, and `TrackingService` took a `talk_enabled`
+argument threaded down from `main.py` to be combined with the same name
+again. Core knew the name of a package a build is meant to be able to
+ship without, in three places, to decide one thing. `turn.spoken_reply`
+is that one thing asked instead of answered: nobody registered means
+nothing speaks, which is the right conclusion for a build without the
+package and one core never has to reach by naming it.
 
 `core.services` runs the other way from the rest: a skill starts at boot,
 long before `Db`/`TurnService`/`SchedulerService` exist, so it cannot be

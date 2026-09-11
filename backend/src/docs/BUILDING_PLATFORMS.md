@@ -129,6 +129,13 @@ only, and the frontend needs both answers.
 - Not every route has reached its skill yet — the migration to
   `/api/skills/<key>/…` and `/api/core/…` is in progress.
 - The build copies `backend/` and nothing else; see the last section.
+- **The `customer` role is not independent of `platform`.** The customer's
+  home and the app store it opens are contributed by `platform`, because
+  the store is not a skill of its own yet — so a product delivered without
+  an editor has no shop front either. That is a recognised debt, not a
+  decision: a customer browsing what they bought has nothing to do with
+  authoring it, and the role should survive a build that drops the
+  editor. Splitting the store out is what makes that true.
 
 ## Frontend — the same shape, one skill at a time
 

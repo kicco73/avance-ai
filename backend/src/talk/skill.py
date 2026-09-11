@@ -17,7 +17,10 @@ from pathlib import Path
 
 from system import bus
 from system.wiring import construct
-from system.bus import OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, POINT_CORE_SERVICES
+from system.bus import (
+    OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, POINT_API_STATE, POINT_CORE_SERVICES, POINT_SPOKEN_REPLY,
+)
+from automaton.project_services import OptionalService
 from system.logging_factory import LoggerFactory
 from system.skills import Skill
 from talk import config as talk_config
@@ -78,7 +81,6 @@ _INSTALLATIONS = {False: _NoTalk, True: _Talk}
 
 class TalkSkill(Skill):
 
-    key = "talk"
     ui_label = "Talk"
     ui_description = "Text to speech."
     project_declarable = True
@@ -92,8 +94,42 @@ class TalkSkill(Skill):
 
     def start_service(self, raw: dict, path: Path) -> None:
         self._providers = talk_config.parse(raw, path)
+        self._answer_for_itself()
         self._installed = _INSTALLATIONS[bool(self._providers)](self._providers)
         self._installed.install()
+
+    def _answer_for_itself(self) -> None:
+        """The two questions only this package can answer, registered
+        before anything is installed. Contributed whether or not a
+        provider is configured, because "off" is an answer and the
+        absence of this package is a different one — nobody registers,
+        and core concludes nothing speaks. Before, and not after, so a
+        provider that fails to load does not take the answers with it.
+        """
+        bus.contribute(POINT_API_STATE, lambda payload: payload.update(
+            {"talk_enabled": self._enabled_for_the_active_project()}
+        ))
+        bus.contribute(POINT_SPOKEN_REPLY, self._answer_spoken_reply)
+
+    def _answer_spoken_reply(self, spoken) -> None:
+        """Whether a turn should ask the model for a spoken version of
+        its reply (see bus.POINT_SPOKEN_REPLY). `wanted` is the turn's
+        own say — a session with audio off should not pay for the extra
+        field — and the project may narrow this service, never turn it
+        on."""
+        if spoken.wanted and spoken.services[self.key].narrow(bool(self._providers)):
+            spoken.ask()
+
+    def _enabled_for_the_active_project(self) -> bool:
+        """What the active project declared about this service makes of
+        the server's own switch. No active project (or none loadable)
+        declares nothing, which is `optional` — the same shape listen's
+        own flag has."""
+        try:
+            declared = bus.collect(POINT_CORE_SERVICES, {})["project_service"].get_active_automaton().services[self.key]
+        except Exception:  # noqa: BLE001
+            declared = OptionalService()
+        return declared.narrow(bool(self._providers))
 
     def describe_section(self, snapshot: dict) -> None:
         snapshot[self.key] = self.section(talk_config.public_fields(self._providers))

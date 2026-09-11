@@ -116,6 +116,16 @@ POINT_AUTOMATON_LOADER = "automaton.loader"
 # nothing — which is the same answer as a compile that failed.
 POINT_PROJECT_PUBLISHED = "project.published"
 
+# Whether a turn should also ask the model for a spoken version of its
+# reply. Core owns the prompt fragment that asks (tracking/prompt.py's
+# AudioPrompt) and cannot own the answer: a spoken reply is worth asking
+# for only if something can speak it, and what speaks is a skill. A point
+# rather than a flag threaded from main.py because the two halves of the
+# old gate — is the service configured, did this project narrow it —
+# meant core knowing the name of a package a build may not contain (see
+# tracking/spoken_reply.py).
+POINT_SPOKEN_REPLY = "turn.spoken_reply"
+
 # What a client connected over a socket is allowed to put on the Bus.
 # The wire uses these very names — a frame is not translated into
 # something else on the way in — so without this list the socket would

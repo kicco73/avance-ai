@@ -47,7 +47,6 @@ class TrackingService(object):
 		project_service: ProjectService,
 		metrics_service: MetricService,
 		namespace_factory: TaskNamespaceFactory,
-		talk_enabled: bool = True,
 		# FIXME: mirrors AppConfig's own default (config.py) — keep in sync.
 		input_token_budget_per_turn: int | None = 16000,
 		# FIXME: mirrors AppConfig's own default (config.py) — keep in sync.
@@ -58,7 +57,6 @@ class TrackingService(object):
 		self._project_service = project_service
 		self._namespace_factory = namespace_factory
 		self._metrics = metrics_service
-		self._talk_enabled = talk_enabled
 		self._input_token_budget_per_turn = input_token_budget_per_turn
 		self._total_token_budget_per_session = total_token_budget_per_session
 		self._session_import_manager = SessionImportManager(db)
@@ -341,7 +339,6 @@ class TrackingService(object):
 			ai_service, scope_builder,
 			env, self._db, user_vars,
 			auto_tracking_enabled=self.is_auto_tracking_enabled(session_id) if is_test_session else True,
-			talk_enabled=self._talk_enabled,
 			audio_wanted=audio_wanted,
 			input_token_budget_per_turn=self._input_token_budget_per_turn,
 		)
