@@ -29,7 +29,7 @@ import pytest
 from avance_platform.platform_service import PlatformService
 
 from automaton.automaton_builder import AutomatonBuilder
-from db.models import Archive
+from conftest import rewrite_archive_content
 from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
@@ -100,9 +100,7 @@ def _corrupt_in_place(db, project_id: str, revision: int) -> None:
     revision, in place" case a normal save-path can never produce (it
     always forks off a published revision) but a stale cache could still
     be left holding onto."""
-    Archive.update(content=BROKEN_YML.encode("utf-8")).where(
-        (Archive.project == project_id) & (Archive.archive_name == "index.yml") & (Archive.revision == revision)
-    ).execute()
+    rewrite_archive_content(project_id, "index.yml", revision, BROKEN_YML.encode("utf-8"))
 
 
 def test_a_real_save_on_a_previously_broken_draft_revision_clears_the_stale_failure(db, project_service):
@@ -196,9 +194,7 @@ def _set_dep_family(db, project_service: ProjectService, family: str) -> None:
     _declared_meta, cached from dep's last real build — a raw archive edit
     that skips set_cached would otherwise still answer with the old family."""
     revision = db.get_project_revision("dep")
-    Archive.update(content=DEP_YML.format(family=family).encode("utf-8")).where(
-        (Archive.project == "dep") & (Archive.archive_name == "index.yml") & (Archive.revision == revision)
-    ).execute()
+    rewrite_archive_content("dep", "index.yml", revision, DEP_YML.format(family=family).encode("utf-8"))
     project_service.manager._automaton_loader.invalidate_cache("dep")
 
 

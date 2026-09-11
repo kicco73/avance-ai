@@ -208,9 +208,39 @@ class SchemaMigrator:
         ('ChatSession', 'summary', 'ai_summary'),
     )
 
+    def migrate_archive_content_to_file(self, actual: dict[str, set[str]]) -> None:
+        """One-off migration for the Archive/File split: Archive.content
+        and Archive.content_type move into a content-addressed File row
+        each, and Archive keeps only a `hash` reference to it. Identical
+        (content, content_type) pairs — every unedited file a draft fork
+        copied — collapse onto a single File row here. No-op once already
+        migrated, detected by Archive.content's own absence.
+
+        The `hash` column is added nullable by hand; the generic pass that
+        follows sees it disagree with the model's NOT NULL and rebuilds
+        Archive into its final shape, dropping content/content_type."""
+        if 'Archive' not in actual or 'content' not in actual['Archive'] or 'hash' in actual['Archive']:
+            return
+        file_model = {model._meta.table_name: model for model in self._models}['File']
+        self._database.create_tables([file_model], safe=True)
+        self._database.execute_sql('ALTER TABLE "Archive" ADD COLUMN "hash" VARCHAR')
+        rows = self._database.execute_sql('SELECT "id", "content", "content_type" FROM "Archive"').fetchall()
+        with self._database.atomic():
+            for archive_id, content, content_type in rows:
+                content = content.encode('utf-8') if isinstance(content, str) else bytes(content or b'')
+                content_type = content_type or 'application/octet-stream'
+                digest = file_model.hash_of(content, content_type)
+                self._database.execute_sql(
+                    'INSERT OR IGNORE INTO "File" ("hash", "content", "content_type", "size") VALUES (?, ?, ?, ?)',
+                    (digest, content, content_type, len(content)),
+                )
+                self._database.execute_sql('UPDATE "Archive" SET "hash" = ? WHERE "id" = ?', (digest, archive_id))
+        actual['Archive'] = (actual['Archive'] - {'content', 'content_type'}) | {'hash'}
+
     def migrate(self, actual: dict[str, set[str]], expected: dict[str, set[str]], path: str) -> None:
         migrator = SqliteMigrator(self._database)
         models_by_table = {model._meta.table_name: model for model in self._models}
+        self.migrate_archive_content_to_file(actual)
         for table, old_column, new_column in self._COLUMN_RENAMES:
             if table in actual and old_column in actual[table] and new_column not in actual[table]:
                 self.rename_column(table, old_column, new_column)

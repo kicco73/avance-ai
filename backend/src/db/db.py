@@ -26,7 +26,7 @@ from .tasks import TaskMixin
 from playhouse.db_url import connect, parse as parse_db_url
 
 from .models import (
-    AiTokenUsage, Archive, ChatSession, EditHistory, Invite, Message,
+    AiTokenUsage, Archive, ChatSession, EditHistory, File, Invite, Message,
     Project, ProjectObserverIndex, Settings, User, StateRemap, SystemWarning, Task, Test,
     TestAggregateResult, TestObservation, Tracking, UserProject,
     database,
@@ -55,7 +55,7 @@ class Db(
 
     _SQLITE_MAGIC = b"SQLite format 3\x00"
     _MODELS = (
-        Project, ChatSession, Message, User, Tracking, Archive, EditHistory, StateRemap,
+        Project, ChatSession, Message, User, Tracking, File, Archive, EditHistory, StateRemap,
         Test, TestObservation, TestAggregateResult, SystemWarning,
         ProjectObserverIndex, Settings, UserProject, Invite, AiTokenUsage, Task,
     )
@@ -67,11 +67,13 @@ class Db(
             raise ValueError(f"Unknown migration strategy '{migration_strategy}' — expected one of {self.MIGRATION_STRATEGIES}.")
         self._database_url = database_url
         self._migrator = SchemaMigrator(database, self._MODELS)
-        database.initialize(connect(database_url, pragmas={'foreign_keys': 1}))
+        database.initialize(connect(database_url, pragmas={'foreign_keys': 1, 'recursive_triggers': 1}))
         database.connect(reuse_if_open=True)
         self._repair_indexes_if_inconsistent()
+        self._drop_file_gc_triggers()
         self._apply_migration_strategy(migration_strategy)
         database.create_tables(self._MODELS, safe=True)
+        self._create_file_gc_triggers()
         self._backfill_projects()
 
     def _repair_indexes_if_inconsistent(self) -> None:
@@ -88,6 +90,30 @@ class Db(
         problems = [row[0] for row in database.execute_sql('PRAGMA integrity_check').fetchall()]
         if problems != ['ok']:
             raise ValueError(f"Database at '{path}' is still corrupted after rebuilding its indexes — refusing to touch it (integrity_check: {problems}; the pre-repair backup is at '{backup_path}').")
+
+    _FILE_GC_TRIGGERS = ('file_gc_on_archive_delete', 'file_gc_on_archive_rehash')
+
+    @classmethod
+    def _drop_file_gc_triggers(cls) -> None:
+        for name in cls._FILE_GC_TRIGGERS:
+            database.execute_sql(f'DROP TRIGGER IF EXISTS "{name}"')
+
+    @classmethod
+    def _create_file_gc_triggers(cls) -> None:
+        cls._drop_file_gc_triggers()
+        orphan_delete = (
+            'DELETE FROM "File" WHERE "hash" = OLD."hash" '
+            'AND NOT EXISTS (SELECT 1 FROM "Archive" WHERE "hash" = OLD."hash");'
+        )
+        database.execute_sql(
+            'CREATE TRIGGER "file_gc_on_archive_delete" AFTER DELETE ON "Archive" '
+            f'BEGIN {orphan_delete} END'
+        )
+        database.execute_sql(
+            'CREATE TRIGGER "file_gc_on_archive_rehash" AFTER UPDATE OF "hash" ON "Archive" '
+            'WHEN OLD."hash" <> NEW."hash" '
+            f'BEGIN {orphan_delete} END'
+        )
 
     @staticmethod
     def _backfill_projects() -> None:
@@ -212,6 +238,6 @@ class Db(
             pass
         database.close()
         os.replace(tmp_path, path)
-        database.initialize(connect(self._database_url, pragmas={'foreign_keys': 1}))
+        database.initialize(connect(self._database_url, pragmas={'foreign_keys': 1, 'recursive_triggers': 1}))
         database.connect(reuse_if_open=True)
 

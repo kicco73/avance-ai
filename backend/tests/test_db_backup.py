@@ -78,7 +78,8 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "name TEXT, picture_url TEXT, created_at TEXT, last_login TEXT, active_project_id TEXT, role TEXT)",
         "CREATE TABLE Tracking (id INTEGER PRIMARY KEY, session_id INTEGER, timestamp TEXT, "
         "\"values\" TEXT, old_state TEXT, action TEXT, new_state TEXT, env TEXT, origin TEXT)",
-        "CREATE TABLE Archive (project_id TEXT, archive_name TEXT, revision INTEGER, content BLOB)",
+        "CREATE TABLE File (hash TEXT PRIMARY KEY, content BLOB, content_type TEXT, size INTEGER)",
+        "CREATE TABLE Archive (project_id TEXT, archive_name TEXT, revision INTEGER, hash TEXT)",
         "CREATE TABLE EditHistory (id INTEGER PRIMARY KEY, user_id TEXT, project_id TEXT, "
         "archive_name TEXT, kind TEXT, seq INTEGER, content TEXT)",
         "CREATE TABLE UserProject (user_id TEXT, project_id TEXT, accepted_terms_id INTEGER, "

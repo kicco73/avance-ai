@@ -38,6 +38,47 @@ class PlatformService(object):
         # revision is published, what its automaton is — and those are
         # asked of it rather than reimplemented here.
         self.project_service = project_service
+        # Set by install(); a service that was built only to answer
+        # questions (as the tests build it) never has any.
+        self.controllers: list = []
+
+    def install(self, core: dict, controllers: list) -> None:
+        """Builds this service's own controllers and adds them to the
+        router's list — the same shape whatsapp/skill.py's `_WhatsApp`
+        uses, and the reason the skill no longer knows seven controller
+        signatures. `core` is bus.POINT_CORE_SERVICES' registry, read
+        here and not kept: nothing below needs it after construction."""
+        from avance_platform.app_store_controller import AppStoreController
+        from avance_platform.auth_controller import AuthController
+        from avance_platform.edit_project_controller import EditProjectController
+        from avance_platform.label_project_controller import LabelProjectController
+        from avance_platform.platform_controller import PlatformController
+        from avance_platform.settings_controller import SettingsController
+        from avance_platform.user_controller import UserController
+
+        turn_service = core["turn_service"]
+        project_service = core["project_service"]
+        scheduler_service = core["scheduler_service"]
+        auth_service = core["auth_service"]
+
+        self.controllers = [
+            PlatformController(turn_service, project_service, self),
+            EditProjectController(turn_service, project_service, self, scheduler_service),
+            # Labelling only: the benchmark half of that screen left with
+            # the package that runs it (see testing/testing_controller.py),
+            # so a build without benchmarking still annotates sessions.
+            LabelProjectController(
+                turn_service, project_service, self, core["tracking_service"], scheduler_service,
+            ),
+            SettingsController(
+                turn_service, project_service, self, core["db"], core["version"],
+                core["test_event_broadcaster"], scheduler_service, core["services_config"],
+            ),
+            AuthController(auth_service),
+            UserController(auth_service),
+            AppStoreController(turn_service, project_service, self),
+        ]
+        controllers.extend(self.controllers)
 
     # The collaborators are read through, never copied. Copying them in
     # __init__ made this a snapshot: replacing project_service.ai_service

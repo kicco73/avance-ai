@@ -7,6 +7,7 @@ import pytest
 
 from db.models import Tracking
 from tracking.legacy_env_migration import migrate_env_rows
+from conftest import rewrite_archive_content
 
 pytestmark = pytest.mark.regression
 
@@ -97,11 +98,8 @@ def test_a_project_that_was_never_published_or_no_longer_builds_is_skipped_rathe
 
     _publish(db, ["a"])
     db.set_action_env(_session(db, type="live"), {"a": 1})
-    from db.models import Archive
     revision = db.get_project_published_revision(PROJECT_ID)
-    Archive.update(content=b"not: [valid, yaml: at all").where(
-        (Archive.project == PROJECT_ID) & (Archive.archive_name == "index.yml") & (Archive.revision == revision)
-    ).execute()
+    rewrite_archive_content(PROJECT_ID, "index.yml", revision, b"not: [valid, yaml: at all")
 
     migrate_env_rows(db)  # must not raise
     assert db.get_action_env(PROJECT_ID, USERNAME) == {"a": 1}

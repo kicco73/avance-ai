@@ -12,6 +12,7 @@ from http import HTTPStatus
 import pytest
 
 from conftest import parse_sse_result
+from conftest import rewrite_archive_content
 
 pytestmark = pytest.mark.regression
 
@@ -34,11 +35,8 @@ def _break_project(app, app_db, project_id: str) -> None:
     cached Automaton for it — a real process would only ever see this on
     a fresh cache miss, never on a revision it already built successfully
     earlier in its own lifetime (see test_project_health.py's own helper)."""
-    from db.models import Archive
     revision = app_db.get_project_published_revision(project_id)
-    Archive.update(content=BROKEN_YML.encode("utf-8")).where(
-        (Archive.project == project_id) & (Archive.archive_name == "index.yml") & (Archive.revision == revision)
-    ).execute()
+    rewrite_archive_content(project_id, "index.yml", revision, BROKEN_YML.encode("utf-8"))
     app.state.turn_service._project_service.manager._automaton_loader.invalidate_cache(project_id)
 
 
@@ -104,10 +102,7 @@ def test_a_session_pinned_to_an_old_now_broken_revision_is_flagged_unsupported(c
     assert published.json()["published_revision"] == 1
 
     # Now revision 0 alone breaks — the currently published one (1) is untouched.
-    from db.models import Archive
-    Archive.update(content=BROKEN_YML.encode("utf-8")).where(
-        (Archive.project == "flaky") & (Archive.archive_name == "index.yml") & (Archive.revision == 0)
-    ).execute()
+    rewrite_archive_content("flaky", "index.yml", 0, BROKEN_YML.encode("utf-8"))
     app.state.turn_service._project_service.manager._automaton_loader.invalidate_cache("flaky")
 
     sessions = client.get("/api/projects/flaky/sessions").json()

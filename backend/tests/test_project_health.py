@@ -25,6 +25,7 @@ from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 from system.service_error import ServiceError
+from conftest import rewrite_archive_content
 
 pytestmark = pytest.mark.contract
 
@@ -67,11 +68,8 @@ def _corrupt_published_revision(db, project_service: ProjectService, project_id:
     populated it, and a real process would only ever see this corruption
     on a fresh cache miss (a new boot, an evicted/never-cached revision),
     never on one it already built successfully earlier in its own lifetime."""
-    from db.models import Archive
     revision = db.get_project_published_revision(project_id)
-    Archive.update(content=BROKEN_YML.encode("utf-8")).where(
-        (Archive.project == project_id) & (Archive.archive_name == "index.yml") & (Archive.revision == revision)
-    ).execute()
+    rewrite_archive_content(project_id, "index.yml", revision, BROKEN_YML.encode("utf-8"))
     project_service.manager._automaton_loader.invalidate_cache(project_id)
 
 
@@ -468,10 +466,7 @@ def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_fiel
     SystemWarning/push) twice for one real transition."""
     _publish(db, project_service, "old_format", VALID_YML)
     revision = db.get_project_published_revision("old_format")
-    from db.models import Archive
-    Archive.update(content=TOOLS_FIELD_YML.encode("utf-8")).where(
-        (Archive.project == "old_format") & (Archive.archive_name == "index.yml") & (Archive.revision == revision)
-    ).execute()
+    rewrite_archive_content("old_format", "index.yml", revision, TOOLS_FIELD_YML.encode("utf-8"))
     project_service.manager._automaton_loader.invalidate_cache("old_format")
     before = db.get_archive("old_format", "index.yml", revision=revision)
 

@@ -17,7 +17,7 @@ import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
-from db.models import Archive
+from conftest import rewrite_archive_content
 from events import ProjectRevisionBuildFailed, subscribe
 from project.archive.automaton_loader import AutomatonLoader
 
@@ -38,9 +38,7 @@ def _publish(db, project_id: str, index_yml: str) -> None:
 
 
 def _overwrite(db, project_id: str, revision: int, index_yml: str) -> None:
-    Archive.update(content=index_yml.encode("utf-8")).where(
-        (Archive.project == project_id) & (Archive.archive_name == "index.yml") & (Archive.revision == revision)
-    ).execute()
+    rewrite_archive_content(project_id, "index.yml", revision, index_yml.encode("utf-8"))
 
 
 def test_a_broken_revision_loaded_twice_builds_only_once(db):

@@ -479,3 +479,45 @@ def test_stop_refuses_a_pre_merge_database_untouched_while_drop_wipes_it_like_an
     assert db.list_projects() == []
     db.save_project_file("user", "fresh", "index.yml", b"fresh content", "text/yaml")
     assert db.get_archive("fresh", "index.yml") == b"fresh content"
+
+
+def _pre_split_archive(path, rows: list[str]):
+    """A database in the shape just before the Archive/File split: content
+    and content_type still stored inline on Archive, no File table at all."""
+    _run_sql(path, [
+        "CREATE TABLE Project (id VARCHAR(255) NOT NULL PRIMARY KEY, revision INTEGER NOT NULL, "
+        "published_revision INTEGER, draft_edit_count INTEGER NOT NULL, is_paused INTEGER NOT NULL, "
+        "paused_reason TEXT, manually_paused INTEGER NOT NULL, ui_label TEXT, ui_description TEXT)",
+        "CREATE TABLE Archive (id INTEGER NOT NULL PRIMARY KEY, project_id VARCHAR(255) NOT NULL, "
+        "archive_name VARCHAR(255) NOT NULL, revision INTEGER NOT NULL, content BLOB NOT NULL, "
+        "content_type VARCHAR(255) NOT NULL)",
+        *rows,
+    ])
+
+
+def test_upgrade_moves_archive_content_into_a_shared_file_table_keeping_every_byte(tmp_path):
+    """The Archive/File split migration: each row's bytes move to a File
+    row keyed by their hash, identical (content, content_type) pairs
+    collapse onto one row, and Archive keeps only the reference."""
+    path = tmp_path / "split.db"
+    _pre_split_archive(path, [
+        "INSERT INTO Project (id, revision, published_revision, draft_edit_count, is_paused, manually_paused) "
+        "VALUES ('proj', 1, 0, 0, 0, 0)",
+        "INSERT INTO Archive (project_id, archive_name, revision, content, content_type) "
+        "VALUES ('proj', 'index.yml', 0, 'shared bytes', 'text/yaml')",
+        "INSERT INTO Archive (project_id, archive_name, revision, content, content_type) "
+        "VALUES ('proj', 'index.yml', 1, 'shared bytes', 'text/yaml')",
+        "INSERT INTO Archive (project_id, archive_name, revision, content, content_type) "
+        "VALUES ('proj', 'notes.txt', 1, 'other bytes', 'text/plain')",
+    ])
+
+    db = Db(_url(path), migration_strategy="upgrade")
+
+    assert "File" in _tables(path)
+    assert _columns(path, "Archive") == {"id", "project_id", "archive_name", "revision", "hash"}
+    assert db.get_archive("proj", "index.yml", revision=0) == b"shared bytes"
+    assert db.get_archive("proj", "index.yml", revision=1) == b"shared bytes"
+    assert db.get_archive("proj", "notes.txt", revision=1) == b"other bytes"
+    assert db.get_archive_content_type("proj", "notes.txt", revision=1) == "text/plain"
+    assert _query(path, 'SELECT COUNT(*) FROM "File"')[0][0] == 2
+    assert sorted(_query(path, 'SELECT "size" FROM "File"')) == [(len(b"other bytes"),), (len(b"shared bytes"),)]

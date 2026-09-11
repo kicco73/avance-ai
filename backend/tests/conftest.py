@@ -181,6 +181,19 @@ def _default_session_user():
     Session().channel = NATIVE_CHAT
 
 
+def rewrite_archive_content(project_id: str, archive_name: str, revision: int, content: bytes) -> None:
+    """Replaces one Archive row's bytes straight through the Db layer's
+    own File indirection, keeping its content_type — the direct
+    `Archive.update(content=...)` these tests used before the split."""
+    from db.models import Archive, File
+
+    row = Archive.get(
+        (Archive.project == project_id) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
+    )
+    content_type = File.get_by_id(row.hash_id).content_type
+    Archive.update(hash=File.put(content, content_type)).where(Archive.id == row.id).execute()
+
+
 @pytest.fixture
 def db() -> Db:
     """A fresh in-memory SQLite database per test — db.py's `database`

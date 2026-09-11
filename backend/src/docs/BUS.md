@@ -53,6 +53,7 @@ belongs to.
 | `origin_id` | The channel's own id for the message a person actually sent, unchanged across conversions. On a socket-injected message it is the *connection* id, so an answer goes back to that tab and not to every tab the identity has open. |
 | `converted_from` | The type this message was converted from, if it was. |
 | `mime` | Media type of `body` where `type` does not imply it. |
+| `stream_id` | The interface's own name for one exchange, where it has one — a websocket turn's own id. Correlation, like `origin_id`, which is why it lives here: the body of an `input.text` is the text, and one type must not have two body shapes. |
 | `conversions` | How many conversions deep this is. |
 
 `message.converted(type, body, mime)` produces the same message with a
@@ -88,7 +89,7 @@ and `whatsapp/whatsapp_service.py` (`input.audio` → `input.text`).
 | Type | Constant | Body | Published by | Taken by |
 | --- | --- | --- | --- | --- |
 | `input.audio` | `INPUT_AUDIO` | `bytes`, or an awaitable callable returning them — a voice note nobody decodes is never downloaded | `whatsapp` | `listen.decoder.SpeechDecoder` |
-| `input.text` | `INPUT_TEXT` | `{"stream_id", "text"}` from a socket; a plain `str` from a conversion | `system.ws_notifications` (client injection), `listen.decoder` (conversion) | `webchat.WebchatService` (starts a turn), `whatsapp` (one-shot take) |
+| `input.text` | `INPUT_TEXT` | `str` — what the person said | `system.ws_notifications` (client injection), `listen.decoder` (conversion) | `webchat.WebchatService` (starts a turn, on its own channel only), `whatsapp` (one-shot take) |
 | `output.text` | `OUTPUT_TEXT` | `str` (markdown) | `tracking.actuators` (`task.whatsapp()`) | `whatsapp` (sends it, when `channel` matches) |
 | `output.speech` | `OUTPUT_SPEECH` | `str` — a reply's `[audio]` text | `talker.ai_talker` (wants the audio back), `webchat.ws_turn` (only warms the store) | `talk` |
 | `output.audio_stream` | `OUTPUT_AUDIO_STREAM` | `AudioStream` — `chunks()` yields WAV bytes as they are generated, a fresh iterator per consumer | `talk` | `talker.ai_talker` (one-shot take) |
@@ -114,11 +115,18 @@ very names, so without the list the socket would be an open injection
 point: a browser could publish an internal type and find listeners for
 it. A client speaks as a person, and a person says things.
 
-Outbound is not symmetric. A turn's own frames (`output.text`,
-`output.speech`, `turn.*`) go out under the Bus's names verbatim, so a
-listener and a browser read the same message. The `ui.*` types are
-translated on the way out by `ws_notifications` — `ui.notification`
-reaches the browser as `notification`.
+Outbound works the same way. `ws_notifications.WEB_FORWARDED` is the
+allowlist of types that may leave the Bus for a browser, and that filter
+is the whole of what the socket does: a frame reaching the client is the
+message that was published, under its own type. `ui.notification` arrives
+as `ui.notification`. A turn's own frames (`output.text`,
+`output.speech`, `turn.*`) go out under the same names, so a listener and
+a browser read the same message.
+
+Two frame types are the socket's own and never touch the Bus:
+`human_reply` / `human_typing` inbound and `human_prompt` outbound, which
+belong to one operator answering one prompt over one connection (see
+`talker.human_talker`).
 
 ## Contribution points
 
@@ -167,9 +175,9 @@ currently propagates it into project YAML.
 `publish`'s own return value already answers) and
 `whatsapp/whatsapp_service.py` (which of two failure notices to send).
 
-**`input.text` has two body shapes.** A socket-injected one carries
-`{"stream_id", "text"}`; a `listen`-converted one carries a plain `str`.
-`WebchatService._start_turn` is subscribed to the type and reads
-`body.get("stream_id")`, so a decoded voice note raises there and is
-logged by `publish` before WhatsApp's own take receives it. The exchange
-still works; the exception is noise, and the two shapes should converge.
+**Who takes an `input.text`.** Every `input.text` reaches every
+listener, including one converted from a voice note on another channel.
+`WebchatService` therefore takes only messages on `NATIVE_CHAT`, the way
+`whatsapp` takes only `WHATSAPP_CHAT` ones for `output.text`. A listener
+for a type that more than one channel publishes has to say which channel
+it serves; the Bus will not guess.
