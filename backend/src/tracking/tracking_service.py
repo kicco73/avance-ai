@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 # Builds the BaseTalker to answer session_id's next turn as `username`, when
 # that session is toggled to a human (see set_human_talker_factory) — wired
-# in main.py to a closure over WsNotifications, since only chat/ knows how
+# in main.py to a closure over BusChannel, since only chat/ knows how
 # to actually reach a person over a websocket.
 HumanTalkerFactory = Callable[[str, int, str, "int | None"], "BaseTalker"]
 
@@ -74,7 +74,7 @@ class TrackingService(object):
 
 	def set_human_talker_factory(self, factory: HumanTalkerFactory) -> None:
 		"""Late-bound the same way namespace_factory.set_whatsapp_service is
-		— TrackingService is built before WsNotifications exists, so
+		— TrackingService is built before BusChannel exists, so
 		main.py wires this in once both are constructed."""
 		self._human_talker_factory = factory
 

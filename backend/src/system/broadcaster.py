@@ -5,7 +5,7 @@ registry of per-user connections plus a thread-safe push onto them. The
 third only recorded what passed through. What actually differed was
 policy, not structure — whether pushes are coalesced inside a short
 window, whether they are enriched with the running token total, whether
-they also reach the shared /ws/notifications channel — so policy is what
+they also reach the shared /api/core/bus channel — so policy is what
 this takes as arguments.
 
 Two subtleties that are not obvious from the outside and must survive

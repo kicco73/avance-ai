@@ -7,13 +7,13 @@
 // own invert prop). Sending and typing both go out keyed by session_id,
 // never a prompt_id the operator's own tab may never have seen (a fresh
 // human_prompt push is one-shot — a tab that opens after it already fired
-// would otherwise never know what to reply to) — see chat/ws_notifications.
+// would otherwise never know what to reply to) — see system/bus_channel.
 // py's own _current_prompt_for_session.
 import { computed, onMounted, ref, watch } from 'vue'
 import MessageBubble from './MessageBubble.vue'
 import ActionButtons from './ActionButtons.vue'
 import { getMessages, getOperatorState, postAction } from '../../api/skills/webchat.js'
-import { chatChannel } from '../../chatChannel.js'
+import { busChannel } from '../../busChannel.js'
 import { getHumanPromptForSession, removeHumanPrompt } from '../../humanPromptStore.js'
 
 const props = defineProps({
@@ -85,13 +85,13 @@ watch(pendingPrompt, (prompt) => {
 function onDraftInput() {
   if (typingSent || !draft.value.trim()) return
   typingSent = true
-  chatChannel.send({ type: 'human_typing', session_id: props.sessionId })
+  busChannel.send({ type: 'human_typing', session_id: props.sessionId })
 }
 
 function submit() {
   const text = draft.value.trim()
   if (!text) return
-  chatChannel.send({ type: 'human_reply', session_id: props.sessionId, text })
+  busChannel.send({ type: 'human_reply', session_id: props.sessionId, text })
   if (pendingPrompt.value) removeHumanPrompt(pendingPrompt.value.promptId)
   pushMessage('assistant', text)
   draft.value = ''

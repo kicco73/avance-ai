@@ -25,7 +25,7 @@ export function installFakeChatSocket(api) {
         ws.onclose?.()
       },
       // Simulates the server closing the connection with a specific close
-      // code (e.g. chatChannel.js's SUPERSEDED_CLOSE_CODE) — unlike
+      // code (e.g. busChannel.js's SUPERSEDED_CLOSE_CODE) — unlike
       // close() above (the client's own explicit disconnect, which fires
       // onclose with no event at all), this is what a real CloseEvent looks
       // like.

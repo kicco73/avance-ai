@@ -1,5 +1,9 @@
 # Building a platform out of skills
 
+This is the architecture: how a platform is cut into skills, isolated and
+assembled into a delivery. What each skill actually does for the people
+using it is `docs/SKILLS.md`.
+
 The product is sold by skill, and the customer receives the code. So a
 build does not merely *disable* what was not bought: it must not ship it
 at all. One rule carries the whole design, on both sides of the wire:

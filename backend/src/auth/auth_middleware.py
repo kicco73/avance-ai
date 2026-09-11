@@ -2,10 +2,11 @@
 every HTTP route except the small allowlist below — no per-route
 Depends(), so every existing controller method stays untouched.
 
-Only covers HTTP: BaseHTTPMiddleware never sees a websocket handshake at
-all (Starlette dispatches those on a separate ASGI path). /ws/notifications's
-own equivalent check lives in chat/ws_notifications.py's
-WsNotifications.notification_loop, before websocket.accept() — same
+Only covers HTTP, and still does now that the bus channel sits under
+/api/ like every other route: BaseHTTPMiddleware returns early for any
+scope that is not "http", so it never sees a websocket handshake at all.
+/api/core/bus's own equivalent check lives in system/bus_channel.py's
+BusChannel.channel_loop, before websocket.accept() — same
 AuthService.verify_token() call, same cookie, just triggered from a
 different entrypoint.
 

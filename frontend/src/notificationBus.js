@@ -8,7 +8,7 @@
 // a toast, confetti, a dialog — so it runs exactly once here, whichever
 // chat stores happen to exist; only the state part is fanned out, to
 // every store that asked, each deciding whether it is about its project.
-import { chatChannel } from './chatChannel.js'
+import { busChannel } from './busChannel.js'
 import { runTaskScript } from './taskActions.js'
 
 const stateSubscribers = new Set()
@@ -17,7 +17,7 @@ let registered = false
 function ensureRegistered() {
   if (registered) return
   registered = true
-  chatChannel.subscribe('ui.notification', ({ project_name, state, task }) => {
+  busChannel.subscribe('ui.notification', ({ project_name, state, task }) => {
     if (task) runTaskScript(task)
     if (state) {
       for (const subscriber of stateSubscribers) subscriber({ project_name, state })

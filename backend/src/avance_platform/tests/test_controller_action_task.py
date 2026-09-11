@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from system.ws_notifications import WsNotifications
+from system.bus_channel import BusChannel
 from conftest import FakeWebSocket, parse_sse_result
 
 pytestmark = pytest.mark.contract
@@ -48,8 +48,8 @@ def _attach_websocket(app, username: str) -> FakeWebSocket:
     action fires — on-exit's own chat.* push happens synchronously,
     inside the /action request itself, never through the job queue."""
     websocket = FakeWebSocket()
-    ws_notifications = WsNotifications(auth_service=None)
-    ws_notifications._connections[username] = [websocket]
+    bus_channel = BusChannel(auth_service=None)
+    bus_channel._connections[username] = [websocket]
     return websocket
 
 

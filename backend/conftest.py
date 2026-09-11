@@ -21,7 +21,7 @@ from turn.channels import NATIVE_CHAT
 from turn.turn_service import TurnService
 from turn.ephemeral_env_registry import EphemeralEnvRegistry
 from turn.sessions.session_manager import SessionManager
-from system.ws_notifications import WEB_FORWARDED, WsNotifications
+from system.bus_channel import WEB_FORWARDED, BusChannel
 from controller import AvanceController
 from db import Db
 from db.models import User
@@ -99,7 +99,7 @@ def installed_skill(package: str) -> None:
 
 @contextmanager
 def chat_socket(client: TestClient, username: str | None = None):
-    """The one chat channel a browser has (see chat/ws_notifications.py),
+    """The one chat channel a browser has (see system/bus_channel.py),
     opened as the current Session().user (or `username`): the User row
     and a real session cookie are minted here, since the `app` fixture
     never goes through AuthMiddleware and the websocket handshake checks
@@ -116,9 +116,9 @@ def chat_socket(client: TestClient, username: str | None = None):
     # else (see webchat/skill.py): without that package the socket opens
     # and no frame ever comes back.
     installed_skill("webchat")
-    with client.websocket_connect("/ws/notifications", headers={"cookie": f"{SESSION_COOKIE_NAME}={token}"}) as ws:
+    with client.websocket_connect("/api/core/bus", headers={"cookie": f"{SESSION_COOKIE_NAME}={token}"}) as ws:
         # A browser is told nothing it did not register for (see
-        # WsNotifications._exportable) — this helper stands in for one,
+        # BusChannel._exportable) — this helper stands in for one,
         # so it registers for everything the socket may export.
         ws.send_json({"type": "subscribe", "events": list(WEB_FORWARDED)})
         yield ws
@@ -414,7 +414,7 @@ def app(
     ApiErrorHandlers.register(fastapi_app)
     # One shared connection per identity, as in main.py — the skills that
     # answer a turn collect it from the registry below.
-    ws_notifications = WsNotifications(auth_service)
+    bus_channel = BusChannel(auth_service)
     bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({
         "db": app_db,
         "auth_service": auth_service,
@@ -424,7 +424,7 @@ def app(
         "scheduler_service": scheduler_service,
         "ai_test_service": fake_ai_service,
         "progress_broadcaster": progress_broadcaster,
-        "ws_notifications": ws_notifications,
+        "bus_channel": bus_channel,
         # Never backend/apps: a test that builds must not write into the
         # developer's own working tree.
         "apps_dir": tmp_path / "apps",
@@ -433,7 +433,7 @@ def app(
     }))
     skills.start_all(raw_config, Path("."))
     controller = AvanceController(
-        turn_service, project_service, ws_notifications=ws_notifications,
+        turn_service, project_service, bus_channel=bus_channel,
     )
     fastapi_app.include_router(controller.router)
     # Every service the composed system ended up with, under the name it
@@ -451,11 +451,11 @@ def app(
 
 
 class FakeWebSocket:
-    """Just enough to stand in for a WsConnection in WsNotifications'
+    """Just enough to stand in for a WsConnection in BusChannel'
     username -> connection registry: push only calls send on it, and a
     Bus event only reaches a connection that registered for its type —
     this one stands in for a browser, so it registers for everything the
-    socket may export (see WsNotifications._exportable)."""
+    socket may export (see BusChannel._exportable)."""
 
     def __init__(self):
         self.id = "fake-connection"
@@ -475,8 +475,8 @@ def run_pending_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0
     service afterwards so its thread never outlives the test."""
     import time
     websocket = FakeWebSocket()
-    ws_notifications = WsNotifications(auth_service=None)
-    ws_notifications._connections[username] = [websocket]
+    bus_channel = BusChannel(auth_service=None)
+    bus_channel._connections[username] = [websocket]
     scheduler_service = app.state.scheduler_service
     scheduler_service.start()
     try:

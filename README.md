@@ -22,7 +22,7 @@ frontend/   Vue 3 SPA (Vite) — chat window, session panel, and an "Edit
 backend/
   src/      FastAPI app.
     main.py                 entrypoint: wires everything below, exposes
-                             the REST API and a shared /ws/notifications
+                             the REST API and a shared /api/core/bus
                              socket (chat turns still go over REST/SSE)
     controller.py            composition root — merges the 4 screen-scoped
                              controllers below onto one router
@@ -202,7 +202,7 @@ request-body field:
 
 | Area | Examples |
 | --- | --- |
-| Chat | `GET/POST /api/skills/webchat/session(s)`, `DELETE /api/skills/webchat/sessions/{id}`, `GET /api/skills/webchat/sessions/{id}/messages`, `POST /api/skills/webchat/sessions/{id}/action`, `POST /api/skills/webchat/reset`. Sending a message is **not** an endpoint: a turn travels as a `turn` frame on the `/ws/notifications` websocket, the chat's only transport (see `backend/src/docs/PROJECT_SPECS.md` §0) |
+| Chat | `GET/POST /api/skills/webchat/session(s)`, `DELETE /api/skills/webchat/sessions/{id}`, `GET /api/skills/webchat/sessions/{id}/messages`, `POST /api/skills/webchat/sessions/{id}/action`, `POST /api/skills/webchat/reset`. Sending a message is **not** an endpoint: a turn travels as a `turn` frame on the `/api/core/bus` websocket, the chat's only transport (see `backend/src/docs/PROJECT_SPECS.md` §0) |
 | Auto-tracking | `GET/POST /api/skills/platform/sessions/{id}/autotracking` — "Dev mode: freeze automatic state transitions", scoped to one 'test' session (EditProjectView.vue's own embedded "Test" chat); a native/imported session is always auto-tracked |
 | Live analytics | `GET /api/skills/platform/inspector/signals` (last computed signal values, active project), `GET /api/core/projects/{project_id}/metrics` (metrics_framework, computed on demand), `POST /api/triggers/preview` |
 | AI model | `GET /api/skills/platform/ai/models`, `POST /api/skills/platform/ai/models/selection` |
@@ -211,7 +211,7 @@ request-body field:
 | Project files | `GET /api/skills/platform/projects/{project_id}/files(/{file})`, `PUT/DELETE /api/skills/platform/projects/{project_id}/files/{file}` — the "Edit project" view's file explorer |
 | Settings | `GET/POST /api/skills/platform/settings/backup` (the whole database, every project and every user's sessions, as a single restorable `.sqlite` file), `GET /api/skills/platform/settings/projects/runtime-status` |
 | Status | `GET /api/skills/platform/state` |
-| Notifications | `WS /ws/notifications` — one shared, always-on push channel per logged-in user (on-enter notifications, test-run progress, project health, cross-project wake-ups); chat turns themselves still go over REST/SSE above |
+| Notifications | `WS /api/core/bus` — one shared, always-on push channel per logged-in user (on-enter notifications, test-run progress, project health, cross-project wake-ups); chat turns themselves still go over REST/SSE above |
 
 Every error response shares one shape, `{"error": {"message", "detail"}}`
 (see `error_handlers.py`).

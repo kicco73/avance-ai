@@ -45,7 +45,7 @@ class HumanRelay(Protocol):
 
 	async def wait_for_typing(self) -> None:
 		"""Resolves the moment the person starts composing a reply (their
-		own frontend's own signal — see chat/ws_notifications.py's
+		own frontend's own signal — see system/bus_channel.py's
 		human_typing handling) — races against receive() in chat() below,
 		so a typing indicator only ever shows once someone is actually
 		there, never automatically from the instant they're asked."""

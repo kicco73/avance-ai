@@ -116,14 +116,14 @@ and `whatsapp/whatsapp_service.py` (`input.audio` → `input.text`).
 | Type | Constant | Body | Published by | Taken by |
 | --- | --- | --- | --- | --- |
 | `input.audio` | `INPUT_AUDIO` | `bytes`, or an awaitable callable returning them — a voice note nobody decodes is never downloaded | `whatsapp` | `listen.decoder.SpeechDecoder` |
-| `input.text` | `INPUT_TEXT` | `str` — what the person said | `system.ws_notifications` (client injection), `listen.decoder` (conversion) | `webchat.WebchatService` (starts a turn, on its own channel only), `whatsapp` (one-shot take) |
+| `input.text` | `INPUT_TEXT` | `str` — what the person said | `system.bus_channel` (client injection), `listen.decoder` (conversion) | `webchat.WebchatService` (starts a turn, on its own channel only), `whatsapp` (one-shot take) |
 | `output.text` | `OUTPUT_TEXT` | `str` (markdown) | `tracking.actuators` (`task.whatsapp()`) | `whatsapp` (sends it, when `channel` matches) |
 | `output.speech` | `OUTPUT_SPEECH` | `str` — a reply's `[audio]` text | `talker.ai_talker` (wants the audio back), `webchat.ws_turn` (only warms the store) | `talk` |
 | `output.audio_stream` | `OUTPUT_AUDIO_STREAM` | `AudioStream` — `chunks()` yields WAV bytes as they are generated, a fresh iterator per consumer | `talk` | `talker.ai_talker` (one-shot take) |
-| `ui.notification` | `UI_NOTIFICATION` | `dict` — a nudge for whoever that identity has open | `tracking.wakeup_service`, `tracking.actuators` | `system.ws_notifications` |
-| `ui.human_takeover` | `UI_HUMAN_TAKEOVER` | `{"session_id", "project_id"}` | `tracking.actuators.chat_namespace` | `system.ws_notifications` |
-| `ui.system_warning` | `UI_SYSTEM_WARNING` | `dict` — addressed to a role, so the publisher names each recipient | `project.health_notifications` | `system.ws_notifications` |
-| `ui.progress` | `UI_PROGRESS` | `dict` — one batch of job progress | `system.broadcaster` | `system.ws_notifications` |
+| `ui.notification` | `UI_NOTIFICATION` | `dict` — a nudge for whoever that identity has open | `tracking.wakeup_service`, `tracking.actuators` | `system.bus_channel` |
+| `ui.human_takeover` | `UI_HUMAN_TAKEOVER` | `{"session_id", "project_id"}` | `tracking.actuators.chat_namespace` | `system.bus_channel` |
+| `ui.system_warning` | `UI_SYSTEM_WARNING` | `dict` — addressed to a role, so the publisher names each recipient | `project.health_notifications` | `system.bus_channel` |
+| `ui.progress` | `UI_PROGRESS` | `dict` — one batch of job progress | `system.broadcaster` | `system.bus_channel` |
 | `mail.send` | `MAIL_SEND` | `{"to", "subject", "body_md"}` | `tracking.actuators` (`task.send_mail`, with bounceback) | `mail` |
 | `turn.started` | `TURN_STARTED` | — | — | — |
 | `turn.ended` | `TURN_ENDED` | — | — | — |
@@ -142,7 +142,7 @@ very names, so without the list the socket would be an open injection
 point: a browser could publish an internal type and find listeners for
 it. A client speaks as a person, and a person says things.
 
-Outbound works the same way. `ws_notifications.WEB_FORWARDED` is the
+Outbound works the same way. `bus_channel.WEB_FORWARDED` is the
 allowlist of types that may leave the Bus for a browser, and that filter
 is the whole of what the socket does: a frame reaching the client is the
 message that was published, under its own type. `ui.notification` arrives

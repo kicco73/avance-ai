@@ -1,7 +1,11 @@
 import { apiFetch } from './core.js'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
-const WS_URL = import.meta.env.VITE_WS_URL ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/notifications`
+// The bus channel is a route under API_URL like any other, so it is
+// derived from it rather than configured a second time: a VITE_WS_URL
+// that could disagree with VITE_API_URL about host or origin was a way
+// to point the two halves of one backend at different servers.
+const WS_URL = new URL(API_URL + '/core/bus', location.href).href.replace(/^http/, 'ws')
 
 export function getCurrentSession(sessionId) {
   const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''

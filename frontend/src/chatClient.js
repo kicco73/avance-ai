@@ -1,9 +1,9 @@
-import { chatChannel } from './chatChannel.js'
+import { busChannel } from './busChannel.js'
 import { setApiError } from './errorStore.js'
 
 // INSTRUCTIONS FOR CLAUDE CODE: NEVER TOUCH THIS FILE.
 //
-// The chat's own end of the shared websocket (see chatChannel.js, which
+// The chat's own end of the shared websocket (see busChannel.js, which
 // owns the socket): this subscribes to the four frame types a turn
 // produces and sends the `turn` frame that starts one. It is one
 // subscriber among several — notifications and test updates reach their
@@ -33,24 +33,24 @@ function normalizeResult(data) {
   }
 }
 
-chatChannel.subscribe('output.text', (data) => {
+busChannel.subscribe('output.text', (data) => {
   const turn = pendingTurns.get(data.stream_id)
   if (turn && data.body) turn.onChunk?.(data.body)
 })
 
-chatChannel.subscribe('turn.tool', (data) => {
+busChannel.subscribe('turn.tool', (data) => {
   const turn = pendingTurns.get(data.stream_id)
   if (turn) turn.onStatus?.(data.phase === 'start' ? data.status_text || '' : '')
 })
 
-chatChannel.subscribe('turn.ended', (data) => {
+busChannel.subscribe('turn.ended', (data) => {
   const turn = pendingTurns.get(data.stream_id)
   if (!turn) return
   pendingTurns.delete(data.stream_id)
   turn.resolve(normalizeResult(data))
 })
 
-chatChannel.subscribe('turn.failed', (data) => {
+busChannel.subscribe('turn.failed', (data) => {
   const turn = pendingTurns.get(data.stream_id)
   if (!turn) return
   pendingTurns.delete(data.stream_id)
@@ -62,7 +62,7 @@ chatChannel.subscribe('turn.failed', (data) => {
 })
 
 export function sendMessage(text, sessionId, options = {}) {
-  if (!chatChannel.isOpen) {
+  if (!busChannel.isOpen) {
     const error = new Error('The chat connection is not available.')
     error.code = 'chat_offline'
     return Promise.reject(error)
@@ -70,7 +70,7 @@ export function sendMessage(text, sessionId, options = {}) {
   const turnId = `t${++turnSequence}-${Date.now()}`
   return new Promise((resolve, reject) => {
     pendingTurns.set(turnId, { resolve, reject, onChunk: options.onChunk, onStatus: options.onStatus, sessionId, text })
-    chatChannel.send({ type: 'input.text', stream_id: turnId, session_id: sessionId, body: text })
+    busChannel.send({ type: 'input.text', stream_id: turnId, session_id: sessionId, body: text })
   })
 }
 
@@ -95,17 +95,17 @@ export function resolvePendingTurnsAfterReload(resolveFromHistory) {
 }
 
 export function onConnectionState(handler) {
-  return chatChannel.onConnectionState(handler)
+  return busChannel.onConnectionState(handler)
 }
 
 export function getConnectionState() {
-  return chatChannel.connectionState
+  return busChannel.connectionState
 }
 
 export function connect() {
-  chatChannel.connect()
+  busChannel.connect()
 }
 
 export function disconnect() {
-  chatChannel.disconnect()
+  busChannel.disconnect()
 }

@@ -12,7 +12,7 @@ import time
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from system.ws_notifications import WsNotifications
+from system.bus_channel import BusChannel
 from events import StateChanged, publish
 from conftest import FakeWebSocket, make_test_namespace_factory, make_test_scheduler_service
 from turn.sessions.session_manager import SessionManager
@@ -153,14 +153,14 @@ class TestWsAdapterPush:
     WakeupService._reevaluate_and_apply's own comment."""
 
     def _connected(self):
-        ws_notifications = WsNotifications(auth_service=None)
+        bus_channel = BusChannel(auth_service=None)
         websocket = FakeWebSocket()
-        ws_notifications._connections[USERNAME] = [websocket]
-        return ws_notifications, websocket
+        bus_channel._connections[USERNAME] = [websocket]
+        return bus_channel, websocket
 
     def test_a_fired_self_loop_pushes_the_state_and_project_name_but_never_its_task(self, db, project_service):
         _both_projects(db, project_service)
-        ws_notifications, websocket = self._connected()
+        bus_channel, websocket = self._connected()
 
         _wake(db, project_service)
 
@@ -178,7 +178,7 @@ class TestWsAdapterPush:
 
     def test_manual_actions_includes_the_triggered_action_when_auto_tracking_is_disabled(self, db, project_service):
         watcher_session = _both_projects(db, project_service)
-        ws_notifications, websocket = self._connected()
+        bus_channel, websocket = self._connected()
 
         _wake(db, project_service, tracking_service=_FakeTrackingService({watcher_session["id"]}))
 
@@ -186,7 +186,7 @@ class TestWsAdapterPush:
 
     def test_nothing_is_pushed_when_the_self_loop_does_not_fire(self, db, project_service):
         _both_projects(db, project_service, observed_moved=False)
-        ws_notifications, websocket = self._connected()
+        bus_channel, websocket = self._connected()
 
         _wake(db, project_service)
 
@@ -196,7 +196,7 @@ class TestWsAdapterPush:
         """The nudge is published either way; whether an interface is
         connected — or subscribed at all — is not this service's business."""
         unconnected_session = _both_projects(db, project_service)
-        WsNotifications(auth_service=None)
+        BusChannel(auth_service=None)
         _wake(db, project_service)
         assert db.get_signals(unconnected_session["id"])[-1]["new_state"] == "x"
 

@@ -16,7 +16,7 @@ from project.project_service import ProjectService
 from system import bus
 from system.bus import POINT_HTTP_CONTROLLERS
 from system.skills_controller import SkillsController
-from system.ws_notifications import WsNotifications
+from system.bus_channel import BusChannel
 from turn.turn_service import TurnService
 
 
@@ -25,7 +25,7 @@ class AvanceController(object):
         self,
         turn_service: TurnService,
         project_service: ProjectService,
-        ws_notifications: WsNotifications | None = None,
+        bus_channel: BusChannel | None = None,
     ) -> None:
         self.turn_service = turn_service
         self.project_service = project_service
@@ -39,5 +39,5 @@ class AvanceController(object):
         self.router = APIRouter()
         for controller in controllers:
             controller.register_routes(self.router)
-        if ws_notifications is not None:
-            self.router.add_api_websocket_route("/ws/notifications", ws_notifications.channel_loop)
+        if bus_channel is not None:
+            self.router.add_api_websocket_route("/api/core/bus", bus_channel.channel_loop)

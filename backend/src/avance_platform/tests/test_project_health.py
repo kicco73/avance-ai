@@ -261,7 +261,7 @@ def test_broken_notification_job_warns_every_admin_and_pushes_to_connected_ones(
     _make_admin(db, "admin2")
     # "user" already exists (see conftest.py's own db fixture) with the
     # default non-admin role — must never get a warning.
-    ws_notifications = RecordedWarnings()
+    bus_channel = RecordedWarnings()
 
     job = ProjectHealthNotificationJob(
         db, "broken", 3, "index.yml no longer builds — nope", file="index.yml", line=7,
@@ -277,9 +277,9 @@ def test_broken_notification_job_warns_every_admin_and_pushes_to_connected_ones(
     assert warnings_user == []
     listed = db.list_system_warnings_for_user("admin1", kind="project_broken")
     assert len(listed) == 1 and listed[0]["file"] == "index.yml" and listed[0]["line"] == 7
-    pushed_usernames = {username for username, _ in ws_notifications.pushed}
+    pushed_usernames = {username for username, _ in bus_channel.pushed}
     assert pushed_usernames == {"admin1", "admin2"}
-    assert all(payload["file"] == "index.yml" and payload["line"] == 7 for _, payload in ws_notifications.pushed)
+    assert all(payload["file"] == "index.yml" and payload["line"] == 7 for _, payload in bus_channel.pushed)
 
 
 def test_recovery_notification_job_clears_the_projects_own_warnings_and_tells_every_admin(db):
@@ -288,7 +288,7 @@ def test_recovery_notification_job_clears_the_projects_own_warnings_and_tells_ev
     db.save_system_warning("admin1", "flaky", "project_broken", "nope")
     db.save_system_warning("admin2", "flaky", "project_broken", "nope")
     db.save_system_warning("admin1", "other", "project_broken", "still broken")
-    ws_notifications = RecordedWarnings()
+    bus_channel = RecordedWarnings()
 
     job = ProjectHealthNotificationJob(db, "flaky", 4, None)
     job.prepare()
@@ -297,10 +297,10 @@ def test_recovery_notification_job_clears_the_projects_own_warnings_and_tells_ev
     assert db.get_system_warnings("admin1", "flaky") == []
     assert db.get_system_warnings("admin2", "flaky") == []
     assert len(db.get_system_warnings("admin1", "other")) == 1
-    assert {username for username, _ in ws_notifications.pushed} == {"admin1", "admin2"}
+    assert {username for username, _ in bus_channel.pushed} == {"admin1", "admin2"}
     assert all(
         payload == {"kind": "project_fixed", "project_id": "flaky"}
-        for _, payload in ws_notifications.pushed
+        for _, payload in bus_channel.pushed
     )
 
 
@@ -471,7 +471,7 @@ def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_fiel
     before = db.get_archive("old_format", "index.yml", revision=revision)
 
     _make_admin(db, "admin1")
-    ws_notifications = RecordedWarnings()
+    bus_channel = RecordedWarnings()
     notifications = ProjectHealthNotifications(db, _SyncSchedulerService())
     notifications.register()
     project_service.register_availability_cascade()
@@ -489,7 +489,7 @@ def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_fiel
     assert len(warnings) == 1
     assert warnings[0]["kind"] == "project_broken"
     assert "'tools' is no longer a valid field" in warnings[0]["message"]
-    assert len(ws_notifications.pushed) == 1
+    assert len(bus_channel.pushed) == 1
 
 
 class _SyncSchedulerService:

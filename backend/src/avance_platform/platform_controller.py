@@ -38,6 +38,7 @@ DOC_FILES = {
     "markdown-guide": "MARKDOWN_GUIDE.md",
     "session-specs": "SESSION_SPECS.md",
     "skin-specs": "SKIN_SPECS.md",
+    "skills": "SKILLS.md",
 }
 DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
 

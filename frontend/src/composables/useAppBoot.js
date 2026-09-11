@@ -119,7 +119,7 @@ export function useAppBoot(
       loadMessages()
     }
     loadAiModels()
-    // The /ws/notifications channel carries more than chat turns now
+    // The /api/core/bus channel carries more than chat turns now
     // (test-run updates, task notifications, health pushes), so every
     // role connects here at boot rather than lazily on first chat use.
     connectChat()

@@ -2,7 +2,7 @@
 
 Nothing outside this package names it: not main.py, not controller.py,
 not the socket it listens on. A build that leaves `backend/src/webchat/`
-out has a running system with an open /ws/notifications that nobody
+out has a running system with an open /api/core/bus that nobody
 answers a turn on, and no human takeover — and nothing left in the code
 saying either ever existed.
 
@@ -31,7 +31,7 @@ class WebchatSkill(Skill):
 
         core = bus.collect(POINT_CORE_SERVICES, {})
         service = WebchatService(
-            core["turn_service"], core["project_service"], core["ws_notifications"],
+            core["turn_service"], core["project_service"], core["bus_channel"],
         )
         service.register()
         core["tracking_service"].set_human_talker_factory(service.human_talker_factory)

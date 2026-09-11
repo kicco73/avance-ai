@@ -12,7 +12,7 @@ import { createChatSocket } from './api.js'
 // there is no HTTP/SSE fallback and no alternative endpoint. A user
 // message travels as a `turn` frame on this single socket, which is what
 // fixes the order of the conversation — parallel POSTs never could (see
-// backend chat/ws_notifications.py, and PROJECT_SPECS.md's own
+// backend system/bus_channel.py, and PROJECT_SPECS.md's own
 // "Chat transport" section). Everything else — manual actions, session
 // bootstrap, history — stays plain HTTP.
 
@@ -20,7 +20,7 @@ const PING_INTERVAL_MS = 25000
 const PONG_TIMEOUT_MS = 10000
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000]
 
-// Mirrors backend system/ws_notifications.py's own pair: another client of
+// Mirrors backend system/bus_channel.py's own pair: another client of
 // this same identity took the chat channel over, and this socket is the
 // one that lost it. The newest connection always wins there, so retrying
 // would only steal it back and start a tug-of-war between two tabs —
@@ -34,7 +34,7 @@ const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000]
 export const SWITCHED_TO_OTHER_CLIENT = 'switched_to_other_client'
 export const SUPERSEDED_CLOSE_CODE = 4410
 
-// Mirrors backend system/ws_notifications.py's own WEB_FORWARDED: the
+// Mirrors backend system/bus_channel.py's own WEB_FORWARDED: the
 // Bus events this socket may carry out, and so the only ones worth
 // registering for. Subscribing to one of these tells the server so — a
 // connection is sent nothing it did not ask for — while every other
@@ -317,4 +317,4 @@ class ChatChannel {
   }
 }
 
-export const chatChannel = new ChatChannel()
+export const busChannel = new ChatChannel()

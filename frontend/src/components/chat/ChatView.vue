@@ -107,7 +107,7 @@ defineExpose({
 // itself being unusable.
 const chatConnected = computed(() => chatConnectionState.value === 'open')
 
-// 'superseded' (see chatChannel.js's SWITCHED_TO_OTHER_CLIENT handling):
+// 'superseded' (see busChannel.js's SWITCHED_TO_OTHER_CLIENT handling):
 // another client of this same identity took the channel over, and the
 // newest one wins. Unlike the generic disconnected state below this never
 // resolves by waiting — the chat here is over — so instead of a notice it

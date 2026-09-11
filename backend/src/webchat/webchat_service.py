@@ -4,7 +4,7 @@ spoke from.
 One object, built once by the skill: it subscribes to every type a
 client is allowed to inject (bus.CLIENT_INJECTABLE) and, for each,
 starts a turn whose frames go back to the connection the message came
-in on — `origin_id`, put there by system.ws_notifications.
+in on — `origin_id`, put there by system.bus_channel.
 
 It owns the chat window's HTTP surface too (WebchatController), so the
 routes and the thing that serves them are packaged together.
@@ -25,13 +25,13 @@ from turn.channels import NATIVE_CHAT
 from system.logging_factory import LoggerFactory
 from system.session import Session
 from system.wiring import construct
-from system.ws_notifications import WsNotifications
+from system.bus_channel import BusChannel
 from talker import HumanTalker
 from project.project_service import ProjectService
 from turn.turn_service import TurnService
 
 from .webchat_controller import WebchatController
-from .ws_human_relay import WsHumanRelay
+from .bus_human_relay import BusHumanRelay
 from .ws_turn import WsChatTurn
 
 logger = LoggerFactory.get_logger(__name__)
@@ -41,7 +41,7 @@ class WebchatService:
 
     def __init__(
         self, turn_service: TurnService, project_service: ProjectService,
-        notifications: WsNotifications,
+        notifications: BusChannel,
     ) -> None:
         self._turn_service = turn_service
         self._notifications = notifications
@@ -90,7 +90,7 @@ class WebchatService:
         self, username: str, session_id: int, session_type: str, project_id: str,
     ) -> HumanTalker:
         return HumanTalker(
-            WsHumanRelay(
+            BusHumanRelay(
                 self._notifications, username, session_id,
                 session_type=session_type, project_id=project_id,
             )

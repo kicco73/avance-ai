@@ -14,7 +14,7 @@ const { subscribe, unsubscribe } = vi.hoisted(() => {
   const unsubscribe = vi.fn()
   return { subscribe: vi.fn(() => unsubscribe), unsubscribe }
 })
-vi.mock('../src/chatChannel.js', () => ({ chatChannel: { subscribe } }))
+vi.mock('../src/busChannel.js', () => ({ busChannel: { subscribe } }))
 
 function warning(id, projectId, overrides = {}) {
   return {

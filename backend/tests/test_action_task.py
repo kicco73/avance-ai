@@ -28,7 +28,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from system.ws_notifications import WsNotifications
+from system.bus_channel import BusChannel
 from conftest import FakeWebSocket, FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from db import Db
 from db.models import Task as TaskRow, User
@@ -149,10 +149,10 @@ def _process(db: Db, websocket: FakeWebSocket | None = None, *, start: bool = Fa
     project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     factory = make_test_namespace_factory(db, scheduler_service, project_service, ai_service)
     if websocket is not None:
-        # Constructing it is the wiring: WsNotifications subscribes to
+        # Constructing it is the wiring: BusChannel subscribes to
         # ui.notification itself, and nothing hands it to the factory.
-        ws_notifications = WsNotifications(auth_service=None)
-        ws_notifications._connections[USERNAME] = [websocket]
+        bus_channel = BusChannel(auth_service=None)
+        bus_channel._connections[USERNAME] = [websocket]
     if start:
         scheduler_service.start()
     return scheduler_service, project_service, factory

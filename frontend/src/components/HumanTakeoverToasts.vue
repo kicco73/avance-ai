@@ -1,5 +1,5 @@
 <script setup>
-// Surface for chat.switch_to_human(user_id) (see chat/ws_notifications.py,
+// Surface for chat.switch_to_human(user_id) (see system/bus_channel.py,
 // humanTakeoverBus.js) — mounted once at the app root alongside
 // HumanPromptToasts.vue, top-left so the two never overlap. Clicking
 // "Open" hands the target session off to App.vue (via

@@ -4,11 +4,11 @@
 // imports it purely for this side effect, so the subscription is always
 // live regardless of which page is open; HumanOperatorChatView.vue reads
 // what lands here through humanPromptStore.js and replies directly over
-// chatChannel itself.
-import { chatChannel } from './chatChannel.js'
+// busChannel itself.
+import { busChannel } from './busChannel.js'
 import { addHumanPrompt } from './humanPromptStore.js'
 
-chatChannel.subscribe('human_prompt', (frame) => {
+busChannel.subscribe('human_prompt', (frame) => {
   addHumanPrompt({
     promptId: frame.prompt_id,
     sessionId: frame.session_id,

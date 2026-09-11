@@ -18,7 +18,7 @@ vi.mock('../src/api.js', () => ({
   getAiModels: vi.fn(),
   getMessages: vi.fn()
 }))
-vi.mock('../src/chatChannel.js', () => ({ chatChannel: { subscribe: vi.fn(() => () => {}) } }))
+vi.mock('../src/busChannel.js', () => ({ busChannel: { subscribe: vi.fn(() => () => {}) } }))
 vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 
 describe('handleAction (manual test action) never runs an task script off the response', () => {
@@ -54,13 +54,13 @@ describe('handleAction (manual test action) never runs an task script off the re
 
 describe('the notification bus runs a pushed task script once, globally', () => {
   let taskActions
-  let chatChannel
+  let busChannel
   let bus
 
   beforeEach(async () => {
     vi.resetModules()
     taskActions = await import('../src/taskActions.js')
-    ;({ chatChannel } = await import('../src/chatChannel.js'))
+    ;({ busChannel } = await import('../src/busChannel.js'))
     bus = await import('../src/notificationBus.js')
   })
 
@@ -71,9 +71,9 @@ describe('the notification bus runs a pushed task script once, globally', () => 
   function pushedFrame() {
     // What the channel handed the bus: it subscribes the first time
     // anyone subscribes to it.
-    expect(chatChannel.subscribe).toHaveBeenCalledTimes(1)
-    expect(chatChannel.subscribe.mock.calls[0][0]).toBe('ui.notification')
-    return chatChannel.subscribe.mock.calls[0][1]
+    expect(busChannel.subscribe).toHaveBeenCalledTimes(1)
+    expect(busChannel.subscribe.mock.calls[0][0]).toBe('ui.notification')
+    return busChannel.subscribe.mock.calls[0][1]
   }
 
   it('runs the script of a frame carrying only "task" (an ActionTask that ran server-side)', () => {

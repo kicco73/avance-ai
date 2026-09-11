@@ -4,11 +4,11 @@ import {
   postTest, postRootAggregation, postSessionsRun, postSignalTest, postSignalsAggregation,
   postStateTest, postStatesAggregation, postUserSessionsRun, postUsersAggregation,
 } from '../api.js'
-import { chatChannel } from '../chatChannel.js'
+import { busChannel } from '../busChannel.js'
 import { confirmDialog } from '../dialogStore.js'
 
 // ProjectTestPanel.vue's own execution tree: per-node job status/progress
-// (live over the shared /ws/notifications connection, seeded once from a
+// (live over the shared /api/core/bus connection, seeded once from a
 // REST snapshot), which node is selected, and dispatching a "run" click
 // to the right endpoint for that node's own kind. `strategy` is the
 // shared batch/turn_by_turn control (owned by the caller, read here);
@@ -455,7 +455,7 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     // kept alive while closed — see EditProjectView.vue's autoOpen v-if),
     // so there's never anything already selected to defer to here.
     onSelect('root')
-    // Live updates arrive over the shared /ws/notifications connection
+    // Live updates arrive over the shared /api/core/bus connection
     // (the Bus's own ui.progress, see backend system/broadcaster.py)
     // regardless of which page is open;
     // the snapshot fetched here just catches this node up on whatever
@@ -463,7 +463,7 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     // special-casing for it, it's shaped exactly like a live update.
     // Registered before the await, so a live update landing mid-fetch is
     // never clobbered by the (now stale) snapshot value for that same key.
-    unsubscribeTestUpdates = chatChannel.subscribe('ui.progress', handleTestEvent)
+    unsubscribeTestUpdates = busChannel.subscribe('ui.progress', handleTestEvent)
     const { events, tokens } = await getTestStatus(projectId)
     if (typeof tokens === 'number') tokensTotal.value = tokens
     events.forEach((message) => {

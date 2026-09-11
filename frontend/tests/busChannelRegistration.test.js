@@ -7,21 +7,21 @@ import { installFakeChatSocket } from './fakeChatSocket.js'
 
 vi.mock('../src/api.js', () => ({ createChatSocket: vi.fn() }))
 
-describe('chatChannel registration', () => {
-  let chatChannel
+describe('busChannel registration', () => {
+  let busChannel
   let sockets
 
   beforeEach(async () => {
     vi.resetModules()
-    ;({ chatChannel } = await import('../src/chatChannel.js'))
+    ;({ busChannel } = await import('../src/busChannel.js'))
     const api = await import('../src/api.js')
     sockets = installFakeChatSocket(api)
-    chatChannel.connect()
+    busChannel.connect()
     sockets[0].open()
   })
 
   afterEach(() => {
-    chatChannel.disconnect()
+    busChannel.disconnect()
     vi.clearAllMocks()
   })
 
@@ -30,8 +30,8 @@ describe('chatChannel registration', () => {
   }
 
   it('asks the server once for an exportable event, however many local subscribers it has', () => {
-    const first = chatChannel.subscribe('ui.notification', () => {})
-    chatChannel.subscribe('ui.notification', () => {})
+    const first = busChannel.subscribe('ui.notification', () => {})
+    busChannel.subscribe('ui.notification', () => {})
 
     expect(registrations(sockets[0])).toEqual([{ type: 'subscribe', events: ['ui.notification'] }])
 
@@ -41,7 +41,7 @@ describe('chatChannel registration', () => {
   })
 
   it('drops the registration when the last local subscriber goes', () => {
-    const unsubscribe = chatChannel.subscribe('ui.progress', () => {})
+    const unsubscribe = busChannel.subscribe('ui.progress', () => {})
     unsubscribe()
 
     expect(registrations(sockets[0])).toEqual([
@@ -51,15 +51,15 @@ describe('chatChannel registration', () => {
   })
 
   it('never registers a frame type the server does not export', () => {
-    chatChannel.subscribe('human_prompt', () => {})
-    chatChannel.subscribe('turn.ended', () => {})
+    busChannel.subscribe('human_prompt', () => {})
+    busChannel.subscribe('turn.ended', () => {})
 
     expect(registrations(sockets[0])).toEqual([])
   })
 
   it('restates every live registration on a reconnection, and nothing about one already dropped', async () => {
-    chatChannel.subscribe('ui.notification', () => {})
-    const dropped = chatChannel.subscribe('ui.system_warning', () => {})
+    busChannel.subscribe('ui.notification', () => {})
+    const dropped = busChannel.subscribe('ui.system_warning', () => {})
     dropped()
 
     vi.useFakeTimers()

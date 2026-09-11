@@ -17,7 +17,7 @@ from turn.sessions.session_manager import SessionManager
 from system import bus
 from system.bus import POINT_AUTOMATON_LOADER, POINT_CORE_SERVICES
 from system.config_services import talk_configured
-from system.ws_notifications import WsNotifications
+from system.bus_channel import BusChannel
 from system import skills
 from config import AppConfig
 from tracking.project_files import configure_project_file_cache
@@ -182,7 +182,7 @@ def create_app() -> FastAPI:
         # whole SPA reads it (see system/__init__.py). It subscribes to
         # the Bus's ui.* messages in its own constructor, and publishes
         # what a client sends without knowing who — if anyone — answers.
-        ws_notifications = WsNotifications(auth_service)
+        bus_channel = BusChannel(auth_service)
 
         # The composed core, offered to whoever asks for it. Everything a
         # skill could need exists by now; nothing is handed to anyone,
@@ -199,7 +199,7 @@ def create_app() -> FastAPI:
             "scheduler_service": scheduler_service,
             "ai_test_service": ai_test_service,
             "progress_broadcaster": progress_broadcaster,
-            "ws_notifications": ws_notifications,
+            "bus_channel": bus_channel,
             "apps_dir": config.build_service_config.apps_dir,
             "services_config": config.public_services_snapshot(),
             "version": __version__,
@@ -231,7 +231,7 @@ def create_app() -> FastAPI:
         ).register()
 
         controller = AvanceController(
-            turn_service, project_service, ws_notifications=ws_notifications,
+            turn_service, project_service, bus_channel=bus_channel,
         )
         app.include_router(controller.router)
 

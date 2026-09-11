@@ -5,7 +5,7 @@ The Bus is here because everything reaches everything else through it.
 The broadcaster and the shared websocket are here because they are the
 two ways the running system talks outward, and neither belongs to
 whatever happens to be listening — the broadcaster publishes
-ui.progress and never learns who reads it, and /ws/notifications is
+ui.progress and never learns who reads it, and /api/core/bus is
 one connection per identity that the whole SPA uses, not the chat's.
 
 The three loose modules that came with them (logging_factory, session,
@@ -14,8 +14,8 @@ everything. They sat at the top of src/ for no reason other than having
 been written first.
 
 NOTE — the frontend itself is a skill, and this package still contains
-part of it. `/ws/notifications` is a browser connection; ws_turn and
-ws_human_relay are a turn and an operator handover carried over that
+part of it. `/api/core/bus` is a browser connection; ws_turn and
+bus_human_relay are a turn and an operator handover carried over that
 connection. They are here rather than in a package of their own because
 the whole SPA depends on the channel today (useAppBoot.js,
 useTestExecutionTree.js, api/chat.js), not just the chat window. When

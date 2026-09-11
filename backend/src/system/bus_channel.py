@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # The frame an older connection is told it lost the channel with, and the
 # close code that follows it. The frontend must treat that code
 # specially: never reconnect (the newest client owns the channel now),
-# block the chat instead (see chatChannel.js). 44xx is our own
+# block the chat instead (see busChannel.js). 44xx is our own
 # application range (4401 is the existing auth-failure code).
 SWITCHED_TO_OTHER_CLIENT = "switched_to_other_client"
 SUPERSEDED_CLOSE_CODE = 4410
@@ -80,7 +80,7 @@ class WsConnection(object):
         self._closed = False
         self._close_code: int | None = None
         # What this client asked to be told about, empty until it says so
-        # (see WsNotifications._exportable): a socket is a bus connection,
+        # (see BusChannel._exportable): a socket is a bus connection,
         # and a bus delivers to whoever registered, not to whoever is
         # merely connected.
         self._subscriptions: set[str] = set()
@@ -99,7 +99,7 @@ class WsConnection(object):
         """True once this socket stopped serving — it was superseded, or
         its own loop ended. An inbound frame arriving after that is read
         off a socket already on its way out and is not acted on (see
-        WsNotifications._handle_frame)."""
+        BusChannel._handle_frame)."""
         return self._closed
 
     def send(self, payload: dict) -> None:
@@ -146,7 +146,7 @@ class WsConnection(object):
         self.close(code=SUPERSEDED_CLOSE_CODE)
 
 
-class WsNotifications(object):
+class BusChannel(object):
     """Every websocket one identity holds open, both directions: the
     browser sends `turn` frames on it (the only inbound chat frame —
     actions, session bootstrap and everything else stay HTTP) and
@@ -437,8 +437,8 @@ class WsNotifications(object):
         project_id: int | None = None,
         exclude_connection_id: str | None = None,
     ) -> str:
-        """The WsHumanRelay.notify() primitive (see talker.human_talker.
-        HumanRelay and system.ws_human_relay.WsHumanRelay): broadcasts a
+        """The BusHumanRelay.notify() primitive (see talker.human_talker.
+        HumanRelay and system.bus_human_relay.BusHumanRelay): broadcasts a
         human_prompt frame carrying a fresh prompt_id to every one of
         `username`'s connections other than `exclude_connection_id` (the
         tab that just sent the message being answered — it already knows
@@ -447,7 +447,7 @@ class WsNotifications(object):
         matching human_reply resolves await_human_reply() below.
         `session_type`/`project_id` are display-only context for
         whichever tab answers, carried on the frame since answering
-        doesn't require navigating there first (see system.ws_human_relay).
+        doesn't require navigating there first (see system.bus_human_relay).
         Returns the prompt_id — the caller must pass it straight to
         await_human_reply()/wait_for_typing(). Raises HumanNotConnectedError
         if `username` has no *other* open connection — nobody could
@@ -491,7 +491,7 @@ class WsNotifications(object):
         )
 
     async def await_human_reply(self, prompt_id: str) -> str:
-        """The WsHumanRelay.receive() primitive: waits for the
+        """The BusHumanRelay.receive() primitive: waits for the
         human_reply matching a prompt_id send_human_prompt() returned —
         the operator's own frame carries session_id, not this prompt_id
         (see _resolve_human_reply_for_session), so this is purely an
@@ -511,7 +511,7 @@ class WsNotifications(object):
                 del self._current_prompt_for_session[session_id]
 
     async def wait_for_typing(self, prompt_id: str) -> None:
-        """The WsHumanRelay.wait_for_typing() primitive: resolves the
+        """The BusHumanRelay.wait_for_typing() primitive: resolves the
         instant the operator's own human_typing frame arrives for this
         prompt's session (see _notify_typing_for_session) — HumanTalker.
         chat() races this against await_human_reply() so a reply that

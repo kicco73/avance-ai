@@ -24,7 +24,7 @@ vi.mock('../src/dialogStore.js', () => ({
 vi.mock('../src/chatClient.js', () => ({
   getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 const { unsubscribeTestUpdates } = vi.hoisted(() => ({ unsubscribeTestUpdates: vi.fn() }))
-vi.mock('../src/chatChannel.js', () => ({ chatChannel: { subscribe: vi.fn(() => unsubscribeTestUpdates) } }))
+vi.mock('../src/busChannel.js', () => ({ busChannel: { subscribe: vi.fn(() => unsubscribeTestUpdates) } }))
 
 import {
   deleteAllTestJobs, deleteTestJob, deleteTests, getAggregateResult, getTests, getTestStatus,
@@ -32,7 +32,7 @@ import {
   postStateTest, postStatesAggregation, postUserSessionsRun, postUsersAggregation,
 } from '../src/api.js'
 import { confirmDialog } from '../src/dialogStore.js'
-import { chatChannel } from '../src/chatChannel.js'
+import { busChannel } from '../src/busChannel.js'
 import { useTestExecutionTree } from '../src/composables/useTestExecutionTree.js'
 
 function mountComposable(setup) {
@@ -76,7 +76,7 @@ describe('useTestExecutionTree', () => {
       expect(s.selectedNodeId.value).toBe('root')
       expect(emit).toHaveBeenCalledWith('select', 'root')
       expect(getTestStatus).toHaveBeenCalledWith('proj')
-      expect(chatChannel.subscribe).toHaveBeenCalledWith('ui.progress', s.handleTestEvent)
+      expect(busChannel.subscribe).toHaveBeenCalledWith('ui.progress', s.handleTestEvent)
       await vi.waitFor(() => expect(s.currentStrategyStatuses.value['state:greeting']).toBe('running'))
 
       unmount()
@@ -88,7 +88,7 @@ describe('useTestExecutionTree', () => {
       let resolveSnapshot
       getTestStatus.mockReturnValue(new Promise((resolve) => { resolveSnapshot = resolve }))
       const s = mount()
-      const liveHandler = chatChannel.subscribe.mock.calls[0][1]
+      const liveHandler = busChannel.subscribe.mock.calls[0][1]
 
       liveHandler({ key: 'batch:state:greeting', job_status: 'completed', queue_status: 'exited' })
       resolveSnapshot({

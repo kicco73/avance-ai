@@ -14,7 +14,7 @@ files it references by name (§6).
 **The WebSocket is the one and only transport for chat, and every future
 chat feature is built on it.** There is no HTTP or SSE fallback, and no
 alternative endpoint: a user message travels as an `input.text` frame on
-the single `/ws/notifications` connection a page holds, and that turn's
+the single `/api/core/bus` connection a page holds, and that turn's
 own `output.text`, `turn.tool`, `turn.ended` and `turn.failed` frames
 come back on the same socket, each carrying the `stream_id` the client
 minted — the only correlation there is. Everything else (manual actions,

@@ -11,7 +11,7 @@ pytestmark = pytest.mark.contract
 
 def test_get_test_status_reflects_a_completed_job(client, hello_project):
     """Replaces the old SSE probe: test-run progress is now delivered
-    live over /ws/notifications (see queue_progress_broadcaster.py), and
+    live over /api/core/bus (see queue_progress_broadcaster.py), and
     this endpoint only serves the same broadcaster's own last-known-state
     snapshot — a plain GET, pollable, no live connection needed."""
     session = client.get("/api/skills/webchat/session").json()

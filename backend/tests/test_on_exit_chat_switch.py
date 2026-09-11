@@ -4,13 +4,13 @@ synchronously inside TrackingEngine.apply_action_env — never as a
 background ActionTask (that's task.*'s own job, see
 tracking/actuators/action_task.py). This is the on-exit/chat
 equivalent of what test_action_task.py exercises for task.*, end to
-end against a real TaskNamespaceFactory/WsNotifications pair."""
+end against a real TaskNamespaceFactory/BusChannel pair."""
 from __future__ import annotations
 
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from system.ws_notifications import WsNotifications
+from system.bus_channel import BusChannel
 from conftest import FakeWebSocket, make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
 from turn.sessions.session_manager import SessionManager
@@ -90,8 +90,8 @@ def wired(db):
     scheduler_service = make_test_scheduler_service(db)
     project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     factory = make_test_namespace_factory(db, scheduler_service, project_service)
-    ws_notifications = WsNotifications(auth_service=None)
-    return db, project_service, factory, ws_notifications
+    bus_channel = BusChannel(auth_service=None)
+    return db, project_service, factory, bus_channel
 
 
 def _session(db, project_service: ProjectService) -> int:
@@ -100,9 +100,9 @@ def _session(db, project_service: ProjectService) -> int:
 
 
 def test_switch_to_human_from_on_exit_records_the_operator_and_pages_them(wired):
-    db, project_service, factory, ws_notifications = wired
+    db, project_service, factory, bus_channel = wired
     admin_socket = FakeWebSocket()
-    ws_notifications._connections["admin"] = [admin_socket]
+    bus_channel._connections["admin"] = [admin_socket]
     _publish(db, project_service, "chat.switch_to_human('admin')")
     session_id = _session(db, project_service)
 
@@ -113,7 +113,7 @@ def test_switch_to_human_from_on_exit_records_the_operator_and_pages_them(wired)
 
 
 def test_switch_to_ai_from_on_exit_clears_a_previously_set_operator(wired):
-    db, project_service, factory, _ws_notifications = wired
+    db, project_service, factory, _bus_channel = wired
     _publish(db, project_service, "chat.switch_to_ai()")
     session_id = _session(db, project_service)
     factory.set_human_operator(session_id, "admin")
@@ -126,9 +126,9 @@ def test_switch_to_ai_from_on_exit_clears_a_previously_set_operator(wired):
 def test_a_fake_chat_namespace_suppresses_switch_to_human_and_reports_it(wired):
     """Test session with "Run actuators" off: nobody is actually paged
     — same suppress-and-report shape task.* gets for send_mail/whatsapp/defer."""
-    db, project_service, factory, ws_notifications = wired
+    db, project_service, factory, bus_channel = wired
     user_socket = FakeWebSocket()
-    ws_notifications._connections[USERNAME] = [user_socket]
+    bus_channel._connections[USERNAME] = [user_socket]
     _publish(db, project_service, "chat.switch_to_human('admin')")
     session_id = _session(db, project_service)
 
@@ -144,9 +144,9 @@ def test_a_fake_chat_namespace_suppresses_switch_to_human_and_reports_it(wired):
 def test_a_mixed_on_exit_script_writes_env_and_pushes_a_chat_notification_synchronously(wired):
     """No background ActionTask involved at all — the push happens
     inline, in the same call that applies the env write."""
-    db, project_service, factory, ws_notifications = wired
+    db, project_service, factory, bus_channel = wired
     user_socket = FakeWebSocket()
-    ws_notifications._connections[USERNAME] = [user_socket]
+    bus_channel._connections[USERNAME] = [user_socket]
     _publish(db, project_service, "env.counter = env.counter + 1\nchat.celebrate()\nchat.notify('Nice!', 'Done.')")
     session_id = _session(db, project_service)
     db.set_action_env(session_id, {"counter": 0})

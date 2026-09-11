@@ -7,6 +7,7 @@
 // here from Manage projects' own header).
 import { computed, onMounted, ref, watch } from 'vue'
 import AppHeader from '../AppHeader.vue'
+import DocInfoButton from '../DocInfoButton.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import AiUsageTrendsChart from './AiUsageTrendsChart.vue'
 import ServicesProviderCard from './ServicesProviderCard.vue'
@@ -261,6 +262,7 @@ async function selectCleanUnusedRevisions() {
       </template>
       <template #center>
         <h2 class="app-header-title services-header-title">Services</h2>
+        <DocInfoButton doc-name="skills" title="Skills" />
       </template>
       <template #right>
         <ProfileMenu :profile="profile" @home="emit('home')" @profile="emit('profile')" @logout="emit('logout')" />
@@ -474,6 +476,7 @@ async function selectCleanUnusedRevisions() {
 
 .services-header-title {
   color: #4a6fa5;
+  margin-right: 0.5rem;
 }
 
 .services-tabs {

@@ -5,7 +5,7 @@ import {
   postTruncateSession, deleteSession, postCloseSession, putMessageReaction, postListenTranscribe, messageAudioUrl,
 } from './api.js'
 import { sendMessage as sendChatMessage, onConnectionState, getConnectionState } from './chatClient.js'
-import { chatChannel } from './chatChannel.js'
+import { busChannel } from './busChannel.js'
 import { ChatReconnectSync } from './chatReconnectSync.js'
 import { applyAiModelInfo } from './aiModelStore.js'
 import { ToolStatusHold } from './toolStatusHold.js'
@@ -420,13 +420,13 @@ export function createChatStore({
       clearTimeout(awaitingReplyTimer)
       awaitingReplyTimer = null
     }
-    // A 'turn.started' frame is routed here directly (see chatChannel.js's own
+    // A 'turn.started' frame is routed here directly (see busChannel.js's own
     // multi-subscriber support), not through chatClient.js's onChunk —
     // that file is off limits, and it only ever forwards non-empty
     // content anyway (see its own `if (turn && data.body)` guard).
     // This is what actually reveals the bubble in the common case (see
     // `pending` above) — nothing on screen shows it any sooner.
-    const unsubscribeTyping = chatChannel.subscribe('turn.started', (frame) => {
+    const unsubscribeTyping = busChannel.subscribe('turn.started', (frame) => {
       if (frame.session_id !== turnSessionId || currentSessionId.value !== turnSessionId) return
       const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
       if (idx === -1) return

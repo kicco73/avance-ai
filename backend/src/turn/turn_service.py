@@ -753,7 +753,7 @@ class TurnService(object):
 	def accept_user_message(self, session_id: int, text: str) -> int:
 		"""Persists a user message the moment its frame is read — before any
 		processing, ahead of the session lock — so the order of the messages
-		is the order they arrived on the wire (see WsNotifications). Runs
+		is the order they arrived on the wire (see BusChannel). Runs
 		the same checks a turn runs, so a message for a closed, foreign or
 		paused session is refused rather than stored."""
 		session = self._db.get_chat_session(session_id)
@@ -780,7 +780,7 @@ class TurnService(object):
 	) -> dict:
 		"""`user_message_id` is set when the transport already persisted
 		this message (the websocket does, the moment it read the frame —
-		see WsNotifications); any other caller hands over the text and it
+		see BusChannel); any other caller hands over the text and it
 		is persisted here, still before the session lock, so the bubble
 		appears at once and the order of the conversation is fixed before
 		anything waits."""

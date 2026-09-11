@@ -1,6 +1,6 @@
 <script setup>
 // What the chat looks like once another client of the same identity took
-// the channel over (see chatChannel.js's 'superseded' connectionState).
+// the channel over (see busChannel.js's 'superseded' connectionState).
 // The newest connection wins on the backend, so this window is done: it
 // can neither send nor receive, and everything it still shows is a
 // snapshot of a conversation someone else is now holding.

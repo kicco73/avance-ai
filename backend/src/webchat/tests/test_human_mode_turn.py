@@ -44,7 +44,7 @@ class _FakeProvider:
 
 class _FakeHumanTalker(BaseTalker):
     """Stands in for talker.human_talker.HumanTalker: same one-chunk-then-
-    the-whole-reply shape, without a real WsHumanRelay/websocket."""
+    the-whole-reply shape, without a real BusHumanRelay/websocket."""
 
     def __init__(self, reply_text: str, *, delay: "asyncio.Event | None" = None) -> None:
         self._reply_text = reply_text

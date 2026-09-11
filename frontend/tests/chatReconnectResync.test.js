@@ -1,6 +1,6 @@
 // A socket that drops mid-turn takes the turn's own `done` with it, but
 // not the turn: the backend finishes and persists it regardless (see
-// backend chat/ws_notifications.py). On reconnection the store re-reads
+// backend system/bus_channel.py). On reconnection the store re-reads
 // the session and settles whatever was still pending against what
 // actually landed — resolving it from the reloaded messages, or failing
 // the bubble so the user can send it again.
