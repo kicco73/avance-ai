@@ -137,4 +137,25 @@ describe('skill boundaries', () => {
     expect(globs).toHaveLength(1)
     expect(specifiersIn(REGISTRY).filter((specifier) => specifier.includes('/'))).toEqual(['../skillRoster.js'])
   })
+
+  // A skill renders with components/skillkit/ and with nothing else the
+  // core happens to own. The directories below are the authoring app's
+  // own screens: they go with skills/platform/ when it is cut out, so a
+  // skill importing from one of them is a skill -> skill dependency that
+  // has not been recognised yet. That is exactly what happened to the
+  // benchmark, which mounted the editor's State tab with its writes
+  // switched off until both screens were built from the same cards.
+  it('never reaches into a screen the authoring app owns', () => {
+    const owned = ['components/inspector/', 'components/settings/', 'components/project/', 'components/appStore/']
+    const offenders = []
+    for (const path of sourceFilesUnder(SKILLS)) {
+      for (const specifier of specifiersIn(path)) {
+        if (!specifier.startsWith('.')) continue
+        const target = relative(SRC, resolve(dirname(path), specifier)).replaceAll('\\', '/')
+        const hit = owned.find((directory) => target.startsWith(directory))
+        if (hit) offenders.push(`${relative(ROOT, path)} imports ${target}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
 })

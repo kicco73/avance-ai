@@ -8,9 +8,9 @@
 // (ProjectEditor.add_source), edited via SourceContentPanel.vue — the only
 // driver left today.
 import { ref, watch } from 'vue'
-import { vAutosize } from './textareaAutosize.js'
-import { handleEnterNext } from './enterToNextField.js'
-import CardMenu from './CardMenu.vue'
+import { vAutosize } from '../skillkit/textareaAutosize.js'
+import { handleEnterNext } from '../skillkit/enterToNextField.js'
+import CardMenu from '../skillkit/CardMenu.vue'
 
 const props = defineProps({
   // { name, ui_label, ui_description, ai_definition, url } | null, from getProjectSources

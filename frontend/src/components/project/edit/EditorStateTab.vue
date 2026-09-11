@@ -9,8 +9,9 @@
 // route. That route is why a second screen could not mount the tab
 // without dragging the editor behind it; see InspectorStateTab's own
 // `readOnly` note for the rest.
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { getProjectMetadata } from '../../../api.js'
+import InspectorFileCard from '../../inspector/InspectorFileCard.vue'
 import InspectorProjectCard from '../../inspector/InspectorProjectCard.vue'
 import InspectorStateTab from '../../inspector/InspectorStateTab.vue'
 
@@ -21,9 +22,22 @@ const props = defineProps({
   selectedElement: { type: Object, default: null },
   selectedSource: { type: Object, default: null },
   sourcesRootSelected: { type: Boolean, default: false },
+  // Design mode's currently open file — only the editor ever browses one,
+  // which is why the card that shows it lives here and not in the tab.
+  currentFileName: { type: String, default: null },
+  deletingFile: { type: String, default: null },
+  renamingFile: { type: String, default: null },
 })
 
-const emit = defineEmits(['set-project-field', 'set-service-level'])
+const emit = defineEmits(['set-project-field', 'set-service-level', 'delete-file', 'rename-file'])
+
+// The same condition the tab used to apply: a file card only where there
+// is a file being browsed that is not index.yml, and no source has taken
+// the panel over.
+const showFileCard = computed(() => (
+  props.selectedSource == null && !props.sourcesRootSelected
+  && props.currentFileName != null && props.currentFileName !== 'index.yml'
+))
 
 const projectMetadata = ref(null)
 
@@ -52,11 +66,21 @@ watch(() => props.projectId, refresh)
     @set-field="(field, value) => emit('set-project-field', field, value)"
     @set-service-level="(service, level) => emit('set-service-level', service, level)"
   />
+  <InspectorFileCard
+    v-if="showFileCard"
+    :project-id="projectId"
+    :file-name="currentFileName"
+    :deleting="deletingFile === currentFileName"
+    :renaming="renamingFile === currentFileName"
+    @delete="emit('delete-file', currentFileName)"
+    @rename="(newBasename) => emit('rename-file', currentFileName, newBasename)"
+  />
   <InspectorStateTab
     v-bind="$attrs"
     :project-id="projectId"
     :selected-element="selectedElement"
     :selected-source="selectedSource"
     :sources-root-selected="sourcesRootSelected"
+    :current-file-name="currentFileName"
   />
 </template>

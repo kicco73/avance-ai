@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
-import InspectorDetailCard from './InspectorDetailCard.vue'
+import InspectorDetailCard from '../skillkit/InspectorDetailCard.vue'
 import { putActionOrder } from '../../api.js'
 
 const props = defineProps({

@@ -7,7 +7,7 @@
 // like InspectorProjectCard.vue's own ui-label, the one thing on a plain
 // file worth editing here besides deleting it.
 import { computed, ref, watch } from 'vue'
-import CardMenu from './CardMenu.vue'
+import CardMenu from '../skillkit/CardMenu.vue'
 import { getProjectFile } from '../../api.js'
 import { projectFileTypes } from '../../projectFileTypes.js'
 

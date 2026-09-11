@@ -5,17 +5,20 @@
 // file's read-only card (anything else — see isBehaviorContext). Owns
 // neither the selection nor any fetch of its own.
 //
-// The project card used to be here, with the platform route that feeds
-// it. It is the editor's alone, so it left for
-// project/edit/EditorStateTab.vue, which mounts this tab underneath it.
-// That is what lets a second screen mount this one without dragging an
-// editing surface behind it — see `readOnly` below for who that is and
-// what they should get instead.
+// The project card and the file card used to be here, with the platform
+// routes that feed them. Both are the editor's alone, so both left for
+// project/edit/EditorStateTab.vue, which mounts this tab underneath
+// them.
+//
+// It also used to take a `readOnly` flag, for a second screen that wanted
+// the reading half and got the whole editing surface with its writes
+// switched off. That screen composes the same cards itself now — which is
+// why they live in components/skillkit/ — and this file is the editing
+// composition, with nothing to switch off.
 import { computed, ref, watch } from 'vue'
-import InspectorDetailCard from './InspectorDetailCard.vue'
-import InspectorFileCard from './InspectorFileCard.vue'
+import InspectorDetailCard from '../skillkit/InspectorDetailCard.vue'
 import InspectorSourceCard from './InspectorSourceCard.vue'
-import SessionDetailCard from './SessionDetailCard.vue'
+import SessionDetailCard from '../skillkit/SessionDetailCard.vue'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -39,15 +42,15 @@ const props = defineProps({
   // null otherwise.
   recentlyAddedKey: { type: String, default: null },
   // Design mode's currently open file — null outside 'edit' mode (see
-  // EditProjectView.vue's own mode-gating for this prop). index.yml is
-  // excluded here since it has no delete and its own dedicated tabs.
+  // EditProjectView.vue's own mode-gating for this prop). Read here only
+  // to know that something else is being browsed, so the state/action
+  // card stands down (see isBehaviorContext); the card that shows the
+  // file is the editor's own, in project/edit/EditorStateTab.vue.
   currentFileName: { type: String, default: null },
-  deletingFile: { type: String, default: null },
-  renamingFile: { type: String, default: null },
   // The design tree's currently selected Source node (see FileExplorer.vue's
   // own "Sources" branch) — { name, ui_label, ui_description, url } | null.
   // Takes over the whole tab (see isSourceContext below), same as a
-  // selected file does for showFileCard.
+  // selected file does.
   selectedSource: { type: Object, default: null },
   deletingSource: { type: String, default: null },
   // True while the design tree's "Sources" branch header itself is
@@ -66,15 +69,6 @@ const props = defineProps({
   totalTokenBudgetPerSession: { type: Number, default: null },
   sessionStartElement: { type: Object, default: null },
   sessionEndElement: { type: Object, default: null },
-  // Test mode only: no edit form, no delete, no "+ Add state" — this tab
-  // is a plain read-only viewer for whatever's selected in the Test tree.
-  // IMPORTANT — this flag is the editor pretending to be two components.
-  // Its only caller is the benchmark screen, which wants a reduced
-  // read-only view of a past session and gets this whole editing surface
-  // with its writes switched off instead. It is also the last reason a
-  // skill still imports one of the editor's own screens; that file
-  // carries the other half of this note.
-  readOnly: { type: Boolean, default: false },
   // Estimated input-token cost of selectedElement's own turn prompt (see
   // EditProjectView.vue's own stateTabTokens) — a separate prop rather
   // than folded into selectedElement.data, since that object round-trips
@@ -85,7 +79,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'select', 'select-attachment', 'jump-to-attachment', 'set-field', 'delete',
-  'add-state', 'add-action', 'delete-file', 'rename-file', 'open-actions-order',
+  'add-state', 'add-action', 'open-actions-order',
   'set-source-field', 'delete-source'
 ])
 
@@ -105,7 +99,6 @@ const isSourceContext = computed(() => props.selectedSource != null)
 const isBehaviorContext = computed(() => (
   !isSourceContext.value && !props.sourcesRootSelected && (!props.currentFileName || props.currentFileName === 'index.yml')
 ))
-const showFileCard = computed(() => !isSourceContext.value && !isBehaviorContext.value && !props.sourcesRootSelected)
 
 // Same session, shown once with a combined badge rather than two
 // identical cards — mirrors LabelProjectView.vue's own Info tab.
@@ -142,15 +135,6 @@ watch(elementIdentity, (identity) => {
       @set-field="(field, value) => emit('set-source-field', field, value)"
       @delete="emit('delete-source', selectedSource)"
     />
-    <InspectorFileCard
-      v-if="showFileCard"
-      :project-id="projectId"
-      :file-name="currentFileName"
-      :deleting="deletingFile === currentFileName"
-      :renaming="renamingFile === currentFileName"
-      @delete="emit('delete-file', currentFileName)"
-      @rename="(newBasename) => emit('rename-file', currentFileName, newBasename)"
-    />
 
     <template v-if="selectedSession">
       <SessionDetailCard
@@ -180,8 +164,8 @@ watch(elementIdentity, (identity) => {
       :highlighted-state-key="highlightedStateKey"
       :available-states="availableStates"
       :recently-added-key="recentlyAddedKey"
-      :selectable="!readOnly"
-      :editable="!readOnly"
+      :selectable="true"
+      :editable="true"
       :save-field="saveField"
       :closable="false"
       :open="open"
@@ -193,7 +177,7 @@ watch(elementIdentity, (identity) => {
       @delete="emit('delete', selectedElement)"
       @open-actions-order="emit('open-actions-order', selectedElement)"
     />
-    <div v-if="isBehaviorContext && !readOnly && selectedElement?.kind !== 'action'" class="inspector-state-tab-add-row">
+    <div v-if="isBehaviorContext && selectedElement?.kind !== 'action'" class="inspector-state-tab-add-row">
       <button v-if="!selectedElement" class="inspector-state-tab-add-btn" @click="emit('add-state')">+ Add state</button>
       <button v-else class="inspector-state-tab-add-btn" @click="emit('add-action')">+ Add action</button>
     </div>

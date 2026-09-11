@@ -4,7 +4,7 @@
 // shared `selectedElement` that Graph emits and Card reads.
 import { computed, nextTick, ref, watch } from 'vue'
 import InspectorGraph from './InspectorGraph.vue'
-import InspectorDetailCard from './InspectorDetailCard.vue'
+import InspectorDetailCard from '../skillkit/InspectorDetailCard.vue'
 
 const props = defineProps({
   projectId: { type: String, required: true },

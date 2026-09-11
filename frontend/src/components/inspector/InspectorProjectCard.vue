@@ -3,8 +3,8 @@
 // the same badge/title/edit-form convention as InspectorDetailCard.vue's state/action
 // cards but as its own component: a project has no attachments, delete, or Graph-selection identity.
 import { computed, onMounted, ref, watch } from 'vue'
-import { vAutosize } from './textareaAutosize.js'
-import { handleEnterNext } from './enterToNextField.js'
+import { vAutosize } from '../skillkit/textareaAutosize.js'
+import { handleEnterNext } from '../skillkit/enterToNextField.js'
 import { getDeclarableServices } from '../../api.js'
 
 const props = defineProps({
