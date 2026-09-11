@@ -115,7 +115,7 @@ def test_switch_to_human_from_on_exit_records_the_operator_and_pages_them(wired)
     _fire_go(db, factory, project_service, session_id)
 
     assert factory.get_human_operator(session_id) == "admin"
-    assert admin_socket.sent == [{"type": "human_takeover", "session_id": session_id, "project_id": PROJECT}]
+    assert admin_socket.sent == [{"type": "ui.human_takeover", "session_id": session_id, "project_id": PROJECT}]
 
 
 def test_switch_to_ai_from_on_exit_clears_a_previously_set_operator(wired):
@@ -142,7 +142,7 @@ def test_a_fake_chat_namespace_suppresses_switch_to_human_and_reports_it(wired):
 
     assert factory.get_human_operator(session_id) is None
     (frame,) = user_socket.sent
-    assert frame["type"] == "notification"
+    assert frame["type"] == "ui.notification"
     assert "Run actuators is off" in frame["task"]
     assert "no one was paged" in frame["task"]
 
@@ -160,6 +160,6 @@ def test_a_mixed_on_exit_script_writes_env_and_pushes_a_chat_notification_synchr
     _fire_go(db, factory, project_service, session_id)
 
     assert db.get_action_env(PROJECT, USERNAME).get("counter") == 1
-    assert user_socket.sent == [{"type": "notification", "task": 'celebrate()\nnotify("Nice!", "Done.")'}]
+    assert user_socket.sent == [{"type": "ui.notification", "task": 'celebrate()\nnotify("Nice!", "Done.")'}]
     # Never hibernated as a Task: on-exit's own chat.* never goes through ActionTask.
     assert db.list_tasks() == []

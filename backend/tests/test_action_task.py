@@ -250,7 +250,7 @@ def test_a_task_reports_a_suppressed_send_mail_over_the_websocket_in_fake_mode(f
 
     assert _wait_until(lambda: websocket.sent), file_db.list_tasks()
     (frame,) = websocket.sent
-    assert frame["type"] == "notification"
+    assert frame["type"] == "ui.notification"
     assert "send_mail(to='Ada')" in frame["task"]
     assert "Run actuators is off" in frame["task"]
     assert _wait_until(lambda: file_db.list_tasks()[0]["status"] == "done")

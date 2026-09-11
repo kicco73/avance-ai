@@ -9,7 +9,6 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from system import bus
-from dataclasses import replace
 
 from system.bus import CLIENT_INJECTABLE, UI_HUMAN_TAKEOVER, UI_NOTIFICATION, UI_SYSTEM_WARNING, UI_TEST_UPDATE, Message
 from auth.roles import role_satisfies
@@ -278,7 +277,7 @@ class WsNotifications(object):
         """One inbound frame, onto the Bus. `origin_id` carries the
         connection it arrived on so whoever answers can answer *there*
         (see send_to_connection) rather than to every tab this identity
-        has open."""
+        has open, and `stream_id` names the one exchange over it."""
         message = Message(
             type=frame_type,
             body=str(frame.get("body", "")),
@@ -286,17 +285,11 @@ class WsNotifications(object):
             session_id=frame.get("session_id"),
             channel=NATIVE_CHAT,
             origin_id=connection.id,
+            stream_id=str(frame.get("stream_id", "")),
         )
-        stream_id = str(frame.get("stream_id", ""))
-        task = asyncio.create_task(self._publish_client_message(message, stream_id))
+        task = asyncio.create_task(bus.publish(message))
         self._inbound_tasks.add(task)
         task.add_done_callback(self._inbound_tasks.discard)
-
-    async def _publish_client_message(self, message: Message, stream_id: str) -> None:
-        # stream_id rides along rather than sitting in the envelope: it
-        # names one exchange over one socket, which is the interface's
-        # own bookkeeping and means nothing to any other listener.
-        await bus.publish(replace(message, body={"stream_id": stream_id, "text": message.body}))
 
     def send_to_connection(self, connection_id: str, payload: dict) -> bool:
         """Writes one frame to one open connection, by the id an inbound

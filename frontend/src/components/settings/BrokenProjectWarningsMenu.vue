@@ -29,7 +29,7 @@ async function load() {
 // next refresh of this view. The broken frame carries no id of its own —
 // one row per admin was written server-side, and reloading is what picks
 // up this admin's row.
-const unsubscribe = chatChannel.subscribe('system_warning', (frame) => {
+const unsubscribe = chatChannel.subscribe('ui.system_warning', (frame) => {
   if (frame.kind === 'project_fixed') {
     warnings.value = warnings.value.filter((row) => row.project_id !== frame.project_id)
     return

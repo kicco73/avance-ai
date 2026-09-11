@@ -21,6 +21,7 @@ import asyncio
 
 from system import bus
 from system.bus import CLIENT_INJECTABLE, Message
+from turn.channels import NATIVE_CHAT
 from system.logging_factory import LoggerFactory
 from system.ws_notifications import WsNotifications
 from talker import HumanTalker
@@ -53,17 +54,20 @@ class WebchatService:
             bus.subscribe(message_type, self._start_turn)
 
     async def _start_turn(self, message: Message) -> None:
-        body = message.body or {}
+        """Only what a person said into one of *these* connections: an
+        `input.text` converted from a voice note on another channel (see
+        listen.decoder) carries that channel and belongs to whoever
+        published the audio, never to a chat window here."""
         connection_id = message.origin_id
-        if connection_id is None:
+        if connection_id is None or message.channel != NATIVE_CHAT:
             return
 
         def send(payload: dict) -> None:
             self._notifications.send_to_connection(connection_id, payload)
 
         turn = WsChatTurn(
-            self._turn_service, send, str(body.get("stream_id", "")),
-            message.session_id, str(body.get("text", "")), message.username,
+            self._turn_service, send, str(message.stream_id or ""),
+            message.session_id, str(message.body or ""), message.username,
         )
         if not turn.accept():
             return

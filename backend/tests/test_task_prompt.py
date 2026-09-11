@@ -129,4 +129,4 @@ def test_task_prompt_fires_through_the_real_app_end_to_end(client, app):
     # result reaches the browser as a notification frame.
     frames = run_pending_tasks(app)
     message = "send_mail(to='Fake AI reply.') — Run actuators is off, no email was sent."
-    assert frames == [{"type": "notification", "task": f'notify({json.dumps("Task (test)")}, {json.dumps(message)})'}]
+    assert frames == [{"type": "ui.notification", "task": f'notify({json.dumps("Task (test)")}, {json.dumps(message)})'}]

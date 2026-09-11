@@ -457,7 +457,7 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     // special-casing for it, it's shaped exactly like a live update.
     // Registered before the await, so a live update landing mid-fetch is
     // never clobbered by the (now stale) snapshot value for that same key.
-    unsubscribeTestUpdates = chatChannel.subscribe('test_update', handleTestEvent)
+    unsubscribeTestUpdates = chatChannel.subscribe('ui.test_update', handleTestEvent)
     const { events } = await getTestStatus(projectId)
     events.forEach((message) => {
       if (!(message.key in nodeEvents.value)) handleTestEvent(message)

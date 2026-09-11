@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 
 from peewee import AutoField, BlobField, BooleanField, CharField, CompositeKey, DateTimeField, ForeignKeyField, IntegerField, Model, Proxy, TextField
@@ -215,13 +216,38 @@ class Tracking(BaseModel):
     class Meta:
         table_name = 'Tracking'
 
+class File(BaseModel):
+    hash = CharField(primary_key=True)
+    content = BlobField(null=False)
+    content_type = CharField(null=False)
+    size = IntegerField(null=False)
+
+    class Meta:
+        table_name = 'File'
+
+    @staticmethod
+    def hash_of(content: bytes, content_type: str) -> str:
+        digest = hashlib.sha256()
+        digest.update(content_type.encode('utf-8'))
+        digest.update(b'\x00')
+        digest.update(content)
+        return digest.hexdigest()
+
+    @classmethod
+    def put(cls, content: bytes, content_type: str) -> str:
+        key = cls.hash_of(content, content_type)
+        cls.insert(
+            hash=key, content=content, content_type=content_type, size=len(content),
+        ).on_conflict_ignore().execute()
+        return key
+
+
 class Archive(BaseModel):
     id = AutoField()
     project = ForeignKeyField(Project, field='id', column_name='project_id', backref='archives', on_delete='CASCADE')
     archive_name = CharField(index=True, null=False)
     revision = IntegerField(null=False, default=0)
-    content = BlobField(null=False)
-    content_type = CharField(null=False)
+    hash = ForeignKeyField(File, field='hash', column_name='hash', backref='archives', null=False, on_delete='RESTRICT')
 
     class Meta:
         table_name = 'Archive'

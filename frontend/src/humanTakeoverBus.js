@@ -12,7 +12,7 @@ import { currentSessionId as liveSessionId } from './chatStore.js'
 import { currentSessionId as testSessionId } from './testChatStore.js'
 import { addHumanTakeover } from './humanTakeoverStore.js'
 
-chatChannel.subscribe('human_takeover', (frame) => {
+chatChannel.subscribe('ui.human_takeover', (frame) => {
   // Already looking at this exact session — in the live chat, or in
   // EditProjectView's embedded "Run" test chat (its own independent
   // store, see testChatStore.js) — nothing to alert this tab about; the

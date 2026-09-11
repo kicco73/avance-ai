@@ -17,7 +17,7 @@ let registered = false
 function ensureRegistered() {
   if (registered) return
   registered = true
-  chatChannel.subscribe('notification', ({ project_name, state, task }) => {
+  chatChannel.subscribe('ui.notification', ({ project_name, state, task }) => {
     if (task) runTaskScript(task)
     if (state) {
       for (const subscriber of stateSubscribers) subscriber({ project_name, state })

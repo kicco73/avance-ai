@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .models import (
-    Archive, ChatSession, EditHistory, Invite, Message, Project, ProjectObserverIndex, StateRemap,
+    Archive, ChatSession, EditHistory, File, Invite, Message, Project, ProjectObserverIndex, StateRemap,
     SystemWarning, Test, TestAggregateResult, Tracking, User, UserProject, database,
 )
 
@@ -124,7 +124,7 @@ class ProjectMixin:
             ):
                 Archive.create(
                     project=project_id, archive_name=archive.archive_name,
-                    revision=new_revision, content=archive.content, content_type=archive.content_type,
+                    revision=new_revision, hash=archive.hash_id,
                 )
             Project.update(revision=new_revision).where(Project.id == project_id).execute()
             # Every user's Undo/Redo stack just went stale — it
@@ -142,14 +142,14 @@ class ProjectMixin:
 
     def get_archive(self, project_id: str, archive_name: str, revision: int | None = None) -> bytes | None:
         row = self.get_archive_row(project_id, archive_name, revision=revision)
-        return row.content if row is not None else None
+        return row.hash.content if row is not None else None
 
     def get_archive_content_by_id(self, archive_id: int) -> bytes | None:
         """By row id — for a reference held elsewhere (e.g.
         UserProject.accepted_terms_id) to a row that may since have been
         superseded by a copy under a newer revision."""
         row = Archive.get_or_none(Archive.id == archive_id)
-        return row.content if row is not None else None
+        return row.hash.content if row is not None else None
 
     def get_archive_content_type(self, project_id: str, archive_name: str, revision: int | None = None) -> str | None:
         if revision is None:
@@ -157,14 +157,14 @@ class ProjectMixin:
         row = Archive.get_or_none(
             (Archive.project == project_id) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
         )
-        return row.content_type if row is not None else None
+        return row.hash.content_type if row is not None else None
 
     def get_archives(self, project_id: str, revision: int | None = None) -> dict:
         if revision is None:
             revision = self._current_revision(project_id)
         return {
-            row.archive_name: row.content
-            for row in Archive.select(Archive.archive_name, Archive.content).where(
+            row.archive_name: row.hash.content
+            for row in Archive.select(Archive.archive_name, File.content).join(File).where(
                 (Archive.project == project_id) & (Archive.revision == revision)
             )
         }
@@ -181,10 +181,10 @@ class ProjectMixin:
             if existing is None:
                 Archive.create(
                     project=project_id, archive_name=archive_name, revision=revision,
-                    content=content, content_type=content_type,
+                    hash=File.put(content, content_type),
                 )
             else:
-                Archive.update(content=content, content_type=content_type).where(Archive.id == existing.id).execute()
+                Archive.update(hash=File.put(content, content_type)).where(Archive.id == existing.id).execute()
 
     def write_archive_at_revision(self, project_id: str, archive_name: str, revision: int, content: bytes, content_type: str) -> None:
         """Upserts one Archive row at an *exact* revision, bypassing
@@ -199,9 +199,9 @@ class ProjectMixin:
             (Archive.project == project_id) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
         )
         if existing is None:
-            Archive.create(project=project_id, archive_name=archive_name, revision=revision, content=content, content_type=content_type)
+            Archive.create(project=project_id, archive_name=archive_name, revision=revision, hash=File.put(content, content_type))
         else:
-            Archive.update(content=content, content_type=content_type).where(Archive.id == existing.id).execute()
+            Archive.update(hash=File.put(content, content_type)).where(Archive.id == existing.id).execute()
 
     def delete_archives_with_prefix(self, project_id: str, prefix: str) -> None:
         """Deletes every Archive row (any revision) whose name starts with
@@ -225,9 +225,9 @@ class ProjectMixin:
             (Archive.project == project_id) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
         )
         if existing is None:
-            Archive.create(project=project_id, archive_name=archive_name, revision=revision, content=content, content_type=content_type)
+            Archive.create(project=project_id, archive_name=archive_name, revision=revision, hash=File.put(content, content_type))
         else:
-            Archive.update(content=content, content_type=content_type).where(Archive.id == existing.id).execute()
+            Archive.update(hash=File.put(content, content_type)).where(Archive.id == existing.id).execute()
 
     def import_new_revision(
         self, project_id: str, revision: int, files: dict[str, bytes], content_types: dict[str, str],
@@ -245,7 +245,7 @@ class ProjectMixin:
             for archive_name, content in files.items():
                 Archive.create(
                     project=project_id, archive_name=archive_name, revision=revision,
-                    content=content, content_type=content_types[archive_name],
+                    hash=File.put(content, content_types[archive_name]),
                 )
             EditHistory.delete().where(EditHistory.project_id == project_id).execute()
 
@@ -354,9 +354,9 @@ class ProjectMixin:
                 (Archive.project == project_id) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
             )
             if existing is None:
-                Archive.create(project=project_id, archive_name=archive_name, revision=revision, content=content, content_type=content_type)
+                Archive.create(project=project_id, archive_name=archive_name, revision=revision, hash=File.put(content, content_type))
             else:
-                Archive.update(content=content, content_type=content_type).where(Archive.id == existing.id).execute()
+                Archive.update(hash=File.put(content, content_type)).where(Archive.id == existing.id).execute()
 
     def list_archives(self, project_id: str, revision: int | None = None) -> list[str]:
         if revision is None:

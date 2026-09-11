@@ -74,7 +74,7 @@ def test_manual_action_pushes_its_on_exits_own_chat_snippets_synchronously(clien
     # Never hibernated as a Task: on-exit's own chat.* runs inline, not
     # through the job queue at all (see TrackingEngine.apply_action_env).
     assert app_db.list_tasks() == []
-    assert websocket.sent == [{"type": "notification", "task": "celebrate()"}]
+    assert websocket.sent == [{"type": "ui.notification", "task": "celebrate()"}]
 
 
 def test_manual_action_without_on_exit_reports_none_even_for_the_same_target_state(client, app_db):

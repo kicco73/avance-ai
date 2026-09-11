@@ -81,14 +81,14 @@ class TestPush:
     def test_returns_false_when_no_connection_is_registered(self):
         channel = WsNotifications(_FakeAuthService())
 
-        assert asyncio.run(channel.push(USERNAME, {"type": "notification"})) is False
+        assert asyncio.run(channel.push(USERNAME, {"type": "ui.notification"})) is False
 
     def test_sends_the_payload_and_returns_true_when_a_connection_exists(self):
         channel = WsNotifications(_FakeAuthService())
         connection = _RecordingConnection()
         channel._connections[USERNAME] = [connection]
 
-        payload = {"type": "notification", "project_name": "proj", "state": {"key": "x"}, "task": "notify('hi')"}
+        payload = {"type": "ui.notification", "project_name": "proj", "state": {"key": "x"}, "task": "notify('hi')"}
         assert asyncio.run(channel.push(USERNAME, payload)) is True
         assert connection.sent == [payload]
 
@@ -97,7 +97,7 @@ class TestPush:
         other = _RecordingConnection()
         channel._connections["other-user"] = [other]
 
-        assert asyncio.run(channel.push(USERNAME, {"type": "notification"})) is False
+        assert asyncio.run(channel.push(USERNAME, {"type": "ui.notification"})) is False
         assert other.sent == []
 
     def test_broadcasts_to_every_one_of_the_users_own_connections(self):
@@ -107,7 +107,7 @@ class TestPush:
         second.id = "conn-2"
         channel._connections[USERNAME] = [first, second]
 
-        payload = {"type": "notification"}
+        payload = {"type": "ui.notification"}
         assert asyncio.run(channel.push(USERNAME, payload)) is True
         assert first.sent == [payload]
         assert second.sent == [payload]
@@ -150,7 +150,7 @@ class TestChannelLoop:
         class _ObservingWebSocket(_FakeWebSocket):
             async def receive_text(self):
                 if "done" not in pushed:
-                    pushed["done"] = await channel.push(USERNAME, {"type": "notification", "project_name": "p"})
+                    pushed["done"] = await channel.push(USERNAME, {"type": "ui.notification", "project_name": "p"})
                     await asyncio.sleep(0)
                 return await super().receive_text()
 
@@ -158,7 +158,7 @@ class TestChannelLoop:
         asyncio.run(channel.channel_loop(websocket))
 
         assert pushed["done"] is True
-        assert websocket.sent == [{"type": "notification", "project_name": "p"}]
+        assert websocket.sent == [{"type": "ui.notification", "project_name": "p"}]
 
     def test_the_registration_is_removed_on_disconnect(self):
         channel = WsNotifications(_FakeAuthService())

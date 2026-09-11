@@ -175,7 +175,7 @@ class TestWsAdapterPush:
         _wake(db, project_service)
 
         assert len(websocket.sent) == 1
-        assert websocket.sent[0]["type"] == "notification"
+        assert websocket.sent[0]["type"] == "ui.notification"
         assert websocket.sent[0]["project_name"] == "watcher"
         assert websocket.sent[0]["state"]["key"] == "x"  # self-loop — the state itself never changes
         # The fired action's task is a task of its own (see
