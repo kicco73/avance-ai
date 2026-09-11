@@ -5,7 +5,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import cytoscape from 'cytoscape'
 import { getProjectGraph } from '../../api.js'
-import { useFloatingTooltip } from '../../useFloatingTooltip.js'
+import { useFloatingTooltip } from '../../../../useFloatingTooltip.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },

@@ -2,10 +2,10 @@ import { computed, nextTick, ref, watch } from 'vue'
 import {
   getTranscript, getSessionSignals, getSessions, putMessageExpectedState, putMessageExpectedSignals,
   putMessageComment, deleteSessionAnnotations,
-} from '../api.js'
-import { buildTimeline, highlightedStateKeyFor, signalValuesFor } from '../testTimeline.js'
-import { refreshSessionsQuietly } from '../chatStore.js'
-import { confirmDialog } from '../dialogStore.js'
+} from './api.js'
+import { buildTimeline, highlightedStateKeyFor, signalValuesFor } from '../../testTimeline.js'
+import { refreshSessionsQuietly } from '../../chatStore.js'
+import { confirmDialog } from '../../dialogStore.js'
 
 // The "Label sessions" view's own core: loads a session's messages/signals
 // into a timeline, tracks which point is selected, and writes expert

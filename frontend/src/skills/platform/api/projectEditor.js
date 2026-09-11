@@ -1,4 +1,4 @@
-import { apiFetch, projectFetch } from './core.js'
+import { apiFetch, projectFetch } from '../../../api/core.js'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 
@@ -10,16 +10,6 @@ export function getProjectGraph(projectId, sessionId) {
   return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/graph${query}`)
 }
 
-// `stateKey`, when given, scopes each signal's `relevant` field to that
-// state's outgoing actions; omitted, every state's triggers combine
-// instead. `sessionId`: see getProjectGraph above.
-export function getProjectSignals(projectId, stateKey, sessionId) {
-  const params = new URLSearchParams()
-  if (stateKey != null) params.set('state_key', stateKey)
-  if (sessionId != null) params.set('session_id', sessionId)
-  const query = params.size ? `?${params}` : ''
-  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/signals${query}`)
-}
 
 // Declared env-key definitions (name/ui_description/value) of the
 // project's top-level `env:` section.
@@ -47,23 +37,7 @@ export function postCreateInvite(projectId) {
   return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/invites`, { method: 'POST' })
 }
 
-// Resolves a "share project" invite code back to the project it was
-// generated for — { project_id: string | null }. Used by
-// useAppBoot.js to land a scanned invite link (shareLink.js) on the
-// right project. A POST, not a GET: for a plain 'user' reaching this
-// project for the first time, it also consumes the invite and grants
-// them access (creates a UserProject row) server-side.
-export function postRedeemInviteCode(code) {
-  return apiFetch(`${API_URL}/skills/platform/projects/invitations/${encodeURIComponent(code)}`, { method: 'POST' })
-}
 
-// { tokens: number | null } — estimated input-token cost of `stateKey`'s
-// own turn prompt (attachments, signal/reaction definitions, env, ...),
-// null when no AiService is configured. `sessionId`: see getProjectGraph above.
-export function getStateInputTokens(projectId, stateKey, sessionId) {
-  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
-  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/states/${encodeURIComponent(stateKey)}/tokens${query}`)
-}
 
 export function putProjectField(projectId, field, value) {
   return projectFetch(
@@ -86,21 +60,11 @@ export function putServiceLevel(projectId, service, level) {
 }
 
 
-// Every file type a project can carry, straight from the backend's own
-// catalog (automaton.file_types) — see projectFileTypes.js.
-export function getProjectFileTypes() {
-  return apiFetch(`${API_URL}/skills/platform/projects/file-types`)
-}
 
 export function getProjectFiles(projectId) {
   return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/files`)
 }
 
-// Raw markdown content of a fixed reference doc, backing each "(?)" doc
-// button. `name` is one of 'project-specs' / 'metrics' / 'benchmark'.
-export function getDoc(name) {
-  return apiFetch(`${API_URL}/skills/platform/docs/${encodeURIComponent(name)}`)
-}
 
 // {content, can_undo, can_redo} of fileName's current content —
 // can_undo/can_redo drive the editor's Undo/Redo buttons, scoped to the
@@ -149,13 +113,6 @@ export function putProjectFileBinary(projectId, fileName, file) {
   })
 }
 
-// Raw bytes of fileName's content — for a plain <img src> or a manual
-// fetch needing the text body rather than a JSON envelope. `sessionId`
-// omitted resolves the current draft; given, resolves that session's revision.
-export function projectFileContentUrl(projectId, fileName, sessionId) {
-  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
-  return `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(fileName)}/content${query}`
-}
 
 // A pure editor preview, not a save — nothing is persisted. `content` is
 // the editor's current text, needed so a later redo/undo can restore it;
@@ -346,6 +303,3 @@ export function postRevertProject(projectId) {
   return projectFetch(projectId, `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/revert`, { method: 'POST' })
 }
 
-export function getProjectStates(projectId) {
-  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/states`)
-}

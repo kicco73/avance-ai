@@ -7,10 +7,10 @@
 // (see InspectorStateIOTab.vue).
 import { computed, nextTick, ref, watch, onMounted } from 'vue'
 import { getProjectEnvKeys } from '../../api.js'
-import { vAutosize } from '../skillkit/textareaAutosize.js'
-import CardMenu from '../skillkit/CardMenu.vue'
-import TriggerEditor from '../skillkit/TriggerEditor.vue'
-import { handleEnterNext } from '../skillkit/enterToNextField.js'
+import { vAutosize } from '../../../../components/skillkit/textareaAutosize.js'
+import CardMenu from '../../../../components/skillkit/CardMenu.vue'
+import TriggerEditor from '../../../../components/skillkit/TriggerEditor.vue'
+import { handleEnterNext } from '../../../../components/skillkit/enterToNextField.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },

@@ -681,7 +681,7 @@ def hello_project(client: TestClient) -> str:
     )
     assert response.status_code == 200, response.text
     project_id = parse_sse_result(response)["project_id"]
-    response = client.post(f"/api/skills/platform/projects/{project_id}/activate")
+    response = client.post(f"/api/core/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
     response = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text

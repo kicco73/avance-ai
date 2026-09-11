@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { getProjectSources, postAddSource, postAddSourceFromFile, putSourceField, deleteProjectSource } from '../api.js'
+import { getProjectSources, postAddSource, postAddSourceFromFile, putSourceField, deleteProjectSource } from './api.js'
 
 function sourceNameHint(fileName) {
   return fileName.replace(/\.[^./]+$/, '')

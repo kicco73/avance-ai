@@ -12,12 +12,12 @@ import { tags } from '@lezer/highlight'
 import { yaml, yamlLanguage } from '@codemirror/lang-yaml'
 import { css, cssLanguage } from '@codemirror/lang-css'
 import { markdown } from '@codemirror/lang-markdown'
-import { csv } from '../csvLanguage.js'
+import { csv } from './csvLanguage.js'
 import { cssColorPicker } from './cssColorPicker.js'
 import { cssUrlCompletionSource } from './cssUrlCompletion.js'
 import { yamlAttachmentCompletionSource } from './yamlAttachmentCompletion.js'
 import { yamlStructureCompletionSource } from './yamlStructureCompletion.js'
-import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile } from '../api.js'
+import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile } from './api.js'
 
 // @lezer/yaml tags every plain scalar (unquoted values, `|`/`>` block
 // bodies) as tags.content, which defaultHighlightStyle leaves uncolored —

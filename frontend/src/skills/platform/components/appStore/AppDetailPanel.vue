@@ -1,14 +1,14 @@
 <script setup>
 import { onBeforeUnmount, ref, watch } from 'vue'
-import ChatView from '../chat/ChatView.vue'
-import ChatWaitingPanel from '../chat/ChatWaitingPanel.vue'
+import ChatView from '../../../../components/chat/ChatView.vue'
+import ChatWaitingPanel from '../../../../components/chat/ChatWaitingPanel.vue'
 import AppStoreFrozenPreview from './AppStoreFrozenPreview.vue'
 import { postInstallApp, deleteInstallApp, appStoreFileContentUrl } from '../../api.js'
-import { confirmDialog, infoDialog } from '../../dialogStore.js'
-import { setSkinCss, invalidateSkin } from '../../chatSkin.js'
+import { confirmDialog, infoDialog } from '../../../../dialogStore.js'
+import { setSkinCss, invalidateSkin } from '../../../../chatSkin.js'
 import { setPreviewApp, appStorePreviewStore, historyLoaded, restartPreviewSession, stopPreviewSession } from '../../appStorePreviewStore.js'
-import { renderMarkdown } from '../../markdown.js'
-import { usePreviewExpiry } from '../../composables/usePreviewExpiry.js'
+import { renderMarkdown } from '../../../../markdown.js'
+import { usePreviewExpiry } from '../../../../composables/usePreviewExpiry.js'
 
 const props = defineProps({
   app: { type: Object, required: true },

@@ -58,6 +58,27 @@ class SessionController(BaseController):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
+    @get("/api/core/sessions/{session_id}/signals", role="supervisor")
+    def get_session_signals(self, session_id: int):
+        """The full Tracking event log for `session_id` (snapshots and
+        transitions, chronological) — the "Label sessions" view
+        reconstructs the timeline entirely client-side from this call.
+
+        Core: the benchmark reads the same log to show what a test run
+        did, and it is turn_service's either way."""
+        return self.turn_service.get_session_signals(session_id)
+
+    @post("/api/core/sessions/{session_id}/truncate")
+    async def post_truncate_session(self, session_id: int, req: TruncateSessionRequest):
+        """"Restart from here": the live state may have moved backward,
+        so the fresh payload is read back only once the mutation itself
+        (see TurnService.truncate_session for its own synchronization) has completed."""
+        try:
+            await self.turn_service.truncate_session(session_id, req.timestamp)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return self.platform_service.get_active_state_payload()
+
     @get("/api/core/sessions/{session_id}/state")
     def get_session_state(self, session_id: int):
         return self.turn_service.get_state_for_session(session_id)

@@ -56,7 +56,6 @@ class PlatformService(object):
         from avance_platform.edit_project_controller import EditProjectController
         from avance_platform.inspector_controller import InspectorController
         from avance_platform.label_project_controller import LabelProjectController
-        from avance_platform.platform_controller import PlatformController
         from avance_platform.settings_controller import SettingsController
         from avance_platform.user_controller import UserController
 
@@ -64,7 +63,6 @@ class PlatformService(object):
         self.controllers = [
             construct(controller, registry)
             for controller in (
-                PlatformController,
                 EditProjectController,
                 InspectorController,
                 # Labelling only: the benchmark half of that screen left

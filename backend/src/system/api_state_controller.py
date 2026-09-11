@@ -14,7 +14,7 @@ rest is whatever each installed skill contributed about itself.
 """
 from __future__ import annotations
 
-from controllers.base_controller import BaseController, get
+from controllers.base_controller import BaseController, get, post
 from project.project_service import ProjectService
 from system import bus
 from system.bus import POINT_API_STATE
@@ -27,6 +27,35 @@ class ApiStateController(BaseController):
         self.turn_service = turn_service
         self.project_service = project_service
 
+    @get("/api/core/ai/models")
+    def get_ai_models(self):
+        """The ai-service provider roster (name/model/ui_label/ui_description),
+        whether auto mode is on, and which model is in effect right now
+        either way — for the chat toolbar's model menu."""
+        return self.turn_service.get_ai_models_info()
+
+    @post("/api/core/ai/models/selection")
+    def post_ai_model_selection(self, req: AiModelSelectionRequest):
+        """Sets which model generate()/generate_stream() use: `index:
+        null` for auto (the cascade's fallback order), or `index` into
+        GET /api/core/ai/models' `models` to pin one directly."""
+        try:
+            self.turn_service.select_ai_model(req.index)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return self.turn_service.get_ai_models_info()
+
+    @get("/api/core/ai/models/test")
+    def get_ai_test_models(self):
+        return self.turn_service.get_test_ai_models_info()
+
+    @post("/api/core/ai/models/test/selection")
+    def post_ai_test_model_selection(self, req: AiModelSelectionRequest):
+        try:
+            self.turn_service.select_test_ai_model(req.index)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return self.turn_service.get_test_ai_models_info()
     @get("/api/core/state")
     def get_state(self):
         """No `-> StatePayload` annotation: with no active project/state

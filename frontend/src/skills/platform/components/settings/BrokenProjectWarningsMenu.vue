@@ -1,10 +1,10 @@
 <script setup>
 import { onBeforeUnmount, ref } from 'vue'
-import '../../styles/headerMenu.css'
+import '../../../../styles/headerMenu.css'
 import { deleteProjectBrokenWarning, getProjectBrokenWarnings } from '../../api.js'
-import { busChannel } from '../../busChannel.js'
-import { useOutsideClickClose } from '../../composables/useOutsideClickClose.js'
-import { onProjectsChanged } from '../../projectChangeEvents.js'
+import { busChannel } from '../../../../busChannel.js'
+import { useOutsideClickClose } from '../../../../composables/useOutsideClickClose.js'
+import { onProjectsChanged } from '../../../../projectChangeEvents.js'
 
 const props = defineProps({
   metadataById: { type: Object, required: true }

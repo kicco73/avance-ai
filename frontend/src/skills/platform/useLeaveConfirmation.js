@@ -1,4 +1,4 @@
-import { confirmDialog } from '../dialogStore.js'
+import { confirmDialog } from '../../dialogStore.js'
 
 // Simple proceed-or-stay confirmation for unsaved changes.
 // Not a save/discard flow — it never acts on the data itself.

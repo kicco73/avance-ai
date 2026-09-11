@@ -1,9 +1,9 @@
 import { computed, nextTick, ref } from 'vue'
-import { getProjectFiles, putProjectFile, putProjectFileBinary, deleteProjectFile, renameProjectFile, postAddLegalTerms } from '../api.js'
-import { setApiError, clearApiError } from '../errorStore.js'
-import { confirmDialog, promptDialog, chooseDialog } from '../dialogStore.js'
-import { findActionLine, findAttachmentLine, findEnvKeyLine, findInitActionLine, findSignalLine, findStateLine } from '../indexYmlLineFinder.js'
-import { ensureProjectFileTypes, projectFileTypes } from '../projectFileTypes.js'
+import { getProjectFiles, putProjectFile, putProjectFileBinary, deleteProjectFile, renameProjectFile, postAddLegalTerms } from './api.js'
+import { setApiError, clearApiError } from '../../errorStore.js'
+import { confirmDialog, promptDialog, chooseDialog } from '../../dialogStore.js'
+import { findActionLine, findAttachmentLine, findEnvKeyLine, findInitActionLine, findSignalLine, findStateLine } from '../../indexYmlLineFinder.js'
+import { ensureProjectFileTypes, projectFileTypes } from '../../projectFileTypes.js'
 
 // "New aspect" seeds index.css with its three customizable regions,
 // left empty — matches what both sample projects' own index.css style.

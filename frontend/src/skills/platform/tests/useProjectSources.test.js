@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../src/api.js', () => ({
+vi.mock('../../../api.js', () => ({
   getProjectSources: vi.fn(),
   postAddSource: vi.fn(),
   putSourceField: vi.fn(),
   deleteProjectSource: vi.fn(),
 }))
 
-import { getProjectSources, postAddSource, putSourceField, deleteProjectSource } from '../src/api.js'
-import { useProjectSources } from '../src/composables/useProjectSources.js'
+import { getProjectSources, postAddSource, putSourceField, deleteProjectSource } from '../../../api.js'
+import { useProjectSources } from '../useProjectSources.js'
 
 const PINO = { name: 'pino', ui_label: 'Flights', ui_description: null, url: 'avance:behaviour/flights.csv' }
 const CITIES = { name: 'cities', ui_label: 'Cities', ui_description: null, url: 'avance:behaviour/cities.csv' }

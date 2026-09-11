@@ -6,9 +6,9 @@
 // see CodeEditor.vue). Remounted per file (:key="fileName" in
 // ProjectDesignPanel.vue), unlike index.yml/index.css's own fixed-name panels.
 import { computed, ref } from 'vue'
-import CodeEditor from '../../../CodeEditor.vue'
-import DocInfoButton from '../../../DocInfoButton.vue'
-import { renderMarkdown } from '../../../../markdown.js'
+import CodeEditor from '../../../../CodeEditor.vue'
+import DocInfoButton from '../../../../../../components/DocInfoButton.vue'
+import { renderMarkdown } from '../../../../../../markdown.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },

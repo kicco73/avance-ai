@@ -1,6 +1,6 @@
 <script setup>
-import '../../styles/projectCard.css'
-import avanceLogoUrl from '../../assets/avance-logo.png'
+import '../../../../styles/projectCard.css'
+import avanceLogoUrl from '../../../../assets/avance-logo.png'
 
 defineProps({
   row: { type: Object, required: true },

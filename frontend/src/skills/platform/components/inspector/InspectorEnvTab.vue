@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import { clearEnv, deleteEnvValue, getEnv, getOutput, putEnvValue } from '../../api.js'
-import { confirmDialog } from '../../dialogStore.js'
+import { confirmDialog } from '../../../../dialogStore.js'
 
 const props = defineProps({
   // Whose env this tab shows/edits — every call below is scoped to it.

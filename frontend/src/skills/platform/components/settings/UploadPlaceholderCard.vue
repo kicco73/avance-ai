@@ -1,10 +1,10 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
-import '../../styles/projectCard.css'
+import '../../../../styles/projectCard.css'
 import { getProjectFiles, projectFileContentUrl } from '../../api.js'
-import { findIconFile } from '../../projectIcon.js'
-import { ensureProjectFileTypes } from '../../projectFileTypes.js'
-import avanceLogoUrl from '../../assets/avance-logo.png'
+import { findIconFile } from '../../../../projectIcon.js'
+import { ensureProjectFileTypes } from '../../../../projectFileTypes.js'
+import avanceLogoUrl from '../../../../assets/avance-logo.png'
 
 const props = defineProps({
   uploadProgress: { type: Number, default: null },

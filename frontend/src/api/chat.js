@@ -116,3 +116,14 @@ export function postTruncateSession(sessionId, timestamp) {
     body: JSON.stringify({ timestamp })
   })
 }
+
+// Sets (reaction given) or clears (null) the user's own reaction to a bot
+// message — a key out of the active project's own `reactions` dict (see
+// chatStore.js's state.reactions).
+export function putMessageReaction(messageId, reaction) {
+  return apiFetch(`${API_URL}/core/messages/${encodeURIComponent(messageId)}/reaction`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reaction })
+  })
+}

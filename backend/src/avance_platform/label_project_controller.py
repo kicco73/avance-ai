@@ -35,12 +35,10 @@ class LabelProjectController(BaseController):
     def __init__(
         self,
         turn_service: TurnService,
-        platform_service: PlatformService,
         tracking_service: TrackingService,
         scheduler_service: SchedulerService,
     ) -> None:
         self.turn_service = turn_service
-        self.platform_service = platform_service
         self.tracking_service = tracking_service
         self.scheduler_service = scheduler_service
 
@@ -121,24 +119,6 @@ class LabelProjectController(BaseController):
         """The "Label sessions" view's Info tab — a whole-session note,
         distinct from put_message_comment's per-message one below."""
         return self.turn_service.set_session_comment(session_id, req.comment)
-
-    @post("/api/skills/platform/sessions/{session_id}/truncate", role="supervisor")
-    async def post_truncate_session(self, session_id: int, req: TruncateSessionRequest):
-        """"Restart from here": the live state may have moved backward,
-        so the fresh payload is read back only once the mutation itself
-        (see TurnService.truncate_session for its own synchronization) has completed."""
-        try:
-            await self.turn_service.truncate_session(session_id, req.timestamp)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return self.platform_service.get_active_state_payload()
-
-    @get("/api/skills/platform/sessions/{session_id}/signals", role="supervisor")
-    def get_session_signals(self, session_id: int):
-        """The full Tracking event log for `session_id` (snapshots and
-        transitions, chronological) — the "Label sessions" view
-        reconstructs the timeline entirely client-side from this call."""
-        return self.turn_service.get_session_signals(session_id)
 
     @put("/api/skills/platform/messages/{message_id}/expected-state", role="supervisor")
     def put_message_expected_state(self, message_id: int, req: ExpectedStateRequest):

@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { projectFileTypes } from '../../../../projectFileTypes.js'
+import { projectFileTypes } from '../../../../../../projectFileTypes.js'
 
 const props = defineProps({
   fileName: { type: String, required: true },

@@ -1,9 +1,9 @@
 import { computed, ref } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { useLeaveConfirmation } from '../src/composables/useLeaveConfirmation.js'
-import { confirmDialog } from '../src/dialogStore.js'
+import { useLeaveConfirmation } from '../useLeaveConfirmation.js'
+import { confirmDialog } from '../../../dialogStore.js'
 
-vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn() }))
+vi.mock('../../../dialogStore.js', () => ({ confirmDialog: vi.fn() }))
 
 describe('useLeaveConfirmation', () => {
   afterEach(() => {

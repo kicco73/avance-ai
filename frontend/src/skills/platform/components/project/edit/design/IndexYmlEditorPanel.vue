@@ -9,9 +9,9 @@
 // the endpoint and tells this view to refresh (see reload()/refresh()).
 import { computed, ref } from 'vue'
 import InspectorGraph from '../../../inspector/InspectorGraph.vue'
-import CodeEditor from '../../../CodeEditor.vue'
-import DocInfoButton from '../../../DocInfoButton.vue'
-import { textareaDialog } from '../../../../dialogStore.js'
+import CodeEditor from '../../../../CodeEditor.vue'
+import DocInfoButton from '../../../../../../components/DocInfoButton.vue'
+import { textareaDialog } from '../../../../../../dialogStore.js'
 import { aiEditIndexYml } from '../../../../api.js'
 
 const props = defineProps({

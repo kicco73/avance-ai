@@ -32,6 +32,12 @@ class AuthController(BaseController):
     def __init__(self, auth_service: AuthService) -> None:
         self.auth_service = auth_service
 
+    @get("/api/core/users", role="supervisor")
+    def get_users(self):
+        """Every registered identity. Core: it is auth_service's roster,
+        and a build without an editor still has people in it."""
+        return {"users": self.auth_service.list_users()}
+
     @get("/api/core/auth/providers", role=None)
     def get_providers(self):
         return {"providers": self.auth_service.public_providers()}

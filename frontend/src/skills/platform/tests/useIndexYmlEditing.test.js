@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
-vi.mock('../src/api.js', () => ({
+vi.mock('../../../api.js', () => ({
   postAddState: vi.fn(),
   postAddSignal: vi.fn(),
   postAddEnvKey: vi.fn(),
@@ -23,8 +23,8 @@ import {
   postAddState, postAddSignal, postAddEnvKey, postAddAction, putStateField, putProjectField,
   putActionField, putInitActionField, putSignalField, putEnvKeyField,
   deleteState, deleteProjectAction, deleteProjectSignal, deleteProjectEnvKey,
-} from '../src/api.js'
-import { useIndexYmlEditing } from '../src/composables/useIndexYmlEditing.js'
+} from '../../../api.js'
+import { useIndexYmlEditing } from '../useIndexYmlEditing.js'
 
 describe('useIndexYmlEditing', () => {
   let selectedGraphElement, selectedStateKey, indexYmlEditorRef, flashRecentlyAdded, jumpToDefinition, s

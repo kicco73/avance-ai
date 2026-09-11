@@ -2,11 +2,11 @@ import { ref } from 'vue'
 import {
   postImportSessions, getExportSessions, deleteImportedSessions, putSessionsReassign,
   deleteTestUser, deleteUserSessions, deleteSession,
-} from '../api.js'
-import { sessions, refreshSessionsQuietly } from '../chatStore.js'
-import { summarizeImportFailures } from '../sessionImport.js'
-import { setApiError, clearApiError } from '../errorStore.js'
-import { confirmDialog } from '../dialogStore.js'
+} from './api.js'
+import { sessions, refreshSessionsQuietly } from '../../chatStore.js'
+import { summarizeImportFailures } from '../../sessionImport.js'
+import { setApiError, clearApiError } from '../../errorStore.js'
+import { confirmDialog } from '../../dialogStore.js'
 
 // The "Label sessions" view's own session-administration actions: import,
 // move between users, and every delete flow. `currentSessionId`/

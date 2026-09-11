@@ -16,9 +16,9 @@
 // why they live in components/skillkit/ — and this file is the editing
 // composition, with nothing to switch off.
 import { computed, ref, watch } from 'vue'
-import InspectorDetailCard from '../skillkit/InspectorDetailCard.vue'
+import InspectorDetailCard from '../../../../components/skillkit/InspectorDetailCard.vue'
 import InspectorSourceCard from './InspectorSourceCard.vue'
-import SessionDetailCard from '../skillkit/SessionDetailCard.vue'
+import SessionDetailCard from '../../../../components/skillkit/SessionDetailCard.vue'
 
 const props = defineProps({
   projectId: { type: String, required: true },

@@ -21,10 +21,10 @@
 // this preview isn't contributing, so invalidateSkin() (a re-run of that
 // decision) is what hands control back, not a direct clear here.
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import MessageBubble from '../../../chat/MessageBubble.vue'
-import ActionButtons from '../../../chat/ActionButtons.vue'
-import ChatInput from '../../../chat/ChatInput.vue'
-import { setSkinCss, invalidateSkin } from '../../../../chatStore.js'
+import MessageBubble from '../../../../../../components/chat/MessageBubble.vue'
+import ActionButtons from '../../../../../../components/chat/ActionButtons.vue'
+import ChatInput from '../../../../../../components/chat/ChatInput.vue'
+import { setSkinCss, invalidateSkin } from '../../../../../../chatStore.js'
 
 const props = defineProps({
   css: { type: String, default: '' },

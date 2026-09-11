@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { getProjectRevision, postRevertProject } from '../api.js'
-import { confirmDialog } from '../dialogStore.js'
-import { onProjectChanged } from '../projectChangeEvents.js'
+import { getProjectRevision, postRevertProject } from './api.js'
+import { confirmDialog } from '../../dialogStore.js'
+import { onProjectChanged } from '../../projectChangeEvents.js'
 
 // EditProjectView.vue's revision control: which revision the draft is,
 // which one is published, and the one action the editor still owns over

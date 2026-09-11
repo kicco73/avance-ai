@@ -51,7 +51,7 @@ def test_clean_unused_revisions_deletes_only_superseded_unpublished_drafts(clien
         headers={"Content-Type": "application/zip"},
     )
     assert response.status_code == 200, response.text
-    assert client.post(f"/api/skills/platform/projects/{project_id}/activate").status_code == 200
+    assert client.post(f"/api/core/projects/{project_id}/activate").status_code == 200
     assert client.post(f"/api/skills/platform/projects/{project_id}/publish", json={}).status_code == 200  # revision 0 published
 
     assert client.put(f"/api/skills/platform/projects/{project_id}/files/notes.txt", content=b"v1").status_code == 200  # forks to revision 1

@@ -1,12 +1,12 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import AppHeader from '../AppHeader.vue'
-import ProfileMenu from '../ProfileMenu.vue'
+import AppHeader from '../../../../components/AppHeader.vue'
+import ProfileMenu from '../../../../components/ProfileMenu.vue'
 import AppDetailPanel from './AppDetailPanel.vue'
 import CustomerAppDetailPanel from './CustomerAppDetailPanel.vue'
 import { getAppStoreApps, appStoreFileContentUrl } from '../../api.js'
-import avanceLogoUrl from '../../assets/avance-logo.png'
-import avanceLogoLargeUrl from '../../assets/avance-logo-large.png'
+import avanceLogoUrl from '../../../../assets/avance-logo.png'
+import avanceLogoLargeUrl from '../../../../assets/avance-logo-large.png'
 
 const props = defineProps({
   standalone: { type: Boolean, default: false },

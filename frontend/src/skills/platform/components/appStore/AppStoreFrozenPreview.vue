@@ -1,11 +1,11 @@
 <script setup>
 import { ref, watch } from 'vue'
-import MessageBubble from '../chat/MessageBubble.vue'
-import ActionButtons from '../chat/ActionButtons.vue'
-import ChatInput from '../chat/ChatInput.vue'
+import MessageBubble from '../../../../components/chat/MessageBubble.vue'
+import ActionButtons from '../../../../components/chat/ActionButtons.vue'
+import ChatInput from '../../../../components/chat/ChatInput.vue'
 import { getAppPreviewTranscript } from '../../api.js'
-import { spokenTextEnabled } from '../../chatStoreFactory.js'
-import { liveStore } from '../../chatStore.js'
+import { spokenTextEnabled } from '../../../../chatStoreFactory.js'
+import { liveStore } from '../../../../chatStore.js'
 
 // The static teaser only: a real sample of what this app's chat looks
 // like, frozen and inert. It used to double as the "session starting up"

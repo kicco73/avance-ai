@@ -3,16 +3,16 @@
 // exclusive, so this never shares space with Design's split-view). Auto-tracking state
 // comes straight from chatStore.js's shared singleton rather than being prop-drilled.
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import ChatView from '../../../chat/ChatView.vue'
-import ChatTimeline from '../../../chat/ChatTimeline.vue'
-import RestartFromHereButton from '../../../chat/RestartFromHereButton.vue'
-import SessionsPanel from '../../../chat/SessionsPanel.vue'
+import ChatView from '../../../../../../components/chat/ChatView.vue'
+import ChatTimeline from '../../../../../../components/chat/ChatTimeline.vue'
+import RestartFromHereButton from '../../../../../../components/chat/RestartFromHereButton.vue'
+import SessionsPanel from '../../../../../../components/chat/SessionsPanel.vue'
 import { getTranscript, deleteSession } from '../../../../api.js'
-import { spokenTextEnabled, totalTokenBudgetPerSession } from '../../../../chatStoreFactory.js'
-import { applyAspect } from '../../../../chatSkin.js'
-import { testStore } from '../../../../testChatStore.js'
-import { useTokensBar } from '../../../../composables/useTokensBar.js'
-import { useFloatingTooltip } from '../../../../useFloatingTooltip.js'
+import { spokenTextEnabled, totalTokenBudgetPerSession } from '../../../../../../chatStoreFactory.js'
+import { applyAspect } from '../../../../../../chatSkin.js'
+import { testStore } from '../../../../../../testChatStore.js'
+import { useTokensBar } from '../../../../../../composables/useTokensBar.js'
+import { useFloatingTooltip } from '../../../../../../useFloatingTooltip.js'
 
 const {
   autoTrackingEnabled, autoTrackingLoading, toggleAutoTracking,

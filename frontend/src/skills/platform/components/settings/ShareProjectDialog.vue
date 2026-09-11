@@ -16,9 +16,9 @@
 // info/about.
 import { computed, onMounted, ref } from 'vue'
 import QRCode from 'qrcode'
-import { shareChannels } from '../../skills/registry.js'
+import { shareChannels } from '../../../registry.js'
 import { postCreateInvite } from '../../api.js'
-import { buildInviteUrl } from '../../shareLink.js'
+import { buildInviteUrl } from '../../../../shareLink.js'
 import InviteQrCard from './InviteQrCard.vue'
 
 const props = defineProps({

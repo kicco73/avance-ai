@@ -242,7 +242,7 @@ def test_the_composition_root_names_no_controller_a_build_could_leave_out(tmp_pa
         assert core_controller in source, core_controller
     for left_out in ("EditProjectController", "SettingsController", "InspectorController",
                      "BuildController", "AppStoreController", "LabelProjectController",
-                     "UserController", "PlatformController"):
+                     "UserController"):
         assert left_out not in source, left_out
 
 

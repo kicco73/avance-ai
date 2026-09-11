@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../src/api.js', () => ({
+vi.mock('../../../api.js', () => ({
   getState: vi.fn().mockResolvedValue({}),
   putProject: vi.fn(),
   postNewProject: vi.fn(),
@@ -15,22 +15,22 @@ vi.mock('../src/api.js', () => ({
   getPublishPreview: vi.fn(),
   postPublishProject: vi.fn(),
 }))
-vi.mock('../src/dialogStore.js', () => ({
+vi.mock('../../../dialogStore.js', () => ({
   aboutDialog: vi.fn(),
   confirmDialog: vi.fn(),
   customDialog: vi.fn(),
   infoDialog: vi.fn(),
 }))
-vi.mock('../src/chatStore.js', () => ({
+vi.mock('../../../chatStore.js', () => ({
   handleStateChange: vi.fn(),
   loadMessages: vi.fn(),
   clearChatUi: vi.fn(),
 }))
 
-import { getPublishPreview, postPublishProject } from '../src/api.js'
-import { confirmDialog, customDialog, infoDialog } from '../src/dialogStore.js'
-import { onProjectsChanged } from '../src/projectChangeEvents.js'
-import { useProjectAdminActions } from '../src/composables/useProjectAdminActions.js'
+import { getPublishPreview, postPublishProject } from '../../../api.js'
+import { confirmDialog, customDialog, infoDialog } from '../../../dialogStore.js'
+import { onProjectsChanged } from '../../../projectChangeEvents.js'
+import { useProjectAdminActions } from '../useProjectAdminActions.js'
 
 describe('handlePublishProject', () => {
   let catalogChanges

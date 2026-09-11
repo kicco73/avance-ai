@@ -1,12 +1,7 @@
-import { apiFetch } from './core.js'
+import { apiFetch } from '../../../api/core.js'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 
-// The full Signals event log for a session (snapshots + transitions,
-// chronological) — for the "Label sessions" view's timeline.
-export function getSessionSignals(sessionId) {
-  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/signals`)
-}
 
 // Sets (expectedState given) or clears (null) messageId's expert-
 // annotated expected state. 409 if messageId isn't an evaluation point,
@@ -41,16 +36,6 @@ export function putMessageComment(messageId, comment) {
   })
 }
 
-// Sets (reaction given) or clears (null) the user's own reaction to a bot
-// message — a key out of the active project's own `reactions` dict (see
-// chatStore.js's state.reactions).
-export function putMessageReaction(messageId, reaction) {
-  return apiFetch(`${API_URL}/core/messages/${encodeURIComponent(messageId)}/reaction`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ reaction })
-  })
-}
 
 // Sets/clears a session's persisted "reviewed by a domain expert" flag —
 // the source of truth for has_annotations. A toggle: calling with

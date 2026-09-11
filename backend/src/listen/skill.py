@@ -77,7 +77,7 @@ class ListenSkill(Skill):
     def _project_listen(self) -> OptionalService:
         """What the active project declared about this service — the same
         "a project can only narrow the server's own switch" the talk level
-        gets in PlatformController.get_state. No active project (or none
+        gets in the core's own /api/core/state. No active project (or none
         loadable) declares nothing, which is `optional`."""
         try:
             return bus.collect(POINT_CORE_SERVICES, {})["project_service"].get_active_automaton().services[self.key]

@@ -45,11 +45,6 @@ class SettingsController(BaseController, ProjectCommitMixin):
         self.db = db
         self.scheduler_service = scheduler_service
 
-    @get("/api/skills/platform/projects")
-    def get_projects(self):
-        username = Session().user if not role_satisfies(Session().role, 'supervisor') else None
-        return self.platform_service.list_projects(username)
-
     @get("/api/skills/platform/settings/projects/runtime-status", role="admin")
     def get_all_projects_runtime_status(self):
         """One row per project — id/status/paused_reason/revision/
@@ -105,17 +100,6 @@ class SettingsController(BaseController, ProjectCommitMixin):
         reporting, plain JSON response, unlike a real upload."""
         result, _job = await self.project_service.create_new_project(self._activate_project)
         return result
-
-    @post("/api/skills/platform/projects/{project_id}/activate")
-    async def activate_project(self, project_id: str):
-        try:
-            await self.project_service.activate_project_idempotent(project_id, self._activate_project)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return {
-            "success": True,
-            "project_id": project_id,
-        }
 
     @get("/api/skills/platform/projects/{project_id}", role="admin")
     def get_project(self, project_id: str):

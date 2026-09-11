@@ -1,9 +1,9 @@
 import { onBeforeUnmount, ref } from 'vue'
-import { getProjectGraph } from '../api.js'
-import { onProjectChanged } from '../projectChangeEvents.js'
-import { clearApiError, setApiWarning } from '../errorStore.js'
-import { refreshIdentifierRegistry } from '../identifierRegistry.js'
-import { refreshProjectFiles } from '../projectFiles.js'
+import { getProjectGraph } from './api.js'
+import { onProjectChanged } from '../../projectChangeEvents.js'
+import { clearApiError, setApiWarning } from '../../errorStore.js'
+import { refreshIdentifierRegistry } from '../../identifierRegistry.js'
+import { refreshProjectFiles } from './projectFiles.js'
 
 // The draft's automaton-derived catalog: state keys/labels, action labels
 // (keyed `${stateKey}::${actionName}`, names are only unique per state),

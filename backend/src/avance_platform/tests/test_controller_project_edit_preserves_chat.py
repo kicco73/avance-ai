@@ -104,7 +104,7 @@ def test_editing_an_unrelated_project_does_not_touch_the_active_ones_conversatio
     assert resp.status_code == 200, resp.text
     # Uploading "other" activates it — reactivate "proj" so the edit
     # below targets a non-active project.
-    client.post("/api/skills/platform/projects/proj/activate")
+    client.post("/api/core/projects/proj/activate")
 
     resp = client.put(
         "/api/skills/platform/projects/other/files/index.yml",

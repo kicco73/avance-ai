@@ -3,14 +3,14 @@
 // by a draggable divider (same useResizablePanel composable as
 // EditProjectView.vue's own file-explorer split).
 import { computed, onMounted, ref } from 'vue'
-import CodeEditor from '../../../CodeEditor.vue'
+import CodeEditor from '../../../../CodeEditor.vue'
 import ChatPreview from './ChatPreview.vue'
-import DocInfoButton from '../../../DocInfoButton.vue'
+import DocInfoButton from '../../../../../../components/DocInfoButton.vue'
 import { aiEditIndexCss, getProjectGraph } from '../../../../api.js'
-import { invalidateSkin } from '../../../../chatStore.js'
-import { textareaDialog } from '../../../../dialogStore.js'
-import { useResizablePanel } from '../../../../composables/useResizablePanel.js'
-import { projectFileTypes } from '../../../../projectFileTypes.js'
+import { invalidateSkin } from '../../../../../../chatStore.js'
+import { textareaDialog } from '../../../../../../dialogStore.js'
+import { useResizablePanel } from '../../../../../../composables/useResizablePanel.js'
+import { projectFileTypes } from '../../../../../../projectFileTypes.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },

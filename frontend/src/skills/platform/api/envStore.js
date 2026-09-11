@@ -1,4 +1,4 @@
-import { apiFetch } from './core.js'
+import { apiFetch } from '../../../api/core.js'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 
@@ -6,12 +6,6 @@ export function getSignals() {
   return apiFetch(`${API_URL}/skills/platform/inspector/signals`)
 }
 
-// `projectId`'s identifier registry — {identifier: description} per
-// namespace (signal, env, system, session, metric, ...) a trigger/env
-// expression can reference. Used by TriggerEditor's autocomplete.
-export function getIdentifiers(projectId) {
-  return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/identifiers`)
-}
 
 // `sessionId`'s own store: {memory, action_set, ai_definition} — `memory` is
 // the model's own free-form notes (editable here), `action_set` the

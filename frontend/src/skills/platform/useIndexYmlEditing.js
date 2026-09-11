@@ -2,7 +2,7 @@ import {
   postAddState, postAddSignal, postAddEnvKey, postAddAction, putStateField, putProjectField, putServiceLevel,
   putActionField, putInitActionField, putSignalField, putEnvKeyField,
   deleteState, deleteProjectAction, deleteProjectSignal, deleteProjectEnvKey,
-} from '../api.js'
+} from './api.js'
 
 // index.yml's own structural editing — add/edit/delete states, actions,
 // signals, and env keys, without hand-writing YAML. Every call routes

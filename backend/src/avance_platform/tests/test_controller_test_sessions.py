@@ -32,7 +32,7 @@ def _upload_and_activate(client, project_id: str, yaml_text: str) -> str:
     assert response.status_code == 200, response.text
     returned_id = parse_sse_result(response)["project_id"]
     assert returned_id == project_id
-    response = client.post(f"/api/skills/platform/projects/{returned_id}/activate")
+    response = client.post(f"/api/core/projects/{returned_id}/activate")
     assert response.status_code == 200, response.text
     return returned_id
 

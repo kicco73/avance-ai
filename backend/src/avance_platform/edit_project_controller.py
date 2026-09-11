@@ -101,19 +101,6 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         async with self.turn_service.acquire_write(project_id):
             return self.turn_service.reset_test_sessions(project_id)
 
-    @get("/api/skills/platform/projects/{project_id}/states", role="admin")
-    def get_project_states(self, project_id: str):
-        """Every real state key of `project_id`'s current draft
-        automaton — the "States" branch's own node list (see
-        TestsTree.vue)."""
-        self.project_service.ensure_project_not_broken(project_id)
-        try:
-            return self.platform_service.get_project_states(project_id)
-        except AutomatonBuildError:
-            raise
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-
     @get("/api/skills/platform/projects/{project_id}/graph", role="supervisor")
     def get_project_graph(self, project_id: str, session_id: int | None = None):
         """The project's state machine (states as nodes, actions as
@@ -122,37 +109,6 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         self.project_service.ensure_project_not_broken(project_id)
         try:
             return self.platform_service.get_project_graph(project_id, session_id)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        except AutomatonBuildError:
-            raise
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-
-    @get("/api/skills/platform/projects/{project_id}/states/{state_name}/tokens", role="supervisor")
-    def get_state_input_tokens(self, project_id: str, state_name: str, session_id: int | None = None):
-        """Estimated input-token cost of `state_name`'s own turn prompt,
-        for the Inspect panel's detail card — fetched on demand for the
-        one state currently open, not for the whole graph at once (see
-        ProjectInspector.get_state_input_tokens). `tokens` is null when no
-        AiService is configured for this deployment."""
-        try:
-            return {"tokens": self.platform_service.get_state_input_tokens(project_id, state_name, session_id)}
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        except AutomatonBuildError:
-            raise
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-
-    @get("/api/skills/platform/projects/{project_id}/signals", role="supervisor")
-    def get_project_signals(self, project_id: str, state_key: str | None = None, session_id: int | None = None):
-        """Signal definitions for the Inspect panel. `state_key`, when
-        given, scopes each signal's `relevant` field to that state's
-        outgoing actions. `session_id`: see get_project_graph above."""
-        self.project_service.ensure_project_not_broken(project_id)
-        try:
-            return {"signals": self.platform_service.get_project_signals(project_id, state_key, session_id)}
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except AutomatonBuildError:
@@ -213,31 +169,6 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
-    @post("/api/skills/platform/projects/invitations/{code}", role="user")
-    def post_resolve_invite_code(self, code: str):
-        """Resolves a "share project" invite code back to the project it
-        was generated for. Unlike every other route in this file, open to
-        any authenticated role: it's the lookup a scanned QR/link needs
-        right after login (see shareLink.js and useAppBoot.js), well
-        before the visiting identity's own role is known to be admin. A
-        POST, not a GET: for role="user" reaching a project for the first
-        time, this also consumes the invite and grants access (see
-        ProjectService.resolve_invite_link) — a real side effect, and one
-        that can fail (expired/maxed-out link). null project_id when
-        the code doesn't resolve to anything at all, never an error."""
-        try:
-            project_id = self.platform_service.resolve_invite_link(code, Session().user, Session().role)
-        except PermissionError as exc:
-            raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail=str(exc)) from exc
-        return {"project_id": project_id}
-
-    @get("/api/skills/platform/projects/file-types", role="admin")
-    def get_project_file_types(self):
-        """Every file type a project can carry — extension, stored content
-        type, UI label, kind, folder and upload limit — so the file
-        explorer never has to restate them."""
-        return ProjectFileTypes.catalog_payload()
-
     @get("/api/skills/platform/projects/{project_id}/files", role="admin")
     def get_project_files(self, project_id: str):
         """Text-editable files inside `project_id`'s directory (index.yml
@@ -248,33 +179,10 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
-    @get("/api/skills/platform/projects/{project_id}/files/{file_name:path}/content")
-    def get_project_file_content(self, project_id: str, file_name: str, request: Request, session_id: int | None = None):
-        """Raw bytes of `file_name`'s content, for callers that can't use
-        the JSON GET below. ETag'd off the content itself, so an
-        unchanged file 304s on a matching If-None-Match. No elevated role:
-        chatStore.js's own loadSkin (index.css + any image it references,
-        via cssAssetUrls.js) hits this for every live chat session,
-        regardless of the viewer's role."""
-        try:
-            content, content_type = self.platform_service.get_project_file_content(project_id, file_name, session_id)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        except AutomatonBuildError:
-            raise
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        etag = f'"{hashlib.sha256(content).hexdigest()}"'
-        if request.headers.get("if-none-match") == etag:
-            return Response(status_code=HTTPStatus.NOT_MODIFIED, headers={"ETag": etag, "Cache-Control": "no-cache"})
-        return Response(
-            content=content, media_type=content_type, headers={"ETag": etag, "Cache-Control": "no-cache"}
-        )
-
-    # Named to sort alphabetically after get_project_file_content: routes
-    # register in alphabetical method-name order, and this method's own
-    # {file_name:path} wildcard (needed for legal/terms.md) would otherwise
-    # swallow get_project_file_content's literal "/content" suffix.
+    # The /content route this had to sort after is core now (see
+    # project/project_controller.py) and no longer shares a prefix with
+    # it, so there is nothing left here for its {file_name:path} wildcard
+    # to swallow.
     @get("/api/skills/platform/projects/{project_id}/files/{file_name:path}", role="admin")
     def get_project_file_info(self, project_id: str, file_name: str):
         """{content, can_undo, can_redo} of `file_name`'s current

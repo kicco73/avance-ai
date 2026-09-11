@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, ref } from 'vue'
 
-vi.mock('../src/api.js', () => ({
+vi.mock('../../../api.js', () => ({
   getTranscript: vi.fn(),
   getSessionSignals: vi.fn(),
   getSessions: vi.fn(),
@@ -10,20 +10,20 @@ vi.mock('../src/api.js', () => ({
   putMessageComment: vi.fn(),
   deleteSessionAnnotations: vi.fn(),
 }))
-vi.mock('../src/chatStore.js', () => ({
+vi.mock('../../../chatStore.js', () => ({
   refreshSessionsQuietly: vi.fn(),
 }))
-vi.mock('../src/dialogStore.js', () => ({
+vi.mock('../../../dialogStore.js', () => ({
   confirmDialog: vi.fn(),
 }))
 
 import {
   getTranscript, getSessionSignals, getSessions, putMessageExpectedState, putMessageExpectedSignals,
   putMessageComment, deleteSessionAnnotations,
-} from '../src/api.js'
-import { refreshSessionsQuietly } from '../src/chatStore.js'
-import { confirmDialog } from '../src/dialogStore.js'
-import { useSessionAnnotation } from '../src/composables/useSessionAnnotation.js'
+} from '../../../api.js'
+import { refreshSessionsQuietly } from '../../../chatStore.js'
+import { confirmDialog } from '../../../dialogStore.js'
+import { useSessionAnnotation } from '../useSessionAnnotation.js'
 
 // onBeforeUnmount/watch need an active component instance to be reactive
 // in the way the real component relies on.

@@ -2,9 +2,9 @@
 import { computed, nextTick, ref, watch, onMounted } from 'vue'
 import { getProjectSignals } from '../../api.js'
 import { hasSignalValue, useSignalChangeFlash } from './signalDisplay.js'
-import { vAutosize } from '../skillkit/textareaAutosize.js'
-import CardMenu from '../skillkit/CardMenu.vue'
-import { handleEnterNext } from '../skillkit/enterToNextField.js'
+import { vAutosize } from '../../../../components/skillkit/textareaAutosize.js'
+import CardMenu from '../../../../components/skillkit/CardMenu.vue'
+import { handleEnterNext } from '../../../../components/skillkit/enterToNextField.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },

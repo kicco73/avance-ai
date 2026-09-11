@@ -4,13 +4,13 @@
 // and reached only through props/emits.
 import { computed, ref } from 'vue'
 import FileExplorer from './FileExplorer.vue'
-import CodeEditor from '../../../CodeEditor.vue'
+import CodeEditor from '../../../../CodeEditor.vue'
 import IndexYmlEditorPanel from './IndexYmlEditorPanel.vue'
 import IndexCssEditorPanel from './IndexCssEditorPanel.vue'
 import MdEditorPanel from './MdEditorPanel.vue'
 import SourceContentPanel from './SourceContentPanel.vue'
 import { projectFileContentUrl } from '../../../../api.js'
-import { projectFileTypes } from '../../../../projectFileTypes.js'
+import { projectFileTypes } from '../../../../../../projectFileTypes.js'
 import AspectMediaPanel from './AspectMediaPanel.vue'
 
 const props = defineProps({

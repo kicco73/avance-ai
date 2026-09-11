@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, ref } from 'vue'
 
-vi.mock('../src/api.js', () => ({
+vi.mock('../../../api.js', () => ({
   getProjectRevision: vi.fn(),
   postRevertProject: vi.fn(),
 }))
-vi.mock('../src/dialogStore.js', () => ({
+vi.mock('../../../dialogStore.js', () => ({
   confirmDialog: vi.fn(),
 }))
 
-import { getProjectRevision, postRevertProject } from '../src/api.js'
-import { confirmDialog } from '../src/dialogStore.js'
-import { useProjectRevision } from '../src/composables/useProjectRevision.js'
+import { getProjectRevision, postRevertProject } from '../../../api.js'
+import { confirmDialog } from '../../../dialogStore.js'
+import { useProjectRevision } from '../useProjectRevision.js'
 
 function mountComposable(setup) {
   let result

@@ -15,7 +15,7 @@ let putProject
 beforeAll(async () => {
   vi.stubEnv('VITE_API_URL', 'http://localhost:8000/api')
   vi.resetModules()
-  ;({ putProject } = await import('../src/api/admin.js'))
+  ;({ putProject } = await import('../api/admin.js'))
 })
 
 function fakeSseResponse(messages) {

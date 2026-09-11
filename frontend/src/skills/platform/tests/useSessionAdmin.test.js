@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, ref } from 'vue'
 
-vi.mock('../src/api.js', () => ({
+vi.mock('../../../api.js', () => ({
   postImportSessions: vi.fn(),
   getExportSessions: vi.fn(),
   deleteImportedSessions: vi.fn(),
@@ -10,30 +10,30 @@ vi.mock('../src/api.js', () => ({
   deleteUserSessions: vi.fn(),
   deleteSession: vi.fn(),
 }))
-vi.mock('../src/chatStore.js', () => ({
+vi.mock('../../../chatStore.js', () => ({
   sessions: { value: [] },
   refreshSessionsQuietly: vi.fn(),
 }))
-vi.mock('../src/sessionImport.js', () => ({
+vi.mock('../../../sessionImport.js', () => ({
   summarizeImportFailures: vi.fn(),
 }))
-vi.mock('../src/errorStore.js', () => ({
+vi.mock('../../../errorStore.js', () => ({
   setApiError: vi.fn(),
   clearApiError: vi.fn(),
 }))
-vi.mock('../src/dialogStore.js', () => ({
+vi.mock('../../../dialogStore.js', () => ({
   confirmDialog: vi.fn(),
 }))
 
 import {
   postImportSessions, getExportSessions, deleteImportedSessions, putSessionsReassign,
   deleteTestUser, deleteUserSessions, deleteSession,
-} from '../src/api.js'
-import { sessions, refreshSessionsQuietly } from '../src/chatStore.js'
-import { summarizeImportFailures } from '../src/sessionImport.js'
-import { setApiError, clearApiError } from '../src/errorStore.js'
-import { confirmDialog } from '../src/dialogStore.js'
-import { useSessionAdmin } from '../src/composables/useSessionAdmin.js'
+} from '../../../api.js'
+import { sessions, refreshSessionsQuietly } from '../../../chatStore.js'
+import { summarizeImportFailures } from '../../../sessionImport.js'
+import { setApiError, clearApiError } from '../../../errorStore.js'
+import { confirmDialog } from '../../../dialogStore.js'
+import { useSessionAdmin } from '../useSessionAdmin.js'
 
 function mountComposable(setup) {
   let result

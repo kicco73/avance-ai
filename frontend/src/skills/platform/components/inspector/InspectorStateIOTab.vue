@@ -6,7 +6,7 @@
 // ai-definition lives only on its env-key card (InspectorEnvKeysTab.vue).
 import { computed, ref, watch, onMounted } from 'vue'
 import { getProjectEnvKeys, getProjectSources } from '../../api.js'
-import { identifierRegistry } from '../../identifierRegistry.js'
+import { identifierRegistry } from '../../../../identifierRegistry.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },

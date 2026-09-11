@@ -38,7 +38,6 @@ second one wait in whichever order the event loop picked).
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 
 import httpx
 
@@ -53,6 +52,7 @@ from system.bus import INPUT_AUDIO, INPUT_TEXT, OUTPUT_TEXT, Message
 from system.session import Session
 from talker import AiTalker
 from whatsapp.cloud_api_client import WhatsAppCloudApiClient
+from whatsapp.outbound import REPLY_DONE, Outbound, Reply, replies_from
 from whatsapp.webhook import IncomingMessage, to_whatsapp_markdown
 
 logger = LoggerFactory.get_logger(__name__)
@@ -62,14 +62,6 @@ logger = LoggerFactory.get_logger(__name__)
 #: skills.Skill.__init_subclass__), so the name is written down once, and
 #: it is the directory.
 CHANNEL = __package__
-
-
-@dataclass(frozen=True)
-class Reply:
-    text: str
-    # The reply's own [audio] text (Message.audio_text), when the project
-    # produced one — what TalkService would speak. None = text only.
-    audio_text: str | None = None
 
 
 # Canned replies for everything that never reaches the automaton. The
@@ -90,25 +82,12 @@ REPLY_REGISTERED = "You're all set! Registration complete — you can start chat
 REPLY_INVALID_ACTION = "That option is no longer available. Please choose one of these instead."
 REPLY_BUSY = "Please wait a moment and try again."
 REPLY_SESSION_TAKEN_OVER = "This conversation continued somewhere else. Send another message to keep chatting here."
-REPLY_DONE = "Done."
-REPLY_OPTIONS_PROMPT = "What would you like to do?"
 REPLY_TECHNICAL_PROBLEM = "We apologize for the inconvenience — a technical problem occurred. Please try again in a moment."
 REPLY_ACCEPT_TERMS_LABEL = "Accept"
 
-_MAX_REPLY_BUTTONS = 3
-_MAX_LIST_ROWS = 10
-_BUTTON_TITLE_LIMIT = 20
-_LIST_ROW_TITLE_LIMIT = 24
-_LIST_ROW_DESCRIPTION_LIMIT = 72
-_INTERACTIVE_BODY_LIMIT = 1024
-_LIST_BUTTON_TEXT = "Options"
 # Reserved action id for the terms-acceptance button — distinct from any
 # real automaton action name, dispatched before _run_action ever sees it.
 _ACCEPT_TERMS_ACTION = "__whatsapp_accept_terms__"
-
-
-def _truncate(text: str, limit: int) -> str:
-    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
 
 
 class WhatsAppService(object):
@@ -130,6 +109,9 @@ class WhatsAppService(object):
         )
         self._sender_locks: dict[str, asyncio.Lock] = {}
         self._voice_notes = VoiceNoteSynthesizer(self._assistant_talker)
+        # Every limit WhatsApp puts on a message, and the voice-note
+        # upload, live there rather than here (see whatsapp/outbound.py).
+        self._outbound = Outbound(self._client, self._voice_notes)
 
     def register(self) -> None:
         """What reaches this channel from anywhere else: a text addressed
@@ -166,7 +148,7 @@ class WhatsAppService(object):
                     logger.exception(f"WhatsApp: unexpected error resolving a reply to {message.id} from {message.sender}: {exc}")
                     await self._client.send_text(message.sender, REPLY_TECHNICAL_PROBLEM)
                     return
-                await self._send_replies(
+                await self._outbound.send(
                     message.sender, replies, manual_actions, session_id, voice=self._wants_voice(spoken),
                 )
         except Exception as exc:  # noqa: BLE001
@@ -412,7 +394,7 @@ class WhatsAppService(object):
             if retry_code is not None:
                 notice = REPLY_TECHNICAL_PROBLEM
 
-        return self._replies_from(messages, notice), manual_actions, session_id
+        return replies_from(messages, notice), manual_actions, session_id
 
     async def _attempt_action(
         self, action_id: str, session_id: int,
@@ -466,29 +448,15 @@ class WhatsAppService(object):
 
     def _new_assistant_replies(self, session_id: int, last_seen_id: int, notice: str | None = None) -> list[Reply]:
         """Still the transcript-reading form, for the one caller that has
-        no result to report from: _bootstrap_replies, which sends
-        whatever a session already had rather than what a turn produced."""
-        return self._replies_from(
+        no result to report from: _bootstrap_replies, which sends whatever
+        a session already had rather than what a turn produced."""
+        return replies_from(
             [
                 m for m in self._db.get_messages(session_id)
                 if m["id"] > last_seen_id and m["role"] == "assistant"
             ],
             notice,
         )
-
-    @staticmethod
-    def _replies_from(messages: list[dict], notice: str | None = None) -> list[Reply]:
-        """Assistant messages as WhatsApp replies, empty ones dropped —
-        a turn can persist a blank assistant row, and an empty WhatsApp
-        message is refused by the Cloud API rather than ignored."""
-        replies = [
-            Reply(text=to_whatsapp_markdown(m["content"]), audio_text=(m.get("audio_text") or None))
-            for m in messages
-            if (m["content"] or "").strip()
-        ]
-        if notice:
-            replies.append(Reply(notice))
-        return replies
 
     # ----------------------------------------------------------------- #
     # Outbound delivery — plain text, or the last message as buttons/list
@@ -514,97 +482,13 @@ class WhatsAppService(object):
         return True
 
     def _wants_voice(self, spoken: bool) -> bool:
-        if self._voice_notes is None:
+        """The project's own voice-replies policy, asked of a build that
+        can actually speak — `can_speak` is False when nothing here turns
+        text into audio, and then no policy makes it voice."""
+        if not self._outbound.can_speak:
             return False
         policy = self._config.voice_replies
         return policy == "always" or (policy == "when-spoken-to" and spoken)
-
-    async def _send_replies(
-        self, to: str, replies: list[Reply], manual_actions: list[dict] | None, session_id: int | None,
-        voice: bool = False,
-    ) -> None:
-        """Each reply goes out once — as a voice note when `voice` and the
-        reply has an audio text (and the note actually gets sent), as text
-        otherwise. Buttons ride on the last reply's text; after a spoken
-        last reply they come on a short follow-up prompt instead."""
-        replies = [r for r in replies if r.text]
-        if not manual_actions:
-            for reply in replies:
-                await self._send_one(to, reply, voice)
-            return
-        *leading, last = replies or [Reply(REPLY_DONE)]
-        for reply in leading:
-            await self._send_one(to, reply, voice)
-        if voice and await self._try_voice_note(to, last):
-            await self._send_with_buttons(to, REPLY_OPTIONS_PROMPT, manual_actions, session_id)
-        else:
-            await self._send_with_buttons(to, last.text, manual_actions, session_id)
-
-    async def _send_one(self, to: str, reply: Reply, voice: bool) -> None:
-        if voice and await self._try_voice_note(to, reply):
-            return
-        await self._client.send_text(to, reply.text)
-
-    async def _try_voice_note(self, to: str, reply: Reply) -> bool:
-        """True once a voice note for `reply` is on its way; False (with
-        the reason logged) whenever it can't be — the caller falls back to
-        text, never to silence."""
-        logger.info(
-            f"WhatsApp: _try_voice_note for {to}: audio_text={reply.audio_text!r} "
-            f"talk_service_configured={self._voice_notes is not None}"
-        )
-        if not reply.audio_text or self._voice_notes is None:
-            return False
-        from whatsapp.audio import WHATSAPP_AUDIO_MIME
-
-        try:
-            mp3 = await self._voice_notes.mp3_for(reply.audio_text)
-            if not mp3:
-                logger.warning("WhatsApp: talk-service produced no audio, falling back to text.")
-                return False
-            media_id = await self._client.upload_media(mp3, WHATSAPP_AUDIO_MIME)
-            await self._client.send_audio(to, media_id)
-            logger.info(f"WhatsApp: audio message sent to {to} ({len(mp3)} bytes, media {media_id}).")
-            return True
-        except Exception as exc:  # noqa: BLE001
-            # Deliberately broad: PyAV's own encoding failures (a partial/
-            # truncated WAV from a TalkService generation that ended early)
-            # raise its own exception types, not ValueError/httpx.HTTPError —
-            # letting one of those escape here would propagate past
-            # _send_replies' caller and leave the user with no reply at all
-            # instead of the text fallback this docstring promises.
-            logger.warning(f"WhatsApp: voice note not sent ({exc}), falling back to text.")
-            return False
-
-    async def _send_with_buttons(
-        self, to: str, body: str, manual_actions: list[dict], session_id: int | None,
-    ) -> None:
-        if len(body) > _INTERACTIVE_BODY_LIMIT:
-            await self._client.send_text(to, body)
-            body = REPLY_OPTIONS_PROMPT
-
-        actions = manual_actions
-        if len(actions) > _MAX_LIST_ROWS:
-            logger.warning(f"WhatsApp: state has {len(actions)} manual actions, sending only the first {_MAX_LIST_ROWS}.")
-            actions = actions[:_MAX_LIST_ROWS]
-
-        action_names = [a["name"] for a in actions]
-        if len(actions) <= _MAX_REPLY_BUTTONS:
-            logger.info(f"WhatsApp: sending buttons for session {session_id}: {action_names}.")
-            buttons = [(a["name"], _truncate(a["ui_button"], _BUTTON_TITLE_LIMIT)) for a in actions]
-            await self._client.send_buttons(to, body, buttons)
-        else:
-            logger.info(f"WhatsApp: sending list for session {session_id}: {action_names}.")
-            rows = [
-                (
-                    a["name"],
-                    _truncate(a["ui_button"], _LIST_ROW_TITLE_LIMIT),
-                    _truncate(a["ui_description"], _LIST_ROW_DESCRIPTION_LIMIT) if a["ui_description"] else None,
-                )
-                for a in actions
-            ]
-            await self._client.send_list(to, body, _LIST_BUTTON_TEXT, rows)
-
 
 def _notice(text: str) -> tuple[list[Reply], None, None, bool]:
     return [Reply(text)], None, None, False

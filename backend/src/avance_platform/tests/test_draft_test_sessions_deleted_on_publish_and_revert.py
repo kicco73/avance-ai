@@ -46,7 +46,7 @@ def _upload_activate_and_establish_state(client, project_name: str):
     )
     assert response.status_code == 200, response.text
     assert parse_sse_result(response)["project_id"] == project_name
-    assert client.post(f"/api/skills/platform/projects/{project_name}/activate").status_code == 200
+    assert client.post(f"/api/core/projects/{project_name}/activate").status_code == 200
     assert client.post(f"/api/skills/platform/projects/{project_name}/publish", json={}).status_code == 200
 
     session_response = client.get("/api/skills/webchat/sessions/current")

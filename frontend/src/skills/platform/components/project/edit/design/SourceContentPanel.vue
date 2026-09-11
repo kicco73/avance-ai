@@ -4,7 +4,7 @@ import Papa from 'papaparse'
 import { TabulatorFull as Tabulator } from 'tabulator-tables'
 import 'tabulator-tables/dist/css/tabulator.min.css'
 import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile, postSourceWebImport } from '../../../../api.js'
-import { promptDialog } from '../../../../dialogStore.js'
+import { promptDialog } from '../../../../../../dialogStore.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },

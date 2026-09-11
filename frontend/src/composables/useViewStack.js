@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 
-export function useViewStack(currentUserRole, customerHomeView) {
+export function useViewStack(currentUserRole) {
   const pushedView = ref(null)
   // What the pushed view is *about*. One ref rather than one per view:
   // App.vue used to carry editProjectId, labelProjectId,
@@ -37,7 +37,6 @@ export function useViewStack(currentUserRole, customerHomeView) {
       chatOpen.value = false
       return
     }
-    if (pushedView.value === 'appStore') customerHomeView.value?.refresh()
     pushedView.value = null
   }
 

@@ -1,10 +1,7 @@
-import { apiFetch } from './core.js'
+import { apiFetch } from '../../../api/core.js'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 
-export function getProjects() {
-  return apiFetch(`${API_URL}/skills/platform/projects`)
-}
 
 // Settings > Runtime status view's own table — every project's own
 // {id, status, paused_reason, revision, published_revision, broken}.
@@ -24,9 +21,6 @@ export function deleteProjectBrokenWarning(warningId) {
   return apiFetch(`${API_URL}/skills/platform/settings/warnings/${encodeURIComponent(warningId)}`, { method: 'DELETE' })
 }
 
-export function getUsers() {
-  return apiFetch(`${API_URL}/skills/platform/users`)
-}
 
 export function putUserRole(userId, role) {
   return apiFetch(`${API_URL}/skills/platform/users/${encodeURIComponent(userId)}/role`, {
@@ -54,29 +48,9 @@ export function postNewProject() {
   return apiFetch(`${API_URL}/skills/platform/projects`, { method: 'POST' })
 }
 
-// Settings > "About Avance..." dialog — {name, version}, version being
-// whatever the running backend's own __version__ (main.py) currently is.
-export function getAbout() {
-  return apiFetch(`${API_URL}/core/settings/about`)
-}
 
-export function getBackup() {
-  return apiFetch(`${API_URL}/core/settings/backup`, {}, { parse: 'blob' })
-}
 
-export function postRestoreBackup(file) {
-  return apiFetch(`${API_URL}/core/settings/backup`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/octet-stream' },
-    body: file
-  })
-}
 
-export function activateProject(projectId) {
-  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/activate`, {
-    method: 'POST'
-  })
-}
 
 // Streams progress SSE-style within this same response, same as
 // postImportSessions — see readSseResult. `onProgress` gets each chunk's
@@ -100,42 +74,11 @@ export function deleteProject(projectId) {
   })
 }
 
-// Settings > Manage services > Database — wipes live sessions across
-// every project at once, not just one.
-export function postWipeAllLiveSessions() {
-  return apiFetch(`${API_URL}/core/settings/database/wipe-live-sessions`, { method: 'POST' })
-}
 
-// Settings > Manage services > Database — deletes every archive revision,
-// across every project, that's neither published, the current draft, nor
-// pinned by any session. Returns {success, deleted} — deleted is how many
-// distinct revisions were actually removed.
-export function postCleanUnusedRevisions() {
-  return apiFetch(`${API_URL}/core/settings/database/clean-unused-revisions`, { method: 'POST' })
-}
 
-// Settings > Manage services — read-only snapshot of .config.yml's own
-// service sections (see backend AppConfig.public_services_snapshot).
-export function getServicesConfig() {
-  return apiFetch(`${API_URL}/core/settings/services`)
-}
 
-// Settings > Manage services > AI — each provider's own daily token
-// spend, fetched once when the panel opens (see db/ai_usage.py):
-// {today: {label: tokens}, today_cache_read: {label: tokens},
-// history: [{timestamp, values: {label: tokens}, cache_read: {label: tokens}}, ...],
-// cache_read_ratio: {label: 0..1}}.
-export function getAiUsage() {
-  return apiFetch(`${API_URL}/core/settings/services/ai-usage`)
-}
 
 export function downloadProject(projectId) {
   return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}`, {}, { parse: 'blob' })
 }
 
-// Settings > Manage services > Scheduler — Task rows for one status at a
-// time, by run_at per `order` (see db/tasks.py's list_tasks).
-export function getScheduledTasks(status, order = 'asc') {
-  const params = new URLSearchParams({ status, order })
-  return apiFetch(`${API_URL}/core/settings/tasks?${params}`)
-}

@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, nextTick } from 'vue'
 
-vi.mock('../src/api.js', () => ({
+vi.mock('../../../api.js', () => ({
   getProjectBrokenWarnings: vi.fn(),
   deleteProjectBrokenWarning: vi.fn().mockResolvedValue({ status: 'ok' })
 }))
@@ -14,7 +14,7 @@ const { subscribe, unsubscribe } = vi.hoisted(() => {
   const unsubscribe = vi.fn()
   return { subscribe: vi.fn(() => unsubscribe), unsubscribe }
 })
-vi.mock('../src/busChannel.js', () => ({ busChannel: { subscribe } }))
+vi.mock('../../../busChannel.js', () => ({ busChannel: { subscribe } }))
 
 function warning(id, projectId, overrides = {}) {
   return {
@@ -29,7 +29,7 @@ describe('BrokenProjectWarningsMenu.vue', () => {
 
   beforeEach(async () => {
     vi.resetModules()
-    api = await import('../src/api.js')
+    api = await import('../../../api.js')
     container = document.createElement('div')
     document.body.appendChild(container)
   })
@@ -41,7 +41,7 @@ describe('BrokenProjectWarningsMenu.vue', () => {
 
   async function mountMenu(rows) {
     api.getProjectBrokenWarnings.mockResolvedValue({ warnings: rows })
-    const Menu = (await import('../src/components/settings/BrokenProjectWarningsMenu.vue')).default
+    const Menu = (await import('../components/settings/BrokenProjectWarningsMenu.vue')).default
     const opened = []
     const app = createApp(Menu, { metadataById: { p: { ui_label: 'Payments' } }, onOpen: (w) => opened.push(w) })
     app.mount(container)

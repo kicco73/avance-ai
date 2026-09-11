@@ -2,7 +2,7 @@
 // Topbar "⚙" menu: dropdown with toggle / click-outside-to-close,
 // offering Manage projects and Manage services.
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { roleSatisfies } from '../../roles.js'
+import { roleSatisfies } from '../../../../roles.js'
 
 const props = defineProps({
   // App.vue only renders this component once the current user is at

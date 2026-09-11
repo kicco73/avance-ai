@@ -9,7 +9,7 @@ let postSourceWebImport
 beforeAll(async () => {
   vi.stubEnv('VITE_API_URL', 'http://localhost:8000/api')
   vi.resetModules()
-  ;({ postSourceWebImport } = await import('../src/api/projectEditor.js'))
+  ;({ postSourceWebImport } = await import('../api/projectEditor.js'))
 })
 
 function fakeSseResponse(messages) {

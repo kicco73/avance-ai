@@ -9,9 +9,10 @@ import pytest
 
 from system.service_error import ServiceError
 from system.session import Session
+from whatsapp.outbound import REPLY_DONE
 from whatsapp.webhook import IncomingMessage, extract_incoming
 from whatsapp.whatsapp_service import (
-    REPLY_ACCEPT_TERMS_LABEL, REPLY_BUSY, REPLY_DONE, REPLY_INVALID_ACTION, REPLY_NO_CHAT_STATE, REPLY_NOT_LINKED,
+    REPLY_ACCEPT_TERMS_LABEL, REPLY_BUSY, REPLY_INVALID_ACTION, REPLY_NO_CHAT_STATE, REPLY_NOT_LINKED,
     REPLY_NOT_REGISTERED, REPLY_PAUSED, REPLY_REGISTERED, REPLY_SESSION_TAKEN_OVER, REPLY_TECHNICAL_PROBLEM,
     REPLY_TERMS_ACCEPTED, REPLY_UNSUPPORTED,
 )

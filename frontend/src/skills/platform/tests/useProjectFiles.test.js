@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from 'vue'
 
-vi.mock('../src/api.js', () => ({
+vi.mock('../../../api.js', () => ({
   getProjectFiles: vi.fn(),
   getProjectFileTypes: vi.fn(),
   putProjectFile: vi.fn(),
@@ -9,22 +9,22 @@ vi.mock('../src/api.js', () => ({
   deleteProjectFile: vi.fn(),
   postAddLegalTerms: vi.fn(),
 }))
-vi.mock('../src/errorStore.js', () => ({
+vi.mock('../../../errorStore.js', () => ({
   setApiError: vi.fn(),
   clearApiError: vi.fn(),
 }))
-vi.mock('../src/dialogStore.js', () => ({
+vi.mock('../../../dialogStore.js', () => ({
   confirmDialog: vi.fn(),
   promptDialog: vi.fn(),
   chooseDialog: vi.fn(),
 }))
 
-import { getProjectFiles, getProjectFileTypes, putProjectFile, putProjectFileBinary, deleteProjectFile, postAddLegalTerms } from '../src/api.js'
-import { setApiError, clearApiError } from '../src/errorStore.js'
-import { confirmDialog, promptDialog, chooseDialog } from '../src/dialogStore.js'
-import { useProjectFiles } from '../src/composables/useProjectFiles.js'
-import { ensureProjectFileTypes } from '../src/projectFileTypes.js'
-import { PROJECT_FILE_TYPES_PAYLOAD } from './projectFileTypesFixture.js'
+import { getProjectFiles, getProjectFileTypes, putProjectFile, putProjectFileBinary, deleteProjectFile, postAddLegalTerms } from '../../../api.js'
+import { setApiError, clearApiError } from '../../../errorStore.js'
+import { confirmDialog, promptDialog, chooseDialog } from '../../../dialogStore.js'
+import { useProjectFiles } from '../useProjectFiles.js'
+import { ensureProjectFileTypes } from '../../../projectFileTypes.js'
+import { PROJECT_FILE_TYPES_PAYLOAD } from '../../../../tests/projectFileTypesFixture.js'
 
 function mountComposable(setup) {
   let result

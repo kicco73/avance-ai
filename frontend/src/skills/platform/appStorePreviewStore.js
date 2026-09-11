@@ -1,7 +1,7 @@
 import {
   getCurrentPreviewSession, postCreatePreviewSession, deleteSession, deletePreviewSessionEnv,
 } from './api.js'
-import { createChatStore } from './chatStoreFactory.js'
+import { createChatStore } from '../../chatStoreFactory.js'
 
 let appId = null
 export function setPreviewApp(id) {

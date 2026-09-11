@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
-import '../../styles/headerMenu.css'
-import { useOutsideClickClose } from '../../composables/useOutsideClickClose.js'
+import '../../../../styles/headerMenu.css'
+import { useOutsideClickClose } from '../../../../composables/useOutsideClickClose.js'
 
 const emit = defineEmits(['new-project', 'upload'])
 

@@ -22,6 +22,7 @@ export const messageListeners = contributionsOf('messageListeners')
 export const stateListeners = contributionsOf('stateListeners')
 export const shareChannels = contributionsOf('shareChannels')
 export const liveChatChannels = contributionsOf('liveChatChannels')
+export const roleHomes = contributionsOf('roleHomes')
 
 export const channelLabels = computed(() => manifests
   .filter((manifest) => isSkillInstalled(manifest.key))

@@ -14,7 +14,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from 'vue'
 
-vi.mock('../src/api.js', () => ({
+vi.mock('../../../api.js', () => ({
   getProjectFile: vi.fn().mockResolvedValue({
     content: 'ui-label: Intake\n', can_undo: false, can_redo: false,
     content_type: 'text/yaml', media_type: 'text/yaml',
@@ -39,7 +39,7 @@ describe('CodeEditor.vue colors index.yml plain scalar values, not just keys', (
   })
 
   it('wraps both the key and its plain-scalar value in a highlighted span', async () => {
-    const CodeEditor = (await import('../src/components/CodeEditor.vue')).default
+    const CodeEditor = (await import('../CodeEditor.vue')).default
     const app = createApp(CodeEditor, { projectId: 'proj', fileName: 'index.yml' })
     const instance = app.mount(container)
     await vi.waitFor(() => expect(instance.loading).toBe(false))

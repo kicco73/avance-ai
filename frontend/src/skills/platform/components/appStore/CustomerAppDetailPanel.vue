@@ -2,8 +2,8 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { deleteInstallApp } from '../../api.js'
 import { getAppSessionSummaries } from '../../api/appStore.js'
-import { confirmDialog } from '../../dialogStore.js'
-import { renderMarkdown } from '../../markdown.js'
+import { confirmDialog } from '../../../../dialogStore.js'
+import { renderMarkdown } from '../../../../markdown.js'
 
 const props = defineProps({
   app: { type: Object, required: true }

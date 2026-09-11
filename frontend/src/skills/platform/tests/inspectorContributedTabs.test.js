@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, nextTick, ref } from 'vue'
-import Inspector from '../src/components/inspector/Inspector.vue'
+import Inspector from '../components/inspector/Inspector.vue'
 
 // The mechanism EditProjectView uses to render a tab it does not know
 // about: a dynamic slot name, the scoped registerTab it hands back, and a

@@ -32,6 +32,12 @@ Meta ──POST /api/skills/whatsapp/webhook──▶ WhatsAppController   (role
   POSTs, the HMAC over it, the redeliveries it sends when the webhook did
   not answer 200 fast enough, and the CommonMark → WhatsApp flattening.
   None of it is a conversation, which is why it is not in the service.
+- `whatsapp/outbound.py` — the outbound half: how a reply becomes
+  WhatsApp messages. Every limit this API puts on one lives here (three
+  buttons or ten list rows, twenty-character titles, a 1024-character
+  interactive body, a voice note uploaded before it can be sent, buttons
+  riding on the last reply's text because they cannot travel alone), and
+  none of it is a conversation.
 - `whatsapp/cloud_api_client.py` — `send_text` (auto-split over 4096 chars), `send_buttons`/`send_list` (interactive replies), `send_audio`, `upload_media`/`download_media`, and `mark_read`.
 - `whatsapp/audio.py` — WAV (as `TalkService` emits it, streaming header included) → MP3. WhatsApp renders OGG/Opus as a voice note (waveform, mic icon) and any other audio type as a plain audio message with the generic player; the bot's replies go out as MP3 so they show as audio messages. Encoder from PyAV, already installed as faster-whisper's dependency; no ffmpeg binary.
 - `chat/turn_service.py` — `manual_actions` on every state payload reaching a client with a known session (`_with_manual_actions`); `automaton/automaton.py`'s `manual_actions_for` is the actual filter, shared with `tracking/wakeup_service.py`'s own cross-project notification push.

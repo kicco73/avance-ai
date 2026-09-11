@@ -57,7 +57,7 @@ def _setup_project(client, *, autotracking_on_ai_message: bool) -> int:
     )
     assert response.status_code == 200, response.text
     assert parse_sse_result(response)["project_id"] == "proj"
-    assert client.post("/api/skills/platform/projects/proj/activate").status_code == 200
+    assert client.post("/api/core/projects/proj/activate").status_code == 200
     assert client.post("/api/skills/platform/projects/proj/publish", json={}).status_code == 200
     # A live session must exist and already be opened first — otherwise a
     # later GET .../messages for an imported session id would bootstrap
@@ -154,7 +154,7 @@ states:
     )
     assert response.status_code == 200, response.text
     assert parse_sse_result(response)["project_id"] == "other"
-    assert client.post("/api/skills/platform/projects/other/activate").status_code == 200
+    assert client.post("/api/core/projects/other/activate").status_code == 200
     assert client.post("/api/skills/platform/projects/other/publish", json={}).status_code == 200
 
     # Still succeeds — "a" is a real state in the *message's own* project
