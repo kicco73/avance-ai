@@ -140,7 +140,7 @@ describe('skill boundaries', () => {
 
   // A skill renders with components/skillkit/ and with nothing else the
   // core happens to own. The directories below are the authoring app's
-  // own screens: they go with skills/platform/ when it is cut out, so a
+  // own screens: they go with the authoring skill when it is cut out, so a
   // skill importing from one of them is a skill -> skill dependency that
   // has not been recognised yet. That is exactly what happened to the
   // benchmark, which mounted the editor's State tab with its writes

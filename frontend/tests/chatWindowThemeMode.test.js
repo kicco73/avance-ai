@@ -29,7 +29,7 @@ vi.mock('../src/api.js', () => ({
   postTruncateSession: vi.fn(),
   getTestChatModels: vi.fn(),
   postTestChatModelSelection: vi.fn(),
-  projectFileContentUrl: vi.fn((projectName, fileName, sessionId) => `/api/skills/platform/projects/${projectName}/files/${fileName}/content?session_id=${sessionId}`)
+  projectFileContentUrl: vi.fn((projectName, fileName, sessionId) => `/api/core/projects/${projectName}/files/${fileName}/content?session_id=${sessionId}`)
 }))
 
 function currentSkinStyleTags() {
