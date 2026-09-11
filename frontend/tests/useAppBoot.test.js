@@ -27,11 +27,15 @@ vi.mock('../src/shareLink.js', () => ({
   consumeInviteCode: vi.fn(() => null),
   peekInviteCode: vi.fn(() => null),
 }))
+vi.mock('../src/skills/registry.js', () => ({
+  messageListeners: { value: [] },
+  stateListeners: { value: [{ stateReceived: (...args) => stateReceivedSpy(...args) }] },
+}))
 vi.mock('../src/skillRoster.js', () => ({
   loadSkillRoster: vi.fn(),
+  isSkillInstalled: () => true,
 }))
 vi.mock('../src/chatStore.js', () => ({
-  setCapabilities: vi.fn(),
   setInputTokenBudgetPerTurn: vi.fn(),
   setTotalTokenBudgetPerSession: vi.fn(),
   handleStateChange: vi.fn(),
@@ -46,7 +50,8 @@ import { requireLogin } from '../src/authStore.js'
 import { confirmDialog } from '../src/dialogStore.js'
 import { consumeInviteCode, peekInviteCode } from '../src/shareLink.js'
 import { loadSkillRoster } from '../src/skillRoster.js'
-import { setCapabilities, setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../src/chatStore.js'
+const stateReceivedSpy = vi.fn()
+import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../src/chatStore.js'
 import { useAppBoot } from '../src/composables/useAppBoot.js'
 
 function mountComposable(setup) {
@@ -134,7 +139,6 @@ describe('useAppBoot', () => {
         talk_enabled: true, listen_enabled: true, input_token_budget_per_turn: 8000, total_token_budget_per_session: 200000,
       })
 
-      expect(setCapabilities).toHaveBeenCalledWith({ talkAvailable: true, micAvailable: true })
       expect(loadSkillRoster).toHaveBeenCalled()
       expect(setInputTokenBudgetPerTurn).toHaveBeenCalledWith(8000)
       expect(setTotalTokenBudgetPerSession).toHaveBeenCalledWith(200000)
@@ -382,5 +386,26 @@ describe('useAppBoot', () => {
     await s.handleLogout()
     expect(disconnectChat).toHaveBeenCalled()
     expect(requireLogin).toHaveBeenCalled()
+  })
+
+  describe('what a skill is told at boot', () => {
+    it('hands the boot state to whoever contributed a listener', async () => {
+      getState.mockResolvedValue({ role: 'admin', talk_enabled: false })
+      const s = mount()
+      s.startBootSequence()
+      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+
+      expect(stateReceivedSpy).toHaveBeenCalledWith(expect.objectContaining({ talk_enabled: false }))
+    })
+
+    it('starts the app anyway when one of them throws', async () => {
+      getState.mockResolvedValue({ role: 'admin' })
+      stateReceivedSpy.mockImplementationOnce(() => { throw new Error('a broken skill') })
+
+      const s = mount()
+      s.startBootSequence()
+
+      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+    })
   })
 })

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { getMe, postEraseData, putWhatsAppPhoneNumber } from '../api.js'
+import { getMe, postEraseData } from '../api.js'
+import { profileFields } from '../skills/registry.js'
 import { confirmDialog, infoDialog, promptDialog } from '../dialogStore.js'
 import { disconnect as disconnectChat } from '../chatClient.js'
 import { requireLogin } from '../authStore.js'
@@ -9,6 +10,10 @@ import AppHeader from './AppHeader.vue'
 const emit = defineEmits(['close'])
 
 const profile = ref(null)
+
+function handleProfileUpdated(updated) {
+  profile.value = updated
+}
 const loading = ref(true)
 const erasing = ref(false)
 
@@ -32,72 +37,7 @@ function formatDate(iso) {
   return iso ? new Date(iso).toLocaleString() : '—'
 }
 
-const savingWhatsApp = ref(false)
 
-function validateWhatsAppNumber(value) {
-  const trimmed = value.trim()
-  if (!trimmed) return ''
-  if (!/^\+?\d+$/.test(trimmed)) return 'Digits only (E.164, no spaces or symbols).'
-  return ''
-}
-
-function describeExistingAccount(outcome) {
-  const sessions = outcome.existing_account_session_count
-  const history = `${sessions} session${sessions === 1 ? '' : 's'}`
-  const created = formatDate(outcome.existing_account_created_at)
-  if (outcome.existing_account_provider === 'whatsapp') {
-    return `a WhatsApp-only account created on ${created}, with ${history}`
-  }
-  const provider = outcome.existing_account_provider ?? 'unknown provider'
-  return `the account ${outcome.existing_account_id} (${provider}), created on ${created}, with ${history}`
-}
-
-async function confirmAccountUnification(outcome) {
-  const linkedTo = `This number is already linked to ${describeExistingAccount(outcome)}.`
-  if (!outcome.merge_allowed) {
-    await infoDialog({
-      title: 'Account unification required',
-      body: `${linkedTo}\n\nLinking it to your account means unifying the two accounts, `
-        + `which requires admin privileges. Ask an administrator.`
-    })
-    return false
-  }
-  return confirmDialog({
-    title: 'Unify accounts?',
-    body: `${linkedTo}\n\nUnifying moves all of its sessions and data to your account `
-      + `and removes the other account. This cannot be undone.`,
-    okLabel: 'Unify accounts',
-    danger: true
-  })
-}
-
-async function editWhatsAppNumber() {
-  const result = await promptDialog({
-    title: 'WhatsApp number',
-    body: 'The number that chats as your account on WhatsApp. Leave empty to unlink.',
-    placeholder: '34600000001',
-    initialValue: profile.value?.whatsapp_phone_number ?? '',
-    validate: validateWhatsAppNumber
-  })
-  if (result === null) return
-  const number = result.trim() || null
-  savingWhatsApp.value = true
-  try {
-    const outcome = await putWhatsAppPhoneNumber(number)
-    if (outcome.merge_required) {
-      savingWhatsApp.value = false
-      if (!(await confirmAccountUnification(outcome))) return
-      savingWhatsApp.value = true
-      profile.value = await putWhatsAppPhoneNumber(number, true)
-      return
-    }
-    profile.value = outcome
-  } catch {
-    // already surfaced via apiFetch
-  } finally {
-    savingWhatsApp.value = false
-  }
-}
 
 async function load() {
   loading.value = true
@@ -172,13 +112,13 @@ async function eraseAllData() {
             <span class="profile-card-field-label">Last login</span>
             <span class="profile-card-field-value">{{ formatDate(profile.last_login) }}</span>
           </div>
-          <div class="profile-card-field">
-            <span class="profile-card-field-label">WhatsApp</span>
-            <div class="profile-card-field-row">
-              <span class="profile-card-field-value">{{ profile.whatsapp_phone_number ? `+${profile.whatsapp_phone_number}` : 'Not linked' }}</span>
-              <button type="button" class="profile-card-edit-btn" :disabled="savingWhatsApp" @click="editWhatsAppNumber">Edit</button>
-            </div>
-          </div>
+          <component
+            v-for="field in profileFields"
+            :key="field.id"
+            :is="field.component"
+            :profile="profile"
+            @updated="handleProfileUpdated"
+          />
         </div>
 
         <button type="button" class="erase-data-btn" :disabled="erasing" @click="eraseAllData">
@@ -296,6 +236,34 @@ async function eraseAllData() {
   border-top: 1px solid #eee;
 }
 
+
+.erase-data-btn {
+  margin-top: 2rem;
+  padding: 0.55rem 1.2rem;
+  border-radius: 8px;
+  border: 1px solid #c62828;
+  background: white;
+  color: #c62828;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.erase-data-btn:hover:not(:disabled) {
+  background: #c62828;
+  color: white;
+}
+
+.erase-data-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+</style>
+
+<style>
+/* Unscoped, like AppHeader.vue's own control classes: a profile card may
+   hold fields contributed by whoever owns that part of an account, and
+   they render in their own scope, out of reach of a scoped selector. */
 .profile-card-field {
   display: flex;
   flex-direction: column;
@@ -339,28 +307,6 @@ async function eraseAllData() {
 }
 
 .profile-card-edit-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.erase-data-btn {
-  margin-top: 2rem;
-  padding: 0.55rem 1.2rem;
-  border-radius: 8px;
-  border: 1px solid #c62828;
-  background: white;
-  color: #c62828;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.erase-data-btn:hover:not(:disabled) {
-  background: #c62828;
-  color: white;
-}
-
-.erase-data-btn:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }

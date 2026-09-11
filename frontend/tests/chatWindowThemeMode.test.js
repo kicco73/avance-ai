@@ -8,7 +8,7 @@ vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn() }))
 vi.mock('../src/mic.js', () => ({ startRecording: vi.fn(), stopRecording: vi.fn() }))
-vi.mock('../src/audio.js', () => ({ playMessageChime: vi.fn(), playMessageAudio: vi.fn() }))
+vi.mock('../src/audio.js', () => ({ playMessageChime: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn() }))
 vi.mock('../src/api.js', () => ({
   getCurrentSession: vi.fn(),
   postCreateSession: vi.fn(),
@@ -25,8 +25,6 @@ vi.mock('../src/api.js', () => ({
   getAiModels: vi.fn(),
   postAiModelSelection: vi.fn(),
   putMessageReaction: vi.fn(),
-  messageAudioUrl: vi.fn(),
-  postListenTranscribe: vi.fn(),
   postResetTestSessions: vi.fn(),
   postTruncateSession: vi.fn(),
   getTestChatModels: vi.fn(),

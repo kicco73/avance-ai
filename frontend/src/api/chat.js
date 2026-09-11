@@ -72,19 +72,6 @@ export function createChatSocket() {
   return new WebSocket(WS_URL)
 }
 
-export function getTestStatus(projectId) {
-  return apiFetch(`${API_URL}/skills/testing/projects/${encodeURIComponent(projectId)}/status`)
-}
-
-export function postListenTranscribe(audioBlob) {
-  const formData = new FormData()
-  formData.append('file', audioBlob, 'recording.webm')
-  return apiFetch(`${API_URL}/skills/listen/transcribe`, {
-    method: 'POST',
-    body: formData
-  })
-}
-
 export function postAction(actionName, sessionId) {
   return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/actions`, {
     method: 'POST',
@@ -125,10 +112,6 @@ export function putActuators(sessionId, enabled) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled })
   })
-}
-
-export function messageAudioUrl(messageId) {
-  return `${API_URL}/skills/talk/messages/${messageId}/audio`
 }
 
 // "Restart from here": deletes every message (and its Signals rows) at

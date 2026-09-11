@@ -5,6 +5,7 @@ import { useSessionSelection } from '../../composables/useSessionSelection.js'
 import { useSessionDragAndDrop } from '../../composables/useSessionDragAndDrop.js'
 import DocInfoButton from '../DocInfoButton.vue'
 import SessionsTreeHeader from './SessionsTreeHeader.vue'
+import { channelLabels } from '../../skills/registry.js'
 
 const props = defineProps({
   sessions: { type: Array, required: true },
@@ -57,10 +58,9 @@ function displayNameFor(username) {
   return user?.name || user?.email || username
 }
 
-const CHANNEL_LABELS = { 'whatsapp-chat': 'WhatsApp' }
 
 function channelLabel(session) {
-  return session.type === 'live' ? CHANNEL_LABELS[session.channel] : null
+  return session.type === 'live' ? channelLabels.value[session.channel] : null
 }
 
 const branchOrder = ref([])

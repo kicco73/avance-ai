@@ -2,7 +2,7 @@ import { computed, nextTick, ref } from 'vue'
 import {
   getMessages, getSessionState, postAction, getAutoTracking, putAutoTracking, getActuators, putActuators,
   putSessionAudio,
-  postTruncateSession, deleteSession, postCloseSession, putMessageReaction, postListenTranscribe, messageAudioUrl,
+  postTruncateSession, deleteSession, postCloseSession, putMessageReaction,
 } from './api.js'
 import { sendMessage as sendChatMessage, onConnectionState, getConnectionState } from './chatClient.js'
 import { busChannel } from './busChannel.js'
@@ -10,7 +10,9 @@ import { ChatReconnectSync } from './chatReconnectSync.js'
 import { applyAiModelInfo } from './aiModelStore.js'
 import { ToolStatusHold } from './toolStatusHold.js'
 import { subscribeToStateNotifications } from './notificationBus.js'
-import { playMessageChime, playMessageAudio, playReactionChime, unlockAudioPlayback } from './audio.js'
+import { playMessageChime, playReactionChime } from './audio.js'
+import { audioEnabled } from './chatPreferences.js'
+import { messageArrived } from './messageNotifier.js'
 import { clearApiError, setApiError } from './errorStore.js'
 import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
@@ -32,11 +34,10 @@ onConnectionState((next) => { chatConnectionState.value = next })
 
 // App-wide user preferences — genuinely not "which chat" state, so a
 // single shared instance regardless of how many chat stores exist (see
-// createChatStore below).
-export const audioEnabled = ref(false)
-export const talkAvailable = ref(true)
-export const micAvailable = ref(true)
-export const spokenTextEnabled = ref(false)
+// createChatStore below); audioEnabled/spokenTextEnabled live in
+// chatPreferences.js, re-exported here for the screens that read them
+// alongside the rest of a store.
+export { audioEnabled, spokenTextEnabled, toggleSpokenText } from './chatPreferences.js'
 // FIXME: null until GET /api/state resolves; kept separate from
 // chatStoreFactory's `state` ref, which handleStateChange overwrites with
 // a differently-shaped payload on every chat turn.
@@ -44,10 +45,6 @@ export const inputTokenBudgetPerTurn = ref(null)
 // Same null-until-boot shape as inputTokenBudgetPerTurn above.
 export const totalTokenBudgetPerSession = ref(null)
 
-export function setCapabilities({ talkAvailable: talk, micAvailable: mic }) {
-  talkAvailable.value = talk
-  micAvailable.value = mic
-}
 
 export function setInputTokenBudgetPerTurn(value) {
   inputTokenBudgetPerTurn.value = value
@@ -55,10 +52,6 @@ export function setInputTokenBudgetPerTurn(value) {
 
 export function setTotalTokenBudgetPerSession(value) {
   totalTokenBudgetPerSession.value = value
-}
-
-export function toggleSpokenText() {
-  spokenTextEnabled.value = !spokenTextEnabled.value
 }
 
 // One independent chat conversation's worth of state — the live chat and
@@ -339,18 +332,14 @@ export function createChatStore({
   function toggleAudio() {
     audioEnabled.value = !audioEnabled.value
     syncAudioPreference()
-    if (audioEnabled.value) {
-      // Inside this same click gesture — every narration from here on,
-      // including the one about to play below, happens well outside one.
-      unlockAudioPlayback()
-      const lastAssistant = [...messages.value].reverse().find((m) => m.role === 'assistant' && m.messageId != null)
-      if (lastAssistant) playMessageAudio(messageAudioUrl(lastAssistant.messageId))
-    }
+    return audioEnabled.value
   }
 
+  // Something in this build may turn a finished reply into sound. This
+  // store does not know who, or whether anyone does.
   function maybeAutoPlayAudio(messageId) {
-    if (!audioEnabled.value || messageId == null) return
-    playMessageAudio(messageAudioUrl(messageId))
+    if (messageId == null) return
+    messageArrived(messageId)
   }
 
   function setMessageFailed(id, failed) {
@@ -649,26 +638,23 @@ export function createChatStore({
     if (idx !== -1) messages.value.splice(idx, 1)
   }
 
-  async function handleVoiceMessage(audioBlob) {
+  // The placeholder a voice message occupies while something else turns
+  // it into words: whoever captured the audio calls back with the text,
+  // or says it came to nothing. What does the transcribing is not this
+  // store's business and is not always installed.
+  function beginVoiceMessage() {
     const message = { id: ++nextMessageId, role: 'user', content: '', failed: false, transcribing: true }
     messages.value.push(message)
-
-    let text
-    try {
-      const result = await postListenTranscribe(audioBlob)
-      text = result.text?.trim()
-    } catch {
-      dropVoicePlaceholder(message.id)
-      return
+    return {
+      transcribed(text) {
+        message.content = text
+        message.transcribing = false
+        return submitMessage(message)
+      },
+      abandoned() {
+        dropVoicePlaceholder(message.id)
+      },
     }
-    if (!text) {
-      dropVoicePlaceholder(message.id)
-      return
-    }
-
-    message.content = text
-    message.transcribing = false
-    await submitMessage(message)
   }
 
   async function handleResend(index) {
@@ -827,7 +813,7 @@ export function createChatStore({
     autoTrackingEnabled, autoTrackingLoading, actuatorsEnabled, actuatorsLoading, draft, turnCount,
     handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
     selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking, toggleActuators,
-    toggleAudio, handleSend, handleVoiceMessage, handleResend, handleReact, handleAction,
+    toggleAudio, handleSend, beginVoiceMessage, handleResend, handleReact, handleAction,
     clearChatUi, handleReset: resetSession ? handleReset : null, handleNewSession, handleCloseSession,
   }
 }

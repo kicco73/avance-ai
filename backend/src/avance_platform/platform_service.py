@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING
 
 from automaton.automaton import Automaton, CompiledAutomaton, ProjectPayload, StatePayload
 from project.web_import_job import WebImportJob
+from system import bus
+from system.bus import POINT_PROJECT_PUBLISHED
 from system.wiring import construct
 from tracking.sources.url import parse_source_url
 
@@ -176,7 +178,8 @@ class PlatformService(object):
         return self.manager.preview_publish(project_id)
 
     def publish_project(self, project_id: str, remap_to: str | None = None) -> dict:
-        return self.manager.publish_project(project_id, remap_to)
+        published = self.manager.publish_project(project_id, remap_to)
+        return bus.collect(POINT_PROJECT_PUBLISHED, {**published, "project_id": project_id})
 
     async def activate_project(self, project_id: str, commit: CommitCallback) -> Automaton:
         return await self.manager.activate_project(project_id, commit)

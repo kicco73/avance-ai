@@ -4,8 +4,8 @@ import MessageBubble from '../chat/MessageBubble.vue'
 import ActionButtons from '../chat/ActionButtons.vue'
 import ChatInput from '../chat/ChatInput.vue'
 import { getAppPreviewTranscript } from '../../api.js'
-import { audioEnabled, talkAvailable, micAvailable, spokenTextEnabled, toggleSpokenText } from '../../chatStoreFactory.js'
-import { toggleAudio } from '../../chatStore.js'
+import { spokenTextEnabled } from '../../chatStoreFactory.js'
+import { liveStore } from '../../chatStore.js'
 
 // The static teaser only: a real sample of what this app's chat looks
 // like, frozen and inert. It used to double as the "session starting up"
@@ -63,13 +63,7 @@ watch(() => props.appId, loadTranscript, { immediate: true })
         <ChatInput
           v-model="draft"
           disabled
-          :recording="false"
-          :mic-available="micAvailable"
-          :talk-available="talkAvailable"
-          :audio-enabled="audioEnabled"
-          :spoken-text-enabled="spokenTextEnabled"
-          @toggle-audio="toggleAudio"
-          @toggle-spoken-text="toggleSpokenText"
+          :store="liveStore"
         />
       </div>
     </div>

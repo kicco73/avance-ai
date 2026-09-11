@@ -345,3 +345,7 @@ export function postPublishProject(projectId, remapTo = null) {
 export function postRevertProject(projectId) {
   return projectFetch(projectId, `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/revert`, { method: 'POST' })
 }
+
+export function getProjectStates(projectId) {
+  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/states`)
+}

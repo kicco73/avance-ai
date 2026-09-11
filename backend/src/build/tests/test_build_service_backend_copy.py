@@ -214,57 +214,6 @@ def test_a_skill_left_out_of_a_build_is_a_directory_that_is_not_copied(tmp_path)
     )
 
 
-@pytest.mark.contract
-@pytest.mark.slow
-def test_a_backend_without_listen_still_imports_its_own_entry_point(tmp_path):
-    """The reason a build can drop a directory at all: nothing outside it
-    names it. If some core file still imported listen, this is where it
-    would show."""
-    import shutil
-    import subprocess
-    import sys
-
-    from build.backend_copy import BACKEND_DIR, _ignore_for
-
-    copy = tmp_path / "backend"
-    shutil.copytree(BACKEND_DIR, copy, ignore=_ignore_for(["listen"]))
-
-    result = subprocess.run(
-        [sys.executable, "-c", "import sys; sys.path.insert(0, 'src'); import main; from system import skills; print(skills.installed())"],
-        cwd=copy, capture_output=True, text=True, timeout=180,
-    )
-
-    assert result.returncode == 0, result.stderr[-2000:]
-    assert "'package': 'listen'" not in result.stdout
-
-
-@pytest.mark.contract
-@pytest.mark.slow
-@pytest.mark.parametrize("package", ["talk", "whatsapp"])
-def test_a_backend_without_a_skill_still_imports_its_own_entry_point(tmp_path, package):
-    """Each of these was threaded through core constructors before it
-    became a skill — talk through the studio controller and the tracking
-    service, whatsapp through the composition root.
-    If any core file still imported one directly rather than reaching it
-    through the Bus, this is where it would show."""
-    import shutil
-    import subprocess
-    import sys
-
-    from build.backend_copy import BACKEND_DIR, _ignore_for
-
-    copy = tmp_path / "backend"
-    shutil.copytree(BACKEND_DIR, copy, ignore=_ignore_for([package]))
-
-    result = subprocess.run(
-        [sys.executable, "-c", "import sys; sys.path.insert(0, 'src'); import main; from system import skills; print(skills.installed())"],
-        cwd=copy, capture_output=True, text=True, timeout=180,
-    )
-
-    assert result.returncode == 0, result.stderr[-2000:]
-    assert f"'package': '{package}'" not in result.stdout
-
-
 def test_webchat_is_offered_as_something_a_build_can_leave_out(tmp_path):
     """What the Build view's Skills step lists is read off the source
     tree, so this is the whole of "add it to the UI": the package has a
@@ -371,6 +320,16 @@ def test_a_product_copy_starts_with_no_platform_no_chat_and_no_benchmark(tmp_pat
     code, output = _boot(copy)
 
     assert code == 0, output
+    assert FALLBACK_TITLE_MARK not in output, output
+
+
+@pytest.mark.contract
+@pytest.mark.slow
+def test_a_backend_without_listen_talk_or_whatsapp_starts_for_real(tmp_path):
+    code, output = _boot(_copy_backend(tmp_path, ["listen", "talk", "whatsapp"]))
+
+    assert code == 0, output
+    assert "TITLE:" in output, output
     assert FALLBACK_TITLE_MARK not in output, output
 
 

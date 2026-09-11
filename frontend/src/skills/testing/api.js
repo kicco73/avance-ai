@@ -1,4 +1,4 @@
-import { apiFetch } from './core.js'
+import { apiFetch } from '../../api/core.js'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 
@@ -43,9 +43,6 @@ export function getTestMetrics(projectId) {
 }
 
 // Every real state key of the project's current draft automaton.
-export function getProjectStates(projectId) {
-  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/states`)
-}
 
 export function postStateTest(projectId, stateKey, strategy) {
   return apiFetch(`${API_URL}/skills/testing/projects/${encodeURIComponent(projectId)}/runs/states/${encodeURIComponent(stateKey)}`, {
@@ -115,4 +112,8 @@ export function postSignalTest(projectId, signalName, strategy) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ strategy })
   })
+}
+
+export function getTestStatus(projectId) {
+  return apiFetch(`${API_URL}/skills/testing/projects/${encodeURIComponent(projectId)}/status`)
 }

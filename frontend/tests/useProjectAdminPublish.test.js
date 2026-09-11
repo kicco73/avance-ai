@@ -15,7 +15,6 @@ vi.mock('../src/api.js', () => ({
   getPublishPreview: vi.fn(),
   postPublishProject: vi.fn(),
 }))
-vi.mock('../src/api/build.js', () => ({ postBuildLocalModule: vi.fn() }))
 vi.mock('../src/dialogStore.js', () => ({
   aboutDialog: vi.fn(),
   confirmDialog: vi.fn(),
@@ -29,9 +28,7 @@ vi.mock('../src/chatStore.js', () => ({
 }))
 
 import { getPublishPreview, postPublishProject } from '../src/api.js'
-import { postBuildLocalModule } from '../src/api/build.js'
 import { confirmDialog, customDialog, infoDialog } from '../src/dialogStore.js'
-import { setBuildAvailable } from '../src/buildAvailability.js'
 import { onProjectsChanged } from '../src/projectChangeEvents.js'
 import { useProjectAdminActions } from '../src/composables/useProjectAdminActions.js'
 
@@ -46,17 +43,16 @@ describe('handlePublishProject', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    setBuildAvailable(true)
     getPublishPreview.mockResolvedValue({ needs_remap: false, has_active_sessions: false })
-    postPublishProject.mockResolvedValue({ revision: 4, published_revision: 4 })
-    postBuildLocalModule.mockResolvedValue({ module: 'proj_r4', revision: 4 })
+    postPublishProject.mockResolvedValue({
+      revision: 4, published_revision: 4, built: { module: 'proj_r4', revision: 4 },
+    })
   })
 
-  it('publishes and then compiles, reporting both', async () => {
+  it('reports what the publish compiled, where it compiled anything', async () => {
     await actions().handlePublishProject('proj')
 
     expect(postPublishProject).toHaveBeenCalledWith('proj', null)
-    expect(postBuildLocalModule).toHaveBeenCalledWith('proj')
     // Publishing moves the catalog, and whoever displays it observes
     // that fact rather than being poked through a component ref.
     expect(catalogChanges).toEqual(['changed'])
@@ -65,21 +61,12 @@ describe('handlePublishProject', () => {
     }))
   })
 
-  it('publishes without compiling where this backend has no build service', async () => {
-    setBuildAvailable(false)
+  it('reports the publish alone where nothing was compiled', async () => {
+    postPublishProject.mockResolvedValue({ revision: 4, published_revision: 4 })
 
     await actions().handlePublishProject('proj')
 
     expect(postPublishProject).toHaveBeenCalled()
-    expect(postBuildLocalModule).not.toHaveBeenCalled()
-    expect(infoDialog).toHaveBeenCalledWith(expect.objectContaining({ body: 'Published revision 4.' }))
-  })
-
-  it('still reports the publish when the compile fails', async () => {
-    postBuildLocalModule.mockRejectedValue(new Error('boom'))
-
-    await actions().handlePublishProject('proj')
-
     expect(infoDialog).toHaveBeenCalledWith(expect.objectContaining({ body: 'Published revision 4.' }))
   })
 
@@ -107,12 +94,11 @@ describe('handlePublishProject', () => {
     expect(postPublishProject).not.toHaveBeenCalled()
   })
 
-  it('stops on a failed publish, without compiling or reporting', async () => {
+  it('stops on a failed publish, without reporting', async () => {
     postPublishProject.mockRejectedValue(new Error('boom'))
 
     await actions().handlePublishProject('proj')
 
-    expect(postBuildLocalModule).not.toHaveBeenCalled()
     expect(infoDialog).not.toHaveBeenCalled()
   })
 })

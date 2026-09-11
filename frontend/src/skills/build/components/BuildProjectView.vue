@@ -1,14 +1,13 @@
 <script setup>
-// The "Build" button's own wizard (see ProjectDetailPanel.vue). The
+// The "Build" button's own wizard (see ProjectBuildButton.vue). The
 // Compile step is a placeholder — compiling a project's published revision
-// into a local module now happens as the second half of the "Publish"
-// button next to this one (see ProjectDetailPanel.vue's own @publish, and
-// useProjectAdminActions.js's handlePublishProject), not through this
-// wizard.
+// into a local module happens on the backend, as the second half of
+// publishing (see build/skill.py's own POINT_PROJECT_PUBLISHED
+// contribution), not through this wizard.
 import { computed, onMounted, ref } from 'vue'
-import AppHeader from '../../AppHeader.vue'
-import ProfileMenu from '../../ProfileMenu.vue'
-import { getBuildRequirements, postBuildBackendCopy } from '../../../api/build.js'
+import AppHeader from '../../../components/AppHeader.vue'
+import ProfileMenu from '../../../components/ProfileMenu.vue'
+import { getBuildRequirements, postBuildBackendCopy } from '../api.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },

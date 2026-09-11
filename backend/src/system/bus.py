@@ -110,6 +110,12 @@ POINT_CORE_SERVICES = "core.services"
 # compiled-or-interpreted loader, and a product's single-package one.
 POINT_AUTOMATON_LOADER = "automaton.loader"
 
+# A revision has just been published, and whoever can turn one into a
+# package may say what it produced. The publisher never asks whether a
+# compiler is installed: it collects, and a build without one collects
+# nothing — which is the same answer as a compile that failed.
+POINT_PROJECT_PUBLISHED = "project.published"
+
 # What a client connected over a socket is allowed to put on the Bus.
 # The wire uses these very names — a frame is not translated into
 # something else on the way in — so without this list the socket would

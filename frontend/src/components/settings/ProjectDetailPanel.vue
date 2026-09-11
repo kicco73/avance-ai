@@ -8,6 +8,7 @@ import { infoDialog } from '../../dialogStore.js'
 import { setSkinCss, invalidateSkin } from '../../chatSkin.js'
 import { setPreviewApp, appStorePreviewStore, historyLoaded, restartPreviewSession, stopPreviewSession } from '../../appStorePreviewStore.js'
 import { usePreviewExpiry } from '../../composables/usePreviewExpiry.js'
+import { projectActions } from '../../skills/registry.js'
 
 const props = defineProps({
   app: { type: Object, required: true },
@@ -18,21 +19,11 @@ const props = defineProps({
   revision: { type: Number, default: null }
 })
 
-const emit = defineEmits(['edit', 'label', 'download', 'share', 'delete', 'publish', 'build'])
+const emit = defineEmits(['edit', 'label', 'download', 'share', 'delete', 'publish', 'open-skill-view'])
 
 const previewing = ref(false)
 
-// Empty string when Build is allowed; otherwise why it isn't, shown as
-// the button's own title. The backend refuses the same case on its own
-// (BuildService raises a CompileError) — this only keeps the panel from
-// offering a button that cannot work.
-const buildBlockedReason = computed(() => {
-  if (props.publishedRevision === null) return 'This project has never been published.'
-  if (props.revision !== null && props.revision !== props.publishedRevision) {
-    return `Draft revision ${props.revision} is not published yet — publish it first.`
-  }
-  return ''
-})
+
 
 function appTitle(app) {
   return app?.ui_label || app?.id || ''
@@ -167,13 +158,15 @@ onBeforeUnmount(async () => {
       title="Publish this project's current revision, then compile it if this backend can"
       @click="emit('publish', app.id)"
     >Publish</button>
-    <button
-      type="button"
-      class="project-detail-secondary-btn"
-      :disabled="!!buildBlockedReason"
-      :title="buildBlockedReason || 'Compile the published revision'"
-      @click="emit('build', app.id)"
-    >Build</button>
+    <component
+      v-for="action in projectActions"
+      :is="action.component"
+      :key="action.id"
+      :project-id="app.id"
+      :published-revision="publishedRevision"
+      :revision="revision"
+      @activate="emit('open-skill-view', action.opens, app.id)"
+    />
   </div>
 
   <div class="project-detail-try-panel">

@@ -25,6 +25,7 @@ from project.archive.packages import PackageError, discard_other_revisions, impo
 from system.logging_factory import LoggerFactory
 
 from .compiler import CompileError, compile_contents
+from .frontend_copy import FrontendCopy
 
 if TYPE_CHECKING:
     from db import Db
@@ -67,6 +68,7 @@ STEPS = (
     BuildStep("copy", "Copying the backend", "copy_backend"),
     BuildStep("automaton", "Compiling the automaton", "install_automaton"),
     BuildStep("database", "Pruning the database", "prune_database"),
+    BuildStep("frontend", "Building the frontend", "build_frontend"),
     BuildStep("publish", "Publishing the build", "publish"),
     BuildStep("tests", "Running the build's tests", "run_tests"),
 )
@@ -87,6 +89,7 @@ class BackendCopy:
         self.module_name = module_name
         self.excluded_skills = excluded_skills
         self._tests: dict | None = None
+        self._frontend: dict | None = None
 
     @property
     def target_name(self) -> str:
@@ -107,6 +110,10 @@ class BackendCopy:
         return self.staging / "backend"
 
     @property
+    def assembling_frontend(self) -> Path:
+        return self.staging / "frontend"
+
+    @property
     def built(self) -> Path:
         """The same copy once `publish` has moved it into place. What the
         test step runs against, and what the report points at."""
@@ -117,6 +124,7 @@ class BackendCopy:
             "path": str(self.built),
             "revision": self.revision,
             "excluded_skills": list(self.excluded_skills),
+            "frontend": self._frontend,
             "tests": self._tests,
         }
 
@@ -167,6 +175,11 @@ class BackendCopy:
             built.rename(package_dir(apps_dir, self.module_name, self.revision))
         finally:
             shutil.rmtree(package_staging, ignore_errors=True)
+
+    def build_frontend(self) -> None:
+        self._frontend = FrontendCopy(
+            REPO_ROOT / "frontend", self.assembling_frontend, self.excluded_skills,
+        ).build()
 
     def prune_database(self) -> None:
         db_filename = Path(self._db.backup_file_path()).name

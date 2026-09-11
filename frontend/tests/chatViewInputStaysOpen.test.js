@@ -10,7 +10,7 @@ vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }))
 vi.mock('../src/mic.js', () => ({ startRecording: vi.fn(), stopRecording: vi.fn() }))
 vi.mock('../src/audio.js', () => ({
-  playMessageChime: vi.fn(), playMessageAudio: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn(),
+  playMessageChime: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn(),
 }))
 vi.mock('../src/chatClient.js', () => ({
   sendMessage: vi.fn(),
@@ -35,8 +35,6 @@ vi.mock('../src/api.js', () => ({
   getAiModels: vi.fn(),
   postAiModelSelection: vi.fn(),
   putMessageReaction: vi.fn(),
-  messageAudioUrl: vi.fn(),
-  postListenTranscribe: vi.fn(),
   postResetTestSessions: vi.fn(),
   postTruncateSession: vi.fn(),
   getProjects: vi.fn().mockResolvedValue({ projects: [{ id: 'proj', ui_label: 'Proj' }], active: 'proj' }),

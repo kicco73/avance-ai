@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 import DocInfoButton from '../DocInfoButton.vue'
+import { channelLabels } from '../../skills/registry.js'
 
 // The sessions list content (header + rows), shared by every chat surface
 // that lets a user pick a past/present session. Layout (the sliding wrap,
@@ -70,10 +71,9 @@ function notSelectable(session) {
   return props.restrictSelectionToNative && session.type !== 'live'
 }
 
-const CHANNEL_LABELS = { 'whatsapp-chat': 'WhatsApp' }
 
 function channelLabel(session) {
-  return session.type === 'live' ? CHANNEL_LABELS[session.channel] : null
+  return session.type === 'live' ? channelLabels.value[session.channel] : null
 }
 
 function selectSession(session) {

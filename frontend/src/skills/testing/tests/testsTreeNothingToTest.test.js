@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createApp } from 'vue'
 
-import TestsTree from '../src/components/project/edit/test/TestsTree.vue'
+import TestsTree from '../components/TestsTree.vue'
 
 let app = null
 let container = null

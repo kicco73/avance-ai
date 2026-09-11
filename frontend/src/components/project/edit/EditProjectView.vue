@@ -1,10 +1,9 @@
 <script setup>
 // Composes the three mode panels (Design/Run/Test) and owns only what's
 // cross-cutting: mode switch, header/publish controls, the Inspector.
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import ProjectDesignPanel from './design/ProjectDesignPanel.vue'
 import RunChat from './run/RunChat.vue'
-import ProjectTestPanel from './test/ProjectTestPanel.vue'
 import ModeSegment from './ModeSegment.vue'
 import RevisionMenu from './RevisionMenu.vue'
 import Inspector from '../../inspector/Inspector.vue'
@@ -17,8 +16,6 @@ import InspectorStateIOTab from '../../inspector/InspectorStateIOTab.vue'
 import InspectorStateTab from '../../inspector/InspectorStateTab.vue'
 import ActionsOrderDialog from '../../inspector/ActionsOrderDialog.vue'
 import SessionDetailCard from '../../inspector/SessionDetailCard.vue'
-import InspectorUserInfoCard from '../../inspector/InspectorUserInfoCard.vue'
-import InspectorSignalDetailCard from '../../inspector/InspectorSignalDetailCard.vue'
 import ModelMenu from '../../ModelMenu.vue'
 import ProfileMenu from '../../ProfileMenu.vue'
 import AppHeader from '../../AppHeader.vue'
@@ -30,9 +27,9 @@ import { useProjectRevision } from '../../../composables/useProjectRevision.js'
 import { useIndexYmlEditing } from '../../../composables/useIndexYmlEditing.js'
 import { useProjectCatalog } from '../../../composables/useProjectCatalog.js'
 import { useLiveRunTimeline } from '../../../composables/useLiveRunTimeline.js'
-import { useTestModeSelection } from '../../../composables/useTestModeSelection.js'
 import { useStateTabTokens } from '../../../composables/useStateTabTokens.js'
 import { onProjectChanged } from '../../../projectChangeEvents.js'
+import { projectModes } from '../../../skills/registry.js'
 import { setApiWarning } from '../../../errorStore.js'
 import { chooseDialog, customDialog } from '../../../dialogStore.js'
 import { totalTokenBudgetPerSession } from '../../../chatStore.js'
@@ -69,10 +66,18 @@ const {
   handleFileRenamedByHistory, handleFileSaved,
 } = useProjectFiles(props.projectId, emit)
 
-const mode = ref('edit')
-const editorOpen = computed(() => mode.value === 'edit')
-const runOpen = computed(() => mode.value === 'run')
-const testOpen = computed(() => mode.value === 'test')
+// Which chat a mode shows is the editor's own business, not something a
+// contributed mode gets asked about: the Run tab drives the draft chat,
+// everything else leaves the live one alone.
+const LIVE_CHAT = 'live'
+const DESIGN_MODE = { id: 'edit', label: 'Design' }
+const RUN_MODE = { id: 'run', label: 'Run', chatMode: 'test' }
+const modes = computed(() => [DESIGN_MODE, RUN_MODE, ...projectModes.value])
+const modeId = ref(DESIGN_MODE.id)
+const mode = computed(() => modeId.value)
+const activeMode = computed(() => modes.value.find((entry) => entry.id === modeId.value) ?? DESIGN_MODE)
+const editorOpen = computed(() => modeId.value === DESIGN_MODE.id)
+const runOpen = computed(() => modeId.value === RUN_MODE.id)
 
 const inspecting = ref(true)
 const inspectorRef = ref(null)
@@ -167,12 +172,6 @@ const selectedStateKey = computed(() => {
 const runCurrentSession = computed(() => runSessions.value.find((s) => s.id === currentSessionId.value) ?? null)
 
 const {
-  handleAutoSelect, autoSelectedSession, autoSelectedStateKey, autoSelectedElement, autoSelectedUser,
-  autoSelectedSignalName, autoSelectedSignal, autoSessionInputTokens, autoSessionStartElement, autoSessionEndElement,
-  ensureUsersList, ensureSignalsList,
-} = useTestModeSelection(props.projectId, indexYmlEditorRef)
-
-const {
   validStateKeys, availableStates, buildWarnings, stateLabelFor, actionLabelFor, refreshCatalog,
 } = useProjectCatalog(props.projectId)
 
@@ -184,6 +183,9 @@ const {
 } = useLiveRunTimeline(props.projectId, mode, validStateKeys)
 
 const inspectorTabs = computed(() => {
+  if (activeMode.value.inspectorTabs) {
+    return activeMode.value.inspectorTabs.map(({ id, label }) => ({ id, label }))
+  }
   if (mode.value === 'run') {
     return [
       { id: 'states', label: 'Info' },
@@ -191,9 +193,6 @@ const inspectorTabs = computed(() => {
       { id: 'env', label: 'I/O' },
       { id: 'metrics', label: 'Metrics' }
     ]
-  }
-  if (mode.value === 'test') {
-    return [{ id: 'state', label: 'Info' }, { id: 'user', label: 'User' }]
   }
   if (mode.value === 'edit' && (currentSourceName.value != null || sourcesRootSelected.value || !isBehaviorNodeSelected.value)) {
     return [{ id: 'state', label: 'Info' }]
@@ -209,8 +208,7 @@ const inspectorTabs = computed(() => {
 })
 const inspectorActiveTab = ref('states')
 
-const stateTabTokensKey = computed(() => (mode.value === 'test' ? autoSelectedStateKey.value : selectedStateKey.value))
-const { stateTabTokens } = useStateTabTokens(props.projectId, stateTabTokensKey)
+const { stateTabTokens } = useStateTabTokens(props.projectId, selectedStateKey)
 
 async function ensureDraftChatSession() {
   await loadMessages()
@@ -218,18 +216,26 @@ async function ensureDraftChatSession() {
 }
 
 function setMode(next) {
-  mode.value = next
-  activeChatMode.value = next === 'run' ? 'test' : 'live'
-  if (next === 'run') ensureDraftChatSession()
-  if (next === 'test') {
-    ensureUsersList()
-    ensureSignalsList()
-  }
+  modeId.value = next
+  activeChatMode.value = activeMode.value.chatMode ?? LIVE_CHAT
+  if (next === RUN_MODE.id) ensureDraftChatSession()
 }
 
 onBeforeUnmount(() => { activeChatMode.value = 'live' })
 
 const { width: explorerWidth, startDrag: startExplorerDrag } = useResizablePanel(220, { min: 160, max: 420 })
+
+const workspace = reactive({
+  projectId: props.projectId,
+  availableStates,
+  files,
+  highlightedStateKey,
+  recentlyAddedKey,
+  stateElementFor: (key) => (key == null ? null : (indexYmlEditorRef.value?.stateElementFor(key) ?? null)),
+  selectElement: handleTabSelect,
+  selectAttachment: selectFile,
+  jumpToAttachment: handleJumpToAttachment,
+})
 
 // The graph reload above rebuilds graphNodes/graphEdges from scratch, but
 // InspectorGraph.vue never re-emits 'select' for a design-mode selection
@@ -418,7 +424,7 @@ onBeforeUnmount(() => {
         <ModelMenu :model-store="testChatModelStore" />
       </template>
       <template #center>
-        <ModeSegment :mode="mode" @update:mode="setMode" />
+        <ModeSegment :mode="modeId" :modes="modes" @update:mode="setMode" />
       </template>
       <template #right>
         <div class="edit-project-header-actions">
@@ -496,7 +502,7 @@ onBeforeUnmount(() => {
           />
         </Transition>
 
-        <ProjectTestPanel v-if="testOpen" :project-id="projectId" @select="handleAutoSelect" />
+        <component v-if="activeMode.panel" :is="activeMode.panel" :workspace="workspace" />
       </div>
 
       <div class="inspector-wrap">
@@ -538,34 +544,23 @@ onBeforeUnmount(() => {
               />
             </template>
             <template #tab-state="{ registerTab }">
-              <InspectorSignalDetailCard
-                v-if="mode === 'test' && autoSelectedSignalName != null"
-                :ref="registerTab('state')"
-                :signal="autoSelectedSignal"
-              />
               <InspectorStateTab
-                v-else
                 :ref="registerTab('state')"
                 :project-id="projectId"
-                :selected-element="mode === 'test' ? autoSelectedElement : selectedGraphElement"
+                :selected-element="selectedGraphElement"
                 :state-tokens="stateTabTokens"
                 :fired-action-edge="firedActionEdge"
                 :available-states="availableStates"
-                :selected-session="mode === 'test' ? autoSelectedSession : null"
-                :session-input-tokens="mode === 'test' ? autoSessionInputTokens : null"
-                :total-token-budget-per-session="totalTokenBudgetPerSession"
-                :session-start-element="mode === 'test' ? autoSessionStartElement : null"
-                :session-end-element="mode === 'test' ? autoSessionEndElement : null"
-                :read-only="mode === 'test'"
-                :editable-files="files"
+                                :total-token-budget-per-session="totalTokenBudgetPerSession"
+                                :editable-files="files"
                 :highlighted-state-key="highlightedStateKey"
                 :recently-added-key="recentlyAddedKey"
-                :current-file-name="mode === 'edit' ? currentFileName : null"
+                :current-file-name="editorOpen ? currentFileName : null"
                 :deleting-file="deletingFile"
                 :renaming-file="renamingFile"
-                :selected-source="mode === 'edit' ? selectedSource : null"
+                :selected-source="editorOpen ? selectedSource : null"
                 :deleting-source="deletingSource"
-                :sources-root-selected="mode === 'edit' && sourcesRootSelected"
+                :sources-root-selected="editorOpen && sourcesRootSelected"
                 @select="handleTabSelect"
                 @select-attachment="selectFile"
                 @jump-to-attachment="handleJumpToAttachment"
@@ -583,16 +578,20 @@ onBeforeUnmount(() => {
                 @delete-source="(source) => handleDeleteSource(source.name)"
               />
             </template>
-            <template #tab-user="{ registerTab }">
-              <InspectorUserInfoCard :ref="registerTab('user')" :user="autoSelectedUser" />
+            <template
+              v-for="tab in activeMode.inspectorTabs"
+              #[`tab-${tab.id}`]="{ registerTab }"
+              :key="tab.id"
+            >
+              <component :is="tab.component" :ref="registerTab(tab.id)" :workspace="workspace" />
             </template>
             <template #tab-signals="{ registerTab }">
               <InspectorSignalsTab
                 :ref="registerTab('signals')"
                 :project-id="projectId"
                 :signal-values="effectiveSignalValues"
-                :editable-files="mode === 'test' ? null : files"
-                :state-key="mode === 'edit' ? selectedStateKey : highlightedStateKey"
+                :editable-files="files"
+                :state-key="editorOpen ? selectedStateKey : highlightedStateKey"
                 :recently-added-key="recentlyAddedKey"
                 @jump-to-definition="jumpSilently"
                 @select-attachment="selectFile"

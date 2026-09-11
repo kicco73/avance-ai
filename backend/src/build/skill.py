@@ -24,7 +24,7 @@ from pathlib import Path
 from build import config as build_config
 from system import bus
 from system.bus import (
-    POINT_API_STATE, POINT_AUTOMATON_LOADER, POINT_CORE_SERVICES,
+    POINT_AUTOMATON_LOADER, POINT_CORE_SERVICES, POINT_PROJECT_PUBLISHED,
 )
 from system.wiring import construct
 from system.logging_factory import LoggerFactory
@@ -39,13 +39,10 @@ class BuildSkill(Skill):
     ui_label = "Build"
     ui_description = "Compiles a project into a standalone package."
 
+    def __init__(self) -> None:
+        self._service = None
+
     def start_service(self, raw: dict, path: Path) -> None:
-        # The one thing the frontend cannot find out by itself: whether this
-        # backend can compile at all. Manage projects' Publish button compiles
-        # right after publishing where it can, and simply publishes where it
-        # cannot — a backend without this package never sends the field, which
-        # is the answer.
-        bus.contribute(POINT_API_STATE, lambda payload: payload.update({"build_enabled": True}))
         if build_config.serves_compiled(raw, path):
             bus.contribute(POINT_AUTOMATON_LOADER, self._choose_compiled_loader)
 
@@ -75,4 +72,12 @@ class BuildSkill(Skill):
         core = bus.collect(POINT_CORE_SERVICES, {})
         service = BuildService(core["db"], core["project_service"], core["apps_dir"])
         controllers.append(construct(BuildController, {**core, "build_service": service}))
+        self._service = service
+        bus.contribute(POINT_PROJECT_PUBLISHED, self._compile_published)
         logger.info("build started — a project can be compiled into a package.")
+
+    def _compile_published(self, report: dict) -> None:
+        try:
+            report["built"] = self._service.build_local_module(report["project_id"])
+        except Exception:
+            logger.exception("compiling the published revision failed; the publish itself stands")

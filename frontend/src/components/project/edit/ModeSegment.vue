@@ -1,21 +1,17 @@
 <script setup>
 defineProps({
-  mode: { type: String, required: true }
+  mode: { type: String, required: true },
+  modes: { type: Array, required: true }
 })
 
 const emit = defineEmits(['update:mode'])
 
-const MODES = [
-  { id: 'edit', label: 'Design' },
-  { id: 'run', label: 'Run' },
-  { id: 'test', label: 'Test' }
-]
 </script>
 
 <template>
   <div class="mode-segment">
     <button
-      v-for="option in MODES"
+      v-for="option in modes"
       :key="option.id"
       class="mode-segment-btn"
       :class="{ 'mode-segment-btn-active': mode === option.id }"

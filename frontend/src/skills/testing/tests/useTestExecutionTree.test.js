@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, ref } from 'vue'
 
-vi.mock('../src/api.js', () => ({
+vi.mock('../api.js', () => ({
   deleteAllTestJobs: vi.fn(),
   deleteTestJob: vi.fn(),
   deleteTests: vi.fn(),
@@ -18,22 +18,22 @@ vi.mock('../src/api.js', () => ({
   postUserSessionsRun: vi.fn(),
   postUsersAggregation: vi.fn(),
 }))
-vi.mock('../src/dialogStore.js', () => ({
+vi.mock('../../../dialogStore.js', () => ({
   confirmDialog: vi.fn(),
 }))
-vi.mock('../src/chatClient.js', () => ({
+vi.mock('../../../chatClient.js', () => ({
   getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 const { unsubscribeTestUpdates } = vi.hoisted(() => ({ unsubscribeTestUpdates: vi.fn() }))
-vi.mock('../src/busChannel.js', () => ({ busChannel: { subscribe: vi.fn(() => unsubscribeTestUpdates) } }))
+vi.mock('../../../busChannel.js', () => ({ busChannel: { subscribe: vi.fn(() => unsubscribeTestUpdates) } }))
 
 import {
   deleteAllTestJobs, deleteTestJob, deleteTests, getAggregateResult, getTests, getTestStatus,
   postTest, postRootAggregation, postSessionsRun, postSignalTest, postSignalsAggregation,
   postStateTest, postStatesAggregation, postUserSessionsRun, postUsersAggregation,
-} from '../src/api.js'
-import { confirmDialog } from '../src/dialogStore.js'
-import { busChannel } from '../src/busChannel.js'
-import { useTestExecutionTree } from '../src/composables/useTestExecutionTree.js'
+} from '../api.js'
+import { confirmDialog } from '../../../dialogStore.js'
+import { busChannel } from '../../../busChannel.js'
+import { useTestExecutionTree } from '../useTestExecutionTree.js'
 
 function mountComposable(setup) {
   let result

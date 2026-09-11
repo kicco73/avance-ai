@@ -22,7 +22,7 @@ export const appStorePreviewStore = createChatStore({
 export const {
   state, currentSessionId, selectedSessionActive, projectPaused, projectPausedReason,
   messages, historyLoaded, chatLoading, chatStatus, actionLoading, draft,
-  handleSend, handleVoiceMessage, handleResend, handleReact, handleAction, toggleAudio,
+  handleSend, beginVoiceMessage, handleResend, handleReact, handleAction, toggleAudio,
   loadMessages, clearChatUi, handleNewSession,
 } = appStorePreviewStore
 

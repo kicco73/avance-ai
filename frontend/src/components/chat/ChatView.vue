@@ -28,15 +28,10 @@ import ProfileMenu from '../ProfileMenu.vue'
 import AppHeader from '../AppHeader.vue'
 import SplashScreen from '../SplashScreen.vue'
 import { setApiError } from '../../errorStore.js'
-import { startRecording, stopRecording } from '../../mic.js'
 import { unlockAudioPlayback } from '../../audio.js'
 import { liveStore } from '../../chatStore.js'
 import {
-  audioEnabled,
-  talkAvailable,
-  micAvailable,
   spokenTextEnabled,
-  toggleSpokenText,
   chatConnectionState,
 } from '../../chatStoreFactory.js'
 import { applyAspect, manualApplyAspectPreference } from '../../chatSkin.js'
@@ -73,9 +68,7 @@ const {
   handleSend,
   handleResend,
   handleReact,
-  handleVoiceMessage,
   handleAction,
-  toggleAudio,
   projectPaused,
   projectPausedReason,
   reloadMessages
@@ -92,7 +85,6 @@ const backLabel = computed(() => props.role === 'customer' ? 'Back to App store'
 
 const scrollEl = ref(null)
 const chatInputRef = ref(null)
-const recording = ref(false)
 
 defineExpose({
   focus: () => chatInputRef.value?.focus()
@@ -175,39 +167,6 @@ function submit() {
 
 function resend(i) {
   handleResend(i)
-}
-
-async function startPtt(event) {
-  if (event?.pointerType === 'mouse' && event.button !== 0) return
-  if (recording.value || chatDisabled.value) return
-  // Inside this same pointerdown gesture — the voice message this
-  // eventually sends gets a reply whose own narration plays well outside
-  // any gesture of its own.
-  unlockAudioPlayback()
-  // getUserMedia only exists in a secure context (https, or localhost) —
-  // over plain http on a LAN it's simply undefined, which otherwise
-  // surfaces as the same "access was denied" message a real permission
-  // refusal gives, hiding the actual (unfixable-by-the-user) cause.
-  if (!navigator.mediaDevices?.getUserMedia) {
-    setApiError(
-      'Microphone unavailable.',
-      window.isSecureContext ? undefined : 'This page must be loaded over https to use the microphone.'
-    )
-    return
-  }
-  try {
-    await startRecording()
-    recording.value = true
-  } catch (err) {
-    setApiError('Microphone access was denied.', err.message)
-  }
-}
-
-async function stopPtt() {
-  if (!recording.value) return
-  recording.value = false
-  const blob = await stopRecording()
-  if (blob?.size) handleVoiceMessage(blob)
 }
 
 function scrollToBottom() {
@@ -370,16 +329,8 @@ watch(
         ref="chatInputRef"
         v-model="draft"
         :disabled="chatDisabled || !chatConnected"
-        :recording="recording"
-        :mic-available="micAvailable"
-        :talk-available="talkAvailable"
-        :audio-enabled="audioEnabled"
-        :spoken-text-enabled="spokenTextEnabled"
+        :store="store"
         @submit="submit"
-        @mic-start="startPtt"
-        @mic-stop="stopPtt"
-        @toggle-audio="toggleAudio"
-        @toggle-spoken-text="toggleSpokenText"
       />
     </div>
 

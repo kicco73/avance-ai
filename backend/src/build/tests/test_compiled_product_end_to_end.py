@@ -10,9 +10,14 @@ the difference.
 The loader is on from the first request, before anything is built. That
 is the point: it falls back to the interpreted automaton whenever no
 package matches, so the same deployment serves a project before and after
-its first build without any switch being flipped in between.
+its first build without any switch being flipped in between. Publishing
+compiles on its own where this package is installed (see skill.py's
+POINT_PROJECT_PUBLISHED contribution), so a test that wants the
+before state removes the package these fixtures already produced.
 """
 from __future__ import annotations
+
+import shutil
 
 import pytest
 from fastapi.testclient import TestClient
@@ -31,6 +36,11 @@ def automaton_loader(app_db: Db, tmp_path) -> CompiledAutomatonLoader:
     return CompiledAutomatonLoader(app_db, tmp_path / "apps")
 
 
+def _discard_package(app, tmp_path, project_id: str) -> None:
+    revision = app.state.db.get_project_published_revision(project_id)
+    shutil.rmtree(package_dir(tmp_path / "apps", module_name_for(project_id), revision))
+
+
 def _served_automaton(app, project_id: str):
     db = app.state.db
     loader = app.state.project_service.automaton_loader
@@ -40,6 +50,7 @@ def _served_automaton(app, project_id: str):
 def test_a_project_serves_interpreted_until_it_is_built_and_compiled_after(
     client: TestClient, app, hello_project, tmp_path,
 ):
+    _discard_package(app, tmp_path, hello_project)
     assert type(_served_automaton(app, hello_project)).__name__ == "Automaton"
     before = chat_turn(client, client.get("/api/skills/webchat/sessions/current").json()["id"], "hello")
     assert before["reply"][0]["content"]
@@ -59,12 +70,13 @@ def test_a_project_serves_interpreted_until_it_is_built_and_compiled_after(
 
 
 def test_the_app_store_listing_reports_whether_the_project_is_served_compiled(
-    client: TestClient, app, hello_project,
+    client: TestClient, app, hello_project, tmp_path,
 ):
     def _compiled_flag() -> bool:
         apps = client.get("/api/skills/platform/app-store/apps").json()["apps"]
         return next(a for a in apps if a["id"] == hello_project)["compiled"]
 
+    _discard_package(app, tmp_path, hello_project)
     assert _compiled_flag() is False
 
     assert client.post(f"/api/skills/build/projects/{hello_project}/local-module").status_code == 200

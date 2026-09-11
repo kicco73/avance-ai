@@ -1,12 +1,25 @@
 import { computed, ref, watch } from 'vue'
-import { getMessages, getProjectSignals, getSessionSignals, getUsers } from '../api.js'
-import { sessions } from '../chatStore.js'
+import { getMessages, getProjectSignals, getSessionSignals, getUsers } from '../../api.js'
+import { sessions } from '../../chatStore.js'
 
 // Test mode's own selection ('root' | 'sessions-branch' | 'states-branch' |
 // `session:<id>` | `state:<key>` | `user:<name>` | `signal:<name>` | null),
 // resolved against the project's session catalog, users and signals for the
-// Inspector's read-only Info/User tabs.
-export function useTestModeSelection(projectId, indexYmlEditorRef) {
+// Inspector's read-only Info/User tabs. One selection per running app: the
+// panel that writes it and the tabs that read it are the same screen.
+function createSelection() {
+  let projectId = null
+  let workspace = null
+
+  function open(nextProjectId, nextWorkspace) {
+    projectId = nextProjectId
+    workspace = nextWorkspace
+    autoSelectedNodeId.value = null
+    usersListLoaded = false
+    signalsListLoaded = false
+    ensureUsersList()
+    ensureSignalsList()
+  }
   const autoSelectedNodeId = ref(null)
   function handleAutoSelect(nodeId) { autoSelectedNodeId.value = nodeId }
 
@@ -43,7 +56,7 @@ export function useTestModeSelection(projectId, indexYmlEditorRef) {
   })
 
   function stateElementFor(key) {
-    return key == null ? null : (indexYmlEditorRef.value?.stateElementFor(key) ?? null)
+    return key == null ? null : (workspace?.stateElementFor(key) ?? null)
   }
   const autoSelectedElement = computed(() => stateElementFor(autoSelectedStateKey.value))
 
@@ -92,8 +105,18 @@ export function useTestModeSelection(projectId, indexYmlEditorRef) {
   const autoSessionEndElement = computed(() => stateElementFor(autoSessionEndStateKey.value))
 
   return {
-    autoSelectedNodeId, handleAutoSelect, autoSelectedSession, autoSelectedStateKey, autoSelectedElement,
-    autoSelectedUser, autoSelectedSignalName, autoSelectedSignal, autoSessionInputTokens,
-    autoSessionStartElement, autoSessionEndElement, ensureUsersList, ensureSignalsList,
+    open, handleAutoSelect,
+    nodeId: autoSelectedNodeId,
+    session: autoSelectedSession,
+    stateKey: autoSelectedStateKey,
+    element: autoSelectedElement,
+    user: autoSelectedUser,
+    signalName: autoSelectedSignalName,
+    signal: autoSelectedSignal,
+    sessionInputTokens: autoSessionInputTokens,
+    sessionStartElement: autoSessionStartElement,
+    sessionEndElement: autoSessionEndElement,
   }
 }
+
+export const selection = createSelection()

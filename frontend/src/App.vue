@@ -4,7 +4,6 @@ import LiveChatWindow from './components/chat/LiveChatWindow.vue'
 import HumanOperatorChatView from './components/chat/HumanOperatorChatView.vue'
 import EditProjectView from './components/project/edit/EditProjectView.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
-import BuildProjectView from './components/project/build/BuildProjectView.vue'
 import LoginView from './components/LoginView.vue'
 import TermsView from './components/TermsView.vue'
 import InviteRequiredView from './components/InviteRequiredView.vue'
@@ -29,13 +28,14 @@ import { useChatFlipTransition } from './composables/useChatFlipTransition.js'
 import { useViewStack } from './composables/useViewStack.js'
 import { useProjectAdminActions } from './composables/useProjectAdminActions.js'
 import { peekInviteCode } from './shareLink.js'
+import { pushedViews } from './skills/registry.js'
 
 const hasSharedInvite = !!peekInviteCode()
 
 const editProjectId = ref(null)
 const editProjectBuildError = ref(null)
 const labelProjectId = ref(null)
-const buildProjectId = ref(null)
+const skillViewProjectId = ref(null)
 const liveChatProjectId = ref(null)
 const operatorSessionId = ref(null)
 const currentUserProfile = ref(null)
@@ -43,6 +43,7 @@ const currentUserRole = ref(null)
 const chatWindowRef = ref(null)
 const customerHomeView = ref(null)
 const dialogOpen = computed(() => !!activeDialog.value)
+const pushedSkillView = computed(() => pushedViews.value.find((entry) => entry.view === pushedView.value) ?? null)
 
 const {
   pushedView, chatOpen, homePreviewRole, showProfile, navDirection, slideTransitionName,
@@ -86,9 +87,9 @@ function handleSelectLabelSessions(projectId) {
   pushView('label')
 }
 
-function handleSelectBuild(projectId) {
-  buildProjectId.value = projectId
-  pushView('build')
+function handleOpenSkillView(view, projectId) {
+  skillViewProjectId.value = projectId
+  pushView(view)
 }
 
 function handleManageProjectsChat(projectId) {
@@ -163,7 +164,7 @@ const manageProjectsListeners = {
   label: handleSelectLabelSessions,
   download: handleModelDownload,
   publish: handlePublishProject,
-  build: handleSelectBuild,
+  'open-skill-view': handleOpenSkillView,
   'manage-users': handleSettingsManageUsers,
   'manage-services': handleSettingsManageServices,
   'app-store': handleSettingsAppStore,
@@ -311,10 +312,11 @@ onBeforeUnmount(() => {
               @project-select="handleLabelProjectSwitch"
               v-on="profileMenuListeners"
             />
-            <BuildProjectView
-              v-else-if="pushedView === 'build'"
-              :key="buildProjectId"
-              :project-id="buildProjectId"
+            <component
+              v-else-if="pushedSkillView"
+              :is="pushedSkillView.component"
+              :key="skillViewProjectId"
+              :project-id="skillViewProjectId"
               :profile="currentUserProfile"
               @close="popPushedView"
               v-on="profileMenuListeners"

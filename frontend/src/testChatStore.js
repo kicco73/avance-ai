@@ -37,7 +37,7 @@ export const {
   autoTrackingEnabled, autoTrackingLoading, actuatorsEnabled, actuatorsLoading, draft, turnCount,
   handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
   selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking, toggleActuators,
-  toggleAudio, handleSend, handleVoiceMessage, handleResend, handleReact, handleAction,
+  toggleAudio, handleSend, beginVoiceMessage, handleResend, handleReact, handleAction,
   clearChatUi, handleReset, handleNewSession,
 } = testStore
 

@@ -39,7 +39,8 @@ function skillTargetOf(path, specifier) {
   if (!specifier.startsWith('.')) return null
   const resolved = resolve(dirname(path), specifier)
   if (!resolved.startsWith(SKILLS + '/')) return null
-  return relative(SKILLS, resolved).split('/')[0].replace(/\.js$/, '')
+  const [head, ...rest] = relative(SKILLS, resolved).split('/')
+  return rest.length ? head : null
 }
 
 const skillKeys = readdirSync(SKILLS).filter((entry) => statSync(join(SKILLS, entry)).isDirectory())
@@ -102,10 +103,12 @@ describe('skill boundaries', () => {
   })
 
   it('keeps every skill test inside its own skill', () => {
+    // The registry is core, and a core test may mock it like any other
+    // core module; what a core test may never reach is a skill itself.
     const offenders = sourceFilesUnder(join(ROOT, 'tests'))
       .filter((path) => path !== THIS_FILE)
       .flatMap((path) => specifiersIn(path)
-        .filter((specifier) => specifier.includes('/skills/'))
+        .filter((specifier) => /\/skills\/[^/]+\//.test(specifier))
         .map((specifier) => `${relative(ROOT, path)} -> ${specifier}`))
     expect(offenders).toEqual([])
   })

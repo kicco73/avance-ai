@@ -58,14 +58,31 @@ installed.
 Contribution points do the same for assembled answers: a skill hands its
 tab to Settings (`POINT_CONFIG_SERVICES`), its controllers to the router
 (`POINT_HTTP_CONTROLLERS`), its capability flag to the frontend's boot
-state (`POINT_API_STATE`). The core assembles what arrived and names
-nobody. `ui_label`/`ui_description` travel the same way, so even the
+state (`POINT_API_STATE`), and — where it can compile — the package it
+made out of a revision somebody just published (`POINT_PROJECT_PUBLISHED`).
+That last one is worth reading twice: publishing asks nothing about
+whether a compiler is installed, it collects, and a build without one
+collects nothing. The core assembles what arrived and names nobody. `ui_label`/`ui_description` travel the same way, so even the
 *words* on screen for a skill come from the skill.
 
 Two skills can even negotiate without meeting: `product` stands down from
 `POINT_AUTOMATON_LOADER` when `build` is installed, because a backend
 that can compile should decide per project and revision. Neither imports
 the other; the point they both answer composes them.
+
+### A skill describes itself, too
+
+The same rule reaches the documentation. `docs/SKILLS.md` in the core is
+only an introduction; each skill writes its own section in
+`backend/src/<package>/docs/SKILL.md`, and `skills.documentation()`
+assembles the sections of whatever is installed. A skill that was not
+copied contributes nothing, so the page a customer reads describes the
+product they were given and never one somebody else bought — for the same
+reason, and by the same mechanism, that its routes are not there either.
+
+`avance_platform/doc_catalog.py` keeps this out of the controller: a doc
+slug maps to an object that knows how to render itself, a file on disk or
+the assembled skills page, and `get_doc` asks it rather than branching.
 
 ### Where the "do I need this?" rule lives
 
@@ -109,20 +126,16 @@ only, and the frontend needs both answers.
 
 ### Open debt
 
-- Compile-on-publish is still wired on the frontend
-  (`useProjectAdminActions.js` calls the build skill after a publish),
-  which is core driving a skill by name. It belongs on the Bus: platform
-  publishes, `build` subscribes, and the response carries what was built.
 - Not every route has reached its skill yet — the migration to
   `/api/skills/<key>/…` and `/api/core/…` is in progress.
 - The build copies `backend/` and nothing else; see the last section.
 
-## Frontend — the same shape, not yet built
+## Frontend — the same shape, one skill at a time
 
-Today the frontend has none of this: `App.vue` statically imports every
-view, `EditProjectView` imports the test panel, `ServicesView` carries a
-literal list of skill ids, and no build ever copies the frontend. The
-target mirrors the backend one-for-one:
+Every skill with a frontend now has one, on the same shape as its
+package: `build`, `testing`, `talk`, `listen`, `whatsapp`. What is not
+done is the build step — no build copies the frontend yet. The layout
+mirrors the backend one-for-one:
 
 ```
 frontend/src/skills/<key>/
@@ -161,6 +174,21 @@ than render, the manifest contributes an object with named methods and
 the core calls the method by name, the same shape as the backend Bus —
 never a registered callback.
 
+An extension point asks a skill only what the skill knows about itself.
+The test mode briefly had to declare which chat skin the editor should
+show while it was open — a decision belonging to the editor, with the
+skill left restating the default. If a contribution field would read the
+same for every skill that ever fills it, it belongs to the core, and the
+core should carry it as its own default.
+
+One rule the frontend has that the backend does not need: **a core module
+low in the import graph must not import the registry.** The registry pulls
+in every skill, and a skill reaches back into the core, so importing it
+from something like the chat store closes a cycle. Where the core has to
+announce something, it announces to a leaf module (`messageNotifier.js`)
+and whoever boots the app hands that module the observers the registry
+collected.
+
 A skill's UI appears only when both are true: its directory is compiled
 in, and the running backend reports it in `GET /api/skills`. The first is
 the truth; the second only degrades a frontend that shipped with more
@@ -188,20 +216,36 @@ in a string literal. That scan must be targeted — an exact quoted key, an
 match, since the core legitimately says "build" in `buildTimeline` and
 prose, and `'whatsapp'` also names a login provider that is not the skill.
 
-## What the build still has to learn
+## What a build delivers
 
-`backend_copy.py` copies `backend/` and nothing else. Shipping a
-frontend per customer needs one more step in `STEPS`:
+`build/backend_copy.py` runs one named step per visible phase, and two of
+them are the delivery:
 
-1. copy `frontend/`, ignoring `node_modules`, `dist`, `.vite`;
-2. translate package → key — `excluded_skills` names packages
-   (`avance_platform`), the frontend directories are named by key — then
-   remove `frontend/src/skills/<key>` for each excluded key;
-3. `npm ci && npm run test && npm run build` inside the copy, the
-   frontend half of "a build runs its own tests";
-4. point the built `nginx.conf` at `<build>/frontend/dist`;
-5. check the produced `dist/` for any trace of an excluded key — that
-   directory is what actually reaches the customer.
+- **Copying the backend** copies `backend/` with an ignore that drops, at
+  the `backend/src/` level only, the directories named in
+  `excluded_skills`, then prunes `requirements.txt` of the pip lines those
+  skills declared.
+- **Building the frontend** (`build/frontend_copy.py`) copies `frontend/`
+  without `node_modules`/`dist`, removes `frontend/src/skills/<key>` for
+  every excluded skill, and then reads back everything it copied: a source
+  file still naming a dropped skill fails the build rather than shipping.
 
-`npm ci` adds one to three minutes and needs node in the build
-environment, which the backend build does not otherwise require.
+That second step translates **package → key** through `skills.installed()`
+rather than assuming they match, because `avance_platform` declares
+`key = "platform"`. It prunes after copying rather than through an ignore
+function for the same reason — the translation needs the roster.
+
+What it deliberately does not do is compile the frontend. The delivery is
+pruned source, built where it is deployed exactly as the Dockerfile
+already builds it (`npm ci && npm run build`). Compiling here would put an
+`npm ci` inside every build, minutes of it, and would make a build require
+node in an environment that otherwise needs none.
+
+The last step runs the built backend's own suite — the tests that came
+with what was actually copied.
+
+## Still open
+
+- Serving the delivered frontend is the deployment's business: nothing
+  generates an nginx config per build. The report says where the pruned
+  source landed.

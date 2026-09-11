@@ -2,8 +2,8 @@ import { getCurrentSession, postCreateSession, getSessions } from './api.js'
 import { createChatStore } from './chatStoreFactory.js'
 
 export {
-  audioEnabled, talkAvailable, micAvailable, spokenTextEnabled, inputTokenBudgetPerTurn, totalTokenBudgetPerSession,
-  setCapabilities, setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, toggleSpokenText,
+  audioEnabled, spokenTextEnabled, inputTokenBudgetPerTurn, totalTokenBudgetPerSession,
+  setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, toggleSpokenText,
 } from './chatStoreFactory.js'
 export {
   aiModels, aiModelAuto, aiModelCurrentIndex, aiModelSelectionLoading, loadAiModels, selectAiModel, liveModelStore,
@@ -31,6 +31,6 @@ export const {
   autoTrackingEnabled, autoTrackingLoading, draft, turnCount,
   handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
   selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking,
-  toggleAudio, handleSend, handleVoiceMessage, handleResend, handleReact, handleAction,
+  toggleAudio, handleSend, beginVoiceMessage, handleResend, handleReact, handleAction,
   clearChatUi, handleNewSession, handleCloseSession,
 } = liveStore

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import faulthandler
 import fcntl
+import os
 import json
+import signal
 import socket
 import subprocess
 from contextlib import contextmanager
@@ -74,6 +77,60 @@ class _TestRun:
 
 _test_runs: dict[str, _TestRun] = {}
 
+WATCHDOG_FLOOR_SECONDS = 3.0
+WATCHDOG_FACTOR = 20.0
+WATCHDOG_CEILING_SECONDS = 300.0
+WATCHDOG_UNKNOWN_SECONDS = 120.0
+_known_seconds: dict[str, float] | None = None
+
+
+def _recorded_seconds() -> dict[str, float]:
+    global _known_seconds
+    if _known_seconds is not None:
+        return _known_seconds
+    try:
+        with open(TEST_STATS_PATH) as f:
+            stats = json.load(f)
+    except (OSError, ValueError):
+        stats = {}
+    _known_seconds = {
+        nodeid: entry["seconds"] / entry["runs"]
+        for nodeid, entry in stats.items()
+        if isinstance(entry, dict) and entry.get("runs")
+    }
+    return _known_seconds
+
+
+def watchdog_seconds(nodeid: str) -> float:
+    """How long this one test may stop making progress before the suite
+    dumps every thread and gives up. Read off what this very test has
+    taken before (test_stats.json), so a test that normally runs in 30ms
+    is not given ten minutes to hang in, and the four-minute build test
+    is not cut off at a number chosen for everyone else."""
+    average = _recorded_seconds().get(nodeid)
+    if average is None:
+        return WATCHDOG_UNKNOWN_SECONDS
+    return min(WATCHDOG_CEILING_SECONDS, max(WATCHDOG_FLOOR_SECONDS, average * WATCHDOG_FACTOR))
+
+
+_watchdog_output = None
+
+
+def pytest_configure(config):
+    global _watchdog_output
+    _watchdog_output = os.fdopen(os.dup(2), "w", closefd=False)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_protocol(item, nextitem):
+    faulthandler.dump_traceback_later(
+        watchdog_seconds(item.nodeid), exit=True, file=_watchdog_output,
+    )
+    try:
+        yield
+    finally:
+        faulthandler.cancel_dump_traceback_later()
+
 
 def parse_sse_result(response) -> dict:
     """POST .../sessions/import streams its progress as SSE 'data: {...}'
@@ -124,17 +181,52 @@ def chat_socket(client: TestClient, username: str | None = None):
         yield ws
 
 
+TURN_FRAME_DEADLINE_SHARE = 0.5
+
+
+def turn_frame_seconds(nodeid: str | None = None) -> float:
+    """How long one turn may go without a frame before this test fails
+    naming the frames that did arrive. Half of whatever the watchdog
+    allows this very test, so the useful diagnosis always gets there
+    first: both nets guard a hung turn, but the watchdog kills the run
+    and only this one can say where the turn stopped."""
+    nodeid = nodeid or os.environ.get("PYTEST_CURRENT_TEST", "").split(" (")[0]
+    return watchdog_seconds(nodeid) * TURN_FRAME_DEADLINE_SHARE
+
+
+@contextmanager
+def _frame_deadline(seconds: float, frames: list[dict]):
+    """A turn is read off the websocket with a blocking receive that has no
+    timeout of its own, so a frame that never arrives hangs the whole suite
+    instead of failing one test. SIGALRM turns that into a failure that
+    names the frames which did arrive."""
+    def ring(signum, stack):
+        raise AssertionError(
+            f"No turn.ended/turn.failed within {seconds:g}s. Frames so far: "
+            f"{[frame.get('type') for frame in frames] or 'none'}"
+        )
+
+    previous = signal.signal(signal.SIGALRM, ring)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
+
 def chat_turn_frames(client: TestClient, session_id: int, text: str, turn_id: str = "t1") -> list[dict]:
     """One turn over the websocket, every frame it produced in order —
     the last one is its `done` or `error`."""
     with chat_socket(client) as ws:
         ws.send_json({"type": "input.text", "stream_id": turn_id, "session_id": session_id, "body": text})
         frames = []
-        while True:
-            frame = ws.receive_json()
-            frames.append(frame)
-            if frame["type"] in ("turn.ended", "turn.failed"):
-                return frames
+        with _frame_deadline(turn_frame_seconds(), frames):
+            while True:
+                frame = ws.receive_json()
+                frames.append(frame)
+                if frame["type"] in ("turn.ended", "turn.failed"):
+                    return frames
 
 
 def chat_turn(client: TestClient, session_id: int, text: str = "hi") -> dict:
@@ -585,7 +677,10 @@ def _git_renamed_test_files() -> dict[str, str]:
         if not last_commit:
             return {}
         diff = subprocess.run(
-            ["git", "diff", "--relative", "--name-status", "-M", "--diff-filter=R", last_commit, "--", "tests/"],
+            # tests/ and src/*/tests/: a skill's tests live inside its own
+            # package (see src/docs/TESTS.md), so renames there have to be
+            # followed too or every one of them leaves dead stats behind.
+            ["git", "diff", "--relative", "--name-status", "-M", "--diff-filter=R", last_commit, "--", "tests/", "src/"],
             cwd=repo_dir, capture_output=True, text=True, timeout=5,
         ).stdout
     except (subprocess.SubprocessError, OSError):

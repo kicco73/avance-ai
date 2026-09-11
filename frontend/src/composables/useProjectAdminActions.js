@@ -4,8 +4,6 @@ import {
   postCleanUnusedRevisions, downloadProject, getBackup, postRestoreBackup, getAbout,
   getPublishPreview, postPublishProject
 } from '../api.js'
-import { postBuildLocalModule } from '../api/build.js'
-import { buildAvailable } from '../buildAvailability.js'
 import PublishRemapDialog from '../components/settings/PublishRemapDialog.vue'
 import { aboutDialog, confirmDialog, customDialog, infoDialog } from '../dialogStore.js'
 import { handleStateChange, loadMessages, clearChatUi } from '../chatStore.js'
@@ -127,9 +125,9 @@ export function useProjectAdminActions() {
   }
 
   // Manage projects' one Publish button: the draft becomes the published
-  // revision, and where this backend can compile at all (see
-  // buildAvailability.js) that revision is compiled into a package right
-  // after. A backend without the build package publishes and stops there.
+  // revision. A backend that can compile turns it into a package as part
+  // of answering (see bus.POINT_PROJECT_PUBLISHED) and says so in `built`;
+  // one that cannot publishes and stops there.
   async function handlePublishProject(projectId) {
     const remapTo = await askPublishConsent(projectId)
     if (remapTo === CANCELLED) return
@@ -139,9 +137,8 @@ export function useProjectAdminActions() {
     } catch {
       return
     }
-    const built = await compilePublishedRevision(projectId)
     await refreshStateAndProjects()
-    await infoDialog({ title: 'Publish', body: publishReport(published, built) })
+    await infoDialog({ title: 'Publish', body: publishReport(published) })
   }
 
   // The chosen remap target, null when none is needed, or CANCELLED when
@@ -169,21 +166,9 @@ export function useProjectAdminActions() {
     return ok ? null : CANCELLED
   }
 
-  // What was built, or null — a backend that cannot compile, and a
-  // compile that failed (already surfaced via apiFetch), read the same
-  // here: the publish itself stands either way.
-  async function compilePublishedRevision(projectId) {
-    if (!buildAvailable.value) return null
-    try {
-      return await postBuildLocalModule(projectId)
-    } catch {
-      return null
-    }
-  }
-
-  function publishReport(published, built) {
+  function publishReport(published) {
     const head = `Published revision ${published.published_revision}.`
-    return built ? `${head} Compiled into ${built.module}.` : head
+    return published.built ? `${head} Compiled into ${published.built.module}.` : head
   }
 
   async function handleWipeAllLiveSessions() {

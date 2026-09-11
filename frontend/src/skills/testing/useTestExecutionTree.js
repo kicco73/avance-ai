@@ -3,9 +3,9 @@ import {
   deleteAllTestJobs, deleteTestJob, deleteTests, getAggregateResult, getTests, getTestStatus,
   postTest, postRootAggregation, postSessionsRun, postSignalTest, postSignalsAggregation,
   postStateTest, postStatesAggregation, postUserSessionsRun, postUsersAggregation,
-} from '../api.js'
-import { busChannel } from '../busChannel.js'
-import { confirmDialog } from '../dialogStore.js'
+} from './api.js'
+import { busChannel } from '../../busChannel.js'
+import { confirmDialog } from '../../dialogStore.js'
 
 // ProjectTestPanel.vue's own execution tree: per-node job status/progress
 // (live over the shared /api/core/bus connection, seeded once from a

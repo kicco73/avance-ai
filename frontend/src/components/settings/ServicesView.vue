@@ -11,11 +11,14 @@ import DocInfoButton from '../DocInfoButton.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import AiUsageTrendsChart from './AiUsageTrendsChart.vue'
 import ServicesProviderCard from './ServicesProviderCard.vue'
+import ServicesFieldList from './ServicesFieldList.vue'
 import StatusToggleButton from './StatusToggleButton.vue'
 import TaskCard from './TaskCard.vue'
 import { getAiUsage, getScheduledTasks, getServicesConfig } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 import { liveModelStore } from '../../chatStore.js'
+import { servicesTabs } from '../../skills/registry.js'
+import { fieldLabel } from './serviceFields.js'
 
 defineProps({
   // ProfileMenu.vue's own avatar/name — App.vue already fetched this once
@@ -35,37 +38,27 @@ const emit = defineEmits(['close', 'download-backup', 'restore-backup', 'wipe-li
 // each skill's own UI_LABEL), and `tabs` below prefers those — what shows
 // here is what the Build view shows for the same service. Scheduler has no
 // config section of its own, so its text stays local.
-const TABS = [
+const CORE_TABS = [
   { id: 'ai', label: 'AI' },
   { id: 'chat', label: 'Chat' },
-  { id: 'testing', label: 'Testing' },
   { id: 'scheduler', label: 'Scheduler', description: 'Deferred work the platform runs on its own clock.' },
-  { id: 'talk', label: 'Talk' },
-  { id: 'listen', label: 'Listen' },
-  { id: 'whatsapp', label: 'WhatsApp' },
-  { id: 'database', label: 'Data' },
-  { id: 'build', label: 'Build' }
+  { id: 'database', label: 'Data' }
 ]
 
-const tabs = computed(() => TABS.map((tab) => ({
-  ...tab,
-  label: services.value?.[tab.id]?.['ui-label'] || tab.label,
-  description: services.value?.[tab.id]?.['ui-description'] || tab.description || ''
-})))
+const tabs = computed(() => [...CORE_TABS, ...servicesTabs.value]
+  .filter((tab) => tab.id === 'scheduler' || services.value?.[tab.id])
+  .map((tab) => ({
+    ...tab,
+    label: services.value?.[tab.id]?.['ui-label'] || tab.label,
+    description: services.value?.[tab.id]?.['ui-description'] || tab.description || ''
+  })))
+
+const contributedTabs = computed(() => tabs.value.filter((tab) => tab.component))
 
 const activeDescription = computed(() => tabs.value.find((tab) => tab.id === activeTab.value)?.description || '')
 
-// The two 'ui-' keys are the section's own label and description, shown
-// by the tab itself — never as one more read-only field.
-function configFields(section) {
-  return Object.entries(section).filter(([key]) => !key.startsWith('ui-'))
-}
 
-const WHATSAPP_MASKED_FIELDS = ['verify-token', 'app-secret', 'access-token']
-const WHATSAPP_PLAIN_FIELDS = ['phone-number-id', 'phone-number', 'invite-prefix', 'graph-version', 'voice-replies']
-const revealedWhatsAppFields = ref(Object.fromEntries(WHATSAPP_MASKED_FIELDS.map((key) => [key, false])))
-
-const activeTab = ref(TABS[0].id)
+const activeTab = ref(CORE_TABS[0].id)
 const services = ref(null)
 const loading = ref(true)
 
@@ -132,19 +125,12 @@ async function loadTasks() {
 
 watch([taskStatus, taskOrder], loadTasks)
 
-const BUILD_MASKED_FIELDS = ['token']
-const BUILD_PLAIN_FIELDS = ['repo-url', 'username']
-const revealedBuildFields = ref(Object.fromEntries(BUILD_MASKED_FIELDS.map((key) => [key, false])))
 
 onMounted(() => {
   load()
   loadAiUsage()
   loadTasks()
 })
-
-function fieldLabel(key) {
-  return key.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase())
-}
 
 // Any path that ends in one specific provider pinned (auto=false) loses
 // the same thing: no more automatic fallback if that provider fails or
@@ -289,17 +275,7 @@ async function selectCleanUnusedRevisions() {
       <p v-if="loading" class="services-status">Loading…</p>
       <template v-else-if="services">
         <div v-show="activeTab === 'chat'" class="services-panel">
-          <div v-for="[key, value] in configFields(services.chat)" :key="key" class="services-field">
-            <label class="services-field-label">{{ fieldLabel(key) }}</label>
-            <input class="services-field-input" type="text" :value="value" disabled />
-          </div>
-        </div>
-
-        <div v-show="activeTab === 'testing'" class="services-panel">
-          <div v-for="[key, value] in configFields(services.testing)" :key="key" class="services-field">
-            <label class="services-field-label">{{ fieldLabel(key) }}</label>
-            <input class="services-field-input" type="text" :value="value" disabled />
-          </div>
+          <ServicesFieldList :section="services.chat" />
         </div>
 
         <div v-show="activeTab === 'scheduler'" class="services-panel">
@@ -355,61 +331,8 @@ async function selectCleanUnusedRevisions() {
           </div>
         </div>
 
-        <div v-show="activeTab === 'talk'" class="services-panel">
-          <label class="services-checkbox-field">
-            <input type="checkbox" :checked="services.talk.enabled" disabled />
-            Service enabled
-          </label>
-          <ServicesProviderCard v-for="(provider, i) in services.talk.providers" :key="i" :provider="provider" />
-        </div>
-
-        <div v-show="activeTab === 'listen'" class="services-panel">
-          <label class="services-checkbox-field">
-            <input type="checkbox" :checked="services.listen.enabled" disabled />
-            Service enabled
-          </label>
-          <ServicesProviderCard v-for="(provider, i) in services.listen.providers" :key="i" :provider="provider" />
-        </div>
-
-        <div v-show="activeTab === 'whatsapp'" class="services-panel">
-          <label class="services-checkbox-field">
-            <input type="checkbox" :checked="services.whatsapp.enabled" disabled />
-            Service enabled
-          </label>
-          <template v-if="services.whatsapp.enabled">
-            <div v-for="key in WHATSAPP_MASKED_FIELDS" :key="key" class="services-field">
-              <label class="services-field-label">{{ fieldLabel(key) }}</label>
-              <div class="services-field-masked-row">
-                <input
-                  class="services-field-input"
-                  :type="revealedWhatsAppFields[key] ? 'text' : 'password'"
-                  :value="services.whatsapp[key]"
-                  disabled
-                />
-                <button
-                  type="button"
-                  class="services-reveal-btn"
-                  :title="revealedWhatsAppFields[key] ? 'Hide' : 'Show'"
-                  @click="revealedWhatsAppFields[key] = !revealedWhatsAppFields[key]"
-                >{{ revealedWhatsAppFields[key] ? 'Hide' : 'Show' }}</button>
-              </div>
-            </div>
-            <div v-for="key in WHATSAPP_PLAIN_FIELDS" :key="key" class="services-field">
-              <label class="services-field-label">{{ fieldLabel(key) }}</label>
-              <input class="services-field-input" type="text" :value="services.whatsapp[key]" disabled />
-            </div>
-            <label class="services-checkbox-field">
-              <input type="checkbox" :checked="services.whatsapp['mark-read']" disabled />
-              Mark messages as read
-            </label>
-          </template>
-        </div>
-
         <div v-show="activeTab === 'database'" class="services-panel">
-          <div v-for="[key, value] in configFields(services.database)" :key="key" class="services-field">
-            <label class="services-field-label">{{ fieldLabel(key) }}</label>
-            <input class="services-field-input" type="text" :value="value" disabled />
-          </div>
+          <ServicesFieldList :section="services.database" />
 
           <div class="services-section">
             <div class="services-actions-row">
@@ -429,29 +352,13 @@ async function selectCleanUnusedRevisions() {
           </div>
         </div>
 
-        <div v-show="activeTab === 'build'" class="services-panel">
-          <div v-for="key in BUILD_PLAIN_FIELDS" :key="key" class="services-field">
-            <label class="services-field-label">{{ fieldLabel(key) }}</label>
-            <input class="services-field-input" type="text" :value="services.build[key]" disabled />
-          </div>
-          <div v-for="key in BUILD_MASKED_FIELDS" :key="key" class="services-field">
-            <label class="services-field-label">{{ fieldLabel(key) }}</label>
-            <div class="services-field-masked-row">
-              <input
-                class="services-field-input"
-                :type="revealedBuildFields[key] ? 'text' : 'password'"
-                :value="services.build[key]"
-                disabled
-              />
-              <button
-                type="button"
-                class="services-reveal-btn"
-                :title="revealedBuildFields[key] ? 'Hide' : 'Show'"
-                @click="revealedBuildFields[key] = !revealedBuildFields[key]"
-              >{{ revealedBuildFields[key] ? 'Hide' : 'Show' }}</button>
-            </div>
-          </div>
-        </div>
+        <component
+          v-for="tab in contributedTabs"
+          :key="tab.id"
+          :is="tab.component"
+          v-show="activeTab === tab.id"
+          :section="services[tab.id]"
+        />
       </template>
     </div>
   </div>

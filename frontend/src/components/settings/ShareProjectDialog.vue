@@ -16,6 +16,7 @@
 // info/about.
 import { computed, onMounted, ref } from 'vue'
 import QRCode from 'qrcode'
+import { shareChannels } from '../../skills/registry.js'
 import { postCreateInvite } from '../../api.js'
 import { buildInviteUrl } from '../../shareLink.js'
 import InviteQrCard from './InviteQrCard.vue'
@@ -27,26 +28,31 @@ const props = defineProps({
 
 const loading = ref(true)
 const error = ref('')
-const channel = ref('web')
-const webUrl = ref('')
-const webQr = ref(null)
-const whatsappUrl = ref('')
-const whatsappQr = ref(null)
+// The web link is this dialog's own; any other way of handing an invite
+// over is contributed by whoever owns that channel, and names the field
+// of the invite its link arrives in.
+const WEB_CHANNEL = { id: 'web', label: 'Web', hint: "Scan to open this project's live chat." }
+
+const channel = ref(WEB_CHANNEL.id)
+const links = ref({})
+const qrs = ref({})
 const expiresAt = ref(null)
 const maxShares = ref(null)
 
-const hasWhatsapp = computed(() => !!whatsappUrl.value)
+const channels = computed(() => [WEB_CHANNEL, ...shareChannels.value].filter((entry) => links.value[entry.id]))
+const activeChannel = computed(() => channels.value.find((entry) => entry.id === channel.value) ?? WEB_CHANNEL)
 
 onMounted(async () => {
   try {
     const invite = await postCreateInvite(props.projectId)
     expiresAt.value = invite.expires_at
     maxShares.value = invite.max_shares
-    webUrl.value = buildInviteUrl(invite.code)
-    webQr.value = await QRCode.toDataURL(webUrl.value, { width: 260, margin: 1 })
-    if (invite.whatsapp_url) {
-      whatsappUrl.value = invite.whatsapp_url
-      whatsappQr.value = await QRCode.toDataURL(whatsappUrl.value, { width: 260, margin: 1 })
+    links.value = { [WEB_CHANNEL.id]: buildInviteUrl(invite.code) }
+    for (const entry of shareChannels.value) {
+      if (invite[entry.inviteField]) links.value[entry.id] = invite[entry.inviteField]
+    }
+    for (const [id, url] of Object.entries(links.value)) {
+      qrs.value[id] = await QRCode.toDataURL(url, { width: 260, margin: 1 })
     }
   } catch (err) {
     error.value = err.message || 'Could not generate an invite link.'
@@ -56,9 +62,7 @@ onMounted(async () => {
 })
 
 const hint = computed(() => {
-  const base = channel.value === 'web'
-    ? "Scan to open this project's live chat."
-    : 'Scan to open WhatsApp with this invite ready to send.'
+  const base = activeChannel.value.hint
   return expiresAt.value
     ? `${base} Valid until ${new Date(expiresAt.value).toLocaleDateString()}, up to ${maxShares.value} people.`
     : base
@@ -73,23 +77,19 @@ const hint = computed(() => {
     <p v-if="loading" class="share-project-status">Generating invite…</p>
     <p v-else-if="error" class="share-project-status share-project-error">{{ error }}</p>
     <template v-else>
-      <div v-if="hasWhatsapp" class="share-project-segmented">
+      <div v-if="channels.length > 1" class="share-project-segmented">
         <button
+          v-for="entry in channels"
+          :key="entry.id"
           type="button"
           class="share-project-segment-btn"
-          :class="{ 'share-project-segment-active': channel === 'web' }"
-          @click="channel = 'web'"
-        >Web</button>
-        <button
-          type="button"
-          class="share-project-segment-btn"
-          :class="{ 'share-project-segment-active': channel === 'whatsapp' }"
-          @click="channel = 'whatsapp'"
-        >WhatsApp</button>
+          :class="{ 'share-project-segment-active': channel === entry.id }"
+          @click="channel = entry.id"
+        >{{ entry.label }}</button>
       </div>
       <InviteQrCard
-        :qr-data-url="channel === 'web' ? webQr : whatsappQr"
-        :link-url="channel === 'web' ? webUrl : whatsappUrl"
+        :qr-data-url="qrs[activeChannel.id]"
+        :link-url="links[activeChannel.id]"
         :hint="hint"
       />
     </template>

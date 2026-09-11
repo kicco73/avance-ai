@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, nextTick } from 'vue'
 
-vi.mock('../src/api/build.js', () => ({
+vi.mock('../api.js', () => ({
   getBuildRequirements: vi.fn().mockResolvedValue({ skills: [], required: [], disabled: [], contradicted: [] }),
   postBuildBackendCopy: vi.fn(),
   postBuildLocalModule: vi.fn()
@@ -33,7 +33,7 @@ describe('BuildProjectView.vue build progress', () => {
 
   beforeEach(async () => {
     vi.resetModules()
-    api = await import('../src/api/build.js')
+    api = await import('../api.js')
     container = document.createElement('div')
     document.body.appendChild(container)
   })
@@ -47,7 +47,7 @@ describe('BuildProjectView.vue build progress', () => {
   // No @vue/test-utils here, and <script setup> exposes nothing — so the
   // panel is driven the way an operator drives it: Next, then Build.
   async function build() {
-    const BuildProjectView = (await import('../src/components/project/build/BuildProjectView.vue')).default
+    const BuildProjectView = (await import('../components/BuildProjectView.vue')).default
     app = createApp(BuildProjectView, { projectId: 'proj' })
     app.mount(container)
     await nextTick()

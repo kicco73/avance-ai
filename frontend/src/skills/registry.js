@@ -19,3 +19,9 @@ export const servicesTabs = contributionsOf('servicesTabs')
 export const chatInputControls = contributionsOf('chatInputControls')
 export const profileFields = contributionsOf('profileFields')
 export const messageListeners = contributionsOf('messageListeners')
+export const stateListeners = contributionsOf('stateListeners')
+export const shareChannels = contributionsOf('shareChannels')
+
+export const channelLabels = computed(() => manifests
+  .filter((manifest) => isSkillInstalled(manifest.key))
+  .reduce((labels, manifest) => ({ ...labels, ...manifest.channelLabels }), {}))

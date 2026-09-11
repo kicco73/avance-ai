@@ -62,7 +62,7 @@ export function getMe() {
   return apiFetch(`${API_URL}/skills/platform/auth/me`)
 }
 
-export function putWhatsAppPhoneNumber(phoneNumber, confirmMerge = false) {
+export function putUserPhoneNumber(phoneNumber, confirmMerge = false) {
   return apiFetch(`${API_URL}/skills/platform/auth/me/phone-number`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
