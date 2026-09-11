@@ -300,7 +300,7 @@ class TurnService(object):
 						return {"legal_terms_pending": True, "project_id": project_id}
 					active = self._session_manager.get_active_session(self._username, project_id)
 					if active is not None:
-						reason = "force-new-session" if active["channel"] == Session().channel else "channel-switch"
+						reason = "force-new-session" if active["channel"] == strategy.caller_channel() else "channel-switch"
 						self._session_manager.close_session(active, reason)
 				session = self._session_manager.create_session(
 					strategy, self._project_service, self._username, project_id

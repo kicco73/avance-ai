@@ -18,17 +18,49 @@ from __future__ import annotations
 
 from http import HTTPStatus
 
-from fastapi import HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from controllers.base_controller import BaseController, delete, get, post, put
 from schemas import ActionRequest, ActuatorsRequest, AudioEnabledRequest, ReactionRequest
+from system.session import Session
+from turn.channels import NATIVE_CHAT
 from turn.turn_service import TurnService
+
+
+# XXX Compiled automaton requirement - do not touch.
+# XXX The one thing every route below has in common: whoever called it is
+# the chat window, speaking on the chat window's channel. Declared once,
+# for the whole router, rather than in each method — a read here is not a
+# read: get_messages calls open_if_needed, which runs a project's opening
+# message as a real turn, through the same write admission gate a typed
+# message goes through. Almost anything here can end up needing to know
+# who is speaking, so a fourteenth route must not be addable without it.
+#
+# auth/auth_middleware.py used to do exactly this for *every*
+# authenticated HTTP request in the system. That is what made core name
+# webchat's channel, and what forced the editor's own routes — session
+# lists, titles, test sessions — to carry a channel they have none of.
+#
+# async, and not incidentally: FastAPI runs a *sync* dependency in a
+# worker thread, which gets a copy of the request's context — anything it
+# sets there is discarded before the endpoint runs, silently. An async
+# dependency runs in the request's own task, so the declaration reaches
+# the endpoint whether the endpoint itself is sync or async.
+async def _the_chat_window_is_speaking() -> None:
+    Session().channel = NATIVE_CHAT
 
 
 class WebchatController(BaseController):
 
     def __init__(self, turn_service: TurnService) -> None:
         self.turn_service = turn_service
+
+    def register_routes(self, router: APIRouter) -> None:
+        for method, path, kwargs, member in self._declared_routes():
+            router.add_api_route(
+                path, member, methods=[method],
+                dependencies=[Depends(_the_chat_window_is_speaking)], **kwargs,
+            )
 
     @get("/api/skills/webchat/sessions/current")
     async def get_current_session(self, session_id: int | None = None):

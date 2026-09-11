@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
+from system.session import Session
+
 if TYPE_CHECKING:
     from automaton.automaton import Automaton
     from turn.sessions.session_manager import SessionManager
@@ -37,6 +39,19 @@ class SessionTypeStrategy(ABC):
     # channel at all.
     @abstractmethod
     def is_current(self, session: dict, active_session: dict | None) -> bool: ...
+
+    # XXX Compiled automaton requirement - do not touch.
+    # XXX Which channel the caller is speaking on, for sessions of this
+    # type — and None for the types where the question does not arise.
+    # Only a live session is a conversation with somebody: a test,
+    # preview or imported one is never reached from WhatsApp or from
+    # anywhere else, and asking who is speaking would force every editor
+    # route that opens one to answer. auth/auth_middleware.py used to
+    # answer for them, stamping native-chat on every authenticated HTTP
+    # request, which is how core came to name webchat's channel — and
+    # how a build without src/webchat/ still carried it.
+    @abstractmethod
+    def caller_channel(self) -> str | None: ...
 
     # XXX Compiled automaton requirement - do not touch.
     # XXX Whether this specific session may be written to (a chat turn or
@@ -98,6 +113,14 @@ class LiveSessionStrategy(SessionTypeStrategy):
     def is_current(self, session: dict, active_session: dict | None) -> bool:
         return active_session is not None and active_session["id"] == session["id"]
 
+    def caller_channel(self) -> str | None:
+        # Raises when nobody declared one, rather than defaulting: a live
+        # session cannot be opened, resumed or written to by a caller who
+        # cannot say where they are speaking from. Each channel names
+        # itself — webchat/webchat_controller.py and webchat_service.py
+        # for the chat window, whatsapp/whatsapp_service.py for WhatsApp.
+        return Session().channel
+
     def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool:
         # A live session belongs to exactly one channel for its whole
         # life: whoever opened it. Another channel writing to it would
@@ -142,6 +165,9 @@ class TestSessionStrategy(SessionTypeStrategy):
     def is_current(self, session: dict, active_session: dict | None) -> bool:
         return True
 
+    def caller_channel(self) -> str | None:
+        return None
+
     def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool:
         return True
 
@@ -168,6 +194,9 @@ class PreviewSessionStrategy(SessionTypeStrategy):
 
     def is_current(self, session: dict, active_session: dict | None) -> bool:
         return True
+
+    def caller_channel(self) -> str | None:
+        return None
 
     def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool:
         return True
@@ -197,6 +226,9 @@ class ImportedSessionStrategy(SessionTypeStrategy):
 
     def is_current(self, session: dict, active_session: dict | None) -> bool:
         return False
+
+    def caller_channel(self) -> str | None:
+        return None
 
     def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool:
         return False

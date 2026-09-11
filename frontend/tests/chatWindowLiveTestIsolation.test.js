@@ -14,7 +14,6 @@ import { createApp, h } from 'vue'
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn() }))
-vi.mock('../src/mic.js', () => ({ startRecording: vi.fn(), stopRecording: vi.fn() }))
 vi.mock('../src/audio.js', () => ({ playMessageChime: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn() }))
 vi.mock('../src/api.js', () => ({
   getCurrentSession: vi.fn(),
@@ -38,6 +37,12 @@ vi.mock('../src/api.js', () => ({
   postTestChatModelSelection: vi.fn(),
   projectFileContentUrl: vi.fn((p, f, s) => `/api/skills/platform/projects/${p}/files/${f}/content?session_id=${s}`)
 }))
+
+// Mounting ChatView is the heaviest thing this suite does, and vitest's
+// 5s default is measured against an idle machine: with another suite
+// running alongside these time out while passing in about a second on
+// their own.
+vi.setConfig({ testTimeout: 10_000 })
 
 describe('the live chat and the "Run" test chat are genuinely independent stores', () => {
   it('each ChatView instance shows only its own store\'s content, simultaneously, with no clearing needed', async () => {

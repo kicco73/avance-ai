@@ -5,7 +5,6 @@ from datetime import datetime
 
 from peewee import AutoField, BlobField, BooleanField, CharField, CompositeKey, DateTimeField, ForeignKeyField, IntegerField, Model, Proxy, TextField
 
-from turn.channels import NATIVE_CHAT
 
 database = Proxy()
 
@@ -126,10 +125,13 @@ class ChatSession(BaseModel):
     comment = TextField(null=True)
     labeling_revision = IntegerField(null=False, default=0)
     # Which channel this session was opened through — fixed at creation,
-    # never touched again (see chat/session_manager.py's create_session).
-    # 'native-chat' (the web SPA) is the default so migration-strategy:
-    # upgrade backfills every pre-existing row with it automatically.
-    channel = CharField(default=NATIVE_CHAT, index=True)
+    # never touched again (see turn/sessions/session_manager.py's
+    # create_session). NULL for the session types that are not a
+    # conversation with anybody: test, preview, and imported transcripts
+    # (see SessionTypeStrategy.caller_channel). It used to default to
+    # 'native-chat', which is how every one of those came to claim it had
+    # been opened from the chat window.
+    channel = CharField(null=True, index=True)
     closed_at = DateTimeField(null=True)
     close_reason = CharField(null=True)
     ai_summary = TextField(null=True)

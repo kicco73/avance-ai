@@ -7,7 +7,6 @@ import { createApp, nextTick } from 'vue'
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn() }))
-vi.mock('../src/mic.js', () => ({ startRecording: vi.fn(), stopRecording: vi.fn() }))
 vi.mock('../src/audio.js', () => ({ playMessageChime: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn() }))
 vi.mock('../src/api.js', () => ({
   getCurrentSession: vi.fn(),
@@ -35,6 +34,12 @@ vi.mock('../src/api.js', () => ({
 function currentSkinStyleTags() {
   return Array.from(document.head.querySelectorAll('style'))
 }
+
+// Mounting ChatView is the heaviest thing this suite does, and vitest's
+// 5s default is measured against an idle machine: with another suite
+// running alongside these time out while passing in about a second on
+// their own.
+vi.setConfig({ testTimeout: 10_000 })
 
 describe('ChatView.vue themeMode="manual" end to end (not just the store refs)', () => {
   let chatStore

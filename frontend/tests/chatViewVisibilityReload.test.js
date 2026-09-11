@@ -9,7 +9,6 @@ import { createApp } from 'vue'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }))
-vi.mock('../src/mic.js', () => ({ startRecording: vi.fn(), stopRecording: vi.fn() }))
 vi.mock('../src/audio.js', () => ({ playMessageChime: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn() }))
 vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 vi.mock('../src/api.js', () => ({
@@ -34,6 +33,12 @@ vi.mock('../src/api.js', () => ({
   getProjects: vi.fn().mockResolvedValue({ projects: [{ id: 'proj', ui_label: 'Proj' }], active: 'proj' }),
   projectFileContentUrl: vi.fn(() => '/skin.css')
 }))
+
+// Mounting ChatView is the heaviest thing this suite does, and vitest's
+// 5s default is measured against an idle machine: with another suite
+// running alongside these time out while passing in about a second on
+// their own.
+vi.setConfig({ testTimeout: 10_000 })
 
 describe('ChatView.vue never reloads messages mid-turn on visibilitychange', () => {
   let chatClient

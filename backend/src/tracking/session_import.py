@@ -94,6 +94,11 @@ class SessionImportManager:
             start_state=session_data.get('start_state'),
             end_state=session_data.get('end_state'),
             type=restored_type, title=session_data.get('name'),
+            # Restored rather than re-stamped: an exported live session
+            # says which channel it was held on, and losing that on the
+            # way back in used to be invisible only because every import
+            # was silently marked 'native-chat' by the column default.
+            channel=session_data.get('channel'),
             closed_at=_parse_iso(session_data.get('closed_at')),
             close_reason=session_data.get('close_reason'),
         )

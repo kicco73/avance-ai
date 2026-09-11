@@ -5,7 +5,7 @@ from http import HTTPStatus
 
 from peewee import fn
 
-from turn.channels import CHANNELS, NATIVE_CHAT
+from turn.channels import CHANNELS
 from system.logging_factory import LoggerFactory
 from tracking.errors import TrackingServiceError
 
@@ -29,13 +29,16 @@ class SessionMixin:
         self, username: str, project_id: str, revision: int, *,
         datetime_start: datetime | None = None, datetime_end: datetime | None = None,
         start_state: str | None = None, end_state: str | None = None,
-        type: str = 'live', title: str | None = None, channel: str = NATIVE_CHAT,
+        type: str = 'live', title: str | None = None, channel: str | None = None,
         closed_at: datetime | None = None, close_reason: str | None = None,
     ) -> int:
         """`revision` arrives already resolved by the caller (see
         turn.sessions.session_type_strategy.SessionTypeStrategy.revision_for) —
         published for a 'live' session, draft for a 'test' one."""
-        if channel not in CHANNELS:
+        # None is not "unknown": a test, preview or imported session has
+        # no channel at all, and the caller that opened it never had one
+        # to give (see SessionTypeStrategy.caller_channel).
+        if channel is not None and channel not in CHANNELS:
             raise ValueError(f"Unknown channel '{channel}' — expected one of {CHANNELS}.")
         if Project.get_or_none(Project.id == project_id) is None:
             raise ValueError(f"Project '{project_id}' does not exist.")

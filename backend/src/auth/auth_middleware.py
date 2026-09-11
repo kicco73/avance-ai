@@ -29,7 +29,6 @@ from starlette.routing import Match
 
 from auth.auth_service import SESSION_COOKIE_NAME
 from auth.roles import role_satisfies
-from turn.channels import NATIVE_CHAT
 from system.session import Session
 
 # FastAPI's own default doc routes (main.py never disables them) — they
@@ -69,9 +68,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if not db.user_has_project_access(identity.email, project_id):
                 return self._forbidden_response()
 
+        # No channel is set here. Who is speaking is the caller's own to
+        # declare (see webchat/webchat_controller.py), and most requests
+        # that reach this middleware are the editor, which is not
+        # speaking to anybody: stamping native-chat on all of them put a
+        # skill's channel in core's hands and made every session the
+        # editor opened claim to have come from the chat window.
         Session().user = identity.email
         Session().role = identity.role
-        Session().channel = NATIVE_CHAT
         return await call_next(request)
 
     @staticmethod

@@ -121,15 +121,31 @@ def pytest_configure(config):
     _watchdog_output = os.fdopen(os.dup(2), "w", closefd=False)
 
 
+def watchdog_message(nodeid: str, allowance: float) -> str:
+    return (
+        f"\nWATCHDOG: {nodeid} made no progress for {allowance:.1f}s "
+        f"(its own average * {WATCHDOG_FACTOR:g}, floor {WATCHDOG_FLOOR_SECONDS:g}s, "
+        f"ceiling {WATCHDOG_CEILING_SECONDS:g}s). Every thread follows."
+    )
+
+
+def _give_up(nodeid: str, allowance: float) -> None:
+    print(watchdog_message(nodeid, allowance), file=_watchdog_output, flush=True)
+    faulthandler.dump_traceback(file=_watchdog_output)
+    _watchdog_output.flush()
+    os._exit(1)
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_protocol(item, nextitem):
-    faulthandler.dump_traceback_later(
-        watchdog_seconds(item.nodeid), exit=True, file=_watchdog_output,
-    )
+    allowance = watchdog_seconds(item.nodeid)
+    alarm = threading.Timer(allowance, _give_up, (item.nodeid, allowance))
+    alarm.daemon = True
+    alarm.start()
     try:
         yield
     finally:
-        faulthandler.cancel_dump_traceback_later()
+        alarm.cancel()
 
 
 def parse_sse_result(response) -> dict:
@@ -218,10 +234,10 @@ def _frame_deadline(seconds: float, frames: list[dict]):
 def chat_turn_frames(client: TestClient, session_id: int, text: str, turn_id: str = "t1") -> list[dict]:
     """One turn over the websocket, every frame it produced in order —
     the last one is its `done` or `error`."""
-    with chat_socket(client) as ws:
-        ws.send_json({"type": "input.text", "stream_id": turn_id, "session_id": session_id, "body": text})
-        frames = []
-        with _frame_deadline(turn_frame_seconds(), frames):
+    frames = []
+    with _frame_deadline(turn_frame_seconds(), frames):
+        with chat_socket(client) as ws:
+            ws.send_json({"type": "input.text", "stream_id": turn_id, "session_id": session_id, "body": text})
             while True:
                 frame = ws.receive_json()
                 frames.append(frame)

@@ -7,7 +7,6 @@ from turn.sessions.session_type_strategy import SessionTypeStrategy, get_session
 from db import Db
 from system.logging_factory import LoggerFactory
 from project.archive.layout import CACHE_DIR
-from system.session import Session
 
 if TYPE_CHECKING:
     from turn.sessions.session_report_task import SessionReportScheduler
@@ -79,7 +78,7 @@ class SessionManager(object):
             username, project_id, revision,
             datetime_start=now, datetime_end=now,
             start_state=state_key, end_state=state_key,
-            type=strategy.type_name, channel=Session().channel,
+            type=strategy.type_name, channel=strategy.caller_channel(),
         )
         session = self._db.get_chat_session(session_id)
         assert session is not None
@@ -96,7 +95,7 @@ class SessionManager(object):
                     "get_current_session_if_any_or_create_new(): caller's session_id=%s is stale for %s/%s, "
                     "current session is %s", session_id, username, project_id, resolved["id"]
                 )
-            if resolved["channel"] != Session().channel:
+            if resolved["channel"] != strategy.caller_channel():
                 return resolved
             return self._touch(resolved["id"], datetime.utcnow(), current_state)
         return self.create_session(strategy, project_service, username, project_id)
@@ -108,7 +107,7 @@ class SessionManager(object):
         resolved = strategy.resolve_session(self, username, project_id)
         if resolved is None:
             return self.create_session(strategy, project_service, username, project_id)
-        if resolved["channel"] == Session().channel:
+        if resolved["channel"] == strategy.caller_channel():
             return self._touch(resolved["id"], datetime.utcnow(), current_state)
         self.close_session(resolved, "channel-switch")
         return self.create_session(strategy, project_service, username, project_id)
@@ -126,11 +125,11 @@ class SessionManager(object):
         strategy = get_session_type_strategy(session["type"])
         active = self.get_active_session(username, project_id, type=session["type"])
         # The one place a channel genuinely decides an outcome: this is
-        # an authorised write, and Session().channel here is whoever is
-        # actually speaking — set by the channel's own service (see
-        # webchat/webchat_service.py and whatsapp/whatsapp_service.py),
-        # never by a transport guessing on their behalf.
-        if not strategy.is_valid_write_target(session, active, Session().channel):
+        # an authorised write, and caller_channel() is whoever is actually
+        # speaking — declared by the channel itself, never by a transport
+        # guessing on their behalf, and None for the session types that
+        # have no channel at all.
+        if not strategy.is_valid_write_target(session, active, strategy.caller_channel()):
             if active is None or active["id"] != session["id"]:
                 raise SessionNotWritable("Session is not active.", code="session_superseded")
             raise SessionNotWritable("Session is not active.", code="session_channel_mismatch")
@@ -148,11 +147,14 @@ class SessionManager(object):
         # avance_archive) — scratch space scoped to this session's whole
         # lifetime, never needed again once it's over.
         self._db.delete_archives_with_prefix(session["project_id"], f"{CACHE_DIR}/sessions/{session['id']}/")
+        # No "current_channel" here any more: closing is not a channel
+        # operation. The editor closes sessions (label_project_controller.
+        # post_close_session) and so does AutomatonLoader when a revision
+        # stops building, neither of which is speaking to anybody — and
+        # `reason` already says who closed it and why.
         logger.info(
-            "close_session(): session_id=%s username=%s project_id=%s session_channel=%s "
-            "current_channel=%s reason=%s",
-            session["id"], session["username"], session["project_id"], session["channel"],
-            Session().channel, reason,
+            "close_session(): session_id=%s username=%s project_id=%s session_channel=%s reason=%s",
+            session["id"], session["username"], session["project_id"], session["channel"], reason,
         )
         result = self._db.get_chat_session(session["id"])
         assert result is not None

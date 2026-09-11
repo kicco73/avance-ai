@@ -159,3 +159,15 @@ def test_a_test_that_waits_for_a_turn_inside_a_class_is_found_too():
     }
     assert _waits_for_a_turn(found["tests/test_x.py::TestGroup::test_inside"])
     assert not _waits_for_a_turn(found["tests/test_x.py::TestGroup::test_quiet"])
+
+
+def test_the_watchdog_names_the_test_it_gave_up_on():
+    """A dump of every thread is useless on its own: this process has
+    dozens of them parked in scheduler and job-queue waits, and
+    faulthandler truncates the list before the one that matters. The name
+    goes out first, on its own line."""
+    message = conftest.watchdog_message("src/x/tests/test_y.py::test_z", 16.7)
+
+    assert "src/x/tests/test_y.py::test_z" in message
+    assert "16.7s" in message
+    assert str(int(conftest.WATCHDOG_FACTOR)) in message

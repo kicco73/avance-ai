@@ -126,27 +126,37 @@ where it stopped. Two nets catch that, and they are deliberately different.
 **The one that knows what it is waiting for.** `conftest.chat_turn_frames`
 reads a turn off the websocket with a blocking receive; a deadline around
 that loop turns a frame that never comes into a red test naming the frames
-that did arrive, instead of a process that never returns. Its 30s is set
-against the other net's 60s floor rather than against how long a turn takes:
-both would fire on the same hang, and the run dies at the second one, so the
-frames are only saved if the first gets there first.
+that did arrive, instead of a process that never returns. How long it waits
+is a share of the other net's allowance for the very test that is running
+(`conftest.turn_frame_seconds`), not a number of its own: both nets fire on
+the same hang and the run dies at the second one, so the frames are saved
+only if this one gets there first — which a share below one guarantees for
+every test, whatever the numbers below become.
 
 **The one that knows nothing.** Any test can stop for its own reasons, so
-`conftest.pytest_runtest_protocol` arms `faulthandler` before each one and
-cancels it after: on expiry every thread's traceback is dumped and the run
-gives up, pointing at the exact line.
+`conftest.pytest_runtest_protocol` arms a timer before each one and cancels
+it after. On expiry it prints the node id it gave up on, dumps every
+thread, and exits. The name comes first and on its own line because the
+dump alone does not identify the test: this process parks dozens of
+threads in scheduler and job-queue waits, and faulthandler truncates the
+list before reaching the one that was running.
 
 How long each test gets is read off `test_stats.json`, which records what
 that very test has taken on previous runs (`seconds` over `runs`):
 
 ```
-allowance = min(900s, max(60s, average * 20))     # 120s for a test never timed
+allowance = min(300s, max(3s, average * 20))      # 120s for a test never timed
 ```
 
-A floor, because a 30 ms test that is given ten minutes to hang in is a
-net with a hole in it, and because the same test runs slower on a loaded
-machine. A ceiling, because the build test takes four minutes and twenty
-times that is no longer a net. The traceback goes to a duplicate of the
+The websocket deadline above is a share of this same number, so the net
+that can name the frames always fires first, by construction rather than
+by two constants happening to be in the right order.
+
+A floor, because the proportion alone would give a 30 ms test 0.6s and a
+loaded machine would trip it; the widest ratio ever recorded here between
+a test's latest run and its own average is 8x, which leaves the floor an
+order of magnitude of room. A ceiling, because the build test takes four
+minutes and twenty times that is no longer a net. The traceback goes to a duplicate of the
 real stderr, taken at configure time — pytest captures fd 2 during a test,
 and a dump written there dies with the process that was supposed to report
 it.
@@ -171,3 +181,34 @@ Two defenses, on by default or nearly:
 When there is not enough time above the floor to reach the target, the tool
 says so instead of quietly handing back a list that falls short. The right
 answer then is usually a smaller cut.
+
+## Open: an intermittent hang in test_reactions_end_to_end
+
+Nobody is working on this. It is written down because it costs a whole
+run when it happens and because what is known about it took two
+afternoons to collect.
+
+**What is seen.** A full-suite run stops making progress inside
+`src/avance_platform/tests/test_reactions_end_to_end.py` — observed twice
+on the same day, at `test_message_list_and_reaction_endpoint_round_trip`
+and at the test before it. The process stays alive with no output. Before
+the watchdog existed, that meant a run that never returned.
+
+**What is known.** It needs load: it appeared only while three or four
+pytest runs were going at once, and neither full run made on a quiet
+machine reproduced it. It is not a slow test being cut off — the test
+averages 0.8 s and had 16.7 s. Both nets around a turn were in place and
+neither named a cause, which is what the fix below was for.
+
+**What is ready for the next occurrence.** `chat_turn_frames` now wraps
+its deadline around the whole body, opening and closing the socket
+included, rather than around the receive loop alone: if the hang is in the
+handshake or the close, the failure arrives as an AssertionError naming
+the frames that did arrive — zero of them, in that case. The watchdog
+prints the node id before dumping, so the test no longer has to be
+identified by counting progress dots.
+
+**What is not known.** Whether it is a product bug or a test one. Nothing
+rules out a real race in session creation or in the bus channel that a
+loaded machine merely makes visible.
+

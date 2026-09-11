@@ -207,6 +207,17 @@ way a build would delete it:
 | a core file still importing the deleted skill | build **fails**, `UNRESOLVED_IMPORT`, exit 1 |
 | a core *test* still mocking a deleted skill module | **passes silently** |
 
+A third rule guards what neither of those can see: every core module must
+be reachable by following imports from `main.js` and from the skill
+manifests the registry's glob loads. A module nothing imports is dead
+weight a build still copies — and that is how a skill's code comes back
+into the core without anyone importing it, as `src/mic.js` did when one
+session restored it while another was moving it into `skills/listen/`.
+Duplication is the special case: the copy too many is the one nobody
+imports. A `vi.mock` deliberately does not count as an import, or a mock
+left behind by a refactor keeps a dead module looking alive — which is
+exactly what hid that file for an afternoon.
+
 So the worst violation is caught by the build itself and can never reach
 a customer. The last row is what a contract test exists for
 (`frontend/tests/skillBoundaries.test.js`): a leftover reference inside a
