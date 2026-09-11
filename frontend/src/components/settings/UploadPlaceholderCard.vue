@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import '../../styles/projectCard.css'
 import { getProjectFiles, projectFileContentUrl } from '../../api.js'
 import { findIconFile } from '../../projectIcon.js'
+import { ensureProjectFileTypes } from '../../projectFileTypes.js'
 import avanceLogoUrl from '../../assets/avance-logo.png'
 
 const props = defineProps({
@@ -21,6 +22,7 @@ watch(() => props.uploadIconReady, async (ready) => {
   if (!ready || !props.uploadProjectId) return
   let found = null
   try {
+    await ensureProjectFileTypes()
     const { files } = await getProjectFiles(props.uploadProjectId)
     found = findIconFile(files)
   } catch {

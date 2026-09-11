@@ -21,6 +21,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ActionButtons from './ActionButtons.vue'
 import ChatInput from './ChatInput.vue'
 import MessageBubble from './MessageBubble.vue'
+import ChatSupersededOverlay from './ChatSupersededOverlay.vue'
+import ChatWaitingPanel from './ChatWaitingPanel.vue'
 import ProjectsMenu from '../ProjectsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import AppHeader from '../AppHeader.vue'
@@ -59,6 +61,7 @@ const props = defineProps({
 const {
   state,
   messages,
+  historyLoaded,
   chatLoading,
   chatStatus,
   actionLoading,
@@ -107,11 +110,12 @@ defineExpose({
 // itself being unusable.
 const chatConnected = computed(() => chatConnectionState.value === 'open')
 
-// 'rejected' (see chatChannel.js's ALREADY_CONNECTED_CLOSE_CODE handling):
-// this identity is already at its per-role connection cap on another tab —
-// unlike the generic disconnected state below, this one will never resolve
-// on its own by retrying, so it gets its own, non-"riprovo" message.
-const chatRejected = computed(() => chatConnectionState.value === 'rejected')
+// 'superseded' (see chatChannel.js's SWITCHED_TO_OTHER_CLIENT handling):
+// another client of this same identity took the channel over, and the
+// newest one wins. Unlike the generic disconnected state below this never
+// resolves by waiting — the chat here is over — so instead of a notice it
+// gets ChatSupersededOverlay, which blocks the chat area outright.
+const chatSuperseded = computed(() => chatConnectionState.value === 'superseded')
 
 const chatDisabled = computed(() => !state.value?.key || !state.value?.chat_enabled || !selectedSessionActive.value)
 
@@ -319,7 +323,11 @@ watch(
     </AppHeader>
 
     <SplashScreen v-if="!hideSessionsPanel && projectPaused" variant="paused" :reason="projectPausedReason" embedded />
-    <SplashScreen v-else-if="!hideSessionsPanel && !state?.key" variant="no-project" embedded />
+    <!-- Only once the session has actually resolved: before that there is
+         no state.key yet simply because the bootstrap is still in flight,
+         and "no project" would be the wrong thing to say about a chat that
+         is merely starting up — ChatWaitingPanel below covers that. -->
+    <SplashScreen v-else-if="!hideSessionsPanel && historyLoaded && !state?.key" variant="no-project" embedded />
     <template v-else>
     <div class="chat-header">
       <div class="chat-header-icon"></div>
@@ -341,21 +349,14 @@ watch(
     </div>
 
     <p
-      v-if="chatRejected"
-      class="chat-ended-notice"
-    >
-      Questo account è già connesso altrove. Chiudi l'altra scheda per usare la chat qui.
-    </p>
-
-    <p
-      v-else-if="!chatConnected"
+      v-if="!chatSuperseded && !chatConnected"
       class="chat-ended-notice"
     >
       Connection to chat not available, trying again…
     </p>
 
     <p
-      v-else-if="chatDisabledReason"
+      v-else-if="!chatSuperseded && chatDisabledReason"
       class="chat-ended-notice"
     >
       {{ chatDisabledReason }}
@@ -385,6 +386,9 @@ watch(
         @toggle-spoken-text="toggleSpokenText"
       />
     </div>
+
+    <ChatWaitingPanel v-if="!historyLoaded" />
+    <ChatSupersededOverlay v-else-if="chatSuperseded" />
     </template>
     </div>
   </div>
@@ -416,6 +420,10 @@ watch(
   flex: 1;
   min-height: 0;
   min-width: 0;
+  /* .chat-header's own height, named so ChatSupersededOverlay can start
+     exactly below it — the band that carries AppHeader's controls is the
+     one part of this window that stays usable while the chat is blocked. */
+  --chat-header-height: 70px;
 }
 
 .messages {
@@ -443,7 +451,7 @@ watch(
    .chat-header/.chat-body/.chat-footer without reaching into internals. */
 .chat-header {
   flex-shrink: 0;
-  height: 70px;
+  height: var(--chat-header-height);
   position: relative;
   /* Reserves the notch/status bar — content-box on purpose (not
      border-box): this should *add* to the 70px a project's skin already

@@ -10,16 +10,14 @@ from automaton.automaton import Automaton
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
 from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
+from automaton.file_types import ProjectFileTypes
 from db import Db
 from system.logging_factory import LoggerFactory
 from system.session import Session
 from tracking.session_import import SessionImportManager
 
 from ..archive.automaton_loader import AutomatonLoader
-from ..archive.layout import (
-    IMAGE_CONTENT_TYPE_BY_EXTENSION, IMAGE_EXTENSIONS, SESSIONS_EXPORT_FILENAME, TESTS_EXPORT_FILENAME,
-    TEXT_CONTENT_TYPE_BY_EXTENSION,
-)
+from ..archive.layout import BUNDLE_FILE_NAMES, SESSIONS_EXPORT_FILENAME, TESTS_EXPORT_FILENAME
 from ..archive.zip_importer import ZipImporter
 from ..project_import_bundle_job import ProjectImportBundleJob
 from ..types import FAMILY_NOT_CHECKED, CommitCallback
@@ -49,13 +47,16 @@ class ProjectUploader:
             with tempfile.TemporaryDirectory() as tmp:
                 staging_dir = Path(tmp)
                 ZipImporter.extract_safely(content, staging_dir)
-                files = {
-                    file.relative_to(staging_dir).as_posix(): (
-                        file.read_bytes() if file.suffix.lower() in IMAGE_EXTENSIONS
-                        else file.read_text(encoding="utf-8")
+                files = {}
+                for file in staging_dir.rglob("*"):
+                    if not file.is_file():
+                        continue
+                    name = file.relative_to(staging_dir).as_posix()
+                    files[name] = (
+                        file.read_text(encoding="utf-8")
+                        if ProjectFileTypes.of(name).text or name in BUNDLE_FILE_NAMES
+                        else file.read_bytes()
                     )
-                    for file in staging_dir.rglob("*") if file.is_file()
-                }
         else:
             files = {"index.yml": content.decode("utf-8")}
         raw_sessions = files.pop(SESSIONS_EXPORT_FILENAME, None)
@@ -145,14 +146,7 @@ class ProjectUploader:
             name: value.encode("utf-8") if isinstance(value, str) else value
             for name, value in files.items()
         }
-        content_types = {
-            name: (
-                IMAGE_CONTENT_TYPE_BY_EXTENSION[Path(name).suffix.lower()]
-                if Path(name).suffix.lower() in IMAGE_EXTENSIONS
-                else TEXT_CONTENT_TYPE_BY_EXTENSION.get(Path(name).suffix.lower(), "text/plain")
-            )
-            for name in files
-        }
+        content_types = {name: ProjectFileTypes.of(name).content_type for name in files}
         is_new_project = not self._db.project_exists(project_id)
         if not is_new_project:
             self._db.reset_project(project_id)

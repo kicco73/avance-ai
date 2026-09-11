@@ -1,12 +1,14 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import ChatView from '../chat/ChatView.vue'
+import ChatWaitingPanel from '../chat/ChatWaitingPanel.vue'
 import AppStoreFrozenPreview from './AppStoreFrozenPreview.vue'
 import { postInstallApp, deleteInstallApp, appStoreFileContentUrl } from '../../api.js'
 import { confirmDialog, infoDialog } from '../../dialogStore.js'
 import { setSkinCss, invalidateSkin } from '../../chatSkin.js'
 import { setPreviewApp, appStorePreviewStore, historyLoaded, restartPreviewSession, stopPreviewSession } from '../../appStorePreviewStore.js'
 import { renderMarkdown } from '../../markdown.js'
+import { usePreviewExpiry } from '../../composables/usePreviewExpiry.js'
 
 const props = defineProps({
   app: { type: Object, required: true },
@@ -69,43 +71,25 @@ async function loadSkinForApp(app) {
 
 watch(() => props.app?.id, () => loadSkinForApp(props.app), { immediate: true })
 
-const PREVIEW_EXPIRY_SECONDS = 5 * 60
-const PREVIEW_COUNTDOWN_THRESHOLD_SECONDS = 59
-const remainingSeconds = ref(PREVIEW_EXPIRY_SECONDS)
-const remainingLabel = computed(() => {
-  const s = Math.max(0, remainingSeconds.value)
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-})
-const quitButtonLabel = computed(() => (
-  props.timedSession && remainingSeconds.value <= PREVIEW_COUNTDOWN_THRESHOLD_SECONDS ? remainingLabel.value : 'Quit'
-))
-let expiryInterval = null
+// The countdown that ends the session (see usePreviewExpiry) — shared
+// with Manage projects' own "Test" preview, which runs the same kind of
+// session against the same store.
+const { quitButtonLabel, expired, arm: armExpiryTimer, clear: clearExpiryTimer } = usePreviewExpiry()
 
-function clearExpiryTimer() {
-  if (expiryInterval == null) return
-  clearInterval(expiryInterval)
-  expiryInterval = null
+function armExpiryTimerIfTimed() {
+  clearExpiryTimer()
+  if (props.timedSession) armExpiryTimer()
 }
 
-function armExpiryTimer() {
-  clearExpiryTimer()
-  if (!props.timedSession) return
-  remainingSeconds.value = PREVIEW_EXPIRY_SECONDS
-  expiryInterval = setInterval(() => {
-    remainingSeconds.value -= 1
-    if (remainingSeconds.value <= 0) handlePreviewExpiry()
-  }, 1000)
-}
-
-async function handlePreviewExpiry() {
-  clearExpiryTimer()
+watch(expired, async (hasExpired) => {
+  if (!hasExpired) return
   await quitPreview()
   await infoDialog({
     title: 'Test session expired',
     body: 'Your test session has expired. Thanks for trying out!',
     okLabel: 'Close'
   })
-}
+})
 
 async function quitPreview() {
   if (!previewing.value) return
@@ -160,12 +144,12 @@ async function selectOpen() {
 async function startPreview() {
   setPreviewApp(props.app.id)
   previewing.value = true
-  armExpiryTimer()
+  armExpiryTimerIfTimed()
   await appStorePreviewStore.handleNewSession()
 }
 
 async function restartPreview() {
-  armExpiryTimer()
+  armExpiryTimerIfTimed()
   await restartPreviewSession()
 }
 
@@ -232,8 +216,9 @@ onBeforeUnmount(async () => {
   </div>
 
   <div class="app-store-try-panel">
-    <AppStoreFrozenPreview v-if="!previewing || !historyLoaded" :app-id="app.id" :loading="previewing && !historyLoaded" />
+    <AppStoreFrozenPreview v-if="!previewing || !historyLoaded" :app-id="app.id" />
     <ChatView v-if="previewing && historyLoaded" hide-sessions-panel :store="appStorePreviewStore" />
+    <ChatWaitingPanel v-if="previewing && !historyLoaded" />
   </div>
 </template>
 
@@ -393,6 +378,8 @@ onBeforeUnmount(async () => {
 }
 
 .app-store-try-panel {
+  /* ChatWaitingPanel above positions itself against this box. */
+  position: relative;
   flex: 1;
   min-height: 300px;
   display: flex;

@@ -12,6 +12,7 @@ from fastapi import HTTPException, Request, Response
 
 from automaton.automaton_yaml_editor import InitActionTargetError
 from automaton.build_error import AutomatonBuildError
+from automaton.file_types import ProjectFileTypes
 from turn.turn_service import TurnService
 from avance_platform.platform_service import PlatformService
 from project.project_service import ProjectService
@@ -225,6 +226,13 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except PermissionError as exc:
             raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail=str(exc)) from exc
         return {"project_id": project_id}
+
+    @get("/api/project-file-types", role="admin")
+    def get_project_file_types(self):
+        """Every file type a project can carry — extension, stored content
+        type, UI label, kind, folder and upload limit — so the file
+        explorer never has to restate them."""
+        return ProjectFileTypes.catalog_payload()
 
     @get("/api/projects/{project_id}/files", role="admin")
     def get_project_files(self, project_id: str):

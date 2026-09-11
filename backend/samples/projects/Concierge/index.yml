@@ -20,3 +20,4 @@ project:
   ui-label: My Concierge
   ui-description: A concierge, welcoming you
   id: concierge_test_run
+  family: avance

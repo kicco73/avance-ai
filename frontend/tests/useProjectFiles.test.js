@@ -3,6 +3,7 @@ import { createApp } from 'vue'
 
 vi.mock('../src/api.js', () => ({
   getProjectFiles: vi.fn(),
+  getProjectFileTypes: vi.fn(),
   putProjectFile: vi.fn(),
   putProjectFileBinary: vi.fn(),
   deleteProjectFile: vi.fn(),
@@ -18,10 +19,12 @@ vi.mock('../src/dialogStore.js', () => ({
   chooseDialog: vi.fn(),
 }))
 
-import { getProjectFiles, putProjectFile, putProjectFileBinary, deleteProjectFile, postAddLegalTerms } from '../src/api.js'
+import { getProjectFiles, getProjectFileTypes, putProjectFile, putProjectFileBinary, deleteProjectFile, postAddLegalTerms } from '../src/api.js'
 import { setApiError, clearApiError } from '../src/errorStore.js'
 import { confirmDialog, promptDialog, chooseDialog } from '../src/dialogStore.js'
 import { useProjectFiles } from '../src/composables/useProjectFiles.js'
+import { ensureProjectFileTypes } from '../src/projectFileTypes.js'
+import { PROJECT_FILE_TYPES_PAYLOAD } from './projectFileTypesFixture.js'
 
 function mountComposable(setup) {
   let result
@@ -42,9 +45,11 @@ describe('useProjectFiles', () => {
   let unmount
   const emit = vi.fn()
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
     getProjectFiles.mockResolvedValue({ files: ['index.yml'] })
+    getProjectFileTypes.mockResolvedValue(PROJECT_FILE_TYPES_PAYLOAD)
+    await ensureProjectFileTypes()
   })
 
   afterEach(() => {
@@ -77,7 +82,7 @@ describe('useProjectFiles', () => {
     expect(s.filesLoading.value).toBe(false)
   })
 
-  it('activeEditor()/activeEditorIsDirty dispatch by open file type, with an image never dirty and editorless', () => {
+  it('activeEditor()/activeEditorIsDirty dispatch by open file type, with media never dirty and editorless', () => {
     const s = mount()
 
     s.currentFileName.value = 'index.yml'
@@ -96,9 +101,11 @@ describe('useProjectFiles', () => {
       expect(s.activeEditorIsDirty.value).toBe(true)
     }
 
-    s.currentFileName.value = 'aspect/logo.png'
-    expect(s.activeEditor()).toBeNull()
-    expect(s.activeEditorIsDirty.value).toBe(false)
+    for (const mediaName of ['aspect/logo.png', 'aspect/title.mp3']) {
+      s.currentFileName.value = mediaName
+      expect(s.activeEditor()).toBeNull()
+      expect(s.activeEditorIsDirty.value).toBe(false)
+    }
   })
 
   describe('selectFile', () => {
@@ -159,7 +166,7 @@ describe('useProjectFiles', () => {
   })
 
   describe('handleUploadFile', () => {
-    it('rejects an unsupported extension or an oversized image without uploading anything', async () => {
+    it('rejects an unsupported extension or a file past its own type limit without uploading anything', async () => {
       const s = mount()
 
       await s.handleUploadFile(uploadEvent([fakeFile('virus.exe')]))
@@ -168,6 +175,12 @@ describe('useProjectFiles', () => {
 
       await s.handleUploadFile(uploadEvent([fakeFile('big.png', { size: 6 * 1024 * 1024 })]))
       expect(putProjectFileBinary).not.toHaveBeenCalled()
+
+      await s.handleUploadFile(uploadEvent([fakeFile('huge.mp3', { size: 16 * 1024 * 1024 })]))
+      expect(putProjectFileBinary).not.toHaveBeenCalled()
+
+      await s.handleUploadFile(uploadEvent([fakeFile('stray.yml')]))
+      expect(putProjectFile).not.toHaveBeenCalled()
     })
 
     it('routes a text file to behaviour/ and an image to aspect/ as binary, then reloads, selects it and resets the input', async () => {
@@ -187,6 +200,10 @@ describe('useProjectFiles', () => {
       const image = fakeFile('logo.png')
       await s.handleUploadFile(uploadEvent([image]))
       expect(putProjectFileBinary).toHaveBeenCalledWith('proj', 'aspect/logo.png', image)
+
+      const audio = fakeFile('title.mp3', { size: 6 * 1024 * 1024 })
+      await s.handleUploadFile(uploadEvent([audio]))
+      expect(putProjectFileBinary).toHaveBeenCalledWith('proj', 'aspect/title.mp3', audio)
     })
   })
 
@@ -239,7 +256,7 @@ describe('useProjectFiles', () => {
   })
 
   describe('handleDeleteFile', () => {
-    it('never deletes index.yml, skips the confirm for an image, and honours a declined confirm', async () => {
+    it('never deletes index.yml, skips the confirm for a media asset, and honours a declined confirm', async () => {
       const s = mount()
 
       await s.handleDeleteFile('index.yml')
@@ -249,6 +266,10 @@ describe('useProjectFiles', () => {
       await s.handleDeleteFile('aspect/logo.png')
       expect(confirmDialog).not.toHaveBeenCalled()
       expect(deleteProjectFile).toHaveBeenCalledWith('proj', 'aspect/logo.png')
+
+      await s.handleDeleteFile('aspect/title.mp3')
+      expect(confirmDialog).not.toHaveBeenCalled()
+      expect(deleteProjectFile).toHaveBeenCalledWith('proj', 'aspect/title.mp3')
 
       confirmDialog.mockResolvedValue(false)
       await s.handleDeleteFile('behaviour/notes.md')

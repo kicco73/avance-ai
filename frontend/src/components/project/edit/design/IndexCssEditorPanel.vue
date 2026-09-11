@@ -10,6 +10,7 @@ import { aiEditIndexCss, getProjectGraph } from '../../../../api.js'
 import { invalidateSkin } from '../../../../chatStore.js'
 import { textareaDialog } from '../../../../dialogStore.js'
 import { useResizablePanel } from '../../../../composables/useResizablePanel.js'
+import { projectFileTypes } from '../../../../projectFileTypes.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -18,11 +19,9 @@ const props = defineProps({
 
 const emit = defineEmits(['saved'])
 
-// The Theme branch's own image-extension test (see FileExplorer.vue/
-// EditProjectView.vue) — the basenames the code editor's url(...)
-// autocomplete offers.
-const IMAGE_PATTERN = /\.(png|jpe?g|gif|webp|svg)$/i
-const cssAssetFiles = computed(() => props.files.filter((name) => IMAGE_PATTERN.test(name)))
+// The basenames the code editor's url(...) autocomplete offers — every
+// image the project carries, per the backend's own file-type catalog.
+const cssAssetFiles = computed(() => props.files.filter((name) => projectFileTypes.value.isImage(name)))
 
 const codeEditorRef = ref(null)
 const previewRef = ref(null)

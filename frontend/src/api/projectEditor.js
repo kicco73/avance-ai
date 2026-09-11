@@ -73,6 +73,12 @@ export function putProjectField(projectId, field, value) {
   )
 }
 
+// Every file type a project can carry, straight from the backend's own
+// catalog (automaton.file_types) — see projectFileTypes.js.
+export function getProjectFileTypes() {
+  return apiFetch(`${API_URL}/project-file-types`)
+}
+
 export function getProjectFiles(projectId) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectId)}/files`)
 }

@@ -281,6 +281,89 @@ def test_the_composition_root_names_no_controller_a_build_could_leave_out(tmp_pa
         assert left_out not in source, left_out
 
 
+BOOTABLE_CONFIG = """
+database:
+  url: "sqlite:///boot-check.db"
+
+turn-service: {}
+
+ai-service:
+  providers:
+    - driver: gemini
+      model: gemini-flash-lite-latest
+      key: fake-key
+
+auth-service:
+  providers:
+    - driver: google
+      key: fake-client-id
+
+mail-service:
+  url: "smtp://smtp.example.com:587"
+  username: fake-username
+  password: fake-password
+"""
+
+# What main.py titles the app it serves when create_app() raised. Importing
+# main succeeds either way — that is the whole point of the fallback, and
+# the reason "import main works" proved nothing about whether the backend
+# actually starts.
+FALLBACK_TITLE_MARK = "misconfigured"
+
+
+def _boot(copy: "Path") -> "tuple[int, str]":
+    """Starts the copied backend's app object in a fresh interpreter and
+    reports the title it ended up with. Not a subprocess server and no
+    port: the question is only whether create_app() got to the end."""
+    import subprocess
+    import sys
+
+    (copy / "src" / ".config.yml").write_text(BOOTABLE_CONFIG)
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, 'src'); import main; print('TITLE:' + main.app.title)"],
+        cwd=copy, capture_output=True, text=True, timeout=300,
+    )
+    return result.returncode, result.stdout + result.stderr
+
+
+def _copy_backend(tmp_path: "Path", excluded: "list[str]") -> "Path":
+    import shutil
+
+    from build.build_service import BACKEND_DIR, _ignore_for
+
+    copy = tmp_path / "backend"
+    shutil.copytree(BACKEND_DIR, copy, ignore=_ignore_for(excluded))
+    return copy
+
+
+@pytest.mark.slow
+def test_a_full_backend_copy_starts_for_real_and_not_as_the_fallback_app(tmp_path):
+    """The check `import main` alone never made: main.py catches a failed
+    create_app() and serves a fallback app that answers 503 to
+    everything, so the import succeeds no matter how broken startup is.
+    Every skill is in this copy, including product/ — which is in every
+    build until somebody unticks it."""
+    code, output = _boot(_copy_backend(tmp_path, []))
+
+    assert code == 0, output
+    assert "TITLE:" in output, output
+    assert FALLBACK_TITLE_MARK not in output, output
+
+
+@pytest.mark.slow
+def test_a_product_copy_starts_with_no_platform_no_chat_and_no_benchmark(tmp_path):
+    """The shape the whole exercise is for: one compiled project, a
+    channel, and nothing to author with. It has no /api/auth/providers
+    and no /api/state, which is why the build's own launch check cannot
+    probe a named route."""
+    copy = _copy_backend(tmp_path, ["avance_platform", "webchat", "testing"])
+    code, output = _boot(copy)
+
+    assert code == 0, output
+    assert FALLBACK_TITLE_MARK not in output, output
+
+
 def test_every_installed_skill_starts_with_the_configuration_and_nothing_else(tmp_path):
     """A skill's start() takes the configuration, and only that. A core
     object it needs is collected later from POINT_CORE_SERVICES, which

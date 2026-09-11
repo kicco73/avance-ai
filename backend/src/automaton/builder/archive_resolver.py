@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable, Mapping
 
-from automaton.media_types import EXTENSION_TO_MEDIA_TYPE, media_type_for  # noqa: F401  (re-exported: project/editor.py imports EXTENSION_TO_MEDIA_TYPE from here)
+from automaton.media_types import media_type_for
 
 
 class ProjectArchives:

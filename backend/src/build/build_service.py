@@ -18,6 +18,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -245,22 +246,63 @@ class BuildService:
                 process.wait(timeout=5)
 
     def _wait_until_responding(self, process: subprocess.Popen, port: int) -> None:
-        url = f"http://127.0.0.1:{port}/api/auth/providers"
+        """Up means the real router answered, and any status other than
+        503 proves that: a 401 or a 404 comes from a running app, while
+        503 is what main.py's fallback app returns for every path when
+        create_app raised. Probing a specific route would not work — this
+        check has to pass for a build with no authoring surface and no
+        chat, so there is no route it can count on existing.
+        """
+        url = f"http://127.0.0.1:{port}/api/state"
         deadline = time.monotonic() + _LAUNCH_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
             exit_code = process.poll()
             if exit_code is not None:
                 raise CompileError(
-                    f"Copied backend exited (code {exit_code}) before starting up:\n{process.stdout.read()}"
+                    f"Copied backend exited (code {exit_code}) before starting up:"
+                    f"\n{_drain(process)}"
                 )
-            try:
-                with urllib.request.urlopen(url, timeout=1) as response:
-                    if response.status == 200:
-                        return
-            except (urllib.error.URLError, ConnectionError, TimeoutError):
-                pass
+            status = _probe(url)
+            if status is not None and status != HTTPStatus.SERVICE_UNAVAILABLE:
+                return
             time.sleep(0.5)
-        raise CompileError(f"Copied backend did not answer at {url} within {_LAUNCH_TIMEOUT_SECONDS:.0f}s.")
+        # Still alive and still answering 503: it started as the fallback
+        # app, and the reason is in its own output. Without this the
+        # message is "did not answer", which says nothing.
+        raise CompileError(
+            f"Copied backend did not start within {_LAUNCH_TIMEOUT_SECONDS:.0f}s "
+            f"(last answer at {url}: "
+            f"{'no response' if _probe(url) is None else str(_probe(url)) + ', the fallback app'}):"
+            f"\n{_drain(process)}"
+        )
+
+
+def _probe(url: str) -> "int | None":
+    """The status the backend answered with, or None if nothing answered
+    at all. An HTTP error status is an answer."""
+    try:
+        with urllib.request.urlopen(url, timeout=1) as response:
+            return response.status
+    except urllib.error.HTTPError as exc:
+        return exc.code
+    except (urllib.error.URLError, ConnectionError, TimeoutError, OSError):
+        return None
+
+
+def _drain(process: subprocess.Popen) -> str:
+    """Whatever the copy printed. Terminated first: stdout.read() on a
+    live process blocks until it closes, which is how a failed build
+    used to hang instead of reporting."""
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+    try:
+        return (process.stdout.read() or "").strip() or "(no output)"
+    except Exception:  # noqa: BLE001
+        return "(output unavailable)"
 
 
 def _free_port() -> int:

@@ -61,7 +61,7 @@ const emit = defineEmits(['saved', 'back', 'home', 'profile', 'logout'])
 const {
   filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile, renamingFile,
   designPanelRef, codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
-  currentFileIsImage, currentFileIsMarkdown, isBehaviorNodeSelected, hasTheme,
+  currentFileIsMedia, currentFileIsMarkdown, isBehaviorNodeSelected, hasTheme,
   activeEditorIsDirty, activeEditor,
   loadFiles, switchFile, guardedAction, selectFile, jumpToDefinition,
   handleUploadFile, handleNewAttachment, handleNewAspect, handleNewLegal, handleDeleteFile, handleRenameFile,
@@ -468,7 +468,7 @@ onBeforeUnmount(() => {
           :creating-file="creatingFile"
           :explorer-width="explorerWidth"
           :history-cleared="historyCleared"
-          :current-file-is-image="currentFileIsImage"
+          :current-file-is-media="currentFileIsMedia"
           :current-file-is-markdown="currentFileIsMarkdown"
           :highlighted-state-key="highlightedStateKey"
           :fired-action-edge="firedActionEdge"

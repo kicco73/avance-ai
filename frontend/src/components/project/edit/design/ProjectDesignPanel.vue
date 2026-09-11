@@ -10,8 +10,8 @@ import IndexCssEditorPanel from './IndexCssEditorPanel.vue'
 import MdEditorPanel from './MdEditorPanel.vue'
 import SourceContentPanel from './SourceContentPanel.vue'
 import { projectFileContentUrl } from '../../../../api.js'
-
-const IMAGE_PATTERN = /\.(png|jpe?g|gif|webp|svg)$/i
+import { projectFileTypes } from '../../../../projectFileTypes.js'
+import AspectMediaPanel from './AspectMediaPanel.vue'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -29,7 +29,7 @@ const props = defineProps({
   // as soon as it mounts, so without this they could race the project's
   // undo/redo history being cleared on entry.
   historyCleared: { type: Boolean, default: false },
-  currentFileIsImage: { type: Boolean, default: false },
+  currentFileIsMedia: { type: Boolean, default: false },
   // A .txt/.md attachment — gets MdEditorPanel instead of the bare
   // CodeEditor fallback below.
   currentFileIsMarkdown: { type: Boolean, default: false },
@@ -73,7 +73,8 @@ const emit = defineEmits([
 // not something a state ever attaches to chat.
 const attachmentFiles = computed(() =>
   props.files.filter(
-    (name) => name !== 'index.yml' && name !== 'index.css' && name !== 'legal/terms.md' && !IMAGE_PATTERN.test(name)
+    (name) => name !== 'index.yml' && name !== 'index.css' && name !== 'legal/terms.md'
+      && !projectFileTypes.value.livesIn('aspect', name)
   )
 )
 
@@ -156,11 +157,12 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
           :files="files"
           @saved="emit('saved', $event)"
         />
-        <div v-if="noSourceSelection && currentFileIsImage" class="edit-project-editor-attachment">
-          <div class="edit-project-editor-content edit-project-editor-image">
-            <img :key="currentFileName" :src="projectFileContentUrl(projectId, currentFileName)" :alt="currentFileName" />
-          </div>
-        </div>
+        <AspectMediaPanel
+          v-if="noSourceSelection && currentFileIsMedia"
+          :key="currentFileName"
+          :file-name="currentFileName"
+          :content-url="projectFileContentUrl(projectId, currentFileName)"
+        />
         <MdEditorPanel
           v-else-if="noSourceSelection && currentFileIsMarkdown"
           :key="currentFileName"
@@ -233,8 +235,6 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
 .save-btn:hover:not(:disabled) { background: #256428; }
 .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .edit-project-editor-content { flex: 1; min-height: 0; display: flex; }
-.edit-project-editor-image { align-items: center; justify-content: center; overflow: auto; background: repeating-conic-gradient(#f0f0f0 0% 25%, #fafafa 0% 50%) 50% / 20px 20px; }
-.edit-project-editor-image img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .edit-project-status { margin: auto; color: #444; }
 .edit-project-source-empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.4rem; padding: 1rem; text-align: center; color: #777; }
 .edit-project-source-empty-icon { color: #3949ab; opacity: 0.6; }

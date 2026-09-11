@@ -1,10 +1,13 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import ChatView from '../chat/ChatView.vue'
+import ChatWaitingPanel from '../chat/ChatWaitingPanel.vue'
 import AppStoreFrozenPreview from '../appStore/AppStoreFrozenPreview.vue'
 import { appStoreFileContentUrl } from '../../api.js'
+import { infoDialog } from '../../dialogStore.js'
 import { setSkinCss, invalidateSkin } from '../../chatSkin.js'
 import { setPreviewApp, appStorePreviewStore, historyLoaded, restartPreviewSession, stopPreviewSession } from '../../appStorePreviewStore.js'
+import { usePreviewExpiry } from '../../composables/usePreviewExpiry.js'
 
 const props = defineProps({
   app: { type: Object, required: true },
@@ -78,8 +81,25 @@ async function loadSkinForApp(app) {
 
 watch(() => props.app?.id, () => loadSkinForApp(props.app), { immediate: true })
 
+// "Test" opens a real preview session — same store, same automaton, same
+// ephemeral env as the app store's own "Try me!" — so it ends the same
+// way: on the shared countdown, never left running because the panel is
+// still on screen (see usePreviewExpiry).
+const { quitButtonLabel, expired, arm: armExpiryTimer, clear: clearExpiryTimer } = usePreviewExpiry()
+
+watch(expired, async (hasExpired) => {
+  if (!hasExpired) return
+  await quitPreview()
+  await infoDialog({
+    title: 'Test session expired',
+    body: 'Your test session has expired.',
+    okLabel: 'Close'
+  })
+})
+
 async function quitPreview() {
   if (!previewing.value) return
+  clearExpiryTimer()
   previewing.value = false
   await stopPreviewSession()
 }
@@ -87,10 +107,12 @@ async function quitPreview() {
 async function startPreview() {
   setPreviewApp(props.app.id)
   previewing.value = true
+  armExpiryTimer()
   await appStorePreviewStore.handleNewSession()
 }
 
 async function restartPreview() {
+  armExpiryTimer()
   await restartPreviewSession()
 }
 
@@ -132,7 +154,7 @@ onBeforeUnmount(async () => {
       class="project-detail-try-btn"
       :class="{ 'project-detail-try-btn-active': previewing }"
       @click="previewing ? quitPreview() : startPreview()"
-    >{{ previewing ? 'Quit' : 'Test' }}</button>
+    >{{ previewing ? quitButtonLabel : 'Test' }}</button>
     <button v-if="previewing" type="button" class="project-detail-secondary-btn" :disabled="!historyLoaded" @click="restartPreview">Restart</button>
     <button type="button" class="project-detail-secondary-btn" @click="emit('edit', app.id)">Edit</button>
     <button type="button" class="project-detail-secondary-btn" @click="emit('label', app.id)">Label</button>
@@ -156,8 +178,9 @@ onBeforeUnmount(async () => {
   </div>
 
   <div class="project-detail-try-panel">
-    <AppStoreFrozenPreview v-if="!previewing || !historyLoaded" :app-id="app.id" :loading="previewing && !historyLoaded" />
+    <AppStoreFrozenPreview v-if="!previewing || !historyLoaded" :app-id="app.id" />
     <ChatView v-if="previewing && historyLoaded" hide-sessions-panel :store="appStorePreviewStore" />
+    <ChatWaitingPanel v-if="previewing && !historyLoaded" />
   </div>
 </template>
 
@@ -293,6 +316,8 @@ onBeforeUnmount(async () => {
 }
 
 .project-detail-try-panel {
+  /* ChatWaitingPanel positions itself against this box. */
+  position: relative;
   flex: 1;
   min-height: 300px;
   display: flex;

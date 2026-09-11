@@ -14,7 +14,9 @@ from fastapi import WebSocketDisconnect
 
 from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME
-from system.ws_notifications import ALREADY_CONNECTED_CLOSE_CODE, HumanNotConnectedError, WsNotifications
+from system.ws_notifications import (
+    SUPERSEDED_CLOSE_CODE, SWITCHED_TO_OTHER_CLIENT, HumanNotConnectedError, WsConnection, WsNotifications,
+)
 from webchat.webchat_service import WebchatService
 from conftest import chat_socket, chat_turn_frames
 from system.session import Session
@@ -69,6 +71,7 @@ class _FakeWebSocket:
 class _RecordingConnection:
     def __init__(self):
         self.sent: list[dict] = []
+        self.closed = False
 
     def send(self, payload: dict):
         self.sent.append(payload)
@@ -190,39 +193,95 @@ class _FakeAdminAuthService:
         return AuthenticatedUser(provider_user_id="fake", email=USERNAME, name="Fake Admin", picture_url=None, role="admin")
 
 
+class _SupersedableConnection(_RecordingConnection):
+    """A stand-in old connection that records being superseded, without a
+    real socket or writer task behind it."""
+
+    def __init__(self):
+        super().__init__()
+        self.superseded = False
+
+    def supersede(self):
+        self.superseded = True
+
+
 class TestConnectionCap:
-    """Per-role cap (see MAX_CONNECTIONS_PER_USER/MAX_CONNECTIONS_PER_ADMIN):
-    a connection past it is refused outright with ALREADY_CONNECTED_CLOSE_CODE,
-    never silently swapped for an older one — the two-tabs-same-account setup
-    HumanTalker testing relies on (see talker.human_talker) is exactly what
-    the admin's higher cap makes room for."""
+    """Per-role cap (see MAX_CONNECTIONS_PER_USER/MAX_CONNECTIONS_PER_ADMIN),
+    and who gives way when it is reached: the newest connection always wins
+    and the oldest is superseded, because the browser the person is looking
+    at is the one that just connected. The admin's higher cap is what makes
+    room for the two-tabs-same-account setup HumanTalker testing relies on
+    (see talker.human_talker)."""
 
-    def test_a_second_connection_for_a_plain_user_is_rejected(self):
+    def test_a_second_connection_for_a_plain_user_supersedes_the_first(self):
         channel = WsNotifications(_FakeAuthService())
-        channel._connections[USERNAME] = [_RecordingConnection()]
+        first = _SupersedableConnection()
+        channel._connections[USERNAME] = [first]
 
         websocket = _FakeWebSocket()
         asyncio.run(channel.channel_loop(websocket))
 
-        assert websocket.closed_with == ALREADY_CONNECTED_CLOSE_CODE
-
-    def test_an_admin_may_open_a_second_connection(self):
-        channel = WsNotifications(_FakeAdminAuthService())
-        channel._connections[USERNAME] = [_RecordingConnection()]
-
-        websocket = _FakeWebSocket()
-        asyncio.run(channel.channel_loop(websocket))
-
+        assert first.superseded is True
         assert websocket.closed_with is None
 
-    def test_a_third_connection_for_an_admin_is_rejected(self):
-        channel = WsNotifications(_FakeAdminAuthService())
-        channel._connections[USERNAME] = [_RecordingConnection(), _RecordingConnection()]
+    def test_the_superseded_connection_stops_being_registered(self):
+        channel = WsNotifications(_FakeAuthService())
+        first = _SupersedableConnection()
+        channel._connections[USERNAME] = [first]
 
         websocket = _FakeWebSocket()
         asyncio.run(channel.channel_loop(websocket))
 
-        assert websocket.closed_with == ALREADY_CONNECTED_CLOSE_CODE
+        assert first not in channel._connections.get(USERNAME, [])
+
+    def test_an_admin_may_open_a_second_connection_without_superseding(self):
+        channel = WsNotifications(_FakeAdminAuthService())
+        first = _SupersedableConnection()
+        channel._connections[USERNAME] = [first]
+
+        websocket = _FakeWebSocket()
+        asyncio.run(channel.channel_loop(websocket))
+
+        assert first.superseded is False
+        assert websocket.closed_with is None
+
+    def test_a_third_connection_for_an_admin_supersedes_the_oldest_only(self):
+        channel = WsNotifications(_FakeAdminAuthService())
+        oldest, newer = _SupersedableConnection(), _SupersedableConnection()
+        channel._connections[USERNAME] = [oldest, newer]
+
+        websocket = _FakeWebSocket()
+        asyncio.run(channel.channel_loop(websocket))
+
+        assert oldest.superseded is True
+        assert newer.superseded is False
+
+
+class TestSupersede:
+    """What a superseded socket is actually told (see WsConnection.supersede):
+    the SWITCHED_TO_OTHER_CLIENT frame first, then SUPERSEDED_CLOSE_CODE — in
+    that order, so the browser has the reason before the socket goes."""
+
+    def test_sends_the_switched_frame_then_closes_with_the_superseded_code(self):
+        websocket = _FakeWebSocket()
+        connection = WsConnection(websocket)
+        connection.supersede()
+
+        asyncio.run(connection.write_loop())
+
+        assert websocket.sent == [{"type": SWITCHED_TO_OTHER_CLIENT}]
+        assert websocket.closed_with == SUPERSEDED_CLOSE_CODE
+
+    def test_a_frame_arriving_after_it_was_superseded_is_not_answered(self):
+        channel = WsNotifications(_FakeAuthService())
+        websocket = _FakeWebSocket()
+        connection = WsConnection(websocket)
+        connection.supersede()
+
+        channel._handle_frame(connection, '{"type": "ping"}')
+        asyncio.run(connection.write_loop())
+
+        assert websocket.sent == [{"type": SWITCHED_TO_OTHER_CLIENT}]
 
 
 class TestHumanPrompt:

@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 from automaton.automaton import (
     ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload,
 )
-from automaton.builder.archive_resolver import EXTENSION_TO_MEDIA_TYPE
 from automaton.automaton_builder import AutomatonBuilder
+from automaton.file_types import ProjectFileTypes
 from automaton.build_error import AutomatonBuildError
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
 from db import ContentRestored, Db, FileRenamed
@@ -21,9 +21,8 @@ from .manager import ProjectManager
 from .archive.automaton_loader import AutomatonLoader
 from .archive.css_validator import CssValidator
 from .archive.layout import (
-    ASPECT_DIR, BEHAVIOUR_DIR, ArchiveLayout, IMAGE_CONTENT_TYPE_BY_EXTENSION, LEGAL_TERMS_FILE_NAME,
-    LEGAL_TERMS_SKELETON, MAX_IMAGE_UPLOAD_BYTES, ROOT_FILE_NAMES, SOURCES_DIR, TEXT_CONTENT_TYPE_BY_EXTENSION,
-    TEXT_EDITABLE_EXTENSIONS,
+    ASPECT_DIR, BEHAVIOUR_DIR, ArchiveLayout, LEGAL_TERMS_FILE_NAME, LEGAL_TERMS_SKELETON, ROOT_FILE_NAMES,
+    SOURCES_DIR,
 )
 from .types import CommitCallback
 
@@ -158,11 +157,11 @@ class ProjectEditor:
             raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_id}'.")
         content_type = self._db.get_archive_content_type(project_id, file_name)
         user = Session().user
-        extension = Path(file_name).suffix.lower()
-        media_type = EXTENSION_TO_MEDIA_TYPE.get(extension, "application/octet-stream")
+        file_type = ProjectFileTypes.of(file_name)
+        media_type = file_type.media_type
         # None for binary content — raw bytes aren't JSON-serializable; the
         # explorer renders those via the raw GET .../content route instead.
-        is_text = extension in TEXT_EDITABLE_EXTENSIONS
+        is_text = file_type.text
         return {
             "content": content.decode("utf-8") if is_text else None,
             "can_undo": self._db.has_undo(user, project_id, file_name),
@@ -291,11 +290,11 @@ class ProjectEditor:
         if resolved_name not in existing_names:
             self._check_editable_file_name(file_name)
         file_name = resolved_name
-        extension = Path(file_name).suffix.lower()
+        file_type = ProjectFileTypes.of(file_name)
 
-        if extension in TEXT_EDITABLE_EXTENSIONS:
+        if file_type.text:
             text_content = content.decode("utf-8") if isinstance(content, bytes) else content
-            content_type = TEXT_CONTENT_TYPE_BY_EXTENSION.get(extension, "text/plain")
+            content_type = file_type.content_type
             if file_name == "index.css":
                 syntax_errors = CssValidator.syntax_errors(text_content)
                 if syntax_errors:
@@ -314,14 +313,14 @@ class ProjectEditor:
             # Only a text extension ever hands this a `str`; an image
             # upload is always real bytes off the request body.
             assert isinstance(content, bytes)
-            expected_content_type = IMAGE_CONTENT_TYPE_BY_EXTENSION[extension]
+            expected_content_type = file_type.content_type
             if content_type_header != expected_content_type:
                 raise ValueError(
                     f"Unsupported or mismatched Content-Type for '{file_name}': expected "
                     f"'{expected_content_type}', got '{content_type_header}'."
                 )
-            if len(content) > MAX_IMAGE_UPLOAD_BYTES:
-                raise ValueError(f"'{file_name}' exceeds the {MAX_IMAGE_UPLOAD_BYTES}-byte upload limit.")
+            if file_type.oversized(len(content)):
+                raise ValueError(f"'{file_name}' exceeds the {file_type.max_upload_bytes}-byte upload limit.")
             content_type = expected_content_type
             update_value = content
             to_save = content
@@ -401,7 +400,7 @@ class ProjectEditor:
             new_content = text.replace(old_basename, new_basename).encode("utf-8")
             archives[reference_file] = new_content
             updated_files[reference_file] = new_content
-            content_types[reference_file] = TEXT_CONTENT_TYPE_BY_EXTENSION[Path(reference_file).suffix.lower()]
+            content_types[reference_file] = ProjectFileTypes.of(reference_file).content_type
 
         if "index.css" in updated_files:
             known_names = {Path(name).name for name in archives if name.startswith(f"{ASPECT_DIR}/")}
@@ -608,7 +607,7 @@ class ProjectEditor:
         if resolved_name not in existing_names:
             self._check_editable_file_name(file_name)
         file_name = resolved_name
-        is_text = Path(file_name).suffix.lower() in TEXT_EDITABLE_EXTENSIONS
+        is_text = ProjectFileTypes.of(file_name).text
         raw_content = content.encode("utf-8") if is_text and isinstance(content, str) else content
 
         user = Session().user
@@ -628,7 +627,7 @@ class ProjectEditor:
         if resolved_name not in existing_names:
             self._check_editable_file_name(file_name)
         file_name = resolved_name
-        is_text = Path(file_name).suffix.lower() in TEXT_EDITABLE_EXTENSIONS
+        is_text = ProjectFileTypes.of(file_name).text
         raw_content = content.encode("utf-8") if is_text and isinstance(content, str) else content
 
         user = Session().user

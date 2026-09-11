@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { projectFileTypes } from '../../../../projectFileTypes.js'
 
 const props = defineProps({
   files: { type: Array, default: () => [] },
@@ -151,7 +152,7 @@ watch(
         ref="fileInputRef"
         type="file"
         multiple
-        accept=".txt,.md,.csv,.yml,.yaml,.css,.png,.jpg,.jpeg,.gif,.webp,.svg"
+        :accept="projectFileTypes.uploadAccept"
         class="file-explorer-upload-input"
         @change="emit('upload-file', $event)"
       />

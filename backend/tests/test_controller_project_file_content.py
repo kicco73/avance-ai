@@ -9,11 +9,12 @@ from __future__ import annotations
 import pytest
 
 from conftest import parse_sse_result
-from project.archive.layout import MAX_IMAGE_UPLOAD_BYTES
+from automaton.file_types import MAX_AUDIO_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_BYTES, ProjectFileTypes
 
 pytestmark = pytest.mark.contract
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n" + b"0" * 32
+MP3_MAGIC = b"ID3\x03\x00\x00\x00" + b"0" * 32
 
 TWO_STATE_YML = (
     "project:\n  id: proj\n"
@@ -32,6 +33,11 @@ TWO_STATE_YML = (
 
 
 def _put_png(client, project_id: str, name: str = "aspect/logo.png", content: bytes = PNG_MAGIC, content_type: str | None = "image/png"):
+    headers = {"Content-Type": content_type} if content_type else {}
+    return client.put(f"/api/projects/{project_id}/files/{name}", content=content, headers=headers)
+
+
+def _put_mp3(client, project_id: str, name: str = "aspect/title.mp3", content: bytes = MP3_MAGIC, content_type: str | None = "audio/mpeg"):
     headers = {"Content-Type": content_type} if content_type else {}
     return client.put(f"/api/projects/{project_id}/files/{name}", content=content, headers=headers)
 
@@ -171,3 +177,39 @@ class TestGetProjectFileContent:
         response = client.get(f"/api/projects/proj/files/index.css/content?session_id={test_session_id}")
 
         assert response.content == b"body { color: green; }"
+
+
+@pytest.mark.contract
+def test_the_file_type_catalog_is_what_the_frontend_reads_instead_of_restating_its_own_patterns(client):
+    payload = client.get("/api/project-file-types").json()
+
+    assert sorted(payload["root_file_names"]) == ["index.css", "index.yml"]
+    by_extension = {entry["extension"]: entry for entry in payload["types"]}
+    assert by_extension[".mp3"] == {
+        "extension": ".mp3", "content_type": "audio/mpeg", "label": "MP3 audio", "kind": "audio",
+        "folder": "aspect", "text": False, "max_upload_bytes": MAX_AUDIO_UPLOAD_BYTES,
+    }
+    assert by_extension[".png"]["folder"] == "aspect"
+    assert by_extension[".md"]["folder"] == "behaviour"
+    assert by_extension[".yml"]["folder"] == ""
+    assert {entry["extension"] for entry in payload["types"]} == {t.extension for t in ProjectFileTypes.all()}
+
+
+@pytest.mark.regression
+def test_an_mp3_uploads_into_aspect_and_is_served_back_as_audio(client, hello_project):
+    assert _put_mp3(client, hello_project).status_code == 200
+
+    response = client.get(f"/api/projects/{hello_project}/files/aspect/title.mp3/content")
+    assert response.status_code == 200
+    assert response.content == MP3_MAGIC
+    assert response.headers["content-type"] == "audio/mpeg"
+
+    assert client.get(f"/api/projects/{hello_project}/files/aspect/title.mp3").json()["media_type"] == "audio/mpeg"
+    assert "aspect/title.mp3" in client.get(f"/api/projects/{hello_project}/files").json()["files"]
+
+
+@pytest.mark.regression
+def test_an_mp3_upload_is_gated_by_its_own_content_type_and_its_own_larger_limit(client, hello_project):
+    assert _put_mp3(client, hello_project, content_type="image/png").status_code == 400
+    assert _put_mp3(client, hello_project, content=b"0" * (MAX_IMAGE_UPLOAD_BYTES + 1)).status_code == 200
+    assert _put_mp3(client, hello_project, content=b"0" * (MAX_AUDIO_UPLOAD_BYTES + 1)).status_code == 400

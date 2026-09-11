@@ -3,13 +3,17 @@ import { ref, watch } from 'vue'
 import MessageBubble from '../chat/MessageBubble.vue'
 import ActionButtons from '../chat/ActionButtons.vue'
 import ChatInput from '../chat/ChatInput.vue'
-import ProgressSpinner from '../ProgressSpinner.vue'
 import { getAppPreviewTranscript } from '../../api.js'
 import { audioEnabled, talkAvailable, micAvailable, spokenTextEnabled, toggleSpokenText } from '../../chatStoreFactory.js'
 import { toggleAudio } from '../../chatStore.js'
 
+// The static teaser only: a real sample of what this app's chat looks
+// like, frozen and inert. It used to double as the "session starting up"
+// screen too, greying itself out around a spinner — that job belongs to
+// ChatWaitingPanel now, which every kind of chat shares (see its own
+// comment), and which simply veils whatever is underneath it, this
+// included.
 const props = defineProps({
-  loading: { type: Boolean, default: false },
   appId: { type: String, default: null }
 })
 
@@ -47,7 +51,7 @@ watch(() => props.appId, loadTranscript, { immediate: true })
 
 <template>
   <div class="app-store-frozen-wrap">
-    <div class="chat-window-shell" :class="{ 'app-store-frozen-lightened': loading }">
+    <div class="chat-window-shell">
       <div class="chat-header">
         <div class="chat-header-icon"></div>
       </div>
@@ -68,9 +72,6 @@ watch(() => props.appId, loadTranscript, { immediate: true })
           @toggle-spoken-text="toggleSpokenText"
         />
       </div>
-    </div>
-    <div v-if="loading" class="app-store-frozen-spinner">
-      <ProgressSpinner />
     </div>
   </div>
 </template>
@@ -93,26 +94,6 @@ watch(() => props.appId, loadTranscript, { immediate: true })
   border: 1px solid #ddd;
   border-radius: 8px;
   overflow: hidden;
-}
-
-.app-store-frozen-lightened {
-  filter: brightness(1.2) saturate(0.7);
-  opacity: 0.6;
-}
-
-.app-store-frozen-spinner {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #4a6fa5;
-  pointer-events: none;
-}
-
-.app-store-frozen-spinner svg {
-  width: 32px;
-  height: 32px;
 }
 
 .messages {

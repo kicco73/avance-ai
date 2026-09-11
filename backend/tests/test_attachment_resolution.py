@@ -114,11 +114,10 @@ def test_a_turn_reads_the_declared_paths_as_text_or_base64_by_media_type(tmp_pat
     assert [a.filename for a in archives] == ["behaviour/notes.txt", "logo.png"]
     assert archives[0].source == {"type": "text", "media_type": "text/plain", "data": "a note\n"}
     assert archives[1].source["type"] == "base64"
-    # application/octet-stream, not image/png: what a file becomes is
-    # decided from its name in one table (automaton.media_types), never
-    # from what a reader reports — a stored project's Archive row would
-    # say image/png and a package's data/ would not.
-    assert archives[1].source["media_type"] == "application/octet-stream"
+    # image/png from the name alone (automaton.file_types' one catalog),
+    # never from what a reader reports — a stored project's Archive row
+    # and a package's own data/ must reach the provider identically.
+    assert archives[1].source["media_type"] == "image/png"
     assert base64.b64decode(archives[1].source["data"]) == b"\x89PNG\r\n\x1a\n"
 
 

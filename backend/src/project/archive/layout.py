@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# -- Project file layout -------------------------------------------------
-# Shared schema for how a project's files are named, typed, and where each
-# extension lives on disk. Consumed by ArchiveLayout below and directly by
-# editor.py/manager.py wherever they need this data without an operation
-# to go with it.
+from automaton.file_types import ASPECT_DIR, BEHAVIOUR_DIR, ROOT_FILE_NAMES, ProjectFileTypes  # noqa: F401  (re-exported: the project package reads the layout's own names from here)
 
-TEXT_EDITABLE_EXTENSIONS = {".yml", ".yaml", ".txt", ".md", ".csv", ".css"}
+# -- Project file layout -------------------------------------------------
+# Shared schema for how a project's files are named and where each one
+# lives on disk. What an extension itself means — content type, folder,
+# upload limit — is automaton.file_types' single catalog, imported above.
 
 LEGAL_TERMS_FILE_NAME = "legal/terms.md"
 
@@ -33,33 +32,10 @@ platform's general Terms of Use and Privacy Policy.
 [State here how long this application's data is retained.]
 """
 
-TEXT_CONTENT_TYPE_BY_EXTENSION = {
-    ".yml": "text/yaml",
-    ".yaml": "text/yaml",
-    ".txt": "text/plain",
-    ".md": "text/markdown",
-    ".csv": "text/csv",
-    ".css": "text/css",
-}
-
-IMAGE_CONTENT_TYPE_BY_EXTENSION = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".svg": "image/svg+xml",
-}
-IMAGE_EXTENSIONS = set(IMAGE_CONTENT_TYPE_BY_EXTENSION)
-
-MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
-
 SESSIONS_EXPORT_FILENAME = "sessions.json"
 TESTS_EXPORT_FILENAME = "tests.json"
 BUNDLE_FILE_NAMES = {SESSIONS_EXPORT_FILENAME, TESTS_EXPORT_FILENAME}
 
-ASPECT_DIR = "aspect"
-BEHAVIOUR_DIR = "behaviour"
 # One `<id>.csv` archive per `sources:` entry of the "avance" driver — its
 # own backing store (tracking.sources.avance_archive), created empty
 # alongside the source (ProjectEditor.add_source) and renamed/deleted in
@@ -76,9 +52,6 @@ SOURCES_DIR = "sources"
 # delete_session — cleans up everything under a closed/deleted session's
 # own subtree).
 CACHE_DIR = "cache"
-ROOT_FILE_NAMES = {"index.yml", "index.css"}
-ASPECT_EXTENSIONS = IMAGE_EXTENSIONS | {".css"}
-BEHAVIOUR_EXTENSIONS = {".txt", ".md", ".csv"}
 
 
 class ArchiveLayout:
@@ -99,7 +72,7 @@ class ArchiveLayout:
         # sources/<id>.csv (a source's own backing archive — see
         # SOURCES_DIR's own docstring) is already canonical, exactly as
         # given: without this, its ".csv" extension would otherwise fall
-        # through to the generic BEHAVIOUR_EXTENSIONS rule below and get
+        # through to the generic behaviour-folder rule below and get
         # silently rerouted to behaviour/<id>.csv — wrong archive
         # entirely, and exactly what ProjectEditor.put_project_file's own
         # "does this already-known archive need canonicalizing at all?"
@@ -108,18 +81,13 @@ class ArchiveLayout:
         parts = Path(name).parts
         if len(parts) == 2 and parts[0] == SOURCES_DIR and Path(basename).suffix.lower() == ".csv":
             return name
-        extension = Path(basename).suffix.lower()
-        if extension in ASPECT_EXTENSIONS:
-            return f"{ASPECT_DIR}/{basename}"
-        if extension in BEHAVIOUR_EXTENSIONS:
-            return f"{BEHAVIOUR_DIR}/{basename}"
-        raise ValueError(f"Unsupported file extension for '{name}': '{extension or '(none)'}'.")
+        return ProjectFileTypes.of(basename).canonical_name(basename)
 
     @staticmethod
     def decode_text(archives: dict[str, bytes]) -> dict[str, str | bytes]:
         decoded: dict[str, str | bytes] = {}
         for name, content in archives.items():
-            if Path(name).suffix.lower() in TEXT_EDITABLE_EXTENSIONS and isinstance(content, (bytes, bytearray)):
+            if ProjectFileTypes.of(name).text and isinstance(content, (bytes, bytearray)):
                 decoded[name] = content.decode("utf-8")
             else:
                 decoded[name] = content

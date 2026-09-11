@@ -9,6 +9,7 @@
 import { computed, ref, watch } from 'vue'
 import CardMenu from './CardMenu.vue'
 import { getProjectFile } from '../../api.js'
+import { projectFileTypes } from '../../projectFileTypes.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -85,26 +86,7 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const TYPE_LABELS = {
-  '.yml': 'YAML',
-  '.yaml': 'YAML',
-  '.txt': 'Text',
-  '.md': 'Markdown',
-  '.csv': 'CSV',
-  '.css': 'Stylesheet',
-  '.png': 'PNG image',
-  '.jpg': 'JPEG image',
-  '.jpeg': 'JPEG image',
-  '.gif': 'GIF image',
-  '.webp': 'WebP image',
-  '.svg': 'SVG image'
-}
-
-const fileType = computed(() => {
-  const dot = props.fileName.lastIndexOf('.')
-  const ext = dot === -1 ? '' : props.fileName.slice(dot).toLowerCase()
-  return TYPE_LABELS[ext] ?? 'File'
-})
+const fileType = computed(() => projectFileTypes.value.of(props.fileName).label)
 
 function handleDelete() {
   emit('delete')

@@ -18,18 +18,21 @@ from turn.channels import NATIVE_CHAT
 
 logger = logging.getLogger(__name__)
 
-# Close code the frontend must treat specially: don't reconnect, show
-# "already open elsewhere" instead (see chatClient.js). 44xx is our own
+# The frame an older connection is told it lost the channel with, and the
+# close code that follows it. The frontend must treat that code
+# specially: never reconnect (the newest client owns the channel now),
+# block the chat instead (see chatChannel.js). 44xx is our own
 # application range (4401 is the existing auth-failure code).
-ALREADY_CONNECTED_CLOSE_CODE = 4409
+SWITCHED_TO_OTHER_CLIENT = "switched_to_other_client"
+SUPERSEDED_CLOSE_CODE = 4410
 
 # How many concurrent sockets one identity may hold: enough for one tab,
 # or for an admin testing HumanTalker to answer their own session from a
 # second tab (see talker.human_talker) — not "multi-device support", so
-# deliberately small. A connection past the cap is refused outright
-# (ALREADY_CONNECTED_CLOSE_CODE), never silently swapped for an older one:
-# the user whose tab goes quiet with no explanation is exactly the bug
-# this replaces.
+# deliberately small. The newest connection always wins: a connection
+# past the cap is accepted and the oldest is superseded instead (see
+# WsConnection.supersede), because the browser that just asked for the
+# chat is the one the person is actually looking at.
 MAX_CONNECTIONS_PER_USER = 1
 MAX_CONNECTIONS_PER_ADMIN = 2
 
@@ -64,6 +67,15 @@ class WsConnection(object):
         self._websocket = websocket
         self._outgoing: asyncio.Queue[dict | None] = asyncio.Queue()
         self._closed = False
+        self._close_code: int | None = None
+
+    @property
+    def closed(self) -> bool:
+        """True once this socket stopped serving — it was superseded, or
+        its own loop ended. An inbound frame arriving after that is read
+        off a socket already on its way out and is not acted on (see
+        WsNotifications._handle_frame)."""
+        return self._closed
 
     def send(self, payload: dict) -> None:
         if self._closed:
@@ -76,6 +88,7 @@ class WsConnection(object):
             while True:
                 payload = await self._outgoing.get()
                 if payload is None:
+                    await self._close_socket()
                     return
                 await self._websocket.send_json(payload)
         except Exception as exc:
@@ -83,9 +96,29 @@ class WsConnection(object):
         finally:
             self._closed = True
 
-    def close(self) -> None:
+    async def _close_socket(self) -> None:
+        """Closing goes through the writer task rather than the caller so
+        it lands *after* whatever was already queued — supersede() below
+        depends on its frame reaching the wire before the close does."""
+        if self._close_code is None:
+            return
+        try:
+            await self._websocket.close(code=self._close_code)
+        except Exception as exc:
+            logger.debug(f"websocket already gone when closing: {exc}")
+
+    def close(self, code: int | None = None) -> None:
+        self._close_code = code
         self._closed = True
         self._outgoing.put_nowait(None)
+
+    def supersede(self) -> None:
+        """Another client of this same identity just took the channel
+        over. This socket is told so — the frame is what the browser
+        blocks its chat on — and then closed with SUPERSEDED_CLOSE_CODE,
+        which is the frontend's cue not to reconnect and steal it back."""
+        self.send({"type": SWITCHED_TO_OTHER_CLIENT})
+        self.close(code=SUPERSEDED_CLOSE_CODE)
 
 
 class WsNotifications(object):
@@ -104,10 +137,11 @@ class WsNotifications(object):
     runs as a task; the session lock serializes turns of one session.
 
     At most MAX_CONNECTIONS_PER_USER connections per identity
-    (MAX_CONNECTIONS_PER_ADMIN for an admin) — a connection past the cap
-    is refused with ALREADY_CONNECTED_CLOSE_CODE, never silently
-    replacing an older one: the tab that goes quiet with no explanation
-    is exactly the failure mode this is meant to avoid."""
+    (MAX_CONNECTIONS_PER_ADMIN for an admin), and the newest always wins:
+    a connection past the cap is accepted, and the oldest is superseded
+    to make room (see _supersede_over_cap). The tab that loses the
+    channel is never left to go quiet guessing why — it is told first,
+    with a SWITCHED_TO_OTHER_CLIENT frame it blocks its own chat on."""
 
     def __init__(self, auth_service: AuthService) -> None:
         self._auth_service = auth_service
@@ -154,14 +188,11 @@ class WsNotifications(object):
         username = Session().user
         cap = MAX_CONNECTIONS_PER_ADMIN if role_satisfies(identity.role, "admin") else MAX_CONNECTIONS_PER_USER
         await websocket.accept()
-        if len(self._connections.get(username, [])) >= cap:
-            logger.info(f"refusing websocket for {username}: already at its cap of {cap}")
-            await websocket.close(code=ALREADY_CONNECTED_CLOSE_CODE, reason="Already connected elsewhere.")
-            return
         logger.info(f"accepted websocket for {username}")
         connection = WsConnection(websocket)
         Session().connection_id = connection.id
         self._connections.setdefault(username, []).append(connection)
+        self._supersede_over_cap(username, cap)
         writer = asyncio.create_task(connection.write_loop())
         try:
             while True:
@@ -178,7 +209,25 @@ class WsNotifications(object):
             connection.close()
             await writer
 
+    def _supersede_over_cap(self, username: str, cap: int) -> None:
+        """Makes room for the connection that just arrived by dropping the
+        oldest ones, rather than refusing the newcomer: the browser the
+        person is looking at is always the one that just connected, and a
+        cap that turned it away left them staring at a chat they could not
+        use until they hunted down a tab they may no longer have open."""
+        connections = self._connections.get(username, [])
+        while len(connections) > cap:
+            superseded = connections.pop(0)
+            logger.info(f"superseding an older websocket of {username}: a newer client took the channel")
+            superseded.supersede()
+
     def _handle_frame(self, connection: WsConnection, raw: str) -> None:
+        # A superseded socket may still deliver whatever was in flight
+        # when a newer client took the channel over — it is no longer
+        # this identity's chat, so nothing it says is acted on.
+        if connection.closed:
+            logger.debug("ignoring a frame from a superseded websocket")
+            return
         try:
             frame = json.loads(raw)
         except ValueError:

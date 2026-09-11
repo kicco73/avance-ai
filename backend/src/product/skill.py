@@ -7,11 +7,13 @@ build that includes `backend/src/product/` reads its project out of the
 single compiled package beside it and never opens the Archive tables; a
 build that does not, does what it has always done.
 
-It is deliberately incompatible with the authoring platform. Both claim
-the automaton loader, and AutomatonLoaderChoice.replace refuses the
-second claim by name rather than letting the last one win — an editor
-and a compiled product in the same backend is a build that should not
-have been made, and the error says which two packages made it.
+A build that also contains the authoring platform is not a product, and
+this stands down for it: the editor writes revisions, so the loader that
+reads them has to win. Standing down rather than racing matters because
+every build copies src/ whole — this package is in a backend until
+somebody unticks it, and a backend that refuses to start because two
+packages both claimed the loader would be the normal case, not the
+exceptional one.
 """
 from __future__ import annotations
 
@@ -33,7 +35,14 @@ def start(raw: dict, path: Path) -> None:
 
 def _choose_packaged_loader(choice) -> None:
     from project.archive.packaged_automaton_loader import PackagedAutomatonLoader
+    from system import skills
 
+    if any(skill["package"] == "avance_platform" for skill in skills.installed()):
+        logger.info(
+            "avance_platform is installed, so this backend is a platform and not a product — "
+            "leaving the automaton loader to it."
+        )
+        return
     choice.replace(PackagedAutomatonLoader(choice.apps_dir), KEY)
 
 

@@ -20,20 +20,26 @@ const PING_INTERVAL_MS = 25000
 const PONG_TIMEOUT_MS = 10000
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000]
 
-// Mirrors backend chat/ws_notifications.py's ALREADY_CONNECTED_CLOSE_CODE:
-// this identity is already at its per-role connection cap. Unlike every
-// other close reason this must NOT trigger the reconnect loop below — the
-// cap won't lift by retrying, only by the other tab going away — so the
-// socket instead settles into the distinct 'rejected' connectionState (see
-// _setConnectionState) for the app to show its own "already connected
-// elsewhere" screen.
-export const ALREADY_CONNECTED_CLOSE_CODE = 4409
+// Mirrors backend system/ws_notifications.py's own pair: another client of
+// this same identity took the chat channel over, and this socket is the
+// one that lost it. The newest connection always wins there, so retrying
+// would only steal it back and start a tug-of-war between two tabs —
+// which is why this must NOT feed the reconnect loop below. The socket
+// settles into the distinct 'superseded' connectionState instead (see
+// _settleSuperseded), and the app blocks its chat on that.
+//
+// The frame is the event; the close code that follows it is the same
+// verdict, for the case where the frame never lands (a socket that dies
+// first). Both funnel into the one idempotent _settleSuperseded().
+export const SWITCHED_TO_OTHER_CLIENT = 'switched_to_other_client'
+export const SUPERSEDED_CLOSE_CODE = 4410
 
 class ChatChannel {
   constructor() {
     this._socket = null
     this._connectingPromise = null
-    // 'connecting' | 'open' | 'closed' — what ChatView's own banner reads.
+    // 'connecting' | 'open' | 'closed' | 'superseded' — what ChatView's own
+    // banner and blocking overlay read.
     this._connectionState = 'closed'
     this._wanted = false
     this._reconnectAttempt = 0
@@ -124,6 +130,24 @@ class ChatChannel {
     for (const handler of this._connectionStateHandlers) handler(next, { reconnected })
   }
 
+  // This socket lost the channel to a newer client of the same identity.
+  // Terminal on purpose: reconnecting would take it back off whoever is
+  // using it now. Idempotent — the frame says it, and so does the close
+  // code that follows.
+  _settleSuperseded() {
+    this._wanted = false
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this._onOnline)
+      document.removeEventListener('visibilitychange', this._onVisibility)
+    }
+    if (this._reconnectTimer !== null) {
+      clearTimeout(this._reconnectTimer)
+      this._reconnectTimer = null
+    }
+    this._stopHeartbeat()
+    this._setConnectionState('superseded')
+  }
+
   _dispatch(event) {
     let frame
     try {
@@ -133,6 +157,10 @@ class ChatChannel {
     }
     if (frame.type === 'pong') {
       this._clearPongTimer()
+      return
+    }
+    if (frame.type === SWITCHED_TO_OTHER_CLIENT) {
+      this._settleSuperseded()
       return
     }
     const handlers = this._subscribers.get(frame.type)
@@ -228,18 +256,12 @@ class ChatChannel {
         this._stopHeartbeat()
         // A real CloseEvent always carries `code`; our own explicit
         // ws.close() (see disconnect() above) fires onclose with no event
-        // at all — never itself the already-connected-elsewhere case.
-        if (event?.code === ALREADY_CONNECTED_CLOSE_CODE) {
-          // Retrying can't help — the cap only frees up when the other
-          // connection goes away — so this settles here instead of
-          // feeding the exponential-backoff loop below.
-          this._wanted = false
-          if (typeof window !== 'undefined') {
-            window.removeEventListener('online', this._onOnline)
-            document.removeEventListener('visibilitychange', this._onVisibility)
-          }
-          this._setConnectionState('rejected')
-          if (!opened) reject(new Error('Already connected elsewhere.'))
+        // at all — never itself the superseded case. The state check
+        // catches the ordinary sequence, where the frame already settled
+        // this and the close is just the socket following it out.
+        if (event?.code === SUPERSEDED_CLOSE_CODE || this._connectionState === 'superseded') {
+          this._settleSuperseded()
+          if (!opened) reject(new Error('Another client took over this chat.'))
           return
         }
         this._setConnectionState('closed')

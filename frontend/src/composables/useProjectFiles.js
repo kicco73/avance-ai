@@ -3,22 +3,7 @@ import { getProjectFiles, putProjectFile, putProjectFileBinary, deleteProjectFil
 import { setApiError, clearApiError } from '../errorStore.js'
 import { confirmDialog, promptDialog, chooseDialog } from '../dialogStore.js'
 import { findActionLine, findAttachmentLine, findEnvKeyLine, findInitActionLine, findSignalLine, findStateLine } from '../indexYmlLineFinder.js'
-
-// Upload (handleUploadFile below, and the file explorer's own hidden
-// <input accept>) additionally allows every image extension the backend
-// whitelists (see project_service.py's IMAGE_EXTENSIONS).
-const IMAGE_PATTERN = /\.(png|jpe?g|gif|webp|svg)$/i
-const UPLOADABLE_PATTERN = /\.(txt|md|csv|ya?ml|css|png|jpe?g|gif|webp|svg)$/i
-
-function canonicalUploadName(fileName) {
-  if (fileName === 'index.yml' || fileName === 'index.css') return fileName
-  if (IMAGE_PATTERN.test(fileName) || /\.css$/i.test(fileName)) return `aspect/${fileName}`
-  return `behaviour/${fileName}`
-}
-// Mirrors project_service.py's own MAX_IMAGE_UPLOAD_BYTES — checked here
-// purely for immediate feedback; the backend enforces this authoritatively
-// regardless.
-const MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
+import { ensureProjectFileTypes, projectFileTypes } from '../projectFileTypes.js'
 
 // "New aspect" seeds index.css with its three customizable regions,
 // left empty — matches what both sample projects' own index.css style.
@@ -68,10 +53,13 @@ export function useProjectFiles(projectId, emit) {
   const indexYmlEditorRef = computed(() => designPanelRef.value?.indexYmlEditorRef ?? null)
   const indexCssEditorRef = computed(() => designPanelRef.value?.indexCssEditorRef ?? null)
   const mdEditorRef = computed(() => designPanelRef.value?.mdEditorRef ?? null)
-  // An image has no editor at all (see the file explorer's own <img>
-  // preview branch below) — never dirty, nothing for activeEditor() to
+  // An image or an audio file has no editor at all (see ProjectDesignPanel's
+  // own preview branch) — never dirty, nothing for activeEditor() to
   // save/discard.
-  const currentFileIsImage = computed(() => IMAGE_PATTERN.test(currentFileName.value ?? ''))
+  const currentFileIsMedia = computed(() => {
+    const name = currentFileName.value ?? ''
+    return name !== '' && !projectFileTypes.value.hasEditor(name)
+  })
   // A .txt/.md attachment gets MdEditorPanel's Preview/Edit toggle instead
   // of the bare CodeEditor fallback (see ProjectDesignPanel.vue).
   const currentFileIsMarkdown = computed(() => /\.(md|txt)$/i.test(currentFileName.value ?? ''))
@@ -94,7 +82,7 @@ export function useProjectFiles(projectId, emit) {
   const activeEditorIsDirty = computed(() => {
     if (currentFileName.value === 'index.yml') return indexYmlEditorRef.value?.isDirty ?? false
     if (currentFileName.value === 'index.css') return indexCssEditorRef.value?.isDirty ?? false
-    if (currentFileIsImage.value) return false
+    if (currentFileIsMedia.value) return false
     if (currentFileIsMarkdown.value) return mdEditorRef.value?.isDirty ?? false
     return codeEditorRef.value?.isDirty ?? false
   })
@@ -102,7 +90,7 @@ export function useProjectFiles(projectId, emit) {
   function activeEditor() {
     if (currentFileName.value === 'index.yml') return indexYmlEditorRef.value
     if (currentFileName.value === 'index.css') return indexCssEditorRef.value
-    if (currentFileIsImage.value) return null
+    if (currentFileIsMedia.value) return null
     if (currentFileIsMarkdown.value) return mdEditorRef.value
     return codeEditorRef.value
   }
@@ -110,6 +98,7 @@ export function useProjectFiles(projectId, emit) {
   async function loadFiles() {
     filesLoading.value = true
     try {
+      await ensureProjectFileTypes()
       files.value = (await getProjectFiles(projectId)).files
     } catch {
       // already surfaced via apiFetch
@@ -223,21 +212,22 @@ export function useProjectFiles(projectId, emit) {
     event.target.value = '' // reset so re-selecting the same file(s) re-fires change
     if (!uploadedFiles.length) return
 
-    const invalidNames = uploadedFiles.filter((file) => !UPLOADABLE_PATTERN.test(file.name)).map((file) => file.name)
+    await ensureProjectFileTypes()
+    const fileTypes = projectFileTypes.value
+
+    const invalidNames = uploadedFiles.filter((file) => !fileTypes.accepts(file.name)).map((file) => file.name)
     if (invalidNames.length) {
       setApiError(
-        `Only .txt, .md, .csv, .yml/.yaml, .css, or image (.png/.jpg/.gif/.webp/.svg) files can be uploaded — ` +
+        `Only ${fileTypes.uploadableDescription} files can be uploaded — ` +
         `${invalidNames.map((name) => `"${name}"`).join(', ')} ${invalidNames.length === 1 ? "isn't" : "aren't"}.`
       )
       return
     }
-    const oversizedNames = uploadedFiles
-      .filter((file) => IMAGE_PATTERN.test(file.name) && file.size > MAX_IMAGE_UPLOAD_BYTES)
-      .map((file) => file.name)
-    if (oversizedNames.length) {
+    const oversizedFiles = uploadedFiles.filter((file) => fileTypes.oversized(file))
+    if (oversizedFiles.length) {
       setApiError(
-        `${oversizedNames.map((name) => `"${name}"`).join(', ')} ` +
-        `${oversizedNames.length === 1 ? 'is' : 'are'} larger than the 5 MB upload limit.`
+        `${oversizedFiles.map((file) => `"${file.name}" (max ${fileTypes.uploadLimitLabel(file.name)})`).join(', ')} ` +
+        `${oversizedFiles.length === 1 ? 'is' : 'are'} larger than the upload limit.`
       )
       return
     }
@@ -246,16 +236,16 @@ export function useProjectFiles(projectId, emit) {
     clearApiError()
     try {
       for (const file of uploadedFiles) {
-        const targetName = canonicalUploadName(file.name)
-        if (IMAGE_PATTERN.test(file.name)) {
-          await putProjectFileBinary(projectId, targetName, file)
-        } else {
+        const targetName = fileTypes.canonicalUploadName(file.name)
+        if (fileTypes.hasEditor(file.name)) {
           const text = await file.text()
           await putProjectFile(projectId, targetName, text)
+        } else {
+          await putProjectFileBinary(projectId, targetName, file)
         }
       }
       await loadFiles()
-      const lastUploadedName = canonicalUploadName(uploadedFiles[uploadedFiles.length - 1].name)
+      const lastUploadedName = fileTypes.canonicalUploadName(uploadedFiles[uploadedFiles.length - 1].name)
       justAddedFileName.value = lastUploadedName
       await selectFile(lastUploadedName)
     } catch {
@@ -337,7 +327,7 @@ export function useProjectFiles(projectId, emit) {
     // A lone Theme asset is a single, cheap, easily re-uploaded file with
     // nothing cascading from it — index.css (which does cascade) and every
     // other file still confirm.
-    if (!IMAGE_PATTERN.test(fileName)) {
+    if (projectFileTypes.value.hasEditor(fileName)) {
       const confirmMessage = cascadeAssets.length
         ? `Delete "index.css"? This also deletes the ${cascadeAssets.length} asset${cascadeAssets.length === 1 ? '' : 's'} it can reference: ${cascadeAssets.join(', ')}.\n\nThis cannot be undone.`
         : `Delete file "${fileName}"? This cannot be undone.`
@@ -411,7 +401,7 @@ export function useProjectFiles(projectId, emit) {
   return {
     filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile, renamingFile,
     designPanelRef, codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
-    currentFileIsImage, currentFileIsMarkdown, isBehaviorNodeSelected, hasTheme,
+    currentFileIsMedia, currentFileIsMarkdown, isBehaviorNodeSelected, hasTheme,
     activeEditorIsDirty, activeEditor,
     loadFiles, switchFile, guardedAction, selectFile, jumpToDefinition,
     handleUploadFile, handleNewAttachment, handleNewAspect, handleNewLegal, handleDeleteFile, handleRenameFile,

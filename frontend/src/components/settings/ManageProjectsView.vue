@@ -6,6 +6,7 @@ import { getAppStoreApps, getProjectFiles, getProjectMetadata, getProjectsRuntim
 import { confirmDialog, customDialog } from '../../dialogStore.js'
 import { setCanvasColor, restoreCanvasColor } from '../../canvasColor.js'
 import { findIconFile } from '../../projectIcon.js'
+import { ensureProjectFileTypes } from '../../projectFileTypes.js'
 import { useHeaderLogoFit } from '../../composables/useHeaderLogoFit.js'
 import SettingsMenu from './SettingsMenu.vue'
 import StatusToggleButton from './StatusToggleButton.vue'
@@ -82,6 +83,7 @@ async function loadMetadata(ids) {
 }
 
 async function loadIcons(ids) {
+  await ensureProjectFileTypes()
   const results = await Promise.allSettled(ids.map((id) => getProjectFiles(id)))
   results.forEach((result, i) => {
     if (result.status !== 'fulfilled') return
