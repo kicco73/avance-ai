@@ -701,12 +701,15 @@ class TurnService(object):
 
 		return automaton, state
 
-	async def open_if_needed(self, session_id: int) -> dict | None:
+	async def open_if_needed(self, session_id: int, on_metadata: OnMetadata | None = None) -> dict | None:
+		"""What the automaton has to say before anybody says anything, if
+		this state has anything to open with and nothing has been said yet.
+		Returns the turn it ran, so a caller that is reporting an exchange
+		can report this one too."""
 		automaton, state = await self._ensure_project_bootstrap(session_id)
 		if automaton is None:
 			return None
-		await self._generate_opening_message_if_needed(session_id, automaton, state)
-		return None
+		return await self._generate_opening_message_if_needed(session_id, automaton, state, on_metadata)
 
 	async def prepare_user_initiated_turn(self, session_id: int) -> list[dict]:
 		"""The project bootstrap a user-initiated turn needs, plus the
@@ -740,15 +743,15 @@ class TurnService(object):
 		return not self._db.has_messages_since(session_id, gate_since)
 
 	async def _generate_opening_message_if_needed(
-		self, session_id: int, automaton: Automaton, state: State
+		self, session_id: int, automaton: Automaton, state: State, on_metadata: OnMetadata | None = None,
 	) -> dict | None:
 		if not self._should_generate_opening_message(session_id, state):
 			return None
 
-		return await self._generate_opening_message_body(session_id)
+		return await self._generate_opening_message_body(session_id, on_metadata)
 
-	async def _generate_opening_message_body(self, session_id: int) -> dict:
-		return await self.process_turn(session_id)
+	async def _generate_opening_message_body(self, session_id: int, on_metadata: OnMetadata | None = None) -> dict:
+		return await self.process_turn(session_id, on_metadata=on_metadata)
 
 	async def _messages_for_transition(
 		self, session_id: int, new_state: State, *, is_self_loop: bool
@@ -818,25 +821,27 @@ class TurnService(object):
 		session_id: int,
 		text: str | None = None,
 		on_metadata: OnMetadata | None = None,
-		user_message_id: int | None = None,
+		user_message_ids: list[int] | None = None,
 	) -> dict:
-		"""`user_message_id` is set when the transport already persisted
+		"""`user_message_ids` are the messages this answer is for, already
+		persisted by whoever accepted them (see turn/input_listener.py).
+		Any other caller hands over the text and it is persisted here,
 		this message (the websocket does, the moment it read the frame —
 		see BusChannel); any other caller hands over the text and it
 		is persisted here, still before the session lock, so the bubble
 		appears at once and the order of the conversation is fixed before
 		anything waits."""
 		project_id = self._project_id_for_session(session_id)
-		if text is not None and user_message_id is None:
-			user_message_id = self.accept_user_message(session_id, text)
+		if text is not None and not user_message_ids:
+			user_message_ids = [self.accept_user_message(session_id, text)]
 		operator = self._namespace_factory.get_human_operator(session_id)
 		if operator is not None:
-			return await self._process_human_turn(session_id, operator, on_metadata, user_message_id)
+			return await self._process_human_turn(session_id, operator, on_metadata, user_message_ids)
 		async with self._session_scope(project_id, session_id):
-			return await self._process_turn_body(session_id, text, on_metadata, user_message_id)
+			return await self._process_turn_body(session_id, text, on_metadata, user_message_ids)
 
 	async def _process_human_turn(
-		self, session_id: int, operator: str, on_metadata: OnMetadata | None, user_message_id: int | None,
+		self, session_id: int, operator: str, on_metadata: OnMetadata | None, user_message_ids: list[int] | None,
 	) -> dict:
 		"""chat.switch_to_human's own turn path — no automaton, no
 		lock: while a session has an operator (see TaskNamespaceFactory.
@@ -852,9 +857,7 @@ class TurnService(object):
 		project_id = session["project_id"]
 		self._ensure_project_available(project_id)
 		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
-		fragments = self._db.unconsumed_user_fragments(session_id) if user_message_id is not None else []
-		if user_message_id is not None and not any(f["id"] == user_message_id for f in fragments):
-			return self._already_answered_response(session_id, automaton, state, user_message_id)
+		fragments = [m for m in (self._db.get_message(mid) for mid in user_message_ids or []) if m]
 		text = "\n".join(f["content"] for f in fragments)
 		assistant_talker = self._tracking_service.build_human_talker(operator, session_id, session["type"], project_id)
 		accumulated = ""
@@ -876,7 +879,7 @@ class TurnService(object):
 		self._session_manager.touch_session(session_id, state.key)
 		return {
 			"reply": [self._db.get_message(assistant_message_id)],
-			"user_message_id": user_message_id,
+			"user_message_id": (user_message_ids or [None])[-1],
 			"user_message_reaction": None,
 			"assistant_message_id": assistant_message_id,
 			"state": self._with_manual_actions(session_id, automaton.get_state_payload(state)),
@@ -892,7 +895,7 @@ class TurnService(object):
 		session_id: int,
 		text: str | None = None,
 		on_metadata: OnMetadata | None = None,
-		user_message_id: int | None = None,
+		user_message_ids: list[int] | None = None,
 	) -> dict:
 		session = self._db.get_chat_session(session_id)
 		if session is None:
@@ -902,12 +905,11 @@ class TurnService(object):
 		ai_service = self._ai_test_service if session["type"] == "test" else self._ai_service
 		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 		self._require_active_session(session_id, project_id, state.key)
-		fragments = self._db.unconsumed_user_fragments(session_id) if user_message_id is not None else []
-		if user_message_id is not None and not any(f["id"] == user_message_id for f in fragments):
-			# An earlier turn already took this message along with the rest
-			# of its own fragments and answered for all of them — see
-			# _already_answered_response.
-			return self._already_answered_response(session_id, automaton, state, user_message_id)
+		# Exactly the messages this answer is for. Which ones those are was
+		# decided when they were accepted (see turn/input_listener.py): a
+		# message that arrived while this answer was being written belongs
+		# to the next one, not to this.
+		fragments = [m for m in (self._db.get_message(mid) for mid in user_message_ids or []) if m]
 		reply = await self._tracking_service._process(
 			session_id, [f["content"] for f in fragments], ai_service, on_metadata,
 			user_message_ids=[f["id"] for f in fragments],

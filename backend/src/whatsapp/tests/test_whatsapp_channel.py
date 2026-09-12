@@ -384,15 +384,19 @@ async def test_impersonation_does_not_leak_past_the_turn(env):
     assert WebSession().user == "user"
 
 
-def test_a_second_inbound_answered_by_the_turn_already_running_sends_nothing(env):
-    """Two messages arriving close together are answered together by
-    whichever turn got there first (see TurnService's own coalescing).
-    The reply went out with that turn, so the second inbound must stay
-    silent rather than send it a second time."""
+def test_two_messages_one_after_the_other_each_get_their_own_answer(env):
+    """What arrives while an answer is being written is taken into the
+    next answer, and that is core's doing now (see turn/input_listener.py)
+    — this channel sends one inbound at a time per sender and reads what
+    comes back, with no case of its own for "already answered"."""
     client, _, chat, _, api = env
-    chat.turn_already_answered = True
 
-    assert _post(client, _payload(text="con el vuelo VY3003")).status_code == HTTPStatus.OK
+    assert _post(client, _payload(msg_id="wamid.1", text="hola")).status_code == HTTPStatus.OK
+    assert _post(client, _payload(msg_id="wamid.2", text="con el vuelo VY3003")).status_code == HTTPStatus.OK
 
-    assert ("turn", LINKED_EMAIL) in chat.calls
-    assert api.sent == []
+    assert [call for call in chat.calls if call[0] == "turn"] == [
+        ("turn", LINKED_EMAIL), ("turn", LINKED_EMAIL),
+    ]
+    assert [body for _, body in api.sent] == [
+        "*Hola* — has dicho: hola", "*Hola* — has dicho: con el vuelo VY3003",
+    ]

@@ -1,7 +1,7 @@
 """End to end, through the real listener (turn/input_listener.py) and a
 real AiService driven by a fake provider: every frame a turn raises
 reaches the Bus in the order it was raised, each with the turn's own
-stream_id, and "ui.buttons" always comes last — after every chunk,
+the session it belongs to, and the answer always comes last — after every chunk,
 whether the turn made tool calls (a collected round replayed without ever
 yielding the loop) or not.
 
@@ -102,11 +102,10 @@ async def _streamed_events(turn_service: TurnService, db, text: str) -> list[tup
     await bus.publish(Message(
         type=INPUT_TEXT, body={"text": text}, username=WebSession().user,
         session_id=session["id"], channel="webchat",
-        origin_id="connection-1", stream_id="turn-1",
+        origin_id="connection-1",
     ))
     await asyncio.wait_for(recorder.finished.wait(), timeout=10)
 
-    assert {m.stream_id for m in recorder.messages} == {"turn-1"}
     assert {m.origin_id for m in recorder.messages} == {"connection-1"}
     return [(m.type, m.body if isinstance(m.body, dict) else {"body": m.body}) for m in recorder.messages]
 

@@ -161,6 +161,37 @@ class TestRegistration:
         assert connection.wants(UI_NOTIFICATION) is False
 
 
+class TestInboundFrames:
+    """What a client says reaches the Bus whole: the frame is the body,
+    minus what the envelope carries. A type that grows a field needs no
+    change here — and the field is not silently dropped, which is exactly
+    what happened to a button's own id."""
+
+    def test_a_frame_reaches_the_bus_with_every_field_it_carried(self):
+        channel = BusChannel(_FakeAuthService())
+        channel.owned_by("webchat")
+        connection = _RecordingConnection()
+        published: list = []
+
+        async def take(message):
+            published.append(message)
+
+        async def scenario():
+            bus.subscribe("input.button", take)
+            try:
+                channel._handle_frame(connection, json.dumps({
+                    "type": "input.button", "session_id": 7, "id": "go-loud",
+                }))
+                await asyncio.sleep(0)
+            finally:
+                bus.unsubscribe("input.button", take)
+
+        asyncio.run(scenario())
+        assert [(m.type, m.session_id, m.body) for m in published] == [
+            ("input.button", 7, {"id": "go-loud"}),
+        ]
+
+
 class TestChannelLoop:
     def test_a_ping_is_answered_with_a_pong_and_an_unknown_frame_is_ignored(self):
         channel = BusChannel(_FakeAuthService())
@@ -508,8 +539,8 @@ async def _wait_for(predicate, timeout: float = 5.0) -> None:
         await asyncio.sleep(0.005)
 
 
-def _frames_of(frames: list[dict], turn_id: str) -> list[dict]:
-    return [frame for frame in frames if frame.get("stream_id") == turn_id]
+def _frames_of(frames: list[dict], session_id: int) -> list[dict]:
+    return [frame for frame in frames if frame.get("session_id") == session_id]
 
 
 @pytest.mark.regression
@@ -535,8 +566,8 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     WebchatService(turn_service, None, channel).register()
     websocket = _ScriptedWebSocket(
         [
-            json.dumps({"type": "input.text", "stream_id": "first", "session_id": session["id"], "text": "I have a problem"}),
-            json.dumps({"type": "input.text", "stream_id": "second", "session_id": session["id"], "text": "with flight VY3003"}),
+            json.dumps({"type": "input.text", "session_id": session["id"], "text": "I have a problem"}),
+            json.dumps({"type": "input.text", "session_id": session["id"], "text": "with flight VY3003"}),
         ],
         stop_after_finished=2,
     )
@@ -555,14 +586,12 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     assert [m["role"] for m in persisted] == ["user", "user", "assistant", "assistant"]
     assert [m["content"] for m in persisted if m["role"] == "user"] == ["I have a problem", "with flight VY3003"]
 
-    # Each frame's own turn reported under its own turn_id: the empty
-    # frame first (see tracking_processor.py's own process()), chunks,
-    # then done.
-    for turn_id in ("first", "second"):
-        own = _frames_of(websocket.sent, turn_id)
-        assert own[0] == {**own[0], "type": "output.text_stream", "text": ""}, own
-        assert [f["type"] for f in own[-2:]] == ["ui.buttons", "output.text"], own
-        assert set(f["type"] for f in own[1:-2]) == {"output.text_stream"}
+    # Two answers, one per exchange: the first message was already being
+    # answered when the second arrived, so the second got its own (see
+    # turn/input_listener.py's own coalescing).
+    own = _frames_of(websocket.sent, session["id"])
+    assert own[0] == {**own[0], "type": "output.text_stream", "text": ""}, own
+    assert [f["type"] for f in own if f["type"] == "output.text"] and own[-1]["type"] == "output.text", own
 
 
 @pytest.mark.regression
@@ -578,7 +607,7 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
     TurnInput(turn_service, db).register()
     WebchatService(turn_service, None, channel).register()
     websocket = _ScriptedWebSocket(
-        [json.dumps({"type": "input.text", "stream_id": "dropped", "session_id": session["id"], "text": "hello?"})],
+        [json.dumps({"type": "input.text", "session_id": session["id"], "text": "hello?"})],
     )
 
     # The turn is core's task now, not this service's, so there is
@@ -615,7 +644,6 @@ def test_every_outgoing_frame_of_a_turn_carries_its_turn_id_and_chunks_precede_d
     frames = chat_turn_frames(client, session["id"], "hi", turn_id="abc-123")
 
     kinds = [f["type"] for f in frames]
-    assert {f["stream_id"] for f in frames} == {"abc-123"}
     assert frames[-1]["type"] == "output.text"
     # The empty chunk always precedes generation (see tracking_processor.py's
     # own process()), then the pieces, then every whole message.
@@ -633,11 +661,10 @@ def test_a_turn_on_someone_elses_session_is_answered_with_an_error_frame(client,
     session = client.get("/api/skills/webchat/sessions/current").json()
 
     with chat_socket(client, username="intruder") as ws:
-        ws.send_json({"type": "input.text", "stream_id": "x", "session_id": session["id"], "text": "hi"})
+        ws.send_json({"type": "input.text", "session_id": session["id"], "text": "hi"})
         frame = ws.receive_json()
 
     assert frame["type"] == "output.error"
-    assert frame["stream_id"] == "x"
     assert frame["code"] == "session_not_found"
     assert [m for m in app_db.get_messages(session["id"]) if m["role"] == "user"] == []
 

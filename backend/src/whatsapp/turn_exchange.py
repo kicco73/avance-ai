@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import uuid
 from dataclasses import dataclass, field
 
 from system import bus
@@ -52,12 +51,13 @@ class TurnExchange(object):
     origin_id: str | None = None
     project_id: str | None = None
     voice: TextReply | VoiceReply = field(default_factory=TextReply)
-    stream_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     #: What this exchange produced, gathered as it is published: whole
     #: messages on `output.text`, the choices on `ui.buttons`. The
     #: terminal frame says it is over, not what was said.
     said: list[dict] = field(default_factory=list)
     actions: list[dict] | None = None
+    #: Where this channel reads a persisted message from.
+    db: object = None
     #: Whether the choices have been published yet — what tells the
     #: answer apart from a message the state owed before it.
     offered: bool = False
@@ -83,7 +83,6 @@ class TurnExchange(object):
         return Message(
             type=INPUT_TEXT, body={"text": self.text}, username=self.username, project_id=self.project_id,
             session_id=self.session_id, channel=self.channel, origin_id=self.origin_id,
-            stream_id=self.stream_id,
         )
 
     async def _said(self, message: Message) -> None:
@@ -91,9 +90,12 @@ class TurnExchange(object):
         answer, and the answer is what says the exchange is over; an
         earlier one is what the state owed before it could answer."""
         for body in self._mine(message):
+            said = self.db.get_message(body.get("assistant_message_id")) or {}
             self.said.append({
                 "id": body.get("assistant_message_id"), "content": body.get("text") or "",
-                "audio_text": body.get("audio_text"),
+                # This channel's own business, read where it has always
+                # been read: the persisted row (see whatsapp/outbound.py).
+                "audio_text": said.get("audio_text"),
             })
             for _ in filter(None, [self.offered]):
                 self._settle(TurnOutcome(messages=list(self.said), manual_actions=self.actions))
@@ -123,7 +125,7 @@ class TurnExchange(object):
         self._settle(TurnOutcome(messages=[], code=NO_TURN_LISTENER))
 
     def _mine(self, message: Message) -> list:
-        return [message.body for _ in filter(None, [message.stream_id == self.stream_id])]
+        return [message.body for _ in filter(None, [message.session_id == self.session_id])]
 
     def _settle(self, outcome: TurnOutcome) -> None:
         for _ in filter(lambda done: not done, [self._outcome.done()]):

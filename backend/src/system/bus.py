@@ -60,6 +60,16 @@ OUTPUT_TOOL = "output.tool"
 # message, which is why they travel on their own.
 UI_BUTTONS = "ui.buttons"
 
+# One of those choices, taken. A person acting in a conversation, like
+# saying something — and on the same road, so the two cannot overtake
+# each other.
+INPUT_BUTTON = "input.button"
+
+# Somebody just opened a conversation. Not something said — an occasion
+# for the automaton to speak first, if this state has anything to open
+# with. Nothing is owed when the conversation has already started.
+SESSION_NEW = "session.new"
+
 # Something one identity's interfaces may want to show — a task's own
 # snippet, a state that moved while nobody was looking. Not content and
 # not a fact about a turn: a nudge, addressed to whoever that person has
@@ -155,7 +165,7 @@ POINT_SPOKEN_REPLY = "turn.spoken_reply"
 # be an open injection point: a browser could publish an internal type
 # and find listeners for it. A client speaks as a person, and a person
 # says things.
-CLIENT_INJECTABLE = frozenset({INPUT_TEXT})
+CLIENT_INJECTABLE = frozenset({INPUT_TEXT, INPUT_BUTTON, SESSION_NEW})
 
 # How deep a chain of conversions may go before something is looping: a
 # handler that publishes the type it consumes would otherwise recur
@@ -184,11 +194,6 @@ class Message:
     converted_from: str | None = None
     #: Media type of `body` where that is not implied by `type`.
     mime: str | None = None
-    #: The interface's own name for this one exchange, where it has one —
-    #: a websocket turn's stream_id. Correlation, like origin_id, which is
-    #: why it travels in the envelope: the body of an `input.text` is the
-    #: text, and one type must not have two body shapes.
-    stream_id: str | None = None
     conversions: int = 0
 
     def converted(self, type: str, body: Any, mime: str | None = None) -> "Message":

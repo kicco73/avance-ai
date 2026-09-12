@@ -17,7 +17,7 @@ import { busChannel } from './busChannel.js'
 // keeps being written regardless — this only governs the dots.
 const AWAITING_REPLY_TIMEOUT_MS = 15000
 
-const WATCHED = ['output.text_stream', 'output.tool', 'output.text', 'output.error']
+const WATCHED = ['output.text_stream', 'output.tool', 'output.speech', 'output.text', 'output.error']
 
 export class ChatExchange {
   // `bubble` is what to do to the one message being written: reveal,
@@ -48,6 +48,7 @@ export class ChatExchange {
   _take(type, frame) {
     if (frame.session_id !== this._sessionId) return
     if (type === 'output.text_stream') this._streamed(frame.text)
+    else if (type === 'output.speech') this._bubble.spoken(frame.text)
     else if (type === 'output.tool') this._tool(frame)
     else if (type === 'output.text') this._said(frame)
     else if (type === 'output.error') this._failed(frame)
@@ -75,9 +76,7 @@ export class ChatExchange {
 
   _said(frame) {
     this.stop()
-    this._bubble.said({
-      id: frame.assistant_message_id, content: frame.text, audio_text: frame.audio_text
-    })
+    this._bubble.said({ id: frame.assistant_message_id, content: frame.text, timestamp: frame.timestamp })
   }
 
   _failed(frame) {

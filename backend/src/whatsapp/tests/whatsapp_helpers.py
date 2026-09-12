@@ -111,6 +111,9 @@ class _FakeDb:
     def row(self, message_id):
         return next(m for m in self.messages if m["id"] == message_id)
 
+    def get_message(self, message_id):
+        return next((m for m in self.messages if m["id"] == message_id), None)
+
 
 class _FakeAuthService:
     def __init__(self, db: _FakeDb) -> None:
@@ -157,12 +160,6 @@ class _FakeChatService:
         self.accepted_terms_for: list[str] = []
         self.in_turn = False
         # When True, process_turn persists the user message but reports no
-        # reply of its own: a turn already in flight took this message
-        # along with its own fragments and answered for both, so what it
-        # reports is *that* turn's message — the same row, reported again
-        # (see TurnService._already_answered_response).
-        self.turn_already_answered = False
-        self.answered_by_message_id: int | None = None
         self.announces_audio = True
         self.announced_audio_text: str | None = None
 
@@ -209,7 +206,7 @@ class _FakeChatService:
             POINT_SPOKEN_REPLY, SpokenReply(services=ProjectServices({}), session_id=session_id),
         ).asked
 
-    async def process_turn(self, session_id, text, on_metadata=None, user_message_id=None):
+    async def process_turn(self, session_id, text, on_metadata=None, user_message_ids=None):
         self.calls.append(("turn", WebSession().user))
         if self.turn_error is not None:
             error = self.turn_error
@@ -225,18 +222,15 @@ class _FakeChatService:
             # and a listener away, so the double has to stay in the turn
             # for more than the single loop tick it used to.
             audio_text = self.reply_audio_text if self.spoken_reply_wanted(session_id) else None
+            # The real turn emits the reply's spoken text well before the
+            # rest of the reply is written, and then spends seconds
+            # writing it — long enough for the synthesis that announcement
+            # starts to get going.
             if on_metadata is not None and self.announces_audio and audio_text:
                 on_metadata("audio", self.announced_audio_text or audio_text)
                 await asyncio.sleep(GENERATING_THE_REST_OF_THE_REPLY)
-            if user_message_id is None:
+            if not user_message_ids:
                 self.db.add(session_id, "user", text)
-            if self.turn_already_answered:
-                answered_by = self.answered_by_message_id
-                return {
-                    "session_id": session_id, "state": self.state,
-                    "assistant_message_id": answered_by,
-                    "reply": [self.db.row(answered_by)] if answered_by else [],
-                }
             assistant_id = self.db.add(
                 session_id, "assistant", f"**Hola** — has dicho: {text}", audio_text=audio_text,
             )

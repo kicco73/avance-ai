@@ -64,7 +64,7 @@ export function setTotalTokenBudgetPerSession(value) {
 // `kind` ('live'|'test') only ever drives chatSkin.js's routing, nothing
 // about session resolution itself.
 export function createChatStore({
-  kind, getCurrentSession, getSessionsList, createSession, postAction, getMessages, resetSession = null,
+  kind, getCurrentSession, getSessionsList, createSession, getMessages, resetSession = null,
   getAutoTracking = null, putAutoTracking = null,
   confirmNewSession = true, useAutoTracking = false, useActuatorsToggle = false,
   subscribeToNotifications = false,
@@ -138,10 +138,33 @@ export function createChatStore({
     state.value = { ...(state.value ?? {}), manual_actions: frame.actions || [] }
   })
 
-  // Where the conversation is now, said only when it moved.
+  // A whole message that no exchange is waiting for — what a choice
+  // produced, or anything else the system says on its own. An exchange
+  // that is writing takes its own answer (see submitMessage); this is
+  // everything else.
+  busChannel.subscribe('output.text', (frame) => {
+    if (frame.session_id !== currentSessionId.value) return
+    if (openExchanges.size > 0) return
+    if (messages.value.some((m) => m.messageId === frame.assistant_message_id)) return
+    messages.value.push({
+      id: ++nextMessageId,
+      role: 'assistant',
+      content: frame.text,
+      messageId: frame.assistant_message_id,
+      timestamp: frame.timestamp ?? new Date().toISOString(),
+      statusText: ''
+    })
+    playMessageChime()
+    if (frame.assistant_message_id != null) maybeAutoPlayAudio(frame.assistant_message_id)
+    bumpTurn()
+  })
+
+  // Where the conversation is now, said only when it moved. The choices
+  // go with the state that offered them: they are gone until the system
+  // says what this state offers (the `ui.buttons` that follows).
   busChannel.subscribe('state.changed', (frame) => {
     if (frame.session_id !== currentSessionId.value) return
-    handleStateChange(frame.state)
+    handleStateChange({ ...(frame.state ?? {}), manual_actions: [] })
   })
 
   // The model reacted to what the person said — a fact about that
@@ -475,6 +498,12 @@ export function createChatStore({
             content: current.content + text, pending: false, awaitingReply: false
           })
         },
+        // The text to be spoken — the answer's spoken version, written
+        // by the model alongside it (see backend docs/BUS.md's own
+        // output.speech).
+        spoken: (text) => {
+          if (mine()) patchBubble(assistantMsgId, { audioText: text })
+        },
         status: (text) => {
           if (!mine()) return
           chatStatus.value = text
@@ -531,8 +560,8 @@ export function createChatStore({
         messages.value[idx] = {
           ...messages.value[idx],
           content: said.content,
-          audioText: said.audio_text ?? null,
           messageId: said.id,
+          timestamp: said.timestamp ?? messages.value[idx].timestamp,
           pending: false,
           awaitingReply: false
         }
@@ -541,9 +570,8 @@ export function createChatStore({
         // reloadMessages replaced the whole list. The message is real and
         // must still show up rather than silently vanish.
         messages.value.push({
-          id: assistantMsgId, role: 'assistant', content: said.content,
-          audioText: said.audio_text ?? null, messageId: said.id,
-          timestamp: new Date().toISOString(), statusText: ''
+          id: assistantMsgId, role: 'assistant', content: said.content, messageId: said.id,
+          timestamp: said.timestamp ?? new Date().toISOString(), statusText: ''
         })
       }
 
@@ -648,52 +676,20 @@ export function createChatStore({
     }
   }
 
-  async function handleAction(actionName) {
+  // A choice taken. It travels the same road as what a person types
+  // (`input.button` on the socket), and what it produces comes back the same
+  // way — the new state's own message, what it offers next, where the
+  // conversation is now. There is nothing here to await.
+  function handleAction(actionName) {
+    clearApiError()
+    // Off while it is being said, gone once it has been: a choice can be
+    // taken once, and what can be done next is the system's to say (the
+    // `ui.buttons` that follows). If it never left — no socket — they
+    // come back on, because nothing was taken.
     actionLoading.value = true
-    // What a click is, on the Bus. Core does not answer it yet, so the
-    // HTTP call below is still what actually runs the action — it goes
-    // when the other end of this does.
-    sendButton(actionName, currentSessionId.value)
-    // Same staleness guard as submitMessage above — an action's own reply
-    // can arrive well after the user's moved on to a different chat.
-    const turnSessionId = currentSessionId.value
-    try {
-      const result = await postAction(actionName, turnSessionId)
-
-      if (currentSessionId.value !== turnSessionId) return // see submitMessage's own comment on this check
-
-      for (const { id, content, audio_text, timestamp } of result.reply) {
-        messages.value.push({
-          role: 'assistant',
-          content,
-          audioText: audio_text,
-          messageId: id,
-          // The backend's real timestamp, not the client's clock — two
-          // entries can land here from the same action, and stamping both
-          // with "now" risks the same tie buildTimeline mishandles.
-          timestamp
-        })
-      }
-      if (result.reply.length) {
-        playMessageChime()
-        maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
-      }
-      handleStateChange(result.state)
-      if (result.ai_model) {
-        modelSelector().applyInfo(result.ai_model)
-      }
-      if (result.session_id != null) {
-        currentSessionId.value = result.session_id
-        selectedSessionActive.value = true
-      }
-      if (sessionsPanelOpen.value) loadSessions()
-      bumpTurn()
-    } catch (err) {
-      // already surfaced via apiFetch
-      if (currentSessionId.value === turnSessionId) handleSessionInactiveError(err)
-    } finally {
-      actionLoading.value = false
-    }
+    const taken = sendButton(actionName, currentSessionId.value)
+    actionLoading.value = false
+    if (taken) state.value = { ...(state.value ?? {}), manual_actions: [] }
   }
 
   function clearChatUi() {

@@ -194,40 +194,59 @@ def _last_user_content(history: list[dict]):
 
 
 @pytest.mark.regression
+async def _listening(turn_service, db, session_id):
+    """The listener, and a way to say something through it — accepting is
+    immediate, answering is not (see turn/input_listener.py)."""
+    from system import bus
+    from system.bus import INPUT_TEXT, Message
+    from system.web_session import WebSession
+    from turn.input_listener import TurnInput
+
+    db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
+    bus._reset_for_tests()
+    TurnInput(turn_service, db).register()
+
+    async def say(text: str) -> None:
+        await bus.publish(Message(
+            type=INPUT_TEXT, body={"text": text}, username=WebSession().user,
+            session_id=session_id, channel="webchat", origin_id="connection-1",
+        ))
+
+    return say
+
+
 async def test_messages_arriving_while_a_turn_generates_are_answered_together_by_the_next_one(turn_service_for):
-    """A is already generating when B and C arrive: A answers A alone, the
-    next turn takes B and C together as one multi-block user message, and
-    the third request ends with no reply of its own."""
+    """A is already being answered when B and C arrive: A is answered
+    alone, and B and C are answered together as ONE user message of two
+    blocks. Accepting is immediate — all three are on disk in arrival
+    order before the first answer exists — and which of them an answer is
+    for is decided when they are accepted (see turn/input_listener.py)."""
     provider = _GatedProvider()
     turn_service = turn_service_for(one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
     db = turn_service_for.db
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     session_id = session["id"]
+    say = await _listening(turn_service, db, session_id)
 
-    first = asyncio.create_task(turn_service.process_turn(session_id, "A"))
+    await say("A")
     await _wait_for(provider.first_round_started.is_set)
-    second = asyncio.create_task(turn_service.process_turn(session_id, "B"))
-    third = asyncio.create_task(turn_service.process_turn(session_id, "C"))
+    await say("B")
+    await say("C")
     await _wait_for(lambda: len([m for m in db.get_messages(session_id) if m["role"] == "user"]) == 3)
-    provider.release.set()
-    answered_a, answered_b, answered_c = await asyncio.gather(first, second, third)
+    assert [m["role"] for m in db.get_messages(session_id)] == ["user", "user", "user"]
 
-    # A was alone when its turn opened, so it is a plain string as always.
+    provider.release.set()
+    await _wait_for(lambda: len([m for m in db.get_messages(session_id) if m["role"] == "assistant"]) == 2)
+
+    # A was alone when its answer opened, so it is a plain string as always.
     assert _last_user_content(provider.histories[0]) == "A"
     # B and C reach the model as ONE user message of two blocks.
     assert _last_user_content(provider.histories[1]) == ["B", "C"]
     assert len(provider.histories) == 2
 
-    assert answered_a["assistant_message_id"] is not None
-    assert answered_b["assistant_message_id"] is not None
-    # C's own request finds its message already consumed: no reply of its own.
-    assert answered_c["assistant_message_id"] is None
-    assert answered_c["reply"] == []
-
     # Stored in arrival order, which interleaves: B and C were written
-    # while the reply to A was still being generated. Which turn each one
-    # belongs to is recorded separately (see Message.answered_by), and it
-    # is that, not the stored order, that the model is shown.
+    # while the answer to A was still being generated. Which answer each
+    # one belongs to is recorded separately (see Message.answered_by).
     persisted = db.get_messages(session_id)
     assert [m["role"] for m in persisted] == ["user", "user", "user", "assistant", "assistant"]
     assert [m["content"] for m in persisted if m["role"] == "user"] == ["A", "B", "C"]
@@ -245,16 +264,21 @@ async def test_the_coalesced_turn_binds_to_its_last_fragment(turn_service_for):
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     session_id = session["id"]
 
-    first = asyncio.create_task(turn_service.process_turn(session_id, "A"))
+    say = await _listening(turn_service, db, session_id)
+    await say("A")
     await _wait_for(provider.first_round_started.is_set)
-    second = asyncio.create_task(turn_service.process_turn(session_id, "B"))
-    third = asyncio.create_task(turn_service.process_turn(session_id, "C"))
+    await say("B")
+    await say("C")
     await _wait_for(lambda: len([m for m in db.get_messages(session_id) if m["role"] == "user"]) == 3)
     provider.release.set()
-    _, answered_b, _ = await asyncio.gather(first, second, third)
+    await _wait_for(lambda: len([m for m in db.get_messages(session_id) if m["role"] == "assistant"]) == 2)
 
-    last_fragment = [m for m in db.get_messages(session_id) if m["content"] == "C"][0]
-    assert answered_b["user_message_id"] == last_fragment["id"]
+    # B and C were answered by the same message, the second one: the
+    # exchange closed on the last of them.
+    # B and C were answered together, by the second answer: the exchange
+    # closed on the last of them.
+    reloaded = [entry["content"] for entry in db.get_turn_history(session_id, None, None)]
+    assert reloaded == ["A", "answer 1", ["B", "C"], "answer 2"]
 
 
 @pytest.mark.regression
@@ -265,13 +289,14 @@ async def test_the_history_reloaded_afterwards_is_the_one_the_model_was_sent(tur
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     session_id = session["id"]
 
-    first = asyncio.create_task(turn_service.process_turn(session_id, "A"))
+    say = await _listening(turn_service, db, session_id)
+    await say("A")
     await _wait_for(provider.first_round_started.is_set)
-    second = asyncio.create_task(turn_service.process_turn(session_id, "B"))
-    third = asyncio.create_task(turn_service.process_turn(session_id, "C"))
+    await say("B")
+    await say("C")
     await _wait_for(lambda: len([m for m in db.get_messages(session_id) if m["role"] == "user"]) == 3)
     provider.release.set()
-    await asyncio.gather(first, second, third)
+    await _wait_for(lambda: len([m for m in db.get_messages(session_id) if m["role"] == "assistant"]) == 2)
 
     reloaded = [entry["content"] for entry in db.get_turn_history(session_id, None, None)]
     assert reloaded == ["A", "answer 1", ["B", "C"], "answer 2"]

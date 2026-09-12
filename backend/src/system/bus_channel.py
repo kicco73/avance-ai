@@ -57,6 +57,10 @@ WEB_FORWARDED = (UI_NOTIFICATION, UI_HUMAN_TAKEOVER, UI_SYSTEM_WARNING, UI_PROGR
 # which is why it is not in WEB_FORWARDED.
 HUMAN_PROMPT = "human_prompt"
 
+# What a frame says about the delivery rather than about the message: it
+# travels in the envelope and never in the body.
+_ENVELOPE = ("type", "session_id")
+
 # What a client may register for: what may leave the Bus, plus this
 # socket's own frames. Registering is how a connection says what it is —
 # a connection that never asked for human_prompt is not answering as a
@@ -376,7 +380,7 @@ class BusChannel(object):
         """One inbound frame, onto the Bus. `origin_id` carries the
         connection it arrived on so whoever answers can answer *there*
         (see send_to_connection) rather than to every tab this identity
-        has open, and `stream_id` names the one exchange over it.
+        has open.
 
         The channel is whatever the interface listening here told this
         socket it was (see owned_by) — this package still does not know
@@ -386,12 +390,14 @@ class BusChannel(object):
         recognise a connection it does not own."""
         message = Message(
             type=frame_type,
-            body={"text": str(frame.get("text", ""))},
+            # The frame is the body: everything the client said about this
+            # message, minus what the envelope already carries. A type
+            # that grows a field is not a change here.
+            body={key: value for key, value in frame.items() if key not in _ENVELOPE},
             username=WebSession().user,
             session_id=frame.get("session_id"),
             channel=self._channel,
             origin_id=connection.id,
-            stream_id=str(frame.get("stream_id", "")),
         )
         task = asyncio.create_task(bus.publish(message))
         self._inbound_tasks.add(task)

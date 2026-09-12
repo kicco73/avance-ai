@@ -88,8 +88,7 @@ class WebchatService:
         self._notifications.send_to_connection(
             connection_id,
             {
-                "type": message.type, "stream_id": message.stream_id or "",
-                "session_id": message.session_id, **(message.body or {}),
+                "type": message.type, "session_id": message.session_id, **(message.body or {}),
             },
         )
 

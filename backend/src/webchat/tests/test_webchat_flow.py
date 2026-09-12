@@ -109,7 +109,7 @@ def test_a_voice_note_on_an_open_connection_runs_the_very_same_turn(webchat):
                 WebSession().role = "supervisor"
                 await bus.publish(Message(
                     type=INPUT_AUDIO, body={"audio": VOICE_NOTE}, mime="audio/ogg", username="user",
-                    session_id=session_id, origin_id=connection_id, stream_id="t1",
+                    session_id=session_id, origin_id=connection_id,
                 ))
 
             ws.portal.call(speak_into_the_socket)

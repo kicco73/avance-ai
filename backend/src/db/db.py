@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import tempfile
 from datetime import datetime, timezone
@@ -33,6 +34,11 @@ from .models import (
 )
 
 logger = LoggerFactory.get_logger(__name__)
+
+
+def _REFERENCED_TABLES(sql: str) -> set:
+    """Every table a stored CREATE TABLE statement names as a parent."""
+    return set(re.findall(r'REFERENCES\s+"([^"]+)"', sql or ""))
 
 def _utc_iso(dt: datetime | None) -> str | None:
     return dt.replace(tzinfo=timezone.utc).isoformat() if dt is not None else None
@@ -76,6 +82,46 @@ class Db(
         self._create_file_gc_triggers()
         self._backfill_projects()
         self._rename_channels_to_skill_keys()
+        self._repoint_foreign_keys_to_renamed_tables()
+
+    @staticmethod
+    def _repoint_foreign_keys_to_renamed_tables() -> None:
+        """A table that was renamed leaves every child pointing at the old
+        name, and in SQLite that name lives in the child's own stored
+        CREATE TABLE text (sqlite_master.sql) — not in a catalogue that a
+        rename could update. The child resolves it on every cascading
+        delete, so one rename makes `DELETE FROM Message` fail with "no
+        such table".
+
+        Not in SchemaMigrator: the columns, the types and the indexes all
+        match, so schema_differs sees nothing to do. A foreign key cannot
+        be altered either — the table is rebuilt, which is the only way
+        SQLite offers.
+
+        Unconditional and idempotent: after the first boot no stored
+        statement names a table that is gone, and this does nothing.
+        """
+        live = {row[0] for row in database.execute_sql(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()}
+        stale = [
+            (name, sql) for name, sql in database.execute_sql(
+                "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND sql LIKE '%REFERENCES%'"
+            ).fetchall()
+            if any(f'REFERENCES "{gone}"' in (sql or "") for gone in _REFERENCED_TABLES(sql) - live)
+        ]
+        for name, _ in stale:
+            logger.warning("Rebuilding %s: its foreign keys name a table that no longer exists.", name)
+            database.execute_sql('PRAGMA foreign_keys = OFF')
+            try:
+                database.execute_sql(f'ALTER TABLE "{name}" RENAME TO "{name}__stale"')
+                database.create_tables([m for m in Db._MODELS if m._meta.table_name == name], safe=True)
+                columns = [row[1] for row in database.execute_sql(f'PRAGMA table_info("{name}")').fetchall()]
+                quoted = ", ".join(f'"{column}"' for column in columns)
+                database.execute_sql(f'INSERT INTO "{name}" ({quoted}) SELECT {quoted} FROM "{name}__stale"')
+                database.execute_sql(f'DROP TABLE "{name}__stale"')
+            finally:
+                database.execute_sql('PRAGMA foreign_keys = ON')
 
     @staticmethod
     def _rename_channels_to_skill_keys() -> None:

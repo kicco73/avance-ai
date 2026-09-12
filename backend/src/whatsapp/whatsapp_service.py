@@ -320,7 +320,7 @@ class WhatsAppService(object):
         return TurnExchange(
             channel=CHANNEL, username=WebSession().user, session_id=session["id"], text=text,
             origin_id=message.id, project_id=session.get("project_id"),
-            voice=self._voice_for(spoken),
+            voice=self._voice_for(spoken), db=self._db,
         )
 
     def _voice_for(self, spoken: bool) -> TextReply | VoiceReply:

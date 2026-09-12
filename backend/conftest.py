@@ -237,7 +237,7 @@ def chat_turn_frames(client: TestClient, session_id: int, text: str, turn_id: st
     frames = []
     with _frame_deadline(turn_frame_seconds(), frames):
         with chat_socket(client) as ws:
-            ws.send_json({"type": "input.text", "stream_id": turn_id, "session_id": session_id, "text": text})
+            ws.send_json({"type": "input.text", "session_id": session_id, "text": text})
             while True:
                 frame = ws.receive_json()
                 frames.append(frame)

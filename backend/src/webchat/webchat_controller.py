@@ -4,8 +4,10 @@ Packaged with the service rather than with the core's controllers, and
 registered by webchat/skill.py — so a build without src/webchat/ does not
 answer these routes at all, the same way it has nobody to run a turn.
 
-What is here is a person *speaking*: opening or resuming a live session,
-firing an action on one, and the operator's own view of it. Each reaches
+What is here is a person *speaking*: opening or resuming a live session
+and the operator's own view of it. Taking one of the choices a state
+offers is not here: a button travels the same road as what a person
+types, as `input.button` on the socket (see turn/input_listener.py). Each reaches
 SessionManager.require_active_session, where a live session admits a
 write only from the channel that opened it — so each has to be able to
 name a channel, which is what `_the_chat_window_is_speaking` declares
@@ -24,12 +26,9 @@ all.
 """
 from __future__ import annotations
 
-from http import HTTPStatus
-
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from controllers.base_controller import BaseController, get, post
-from schemas import ActionRequest
 from system.web_session import WebSession
 from turn.turn_service import TurnService
 
@@ -105,10 +104,4 @@ class WebchatController(BaseController):
         get_state_for_operator."""
         return self.turn_service.get_state_for_operator(session_id)
 
-    @post("/api/skills/webchat/sessions/{session_id}/actions")
-    async def post_action(self, session_id: int, req: ActionRequest):
-        try:
-            return await self.turn_service.apply_manual_action(req.action_name, session_id)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 

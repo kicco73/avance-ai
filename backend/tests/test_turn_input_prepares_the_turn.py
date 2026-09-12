@@ -84,7 +84,7 @@ async def _frames_of(turn_service, db, text: str) -> list[Message]:
 
     await bus.publish(Message(
         type=INPUT_TEXT, body={"text": text}, username=WebSession().user,
-        session_id=session["id"], channel="webchat", origin_id="connection-1", stream_id="turn-1",
+        session_id=session["id"], channel="webchat", origin_id="connection-1",
     ))
     await asyncio.wait_for(finished.wait(), timeout=10)
     return frames
