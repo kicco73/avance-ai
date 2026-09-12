@@ -129,13 +129,16 @@ only, and the frontend needs both answers.
 - Not every route has reached its skill yet — the migration to
   `/api/skills/<key>/…` and `/api/core/…` is in progress.
 - The build copies `backend/` and nothing else; see the last section.
-- **The `customer` role is not independent of `platform`.** The customer's
-  home and the app store it opens are contributed by `platform`, because
-  the store is not a skill of its own yet — so a product delivered without
-  an editor has no shop front either. That is a recognised debt, not a
-  decision: a customer browsing what they bought has nothing to do with
-  authoring it, and the role should survive a build that drops the
-  editor. Splitting the store out is what makes that true.
+- **A customer has no shop front without `platform`.** The *role* is
+  core and always was — `auth/roles.py` defines it, `role_satisfies`
+  gates on it, and a build with no editor authenticates a customer and
+  lets them through exactly as before. What is not core is the screen
+  they land on: `CustomerHome` and the app store behind it are
+  contributed by `platform`, because the store is not a skill of its own
+  yet, so such a build falls back to the chat window (see App.vue's
+  `roleHome`). That is a recognised debt, not a decision: browsing what
+  you bought has nothing to do with authoring it. Splitting the store out
+  into its own skill is what fixes it.
 
 ## Frontend — the same shape, one skill at a time
 
