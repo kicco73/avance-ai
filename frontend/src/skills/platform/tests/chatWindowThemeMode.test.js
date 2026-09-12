@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installApiBackedLiveChannel } from '../../../../tests/liveChatChannelStub.js'
 import { createApp, nextTick } from 'vue'
+import { resetFakeBus } from '../../../../tests/fakeBus.js'
 
 vi.mock('../../../busChannel.js', () => import('../../../../tests/fakeBus.js'))
 vi.mock('../../../taskActions.js', () => ({ runTaskScript: vi.fn() }))
@@ -48,6 +49,7 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
   let container
 
   beforeEach(async () => {
+    resetFakeBus()
     vi.resetModules()
     document.head.innerHTML = ''
     chatStore = await import('../../../chatStore.js')

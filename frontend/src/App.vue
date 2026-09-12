@@ -136,6 +136,10 @@ const overlayListeners = {
 // App.vue used to hold on the project table's behalf.
 const roleHomeListeners = {
   ...profileMenuListeners,
+  // Only this file can answer it: the running version comes from
+  // /api/core/settings, which is the server's own business and not a
+  // home screen's (see useServerAdminActions).
+  about: handleShowAbout,
   'open-chat': openChatOn,
   open: openChatOn,
   'open-store': () => pushView('appStore'),

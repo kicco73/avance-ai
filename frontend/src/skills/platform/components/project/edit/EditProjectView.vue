@@ -416,6 +416,17 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleWindowResize)
 })
 
+// A build warning says where it was found (see BuildCursor.warn) — the
+// same road a build error already takes, so it lands on the line rather
+// than leaving the author to hunt for it. One with no line is still
+// worth reading and goes nowhere.
+async function showWarning(warning) {
+  if (warning.line == null) return
+  modeId.value = DESIGN_MODE.id
+  await nextTick()
+  indexYmlEditorRef.value?.showBuildError(warning.line)
+}
+
 async function handleSetSessionTitle(sessionId, title) {
   await putSessionTitle(sessionId, title)
   await refreshSessionsQuietly()
@@ -453,7 +464,16 @@ async function handleSetSessionComment(sessionId, comment) {
     </AppHeader>
 
     <div v-if="buildWarnings.length" class="build-warnings-banner">
-      <p v-for="(warning, index) in buildWarnings" :key="index" class="build-warnings-banner-line">{{ warning }}</p>
+      <button
+        v-for="(warning, index) in buildWarnings"
+        :key="index"
+        type="button"
+        class="build-warnings-banner-line"
+        :class="{ 'build-warnings-banner-line-locatable': warning.line != null }"
+        :disabled="warning.line == null"
+        :title="warning.line == null ? '' : `Go to ${warning.section ?? 'index.yml'}`"
+        @click="showWarning(warning)"
+      >{{ warning.message }}</button>
     </div>
 
     <div class="edit-project-body">
@@ -663,9 +683,26 @@ async function handleSetSessionComment(sessionId, comment) {
 }
 
 .build-warnings-banner-line {
+  display: block;
+  width: 100%;
   margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
   color: #b06a00;
   font-size: 0.85rem;
+  font-family: inherit;
+  text-align: left;
+}
+
+/* Only the ones that know where they came from invite a click — a
+   warning with no line is still worth reading, just not worth pointing
+   at (see BuildCursor.warn). */
+.build-warnings-banner-line-locatable {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 0.15rem;
 }
 
 .build-warnings-banner-line + .build-warnings-banner-line {

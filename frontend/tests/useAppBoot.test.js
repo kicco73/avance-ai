@@ -11,6 +11,7 @@ vi.mock('../src/api.js', () => ({
   postLogout: vi.fn(),
   getPendingStatus: vi.fn(),
 }))
+vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))
 vi.mock('../src/errorStore.js', () => ({
   clearApiError: vi.fn(),
 }))
@@ -42,7 +43,7 @@ vi.mock('../src/chatStore.js', () => ({
 }))
 
 import { getState, getMe, getProjects, postRedeemInviteCode, activateProject, postAcceptTerms, postLogout, getPendingStatus } from '../src/api.js'
-import { disconnect as disconnectChat } from '../src/chatClient.js'
+import { busChannel } from '../src/busChannel.js'
 import { clearApiError } from '../src/errorStore.js'
 import { requireLogin } from '../src/authStore.js'
 import { confirmDialog } from '../src/dialogStore.js'
@@ -367,7 +368,7 @@ describe('useAppBoot', () => {
 
     await s.handleTermsReject()
 
-    expect(disconnectChat).toHaveBeenCalled()
+    expect(busChannel.disconnect).toHaveBeenCalled()
     expect(s.needsTerms.value).toBe(false)
     expect(s.inviteExempt.value).toBe(false)
     expect(requireLogin).toHaveBeenCalled()
@@ -385,7 +386,7 @@ describe('useAppBoot', () => {
     postLogout.mockRejectedValue(new Error('boom'))
 
     await s.handleLogout()
-    expect(disconnectChat).toHaveBeenCalled()
+    expect(busChannel.disconnect).toHaveBeenCalled()
     expect(requireLogin).toHaveBeenCalled()
   })
 

@@ -8,9 +8,10 @@
 // the "Run" test chat (testChatStore.js) are two fully independent
 // createChatStore() instances, so this asserts they can carry totally
 // different content *at the same time*, with no clearing/reset needed at all.
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { installApiBackedLiveChannel } from '../../../../tests/liveChatChannelStub.js'
 import { createApp, h } from 'vue'
+import { resetFakeBus } from '../../../../tests/fakeBus.js'
 
 vi.mock('../../../busChannel.js', () => import('../../../../tests/fakeBus.js'))
 vi.mock('../../../taskActions.js', () => ({ runTaskScript: vi.fn() }))
@@ -46,6 +47,8 @@ vi.mock('../../../api.js', () => ({
 vi.setConfig({ testTimeout: 13_000 })
 
 describe('the live chat and the "Run" test chat are genuinely independent stores', () => {
+  beforeEach(resetFakeBus)
+
   it('each ChatView instance shows only its own store\'s content, simultaneously, with no clearing needed', async () => {
     const chatStore = await import('../../../chatStore.js')
     const testChatStore = await import('../testChatStore.js')

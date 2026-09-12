@@ -271,7 +271,7 @@ def chat_turn(client: TestClient, session_id: int, text: str = "hi") -> dict:
         "user_message_reaction": next(
             (frame["reaction"] for frame in frames if frame["type"] == "output.reaction"), None,
         ),
-        "manual_actions": buttons[-1]["actions"] if buttons else None,
+        "buttons": buttons[-1]["actions"] if buttons else None,
         "state": changed[-1]["state"] if changed else None,
         "state_changed": bool(changed),
         "new_state": changed[-1]["new_state"] if changed else None,

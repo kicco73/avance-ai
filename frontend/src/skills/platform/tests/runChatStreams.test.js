@@ -5,14 +5,14 @@
 // written — and the in-flight bubble has to reach the timeline.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
-vi.mock('../src/api.js', () => ({
+vi.mock('../../../taskActions.js', () => ({ runTaskScript: vi.fn() }))
+vi.mock('../../../api.js', () => ({
   postAction: vi.fn(),
   getSessions: vi.fn(),
   getAiModels: vi.fn(),
   getMessages: vi.fn(),
 }))
-vi.mock('../src/skills/platform/api.js', () => ({
+vi.mock('../api.js', () => ({
   getCurrentTestSession: vi.fn(),
   postCreateTestSession: vi.fn(),
   getTestSessions: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock('../src/skills/platform/api.js', () => ({
   getSessions: vi.fn(async () => []),
   getSessionSignals: vi.fn(async () => []),
 }))
-vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))
+vi.mock('../../../busChannel.js', () => import('../../../../tests/fakeBus.js'))
 
 describe('the Run chat', () => {
   let testStore
@@ -32,10 +32,10 @@ describe('the Run chat', () => {
 
   beforeEach(async () => {
     vi.resetModules()
-    const bus = await import('./fakeBus.js')
+    const bus = await import('../../../../tests/fakeBus.js')
     bus.resetFakeBus()
     deliver = bus.deliver
-    testStore = (await import('../src/skills/platform/testChatStore.js')).testStore
+    testStore = (await import('../testChatStore.js')).testStore
     testStore.currentSessionId.value = 5
   })
 
@@ -65,7 +65,7 @@ describe('the Run chat', () => {
   // called by hand: the timeline is a computed over the store's own
   // messages, and a bubble that never reaches it is a bubble nobody sees.
   it('puts the bubble being written into the timeline, before it has an id', async () => {
-    const { useLiveRunTimeline } = await import('../src/skills/platform/useLiveRunTimeline.js')
+    const { useLiveRunTimeline } = await import('../useLiveRunTimeline.js')
     const { ref } = await import('vue')
     const { timeline } = useLiveRunTimeline('proj', ref('live'), ref(new Set()))
 

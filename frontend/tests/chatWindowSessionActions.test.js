@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { createApp, nextTick } from 'vue'
+import { resetFakeBus } from './fakeBus.js'
 
 vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
@@ -56,6 +57,7 @@ describe('ChatView.vue: the applications menu carries New/Close session, with no
   let container
 
   beforeEach(async () => {
+    resetFakeBus()
     vi.resetModules()
     chatStore = await import('../src/chatStore.js')
     api = await import('../src/api.js')

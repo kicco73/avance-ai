@@ -1,13 +1,14 @@
 // Regression: ChatView.vue's onVisibilityChange used to call
 // reloadMessages() unconditionally on returning to the tab — including
-// mid-turn, replacing `messages` out from under the bubble submitMessage
-// is still streaming into. It now skips the reload while chatLoading is
-// true; the in-flight turn's own `done` handler reconciles that bubble
-// itself once it lands (see chatStoreFactory.js's submitMessage).
+// while a reply was being written, replacing `messages` out from under
+// the bubble it was being written into. It now skips the reload while
+// chatLoading is true, and the exchange finishes that bubble itself (see
+// chatStoreFactory.js's watchReply).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { createApp } from 'vue'
 
+vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }))
 vi.mock('../src/audio.js', () => ({ playMessageChime: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn() }))
@@ -41,14 +42,16 @@ vi.mock('../src/api.js', () => ({
 vi.setConfig({ testTimeout: 13_000 })
 
 describe('ChatView.vue never reloads messages mid-turn on visibilitychange', () => {
-  let chatClient
+  let deliver
   let chatStore
   let api
   let container
 
   beforeEach(async () => {
     vi.resetModules()
-    chatClient = await import('../src/chatClient.js')
+    const bus = await import('./fakeBus.js')
+    bus.resetFakeBus()
+    deliver = bus.deliver
     chatStore = await import('../src/chatStore.js')
     api = await import('../src/api.js')
     await installApiBackedLiveChannel(api)
@@ -70,23 +73,21 @@ describe('ChatView.vue never reloads messages mid-turn on visibilitychange', () 
     await chatStore.loadMessages()
     api.getMessages.mockClear()
 
-    let resolveTurn
-    chatClient.sendMessage.mockImplementation(() => new Promise((resolve) => { resolveTurn = resolve }))
-
-    const sendPromise = chatStore.handleSend('hi')
-    await vi.waitFor(() => expect(chatStore.chatLoading.value).toBe(true))
+    await chatStore.handleSend('hi')
+    // The reply has started being written — which is what chatLoading
+    // means now: not "a message was sent", but "something is arriving"
+    // (see chatStoreFactory.js's watchReply).
+    deliver({ type: 'output.text_stream', session_id: 1, text: '' })
+    expect(chatStore.chatLoading.value).toBe(true)
 
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
     document.dispatchEvent(new Event('visibilitychange'))
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(api.getMessages).not.toHaveBeenCalled()
 
-    resolveTurn({
-      reply: [{ id: 5, content: 'done', audio_text: null, timestamp: 't' }],
-      user_message_id: 1, assistant_message_id: 5,
-      state: { key: 'x', ui_label: 'X', actions: [] }, 'task': null, session_id: 1,
-    })
-    await sendPromise
+    deliver({ type: 'ui.buttons', session_id: 1, actions: [] })
+    deliver({ type: 'output.text', session_id: 1, assistant_message_id: 5, text: 'done', timestamp: 't' })
+    expect(chatStore.chatLoading.value).toBe(false)
 
     document.dispatchEvent(new Event('visibilitychange'))
     await new Promise((resolve) => setTimeout(resolve, 0))

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { createApp } from 'vue'
 
+vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }))
 vi.mock('../src/audio.js', () => ({
@@ -43,14 +44,15 @@ vi.setConfig({ testTimeout: 13_000 })
 
 describe('ChatView keeps the input open while a reply is being generated', () => {
   let chatStore
-  let chatClient
+  let bus
   let api
   let container
 
   beforeEach(async () => {
     vi.resetModules()
+    bus = await import('./fakeBus.js')
+    bus.resetFakeBus()
     chatStore = await import('../src/chatStore.js')
-    chatClient = await import('../src/chatClient.js')
     api = await import('../src/api.js')
     await installApiBackedLiveChannel(api)
     container = document.createElement('div')
@@ -71,19 +73,17 @@ describe('ChatView keeps the input open while a reply is being generated', () =>
     app.mount(container)
     await chatStore.loadMessages()
 
-    chatClient.sendMessage.mockImplementation(() => new Promise(() => {}))
-    chatStore.handleSend('I have a problem')
-    await vi.waitFor(() => expect(chatStore.chatLoading.value).toBe(true))
+    await chatStore.handleSend('I have a problem')
+    bus.deliver({ type: 'output.text_stream', session_id: 1, text: '' })
+    expect(chatStore.chatLoading.value).toBe(true)
 
     const input = container.querySelector('textarea, input[type="text"]')
     expect(input).not.toBeNull()
     expect(input.disabled).toBe(false)
 
-    chatStore.handleSend('with flight VY3003')
-    await vi.waitFor(() => {
-      expect(chatStore.messages.value.filter((m) => m.role === 'user')).toHaveLength(2)
-    })
-    expect(chatClient.sendMessage).toHaveBeenCalledTimes(2)
+    await chatStore.handleSend('with flight VY3003')
+    expect(chatStore.messages.value.filter((m) => m.role === 'user')).toHaveLength(2)
+    expect(bus.busChannel.send.mock.calls.filter(([frame]) => frame.type === 'input.text')).toHaveLength(2)
 
     app.unmount()
   })
