@@ -15,6 +15,8 @@ const props = defineProps({
 
 const emit = defineEmits(['open-chat', 'home', 'profile', 'logout'])
 
+defineOptions({ inheritAttrs: false })
+
 const {
   modelUploadInput, uploadingProject, uploadProgress, uploadProjectId, uploadIconReady,
   triggerModelUpload, handleNewProject, handleModelUploadChange, handleModelDownload,

@@ -134,7 +134,7 @@ class _FakeAuthService:
 class _FakeChatService:
     """Records who it was called as (WebSession().user) and lets a test
     script the session bootstrap payload, the current state's own
-    actions/manual_actions, and the turn/action outcome."""
+    actions, the choices it offers, and the turn/action outcome."""
 
     def __init__(self, db: _FakeDb) -> None:
         self.db = db
@@ -153,7 +153,10 @@ class _FakeChatService:
         self.opening_message: str | None = None
         self.wrap_up_message: str | None = None
         self.calls: list[tuple] = []
-        self.state: dict = {"key": "x", "ui_label": "X", "actions": [], "manual_actions": []}
+        self.state: dict = {"key": "x", "ui_label": "X", "actions": []}
+        # What the state offers to press, as its own thing: the state
+        # payload does not carry the choices (see TurnService.buttons_for).
+        self.buttons: list[dict] = []
         self.action_reply_message: str | None = None
         self.reply_audio_text: str | None = None
         self.terms_content: str = "Please accept to continue."
@@ -191,6 +194,9 @@ class _FakeChatService:
 
     def get_state_for_session(self, session_id):
         return self.state
+
+    def buttons_for(self, session_id, state_payload):
+        return self.buttons
 
     def accept_user_message(self, session_id, text):
         """Persisted before the turn runs and handed over as an id, like
@@ -240,7 +246,8 @@ class _FakeChatService:
         # as TrackingProcessor._build_turn_response — and never the
         # wrap-up that prepare_user_initiated_turn wrote.
         return {
-            "session_id": session_id, "state": self.state, "assistant_message_id": assistant_id,
+            "session_id": session_id, "state": self.state, "buttons": self.buttons,
+            "assistant_message_id": assistant_id,
             "reply": [self.db.row(assistant_id)],
         }
 
@@ -254,7 +261,7 @@ class _FakeChatService:
         reply = []
         if self.action_reply_message:
             reply = [self.db.row(self.db.add(session_id, "assistant", self.action_reply_message))]
-        return {"session_id": session_id, "state": self.state, "reply": reply}
+        return {"session_id": session_id, "state": self.state, "buttons": self.buttons, "reply": reply}
 
 
 def _wav(seconds: float = 0.5, rate: int = 22050) -> bytes:

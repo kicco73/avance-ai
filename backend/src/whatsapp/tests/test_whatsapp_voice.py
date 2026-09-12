@@ -180,9 +180,9 @@ def test_notices_are_never_spoken(voice_env):
     assert talk.spoken == [] and api.sent == [(LINKED_NUMBER, REPLY_PAUSED)]
 
 
-def test_manual_actions_follow_a_spoken_reply_as_buttons_and_stay_on_the_text_fallback():
+def test_buttons_follow_a_spoken_reply_as_buttons_and_stay_on_the_text_fallback():
     client, chat, api, _, _ = _spoken_voice_note()
-    chat.state = {**chat.state, "manual_actions": [_action("go", "Go"), _action("stop", "Stop")]}
+    chat.buttons = [_action("go", "Go"), _action("stop", "Stop")]
     _post(client, _payload(mtype="audio"))
     assert api.timeline == ["typing", "audio", "buttons"]
     kind, to, body, buttons = api.interactive[0]
@@ -190,7 +190,7 @@ def test_manual_actions_follow_a_spoken_reply_as_buttons_and_stay_on_the_text_fa
     assert api.sent == []
 
     client, chat, api, _, _ = _spoken_voice_note()
-    chat.state = {**chat.state, "manual_actions": [_action("go", "Go")]}
+    chat.buttons = [_action("go", "Go")]
     api.fail_upload = True
     _post(client, _payload(mtype="audio"))
     assert api.timeline == ["typing", "buttons"]

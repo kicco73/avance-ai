@@ -21,7 +21,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from system import bus
-from system.bus import POINT_API_STATE, POINT_CORE_SERVICES
+from system.bus import POINT_API_STATE, POINT_CORE_SERVICES, POINT_SESSION_SERVICES
 from automaton.project_services import OptionalService
 from system.wiring import construct
 from listen import config as listen_config
@@ -63,7 +63,15 @@ class ListenSkill(Skill):
         bus.contribute(POINT_API_STATE, lambda payload: payload.update(
             {"listen_enabled": self._project_listen().narrow(service.enabled)}
         ))
+        bus.contribute(POINT_SESSION_SERVICES, self._answer_session_services)
         logger.info("listen-service started with %d provider(s).", len(self._providers))
+
+    def _answer_session_services(self, session) -> None:
+        """Whether this conversation can be spoken *to* — asked of the
+        session's own project, and of the service itself, which becomes
+        ready only once its model has finished loading (see
+        ListenService._initialize)."""
+        session.offers(self.key, self._service is not None and self._service.enabled)
 
     def describe_section(self, snapshot: dict) -> None:
         snapshot[self.key] = self.section(listen_config.public_fields(self._providers))

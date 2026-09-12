@@ -124,7 +124,7 @@ function submit() {
 
         <div class="chat-footer">
           <ActionButtons
-            :actions="state?.manual_actions || []"
+            :actions="state?.buttons || []"
             :disabled="actionLoading"
             @action="handleAction"
           />

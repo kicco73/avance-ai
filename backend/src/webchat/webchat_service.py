@@ -22,7 +22,7 @@ from __future__ import annotations
 from system import bus
 from system.bus import (
     OUTPUT_REACTION, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TEXT_STREAM, OUTPUT_TOOL,
-    POINT_SPOKEN_REPLY, STATE_CHANGED, OUTPUT_ERROR, UI_BUTTONS, Message,
+    POINT_SPOKEN_REPLY, STATE_CHANGED, OUTPUT_ERROR, UI_BUTTONS, UI_SERVICES, Message,
 )
 from system.logging_factory import LoggerFactory
 from system.wiring import construct
@@ -41,7 +41,7 @@ logger = LoggerFactory.get_logger(__name__)
 #: what comes back.
 TURN_FORWARDED = (
     OUTPUT_TEXT_STREAM, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TOOL, OUTPUT_REACTION, UI_BUTTONS,
-    STATE_CHANGED, OUTPUT_ERROR,
+    UI_SERVICES, STATE_CHANGED, OUTPUT_ERROR,
 )
 
 

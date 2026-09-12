@@ -176,7 +176,7 @@ def test_a_non_chat_state_becomes_a_notice_after_the_states_own_wrap_up_and_with
 
     client, _, chat, _, api = _build()
     chat.turn_error = _non_chat_state()
-    chat.state["manual_actions"] = [_action("go", "Go")]
+    chat.buttons = [_action("go", "Go")]
     _post(client, _payload())
     assert api.sent == []
     assert api.interactive == [("button", LINKED_NUMBER, REPLY_NO_CHAT_STATE, [("go", "Go")])]
@@ -207,7 +207,7 @@ def test_turn_in_progress_becomes_the_busy_notice_for_turns_and_actions_with_no_
 
     client, _, chat, _, api = _build()
     chat.action_error = busy
-    chat.state["manual_actions"] = [_action("stay", "Stay")]
+    chat.buttons = [_action("stay", "Stay")]
     _post(client, _interactive_payload())
     assert api.sent == [(LINKED_NUMBER, REPLY_BUSY)]
     assert api.interactive == []
@@ -242,10 +242,10 @@ def test_a_gone_session_is_retried_once_for_turns_and_actions_reporting_a_techni
 
 # --- manual actions as buttons/list ---------------------------------------- #
 
-def test_manual_actions_become_buttons_excluding_triggered_ones_truncating_long_titles_and_plain_text_when_none():
+def test_buttons_become_buttons_excluding_triggered_ones_truncating_long_titles_and_plain_text_when_none():
     client, _, chat, _, api = _build()
     chat.state["actions"] = [_action("go", "Go"), _action("stay", "Stay")]
-    chat.state["manual_actions"] = chat.state["actions"]
+    chat.buttons = chat.state["actions"]
     _post(client, _payload(text="hola"))
     assert api.sent == []
     assert api.interactive == [("button", LINKED_NUMBER, REPLY_TEXT, [("go", "Go"), ("stay", "Stay")])]
@@ -254,24 +254,24 @@ def test_manual_actions_become_buttons_excluding_triggered_ones_truncating_long_
     triggered = _action("auto", "Auto", has_trigger=True)
     manual = _action("go", "A very very long button label indeed")
     chat.state["actions"] = [triggered, manual]
-    chat.state["manual_actions"] = [manual]
+    chat.buttons = [manual]
     _post(client, _payload(text="hola"))
     assert api.interactive[0][3] == [("go", "A very very long bu…")]
     assert len(api.interactive[0][3][0][1]) == 20
 
     client, _, chat, _, api = _build()
     chat.state["actions"] = [triggered]
-    chat.state["manual_actions"] = []
+    chat.buttons = []
     _post(client, _payload(text="hola"))
     assert api.sent == [(LINKED_NUMBER, REPLY_TEXT)]
     assert api.interactive == []
 
 
-def test_five_manual_actions_send_a_list(env):
+def test_five_buttons_send_a_list(env):
     client, _, chat, _, api = env
     actions = [_action(f"a{i}", f"Action {i}", ui_description=f"Does {i}") for i in range(5)]
     chat.state["actions"] = actions
-    chat.state["manual_actions"] = actions
+    chat.buttons = actions
     _post(client, _payload(text="hola"))
     assert len(api.interactive) == 1
     kind, to, body, button_text, rows = api.interactive[0]
@@ -286,7 +286,7 @@ def test_button_and_list_replies_apply_the_action_as_the_linked_account_while_an
     assert message.type == "interactive" and message.action_id is None
 
     client, _, chat, _, api = _build()
-    chat.state["manual_actions"] = [_action("stay", "Stay")]
+    chat.buttons = [_action("stay", "Stay")]
     chat.action_reply_message = "You picked go."
     _post(client, _interactive_payload(kind="button_reply", reply={"id": "go", "title": "Go"}))
     assert chat.calls == [("session", LINKED_EMAIL), ("action", LINKED_EMAIL, "go")]
@@ -313,7 +313,7 @@ def test_an_action_with_no_message_falls_back_to_the_states_ui_label_then_done_a
 
     client, _, chat, _, api = _build()
     chat.action_error = ValueError("Action 'go' not available in state 'x'")
-    chat.state["manual_actions"] = [_action("stay", "Stay")]
+    chat.buttons = [_action("stay", "Stay")]
     _post(client, _interactive_payload())
     assert chat.calls == [("session", LINKED_EMAIL), ("action", LINKED_EMAIL, "go")]
     assert api.sent == []

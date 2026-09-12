@@ -18,7 +18,8 @@ from pathlib import Path
 from system import bus
 from system.wiring import construct
 from system.bus import (
-    OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, POINT_API_STATE, POINT_CORE_SERVICES, POINT_SPOKEN_REPLY,
+    OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, POINT_API_STATE, POINT_CORE_SERVICES,
+    POINT_SESSION_SERVICES, POINT_SPOKEN_REPLY,
 )
 from automaton.project_services import OptionalService
 from system.logging_factory import LoggerFactory
@@ -112,6 +113,13 @@ class TalkSkill(Skill):
             {"talk_enabled": self._enabled_for_the_active_project()}
         ))
         bus.contribute(POINT_SPOKEN_REPLY, self._answer_spoken_reply)
+        bus.contribute(POINT_SESSION_SERVICES, self._answer_session_services)
+
+    def _answer_session_services(self, session) -> None:
+        """Whether this conversation can be spoken at all — asked of the
+        session's own project, which is the only one that has anything to
+        do with it (see tracking/session_services.py)."""
+        session.offers(self.key, bool(self._providers))
 
     def _answer_spoken_reply(self, spoken) -> None:
         """Whether this build can speak a reply at all (see

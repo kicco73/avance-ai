@@ -93,6 +93,10 @@ export function createChatStore({
   const actuatorsEnabled = ref(false)
   const actuatorsLoading = ref(false)
   const draft = ref('')
+  // What the conversation offers to press, said by the system and by
+  // nothing else: it arrives on `ui.buttons` and lives nowhere near the
+  // state payload (see backend docs/BUS.md).
+  const buttons = ref([])
   const turnCount = ref(0)
   let nextMessageId = 0
 
@@ -131,7 +135,7 @@ export function createChatStore({
   // arrive, never held until an exchange ends.
   busChannel.subscribe('ui.buttons', (frame) => {
     if (frame.session_id !== currentSessionId.value) return
-    state.value = { ...(state.value ?? {}), manual_actions: frame.actions || [] }
+    buttons.value = frame.actions || []
   })
 
   // The system has started writing something. The only thing that opens a
@@ -173,7 +177,8 @@ export function createChatStore({
   // says what this state offers (the `ui.buttons` that follows).
   busChannel.subscribe('state.changed', (frame) => {
     if (frame.session_id !== currentSessionId.value) return
-    handleStateChange({ ...(frame.state ?? {}), manual_actions: [] })
+    buttons.value = []
+    handleStateChange(frame.state ?? {})
   })
 
   // The model reacted to what the person said — a fact about that
@@ -385,10 +390,12 @@ export function createChatStore({
     try {
       const res = await putAutoTracking(currentSessionId.value, !autoTrackingEnabled.value)
       autoTrackingEnabled.value = res.enabled
-      // manual_actions is baked into state at fetch time (see ChatService.
-      // _with_manual_actions) — the toggle just flipped which actions
-      // that filter includes, so the already-loaded state is now stale.
+      // The toggle just flipped which actions count as pressable (see
+      // TurnService.buttons_for), so what the state offers has to be
+      // said again — it is the system's to say, and it says it on
+      // `session.new`.
       state.value = await getSessionState(currentSessionId.value)
+      busChannel.send({ type: 'session.new', session_id: currentSessionId.value })
     } catch {
       // already surfaced via apiFetch
     } finally {
@@ -645,9 +652,11 @@ export function createChatStore({
     messages.value.push(message)
     return {
       transcribed(text) {
-        message.content = text
-        message.transcribing = false
-        return submitMessage(message)
+        // Through the list, not through the object this closure is
+        // holding: `message` is the raw object that was pushed, and a
+        // write to it never reaches whoever is showing the row.
+        patchBubble(message.id, { content: text, transcribing: false })
+        return submitMessage({ ...message, content: text, transcribing: false })
       },
       abandoned() {
         dropVoicePlaceholder(message.id)
@@ -692,7 +701,7 @@ export function createChatStore({
       type: 'input.button', session_id: currentSessionId.value, id: actionName,
     })
     actionLoading.value = false
-    if (taken) state.value = { ...(state.value ?? {}), manual_actions: [] }
+    if (taken) buttons.value = []
   }
 
   function clearChatUi() {
@@ -782,7 +791,7 @@ export function createChatStore({
     abandonOpenReplies,
     state, currentSessionId, selectedSessionActive, projectPaused, projectPausedReason,
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
-    messages, historyLoaded, chatLoading, chatStatus, actionLoading,
+    messages, historyLoaded, chatLoading, chatStatus, actionLoading, buttons,
     autoTrackingEnabled, autoTrackingLoading, actuatorsEnabled, actuatorsLoading, draft, turnCount,
     handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
     selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking, toggleActuators,

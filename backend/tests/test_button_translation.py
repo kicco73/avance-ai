@@ -38,7 +38,7 @@ def _state_with(action: Action) -> State:
 ], ids=["no-ui-button", "triggerable-auto-on", "triggerable-auto-off", "untriggered"])
 def test_only_the_buttons_a_state_actually_shows_are_queued_for_translation(action, auto_tracking_enabled, expected):
 	"""A test/manual session shows every action as a button regardless of
-	trigger (see automaton.manual_actions_for) — translation must follow."""
+	trigger (see automaton.pressable_actions) — translation must follow."""
 	assert TrackingProcessor._button_labels_to_translate(_state_with(action), auto_tracking_enabled=auto_tracking_enabled) == expected
 
 

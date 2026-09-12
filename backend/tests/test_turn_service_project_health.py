@@ -35,7 +35,7 @@ def _automaton() -> Automaton:
 
 
 class _FakeProjectService:
-    """Same shape as test_turn_service_manual_actions.py's own fake, plus
+    """Same shape as test_turn_service_buttons.py's own fake, plus
     two knobs this file's tests actually flip mid-test: `available`
     (get_project_availability's own return) and `session_lookup_error`
     (get_automaton_and_state_for_session raises this instead of resolving)."""

@@ -8,7 +8,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from http import HTTPStatus
 
-from automaton.automaton import Action, Automaton, SignalPayload, State, manual_actions_for
+from automaton.automaton import Action, Automaton, SignalPayload, State, pressable_actions
 from automaton.build_error import AutomatonBuildError
 from db import Db, _utc_iso
 from ai import AiService
@@ -16,6 +16,9 @@ from system.keyed_lock_registry import KeyedLockRegistry
 from project.archive.layout import CACHE_DIR
 from system.project_rw_lock import ProjectRwLock
 from system.web_session import WebSession
+from system import bus
+from system.bus import POINT_SESSION_SERVICES
+from tracking.session_services import SessionServices
 
 from tracking.actuators import TaskNamespace, TaskNamespaceFactory
 from tracking.automaton_namespace import AutomatonNamespace
@@ -222,8 +225,7 @@ class TurnService(object):
 
 	def _session_response(self, session: dict, *, current: bool) -> dict:
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
-		state_payload = self._with_manual_actions(session["id"], automaton.get_state_payload(state))
-		return {**self._session_payload(session, current=current), "state": state_payload}
+		return {**self._session_payload(session, current=current), "state": automaton.get_state_payload(state)}
 
 	async def _get_current_session_if_any_or_create_new_of_type(
 		self, strategy: SessionTypeStrategy, project_id: str, session_id: int | None
@@ -418,7 +420,7 @@ class TurnService(object):
 		session = self._db.get_chat_session(session_id)
 		assert session is not None
 		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
-		return self._with_manual_actions(session_id, automaton.get_state_payload(state))
+		return automaton.get_state_payload(state)
 
 	def get_state_for_operator(self, session_id: int) -> dict:
 		"""HumanOperatorChatView.vue's own state read: every action is
@@ -435,7 +437,7 @@ class TurnService(object):
 		assert session is not None
 		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 		state_payload = automaton.get_state_payload(state)
-		return {**state_payload, "manual_actions": manual_actions_for(state_payload["actions"], False)}
+		return {**state_payload, "buttons": pressable_actions(state_payload["actions"], False)}
 
 	async def get_messages(self, session_id: int, last_n: int | None = None) -> list[dict]:
 		"""The transcript, opening the conversation first if it has not
@@ -570,9 +572,20 @@ class TurnService(object):
 		self._ownership.require_own_session(session_id)
 		self._tracking_service.set_audio_enabled(session_id, enabled)
 
-	def _with_manual_actions(self, session_id: int, state_payload: dict) -> dict:
-		auto_tracking_enabled = self.is_auto_tracking_enabled(session_id)
-		return {**state_payload, "manual_actions": manual_actions_for(state_payload["actions"], auto_tracking_enabled)}
+	def services_for(self, session_id: int) -> dict[str, bool]:
+		"""What this conversation can reach, asked of the session's own
+		project rather than of whichever project the person has active
+		(see tracking/session_services.py)."""
+		automaton = self._project_service.get_automaton_for_session(session_id)
+		return bus.collect(POINT_SESSION_SERVICES, SessionServices(services=automaton.services)).available
+
+	def buttons_for(self, session_id: int, state_payload: dict) -> list[dict]:
+		"""What this state offers the person to press. Never folded into
+		the state payload: the choices are their own message (`ui.buttons`,
+		see docs/BUS.md), and a state that carried them too meant two
+		roads to the same buttons and a first paint that disagreed with
+		what was published."""
+		return pressable_actions(state_payload["actions"], self.is_auto_tracking_enabled(session_id))
 
 	def is_actuators_enabled(self, session_id: int) -> bool:
 		self._ownership.require_own_session(session_id)
@@ -634,7 +647,8 @@ class TurnService(object):
 			"user_message_id": user_message_id,
 			"user_message_reaction": None,
 			"assistant_message_id": answered_by,
-			"state": self._with_manual_actions(session_id, automaton.get_state_payload(state)),
+			"state": automaton.get_state_payload(state),
+			"buttons": self.buttons_for(session_id, automaton.get_state_payload(state)),
 			"state_changed": False,
 			"new_state": None,
 			"triggered_action": None,
@@ -790,8 +804,10 @@ class TurnService(object):
 				session["id"], state, is_self_loop=(action.target == source_state_key), on_metadata=on_metadata,
 			)
 			self._session_manager.touch_session(session["id"], state.key)
+			fresh = fresh_state_payload if fresh_state_payload is not None else state_payload
 			return {
-				"state": fresh_state_payload if fresh_state_payload is not None else self._with_manual_actions(session["id"], state_payload),
+				"state": fresh,
+				"buttons": self.buttons_for(session["id"], fresh),
 				"reply": reply,
 				"ai_model": self.get_ai_models_info(),
 				"session_id": session["id"],
@@ -883,7 +899,8 @@ class TurnService(object):
 			"user_message_id": (user_message_ids or [None])[-1],
 			"user_message_reaction": None,
 			"assistant_message_id": assistant_message_id,
-			"state": self._with_manual_actions(session_id, automaton.get_state_payload(state)),
+			"state": automaton.get_state_payload(state),
+			"buttons": self.buttons_for(session_id, automaton.get_state_payload(state)),
 			"state_changed": False,
 			"new_state": None,
 			"triggered_action": None,
@@ -916,5 +933,5 @@ class TurnService(object):
 			user_message_ids=[f["id"] for f in fragments],
 		)
 		self._session_manager.touch_session(reply['session_id'], reply['state']['key'])
-		reply['state'] = self._with_manual_actions(session_id, reply['state'])
+		reply['buttons'] = self.buttons_for(session_id, reply['state'])
 		return reply

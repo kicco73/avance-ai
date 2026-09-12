@@ -60,6 +60,12 @@ OUTPUT_TOOL = "output.tool"
 # message, which is why they travel on their own.
 UI_BUTTONS = "ui.buttons"
 
+# What this conversation can reach: which optional services are available
+# to it, as {name: bool}. A fact about the session — its project decides,
+# not whichever project the person happens to have active elsewhere — so
+# it is said when the conversation opens, like the choices are.
+UI_SERVICES = "ui.services"
+
 # One of those choices, taken. A person acting in a conversation, like
 # saying something — and on the same road, so the two cannot overtake
 # each other.
@@ -158,6 +164,11 @@ POINT_PROJECT_PUBLISHED = "project.published"
 # meant core knowing the name of a package a build may not contain (see
 # tracking/spoken_reply.py).
 POINT_SPOKEN_REPLY = "turn.spoken_reply"
+
+# What each optional service says it can do for one conversation (see
+# tracking/session_services.py). Nobody registered means nothing offers
+# anything, which is what a build without those packages should conclude.
+POINT_SESSION_SERVICES = "session.services"
 
 # What a client connected over a socket is allowed to put on the Bus.
 # The wire uses these very names — a frame is not translated into

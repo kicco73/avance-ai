@@ -27,7 +27,7 @@ from db import Db
 from system import bus
 from system.bus import (
     INPUT_TEXT, OUTPUT_REACTION, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TEXT_STREAM, OUTPUT_TOOL,
-    STATE_CHANGED, OUTPUT_ERROR, INPUT_BUTTON, SESSION_NEW, UI_BUTTONS, Message,
+    STATE_CHANGED, OUTPUT_ERROR, INPUT_BUTTON, SESSION_NEW, UI_BUTTONS, UI_SERVICES, Message,
 )
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
@@ -184,7 +184,7 @@ class TurnInput(object):
                 outbound.said(prepared)
             outbound.reacted(result)
             outbound.moved(result)
-            outbound.offered(result["state"])
+            outbound.offered(result.get("buttons"))
             outbound.said(result["reply"])
         except ServiceError as exc:
             outbound.failed(exc, prepared)
@@ -195,20 +195,27 @@ class TurnInput(object):
 
 
     async def _open_session(self, message: Message, outbound: "_Outbound") -> None:
-        """A conversation just opened. If this state has something to say
-        before anybody says anything, it is said now — as an ordinary
-        message, so whoever is showing the chat has nothing special to
-        do. A conversation that has already started is owed nothing, and
-        this produces no message at all."""
+        """A conversation just opened. What it offers is always said —
+        it is how whoever is showing the chat learns which choices to
+        put on screen, and the only way they arrive now that no payload
+        carries them. If this state also has something to say before
+        anybody says anything, it is said here too, as an ordinary
+        message; a conversation already under way is owed no message,
+        only its choices."""
         try:
             result = await self._turn_service.open_if_needed(message.session_id, outbound.on_metadata)
         except ServiceError as exc:
             outbound.failed(exc, [])
             return
+        outbound.reaches(self._turn_service.services_for(message.session_id))
         for opened in filter(None, [result]):
             outbound.moved(opened)
-            outbound.offered(opened["state"])
+            outbound.offered(opened.get("buttons"))
             outbound.said(opened["reply"])
+        for _ in filter(None, [result is None]):
+            outbound.offered(self._turn_service.buttons_for(
+                message.session_id, self._turn_service.get_state_for_session(message.session_id),
+            ))
 
     async def _take_action(self, message: Message, outbound: "_Outbound") -> None:
         """One of the choices the state offered, taken. It produces what
@@ -231,7 +238,7 @@ class TurnInput(object):
             "state_changed": True, "state": result["state"],
             "new_state": result["state"].get("key"), "triggered_action": action,
         })
-        outbound.offered(result["state"])
+        outbound.offered(result.get("buttons"))
         outbound.said(result["reply"])
 
 
@@ -345,11 +352,19 @@ class _Outbound(object):
                 "triggered_action": result.get("triggered_action"),
             })
 
-    def offered(self, state: dict) -> None:
+    def reaches(self, services: dict) -> None:
+        """What this conversation can reach — whether it can be spoken,
+        whether it can be spoken to. A fact about the session, said when
+        it opens, so whoever is showing it knows which controls to put on
+        screen without asking about anything global."""
+        self.put(UI_SERVICES, {"services": services})
+
+    def offered(self, buttons: list[dict] | None) -> None:
         """What the person may do now. A fact about the state the
         conversation is in, which is why it does not ride on whatever
-        message happened to come last."""
-        self.put(UI_BUTTONS, {"actions": state.get("manual_actions") or []})
+        message happened to come last — and why it is not a field of the
+        state either: this message is the only place the choices are."""
+        self.put(UI_BUTTONS, {"actions": buttons or []})
 
     def failed(self, exc: ServiceError, prepared: list[dict]) -> None:
         """What the state owed is owed either way: it was written before

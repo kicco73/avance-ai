@@ -17,7 +17,7 @@ NO_TURN_LISTENER = "no_turn_listener"
 @dataclass(frozen=True)
 class TurnOutcome:
     messages: list[dict]
-    manual_actions: list[dict] | None = None
+    buttons: list[dict] | None = None
     code: str | None = None
 
 
@@ -98,7 +98,7 @@ class TurnExchange(object):
                 "audio_text": said.get("audio_text"),
             })
             for _ in filter(None, [self.offered]):
-                self._settle(TurnOutcome(messages=list(self.said), manual_actions=self.actions))
+                self._settle(TurnOutcome(messages=list(self.said), buttons=self.actions))
 
     async def _offered(self, message: Message) -> None:
         for body in self._mine(message):

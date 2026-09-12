@@ -55,6 +55,7 @@ const props = defineProps({
 
 const {
   state,
+  buttons,
   messages,
   historyLoaded,
   chatLoading,
@@ -320,7 +321,7 @@ watch(
     <div class="chat-footer">
       <ActionButtons
         v-if="selectedSessionActive"
-        :actions="state?.manual_actions ?? []"
+        :actions="buttons"
         :disabled="actionLoading"
         @action="onAction"
       />

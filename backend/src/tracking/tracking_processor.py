@@ -568,7 +568,7 @@ class TrackingProcessor(object):
 	def _button_labels_to_translate(state: State, auto_tracking_enabled: bool) -> dict[str, str]:
 		"""{action name: original ui_button text} for every action `state`
 		would show as a manual button — same filter as
-		automaton.manual_actions_for, over live Action objects instead of
+		automaton.pressable_actions, over live Action objects instead of
 		serialized ActionPayload dicts, plus requiring a non-empty
 		ui_button (nothing to translate otherwise)."""
 		return {
@@ -745,7 +745,7 @@ def estimate_state_prompt(
 	# contribution: auto_tracking_enabled=False, the branch that counts
 	# every action with a ui_button rather than just the untriggered
 	# ones — matches what a test/manual session already shows regardless
-	# of trigger (see automaton.manual_actions_for).
+	# of trigger (see automaton.pressable_actions).
 	originals = TrackingProcessor._button_labels_to_translate(state, auto_tracking_enabled=False)
 	if originals:
 		prompt = prompt.compose(TranslatePrompt(originals))

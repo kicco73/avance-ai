@@ -169,19 +169,19 @@ class WhatsAppService(object):
             lock = self._sender_locks.setdefault(message.sender, asyncio.Lock())
             async with lock:
                 try:
-                    replies, manual_actions, session_id, spoken = await self._replies_for(message)
+                    replies, buttons, session_id, spoken = await self._replies_for(message)
                 except Exception as exc:  # noqa: BLE001
                     logger.exception(f"WhatsApp: unexpected error resolving a reply to {message.id} from {message.sender}: {exc}")
                     await self._client.send_text(message.sender, REPLY_TECHNICAL_PROBLEM)
                     return
                 await self._outbound.send(
-                    message.sender, replies, manual_actions, session_id, voice=self._wants_voice(spoken),
+                    message.sender, replies, buttons, session_id, voice=self._wants_voice(spoken),
                 )
         except Exception as exc:  # noqa: BLE001
             logger.exception(f"WhatsApp: unhandled error on message {message.id} from {message.sender}: {exc}")
 
     async def _replies_for(self, message: IncomingMessage) -> tuple[list[Reply], list[dict] | None, int | None, bool]:
-        """(replies, manual_actions, session_id, spoken) — `spoken` is
+        """(replies, buttons, session_id, spoken) — `spoken` is
         True when the user's message came in as a voice note, which is
         what the voice-replies policy keys on."""
         user = self._db.get_user_by_whatsapp_phone_number(message.sender)
@@ -232,8 +232,8 @@ class WhatsAppService(object):
         with WebSession().impersonate(user["id"]):
             WebSession().role = user["role"]
             WebSession().channel = CHANNEL
-            welcome_texts, manual_actions, session_id = await self._welcome_replies()
-            return [Reply(REPLY_REGISTERED), *welcome_texts], manual_actions, session_id
+            welcome_texts, buttons, session_id = await self._welcome_replies()
+            return [Reply(REPLY_REGISTERED), *welcome_texts], buttons, session_id
 
     async def _welcome_replies(self) -> tuple[list[Reply], list[dict] | None, int | None]:
         """Right after a brand-new WhatsApp registration: same session
@@ -247,16 +247,16 @@ class WhatsAppService(object):
         if session_payload.get("legal_terms_pending"):
             return self._terms_reply(session_payload["project_id"])
         session_id = session_payload["id"]
-        replies, manual_actions = await self._bootstrap_replies(session_id)
-        return replies, manual_actions, session_id
+        replies, buttons = await self._bootstrap_replies(session_id)
+        return replies, buttons, session_id
 
     def _terms_reply(self, project_id: str) -> tuple[list[Reply], list[dict] | None, int | None]:
         """The project's own legal/terms.md plus an Accept button — the
         WhatsApp equivalent of TermsView.vue, in place of the plain "go
         accept it on the web" notice this used to send."""
         status = self._turn_service.get_legal_terms_status(project_id)
-        manual_actions = [{"name": _ACCEPT_TERMS_ACTION, "ui_button": REPLY_ACCEPT_TERMS_LABEL, "ui_description": None}]
-        return [Reply(to_whatsapp_markdown(status["content"] or ""))], manual_actions, None
+        buttons = [{"name": _ACCEPT_TERMS_ACTION, "ui_button": REPLY_ACCEPT_TERMS_LABEL, "ui_description": None}]
+        return [Reply(to_whatsapp_markdown(status["content"] or ""))], buttons, None
 
     async def _accept_terms_action(self) -> tuple[list[Reply], list[dict] | None, int | None]:
         session_payload = await self._turn_service.acquire_exclusive_session()
@@ -268,8 +268,8 @@ class WhatsAppService(object):
         if session_payload.get("legal_terms_pending"):
             return self._terms_reply(session_payload["project_id"])
         session_id = session_payload["id"]
-        replies, manual_actions = await self._bootstrap_replies(session_id)
-        return replies or [Reply(REPLY_TERMS_ACCEPTED)], manual_actions, session_id
+        replies, buttons = await self._bootstrap_replies(session_id)
+        return replies or [Reply(REPLY_TERMS_ACCEPTED)], buttons, session_id
 
     async def _bootstrap_replies(self, session_id: int) -> tuple[list[Reply], list[dict] | None]:
         """New assistant content, if any, once a session is confirmed
@@ -279,9 +279,8 @@ class WhatsAppService(object):
         the session already had before this call)."""
         last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
         messages = await self._turn_service.get_messages(session_id)
-        state = self._turn_service.get_state_for_session(session_id)
         fresh = [m for m in messages if m["id"] > last_seen_id and m["role"] == "assistant"]
-        return replies_from(fresh), state["manual_actions"]
+        return replies_from(fresh), self._buttons_of(session_id)
 
     async def _bootstrap_exclusive_session(self) -> tuple[dict | None, tuple[list[Reply], list[dict] | None, int | None] | None]:
         """(session, None) once resolved, or (None, early_result) for the
@@ -311,8 +310,8 @@ class WhatsAppService(object):
             outcome = await self._exchange(message, session, text, spoken).run()
 
         session_id = session["id"]
-        notice, manual_actions = self._notice_for(outcome, session_id)
-        return replies_from(outcome.messages, notice), manual_actions, session_id
+        notice, buttons = self._notice_for(outcome, session_id)
+        return replies_from(outcome.messages, notice), buttons, session_id
 
     def _exchange(
         self, message: IncomingMessage, session: dict, text: str, spoken: bool,
@@ -331,26 +330,33 @@ class WhatsAppService(object):
     def _notice_for(self, outcome: TurnOutcome, session_id: int) -> tuple[str | None, list[dict] | None]:
         for code in filter(None, [outcome.code]):
             notice = _NOTICES.get(code, _NOTICE_UNEXPECTED)
-            return notice.text, self._manual_actions_for(notice, session_id)
-        return None, outcome.manual_actions
+            return notice.text, self._buttons_after(notice, session_id)
+        return None, outcome.buttons
 
-    def _manual_actions_for(self, notice: "_Notice", session_id: int) -> list[dict] | None:
+    def _buttons_after(self, notice: "_Notice", session_id: int) -> list[dict] | None:
         for _ in filter(None, [notice.keeps_actions]):
-            return self._turn_service.get_state_for_session(session_id)["manual_actions"]
+            return self._buttons_of(session_id)
         return None
+
+    def _buttons_of(self, session_id: int) -> list[dict]:
+        """What the session offers right now. Read as its own thing: the
+        state payload does not carry the choices any more (see
+        TurnService.buttons_for)."""
+        return self._turn_service.buttons_for(
+            session_id, self._turn_service.get_state_for_session(session_id),
+        )
 
     async def _attempt_action(
         self, action_id: str, session_id: int,
     ) -> tuple[str | None, list[dict] | None, str | None, dict | None]:
-        """(notice, manual_actions, retry_code, result) for one manual
+        """(notice, buttons, retry_code, result) for one manual
         action attempt — `result` is apply_manual_action's own return
         value, set only on success."""
         try:
             result = await self._turn_service.apply_manual_action(action_id, session_id)
         except ValueError as exc:
             logger.info(f"WhatsApp: action '{action_id}' rejected for session {session_id}: {exc}")
-            state = self._turn_service.get_state_for_session(session_id)
-            return REPLY_INVALID_ACTION, state["manual_actions"], None, None
+            return REPLY_INVALID_ACTION, self._buttons_of(session_id), None, None
         except ServiceError as exc:
             if exc.code in ("session_channel_mismatch", "session_superseded"):
                 return REPLY_SESSION_TAKEN_OVER, None, None, None
@@ -368,25 +374,25 @@ class WhatsAppService(object):
             return early
 
         session_id = session["id"]
-        notice, manual_actions, retry_code, result = await self._attempt_action(action_id, session_id)
+        notice, buttons, retry_code, result = await self._attempt_action(action_id, session_id)
         if retry_code is not None:
             session, early = await self._bootstrap_exclusive_session()
             if early is not None:
                 return early
             session_id = session["id"]
-            notice, manual_actions, retry_code, result = await self._attempt_action(action_id, session_id)
+            notice, buttons, retry_code, result = await self._attempt_action(action_id, session_id)
             if retry_code is not None:
                 notice = REPLY_TECHNICAL_PROBLEM
 
         if result is None:
-            return replies_from([], notice), manual_actions, session_id
+            return replies_from([], notice), buttons, session_id
 
         logger.info(f"WhatsApp: action '{action_id}' applied for session {session_id}.")
         state = result["state"]
         replies = replies_from(result["reply"])
         if not replies:
             replies = [Reply(state["ui_label"] or REPLY_DONE)]
-        return replies, state["manual_actions"], session_id
+        return replies, result["buttons"], session_id
 
     # ----------------------------------------------------------------- #
     # Outbound delivery — plain text, or the last message as buttons/list
