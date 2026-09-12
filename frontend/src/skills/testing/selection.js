@@ -1,5 +1,5 @@
 import { computed, ref, watch } from 'vue'
-import { getTranscript, getProjectSignals, getSessionSignals, getUsers } from '../../api.js'
+import { getHistory, getProjectSignals, getSessionSignals, getUsers } from '../../api.js'
 import { sessions } from '../../chatStore.js'
 
 // Test mode's own selection ('root' | 'sessions-branch' | 'states-branch' |
@@ -83,7 +83,7 @@ function createSelection() {
     autoSessionSignals.value = id == null ? [] : await getSessionSignals(id).catch(() => [])
   })
   watch(autoSelectedSessionId, async (id) => {
-    autoSessionMessages.value = id == null ? [] : await getTranscript(id).catch(() => [])
+    autoSessionMessages.value = id == null ? [] : await getHistory(id).catch(() => [])
   })
   const autoSessionInputTokens = computed(() => {
     const userMessages = autoSessionMessages.value.filter((m) => m.role === 'user')

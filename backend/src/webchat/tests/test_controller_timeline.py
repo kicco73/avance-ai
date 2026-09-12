@@ -9,7 +9,7 @@ import pytest
 
 from system.web_session import WebSession
 
-from conftest import chat_turn
+from conftest import chat_turn, open_chat
 
 pytestmark = pytest.mark.contract
 
@@ -34,7 +34,6 @@ def test_timeline_excludes_signal_rows_but_still_includes_the_initial_state(clie
     app_db.set_active_project_id(hello_project, "bob")
     with WebSession().impersonate("bob"):
         session = client.get("/api/skills/webchat/sessions/current").json()
-        client.get(f"/api/skills/webchat/sessions/{session['id']}/messages")
         turn = chat_turn(client, session['id'], "hi")
         client.put(
             f"/api/skills/platform/messages/{turn['assistant_message_id']}/expected-state", json={"expected_state": "Hello"},
@@ -52,7 +51,7 @@ def test_timeline_includes_state_transitions(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
     with WebSession().impersonate("alice"):
         session = client.get("/api/skills/webchat/sessions/current").json()
-        client.get(f"/api/skills/webchat/sessions/{session['id']}/messages")
+        open_chat(client, session["id"])
         app_db.save_transition(None, "leave", "Goodbye", session["id"], "INFO")
 
     response = client.get(f"/api/core/projects/{hello_project}/users/alice/timeline")

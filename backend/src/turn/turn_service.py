@@ -439,26 +439,17 @@ class TurnService(object):
 		state_payload = automaton.get_state_payload(state)
 		return {**state_payload, "buttons": pressable_actions(state_payload["actions"], False)}
 
-	async def get_messages(self, session_id: int, last_n: int | None = None) -> list[dict]:
-		"""The transcript, opening the conversation first if it has not
-		started yet. Not a read: open_if_needed runs the project's opening
-		message as a real turn, through the same write admission gate a
-		typed message goes through — so the caller has to be a channel and
-		has to say which (see turn/sessions/session_type_strategy.py).
-		Whoever is only looking at a transcript wants read_transcript."""
-		self._ownership.require_own_session(session_id)
-		# Whatever it wrote is persisted like any other message, and the
-		# read below picks it up.
-		await self.open_if_needed(session_id)
-		return self._with_tool_calls(session_id, self._db.get_messages(session_id, last_n=last_n))
+	def read_history(self, session_id: int, last_n: int | None = None) -> list[dict]:
+		"""What is already there, and nothing else — every reader of a
+		transcript, with no exception left.
 
-	def read_transcript(self, session_id: int, last_n: int | None = None) -> list[dict]:
-		"""What is already there, and nothing else. The editor's Run panel,
-		the labelling screens, the app store's preview and the testing
-		skill all read histories without being a conversation with anybody
-		— none of them can name a channel, and none of them should start
-		one by looking. A session nobody has opened yet reads as empty
-		here rather than opening under the reader's feet."""
+		There used to be a second one that opened the conversation first,
+		as a side effect of being asked for the history, and every caller
+		of it got a real turn it had not asked for. Once a browser began
+		saying `session.new` (see docs/BUS.md), that was two openings for
+		one conversation and a session that started by saying the same
+		thing twice. Opening a conversation is something a channel does on
+		purpose; reading it is a read."""
 		self._ownership.require_own_session(session_id)
 		return self._with_tool_calls(session_id, self._db.get_messages(session_id, last_n=last_n))
 
@@ -718,11 +709,20 @@ class TurnService(object):
 		"""What the automaton has to say before anybody says anything, if
 		this state has anything to open with and nothing has been said yet.
 		Returns the turn it ran, so a caller that is reporting an exchange
-		can report this one too."""
-		automaton, state = await self._ensure_project_bootstrap(session_id)
-		if automaton is None:
-			return None
-		return await self._generate_opening_message_if_needed(session_id, automaton, state, on_metadata)
+		can report this one too.
+
+		Asking and doing are one step, under a lock of their own. Two
+		callers ask at the very start of a conversation — the browser
+		says `session.new` and reads the transcript in the same breath,
+		and reading it opens the conversation too — and both found
+		nothing said yet, so the session began by saying the same thing
+		twice. The lock is not the turn's own (the turn takes that one
+		itself, further down): this one only guards the decision."""
+		async with self._session_locks.get(f"open/{session_id}"):
+			automaton, state = await self._ensure_project_bootstrap(session_id)
+			if automaton is None:
+				return None
+			return await self._generate_opening_message_if_needed(session_id, automaton, state, on_metadata)
 
 	async def prepare_user_initiated_turn(self, session_id: int) -> list[dict]:
 		"""The project bootstrap a user-initiated turn needs, plus the

@@ -302,10 +302,12 @@ a write only from the channel that opened it, so what reaches that gate
 belongs to the channel (`sessions/current`, `POST sessions`, `messages`,
 `operator-state`, firing an action) and everything else addresses a
 session by id and belongs to the core (`turn/session_controller.py`).
-`TurnService.read_transcript` exists because of that cut: `get_messages`
-opens the conversation, which is a turn, so the readers that are not a
-conversation needed a read that is only a read — two named methods, not
-one with a flag. Second, the frontend followed the seam `createChatStore`
+`TurnService.read_history` is what came of that cut. There were two
+reads for a while — one that opened the conversation as a side effect of
+being asked for the history, and one that did not — until the browser
+began saying `session.new` (see BUS.md) and a session opened twice for
+one conversation. Opening is something a channel does on purpose; the
+history is a read, and there is one of it. Second, the frontend followed the seam `createChatStore`
 already had: the live store and the test store are two instances with two
 sets of endpoints, so the live one's set *is* the channel skill's, and
 `src/liveChatChannel.js` is the leaf the core asks for it. A build

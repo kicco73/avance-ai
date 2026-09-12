@@ -43,11 +43,10 @@ CHANNEL = __package__
 # XXX Compiled automaton requirement - do not touch.
 # XXX The one thing every route below has in common: whoever called it is
 # the chat window, speaking on the chat window's channel. Declared once,
-# for the whole router, rather than in each method — a read here is not a
-# read: get_messages calls open_if_needed, which runs a project's opening
-# message as a real turn, through the same write admission gate a typed
-# message goes through. Almost anything here can end up needing to know
-# who is speaking, so a fourteenth route must not be addable without it.
+# for the whole router, rather than in each method — these routes resolve,
+# create and supersede sessions, and a session belongs to the channel that
+# opened it. Almost anything here can end up needing to know who is
+# speaking, so a fourteenth route must not be addable without it.
 #
 # auth/auth_middleware.py used to do exactly this for *every*
 # authenticated HTTP request in the system. That is what made core name
@@ -89,14 +88,12 @@ class WebchatController(BaseController):
         return await self.turn_service.create_session()
 
     @get("/api/skills/webchat/sessions/{session_id}/messages")
-    async def get_messages(self, session_id: int):
-        """The chat window's own history, and not a read: get_messages
-        opens the conversation if it has not started, which runs the
-        project's opening message as a real turn through the same write
-        admission gate a typed message goes through. Whoever is only
-        looking at a transcript asks the core instead (see
-        turn/session_controller.py's own transcript route)."""
-        return await self.turn_service.get_messages(session_id)
+    def get_messages(self, session_id: int):
+        """The chat window's own history. A read, and nothing else: what
+        a conversation opens with arrives because the window said
+        `session.new` (see docs/BUS.md), not because somebody asked what
+        had been said."""
+        return self.turn_service.read_history(session_id)
 
     @get("/api/skills/webchat/sessions/{session_id}/operator-state")
     def get_operator_state(self, session_id: int):

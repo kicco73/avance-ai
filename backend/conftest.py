@@ -231,6 +231,23 @@ def _frame_deadline(seconds: float, frames: list[dict]):
         signal.signal(signal.SIGALRM, previous)
 
 
+def open_chat(client: TestClient, session_id: int) -> list[dict]:
+    """What a browser does the moment it shows a conversation: it says
+    `session.new`, and the automaton speaks first if this state has
+    anything to open with. The only thing that opens a conversation —
+    reading its history does not (see TurnService.read_history).
+    Returns the frames, ending with the choices the session offers, which
+    `session.new` always answers with."""
+    frames = []
+    with _frame_deadline(turn_frame_seconds(), frames):
+        with chat_socket(client) as ws:
+            ws.send_json({"type": "session.new", "session_id": session_id})
+            while True:
+                frames.append(ws.receive_json())
+                if frames[-1]["type"] == "ui.buttons":
+                    return frames
+
+
 def chat_turn_frames(client: TestClient, session_id: int, text: str, turn_id: str = "t1") -> list[dict]:
     """One turn over the websocket, every frame it produced in order —
     the last one is its `done` or `error`."""

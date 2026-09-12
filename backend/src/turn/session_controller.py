@@ -85,9 +85,9 @@ class SessionController(BaseController):
     def get_session_state(self, session_id: int):
         return self.turn_service.get_state_for_session(session_id)
 
-    @get("/api/core/sessions/{session_id}/transcript")
+    @get("/api/core/sessions/{session_id}/history")
     def get_transcript(self, session_id: int):
-        return self.turn_service.read_transcript(session_id)
+        return self.turn_service.read_history(session_id)
 
     @get("/api/core/sessions/{session_id}/audio")
     def get_session_audio(self, session_id: int):

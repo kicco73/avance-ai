@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
 vi.mock('../../../api.js', () => ({
-  getTranscript: vi.fn().mockResolvedValue([]),
+  getHistory: vi.fn().mockResolvedValue([]),
   getSessionSignals: vi.fn().mockResolvedValue([]),
   getUsers: vi.fn().mockResolvedValue({ users: [{ id: 'u1', email: 'a@b.c' }] }),
   getProjectSignals: vi.fn().mockResolvedValue({ signals: [{ signal: { name: 'mood' } }] }),
