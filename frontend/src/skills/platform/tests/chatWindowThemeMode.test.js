@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installApiBackedLiveChannel } from '../../../../tests/liveChatChannelStub.js'
 import { createApp, nextTick } from 'vue'
 
+vi.mock('../../../busChannel.js', () => import('../../../../tests/fakeBus.js'))
 vi.mock('../../../taskActions.js', () => ({ runTaskScript: vi.fn() }))
-vi.mock('../../../chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), getConnectionState: vi.fn(() => 'open'), onButtons: vi.fn(() => () => {}), sendButton: vi.fn(), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 vi.mock('../../../dialogStore.js', () => ({ confirmDialog: vi.fn() }))
 vi.mock('../../../audio.js', () => ({ playMessageChime: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn() }))
 vi.mock('../../../api.js', () => ({

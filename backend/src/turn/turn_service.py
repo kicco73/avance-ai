@@ -753,19 +753,21 @@ class TurnService(object):
 		return await self.process_turn(session_id, on_metadata=on_metadata)
 
 	async def _messages_for_transition(
-		self, session_id: int, new_state: State, *, is_self_loop: bool
+		self, session_id: int, new_state: State, *, is_self_loop: bool, on_metadata: OnMetadata | None = None,
 	) -> tuple[list[dict], dict | None]:
 		should_open = not is_self_loop and self._should_generate_opening_message(session_id, new_state)
 		if not should_open:
 			return [], None
-		turn_result = await self._process_turn_body(session_id)
+		turn_result = await self._process_turn_body(session_id, on_metadata=on_metadata)
 		message_id = turn_result["assistant_message_id"]
 		if message_id is None:
 			return [], turn_result["state"]
 		message = self._db.get_message(message_id)
 		return ([message] if message is not None else []), turn_result["state"]
 
-	async def apply_manual_action(self, action_name: str, session_id: int) -> dict:
+	async def apply_manual_action(
+		self, action_name: str, session_id: int, on_metadata: OnMetadata | None = None,
+	) -> dict:
 		project_id = self._project_id_for_session(session_id)
 		self._ensure_project_available(project_id)
 		if self._session_locks.get(str(session_id)).locked():
@@ -785,7 +787,7 @@ class TurnService(object):
 				session_id=session["id"],
 			)
 			reply, fresh_state_payload = await self._messages_for_transition(
-				session["id"], state, is_self_loop=(action.target == source_state_key)
+				session["id"], state, is_self_loop=(action.target == source_state_key), on_metadata=on_metadata,
 			)
 			self._session_manager.touch_session(session["id"], state.key)
 			return {

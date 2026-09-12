@@ -39,6 +39,12 @@ export class ChatExchange {
     return this
   }
 
+  // One frame handed over directly — the frame that made somebody start
+  // watching, which arrived before there was anything to watch it.
+  receive(frame) {
+    this._take(frame.type, frame)
+  }
+
   stop() {
     for (const unsubscribe of this._unsubscribes) unsubscribe()
     this._unsubscribes = []

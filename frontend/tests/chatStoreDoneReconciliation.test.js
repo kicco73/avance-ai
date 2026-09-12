@@ -38,14 +38,15 @@ describe('submitMessage reconciles the streaming bubble against done.reply', () 
     vi.clearAllMocks()
   })
 
-  it('replaces content/audioText/timestamp from done.reply[0] instead of concatenating', async () => {
+  it('replaces content/timestamp from the answer, and keeps the spoken text', async () => {
     chatStore.currentSessionId.value = 1
     await chatStore.handleSend('hi')
     deliver({ type: 'output.text_stream', session_id: 1, text: 'Hel' })
+    deliver({ type: 'output.speech', session_id: 1, text: 'audio-77' })
     deliver({ type: 'ui.buttons', session_id: 1, actions: [] })
     deliver({
       type: 'output.text', session_id: 1, assistant_message_id: 77,
-      text: 'Hello, full answer.', audio_text: 'audio-77', timestamp: '2026-01-01T00:00:00Z',
+      text: 'Hello, full answer.', timestamp: '2026-01-01T00:00:00Z',
     })
 
     const assistant = chatStore.messages.value.find((m) => m.role === 'assistant')
@@ -64,7 +65,7 @@ describe('submitMessage reconciles the streaming bubble against done.reply', () 
     deliver({ type: 'ui.buttons', session_id: 1, actions: [] })
     deliver({
       type: 'output.text', session_id: 1, assistant_message_id: 88,
-      text: 'Recreated reply.', audio_text: null, timestamp: '2026-01-01T00:00:01Z',
+      text: 'Recreated reply.', timestamp: '2026-01-01T00:00:01Z',
     })
 
     const assistant = chatStore.messages.value.find((m) => m.role === 'assistant')

@@ -4,7 +4,7 @@ import { createChatSocket } from './api.js'
 // owns it: connection lifecycle (connect/reconnect/heartbeat) plus pure
 // routing of every inbound frame to whoever subscribed to its `type`.
 // It knows nothing about what any frame means — chat turns correlate
-// themselves by turn_id in chatClient.js, notifications fan out in
+// themselves by session in chatExchange.js, notifications fan out in
 // notificationBus.js, and both are ordinary subscribers here.
 //
 // The WebSocket is the ONE and ONLY transport for chat, in both

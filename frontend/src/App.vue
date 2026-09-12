@@ -12,7 +12,7 @@ import ToastContainer from './components/ToastContainer.vue'
 import HumanTakeoverToasts from './components/HumanTakeoverToasts.vue'
 import DialogHost from './components/DialogHost.vue'
 import { requestedOperatorSession, clearRequestedOperatorSession } from './humanTakeoverStore.js'
-import { disconnect as disconnectChat } from './chatClient.js'
+import { busChannel } from './busChannel.js'
 import { needsLogin } from './authStore.js'
 import { activeDialog } from './dialogStore.js'
 import { useAppBoot } from './composables/useAppBoot.js'
@@ -186,7 +186,7 @@ onMounted(() => {
   document.addEventListener('gesturechange', preventGestureZoom)
 })
 onBeforeUnmount(() => {
-  disconnectChat()
+  busChannel.disconnect()
   document.removeEventListener('touchmove', preventMultiTouchZoom)
   document.removeEventListener('gesturestart', preventGestureZoom)
   document.removeEventListener('gesturechange', preventGestureZoom)

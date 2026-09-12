@@ -4,9 +4,6 @@ import {
   putSessionAudio,
   postTruncateSession, deleteSession, postCloseSession, putMessageReaction,
 } from './api.js'
-import {
-  sendMessage as sendChatMessage, sendButton, sendSessionOpened, onConnectionState, getConnectionState,
-} from './chatClient.js'
 import { busChannel } from './busChannel.js'
 import { ChatReconnectSync } from './chatReconnectSync.js'
 import { ChatExchange } from './chatExchange.js'
@@ -31,10 +28,10 @@ const SESSION_INACTIVE_CODES = ['session_closed', 'session_channel_mismatch', 's
 const AWAITING_REPLY_TIMEOUT_MS = 15000
 
 // The chat's one transport, as the UI sees it: 'connecting' | 'open' |
-// 'closed' (see chatClient.js). Module-level, not per-store — there is
+// 'closed' (see busChannel.js). Module-level, not per-store — there is
 // exactly one socket per page, whichever chats are open on it.
-export const chatConnectionState = ref(getConnectionState())
-onConnectionState((next) => { chatConnectionState.value = next })
+export const chatConnectionState = ref(busChannel.connectionState)
+busChannel.onConnectionState((next) => { chatConnectionState.value = next })
 
 // App-wide user preferences — genuinely not "which chat" state, so a
 // single shared instance regardless of how many chat stores exist (see
@@ -107,12 +104,12 @@ export function createChatStore({
   // about to be reloaded.
   const openExchanges = new Map()
 
-  function settleOpenExchanges(rebuild) {
-    for (const [bubbleId, open] of [...openExchanges.entries()]) {
-      openExchanges.delete(bubbleId)
-      open.stop()
-      open.settle(rebuild({ sessionId: open.sessionId, text: open.text }))
-    }
+  // A dropped socket takes with it every frame that was still coming:
+  // whatever was being written is given up on, and what actually
+  // persisted is in the rows about to be reloaded (see
+  // chatReconnectSync.js).
+  function abandonOpenReplies() {
+    for (const open of [...openExchanges.values()]) open.abandon()
   }
 
   function bumpTurn() {
@@ -126,16 +123,28 @@ export function createChatStore({
     state.value = newState
   }
 
-  new ChatReconnectSync({ currentSessionId, messages, state, toStoreMessage, settleOpenExchanges }).register()
+  new ChatReconnectSync({ currentSessionId, messages, state, toStoreMessage, abandonOpenReplies }).register()
 
   // The buttons are the system's to say and this store's to show: applied
   // the moment 'ui.buttons' arrives, on top of whichever state is held,
-  // never waiting for an exchange to finish (see chatClient.js).
   // The choices the conversation offers now: shown the moment they
   // arrive, never held until an exchange ends.
   busChannel.subscribe('ui.buttons', (frame) => {
     if (frame.session_id !== currentSessionId.value) return
     state.value = { ...(state.value ?? {}), manual_actions: frame.actions || [] }
+  })
+
+  // The system has started writing something. The only thing that opens a
+  // bubble for it — an answer to what was just asked, what a conversation
+  // opens with (see backend docs/BUS.md's own session.new), what a state
+  // says on its own: to whoever is reading there is no difference, so
+  // there is one case here and not one per reason. The frame that started
+  // it arrived before there was anything watching, so it is handed over
+  // by hand.
+  busChannel.subscribe('output.text_stream', (frame) => {
+    if (frame.session_id !== currentSessionId.value) return
+    if (openExchanges.size > 0) return
+    watchReply(frame.session_id).receive(frame)
   })
 
   // A whole message that no exchange is waiting for — what a choice
@@ -246,7 +255,7 @@ export function createChatStore({
     // The conversation is open: whether it has something to say first is
     // the automaton's business, and what comes back is an ordinary
     // message (see backend docs/BUS.md's own session.new).
-    sendSessionOpened(session.id)
+    busChannel.send({ type: 'session.new', session_id: session.id })
     return session.id
   }
 
@@ -441,26 +450,25 @@ export function createChatStore({
     if (sessionsPanelOpen.value) loadSessions()
   }
 
-  // What a person said, and what the system publishes about it. Nothing
-  // is awaited: the bubble is pushed, the message is sent, and a
-  // ChatExchange watches what comes back (see chatExchange.js).
+  // What a person said, onto the socket. Nothing is awaited and no bubble
+  // is prepared for the answer: what the system is writing is the
+  // system's to announce (see the one `output.text_stream` subscriber
+  // above), and a send that never left is the only failure this knows
+  // about.
   function submitMessage(message) {
     clearApiError()
     setMessageFailed(message.id, false)
+    const sent = busChannel.send({
+      type: 'input.text', session_id: currentSessionId.value, text: message.content,
+    })
+    if (!sent) setMessageFailed(message.id, true)
+  }
+
+  // A message being written, watched into a bubble of its own. One per
+  // session at a time: a reply is written, then the next begins.
+  function watchReply(turnSessionId) {
     turnsInFlight.value++
 
-    // Snapshotted once, up front: this exchange's own session, never
-    // re-read off currentSessionId.value below. An answer can take long
-    // enough that the user switches to a completely different chat before
-    // it lands — without this, every effect below would run against
-    // whatever is on screen *then*.
-    const turnSessionId = currentSessionId.value
-
-    // Pushed right away: a bubble must occupy its slot in messages.value
-    // immediately (see chatStoreCoalescing.test.js), or a second send
-    // arriving first would land its own ahead of this one. `pending` is
-    // what keeps it invisible until something real arrives (see
-    // MessageBubble.vue's own isPending).
     const assistantMsgId = ++nextMessageId
     messages.value.push({
       id: assistantMsgId,
@@ -519,17 +527,7 @@ export function createChatStore({
       }
     }).watch()
 
-    openExchanges.set(assistantMsgId, {
-      sessionId: turnSessionId,
-      text: message.content,
-      stop: () => exchange.stop(),
-      // What a reconnection found in the reloaded rows, if anything: the
-      // same shape an answer arrives in, so there is one way to finish.
-      settle: (rebuilt) => {
-        if (rebuilt) finishExchange({ id: rebuilt.id, content: rebuilt.content, audio_text: rebuilt.audio_text })
-        else failExchange({ message: 'The chat connection dropped during this message.', code: 'chat_reconnected' })
-      }
-    })
+    openExchanges.set(assistantMsgId, { sessionId: turnSessionId, abandon: done })
 
     function done() {
       openExchanges.delete(assistantMsgId)
@@ -606,7 +604,6 @@ export function createChatStore({
           messages.value.splice(idx, 1)
         }
       }
-      setMessageFailed(message.id, true)
       if (mine()) handleSessionInactiveError({ code: frame.code })
     }
 
@@ -625,7 +622,7 @@ export function createChatStore({
       })
     }
 
-    sendChatMessage(message.content, turnSessionId)
+    return exchange
   }
 
   async function handleSend(text) {
@@ -691,7 +688,9 @@ export function createChatStore({
     // `ui.buttons` that follows). If it never left — no socket — they
     // come back on, because nothing was taken.
     actionLoading.value = true
-    const taken = sendButton(actionName, currentSessionId.value)
+    const taken = busChannel.send({
+      type: 'input.button', session_id: currentSessionId.value, id: actionName,
+    })
     actionLoading.value = false
     if (taken) state.value = { ...(state.value ?? {}), manual_actions: [] }
   }
@@ -780,7 +779,7 @@ export function createChatStore({
   }
 
   return {
-    settleOpenExchanges,
+    abandonOpenReplies,
     state, currentSessionId, selectedSessionActive, projectPaused, projectPausedReason,
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
     messages, historyLoaded, chatLoading, chatStatus, actionLoading,

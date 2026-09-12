@@ -21,8 +21,6 @@ vi.mock('../api.js', () => ({
 vi.mock('../../../dialogStore.js', () => ({
   confirmDialog: vi.fn(),
 }))
-vi.mock('../../../chatClient.js', () => ({
-  getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 const { unsubscribeTestUpdates } = vi.hoisted(() => ({ unsubscribeTestUpdates: vi.fn() }))
 vi.mock('../../../busChannel.js', () => ({ busChannel: { subscribe: vi.fn(() => unsubscribeTestUpdates) } }))
 

@@ -12,12 +12,6 @@ vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn().mockResolvedVal
 vi.mock('../src/audio.js', () => ({
   playMessageChime: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn(),
 }))
-vi.mock('../src/chatClient.js', () => ({
-  sendMessage: vi.fn(),
-  getConnectionState: vi.fn(() => 'open'),
-  onButtons: vi.fn(() => () => {}), sendButton: vi.fn(), onConnectionState: vi.fn(() => () => {}),
-  resolvePendingTurnsAfterReload: vi.fn(),
-}))
 vi.mock('../src/api.js', () => ({
   getCurrentSession: vi.fn(),
   postCreateSession: vi.fn(),

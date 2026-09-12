@@ -217,7 +217,9 @@ class TurnInput(object):
         is no difference."""
         action = str((message.body or {}).get("id") or "")
         try:
-            result = await self._turn_service.apply_manual_action(action, message.session_id)
+            result = await self._turn_service.apply_manual_action(
+                action, message.session_id, on_metadata=outbound.on_metadata,
+            )
         except ValueError as exc:
             logger.info("Action %r refused for session %s: %s", action, message.session_id, exc)
             outbound.put(OUTPUT_ERROR, {"code": "action_unavailable", "message": str(exc), "detail": ""})

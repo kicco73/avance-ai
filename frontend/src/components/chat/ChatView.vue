@@ -93,7 +93,7 @@ defineExpose({
 // selectedSessionActive reflects the backend's "active" verdict for the
 // displayed session, never recomputed here from a timestamp — only the
 // most recently started open session per project is ever active.
-// The websocket is the chat's only transport (see chatClient.js): with no
+// The websocket is the chat's only transport (see busChannel.js): with no
 // connection there is nowhere to send a message, so the input closes until
 // it is back — the one and only reason it closes besides the session
 // itself being unusable.
@@ -124,7 +124,7 @@ const chatDisabledReason = computed(() => {
 
 // Mobile backgrounds the page constantly (app switch, screen lock) — iOS
 // suspends the webview and drops the socket within seconds of that.
-// Reopening the socket is not this view's business: chatClient.js watches
+// Reopening the socket is not this view's business: busChannel.js watches
 // visibility itself and reconnects, in one place, for the whole app (and
 // resynchronizes this session when it does). All that is left here is the
 // plain history refresh for a tab that was away while nothing was in

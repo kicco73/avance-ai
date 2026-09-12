@@ -1,6 +1,6 @@
 // busChannel.js's own observer contract: the channel owns the socket and
 // routes every inbound frame purely by its `type`, to as many subscribers
-// as asked for that type. chatClient.js is one of those subscribers, not
+// as asked for that type. chatExchange.js is one of those subscribers, not
 // the dispatcher — a notification or a system_warning reaches its consumer
 // without passing through the chat at all.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

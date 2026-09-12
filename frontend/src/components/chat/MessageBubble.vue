@@ -193,6 +193,7 @@ const {
           message.failed ? 'bubble-failed' : '',
           {
             'bubble-bulging': longPressActive,
+            'bubble-arriving': isAwaitingReply,
             'bubble-reactable': message.role === 'assistant' && reactions.length
           }
         ]"
@@ -500,6 +501,24 @@ const {
 .tool-status-fade-enter-active,
 .tool-status-fade-leave-active {
   transition: opacity 0.25s ease;
+}
+
+/* The bubble the reply is about to be written into, on its way in: it is
+   the first thing that appears after you send, so it arrives rather than
+   snapping into place. Same 0.25s as the fade above. */
+.bubble-arriving {
+  animation: bubble-arriving-fade-in 0.25s ease;
+}
+
+@keyframes bubble-arriving-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .tool-status-fade-enter-from,

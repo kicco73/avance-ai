@@ -3,7 +3,10 @@ import { vi } from 'vitest'
 // The socket as the app sees it, with a way to publish into it. A test
 // drives a chat the way the system does: it sends, and then the frames
 // arrive — nothing is awaited and nothing is stubbed in between.
-const handlers = new Map()
+// One registry for every copy of this module. `vi.resetModules()` gives
+// the store a fresh copy and the test another, and two copies with two
+// Maps means the test publishes where nobody is listening.
+const handlers = (globalThis.__fakeBusHandlers ??= new Map())
 
 export const busChannel = {
   isOpen: true,
