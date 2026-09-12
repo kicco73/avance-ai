@@ -21,6 +21,18 @@ are written to be read before the code they describe:
 
 `README.md` covers architecture, install and configuration.
 
+## Comments
+
+Comments are not a source. To find out what code does, run it, read what it
+calls, or write a test that fails. A comment in `chatStoreFactory.js` said
+`result.reply` is «always empty for a live turn», twenty-five lines above the
+code that reconciles the streaming bubble against `result.reply[0]`; believing
+it produced a bug.
+
+Do not add new ones. Why a change was made belongs in the commit message, a
+contract belongs in `backend/src/docs/`, and a behaviour that must not regress
+belongs in a test. A false comment gets deleted, not rewritten.
+
 ## Tests
 
 ```

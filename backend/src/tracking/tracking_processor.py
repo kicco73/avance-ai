@@ -674,6 +674,15 @@ def _spoken_reply_wanted(services: ProjectServices, session_id: int | None) -> b
 	return bus.collect(POINT_SPOKEN_REPLY, SpokenReply(services=services, session_id=session_id)).asked
 
 
+def _spoken_reply_possible(services: ProjectServices) -> bool:
+	"""The same question with no session to ask about: a static estimate
+	has no interface and no toggle, so it stands in for one that wants a
+	spoken reply and asks only whether this build could speak it."""
+	spoken = SpokenReply(services=services)
+	spoken.want()
+	return bus.collect(POINT_SPOKEN_REPLY, spoken).asked
+
+
 def estimate_state_prompt(
 	ai_service: AiService, automaton: Automaton, state: State, files: "ProjectFiles",
 ) -> str:
@@ -718,7 +727,7 @@ def estimate_state_prompt(
 	output_prompt = OutputPrompt(output_definition) if state.output else None
 	signals_prompt = SignalsPrompt(signal_definition)
 	reaction_prompt = ReactionPrompt(reaction_definition) if automaton.reactions_enabled_for(state) else None
-	audio_prompt = AudioPrompt() if _spoken_reply_wanted(automaton.services, wanted=True) else None
+	audio_prompt = AudioPrompt() if _spoken_reply_possible(automaton.services) else None
 	text_prompt = TextPrompt(base_prompt)
 	memory_prompt = MemoryPrompt(env)
 	if has_to_evaluate_signals_before_ai_reply:

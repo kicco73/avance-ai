@@ -8,8 +8,9 @@ from system.audio_format import PcmWavCodec
 from whatsapp.audio import WHATSAPP_AUDIO_MIME, Mp3Encoder, split_wav, wav_to_mp3
 from whatsapp.cloud_api_client import split_text
 from whatsapp.outbound import REPLY_OPTIONS_PROMPT
+from whatsapp.inbound_voice_note import REPLY_AUDIO_NOT_UNDERSTOOD, REPLY_UNSUPPORTED_AUDIO
 from whatsapp.whatsapp_service import (
-    REPLY_AUDIO_NOT_UNDERSTOOD, REPLY_NOT_LINKED, REPLY_PAUSED, REPLY_UNSUPPORTED_AUDIO,
+    REPLY_NOT_LINKED, REPLY_PAUSED,
     to_whatsapp_markdown,
 )
 from whatsapp.tests.whatsapp_helpers import (  # noqa: F401 — env/voice_env are fixtures

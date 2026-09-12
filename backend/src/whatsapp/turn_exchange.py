@@ -1,19 +1,3 @@
-"""One turn of this channel's, run by whoever listens for `input.text`.
-
-The channel posts what the person said and waits for the frame that ends
-it — `turn.ended` with the reply, or `turn.failed` with a code — picked
-out of everything else on the Bus by this exchange's own `stream_id`.
-Without that id the frames of a turn would come back indistinguishable
-from a `task.whatsapp` message addressed to the same number, which
-carries neither stream nor origin (see actuators/actuator_set.py).
-
-`output.speech` of the same stream is the reply's spoken text, emitted
-well before the rest of the reply is written: that is the moment the
-voice note starts being synthesized, so by the time the turn is over it
-is already encoded. AiTalker.talk publishes `output.speech` too, with no
-stream_id at all, which is why the filter is on the stream and not on the
-type alone.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -28,27 +12,17 @@ from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 
-#: What a turn nobody was listening for comes back as. Not a code any
-#: ServiceError raises: no listener for `input.text` means this build has
-#: nothing that runs turns at all.
 NO_TURN_LISTENER = "no_turn_listener"
 
 
 @dataclass(frozen=True)
 class TurnOutcome:
-    """What the terminal frame said, as the channel reads it: everything
-    the exchange produced (whatever the preparation wrote, then the turn's
-    own reply), the actions now offered, and the code of the failure when
-    there was one."""
-
     messages: list[dict]
     manual_actions: list[dict] | None = None
     code: str | None = None
 
 
 class TextReply(object):
-    """An exchange whose answer is going out as text: nothing to warm up,
-    and no spoken version of the reply worth asking the model for."""
 
     def spoken_reply(self, spoken) -> None:
         pass
@@ -58,9 +32,6 @@ class TextReply(object):
 
 
 class VoiceReply(object):
-    """An exchange whose answer is going out as a voice note: the turn is
-    asked for a spoken reply, and synthesis starts the moment it announces
-    one."""
 
     def __init__(self, voice_notes) -> None:
         self._voice_notes = voice_notes

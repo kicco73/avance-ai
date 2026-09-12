@@ -1,22 +1,6 @@
 # The Bus
 
-`system/bus.py` is the seam that lets a package reach something it must
-not name. A skill that needs a voice note transcribed does not import
-`listen`; it publishes `input.audio` and whoever decodes audio in this
-build decodes it. A build without that package simply has nobody
-registered, and that is a normal outcome rather than an error.
-
-## Not the event dispatcher
-
-`events/` and the Bus look alike and are not. An event there is a *fact
-that happened* — `StateChanged`, `AvailabilityChanged` — with no
-destination and no answer; anyone may observe it and nothing is expected
-to result. A message here is a *delivery*: it has a type, it carries
-everything its handler needs, and something is expected to happen to it.
-
-Use `events/` to announce. Use the Bus to hand work over.
-
-## Four mechanisms
+## The mechanisms
 
 **`subscribe(type, listener)` / `publish(message)`.** The delivery path.
 `publish` awaits each listener in subscription order; a listener that
@@ -26,7 +10,8 @@ producer already runs outside a request, so nothing needs protecting from
 a listener that takes two seconds, and ordering is worth more than
 concurrency.
 
-**`contribute(point, contributor)` / `collect(point, target)`.** Not
+**`contribute(point, contributor)` / `withdraw(point, contributor)` /
+`collect(point, target)`.** Not
 messages: nothing is delivered and nobody is notified. Someone asks,
 synchronously, and whoever registered fills in its part of the thing
 being assembled. Every contribution point is a response being built while
@@ -46,6 +31,13 @@ raised in `POINT_AUTOMATON_LOADER` fell back to the database loader
 without a word. The exception travels as the skill raised it, unwrapped;
 `collect` only adds a log line naming the point and the contributor,
 because the traceback on its own points at a lambda in a skill file.
+
+`withdraw` is the mirror of `unsubscribe`, and registered for the same
+reason: a contributor that only wanted one exchange. A phone channel's
+answer to "does this turn want a spoken reply" is true only while the
+turn it is running is in flight, and only for that session, so it
+contributes for the length of the exchange and takes the answer back
+afterwards (see `whatsapp/turn_exchange.py`).
 
 **`publish_with_bounceback(message, sender)`.** The same delivery, with
 the message handed back to `sender.bounced(message)` when no listener is
@@ -90,7 +82,7 @@ belongs to.
 | `body` | The payload. Its shape is per type — see the table below. |
 | `username` | Whose exchange this is. |
 | `project_id`, `session_id` | Where it belongs, when that is known. |
-| `channel` | `native` / `whatsapp` — see `turn/channels.py`. |
+| `channel` | `webchat` / `whatsapp` — see `turn/channels.py`. Each is its own package name, taken from `__package__`. |
 | `origin_id` | The channel's own id for the message a person actually sent, unchanged across conversions. On a socket-injected message it is the *connection* id, so an answer goes back to that tab and not to every tab the identity has open. |
 | `converted_from` | The type this message was converted from, if it was. |
 | `mime` | Media type of `body` where `type` does not imply it. |
@@ -125,22 +117,44 @@ finally:
 Used by `talker/ai_talker.py` (`output.speech` → `output.audio_stream`)
 and `whatsapp/whatsapp_service.py` (`input.audio` → `input.text`).
 
+## A channel runs a turn by posting one
+
+A channel does not call the turn service. It resolves which session the
+person is speaking in — the way the browser resolves it over HTTP before
+it sends a frame — puts it on the message, posts `input.text`, and waits
+for the frame that ends the turn: `turn.ended` with the reply, or
+`turn.failed` with a code it turns into its own wording.
+
+The wait is not the take-back above: `TurnInput` runs the turn as its own
+task, so `publish` returns long before the answer exists. The channel
+subscribes to the terminal types, publishes with bounceback, and awaits a
+future its own listeners settle (`whatsapp/turn_exchange.py`).
+
+What tells its frames from everyone else's is the **`stream_id` it puts
+on the message it posts**: every frame of that turn carries it back
+(`_Outbound` copies the envelope), and nothing else on the Bus does. A
+whole message from `task.whatsapp()` (`tracking/actuators/actuator_set.py`)
+arrives as `output.text` with neither `stream_id` nor `origin_id`, which
+is how a channel sends that one and ignores the chunks of its own turns.
+`output.speech` needs the same test for a second reason: `AiTalker.talk`
+publishes that type too, correlated by `origin_id` alone.
+
 ## Messages
 
 | Type | Constant | Body | Published by | Taken by |
 | --- | --- | --- | --- | --- |
 | `input.audio` | `INPUT_AUDIO` | `bytes`, or an awaitable callable returning them — a voice note nobody decodes is never downloaded | `whatsapp` | `listen.decoder.SpeechDecoder` |
-| `input.text` | `INPUT_TEXT` | `str` — what the person said | `system.bus_channel` (client injection), `listen.decoder` (conversion) | `turn.input_listener.TurnInput` (runs the turn — core, whichever channel sent it) |
+| `input.text` | `INPUT_TEXT` | `str` — what the person said | `system.bus_channel` (client injection), `whatsapp.turn_exchange`, `listen.decoder` (conversion) | `turn.input_listener.TurnInput` (runs the turn — core, whichever channel sent it) |
 | `output.text` | `OUTPUT_TEXT` | `str` (markdown) — one chunk of a reply as it is generated, or a whole message from `task.whatsapp()` | `turn.input_listener` (chunks), `tracking.actuators` (`task.whatsapp()`) | `webchat` (forwards to the connection in `origin_id`), `whatsapp` (sends it, when `channel` matches) |
-| `output.speech` | `OUTPUT_SPEECH` | `str` — a reply's `[audio]` text | `talker.ai_talker` (wants the audio back), `turn.input_listener` (announces it; webchat forwards it) | `talk`, `webchat` |
+| `output.speech` | `OUTPUT_SPEECH` | `str` — a reply's `[audio]` text | `talker.ai_talker` (wants the audio back), `turn.input_listener` (announces it; webchat forwards it) | `talk`, `webchat`, `whatsapp` (starts the voice note for its own stream) |
 | `output.audio_stream` | `OUTPUT_AUDIO_STREAM` | `AudioStream` — `chunks()` yields WAV bytes as they are generated, a fresh iterator per consumer | `talk` | `talker.ai_talker` (one-shot take) |
 | `ui.notification` | `UI_NOTIFICATION` | `dict` — a nudge for whoever that identity has open | `tracking.wakeup_service`, `tracking.actuators` | `system.bus_channel` |
 | `ui.human_takeover` | `UI_HUMAN_TAKEOVER` | `{"session_id", "project_id"}` | `tracking.actuators.chat_namespace` | `system.bus_channel` |
 | `ui.system_warning` | `UI_SYSTEM_WARNING` | `dict` — addressed to a role, so the publisher names each recipient | `project.health_notifications` | `system.bus_channel` |
 | `ui.progress` | `UI_PROGRESS` | `dict` — one batch of job progress | `system.broadcaster` | `system.bus_channel` |
 | `turn.started` | `TURN_STARTED` | `{"session_id"}` — a reply is being composed | `turn.input_listener` | `webchat` |
-| `turn.ended` | `TURN_ENDED` | `dict` — the turn's whole result, so a consumer that ignored the chunks has the finished answer. `reply` is the turn's own assistant message and readers address it positionally (`reply[0]` is what a streamed bubble is reconciled against); `prepared` is what the state owed before the turn could run, to deliver ahead of it (see `TurnService.prepare_user_initiated_turn`) | `turn.input_listener` | `webchat` |
-| `turn.failed` | `TURN_FAILED` | `{"message", "detail", "code", "prepared"}` — the code is core's, the wording a channel's own; `prepared` is what the preparation persisted before the turn was refused, which the person is owed either way (empty when there was none) | `turn.input_listener` | `webchat` |
+| `turn.ended` | `TURN_ENDED` | `dict` — the turn's whole result, so a consumer that ignored the chunks has the finished answer. `reply` is the turn's own assistant message and readers address it positionally (`reply[0]` is what a streamed bubble is reconciled against); `prepared` is what the state owed before the turn could run, to deliver ahead of it (see `TurnService.prepare_user_initiated_turn`) | `turn.input_listener` | `webchat`, `whatsapp` |
+| `turn.failed` | `TURN_FAILED` | `{"message", "detail", "code", "prepared"}` — the code is core's, the wording a channel's own; `prepared` is what the preparation persisted before the turn was refused, which the person is owed either way (empty when there was none) | `turn.input_listener` | `webchat`, `whatsapp` |
 | `turn.tool` | `TURN_TOOL` | `dict` — one tool call, `phase` telling start from result | `turn.input_listener` | `webchat` |
 | `mail.send` | `MAIL_SEND` | `{"to", "subject", "body_md"}` | `tracking.actuators` (`task.send_mail`, with bounceback) | `mail` |
 | `turn.started` | `TURN_STARTED` | — | — | — |
@@ -210,7 +224,7 @@ half is meant to become a message.
 | `http.controllers` | `POINT_HTTP_CONTROLLERS` | the list of controllers to route | `controller.py` | `talk`, `listen`, `webchat`, `whatsapp`, `avance_platform`, `testing`, `build` |
 | `core.services` | `POINT_CORE_SERVICES` | the composed core, offered to whoever asks | every skill | `main.py`, `testing` |
 | `automaton.loader` | `POINT_AUTOMATON_LOADER` | which loader answers "give me this project's automaton" | `main.py` | `avance_platform`, `product` |
-| `turn.spoken_reply` | `POINT_SPOKEN_REPLY` | `SpokenReply` — what the project declared, and whether this turn wants audio at all; a contributor that can speak calls `ask()` | `tracking.tracking_processor` | `talk` |
+| `turn.spoken_reply` | `POINT_SPOKEN_REPLY` | `SpokenReply` — what the project declared, and which session is being asked about. Whoever runs the interface calls `want()`, whoever can speak calls `ask()`, and `asked` is both | `tracking.tracking_processor` | `talk`, `webchat`, `whatsapp` |
 
 Every `<skill>_enabled` field in the state payload is that skill's own
 contribution, `talk_enabled` included. It used to be the exception:

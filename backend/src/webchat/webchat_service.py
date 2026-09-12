@@ -61,10 +61,6 @@ class WebchatService:
         bus.contribute(POINT_SPOKEN_REPLY, self._spoken_reply)
 
     def _spoken_reply(self, spoken) -> None:
-        """The chat window's own audio toggle, asked of the turn that is
-        being built (see bus.POINT_SPOKEN_REPLY). Core used to read it
-        directly, which made a switch belonging to one interface the
-        answer given on behalf of every channel."""
         for _ in filter(self._turn_service.is_audio_enabled, filter(None, [spoken.session_id])):
             spoken.want()
 

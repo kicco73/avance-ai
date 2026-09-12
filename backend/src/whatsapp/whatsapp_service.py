@@ -1,11 +1,12 @@
 """WhatsApp as an alternative chat client (see docs/WHATSAPP.md).
 
-Sits beside ChatWindow.vue/WsAdapter as one more front to the very same
-TurnService.process_turn: an inbound text from a linked number becomes a
-turn on that account's own current live session (its active project,
-its sessions, its Terms acceptance — nothing WhatsApp-specific is
-persisted), and every assistant message the turn produced goes back out
-through the Cloud API.
+A router, not a turn engine: an inbound text from a linked number is
+posted on the Bus as `input.text` for that account's own current live
+session (its active project, its sessions, its Terms acceptance —
+nothing WhatsApp-specific is persisted), and what the turn reports back
+on `turn.ended`/`turn.failed` goes out through the Cloud API. Which
+session, and what a refusal sounds like here, is all this channel
+decides for itself — see whatsapp/turn_exchange.py and docs/BUS.md.
 
 Voice: an inbound voice note is downloaded from Meta, transcribed with
 ListenService (faster-whisper reads OGG/Opus as is) and processed as if
@@ -49,12 +50,14 @@ from db import Db
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
 from system import bus
-from system.bus import INPUT_AUDIO, INPUT_TEXT, OUTPUT_TEXT, Message
+from system.bus import OUTPUT_TEXT, Message
 from system.web_session import WebSession
 from talker import AiTalker
 from whatsapp.cloud_api_client import WhatsAppCloudApiClient
 from whatsapp.outbound import REPLY_DONE, Outbound, Reply, replies_from
+from whatsapp.inbound_voice_note import InboundVoiceNote
 from whatsapp.turn_exchange import TextReply, TurnExchange, TurnOutcome, VoiceReply
+from whatsapp.voice_notes import VoiceNoteSynthesizer
 from whatsapp.webhook import IncomingMessage, to_whatsapp_markdown
 
 logger = LoggerFactory.get_logger(__name__)
@@ -77,8 +80,6 @@ REPLY_NOT_REGISTERED = "Your account isn't registered yet: sign in on the web an
 REPLY_TERMS_ACCEPTED = "Thanks — terms accepted. You can continue chatting."
 REPLY_PAUSED = "This project is currently paused. Please try again later."
 REPLY_UNSUPPORTED = "For now I can only read text messages."
-REPLY_UNSUPPORTED_AUDIO = "I can't listen to voice notes yet — please type your message."
-REPLY_AUDIO_NOT_UNDERSTOOD = "I couldn't make out that voice note. Could you repeat it, or type it?"
 REPLY_NO_CHAT_STATE = "The conversation doesn't accept messages at this point. Continue from the web."
 REPLY_REGISTERED = "You're all set! Registration complete — you can start chatting now."
 REPLY_INVALID_ACTION = "That option is no longer available. Please choose one of these instead."
@@ -99,8 +100,6 @@ class _Notice:
     keeps_actions: bool = False
 
 
-# What each code a terminal frame can carry sounds like here. The frame
-# says what happened; every sentence below is this channel's own.
 _NOTICES = {
     "state_not_chat": _Notice(REPLY_NO_CHAT_STATE, keeps_actions=True),
     "session_channel_mismatch": _Notice(REPLY_SESSION_TAKEN_OVER),
@@ -113,8 +112,8 @@ _NOTICES = {
 _NOTICE_UNEXPECTED = _Notice(REPLY_TURN_PROBLEM)
 
 # A session that closed or vanished under a message is recovered from in
-# silence: on WhatsApp nobody ever saw it. The chat window says so
-# instead, because there the session is on screen.
+# silence: on WhatsApp nobody ever saw it, which is this channel's own
+# policy and the reason the retry is here and not in core.
 _RETRIED_CODES = ("session_closed", "session_not_found")
 
 
@@ -137,6 +136,7 @@ class WhatsAppService(object):
         )
         self._sender_locks: dict[str, asyncio.Lock] = {}
         self._voice_notes = VoiceNoteSynthesizer(self._assistant_talker)
+        self._voice_notes_in = InboundVoiceNote(self._client)
         # Every limit WhatsApp puts on a message, and the voice-note
         # upload, live there rather than here (see whatsapp/outbound.py).
         self._outbound = Outbound(self._client, self._voice_notes)
@@ -157,9 +157,6 @@ class WhatsAppService(object):
         self._voice_notes.cancel()
         await self._client.close()
 
-    # ----------------------------------------------------------------- #
-    # Webhook plumbing (used by WhatsAppController)
-    # ----------------------------------------------------------------- #
     # ----------------------------------------------------------------- #
     # Turn handling
     # ----------------------------------------------------------------- #
@@ -201,71 +198,14 @@ class WhatsAppService(object):
                     return (*await self._accept_terms_action(), False)
                 return (*await self._run_action(message.action_id), False)
             if message.type == "audio" and message.audio_id:
-                text = await self._decoded_text(message, message.audio_id)
+                text = await self._voice_notes_in.decoded_text(message, message.audio_id)
                 if text is None:
-                    return _notice(self._audio_notice())
+                    return _notice(self._voice_notes_in.notice())
                 return (*await self._run_turn(message, text, spoken=True), True)
             text = (message.text or "").strip()
             if message.type != "text" or not text:
                 return _notice(REPLY_UNSUPPORTED)
             return (*await self._run_turn(message, text), False)
-
-    async def _decoded_text(self, message: IncomingMessage, audio_id: str) -> str | None:
-        """The voice note as text, or None when nothing could read it —
-        the caller turns that into a notice, never a turn with an empty
-        user message.
-
-        This channel does not know what speech-to-text is. It publishes
-        the voice note on the Bus as `input.audio` and takes back whatever
-        `input.text` a decoder produced from it (see listen.decoder);
-        whether a decoder exists at all is asked first, so "nobody here
-        can read a voice note" is answered on the spot rather than by a
-        message disappearing.
-
-        The audio is passed as a callable rather than as bytes: nothing is
-        downloaded from Meta for a message no one is going to decode."""
-        decoded: list[str] = []
-
-        async def take(converted: Message) -> None:
-            # Only this voice note's own answer: two users' messages can
-            # be decoded at the same time, and neither may take the
-            # other's text.
-            if converted.origin_id == message.id:
-                decoded.append(str(converted.body))
-
-        async def fetch() -> bytes:
-            audio, mime_type = await self._client.download_media(audio_id)
-            logger.info(f"WhatsApp [{message.id}]: downloaded {len(audio)} bytes of {mime_type}.")
-            return audio
-
-        bus.subscribe(INPUT_TEXT, take)
-        try:
-            await bus.publish(self._inbound(message, INPUT_AUDIO, fetch, mime="audio/ogg"))
-        except httpx.HTTPError as exc:
-            logger.warning(f"WhatsApp [{message.id}]: media download failed: {exc}")
-            return None
-        finally:
-            bus.unsubscribe(INPUT_TEXT, take)
-        if not decoded:
-            logger.info(f"WhatsApp [{message.id}]: no decoder produced text for this voice note.")
-            return None
-        logger.info(f"WhatsApp [{message.id}]: decoded to {decoded[0][:80]!r}")
-        return decoded[0]
-
-    def _audio_notice(self) -> str:
-        """What to say about a voice note that produced no text: that we
-        cannot listen at all when nothing is registered to decode audio,
-        and that we could not make it out when something is."""
-        return REPLY_AUDIO_NOT_UNDERSTOOD if bus.handlers_for(INPUT_AUDIO) else REPLY_UNSUPPORTED_AUDIO
-
-    def _inbound(self, message: IncomingMessage, type: str, body, mime: str | None = None) -> Message:
-        """One inbound WhatsApp message, as the Bus sees it — everything
-        that says which conversation this is travels with it, so a
-        conversion never has to reconstruct it."""
-        return Message(
-            type=type, body=body, mime=mime,
-            username=WebSession().user, channel=CHANNEL, origin_id=message.id,
-        )
 
     async def _handle_unlinked(self, message: IncomingMessage) -> tuple[list[Reply], list[dict] | None, int | None]:
         """A number with no User row at all: the only way forward is a
@@ -357,11 +297,7 @@ class WhatsAppService(object):
         self, message: IncomingMessage, text: str, spoken: bool = False,
     ) -> tuple[list[Reply], list[dict] | None, int | None]:
         """This channel does not run turns: it posts what the person said
-        on the Bus and delivers what comes back (see whatsapp/
-        turn_exchange.py and turn/input_listener.py). Which session the
-        text belongs to is resolved here, the way the browser resolves it
-        over HTTP before it ever sends a frame — core is handed a session,
-        never asked to find one."""
+        on the Bus and delivers what comes back — see docs/BUS.md."""
         session, early = await self._bootstrap_exclusive_session()
         if early is not None:
             return early
@@ -387,18 +323,11 @@ class WhatsAppService(object):
         )
 
     def _voice_for(self, spoken: bool) -> TextReply | VoiceReply:
-        """How this exchange's answer is meant to come back, which is one
-        question and not two: a turn asked for a spoken reply is the same
-        turn whose voice note starts being synthesized the moment the
-        model announces its audio text."""
         return {
             True: VoiceReply(self._voice_notes), False: TextReply(),
         }[self._wants_voice(spoken)]
 
     def _notice_for(self, outcome: TurnOutcome, session_id: int) -> tuple[str | None, list[dict] | None]:
-        """What the channel says about a turn that did not produce one.
-        The code travels on the terminal frame; the sentence is this
-        channel's own copy and nobody else's."""
         for code in filter(None, [outcome.code]):
             notice = _NOTICES.get(code, _NOTICE_UNEXPECTED)
             return notice.text, self._manual_actions_for(notice, session_id)
@@ -433,9 +362,6 @@ class WhatsAppService(object):
         return None, None, None, result
 
     async def _run_action(self, action_id: str) -> tuple[list[Reply], list[dict] | None, int | None]:
-        """An action is not a turn and does not travel as one: it names a
-        transition the automaton offers, which is the same call the chat
-        window's own POST /actions makes (see webchat_controller.py)."""
         session, early = await self._bootstrap_exclusive_session()
         if early is not None:
             return early
@@ -495,54 +421,3 @@ class WhatsAppService(object):
 
 def _notice(text: str) -> tuple[list[Reply], None, None, bool]:
     return [Reply(text)], None, None, False
-
-
-class VoiceNoteSynthesizer(object):
-    """Turns a reply's [audio] text into the MP3 bytes of an audio
-    message, and starts doing so the moment the model emits that text —
-    ahead of the reply's own text, signals and env — so by the time the
-    turn is over and the note is actually wanted, it's already encoded
-    (or well on its way). The synthesis and the encoding are one pass:
-    every WAV piece the AiTalker's talk() yields goes straight into the encoder."""
-
-    _MAX_PENDING = 16
-
-    def __init__(self, ai_talker: AiTalker) -> None:
-        self._ai_talker = ai_talker
-        self._pending: dict[str, asyncio.Task[bytes]] = {}
-
-    def on_metadata(self, key: str, value) -> None:
-        if key != "audio" or not value or value in self._pending:
-            return
-        while len(self._pending) >= self._MAX_PENDING:
-            self._pending.pop(next(iter(self._pending))).cancel()
-        task = asyncio.create_task(self._synthesize(value))
-        task.add_done_callback(_log_unretrieved_failure)
-        self._pending[value] = task
-
-    async def mp3_for(self, text: str) -> bytes:
-        started = self._pending.pop(text, None)
-        if started is not None:
-            return await started
-        return await self._synthesize(text)
-
-    def cancel(self) -> None:
-        for task in self._pending.values():
-            task.cancel()
-        self._pending.clear()
-
-    async def _synthesize(self, text: str) -> bytes:
-        from whatsapp.audio import Mp3Encoder
-
-        encoder = Mp3Encoder()
-        async for wav_piece in self._ai_talker.talk(text):
-            await asyncio.to_thread(encoder.push, wav_piece)
-        return await asyncio.to_thread(encoder.finish)
-
-
-def _log_unretrieved_failure(task: "asyncio.Task[bytes]") -> None:
-    if task.cancelled():
-        return
-    exc = task.exception()
-    if exc is not None:
-        logger.warning(f"WhatsApp: voice note synthesis started ahead of the reply failed: {exc}")

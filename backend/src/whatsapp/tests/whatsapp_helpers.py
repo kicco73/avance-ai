@@ -31,6 +31,10 @@ from whatsapp.whatsapp_service import WhatsAppService
 
 
 APP_SECRET = "app-secret"
+#: Seconds the double stays inside process_turn after announcing the
+#: reply's [audio] text, standing in for the generation a real turn spends
+#: there.
+GENERATING_THE_REST_OF_THE_REPLY = 0.05
 LINKED_NUMBER = "34600000001"
 LINKED_EMAIL = "alice@example.com"
 
@@ -212,12 +216,15 @@ class _FakeChatService:
         self.in_turn = True
         try:
             # The real turn emits the reply's [audio] text well before the
-            # rest of the reply is written — mirrored here, with a yield to
-            # the loop so whatever that callback started gets to run mid-turn.
+            # rest of the reply is written, and then spends seconds writing
+            # it — long enough for the synthesis that announcement starts
+            # to get going. On the Bus that is a queued frame, a drain task
+            # and a listener away, so the double has to stay in the turn
+            # for more than the single loop tick it used to.
             audio_text = self.reply_audio_text if self.spoken_reply_wanted(session_id) else None
             if on_metadata is not None and self.announces_audio and audio_text:
                 on_metadata("audio", self.announced_audio_text or audio_text)
-                await asyncio.sleep(0)
+                await asyncio.sleep(GENERATING_THE_REST_OF_THE_REPLY)
             if user_message_id is None:
                 self.db.add(session_id, "user", text)
             if self.turn_already_answered:

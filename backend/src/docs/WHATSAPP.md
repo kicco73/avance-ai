@@ -1,10 +1,12 @@
 # WhatsApp channel (Meta Cloud API)
 
 WhatsApp as one more chat client of the very same live sessions the SPA
-uses — not a separate bot. An inbound text from a linked number becomes
-`TurnService.process_turn` on that account's current live session (its
-active project, its Terms acceptance, its history); every assistant
-message the turn persisted goes back out through the Cloud API. Nothing
+uses — not a separate bot. An inbound text from a linked number is posted
+on the Bus as `input.text` for that account's current live session (its
+active project, its Terms acceptance, its history); core runs the turn
+and what it reports back goes out through the Cloud API. This channel
+routes and never runs a turn itself — see BUS.md, *A channel runs a turn
+by posting one*. Nothing
 WhatsApp-specific is stored: a conversation started on WhatsApp shows up
 in the web UI's Sessions panel, "Label sessions", metrics, etc. exactly
 like one started in the browser.
@@ -15,19 +17,46 @@ Meta ──POST /api/skills/whatsapp/webhook──▶ WhatsAppController   (role
                                          ▼ background task
                                     WhatsAppService.handle
                                          │  number → user_id (User.whatsapp_phone_number)
-                                         │  Session().impersonate(user_id)
+                                         │  WebSession().impersonate(user_id)
                                          ▼
                         TurnService.acquire_exclusive_session
-                        TurnService.get_messages   (open_if_needed → opening message)
-                        TurnService.process_turn
-                                         │  new assistant rows since we started
+                                         │  which session this person is speaking in
+                                         ▼
+                             TurnExchange.run  ──input.text──▶ BUS
+                                         │                      │
+                                         │              turn.input_listener (core)
+                                         ◀──turn.ended/failed───┘
+                                         │  prepared, then the turn's own reply
                                          ▼
                                   WhatsAppCloudApiClient.send_text
 ```
 
+The session is resolved here, by this channel, exactly as the browser
+resolves it over HTTP before it sends a frame: core is handed a session
+and never asked to find one. What tells this turn's frames from anything
+else on the Bus is the `stream_id` the channel puts on the message it
+posts — a whole message from `task.whatsapp()` arrives on `output.text`
+with no stream at all, which is how the two are told apart by
+construction.
+
 ## Files
 
-- `whatsapp/whatsapp_service.py` — identity gate, turn/action orchestration, manual-actions-as-buttons/list, per-sender ordering.
+- `whatsapp/whatsapp_service.py` — identity gate, session acquisition and
+  terms, action handling, manual-actions-as-buttons/list, per-sender
+  ordering, and what each failure code sounds like here (`_NOTICES`: the
+  code is core's, the sentence is this channel's).
+- `whatsapp/turn_exchange.py` — one turn, posted as `input.text` and
+  awaited until its terminal frame comes back on this exchange's own
+  `stream_id`. Also whether that turn is asked for a spoken reply at all
+  (`VoiceReply`/`TextReply`, contributed to `bus.POINT_SPOKEN_REPLY` for
+  as long as the exchange is in flight).
+- `whatsapp/inbound_voice_note.py` — a voice note from Meta as text,
+  published as `input.audio` and taken back as `input.text`. The audio
+  travels as a callable: nothing is downloaded for a message no decoder
+  in this build is going to read.
+- `whatsapp/voice_notes.py` — the reply's `[audio]` text as MP3 bytes,
+  started the moment the turn announces it (`output.speech`) and awaited
+  when the note is actually wanted.
 - `whatsapp/webhook.py` — the inbound half of Meta's wire: the envelope it
   POSTs, the HMAC over it, the redeliveries it sends when the webhook did
   not answer 200 fast enough, and the CommonMark → WhatsApp flattening.
@@ -40,7 +69,7 @@ Meta ──POST /api/skills/whatsapp/webhook──▶ WhatsAppController   (role
   none of it is a conversation.
 - `whatsapp/cloud_api_client.py` — `send_text` (auto-split over 4096 chars), `send_buttons`/`send_list` (interactive replies), `send_audio`, `upload_media`/`download_media`, and `mark_read`.
 - `whatsapp/audio.py` — WAV (as `TalkService` emits it, streaming header included) → MP3. WhatsApp renders OGG/Opus as a voice note (waveform, mic icon) and any other audio type as a plain audio message with the generic player; the bot's replies go out as MP3 so they show as audio messages. Encoder from PyAV, already installed as faster-whisper's dependency; no ffmpeg binary.
-- `chat/turn_service.py` — `manual_actions` on every state payload reaching a client with a known session (`_with_manual_actions`); `automaton/automaton.py`'s `manual_actions_for` is the actual filter, shared with `tracking/wakeup_service.py`'s own cross-project notification push.
+- `turn/turn_service.py` — `manual_actions` on every state payload reaching a client with a known session (`_with_manual_actions`); `automaton/automaton.py`'s `manual_actions_for` is the actual filter, shared with `tracking/wakeup_service.py`'s own cross-project notification push.
 - `whatsapp/whatsapp_controller.py` — the two webhook routes, under `/api/` so `nginx.conf` needs no change. Meta's surface and nothing past it: handshake, signature, envelope, dedup, then one message handed to the service.
 - `config.py` — `WhatsAppServiceConfig` / `whatsapp-service` section (optional, default off; see `.config.example.yml`).
 - `db/models.py` / `db/users.py` — `User.whatsapp_phone_number`, the phone → account link itself.
@@ -48,7 +77,9 @@ Meta ──POST /api/skills/whatsapp/webhook──▶ WhatsAppController   (role
 - `auth/auth_service.py` — `register_via_whatsapp`, the WhatsApp-native signup path (shares `_register_with_invite` with the web's own `complete_registration`).
 - `project/invites.py` — `whatsapp_url` on a created invite's payload, `ShareProjectDialog.vue`'s WhatsApp QR.
 - `tracking/actuators/actuator_set.py` — `task.whatsapp(phone_number, message_md)`, the proactive-send entry point (see below).
-- `tests/test_whatsapp_channel.py` — contract tests with fake TurnService/Db/Cloud API.
+- `whatsapp/tests/` — contract tests with a fake turn service, Db and
+  Cloud API, and the real `TurnInput` behind the Bus, so a turn here goes
+  the way it goes in the real process.
 
 ## Identity
 
@@ -107,8 +138,10 @@ email at all.
   manual actions behaves exactly as before — plain text only. Same 24h
   free-form window as any other reply (see below) — buttons/lists are
   never sent outside it either.
-- Non-chat/final state (`process_turn` → 409): a short notice pointing to
-  the web. A session no longer this channel's own (a race right after
+- Non-chat/final state (`turn.failed`, code `state_not_chat`): a short
+  notice pointing to the web, with the current state's own buttons — a
+  notice that says "use an action instead" had better come with actions.
+  A session no longer this channel's own (a race right after
   `acquire_exclusive_session`, since a live session belongs to one channel
   at a time — see "Channel exclusivity" below): a "continued somewhere
   else" notice instead.
@@ -134,8 +167,9 @@ email at all.
 
 ## Channel exclusivity
 
-A live session belongs to exactly one channel (`ChatSession.channel`,
-`native-chat` or `whatsapp-chat`), fixed at creation. Continuing from the
+A live session belongs to exactly one channel (`CoreSession.channel`,
+`webchat` or `whatsapp` — each the name of the package that channel is,
+see `turn/channels.py`), fixed at creation. Continuing from the
 other channel doesn't reuse it: `TurnService.acquire_exclusive_session`
 (WhatsApp's own bootstrap, in place of the web's
 `get_current_session_if_any_or_create_new`) closes it (`close_reason`
@@ -160,10 +194,10 @@ no linked account, a failed API call, or no `whatsapp-service` section
 configured at all. Same 24h free-form window constraint as any other
 send (below): a proactive message outside it will be rejected by the API.
 
-Once sent, `TurnService.record_whatsapp_send` gives the message a home in
-that recipient's own Sessions panel: their currently open session (any
+Once sent, `TurnService.record_unsolicited_reply` gives the message a home
+in that recipient's own Sessions panel: their currently open session (any
 channel) on the action's own project if there is one, else a freshly
-opened `whatsapp-chat` one — `message_md` lands in it as an `assistant`
+opened `whatsapp` one — `message_md` lands in it as an `assistant`
 row. This never runs the automaton (no transition, no `env:`, no
 tracking row) — it's a transcript entry, not a turn. A failure here is
 logged and swallowed; it never flips a successful send back to `False`.
