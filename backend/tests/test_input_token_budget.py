@@ -206,7 +206,12 @@ async def test_message_tokens_is_the_sum_of_every_rounds_own_input_tokens(db):
     processor = TrackingProcessorAfterUserMessage(
         MultiRoundAiService(), scope_builder, env, db, _user_variables(automaton, session_id),
     )
-    result = await processor.process("hello")
+    # Persisted before the turn runs and handed over as an id, the way
+    # the real caller does it (see TurnService.accept_user_message): a
+    # turn is bound to the messages it answers, and one nobody sent is
+    # bound to none.
+    said = db.save_message("user", "hello", session_id)
+    result = await processor.process("hello", user_message_ids=[said])
 
     user_message = db.get_message(result["user_message_id"])
     assert user_message["tokens"] == 250
@@ -234,7 +239,12 @@ async def test_message_cache_read_tokens_is_also_summed_across_every_round(db):
     processor = TrackingProcessorAfterUserMessage(
         MultiRoundAiServiceWithCacheReads(), scope_builder, env, db, _user_variables(automaton, session_id),
     )
-    result = await processor.process("hello")
+    # Persisted before the turn runs and handed over as an id, the way
+    # the real caller does it (see TurnService.accept_user_message): a
+    # turn is bound to the messages it answers, and one nobody sent is
+    # bound to none.
+    said = db.save_message("user", "hello", session_id)
+    result = await processor.process("hello", user_message_ids=[said])
 
     user_message = db.get_message(result["user_message_id"])
     assert user_message["tokens"] == 250

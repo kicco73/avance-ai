@@ -12,7 +12,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import MessageBubble from '../../../components/chat/MessageBubble.vue'
 import ActionButtons from '../../../components/chat/ActionButtons.vue'
-import { getMessages, getOperatorState, postAction } from '../api.js'
+import { getMessages, getOperatorState } from '../api.js'
 import { busChannel } from '../../../busChannel.js'
 import { getHumanPromptForSession, removeHumanPrompt } from '../../../humanPromptStore.js'
 import { listenForHumanPrompts } from '../../../humanPromptBus.js'
@@ -56,14 +56,17 @@ onUnmounted(() => {
   stopListeningForPrompts = null
 })
 
+// A choice taken travels the way every other one does — `input.button`
+// on the socket (see backend docs/BUS.md). It used to be an HTTP POST of
+// its own, which stopped existing when the chat's buttons moved onto the
+// bus, and this was left calling a route nothing serves.
 async function handleAction(actionName) {
   actionLoading.value = true
   try {
-    const result = await postAction(actionName, props.sessionId)
-    for (const { content } of result.reply) pushMessage('assistant', content)
-    // Not result.state: that one is filtered by this session's own,
-    // unrelated is_auto_tracking_enabled flag (see ChatService.
-    // get_state_for_operator's own docstring) — re-fetch the operator's
+    busChannel.send({ type: 'input.button', session_id: props.sessionId, id: actionName })
+    // Not what the turn reports: that state is filtered by this session's
+    // own, unrelated is_auto_tracking_enabled flag (see TurnService.
+    // get_state_for_operator's own docstring) — re-read the operator's
     // own "every action is manual" view instead.
     state.value = await getOperatorState(props.sessionId)
   } catch {

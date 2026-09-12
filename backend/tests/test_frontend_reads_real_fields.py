@@ -31,6 +31,14 @@ PAYLOAD = BACKEND_ROOT / "src" / "turn" / "turn_service.py"
 #: `session.<field>` and `session?.<field>`, in .js and .vue alike.
 READ = re.compile(r"\bsession\??\.([a-z_][a-z0-9_]*)\b")
 
+#: What is never a read, however much it looks like one: a Bus type name
+#: is a string (`'session.new'`) and a reference to one is a comment.
+#: Taking either for a field of the session payload is the one false
+#: positive this test has.
+NOT_CODE = re.compile(
+    r"/\*.*?\*/|<!--.*?-->|//[^\n]*|'[^'\n]*'|\"[^\"\n]*\"|`[^`]*`", re.S,
+)
+
 #: Fields a session payload carries from somewhere other than
 #: _session_payload, each with the method that adds it. Listed rather
 #: than discovered: a field nobody can point at is the thing this test is
@@ -68,7 +76,7 @@ def _read_fields() -> dict[str, set[str]]:
     for path in sorted(FRONTEND_SRC.rglob("*")):
         if path.suffix not in (".js", ".vue") or not path.is_file():
             continue
-        for field in READ.findall(path.read_text()):
+        for field in READ.findall(NOT_CODE.sub("", path.read_text())):
             found.setdefault(field, set()).add(str(path.relative_to(FRONTEND_SRC)))
     return found
 
