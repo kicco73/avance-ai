@@ -140,8 +140,8 @@ only, and the frontend needs both answers.
 ## Frontend — the same shape, one skill at a time
 
 Every skill with a frontend now has one, on the same shape as its
-package: `build`, `testing`, `talk`, `listen`, `whatsapp`, `webchat`. The
-layout mirrors the backend one-for-one:
+package: `build`, `testing`, `talk`, `listen`, `whatsapp`, `webchat`,
+`platform`. The layout mirrors the backend one-for-one:
 
 ```
 frontend/src/skills/<key>/
@@ -261,11 +261,36 @@ a `platform` that was not there — the directory did not exist, nothing
 was deleted, and nothing was looked for. One substring, `skills/<key>/`,
 covers both the import path and the route.
 
-`platform` is the case that still has no answer: a build may drop
-`avance_platform`, but the authoring frontend it serves — the editor,
-settings, the app store, login, labeling — is spread across the frontend
-core rather than gathered under `src/skills/platform/`, so no build can
-drop it yet. The build now says so and fails; the split is open work.
+`platform` was the case with no answer, and now has one. The authoring
+frontend — the editor, settings, the app store, labeling — is gathered
+under `src/skills/platform/`, `FrontendCopy(frontend, out,
+['avance_platform'])` succeeds, and the frontend it delivers names
+platform nowhere.
+
+What settled it was a question rather than a rule about directories:
+**describing the domain is the core's, deciding or operating on it is a
+panel's.** A `CoreSession` is domain — webchat opens one, whatsapp opens
+one, a test opens one, and none of them owns it — so reading and writing
+one stays in the core, whoever is at the other end. A database backup is
+not: nothing about the domain changes because somebody asked for one, so
+the button and the route behind it leave with the panel that offers them.
+Asked route by route, that question puts each one on a side without
+anybody arguing about who owns it, which is why the split stopped being
+open work.
+
+The rest is three leaf modules, each letting the core ask for something a
+skill provides without naming it: `liveChatChannel.js` (the endpoints the
+one live chat talks to — webchat's, and the worked example below),
+`modelSelector.js` (which model answers, and who may change it) and
+`watchedSessions.js` (which sessions this tab is currently showing). All
+three are low in the import graph and import no registry; whoever boots
+the app hands each of them what the registry collected. Until that
+happens, and in a build where nothing was collected, they hold nothing —
+a null object in the first two, an empty set in the third — so a build
+without the panel *offers less* rather than breaking: the live chat opens
+no session, no screen offers a model to switch to, and a takeover frame
+finds no test chat watching. Nothing left in the core knows which skill
+would have answered, or that one exists.
 
 `webchat` was in the same position and is out of it, which is worth
 reading as the worked example. Two things got it there. First, the

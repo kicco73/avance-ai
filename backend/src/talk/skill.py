@@ -112,12 +112,11 @@ class TalkSkill(Skill):
         bus.contribute(POINT_SPOKEN_REPLY, self._answer_spoken_reply)
 
     def _answer_spoken_reply(self, spoken) -> None:
-        """Whether a turn should ask the model for a spoken version of
-        its reply (see bus.POINT_SPOKEN_REPLY). `wanted` is the turn's
-        own say — a session with audio off should not pay for the extra
-        field — and the project may narrow this service, never turn it
-        on."""
-        if spoken.wanted and spoken.services[self.key].narrow(bool(self._providers)):
+        """Whether this build can speak a reply at all (see
+        bus.POINT_SPOKEN_REPLY): the project may narrow this service,
+        never turn it on. Whether the turn has any use for audio is
+        somebody else's half of the answer."""
+        if spoken.services[self.key].narrow(bool(self._providers)):
             spoken.ask()
 
     def _enabled_for_the_active_project(self) -> bool:

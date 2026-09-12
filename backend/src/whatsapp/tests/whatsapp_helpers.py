@@ -13,8 +13,11 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from auth.auth_middleware import AuthMiddleware
+from automaton.project_services import ProjectServices
 from system import bus
-from system.bus import OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, Message
+from system.bus import INPUT_TEXT, OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, POINT_SPOKEN_REPLY, Message
+from tracking.spoken_reply import SpokenReply
+from turn.input_listener import TurnInput
 from whatsapp.config import WhatsAppServiceConfig
 from whatsapp.whatsapp_controller import WhatsAppController
 from system.service_error import ServiceError
@@ -86,6 +89,9 @@ class _FakeDb:
 
     def get_user_by_whatsapp_phone_number(self, whatsapp_phone_number):
         return self.users.get(whatsapp_phone_number)
+
+    def get_user_by_id(self, user_id):
+        return next((user for user in self.users.values() if user["id"] == user_id), None)
 
     def get_messages(self, session_id, last_n=None):
         rows = [m for m in self.messages if m["session_id"] == session_id]
@@ -182,7 +188,21 @@ class _FakeChatService:
     def get_state_for_session(self, session_id):
         return self.state
 
-    async def process_turn(self, session_id, text, on_metadata=None, audio_wanted=True):
+    def accept_user_message(self, session_id, text):
+        """Persisted before the turn runs and handed over as an id, like
+        the real one — a turn that never happens still leaves the message
+        the person sent."""
+        return self.db.add(session_id, "user", text)
+
+    def spoken_reply_wanted(self, session_id):
+        """The real question core asks before building the prompt (see
+        tracking/spoken_reply.py): nobody wanting it, or nothing able to
+        speak, and the reply is never given an [audio] text at all."""
+        return bus.collect(
+            POINT_SPOKEN_REPLY, SpokenReply(services=ProjectServices({}), session_id=session_id),
+        ).asked
+
+    async def process_turn(self, session_id, text, on_metadata=None, user_message_id=None):
         self.calls.append(("turn", WebSession().user))
         if self.turn_error is not None:
             error = self.turn_error
@@ -194,14 +214,16 @@ class _FakeChatService:
             # The real turn emits the reply's [audio] text well before the
             # rest of the reply is written — mirrored here, with a yield to
             # the loop so whatever that callback started gets to run mid-turn.
-            if on_metadata is not None and self.announces_audio and self.reply_audio_text:
-                on_metadata("audio", self.announced_audio_text or self.reply_audio_text)
+            audio_text = self.reply_audio_text if self.spoken_reply_wanted(session_id) else None
+            if on_metadata is not None and self.announces_audio and audio_text:
+                on_metadata("audio", self.announced_audio_text or audio_text)
                 await asyncio.sleep(0)
-            self.db.add(session_id, "user", text)
+            if user_message_id is None:
+                self.db.add(session_id, "user", text)
             if self.turn_already_answered:
                 return {"session_id": session_id, "state": self.state, "assistant_message_id": None, "reply": []}
             assistant_id = self.db.add(
-                session_id, "assistant", f"**Hola** — has dicho: {text}", audio_text=self.reply_audio_text,
+                session_id, "assistant", f"**Hola** — has dicho: {text}", audio_text=audio_text,
             )
         finally:
             self.in_turn = False
@@ -346,9 +368,21 @@ def _build(config=None, talk=None, listen=None):
             ))
 
         bus.subscribe(OUTPUT_SPEECH, speak)
+        # The other half of what the talk skill registers: a build that
+        # can speak says so where the prompt is built (see talk/skill.py's
+        # own POINT_SPOKEN_REPLY contributor), and a turn is only ever
+        # given an [audio] text when something answered there.
+        bus.contribute(POINT_SPOKEN_REPLY, lambda spoken: spoken.ask())
     service_config = config or _config()
     service = WhatsAppService(service_config, chat, db, auth, client=api)
     service.register()
+    # Turns are run by core, off the Bus, exactly as they are in the real
+    # process: this channel posts `input.text` and reads the frames that
+    # come back (see turn/input_listener.py). One listener per _build, like
+    # output.speech below: a second env in the same test must not have the
+    # first one's turn service answer for it.
+    bus._listeners[INPUT_TEXT] = []
+    TurnInput(chat, db).register()
     app = FastAPI()
     # The real app's login wall sits in front of these routes too — they
     # must be reachable with no cookie at all (role=None).

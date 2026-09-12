@@ -28,15 +28,31 @@ from automaton.project_services import ProjectServices
 class SpokenReply:
     """`services` is what the project declared, which a contributor reads
     its own level out of — a project may narrow the server's own switch
-    and never turn it on. `wanted` is whether this particular turn has any
-    use for audio at all; a contributor that ignores it would have a
-    session with audio off still paying for the extra field.
+    and never turn it on.
 
-    `asked` starts False and stays False when nothing contributes."""
+    Two independent answers, from two different kinds of contributor, and
+    neither may be assumed to arrive first: whoever runs the interface
+    this session is being had on says whether a spoken reply is any use
+    here at all (`want`), and whoever can speak says whether it can be
+    produced for this project (`ask`). `asked` is both, which is why it is
+    computed rather than set — a contributor that read the other's answer
+    while collecting would depend on registration order.
+
+    `session_id` is which conversation is being asked about: an interface
+    answers per session — the chat window's own audio toggle, a phone
+    channel's reply-in-kind policy — and has nothing else to key on."""
 
     services: ProjectServices
-    wanted: bool
-    asked: bool = False
+    session_id: int | None = None
+    wanted: bool = False
+    speakable: bool = False
+
+    @property
+    def asked(self) -> bool:
+        return self.wanted and self.speakable
+
+    def want(self) -> None:
+        self.wanted = True
 
     def ask(self) -> None:
-        self.asked = True
+        self.speakable = True

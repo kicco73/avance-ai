@@ -10,8 +10,8 @@ import AppStoreView from './components/appStore/AppStoreView.vue'
 export const key = 'platform'
 
 // The screen a role lands on. A build without this directory contributes
-// none, and App.vue is left with the one role the core answers by itself:
-// a user, in the chat window. That is what a delivered product is.
+// none, and App.vue falls back for every role to the one screen the core
+// answers by itself: the chat window. That is what a delivered product is.
 export const roleHomes = [
   { role: 'admin', component: AdminHome },
   { role: 'supervisor', component: LabelProjectView },

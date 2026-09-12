@@ -158,7 +158,6 @@ class TrackingProcessor(object):
 			  db: Db,
 			  user_variables: UserVariables,
 			  auto_tracking_enabled: bool = True,
-			  audio_wanted: bool = True,
 			  input_token_budget_per_turn: int | None = 16000,
 			  assistant_talker: "BaseTalker | None" = None,
 		):
@@ -173,7 +172,6 @@ class TrackingProcessor(object):
 		self.db = db
 		self.user = user_variables
 		self.auto_tracking_enabled = auto_tracking_enabled
-		self.audio_wanted = audio_wanted
 		self.input_token_budget_per_turn = input_token_budget_per_turn
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder, auto_tracking_enabled)
 
@@ -496,11 +494,10 @@ class TrackingProcessor(object):
 		started in. OutputPrompt is always first, before signals (so output
 		values are available to triggers when signals arrive)."""
 		has_to_evaluate_signals_before_ai_reply = not self.user.automaton.autotracking_on_ai_message
-		talk_enabled = _spoken_reply_wanted(self.user.automaton.services, self.audio_wanted)
+		talk_enabled = _spoken_reply_wanted(self.user.automaton.services, self.user.session_id)
 		logger.info(
-			"build_turn_prompt spoken reply: project=%r revision=%s session=%s audio_wanted=%s -> %s",
-			self.user.project_id, self.user.automaton.revision, self.user.session_id,
-			self.audio_wanted, talk_enabled,
+			"build_turn_prompt spoken reply: project=%r revision=%s session=%s -> %s",
+			self.user.project_id, self.user.automaton.revision, self.user.session_id, talk_enabled,
 		)
 		reactions_enabled = self.user.automaton.reactions_enabled_for(self.user.state)
 
@@ -667,13 +664,14 @@ class TrackingProcessor(object):
 		return payload
 
 
-def _spoken_reply_wanted(services: ProjectServices, wanted: bool) -> bool:
-	"""Asks whoever can speak (see bus.POINT_SPOKEN_REPLY). Nobody
-	registered means nothing speaks, which is the right answer for a build
-	without that package — and the reason this is a question and not the
-	`talk_enabled` argument it used to be, threaded from main.py through
-	TrackingService to be combined with a name core had to know."""
-	return bus.collect(POINT_SPOKEN_REPLY, SpokenReply(services=services, wanted=wanted)).asked
+def _spoken_reply_wanted(services: ProjectServices, session_id: int | None) -> bool:
+	"""Asks whoever can speak, and whoever runs the interface this session
+	is being had on (see bus.POINT_SPOKEN_REPLY). Nobody registered means
+	nothing speaks and nothing wants it, which is the right answer for a
+	build without those packages — and the reason this is a question and
+	not the `talk_enabled` argument it used to be, threaded from main.py
+	through TrackingService to be combined with a name core had to know."""
+	return bus.collect(POINT_SPOKEN_REPLY, SpokenReply(services=services, session_id=session_id)).asked
 
 
 def estimate_state_prompt(

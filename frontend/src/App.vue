@@ -215,8 +215,11 @@ onBeforeUnmount(() => {
     </Teleport>
 
     <div class="app-body" :class="{ 'app-body-flip-space': currentUserRole === 'admin' || currentUserRole === 'customer' }">
+      <!-- A role nobody contributed a home for lands here too: in a build
+           without the skill that owns that screen, the product still works,
+           it simply has no shop front and no editor in front of it. -->
       <LiveChatWindow
-        v-if="currentUserRole === 'user'"
+        v-if="currentUserRole === 'user' || !roleHome"
         ref="chatWindowRef"
         :project-id="landingProjectId"
         :role="currentUserRole"
@@ -224,7 +227,7 @@ onBeforeUnmount(() => {
         v-on="liveChatListeners"
       />
 
-      <template v-else-if="roleHome">
+      <template v-else>
         <div class="view-flip-base" :class="flipBaseClass">
           <component
             :is="roleHome.component"

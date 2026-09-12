@@ -76,14 +76,22 @@ def test_put_comment_is_404_for_an_unknown_message(client, hello_project):
 def test_put_comment_does_not_disturb_expected_state_on_the_same_row(client, hello_project):
     session = client.get("/api/skills/webchat/sessions/current").json()
     chat_turn(client, session['id'], "hi")
-    # Picks the side with a real Tracking row, so the comment is written
-    # alongside an existing expected_state rather than a bare row.
     session_id = session["id"]
     messages = client.get(f"/api/skills/webchat/sessions/{session_id}/messages").json()
-    user_message_id = next(m["id"] for m in messages if m["role"] == "user")
-    client.put(f"/api/skills/platform/messages/{user_message_id}/expected-state", json={"expected_state": "Hello"})
+    # The evaluation point is the *assistant* line: a turn records what the
+    # automaton decided, and the user's own message is not a decision. This
+    # test used to pick the user side, where set_message_expected_state
+    # answers 409 — and since nothing asserted that, the annotation it
+    # meant to protect was never written, and the comment landed on a bare
+    # row whose expected_state was null all along. Asserting the setup is
+    # what stops the same silence coming back.
+    annotated_id = messages[0]["id"]
+    prepared = client.put(
+        f"/api/skills/platform/messages/{annotated_id}/expected-state", json={"expected_state": "Hello"},
+    )
+    assert prepared.status_code == 200, prepared.text
 
-    response = client.put(f"/api/skills/platform/messages/{user_message_id}/comment", json={"comment": "context for the reviewer"})
+    response = client.put(f"/api/skills/platform/messages/{annotated_id}/comment", json={"comment": "context for the reviewer"})
 
     assert response.status_code == 200
     body = response.json()

@@ -490,8 +490,7 @@ export function createChatStore({
       // Correlate this bubble with its real backend id — needed by
       // testTimeline.js's effectiveTimestamp to position a pre-turn
       // transition exactly on this message rather than a raw server
-      // timestamp. Read directly from assistant_message_id/user_message_id,
-      // never from result.reply (always empty for a live turn).
+      // timestamp. Read directly from assistant_message_id/user_message_id.
       // Same "replace, don't mutate in place" rule as onChunk above — `message`
       // is the raw object this closure was handed, not the reactive proxy
       // Vue wraps around whatever's actually sitting in messages.value, so

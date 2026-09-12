@@ -40,10 +40,10 @@ vi.mock('../../../api.js', () => ({
 }))
 
 // Mounting ChatView is the heaviest thing this suite does, and vitest's
-// 5s default is measured against an idle machine: with another suite
-// running alongside these time out while passing in about a second on
-// their own.
-vi.setConfig({ testTimeout: 10_000 })
+// 5s default is measured against an idle machine. This file alone takes
+// about 8s; under the whole suite's parallel load it lost to a 10s ceiling,
+// so the limit is that observed ceiling plus 30%.
+vi.setConfig({ testTimeout: 13_000 })
 
 describe('the live chat and the "Run" test chat are genuinely independent stores', () => {
   it('each ChatView instance shows only its own store\'s content, simultaneously, with no clearing needed', async () => {

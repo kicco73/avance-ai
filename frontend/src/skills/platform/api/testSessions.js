@@ -5,12 +5,6 @@ const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 // The editor's embedded "Test" chat: its own session pool, against the
 // draft revision rather than the published one, plus the dev-mode switch
 // that freezes automatic transitions.
-//
-// IMPORTANT — these are platform's routes, called from a core file, and
-// they belong in skills/platform/. They cannot go there until
-// chatStoreFactory receives them injected the way it already receives
-// postAction and getMessages: the caller is testChatStore, which is
-// platform's too, and so is aiModelStore next door for the same reason.
 
 // EditProjectView's embedded "Test" chat — the one place a session can
 // exist against an unpublished revision. Which revision applies is

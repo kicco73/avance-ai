@@ -296,7 +296,6 @@ class TrackingService(object):
 		ai_service: AiService,
 		on_metadata: OnMetadata | None = None,
 		user_message_ids: list[int] | None = None,
-		audio_wanted: bool = True,
 		):
 
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
@@ -339,7 +338,6 @@ class TrackingService(object):
 			ai_service, scope_builder,
 			env, self._db, user_vars,
 			auto_tracking_enabled=self.is_auto_tracking_enabled(session_id) if is_test_session else True,
-			audio_wanted=audio_wanted,
 			input_token_budget_per_turn=self._input_token_budget_per_turn,
 		)
 

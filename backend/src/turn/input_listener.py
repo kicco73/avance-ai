@@ -108,7 +108,6 @@ class TurnInput(object):
         try:
             result = await self._turn_service.process_turn(
                 session_id, text, on_metadata=outbound.on_metadata, user_message_id=user_message_id,
-                audio_wanted=self._turn_service.is_audio_enabled(session_id),
             )
             outbound.put(TURN_ENDED, {**result, "prepared": prepared})
         except ServiceError as exc:

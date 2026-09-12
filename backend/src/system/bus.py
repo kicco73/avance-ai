@@ -283,6 +283,16 @@ def contribute(point: str, contributor: Contributor) -> None:
     _contributors.setdefault(point, []).append(contributor)
 
 
+def withdraw(point: str, contributor: Contributor) -> None:
+    """For a contributor that only wanted one exchange — the mirror of
+    unsubscribe, and registered for the same reason: a phone channel's
+    answer to "does this turn want a spoken reply" is true only while the
+    turn it is running is in flight, and only for that session."""
+    contributors = _contributors.get(point)
+    if contributors is not None and contributor in contributors:
+        contributors.remove(contributor)
+
+
 def collect(point: str, target: Any) -> Any:
     """Hands `target` to everyone registered for `point`, in registration
     order, and gives it back. Synchronous and immediate: a contribution
