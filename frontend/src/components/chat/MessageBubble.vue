@@ -135,6 +135,12 @@ onBeforeUnmount(clearLongPressTimer)
 // actually do (see chat/ws_turn.py's own "typing" key).
 const isAwaitingReply = computed(() => props.message.role === 'assistant' && props.message.awaitingReply === true)
 
+// A row waiting for its own words, whichever side is producing them: a
+// reply being written, or what a person said on its way back as text
+// (see chatStoreFactory.js's own beginVoiceMessage). To whoever is
+// reading there is no difference, so it is one thing here too.
+const isAwaitingText = computed(() => isAwaitingReply.value || props.message.transcribing === true)
+
 // True from the moment a turn's own placeholder is created until its
 // first real signal (a 'typing' frame, or real content) arrives — see
 // chatStoreFactory.js's own submitMessage. The placeholder must occupy
@@ -193,6 +199,7 @@ const {
           message.failed ? 'bubble-failed' : '',
           {
             'bubble-bulging': longPressActive,
+            'bubble-arriving': isAwaitingText,
             'bubble-reactable': message.role === 'assistant' && reactions.length
           }
         ]"
@@ -207,7 +214,12 @@ const {
           <span v-if="isAwaitingReply && message.statusText" key="status" class="tool-status-text" aria-live="polite">
             {{ message.statusText }}
           </span>
-          <span v-else-if="isAwaitingReply" key="dots" class="typing-dots" aria-label="Waiting for reply">
+          <span
+            v-else-if="isAwaitingText"
+            key="dots"
+            class="typing-dots"
+            :aria-label="message.role === 'user' ? 'Turning what you said into text' : 'Waiting for reply'"
+          >
             <span class="typing-dot"></span>
             <span class="typing-dot"></span>
             <span class="typing-dot"></span>
@@ -500,6 +512,24 @@ const {
 .tool-status-fade-enter-active,
 .tool-status-fade-leave-active {
   transition: opacity 0.25s ease;
+}
+
+/* The bubble the reply is about to be written into, on its way in: it is
+   the first thing that appears after you send, so it arrives rather than
+   snapping into place. Same 0.25s as the fade above. */
+.bubble-arriving {
+  animation: bubble-arriving-fade-in 0.25s ease;
+}
+
+@keyframes bubble-arriving-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .tool-status-fade-enter-from,

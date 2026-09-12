@@ -51,10 +51,16 @@ describe('busChannel registration', () => {
   })
 
   it('never registers a frame type the server does not export', () => {
-    busChannel.subscribe('human_prompt', () => {})
     busChannel.subscribe('turn.ended', () => {})
+    busChannel.subscribe('output.text_stream', () => {})
 
     expect(registrations(sockets[0])).toEqual([])
+  })
+
+  it('registers human_prompt, which is what makes this tab the one answering', () => {
+    busChannel.subscribe('human_prompt', () => {})
+
+    expect(registrations(sockets[0])).toEqual([{ type: 'subscribe', events: ['human_prompt'] }])
   })
 
   it('restates every live registration on a reconnection, and nothing about one already dropped', async () => {

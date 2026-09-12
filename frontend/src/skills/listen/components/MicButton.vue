@@ -8,7 +8,10 @@ import { unlockAudioPlayback } from '../../../audio.js'
 
 const props = defineProps({
   store: { type: Object, required: true },
-  disabled: { type: Boolean, default: false }
+  disabled: { type: Boolean, default: false },
+  // Shown regardless of what this conversation can reach: a row that is
+  // standing in for a chat (see ChatInput.vue's own `sample`).
+  sample: { type: Boolean, default: false }
 })
 
 const recording = ref(false)
@@ -62,7 +65,7 @@ async function stopPtt() {
 
 <template>
   <button
-    v-if="configured"
+    v-if="configured || sample"
     type="button"
     class="chat-input-control mic-btn"
     :class="{ 'mic-btn-recording': recording }"

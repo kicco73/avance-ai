@@ -17,7 +17,6 @@ export const liveStore = createChatStore({
   getCurrentSession: (sessionId) => liveChatChannel().getCurrentSession(sessionId),
   getSessionsList: (includeImported, projectId) => getSessions(projectId, includeImported),
   createSession: () => liveChatChannel().createSession(),
-  postAction: (actionName, sessionId) => liveChatChannel().postAction(actionName, sessionId),
   getMessages: (sessionId) => liveChatChannel().getMessages(sessionId),
   confirmNewSession: true,
   useAutoTracking: false,

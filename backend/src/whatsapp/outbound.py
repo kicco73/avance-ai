@@ -78,7 +78,7 @@ class Outbound(object):
         return self._voice_notes is not None
 
     async def send(
-        self, to: str, replies: list[Reply], manual_actions: list[dict] | None, session_id: int | None,
+        self, to: str, replies: list[Reply], buttons: list[dict] | None, session_id: int | None,
         voice: bool = False,
     ) -> None:
         """Each reply goes out once — as a voice note when `voice` and the
@@ -86,7 +86,7 @@ class Outbound(object):
         otherwise. Buttons ride on the last reply's text; after a spoken
         last reply they come on a short follow-up prompt instead."""
         replies = [r for r in replies if r.text]
-        if not manual_actions:
+        if not buttons:
             for reply in replies:
                 await self._send_one(to, reply, voice)
             return
@@ -94,9 +94,9 @@ class Outbound(object):
         for reply in leading:
             await self._send_one(to, reply, voice)
         if voice and await self._try_voice_note(to, last):
-            await self._send_with_buttons(to, REPLY_OPTIONS_PROMPT, manual_actions, session_id)
+            await self._send_with_buttons(to, REPLY_OPTIONS_PROMPT, buttons, session_id)
         else:
-            await self._send_with_buttons(to, last.text, manual_actions, session_id)
+            await self._send_with_buttons(to, last.text, buttons, session_id)
 
     async def _send_one(self, to: str, reply: Reply, voice: bool) -> None:
         if voice and await self._try_voice_note(to, reply):
@@ -135,13 +135,13 @@ class Outbound(object):
             return False
 
     async def _send_with_buttons(
-        self, to: str, body: str, manual_actions: list[dict], session_id: int | None,
+        self, to: str, body: str, buttons: list[dict], session_id: int | None,
     ) -> None:
         if len(body) > _INTERACTIVE_BODY_LIMIT:
             await self._client.send_text(to, body)
             body = REPLY_OPTIONS_PROMPT
 
-        actions = manual_actions
+        actions = buttons
         if len(actions) > _MAX_LIST_ROWS:
             logger.warning(f"WhatsApp: state has {len(actions)} manual actions, sending only the first {_MAX_LIST_ROWS}.")
             actions = actions[:_MAX_LIST_ROWS]

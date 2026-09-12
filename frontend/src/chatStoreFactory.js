@@ -4,9 +4,10 @@ import {
   putSessionAudio,
   postTruncateSession, deleteSession, postCloseSession, putMessageReaction,
 } from './api.js'
-import { sendMessage as sendChatMessage, onConnectionState, getConnectionState } from './chatClient.js'
 import { busChannel } from './busChannel.js'
+import { publishServices } from './skillServices.js'
 import { ChatReconnectSync } from './chatReconnectSync.js'
+import { ChatExchange } from './chatExchange.js'
 import { modelSelector } from './modelSelector.js'
 import { watchSession } from './watchedSessions.js'
 import { ToolStatusHold } from './toolStatusHold.js'
@@ -20,7 +21,7 @@ import { registerSkinSource } from './chatSkin.js'
 
 const SESSION_INACTIVE_CODES = ['session_closed', 'session_channel_mismatch', 'session_superseded']
 
-// A 'turn.started' frame (see chat/ws_turn.py) turns the dots on; if nothing
+// An empty 'output.text_stream' turns the dots on; if nothing
 // real follows within this long, they turn back off on their own rather
 // than sitting there forever (e.g. an operator who started typing then
 // walked away) — the turn itself keeps waiting regardless, this only
@@ -28,10 +29,10 @@ const SESSION_INACTIVE_CODES = ['session_closed', 'session_channel_mismatch', 's
 const AWAITING_REPLY_TIMEOUT_MS = 15000
 
 // The chat's one transport, as the UI sees it: 'connecting' | 'open' |
-// 'closed' (see chatClient.js). Module-level, not per-store — there is
+// 'closed' (see busChannel.js). Module-level, not per-store — there is
 // exactly one socket per page, whichever chats are open on it.
-export const chatConnectionState = ref(getConnectionState())
-onConnectionState((next) => { chatConnectionState.value = next })
+export const chatConnectionState = ref(busChannel.connectionState)
+busChannel.onConnectionState((next) => { chatConnectionState.value = next })
 
 // App-wide user preferences — genuinely not "which chat" state, so a
 // single shared instance regardless of how many chat stores exist (see
@@ -61,7 +62,7 @@ export function setTotalTokenBudgetPerSession(value) {
 // `kind` ('live'|'test') only ever drives chatSkin.js's routing, nothing
 // about session resolution itself.
 export function createChatStore({
-  kind, getCurrentSession, getSessionsList, createSession, postAction, getMessages, resetSession = null,
+  kind, getCurrentSession, getSessionsList, createSession, getMessages, resetSession = null,
   getAutoTracking = null, putAutoTracking = null,
   confirmNewSession = true, useAutoTracking = false, useActuatorsToggle = false,
   subscribeToNotifications = false,
@@ -93,10 +94,28 @@ export function createChatStore({
   const actuatorsEnabled = ref(false)
   const actuatorsLoading = ref(false)
   const draft = ref('')
+  // What the conversation offers to press, said by the system and by
+  // nothing else: it arrives on `ui.buttons` and lives nowhere near the
+  // state payload (see backend docs/BUS.md).
+  const buttons = ref([])
   const turnCount = ref(0)
   let nextMessageId = 0
 
   registerSkinSource(kind, currentProjectId, currentSessionId)
+
+  // The exchanges still being watched, by the local id of the bubble each
+  // is writing into. A reconnection settles them: their frames are gone
+  // with the socket, and what they produced (if anything) is in the rows
+  // about to be reloaded.
+  const openExchanges = new Map()
+
+  // A dropped socket takes with it every frame that was still coming:
+  // whatever was being written is given up on, and what actually
+  // persisted is in the rows about to be reloaded (see
+  // chatReconnectSync.js).
+  function abandonOpenReplies() {
+    for (const open of [...openExchanges.values()]) open.abandon()
+  }
 
   function bumpTurn() {
     turnCount.value++
@@ -109,7 +128,81 @@ export function createChatStore({
     state.value = newState
   }
 
-  new ChatReconnectSync({ currentSessionId, messages, state, toStoreMessage }).register()
+  new ChatReconnectSync({ currentSessionId, messages, state, toStoreMessage, abandonOpenReplies }).register()
+
+  // The buttons are the system's to say and this store's to show: applied
+  // the moment 'ui.buttons' arrives, on top of whichever state is held,
+  // The choices the conversation offers now: shown the moment they
+  // arrive, never held until an exchange ends.
+  // What this conversation can reach — its own project's answer, said
+  // when it opens. The skills that put a control on screen read it from
+  // here instead of from a switch read once at boot for whichever
+  // project the person happened to have active.
+  busChannel.subscribe('ui.services', (frame) => {
+    if (frame.session_id !== currentSessionId.value) return
+    publishServices(frame.services || {})
+  })
+
+  busChannel.subscribe('ui.buttons', (frame) => {
+    if (frame.session_id !== currentSessionId.value) return
+    buttons.value = frame.actions || []
+  })
+
+  // The system has started writing something. The only thing that opens a
+  // bubble for it — an answer to what was just asked, what a conversation
+  // opens with (see backend docs/BUS.md's own session.new), what a state
+  // says on its own: to whoever is reading there is no difference, so
+  // there is one case here and not one per reason. The frame that started
+  // it arrived before there was anything watching, so it is handed over
+  // by hand.
+  busChannel.subscribe('output.text_stream', (frame) => {
+    if (frame.session_id !== currentSessionId.value) return
+    if (openExchanges.size > 0) return
+    watchReply(frame.session_id).receive(frame)
+  })
+
+  // A whole message that no exchange is waiting for — what a choice
+  // produced, or anything else the system says on its own. An exchange
+  // that is writing takes its own answer (see submitMessage); this is
+  // everything else.
+  busChannel.subscribe('output.text', (frame) => {
+    if (frame.session_id !== currentSessionId.value) return
+    if (openExchanges.size > 0) return
+    if (messages.value.some((m) => m.messageId === frame.assistant_message_id)) return
+    messages.value.push({
+      id: ++nextMessageId,
+      role: 'assistant',
+      content: frame.text,
+      messageId: frame.assistant_message_id,
+      timestamp: frame.timestamp ?? new Date().toISOString(),
+      statusText: ''
+    })
+    playMessageChime()
+    if (frame.assistant_message_id != null) maybeAutoPlayAudio(frame.assistant_message_id)
+    bumpTurn()
+  })
+
+  // Where the conversation is now, said only when it moved. The choices
+  // go with the state that offered them: they are gone until the system
+  // says what this state offers (the `ui.buttons` that follows).
+  busChannel.subscribe('state.changed', (frame) => {
+    if (frame.session_id !== currentSessionId.value) return
+    buttons.value = []
+    handleStateChange(frame.state ?? {})
+  })
+
+  // The model reacted to what the person said — a fact about that
+  // message, carrying its id.
+  busChannel.subscribe('output.reaction', (frame) => {
+    if (frame.session_id !== currentSessionId.value) return
+    const idx = messages.value.findIndex((m) => m.role === 'user' && m.messageId == null)
+    if (idx !== -1) {
+      messages.value[idx] = {
+        ...messages.value[idx], messageId: frame.user_message_id, reaction: frame.reaction
+      }
+    }
+    if (frame.reaction) playReactionChime()
+  })
 
   if (subscribeToNotifications) {
     // A server-pushed cross-project wake-up — can land for a project
@@ -174,6 +267,10 @@ export function createChatStore({
     if (useAutoTracking) await loadAutoTracking()
     if (useActuatorsToggle) await loadActuators()
     await syncAudioPreference()
+    // The conversation is open: whether it has something to say first is
+    // the automaton's business, and what comes back is an ordinary
+    // message (see backend docs/BUS.md's own session.new).
+    busChannel.send({ type: 'session.new', session_id: session.id })
     return session.id
   }
 
@@ -303,10 +400,12 @@ export function createChatStore({
     try {
       const res = await putAutoTracking(currentSessionId.value, !autoTrackingEnabled.value)
       autoTrackingEnabled.value = res.enabled
-      // manual_actions is baked into state at fetch time (see ChatService.
-      // _with_manual_actions) — the toggle just flipped which actions
-      // that filter includes, so the already-loaded state is now stale.
+      // The toggle just flipped which actions count as pressable (see
+      // TurnService.buttons_for), so what the state offers has to be
+      // said again — it is the system's to say, and it says it on
+      // `session.new`.
       state.value = await getSessionState(currentSessionId.value)
+      busChannel.send({ type: 'session.new', session_id: currentSessionId.value })
     } catch {
       // already surfaced via apiFetch
     } finally {
@@ -348,6 +447,14 @@ export function createChatStore({
     messageArrived(messageId)
   }
 
+  // Replace, never mutate in place: `messages.value[i]` is the raw object
+  // this closure was handed, not the reactive proxy Vue wraps around it,
+  // so mutating it would silently never re-render.
+  function patchBubble(localId, fields) {
+    const idx = messages.value.findIndex((m) => m.id === localId)
+    if (idx !== -1) messages.value[idx] = { ...messages.value[idx], ...fields }
+  }
+
   function setMessageFailed(id, failed) {
     const target = messages.value.find((m) => m.id === id)
     if (target) target.failed = failed
@@ -360,28 +467,25 @@ export function createChatStore({
     if (sessionsPanelOpen.value) loadSessions()
   }
 
-  async function submitMessage(message) {
+  // What a person said, onto the socket. Nothing is awaited and no bubble
+  // is prepared for the answer: what the system is writing is the
+  // system's to announce (see the one `output.text_stream` subscriber
+  // above), and a send that never left is the only failure this knows
+  // about.
+  function submitMessage(message) {
     clearApiError()
     setMessageFailed(message.id, false)
+    const sent = busChannel.send({
+      type: 'input.text', session_id: currentSessionId.value, text: message.content,
+    })
+    if (!sent) setMessageFailed(message.id, true)
+  }
+
+  // A message being written, watched into a bubble of its own. One per
+  // session at a time: a reply is written, then the next begins.
+  function watchReply(turnSessionId) {
     turnsInFlight.value++
 
-    // Snapshotted once, up front: this turn's own session, never re-read
-    // off currentSessionId.value below. The AI provider can take a long
-    // time to reply — long enough that the user switches to a completely
-    // different chat before it's back. Without this, every completion
-    // effect below (including the ones that decide which session is
-    // "current") would run against whatever's on screen *then*, not the
-    // session this turn was actually sent for — silently attributing a
-    // stale reply to the wrong, now-open chat.
-    const turnSessionId = currentSessionId.value
-
-    // Pushed right away, same as always — a coalesced turn's own
-    // placeholder must occupy its slot in messages.value immediately
-    // (see chatStoreCoalescing.test.js), or a second send arriving before
-    // this turn's first frame would land its own bubble ahead of this
-    // one's, out of order. `pending` is what actually keeps it invisible
-    // in the meantime (see MessageBubble.vue's own isPending) — nothing
-    // renders it until a real signal (below) clears it.
     const assistantMsgId = ++nextMessageId
     messages.value.push({
       id: assistantMsgId,
@@ -391,245 +495,151 @@ export function createChatStore({
       messageId: null,
       timestamp: new Date().toISOString(),
       pending: true,
-      // Set only by an explicit 'turn.started' frame below — never assumed just
-      // because content starts empty (see MessageBubble.vue's own
-      // isAwaitingReply).
       awaitingReply: false,
-      // Backend-composed line (e.g. "Searching Flights…") shown in place
-      // of the typing dots while a tool call is in flight — see
-      // MessageBubble.vue's own isAwaitingReply branch. Cleared by the
-      // matching tool_result event, no sooner than TOOL_STATUS_MIN_MS
-      // after it was shown (see ToolStatusHold) — "done" never cuts it short.
       statusText: ''
     })
+
     const statusHold = new ToolStatusHold({
       setStatusText: (text) => {
         if (currentSessionId.value !== turnSessionId) return
-        const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
-        if (idx !== -1) messages.value[idx] = { ...messages.value[idx], statusText: text }
+        patchBubble(assistantMsgId, { statusText: text })
       }
     })
 
-    let awaitingReplyTimer = null
-    function clearAwaitingReplyTimer() {
-      clearTimeout(awaitingReplyTimer)
-      awaitingReplyTimer = null
-    }
-    // A 'turn.started' frame is routed here directly (see busChannel.js's own
-    // multi-subscriber support), not through chatClient.js's onChunk —
-    // that file is off limits, and it only ever forwards non-empty
-    // content anyway (see its own `if (turn && data.body)` guard).
-    // This is what actually reveals the bubble in the common case (see
-    // `pending` above) — nothing on screen shows it any sooner.
-    const unsubscribeTyping = busChannel.subscribe('turn.started', (frame) => {
-      if (frame.session_id !== turnSessionId || currentSessionId.value !== turnSessionId) return
-      const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
-      if (idx === -1) return
-      messages.value[idx] = { ...messages.value[idx], pending: false, awaitingReply: true }
-      clearAwaitingReplyTimer()
-      awaitingReplyTimer = setTimeout(() => {
-        const i = messages.value.findIndex((m) => m.id === assistantMsgId)
-        if (i !== -1) messages.value[i] = { ...messages.value[i], awaitingReply: false }
-      }, AWAITING_REPLY_TIMEOUT_MS)
-    })
-
-    // Set the moment onStatus first fires with a non-empty status_text
-    // (a live tool_call event) — the signal that this turn's own
-    // tool_calls are worth fetching once it's done, since a live SSE
-    // turn never carries the persisted trace itself (see the
-    // result.assistant_message_id branch below).
-    let hadToolCall = false
-    // Whether any real text chunk was ever applied to this bubble — once
-    // true, the bubble must never be silently dropped again (see the
-    // catch block below): a user who's already seen partial text must not
-    // have it vanish just because the stream later failed.
-    let hasChunk = false
-
-    try {
-      const result = await sendChatMessage(message.content, turnSessionId, {
-        onStatus: (text) => {
-          if (currentSessionId.value !== turnSessionId) return
-          if (text) hadToolCall = true
+    const mine = () => currentSessionId.value === turnSessionId
+    const exchange = new ChatExchange({
+      sessionId: turnSessionId,
+      bubble: {
+        writing: () => {
+          if (mine()) patchBubble(assistantMsgId, { pending: false, awaitingReply: true })
+        },
+        stopWaiting: () => {
+          if (mine()) patchBubble(assistantMsgId, { awaitingReply: false })
+        },
+        append: (text) => {
+          if (!mine()) return
+          const current = messages.value.find((m) => m.id === assistantMsgId)
+          if (!current) return
+          // Covers the one case the empty piece never arrives: a human
+          // operator whose reply wins the race against their own typing
+          // signal (see talker/human_talker.py's own chat()).
+          patchBubble(assistantMsgId, {
+            content: current.content + text, pending: false, awaitingReply: false
+          })
+        },
+        // The text to be spoken — the answer's spoken version, written
+        // by the model alongside it (see backend docs/BUS.md's own
+        // output.speech).
+        spoken: (text) => {
+          if (mine()) patchBubble(assistantMsgId, { audioText: text })
+        },
+        status: (text) => {
+          if (!mine()) return
           chatStatus.value = text
           if (text) statusHold.show(text)
           else statusHold.hide()
         },
-        onChunk: (chunkText) => {
-          if (currentSessionId.value !== turnSessionId) return
-          hasChunk = true
-          clearAwaitingReplyTimer()
-          // Replace with a new object (not mutate in place) to trigger Vue reactivity
-          const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
-          if (idx !== -1) {
-            messages.value[idx] = {
-              ...messages.value[idx],
-              content: messages.value[idx].content + chunkText,
-              // Covers the one case 'turn.started' never fires: a human
-              // operator whose reply itself wins the race against their
-              // own typing signal (see talker/human_talker.py's own
-              // chat()) — the first thing this bubble ever shows is the
-              // real text.
-              pending: false,
-              awaitingReply: false
-            }
-          }
-        }
-      })
+        said: (said) => finishExchange(said),
+        failed: (frame) => failExchange(frame)
+      }
+    }).watch()
 
-      if (currentSessionId.value !== turnSessionId) {
-        // The user has since switched to a different chat — this reply is
-        // real and already persisted server-side, but has nothing to do
-        // with whatever's on screen now. Applying any of the effects below
-        // would leak session turnSessionId's own reply/state into the chat
-        // actually being viewed (and silently revert currentSessionId back
-        // to it — see the write below). Switching back to turnSessionId
-        // re-fetches its real history from the server instead (selectSession).
+    openExchanges.set(assistantMsgId, { sessionId: turnSessionId, abandon: done })
+
+    function done() {
+      openExchanges.delete(assistantMsgId)
+      turnsInFlight.value--
+      chatStatus.value = ''
+      exchange.stop()
+    }
+
+    function finishExchange(said) {
+      done()
+      if (!mine()) {
+        // The user has since switched chats. The message is real and
+        // persisted; switching back re-fetches it (selectSession).
         return
       }
-
-      // Correlate this bubble with its real backend id — needed by
-      // testTimeline.js's effectiveTimestamp to position a pre-turn
-      // transition exactly on this message rather than a raw server
-      // timestamp. Read directly from assistant_message_id/user_message_id.
-      // Same "replace, don't mutate in place" rule as onChunk above — `message`
-      // is the raw object this closure was handed, not the reactive proxy
-      // Vue wraps around whatever's actually sitting in messages.value, so
-      // mutating it directly here would silently never re-render.
-      const userIdx = messages.value.findIndex((m) => m.id === message.id)
-      if (userIdx !== -1) {
-        messages.value[userIdx] = {
-          ...messages.value[userIdx],
-          messageId: result.user_message_id ?? messages.value[userIdx].messageId,
-          // The bot's own reaction to this user message, if any — applied
-          // live here so the UI doesn't need a full messages refetch to show
-          // it (see TrackingProcessor._build_turn_response's own user_message_reaction).
-          reaction: result.user_message_reaction ?? null
-        }
-        if (result.user_message_reaction) playReactionChime()
-      }
-
-      // The turn's own persisted assistant message, in the same
-      // {id, content, audio_text, timestamp} shape handleAction already
-      // consumes (see ChatService._build_turn_response) — the one
-      // reconciliation point for this bubble: content is *replaced* here
-      // (never concatenated — a lost chunk earlier in the stream must not
-      // leave a truncated prefix baked in), and the timestamp is the
-      // server's own, not the client clock.
-      const replyMsg = result.reply?.[0] ?? null
-      let idx = messages.value.findIndex((m) => m.id === assistantMsgId)
-      if (replyMsg) {
-        const reconciled = {
-          role: 'assistant',
-          content: replyMsg.content,
-          audioText: replyMsg.audio_text,
-          messageId: replyMsg.id,
-          timestamp: replyMsg.timestamp
-        }
-        if (idx !== -1) {
-          messages.value[idx] = { ...messages.value[idx], ...reconciled }
-        } else {
-          // The bubble is gone — e.g. onVisibilityChange's own
-          // reloadMessages replaced the whole list mid-turn. The reply is
-          // real and already persisted; it must still show up rather than
-          // silently vanish, so it's appended fresh at the end.
-          messages.value.push({ id: assistantMsgId, ...reconciled })
-          idx = messages.value.length - 1
-        }
-      } else if (result.assistant_message_id == null) {
-        // No AI reply was generated this turn (e.g. a pre-turn transition
-        // landed in a state that doesn't chat at all) — remove the empty,
-        // orphaned bubble instead of leaving it.
+      // One answer can cover more than one request: the coalescer takes
+      // whatever arrived while a reply was being written, and every one
+      // of those requests is answered by that same message (see
+      // TurnService._already_answered_response). It is already on screen
+      // — this request's own empty bubble is the one to drop.
+      const alreadyShown = messages.value.some(
+        (m) => m.messageId === said.id && m.id !== assistantMsgId
+      )
+      const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
+      if (alreadyShown) {
         if (idx !== -1) messages.value.splice(idx, 1)
-        idx = -1
-      } else if (idx !== -1) {
-        // Defensive fallback — an assistant_message_id with no matching
-        // reply entry shouldn't happen, but the bubble must never be
-        // dropped once it exists: keep whatever text it already streamed.
+        statusHold.hide()
+        bumpTurn()
+        return
+      }
+      if (idx !== -1) {
         messages.value[idx] = {
           ...messages.value[idx],
-          messageId: result.assistant_message_id,
-          timestamp: new Date().toISOString()
+          content: said.content,
+          messageId: said.id,
+          timestamp: said.timestamp ?? messages.value[idx].timestamp,
+          pending: false,
+          awaitingReply: false
         }
-      }
-
-      statusHold.hide()
-
-      // The live SSE turn only ever streamed status_text/chunks, never the
-      // permanent tool-call trace itself (see toStoreMessage) — fetched
-      // here, once, straight from what a reload would show, so the two
-      // paths agree instead of the trace only ever appearing after a
-      // reload. Keyed off result.assistant_message_id (not replyMsg,
-      // which may be absent even though a tool call — and the message it
-      // produced — really happened).
-      if (hadToolCall && idx !== -1 && result.assistant_message_id != null) {
-        const assistantBackendId = result.assistant_message_id
-        getMessages(turnSessionId).then((history) => {
-          if (currentSessionId.value !== turnSessionId) return
-          const persisted = history.find((m) => m.id === assistantBackendId)
-          if (!persisted?.tool_calls) return
-          const toolCallsIdx = messages.value.findIndex((m) => m.id === assistantMsgId)
-          if (toolCallsIdx !== -1) {
-            messages.value[toolCallsIdx] = {
-              ...messages.value[toolCallsIdx],
-              toolCalls: persisted.tool_calls
-            }
-          }
-        }).catch(() => {
-          // Best-effort — the live trace is cosmetic; a manual reload
-          // still shows it via the normal toStoreMessage path.
+      } else {
+        // The bubble is gone — e.g. onVisibilityChange's own
+        // reloadMessages replaced the whole list. The message is real and
+        // must still show up rather than silently vanish.
+        messages.value.push({
+          id: assistantMsgId, role: 'assistant', content: said.content, messageId: said.id,
+          timestamp: said.timestamp ?? new Date().toISOString(), statusText: ''
         })
       }
 
+      statusHold.hide()
+      loadToolTrace(said.id)
       playMessageChime()
-
-      if (result.assistant_message_id != null) {
-        maybeAutoPlayAudio(result.assistant_message_id)
-      }
-
-      if (result.state) {
-        handleStateChange(result.state)
-      }
-      if (result.ai_model) {
-        modelSelector().applyInfo(result.ai_model)
-      }
-      if (result.session_id != null) {
-        // A turn always lands on a session it just touched — open by definition.
-        currentSessionId.value = result.session_id
-        selectedSessionActive.value = true
-      }
+      if (said.id != null) maybeAutoPlayAudio(said.id)
+      // An exchange always lands on a session it just touched — open by
+      // definition.
+      currentSessionId.value = turnSessionId
+      selectedSessionActive.value = true
       if (sessionsPanelOpen.value) loadSessions()
       bumpTurn()
-    } catch (err) {
-      // On send failure, drop the bubble only if it never showed any real
-      // text — once a chunk has been applied, the user has already seen
-      // it, so it stays (marked failed) rather than vanishing. A no-op if
-      // the user's since switched chats (messages.value is a different
-      // session's array by then, never containing assistantMsgId).
+    }
+
+    function failExchange(frame) {
+      done()
       statusHold.cancel()
+      setApiError(frame.message, frame.detail)
+      // Drop the bubble only if it never showed any real text — once a
+      // piece has been applied the user has already seen it, so it stays
+      // (marked failed) rather than vanishing.
       const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
       if (idx !== -1) {
-        if (hasChunk) {
+        if (exchange.hasChunk) {
           messages.value[idx] = { ...messages.value[idx], failed: true, statusText: '' }
         } else {
           messages.value.splice(idx, 1)
         }
       }
-      setMessageFailed(message.id, true)
-
-      // Only the still-current chat's own "session went inactive" banner
-      // should react to this — a stale turn's error has nothing to say
-      // about whichever different session the user's now looking at.
-      if (currentSessionId.value === turnSessionId) handleSessionInactiveError(err)
-    } finally {
-      // Unconditional, unlike everything above: a turn that started must
-      // always be counted out again on completion — gating it on
-      // turnSessionId would leave a switched-away-from chat counting a
-      // turn nothing is ever going to finish.
-      turnsInFlight.value--
-      chatStatus.value = ''
-      unsubscribeTyping()
-      clearAwaitingReplyTimer()
+      if (mine()) handleSessionInactiveError({ code: frame.code })
     }
+
+    // The permanent tool-call trace is never streamed (see toStoreMessage)
+    // — fetched once, straight from what a reload would show, so the two
+    // paths agree instead of the trace only appearing after a reload.
+    function loadToolTrace(backendId) {
+      if (!exchange.hadToolCall || backendId == null) return
+      getMessages(turnSessionId).then((history) => {
+        if (!mine()) return
+        const persisted = history.find((m) => m.id === backendId)
+        if (!persisted?.tool_calls) return
+        patchBubble(assistantMsgId, { toolCalls: persisted.tool_calls })
+      }).catch(() => {
+        // Best-effort — the live trace is cosmetic; a reload still shows it.
+      })
+    }
+
+    return exchange
   }
 
   async function handleSend(text) {
@@ -652,9 +662,11 @@ export function createChatStore({
     messages.value.push(message)
     return {
       transcribed(text) {
-        message.content = text
-        message.transcribing = false
-        return submitMessage(message)
+        // Through the list, not through the object this closure is
+        // holding: `message` is the raw object that was pushed, and a
+        // write to it never reaches whoever is showing the row.
+        patchBubble(message.id, { content: text, transcribing: false })
+        return submitMessage({ ...message, content: text, transcribing: false })
       },
       abandoned() {
         dropVoicePlaceholder(message.id)
@@ -684,48 +696,22 @@ export function createChatStore({
     }
   }
 
-  async function handleAction(actionName) {
+  // A choice taken. It travels the same road as what a person types
+  // (`input.button` on the socket), and what it produces comes back the same
+  // way — the new state's own message, what it offers next, where the
+  // conversation is now. There is nothing here to await.
+  function handleAction(actionName) {
+    clearApiError()
+    // Off while it is being said, gone once it has been: a choice can be
+    // taken once, and what can be done next is the system's to say (the
+    // `ui.buttons` that follows). If it never left — no socket — they
+    // come back on, because nothing was taken.
     actionLoading.value = true
-    // Same staleness guard as submitMessage above — an action's own reply
-    // can arrive well after the user's moved on to a different chat.
-    const turnSessionId = currentSessionId.value
-    try {
-      const result = await postAction(actionName, turnSessionId)
-
-      if (currentSessionId.value !== turnSessionId) return // see submitMessage's own comment on this check
-
-      for (const { id, content, audio_text, timestamp } of result.reply) {
-        messages.value.push({
-          role: 'assistant',
-          content,
-          audioText: audio_text,
-          messageId: id,
-          // The backend's real timestamp, not the client's clock — two
-          // entries can land here from the same action, and stamping both
-          // with "now" risks the same tie buildTimeline mishandles.
-          timestamp
-        })
-      }
-      if (result.reply.length) {
-        playMessageChime()
-        maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
-      }
-      handleStateChange(result.state)
-      if (result.ai_model) {
-        modelSelector().applyInfo(result.ai_model)
-      }
-      if (result.session_id != null) {
-        currentSessionId.value = result.session_id
-        selectedSessionActive.value = true
-      }
-      if (sessionsPanelOpen.value) loadSessions()
-      bumpTurn()
-    } catch (err) {
-      // already surfaced via apiFetch
-      if (currentSessionId.value === turnSessionId) handleSessionInactiveError(err)
-    } finally {
-      actionLoading.value = false
-    }
+    const taken = busChannel.send({
+      type: 'input.button', session_id: currentSessionId.value, id: actionName,
+    })
+    actionLoading.value = false
+    if (taken) buttons.value = []
   }
 
   function clearChatUi() {
@@ -812,9 +798,10 @@ export function createChatStore({
   }
 
   return {
+    abandonOpenReplies,
     state, currentSessionId, selectedSessionActive, projectPaused, projectPausedReason,
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
-    messages, historyLoaded, chatLoading, chatStatus, actionLoading,
+    messages, historyLoaded, chatLoading, chatStatus, actionLoading, buttons,
     autoTrackingEnabled, autoTrackingLoading, actuatorsEnabled, actuatorsLoading, draft, turnCount,
     handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
     selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking, toggleActuators,

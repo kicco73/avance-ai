@@ -172,17 +172,17 @@ class TestWsAdapterPush:
         # tracking/actuators/action_task.py), never part of this frame.
         assert "task" not in websocket.sent[0]
         # The fired action has a trigger and no tracking_service was wired
-        # in (defaults to "always auto-tracked") — filtered out of
-        # manual_actions same as a live session's own state payload would.
-        assert websocket.sent[0]["state"]["manual_actions"] == []
+        # in (defaults to "always auto-tracked") — left out of the choices
+        # the same way a live session's own would be.
+        assert websocket.sent[0]["buttons"] == []
 
-    def test_manual_actions_includes_the_triggered_action_when_auto_tracking_is_disabled(self, db, project_service):
+    def test_the_choices_include_the_triggered_action_when_auto_tracking_is_disabled(self, db, project_service):
         watcher_session = _both_projects(db, project_service)
         bus_channel, websocket = self._connected()
 
         _wake(db, project_service, tracking_service=_FakeTrackingService({watcher_session["id"]}))
 
-        assert [a["name"] for a in websocket.sent[0]["state"]["manual_actions"]] == ["notice"]
+        assert [a["name"] for a in websocket.sent[0]["buttons"]] == ["notice"]
 
     def test_nothing_is_pushed_when_the_self_loop_does_not_fire(self, db, project_service):
         _both_projects(db, project_service, observed_moved=False)

@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installApiBackedLiveChannel } from '../../../../tests/liveChatChannelStub.js'
 
+vi.mock('../../../busChannel.js', () => import('../../../../tests/fakeBus.js'))
 vi.mock('../../../taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../../../api.js', () => ({
   getCurrentSession: vi.fn(),
@@ -28,7 +29,6 @@ vi.mock('../../../api.js', () => ({
   postTruncateSession: vi.fn(),
   projectFileContentUrl: vi.fn(() => '/skin.css')
 }))
-vi.mock('../../../chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 vi.mock('../../../dialogStore.js', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }))
 
 const STATE = { key: 'x', ui_label: 'X', actions: [] }

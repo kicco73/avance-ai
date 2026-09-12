@@ -5,7 +5,7 @@ serves both event types — neither carries anything the other doesn't."""
 from __future__ import annotations
 
 from ai import AiService
-from automaton.automaton import manual_actions_for
+from automaton.automaton import pressable_actions
 from db.db import Db
 from events import EnvChanged, StateChanged, subscribe
 from jobs import CancelableJob
@@ -152,7 +152,8 @@ class WakeupService:
                     # that consumer; everywhere else (HTTP responses, DB)
                     # already uses project_id.
                     "project_name": observer_project_id,
-                    "state": {**state_payload, "manual_actions": manual_actions_for(state_payload["actions"], auto_tracking_enabled)},
+                    "state": state_payload,
+                    "buttons": pressable_actions(state_payload["actions"], auto_tracking_enabled),
                 }))
 
     def _wake(self, username: str, observer_project_id: str) -> None:

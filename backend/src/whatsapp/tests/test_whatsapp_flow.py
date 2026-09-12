@@ -62,7 +62,7 @@ def whatsapp(cloud_api, client, hello_project):
 def _speaking(talk: _FakeTalk) -> None:
     async def speak(message: Message) -> None:
         await bus.publish(message.converted(
-            OUTPUT_AUDIO_STREAM, AudioStream(talk, str(message.body)), mime="audio/wav",
+            OUTPUT_AUDIO_STREAM, {"stream": AudioStream(talk, str(message.body["text"]))}, mime="audio/wav",
         ))
 
     bus.subscribe(OUTPUT_SPEECH, speak)

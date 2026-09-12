@@ -11,9 +11,6 @@ vi.mock('../src/api.js', () => ({
   postLogout: vi.fn(),
   getPendingStatus: vi.fn(),
 }))
-vi.mock('../src/chatClient.js', () => ({
-  connect: vi.fn(),
-  disconnect: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 vi.mock('../src/errorStore.js', () => ({
   clearApiError: vi.fn(),
 }))

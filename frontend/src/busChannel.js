@@ -4,7 +4,7 @@ import { createChatSocket } from './api.js'
 // owns it: connection lifecycle (connect/reconnect/heartbeat) plus pure
 // routing of every inbound frame to whoever subscribed to its `type`.
 // It knows nothing about what any frame means — chat turns correlate
-// themselves by turn_id in chatClient.js, notifications fan out in
+// themselves by session in chatExchange.js, notifications fan out in
 // notificationBus.js, and both are ordinary subscribers here.
 //
 // The WebSocket is the ONE and ONLY transport for chat, in both
@@ -34,17 +34,21 @@ const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000]
 export const SWITCHED_TO_OTHER_CLIENT = 'switched_to_other_client'
 export const SUPERSEDED_CLOSE_CODE = 4410
 
-// Mirrors backend system/bus_channel.py's own WEB_FORWARDED: the
-// Bus events this socket may carry out, and so the only ones worth
-// registering for. Subscribing to one of these tells the server so — a
-// connection is sent nothing it did not ask for — while every other
-// frame type (a turn's own output.text/turn.*, human_prompt, pong) is
-// this channel's local routing only and never leaves as a registration.
+// Mirrors backend system/bus_channel.py's own CLIENT_REGISTRABLE: what a
+// connection may ask to be sent. Subscribing to one of these tells the
+// server so — a connection is sent nothing it did not ask for — while
+// every other frame type (a turn's own output.text_stream/turn.*, pong) is this
+// channel's local routing only and never leaves as a registration.
+//
+// human_prompt is on the list because registering for it is what makes a
+// tab the one answering as a person: the server sends it to whoever asked
+// and to nobody else.
 export const SERVER_EVENTS = [
   'ui.notification',
   'ui.human_takeover',
   'ui.system_warning',
-  'ui.progress'
+  'ui.progress',
+  'human_prompt'
 ]
 
 class ChatChannel {

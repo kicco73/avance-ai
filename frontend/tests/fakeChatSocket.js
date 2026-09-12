@@ -1,6 +1,6 @@
 import { vi } from 'vitest'
 
-// A WebSocket stand-in for chatClient.js's own createChatSocket: the test
+// A WebSocket stand-in for busChannel.js's own createChatSocket: the test
 // decides when it opens, what it receives, and when it drops, and can read
 // back every frame the client sent. Returns the list every connection
 // attempt appends to, newest last.

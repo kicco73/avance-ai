@@ -1,20 +1,31 @@
 <script setup>
+import { computed } from 'vue'
+
 import { spokenTextEnabled, toggleSpokenText } from '../../../chatPreferences.js'
 import { configured } from '../availability.js'
 
-defineProps({
+const props = defineProps({
   store: { type: Object, required: true },
-  disabled: { type: Boolean, default: false }
+  disabled: { type: Boolean, default: false },
+  // Shown regardless of what this conversation can reach: a row that is
+  // standing in for a chat (see ChatInput.vue's own `sample`).
+  sample: { type: Boolean, default: false }
 })
+
+// A sample row shows what a chat looks like, not what this person has
+// switched on: its controls are drawn in their resting state (see
+// ChatInput.vue's own `sample`).
+const on = computed(() => !props.sample && spokenTextEnabled.value)
 </script>
 
 <template>
   <button
-    v-if="configured"
+    v-if="configured || sample"
     type="button"
     class="chat-input-control spoken-text-btn"
-    :class="{ 'spoken-text-btn-on': spokenTextEnabled }"
-    :title="spokenTextEnabled ? 'Showing spoken text' : 'Show spoken text'"
+    :disabled="disabled"
+    :class="{ 'spoken-text-btn-on': on }"
+    :title="on ? 'Showing spoken text' : 'Show spoken text'"
     @click="toggleSpokenText"
   >
     <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">

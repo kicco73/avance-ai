@@ -18,7 +18,8 @@ from pathlib import Path
 from system import bus
 from system.wiring import construct
 from system.bus import (
-    OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, POINT_API_STATE, POINT_CORE_SERVICES, POINT_SPOKEN_REPLY,
+    OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, POINT_API_STATE, POINT_CORE_SERVICES,
+    POINT_SESSION_SERVICES, POINT_SPOKEN_REPLY,
 )
 from automaton.project_services import OptionalService
 from system.logging_factory import LoggerFactory
@@ -65,9 +66,11 @@ class _Talk(_NoTalk):
         chunk, never holding a reference to this package. A build where
         nobody takes it still warms the store, which is how the web's own
         audio route gets it (see talk_controller.TalkController)."""
-        text = str(message.body)
+        text = str((message.body or {}).get("text") or "")
         self._service.start(text)
-        await bus.publish(message.converted(OUTPUT_AUDIO_STREAM, AudioStream(self._service, text), mime="audio/wav"))
+        await bus.publish(message.converted(
+            OUTPUT_AUDIO_STREAM, {"stream": AudioStream(self._service, text)}, mime="audio/wav",
+        ))
 
     def install_controller(self, controllers: list) -> None:
         from talk.talk_controller import TalkController
@@ -110,6 +113,13 @@ class TalkSkill(Skill):
             {"talk_enabled": self._enabled_for_the_active_project()}
         ))
         bus.contribute(POINT_SPOKEN_REPLY, self._answer_spoken_reply)
+        bus.contribute(POINT_SESSION_SERVICES, self._answer_session_services)
+
+    def _answer_session_services(self, session) -> None:
+        """Whether this conversation can be spoken at all — asked of the
+        session's own project, which is the only one that has anything to
+        do with it (see tracking/session_services.py)."""
+        session.offers(self.key, bool(self._providers))
 
     def _answer_spoken_reply(self, spoken) -> None:
         """Whether this build can speak a reply at all (see

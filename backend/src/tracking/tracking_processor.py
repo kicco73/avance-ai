@@ -172,6 +172,11 @@ class TrackingProcessor(object):
 		self.db = db
 		self.user = user_variables
 		self.auto_tracking_enabled = auto_tracking_enabled
+		# True when the automaton moved *before* this turn's own answer was
+		# written (see TrackingProcessorAfterUserMessage): what a state had
+		# prepared to say belongs to the state the conversation has just
+		# left, and is not said.
+		self.moved_before_reply = False
 		self.input_token_budget_per_turn = input_token_budget_per_turn
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder, auto_tracking_enabled)
 
@@ -182,19 +187,24 @@ class TrackingProcessor(object):
 		"""Binds this turn to the user message that closes it — the LAST
 		fragment (see TurnService's own coalescing): its Tracking row, the
 		bot's reaction and the input tokens all land there. Every fragment
-		is already persisted by then, in arrival order, so nothing is saved
-		here — except the '...' placeholder of an AI-initiated turn, which
-		has no user message at all and which process() deletes again once
-		the reply exists.
+		is already persisted by then, in arrival order, so nothing is
+		saved here.
+
+		A turn nobody started has no user message and is bound to none.
+		It used to save a `'...'` one and delete it again once the reply
+		existed, which made a row that briefly existed: anyone reading the
+		transcript in the meantime saw it (the editor's Run panel did, and
+		showed it as something the person had said).
+
 		Also stamps this turn's own start (see self._turn_started_at's own
-		use in process()) — captured *before* that save, never after, so it
+		use in process()), before anything else this turn writes, so it
 		can never postdate a tool write this same turn later makes."""
 		self._turn_started_at = datetime.utcnow()
-		if not user_message_ids:
-			user_message_ids = [self.db.save_message("user", '...', self.user.session_id)]
-		self._fragment_ids = list(user_message_ids)
+		self._fragment_ids = list(user_message_ids or [])
 		self.user = replace(
-			self.user, message_id=self._fragment_ids[-1], has_ai_started_conversation=not fragments,
+			self.user,
+			message_id=self._fragment_ids[-1] if self._fragment_ids else None,
+			has_ai_started_conversation=not fragments,
 		)
 
 	async def process(
@@ -270,14 +280,11 @@ class TrackingProcessor(object):
 			self.db.link_signal_to_message(self.out.tracking_id, assistant_id)
 
 		user_message_id = self.user.message_id
-		if self.user.has_ai_started_conversation and self.user.message_id:
-			self.db.delete_message(self.user.message_id)
-			user_message_id = None
 
 		# The bot's reaction is *to* the user's own message this turn, so it
-		# lands there, not on the assistant's new one — skipped for an
-		# AI-started turn, whose "user" message was just deleted above,
-		# same guard build_turn_response's own user_message_id uses.
+		# lands there, not on the assistant's new one — a turn nobody
+		# started has none, same guard build_turn_response's own
+		# user_message_id uses.
 		if self.metadata.reaction and user_message_id is not None:
 			self.db.set_message_reaction(user_message_id, self.metadata.reaction)
 
@@ -477,9 +484,18 @@ class TrackingProcessor(object):
 	def _build_chat_history(self, turn_attachments: list, token_budget: int | None) -> list[dict]:
 		priming_messages = build_priming_messages(turn_attachments)
 		since = self.db.history_cutoff_for_session(self.user.session_id, self.user.state.history_cutoff)
-		return priming_messages + self._strip_timestamps(
+		history = priming_messages + self._strip_timestamps(
 			self.db.get_turn_history(self.user.session_id, since, token_budget)
 		)
+		# A turn nobody started still has to look like a turn to whoever
+		# answers it: a provider refuses a conversation that ends on the
+		# model's own words ("Requests ending with a model turn are not
+		# supported"). This stands in for the message that was never said
+		# — in what is sent, and only there. It used to be a row in the
+		# database, which anyone reading the transcript could see (see
+		# _open_turn); the same stand-in is what estimate_state_prompt
+		# has always used for a history nobody had.
+		return history + [{"role": "user", "content": "..."}] * self.user.has_ai_started_conversation
 
 	def build_turn_prompt(
 		self, state: State, base_prompt: str, output_definition: str | None, signal_definition: str | None, reaction_definition: str | None,
@@ -563,7 +579,7 @@ class TrackingProcessor(object):
 	def _button_labels_to_translate(state: State, auto_tracking_enabled: bool) -> dict[str, str]:
 		"""{action name: original ui_button text} for every action `state`
 		would show as a manual button — same filter as
-		automaton.manual_actions_for, over live Action objects instead of
+		automaton.pressable_actions, over live Action objects instead of
 		serialized ActionPayload dicts, plus requiring a non-empty
 		ui_button (nothing to translate otherwise)."""
 		return {
@@ -647,6 +663,7 @@ class TrackingProcessor(object):
 			"user_message_reaction": self.metadata.reaction if user_message_id is not None else None,
 			"state": self._current_state_payload(self.user.automaton, self.out.state, self.metadata.button_translations),
 			"state_changed": action is not None,
+			"moved_before_reply": self.moved_before_reply,
 			"new_state": action.target if action else None,
 			"triggered_action": action.name if action else None,
 			"ai_model": self.ai_service.get_models_info(),
@@ -739,7 +756,7 @@ def estimate_state_prompt(
 	# contribution: auto_tracking_enabled=False, the branch that counts
 	# every action with a ui_button rather than just the untriggered
 	# ones — matches what a test/manual session already shows regardless
-	# of trigger (see automaton.manual_actions_for).
+	# of trigger (see automaton.pressable_actions).
 	originals = TrackingProcessor._button_labels_to_translate(state, auto_tracking_enabled=False)
 	if originals:
 		prompt = prompt.compose(TranslatePrompt(originals))

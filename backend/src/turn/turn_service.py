@@ -8,7 +8,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from http import HTTPStatus
 
-from automaton.automaton import Action, Automaton, SignalPayload, State, manual_actions_for
+from automaton.automaton import Action, Automaton, SignalPayload, State, pressable_actions
 from automaton.build_error import AutomatonBuildError
 from db import Db, _utc_iso
 from ai import AiService
@@ -16,6 +16,9 @@ from system.keyed_lock_registry import KeyedLockRegistry
 from project.archive.layout import CACHE_DIR
 from system.project_rw_lock import ProjectRwLock
 from system.web_session import WebSession
+from system import bus
+from system.bus import POINT_SESSION_SERVICES
+from tracking.session_services import SessionServices
 
 from tracking.actuators import TaskNamespace, TaskNamespaceFactory
 from tracking.automaton_namespace import AutomatonNamespace
@@ -222,8 +225,7 @@ class TurnService(object):
 
 	def _session_response(self, session: dict, *, current: bool) -> dict:
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
-		state_payload = self._with_manual_actions(session["id"], automaton.get_state_payload(state))
-		return {**self._session_payload(session, current=current), "state": state_payload}
+		return {**self._session_payload(session, current=current), "state": automaton.get_state_payload(state)}
 
 	async def _get_current_session_if_any_or_create_new_of_type(
 		self, strategy: SessionTypeStrategy, project_id: str, session_id: int | None
@@ -418,7 +420,7 @@ class TurnService(object):
 		session = self._db.get_chat_session(session_id)
 		assert session is not None
 		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
-		return self._with_manual_actions(session_id, automaton.get_state_payload(state))
+		return automaton.get_state_payload(state)
 
 	def get_state_for_operator(self, session_id: int) -> dict:
 		"""HumanOperatorChatView.vue's own state read: every action is
@@ -435,7 +437,7 @@ class TurnService(object):
 		assert session is not None
 		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 		state_payload = automaton.get_state_payload(state)
-		return {**state_payload, "manual_actions": manual_actions_for(state_payload["actions"], False)}
+		return {**state_payload, "buttons": pressable_actions(state_payload["actions"], False)}
 
 	async def get_messages(self, session_id: int, last_n: int | None = None) -> list[dict]:
 		"""The transcript, opening the conversation first if it has not
@@ -445,11 +447,10 @@ class TurnService(object):
 		has to say which (see turn/sessions/session_type_strategy.py).
 		Whoever is only looking at a transcript wants read_transcript."""
 		self._ownership.require_own_session(session_id)
-		init_message = await self.open_if_needed(session_id)
-		messages = self._db.get_messages(session_id, last_n=last_n)
-		if init_message is not None:
-			messages.insert(0, init_message)
-		return self._with_tool_calls(session_id, messages)
+		# Whatever it wrote is persisted like any other message, and the
+		# read below picks it up.
+		await self.open_if_needed(session_id)
+		return self._with_tool_calls(session_id, self._db.get_messages(session_id, last_n=last_n))
 
 	def read_transcript(self, session_id: int, last_n: int | None = None) -> list[dict]:
 		"""What is already there, and nothing else. The editor's Run panel,
@@ -571,9 +572,20 @@ class TurnService(object):
 		self._ownership.require_own_session(session_id)
 		self._tracking_service.set_audio_enabled(session_id, enabled)
 
-	def _with_manual_actions(self, session_id: int, state_payload: dict) -> dict:
-		auto_tracking_enabled = self.is_auto_tracking_enabled(session_id)
-		return {**state_payload, "manual_actions": manual_actions_for(state_payload["actions"], auto_tracking_enabled)}
+	def services_for(self, session_id: int) -> dict[str, bool]:
+		"""What this conversation can reach, asked of the session's own
+		project rather than of whichever project the person has active
+		(see tracking/session_services.py)."""
+		automaton = self._project_service.get_automaton_for_session(session_id)
+		return bus.collect(POINT_SESSION_SERVICES, SessionServices(services=automaton.services)).available
+
+	def buttons_for(self, session_id: int, state_payload: dict) -> list[dict]:
+		"""What this state offers the person to press. Never folded into
+		the state payload: the choices are their own message (`ui.buttons`,
+		see docs/BUS.md), and a state that carried them too meant two
+		roads to the same buttons and a first paint that disagreed with
+		what was published."""
+		return pressable_actions(state_payload["actions"], self.is_auto_tracking_enabled(session_id))
 
 	def is_actuators_enabled(self, session_id: int) -> bool:
 		self._ownership.require_own_session(session_id)
@@ -621,17 +633,22 @@ class TurnService(object):
 	def _already_answered_response(
 		self, session_id: int, automaton: Automaton, state: State, user_message_id: int,
 	) -> dict:
-		"""A turn whose own message a previous turn already consumed: it is
-		over the moment it gets the lock, with no reply of its own. The
-		frontend already has a branch for "no reply was generated this
-		turn" (a null assistant_message_id drops the placeholder bubble),
-		which is exactly this case."""
+		"""A request a previous one already took along with its own: it is
+		over the moment it gets the lock, and what answered it is that
+		other request's reply — a message that exists and has an id. It is
+		reported here as this request's answer too, because it is: one
+		answer covered both. A reader that has it already knows so by its
+		id, and does not show it twice."""
+		answer = self._db.get_message(user_message_id) or {}
+		answered_by = answer.get("answered_by")
+		reply = [m for m in [self._db.get_message(answered_by)] if answered_by and m]
 		return {
-			"reply": [],
+			"reply": reply,
 			"user_message_id": user_message_id,
 			"user_message_reaction": None,
-			"assistant_message_id": None,
-			"state": self._with_manual_actions(session_id, automaton.get_state_payload(state)),
+			"assistant_message_id": answered_by,
+			"state": automaton.get_state_payload(state),
+			"buttons": self.buttons_for(session_id, automaton.get_state_payload(state)),
 			"state_changed": False,
 			"new_state": None,
 			"triggered_action": None,
@@ -697,12 +714,15 @@ class TurnService(object):
 
 		return automaton, state
 
-	async def open_if_needed(self, session_id: int) -> dict | None:
+	async def open_if_needed(self, session_id: int, on_metadata: OnMetadata | None = None) -> dict | None:
+		"""What the automaton has to say before anybody says anything, if
+		this state has anything to open with and nothing has been said yet.
+		Returns the turn it ran, so a caller that is reporting an exchange
+		can report this one too."""
 		automaton, state = await self._ensure_project_bootstrap(session_id)
 		if automaton is None:
 			return None
-		await self._generate_opening_message_if_needed(session_id, automaton, state)
-		return None
+		return await self._generate_opening_message_if_needed(session_id, automaton, state, on_metadata)
 
 	async def prepare_user_initiated_turn(self, session_id: int) -> list[dict]:
 		"""The project bootstrap a user-initiated turn needs, plus the
@@ -736,30 +756,32 @@ class TurnService(object):
 		return not self._db.has_messages_since(session_id, gate_since)
 
 	async def _generate_opening_message_if_needed(
-		self, session_id: int, automaton: Automaton, state: State
+		self, session_id: int, automaton: Automaton, state: State, on_metadata: OnMetadata | None = None,
 	) -> dict | None:
 		if not self._should_generate_opening_message(session_id, state):
 			return None
 
-		return await self._generate_opening_message_body(session_id)
+		return await self._generate_opening_message_body(session_id, on_metadata)
 
-	async def _generate_opening_message_body(self, session_id: int) -> dict:
-		return await self.process_turn(session_id)
+	async def _generate_opening_message_body(self, session_id: int, on_metadata: OnMetadata | None = None) -> dict:
+		return await self.process_turn(session_id, on_metadata=on_metadata)
 
 	async def _messages_for_transition(
-		self, session_id: int, new_state: State, *, is_self_loop: bool
+		self, session_id: int, new_state: State, *, is_self_loop: bool, on_metadata: OnMetadata | None = None,
 	) -> tuple[list[dict], dict | None]:
 		should_open = not is_self_loop and self._should_generate_opening_message(session_id, new_state)
 		if not should_open:
 			return [], None
-		turn_result = await self._process_turn_body(session_id)
+		turn_result = await self._process_turn_body(session_id, on_metadata=on_metadata)
 		message_id = turn_result["assistant_message_id"]
 		if message_id is None:
 			return [], turn_result["state"]
 		message = self._db.get_message(message_id)
 		return ([message] if message is not None else []), turn_result["state"]
 
-	async def apply_manual_action(self, action_name: str, session_id: int) -> dict:
+	async def apply_manual_action(
+		self, action_name: str, session_id: int, on_metadata: OnMetadata | None = None,
+	) -> dict:
 		project_id = self._project_id_for_session(session_id)
 		self._ensure_project_available(project_id)
 		if self._session_locks.get(str(session_id)).locked():
@@ -779,11 +801,13 @@ class TurnService(object):
 				session_id=session["id"],
 			)
 			reply, fresh_state_payload = await self._messages_for_transition(
-				session["id"], state, is_self_loop=(action.target == source_state_key)
+				session["id"], state, is_self_loop=(action.target == source_state_key), on_metadata=on_metadata,
 			)
 			self._session_manager.touch_session(session["id"], state.key)
+			fresh = fresh_state_payload if fresh_state_payload is not None else state_payload
 			return {
-				"state": fresh_state_payload if fresh_state_payload is not None else self._with_manual_actions(session["id"], state_payload),
+				"state": fresh,
+				"buttons": self.buttons_for(session["id"], fresh),
 				"reply": reply,
 				"ai_model": self.get_ai_models_info(),
 				"session_id": session["id"],
@@ -814,25 +838,27 @@ class TurnService(object):
 		session_id: int,
 		text: str | None = None,
 		on_metadata: OnMetadata | None = None,
-		user_message_id: int | None = None,
+		user_message_ids: list[int] | None = None,
 	) -> dict:
-		"""`user_message_id` is set when the transport already persisted
+		"""`user_message_ids` are the messages this answer is for, already
+		persisted by whoever accepted them (see turn/input_listener.py).
+		Any other caller hands over the text and it is persisted here,
 		this message (the websocket does, the moment it read the frame —
 		see BusChannel); any other caller hands over the text and it
 		is persisted here, still before the session lock, so the bubble
 		appears at once and the order of the conversation is fixed before
 		anything waits."""
 		project_id = self._project_id_for_session(session_id)
-		if text is not None and user_message_id is None:
-			user_message_id = self.accept_user_message(session_id, text)
+		if text is not None and not user_message_ids:
+			user_message_ids = [self.accept_user_message(session_id, text)]
 		operator = self._namespace_factory.get_human_operator(session_id)
 		if operator is not None:
-			return await self._process_human_turn(session_id, operator, on_metadata, user_message_id)
+			return await self._process_human_turn(session_id, operator, on_metadata, user_message_ids)
 		async with self._session_scope(project_id, session_id):
-			return await self._process_turn_body(session_id, text, on_metadata, user_message_id)
+			return await self._process_turn_body(session_id, text, on_metadata, user_message_ids)
 
 	async def _process_human_turn(
-		self, session_id: int, operator: str, on_metadata: OnMetadata | None, user_message_id: int | None,
+		self, session_id: int, operator: str, on_metadata: OnMetadata | None, user_message_ids: list[int] | None,
 	) -> dict:
 		"""chat.switch_to_human's own turn path — no automaton, no
 		lock: while a session has an operator (see TaskNamespaceFactory.
@@ -848,9 +874,7 @@ class TurnService(object):
 		project_id = session["project_id"]
 		self._ensure_project_available(project_id)
 		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
-		fragments = self._db.unconsumed_user_fragments(session_id) if user_message_id is not None else []
-		if user_message_id is not None and not any(f["id"] == user_message_id for f in fragments):
-			return self._already_answered_response(session_id, automaton, state, user_message_id)
+		fragments = [m for m in (self._db.get_message(mid) for mid in user_message_ids or []) if m]
 		text = "\n".join(f["content"] for f in fragments)
 		assistant_talker = self._tracking_service.build_human_talker(operator, session_id, session["type"], project_id)
 		accumulated = ""
@@ -872,10 +896,11 @@ class TurnService(object):
 		self._session_manager.touch_session(session_id, state.key)
 		return {
 			"reply": [self._db.get_message(assistant_message_id)],
-			"user_message_id": user_message_id,
+			"user_message_id": (user_message_ids or [None])[-1],
 			"user_message_reaction": None,
 			"assistant_message_id": assistant_message_id,
-			"state": self._with_manual_actions(session_id, automaton.get_state_payload(state)),
+			"state": automaton.get_state_payload(state),
+			"buttons": self.buttons_for(session_id, automaton.get_state_payload(state)),
 			"state_changed": False,
 			"new_state": None,
 			"triggered_action": None,
@@ -888,7 +913,7 @@ class TurnService(object):
 		session_id: int,
 		text: str | None = None,
 		on_metadata: OnMetadata | None = None,
-		user_message_id: int | None = None,
+		user_message_ids: list[int] | None = None,
 	) -> dict:
 		session = self._db.get_chat_session(session_id)
 		if session is None:
@@ -898,16 +923,15 @@ class TurnService(object):
 		ai_service = self._ai_test_service if session["type"] == "test" else self._ai_service
 		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 		self._require_active_session(session_id, project_id, state.key)
-		fragments = self._db.unconsumed_user_fragments(session_id) if user_message_id is not None else []
-		if user_message_id is not None and not any(f["id"] == user_message_id for f in fragments):
-			# An earlier turn already took this message along with the rest
-			# of its own fragments and answered for all of them — see
-			# _already_answered_response.
-			return self._already_answered_response(session_id, automaton, state, user_message_id)
+		# Exactly the messages this answer is for. Which ones those are was
+		# decided when they were accepted (see turn/input_listener.py): a
+		# message that arrived while this answer was being written belongs
+		# to the next one, not to this.
+		fragments = [m for m in (self._db.get_message(mid) for mid in user_message_ids or []) if m]
 		reply = await self._tracking_service._process(
 			session_id, [f["content"] for f in fragments], ai_service, on_metadata,
 			user_message_ids=[f["id"] for f in fragments],
 		)
 		self._session_manager.touch_session(reply['session_id'], reply['state']['key'])
-		reply['state'] = self._with_manual_actions(session_id, reply['state'])
+		reply['buttons'] = self.buttons_for(session_id, reply['state'])
 		return reply

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     )
 
 
-def manual_actions_for(actions: list[ActionPayload], auto_tracking_enabled: bool) -> list[ActionPayload]:
+def pressable_actions(actions: list[ActionPayload], auto_tracking_enabled: bool) -> list[ActionPayload]:
     return [a for a in actions if not a["has_trigger"] or not auto_tracking_enabled]
 
 

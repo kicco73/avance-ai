@@ -18,34 +18,36 @@ vi.mock('../src/api.js', () => ({
   getAiModels: vi.fn(),
   getMessages: vi.fn(),
 }))
-vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
+vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))
 
 describe('submitMessage reconciles the streaming bubble against done.reply', () => {
   let chatStore
-  let chatClient
+  let deliver
 
   beforeEach(async () => {
+    // After resetModules the store gets a fresh copy of the fake socket —
+    // the test has to publish into that one, not the first.
     vi.resetModules()
+    const bus = await import('./fakeBus.js')
+    bus.resetFakeBus()
+    deliver = bus.deliver
     chatStore = await import('../src/chatStore.js')
-    chatClient = await import('../src/chatClient.js')
   })
 
   afterEach(() => {
     vi.clearAllMocks()
   })
 
-  it('replaces content/audioText/timestamp from done.reply[0] instead of concatenating', async () => {
+  it('replaces content/timestamp from the answer, and keeps the spoken text', async () => {
     chatStore.currentSessionId.value = 1
-    chatClient.sendMessage.mockImplementation(async (_text, _sessionId, { onChunk }) => {
-      onChunk('Hel')
-      return {
-        reply: [{ id: 77, content: 'Hello, full answer.', audio_text: 'audio-77', timestamp: '2026-01-01T00:00:00Z' }],
-        user_message_id: 40, assistant_message_id: 77,
-        state: { key: 'a', ui_label: 'A', actions: [] }, 'task': null, session_id: 1,
-      }
-    })
-
     await chatStore.handleSend('hi')
+    deliver({ type: 'output.text_stream', session_id: 1, text: 'Hel' })
+    deliver({ type: 'output.speech', session_id: 1, text: 'audio-77' })
+    deliver({ type: 'ui.buttons', session_id: 1, actions: [] })
+    deliver({
+      type: 'output.text', session_id: 1, assistant_message_id: 77,
+      text: 'Hello, full answer.', timestamp: '2026-01-01T00:00:00Z',
+    })
 
     const assistant = chatStore.messages.value.find((m) => m.role === 'assistant')
     expect(assistant.content).toBe('Hello, full answer.')
@@ -56,18 +58,15 @@ describe('submitMessage reconciles the streaming bubble against done.reply', () 
 
   it('re-creates the bubble from done.reply if it was removed from `messages` mid-turn', async () => {
     chatStore.currentSessionId.value = 1
-    chatClient.sendMessage.mockImplementation(async () => {
-      // Simulate a reload (or anything else) wiping the in-flight
-      // placeholder out of `messages` before the turn resolves.
-      chatStore.messages.value = chatStore.messages.value.filter((m) => m.role !== 'assistant')
-      return {
-        reply: [{ id: 88, content: 'Recreated reply.', audio_text: null, timestamp: '2026-01-01T00:00:01Z' }],
-        user_message_id: 41, assistant_message_id: 88,
-        state: { key: 'a', ui_label: 'A', actions: [] }, 'task': null, session_id: 1,
-      }
-    })
-
     await chatStore.handleSend('hi again')
+    // A reload (or anything else) wipes the in-flight placeholder out of
+    // `messages` before the answer lands.
+    chatStore.messages.value = chatStore.messages.value.filter((m) => m.role !== 'assistant')
+    deliver({ type: 'ui.buttons', session_id: 1, actions: [] })
+    deliver({
+      type: 'output.text', session_id: 1, assistant_message_id: 88,
+      text: 'Recreated reply.', timestamp: '2026-01-01T00:00:01Z',
+    })
 
     const assistant = chatStore.messages.value.find((m) => m.role === 'assistant')
     expect(assistant).toBeTruthy()
@@ -77,12 +76,9 @@ describe('submitMessage reconciles the streaming bubble against done.reply', () 
 
   it('keeps the bubble with whatever text streamed, marked failed, when the stream errors after a chunk', async () => {
     chatStore.currentSessionId.value = 1
-    chatClient.sendMessage.mockImplementation(async (_text, _sessionId, { onChunk }) => {
-      onChunk('Partial')
-      throw new Error('stream broke')
-    })
-
     await chatStore.handleSend('hi')
+    deliver({ type: 'output.text_stream', session_id: 1, text: 'Partial' })
+    deliver({ type: 'output.error', session_id: 1, message: 'stream broke', detail: '' })
 
     const assistant = chatStore.messages.value.find((m) => m.role === 'assistant')
     expect(assistant).toBeTruthy()
@@ -92,11 +88,8 @@ describe('submitMessage reconciles the streaming bubble against done.reply', () 
 
   it('drops the bubble on a stream error before any chunk arrived', async () => {
     chatStore.currentSessionId.value = 1
-    chatClient.sendMessage.mockImplementation(async () => {
-      throw new Error('stream broke immediately')
-    })
-
     await chatStore.handleSend('hi')
+    deliver({ type: 'output.error', session_id: 1, message: 'stream broke immediately', detail: '' })
 
     const assistant = chatStore.messages.value.find((m) => m.role === 'assistant')
     expect(assistant).toBeUndefined()

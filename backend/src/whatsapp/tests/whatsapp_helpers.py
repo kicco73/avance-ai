@@ -111,6 +111,9 @@ class _FakeDb:
     def row(self, message_id):
         return next(m for m in self.messages if m["id"] == message_id)
 
+    def get_message(self, message_id):
+        return next((m for m in self.messages if m["id"] == message_id), None)
+
 
 class _FakeAuthService:
     def __init__(self, db: _FakeDb) -> None:
@@ -131,7 +134,7 @@ class _FakeAuthService:
 class _FakeChatService:
     """Records who it was called as (WebSession().user) and lets a test
     script the session bootstrap payload, the current state's own
-    actions/manual_actions, and the turn/action outcome."""
+    actions, the choices it offers, and the turn/action outcome."""
 
     def __init__(self, db: _FakeDb) -> None:
         self.db = db
@@ -150,16 +153,16 @@ class _FakeChatService:
         self.opening_message: str | None = None
         self.wrap_up_message: str | None = None
         self.calls: list[tuple] = []
-        self.state: dict = {"key": "x", "ui_label": "X", "actions": [], "manual_actions": []}
+        self.state: dict = {"key": "x", "ui_label": "X", "actions": []}
+        # What the state offers to press, as its own thing: the state
+        # payload does not carry the choices (see TurnService.buttons_for).
+        self.buttons: list[dict] = []
         self.action_reply_message: str | None = None
         self.reply_audio_text: str | None = None
         self.terms_content: str = "Please accept to continue."
         self.accepted_terms_for: list[str] = []
         self.in_turn = False
         # When True, process_turn persists the user message but reports no
-        # reply of its own — a turn already in flight took this message
-        # along with its own fragments (see TurnService's own coalescing).
-        self.turn_already_answered = False
         self.announces_audio = True
         self.announced_audio_text: str | None = None
 
@@ -192,6 +195,9 @@ class _FakeChatService:
     def get_state_for_session(self, session_id):
         return self.state
 
+    def buttons_for(self, session_id, state_payload):
+        return self.buttons
+
     def accept_user_message(self, session_id, text):
         """Persisted before the turn runs and handed over as an id, like
         the real one — a turn that never happens still leaves the message
@@ -206,7 +212,7 @@ class _FakeChatService:
             POINT_SPOKEN_REPLY, SpokenReply(services=ProjectServices({}), session_id=session_id),
         ).asked
 
-    async def process_turn(self, session_id, text, on_metadata=None, user_message_id=None):
+    async def process_turn(self, session_id, text, on_metadata=None, user_message_ids=None):
         self.calls.append(("turn", WebSession().user))
         if self.turn_error is not None:
             error = self.turn_error
@@ -222,13 +228,15 @@ class _FakeChatService:
             # and a listener away, so the double has to stay in the turn
             # for more than the single loop tick it used to.
             audio_text = self.reply_audio_text if self.spoken_reply_wanted(session_id) else None
+            # The real turn emits the reply's spoken text well before the
+            # rest of the reply is written, and then spends seconds
+            # writing it — long enough for the synthesis that announcement
+            # starts to get going.
             if on_metadata is not None and self.announces_audio and audio_text:
                 on_metadata("audio", self.announced_audio_text or audio_text)
                 await asyncio.sleep(GENERATING_THE_REST_OF_THE_REPLY)
-            if user_message_id is None:
+            if not user_message_ids:
                 self.db.add(session_id, "user", text)
-            if self.turn_already_answered:
-                return {"session_id": session_id, "state": self.state, "assistant_message_id": None, "reply": []}
             assistant_id = self.db.add(
                 session_id, "assistant", f"**Hola** — has dicho: {text}", audio_text=audio_text,
             )
@@ -238,7 +246,8 @@ class _FakeChatService:
         # as TrackingProcessor._build_turn_response — and never the
         # wrap-up that prepare_user_initiated_turn wrote.
         return {
-            "session_id": session_id, "state": self.state, "assistant_message_id": assistant_id,
+            "session_id": session_id, "state": self.state, "buttons": self.buttons,
+            "assistant_message_id": assistant_id,
             "reply": [self.db.row(assistant_id)],
         }
 
@@ -252,7 +261,7 @@ class _FakeChatService:
         reply = []
         if self.action_reply_message:
             reply = [self.db.row(self.db.add(session_id, "assistant", self.action_reply_message))]
-        return {"session_id": session_id, "state": self.state, "reply": reply}
+        return {"session_id": session_id, "state": self.state, "buttons": self.buttons, "reply": reply}
 
 
 def _wav(seconds: float = 0.5, rate: int = 22050) -> bytes:
@@ -371,7 +380,7 @@ def _build(config=None, talk=None, listen=None):
     if talk is not None:
         async def speak(message: Message) -> None:
             await bus.publish(message.converted(
-                OUTPUT_AUDIO_STREAM, AudioStream(talk, str(message.body)), mime="audio/wav",
+                OUTPUT_AUDIO_STREAM, {"stream": AudioStream(talk, str(message.body["text"]))}, mime="audio/wav",
             ))
 
         bus.subscribe(OUTPUT_SPEECH, speak)

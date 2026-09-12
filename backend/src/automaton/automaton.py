@@ -15,7 +15,7 @@ automaton is.
 
 Everything the rest of the codebase already imports from this module —
 Action, State, Signal, Reaction, EnvKey, Source, MemoryArchive, every
-Payload type, JsSnippet, DeferredExpression, manual_actions_for — is
+Payload type, JsSnippet, DeferredExpression, pressable_actions — is
 re-exported here unchanged, so no import anywhere had to move."""
 from __future__ import annotations
 
@@ -38,13 +38,13 @@ from .model import (
     State,
     StatePayload,
 )
-from .payloads import PayloadsMixin, manual_actions_for
+from .payloads import PayloadsMixin, pressable_actions
 
 __all__ = [
     "Action", "ActionPayload", "Automaton", "CompiledAutomaton", "CoreAutomaton", "DeferredExpression",
     "EnvKey", "EnvKeyPayload", "IntrospectionMixin", "JsSnippet", "MemoryArchive", "PayloadsMixin",
     "ProjectPayload", "Reaction", "ReactionOptionPayload", "Signal", "SignalPayload", "Source",
-    "SourceDict", "SourcePayload", "State", "StatePayload", "manual_actions_for",
+    "SourceDict", "SourcePayload", "State", "StatePayload", "pressable_actions",
 ]
 
 

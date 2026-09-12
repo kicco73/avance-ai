@@ -1,4 +1,6 @@
 <script setup>
+import { computed } from 'vue'
+
 import { audioEnabled } from '../../../chatPreferences.js'
 import { unlockAudioPlayback } from '../../../audio.js'
 import { configured } from '../availability.js'
@@ -6,8 +8,16 @@ import { narrator } from '../narrator.js'
 
 const props = defineProps({
   store: { type: Object, required: true },
-  disabled: { type: Boolean, default: false }
+  disabled: { type: Boolean, default: false },
+  // Shown regardless of what this conversation can reach: a row that is
+  // standing in for a chat (see ChatInput.vue's own `sample`).
+  sample: { type: Boolean, default: false }
 })
+
+// A sample row shows what a chat looks like, not what this person has
+// switched on: its controls are drawn in their resting state (see
+// ChatInput.vue's own `sample`).
+const on = computed(() => !props.sample && audioEnabled.value)
 
 function toggle() {
   const enabled = props.store.toggleAudio()
@@ -21,14 +31,15 @@ function toggle() {
 
 <template>
   <button
-    v-if="configured"
+    v-if="configured || sample"
     type="button"
     class="chat-input-control audio-btn"
-    :class="{ 'audio-btn-on': audioEnabled }"
-    :title="audioEnabled ? 'Audio: On' : 'Audio: Off'"
+    :disabled="disabled"
+    :class="{ 'audio-btn-on': on }"
+    :title="on ? 'Audio: On' : 'Audio: Off'"
     @click="toggle"
   >
-    <svg v-if="audioEnabled" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+    <svg v-if="on" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
       <path d="M3 9v6h4l5 5V4L7 9H3z" />
       <path d="M14.5 3.23v2.06c2.89 1.2 5 4.03 5 7.71s-2.11 6.51-5 7.71v2.06c4.01-1.28 7-5.09 7-9.77s-2.99-8.49-7-9.77zM16.5 12c0-1.77-.77-3.29-2-4.34v8.68c1.23-1.05 2-2.57 2-4.34z" />
     </svg>

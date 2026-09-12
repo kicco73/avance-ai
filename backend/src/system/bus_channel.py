@@ -52,6 +52,23 @@ HUMAN_REPLY_TIMEOUT_SECONDS = 300.0
 # registering for one would otherwise be a way to read an internal type.
 WEB_FORWARDED = (UI_NOTIFICATION, UI_HUMAN_TAKEOVER, UI_SYSTEM_WARNING, UI_PROGRESS)
 
+# This socket's own frame for "a turn is waiting on a person to answer
+# it". Not a Bus type: nothing publishes it and it never leaves the Bus,
+# which is why it is not in WEB_FORWARDED.
+HUMAN_PROMPT = "human_prompt"
+
+# What a frame says about the delivery rather than about the message: it
+# travels in the envelope and never in the body.
+_ENVELOPE = ("type", "session_id")
+
+# What a client may register for: what may leave the Bus, plus this
+# socket's own frames. Registering is how a connection says what it is —
+# a connection that never asked for human_prompt is not answering as a
+# person, and is never sent one. The sender used to decide that instead,
+# by excluding the tab that had just written, which is a guess that only
+# holds when the operator is the same person.
+CLIENT_REGISTRABLE = WEB_FORWARDED + (HUMAN_PROMPT,)
+
 
 class HumanReplyTimeoutError(Exception):
     """No connection of the target user answered a human_prompt within
@@ -152,9 +169,9 @@ class BusChannel(object):
     actions, session bootstrap and everything else stay HTTP) and
     receives every frame the server has for it — a turn's own chunk/
     tool/done/error, each carrying the turn_id of the `turn` frame that
-    produced it, plus the push-only notification/progress/
-    system_warning/human_prompt frames, sent to every one of that
-    identity's own connections at once (see push()).
+    produced it, plus the notification/progress/system_warning/
+    human_prompt frames, each going only to the connections that
+    registered for it (see push_event and CLIENT_REGISTRABLE).
 
     Ordering guarantee: one receive loop per socket reads `turn` frames
     in arrival order, and each user message is persisted right there, in
@@ -205,6 +222,10 @@ class BusChannel(object):
         # anyone who guessed a session_id awaiting a human could answer
         # in their place.
         self._operator_for_prompt: dict[str, str] = {}
+        # prompt_id -> the frame that was sent, kept until it is answered:
+        # the push is one-shot, and the operator's view registers after it
+        # opens, which is usually after the prompt fired.
+        self._prompt_frames: dict[str, dict] = {}
 
     async def channel_loop(self, websocket: WebSocket) -> None:
         token = websocket.cookies.get(SESSION_COOKIE_NAME)
@@ -223,7 +244,6 @@ class BusChannel(object):
         await websocket.accept()
         logger.info(f"accepted websocket for {username}")
         connection = WsConnection(websocket)
-        WebSession().connection_id = connection.id
         self._connections.setdefault(username, []).append(connection)
         self._supersede_over_cap(username, cap)
         writer = asyncio.create_task(connection.write_loop())
@@ -280,9 +300,11 @@ class BusChannel(object):
             # chat installed looks like from here.
             self._publish_client_frame(connection, frame_type, frame)
         elif frame_type == "subscribe":
-            connection.subscribe(self._exportable(frame.get("events")))
+            registered = self._registrable(frame.get("events"))
+            connection.subscribe(registered)
+            self._deliver_pending_prompts(connection, registered)
         elif frame_type == "unsubscribe":
-            connection.unsubscribe(self._exportable(frame.get("events")))
+            connection.unsubscribe(self._registrable(frame.get("events")))
         elif frame_type == "human_reply":
             self._resolve_human_reply_for_session(connection, frame.get("session_id"), str(frame.get("text", "")))
         elif frame_type == "human_typing":
@@ -290,19 +312,29 @@ class BusChannel(object):
         else:
             logger.debug(f"ignoring an unknown websocket frame type: {frame_type!r}")
 
-    def _exportable(self, events) -> list[str]:
-        """The subset of what a client asked for that this socket is
-        allowed to carry out of the Bus. Anything else is refused rather
-        than registered: WEB_FORWARDED is the export allowlist, and a
+    def _registrable(self, events) -> list[str]:
+        """The subset of what a client asked for that it is allowed to
+        register for. Anything else is refused rather than registered: a
         client naming an internal type would otherwise turn a
         registration into a way to read one."""
         if not isinstance(events, list):
             return []
         wanted = [event for event in events if isinstance(event, str)]
-        refused = [event for event in wanted if event not in WEB_FORWARDED]
+        refused = [event for event in wanted if event not in CLIENT_REGISTRABLE]
         if refused:
-            logger.warning(f"refusing a websocket registration for non-exportable types: {refused}")
-        return [event for event in wanted if event in WEB_FORWARDED]
+            logger.warning(f"refusing a websocket registration for types a client may not have: {refused}")
+        return [event for event in wanted if event in CLIENT_REGISTRABLE]
+
+    def _deliver_pending_prompts(self, connection: WsConnection, registered: list[str]) -> None:
+        """A prompt that fired before this connection registered. The push
+        is one-shot and the operator's view opens from a takeover
+        notification, so the prompt it has to answer is usually already
+        waiting by the time it asks for them."""
+        for username in filter(None, [self._username_of(connection)]):
+            for _ in filter(HUMAN_PROMPT.__eq__, registered):
+                for prompt_id, frame in self._prompt_frames.items():
+                    for _ in filter(username.__eq__, [self._operator_for_prompt.get(prompt_id)]):
+                        connection.send(frame)
 
     def _username_of(self, connection: WsConnection) -> str | None:
         for username, connections in self._connections.items():
@@ -348,7 +380,7 @@ class BusChannel(object):
         """One inbound frame, onto the Bus. `origin_id` carries the
         connection it arrived on so whoever answers can answer *there*
         (see send_to_connection) rather than to every tab this identity
-        has open, and `stream_id` names the one exchange over it.
+        has open.
 
         The channel is whatever the interface listening here told this
         socket it was (see owned_by) — this package still does not know
@@ -358,12 +390,14 @@ class BusChannel(object):
         recognise a connection it does not own."""
         message = Message(
             type=frame_type,
-            body=str(frame.get("body", "")),
+            # The frame is the body: everything the client said about this
+            # message, minus what the envelope already carries. A type
+            # that grows a field is not a change here.
+            body={key: value for key, value in frame.items() if key not in _ENVELOPE},
             username=WebSession().user,
             session_id=frame.get("session_id"),
             channel=self._channel,
             origin_id=connection.id,
-            stream_id=str(frame.get("stream_id", "")),
         )
         task = asyncio.create_task(bus.publish(message))
         self._inbound_tasks.add(task)
@@ -424,26 +458,6 @@ class BusChannel(object):
             payload,
         )
 
-    async def push(self, username: str, payload: dict, exclude_connection_id: str | None = None) -> bool:
-        """Sends `payload` to every one of `username`'s open connections
-        — a dormant/fully-disconnected user just gets False back, no
-        exception. This is the addressed path, for a frame that belongs
-        to this socket rather than to the Bus (human_prompt): a Bus event
-        goes through push_event above, which delivers only to whoever
-        registered. `exclude_connection_id` skips one connection (see
-        Session.connection_id): used so the tab that triggered a turn
-        doesn't also receive its own human_prompt. `async def` only to
-        keep every existing `await push(...)` call site unchanged; the
-        body itself never actually awaits (WsConnection.send() enqueues
-        synchronously)."""
-        return self._send_to(
-            [
-                connection for connection in self._connections.get(username, [])
-                if connection.id != exclude_connection_id
-            ],
-            payload,
-        )
-
     def _send_to(self, connections: list[WsConnection], payload: dict) -> bool:
         for connection in connections:
             connection.send(payload)
@@ -456,60 +470,39 @@ class BusChannel(object):
         prompt_text: str,
         session_type: str | None = None,
         project_id: int | None = None,
-        exclude_connection_id: str | None = None,
     ) -> str:
         """The BusHumanRelay.notify() primitive (see talker.human_talker.
-        HumanRelay and system.bus_human_relay.BusHumanRelay): broadcasts a
-        human_prompt frame carrying a fresh prompt_id to every one of
-        `username`'s connections other than `exclude_connection_id` (the
-        tab that just sent the message being answered — it already knows
-        what it said, and showing it its own prompt bubble as well is
-        confusing rather than informative), and registers that id so a
-        matching human_reply resolves await_human_reply() below.
+        HumanRelay and system.bus_human_relay.BusHumanRelay): sends a
+        human_prompt frame carrying a fresh prompt_id to `username`'s
+        connections that registered for that type, and registers that id
+        so a matching human_reply resolves await_human_reply() below.
         `session_type`/`project_id` are display-only context for
         whichever tab answers, carried on the frame since answering
         doesn't require navigating there first (see system.bus_human_relay).
         Returns the prompt_id — the caller must pass it straight to
         await_human_reply()/wait_for_typing(). Raises HumanNotConnectedError
-        if `username` has no *other* open connection — nobody could
-        possibly answer."""
+        when no connection asked for these: nobody there is answering as a
+        person, whatever else they may have open."""
         prompt_id = str(uuid.uuid4())
-        sent = await self.push(
-            username,
-            {
-                "type": "human_prompt",
-                "session_id": session_id,
-                "session_type": session_type,
-                "project_id": project_id,
-                "prompt_id": prompt_id,
-                "text": prompt_text,
-            },
-            exclude_connection_id=exclude_connection_id,
-        )
-        if not sent:
+        frame = {
+            "type": HUMAN_PROMPT,
+            "session_id": session_id,
+            "session_type": session_type,
+            "project_id": project_id,
+            "prompt_id": prompt_id,
+            "text": prompt_text,
+        }
+        if not await self.push_event(username, HUMAN_PROMPT, frame):
             raise HumanNotConnectedError(username)
+        # Kept whole so a connection that registers later is handed the
+        # prompt it has to answer (see _deliver_pending_prompts).
+        self._prompt_frames[prompt_id] = frame
         self._pending_human_replies[prompt_id] = asyncio.get_running_loop().create_future()
         self._pending_typing_events[prompt_id] = asyncio.Event()
         self._current_prompt_for_session[session_id] = prompt_id
         self._session_for_prompt[prompt_id] = session_id
         self._operator_for_prompt[prompt_id] = username
         return prompt_id
-
-    async def send_human_takeover(self, username: str, session_id: int, project_id: str) -> None:
-        """chat.switch_to_human(user_id)'s own push (see
-        tracking.actuators.chat_namespace.LiveChatNamespace.switch_to_human):
-        tells every one of `username`'s open connections that session_id
-        needs a human now, carrying enough to open it (project_id) —
-        never `exclude_connection_id`, since both of the operator's own
-        connections are the ones being paged, not whatever
-        triggered the call. Best-effort like push(): a dormant/
-        offline operator just doesn't get it live, same as any other
-        push — get_human_operator(session_id) is queryable state, not a
-        one-shot event, so they still see it once they open the session."""
-        await self.push_event(
-            username, UI_HUMAN_TAKEOVER,
-            {"type": UI_HUMAN_TAKEOVER, "session_id": session_id, "project_id": project_id},
-        )
 
     async def await_human_reply(self, prompt_id: str) -> str:
         """The BusHumanRelay.receive() primitive: waits for the
@@ -527,6 +520,7 @@ class BusChannel(object):
             self._pending_human_replies.pop(prompt_id, None)
             self._pending_typing_events.pop(prompt_id, None)
             self._operator_for_prompt.pop(prompt_id, None)
+            self._prompt_frames.pop(prompt_id, None)
             session_id = self._session_for_prompt.pop(prompt_id, None)
             if session_id is not None and self._current_prompt_for_session.get(session_id) == prompt_id:
                 del self._current_prompt_for_session[session_id]

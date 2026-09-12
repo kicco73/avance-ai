@@ -42,8 +42,39 @@ INPUT_TEXT = "input.text"
 # Outbound: what is being said back, in increasing concreteness — the
 # written reply, the text meant to be spoken, the audio itself.
 OUTPUT_TEXT = "output.text"
+# One piece of a message being written, as it is written. An empty one
+# means the writing has started and nothing is readable yet — which is
+# what an interface shows as typing dots, and the only honest moment to
+# show them: a message accepted is not a reply being composed, and a turn
+# can still be refused in between.
+OUTPUT_TEXT_STREAM = "output.text_stream"
 OUTPUT_SPEECH = "output.speech"
 OUTPUT_AUDIO_STREAM = "output.audio_stream"
+
+# One tool call, in both its phases — what the conversation is doing
+# while nothing readable is being written.
+OUTPUT_TOOL = "output.tool"
+
+# The choices a person is being offered right now. They belong to the
+# state the conversation is in, not to whatever produced the last
+# message, which is why they travel on their own.
+UI_BUTTONS = "ui.buttons"
+
+# What this conversation can reach: which optional services are available
+# to it, as {name: bool}. A fact about the session — its project decides,
+# not whichever project the person happens to have active elsewhere — so
+# it is said when the conversation opens, like the choices are.
+UI_SERVICES = "ui.services"
+
+# One of those choices, taken. A person acting in a conversation, like
+# saying something — and on the same road, so the two cannot overtake
+# each other.
+INPUT_BUTTON = "input.button"
+
+# Somebody just opened a conversation. Not something said — an occasion
+# for the automaton to speak first, if this state has anything to open
+# with. Nothing is owed when the conversation has already started.
+SESSION_NEW = "session.new"
 
 # Something one identity's interfaces may want to show — a task's own
 # snippet, a state that moved while nobody was looking. Not content and
@@ -70,13 +101,21 @@ UI_SYSTEM_WARNING = "ui.system_warning"
 # broadcaster.Broadcaster).
 UI_PROGRESS = "ui.progress"
 
-# Facts about a turn that are not its content.
-TURN_STARTED = "turn.started"
-TURN_ENDED = "turn.ended"
-TURN_FAILED = "turn.failed"
-TURN_TOOL = "turn.tool"
+# Somebody reacted to a message — the model to what the person just
+# said. A fact about that message, not about the answer to it.
+OUTPUT_REACTION = "output.reaction"
 
-MAIL_SEND = "mail.send"
+# The conversation moved: which state it is in now, and what moved it.
+# Published when it changes, because that is when it is news — a reader
+# keeps the last one it was told.
+STATE_CHANGED = "state.changed"
+
+# What went wrong, when something did: `code` is what happened, and
+# whoever is speaking to the person writes the sentence. It ends an
+# exchange in place of the answer.
+OUTPUT_ERROR = "output.error"
+
+TOOL_SEND_MAIL = "tool.send_mail"
 
 # Named places the core assembles something and anything may add to it.
 # Not messages: nothing is delivered and nobody is notified — someone
@@ -126,13 +165,18 @@ POINT_PROJECT_PUBLISHED = "project.published"
 # tracking/spoken_reply.py).
 POINT_SPOKEN_REPLY = "turn.spoken_reply"
 
+# What each optional service says it can do for one conversation (see
+# tracking/session_services.py). Nobody registered means nothing offers
+# anything, which is what a build without those packages should conclude.
+POINT_SESSION_SERVICES = "session.services"
+
 # What a client connected over a socket is allowed to put on the Bus.
 # The wire uses these very names — a frame is not translated into
 # something else on the way in — so without this list the socket would
 # be an open injection point: a browser could publish an internal type
 # and find listeners for it. A client speaks as a person, and a person
 # says things.
-CLIENT_INJECTABLE = frozenset({INPUT_TEXT})
+CLIENT_INJECTABLE = frozenset({INPUT_TEXT, INPUT_BUTTON, SESSION_NEW})
 
 # How deep a chain of conversions may go before something is looping: a
 # handler that publishes the type it consumes would otherwise recur
@@ -161,11 +205,6 @@ class Message:
     converted_from: str | None = None
     #: Media type of `body` where that is not implied by `type`.
     mime: str | None = None
-    #: The interface's own name for this one exchange, where it has one —
-    #: a websocket turn's stream_id. Correlation, like origin_id, which is
-    #: why it travels in the envelope: the body of an `input.text` is the
-    #: text, and one type must not have two body shapes.
-    stream_id: str | None = None
     conversions: int = 0
 
     def converted(self, type: str, body: Any, mime: str | None = None) -> "Message":

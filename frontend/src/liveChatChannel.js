@@ -1,6 +1,7 @@
 // How the app's one live chat reaches its own backend: opening or
-// resuming a session, firing an action on it, reading the operator's
-// view of it. Every one of those declares a channel, and only the skill
+// resuming a session, reading the operator's view of it, reading its
+// messages. What a person *does* in a conversation does not come through
+// here — it goes on the socket (see backend docs/BUS.md). Every one of those declares a channel, and only the skill
 // that owns the channel can name it — so the core asks here instead,
 // and whoever boots the app hands this module whatever the registry
 // collected (see composables/useAppBoot.js, the same shape as
@@ -13,7 +14,6 @@
 const noLiveChatChannel = {
   getCurrentSession: async () => null,
   createSession: async () => null,
-  postAction: async () => null,
   getOperatorState: async () => null,
   getMessages: async () => [],
 }

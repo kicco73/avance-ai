@@ -11,14 +11,6 @@ export function postCreateSession() {
   return apiFetch(`${API_URL}/skills/webchat/sessions`, { method: 'POST' })
 }
 
-export function postAction(actionName, sessionId) {
-  return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/actions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action_name: actionName })
-  })
-}
-
 export function getOperatorState(sessionId) {
   return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/operator-state`)
 }

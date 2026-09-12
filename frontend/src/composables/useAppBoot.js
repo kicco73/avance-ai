@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { getState, getMe, getProjects, postRedeemInviteCode, activateProject, postAcceptTerms, postLogout, getPendingStatus } from '../api.js'
-import { connect as connectChat, disconnect as disconnectChat } from '../chatClient.js'
+import { busChannel } from '../busChannel.js'
 import { clearApiError } from '../errorStore.js'
 import { requireLogin } from '../authStore.js'
 import { confirmDialog } from '../dialogStore.js'
@@ -145,7 +145,7 @@ export function useAppBoot(
     // The /api/core/bus channel carries more than chat turns now
     // (test-run updates, task notifications, health pushes), so every
     // role connects here at boot rather than lazily on first chat use.
-    connectChat()
+    busChannel.connect()
   }
 
   // The one shared way to resolve "the active project" for a caller with no
@@ -316,7 +316,7 @@ export function useAppBoot(
     } catch {
       // already surfaced via apiFetch
     }
-    disconnectChat()
+    busChannel.disconnect()
     needsTerms.value = false
     termsError.value = ''
     inviteExempt.value = false
@@ -331,7 +331,7 @@ export function useAppBoot(
     } catch {
       // already surfaced via apiFetch
     }
-    disconnectChat()
+    busChannel.disconnect()
     requireLogin()
   }
 

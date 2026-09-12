@@ -111,12 +111,13 @@ def test_the_always_policy_speaks_text_replies_and_the_never_policy_stays_text()
 
 
 def test_synthesis_starts_mid_turn_when_announced_otherwise_from_the_persisted_text_and_afresh_when_it_differs():
-    """The reply's [audio] text is the first thing the model emits; the
-    voice note's synthesis starts right then. The prefetch is an
-    optimisation, not a dependency: with no audio metadata during the turn
-    the note is synthesized on the spot from the persisted audio text, and
-    when a regenerated reply persists a different text the note follows
-    the persisted one."""
+    """The reply's spoken text is the first thing the model emits, and the
+    voice note's synthesis starts right then (`output.speech`). The
+    prefetch is an optimisation, not a dependency: with nothing announced
+    during the turn the note is synthesized on the spot from the persisted
+    text, and when a regenerated reply persists a different one the note
+    follows the persisted one — this channel reads it from the row, as it
+    always has."""
     client, _, api, talk, _ = _spoken_voice_note()
     _post(client, _payload(mtype="audio"))
     assert talk.spoken == ["Hola."]
@@ -179,9 +180,9 @@ def test_notices_are_never_spoken(voice_env):
     assert talk.spoken == [] and api.sent == [(LINKED_NUMBER, REPLY_PAUSED)]
 
 
-def test_manual_actions_follow_a_spoken_reply_as_buttons_and_stay_on_the_text_fallback():
+def test_buttons_follow_a_spoken_reply_as_buttons_and_stay_on_the_text_fallback():
     client, chat, api, _, _ = _spoken_voice_note()
-    chat.state = {**chat.state, "manual_actions": [_action("go", "Go"), _action("stop", "Stop")]}
+    chat.buttons = [_action("go", "Go"), _action("stop", "Stop")]
     _post(client, _payload(mtype="audio"))
     assert api.timeline == ["typing", "audio", "buttons"]
     kind, to, body, buttons = api.interactive[0]
@@ -189,7 +190,7 @@ def test_manual_actions_follow_a_spoken_reply_as_buttons_and_stay_on_the_text_fa
     assert api.sent == []
 
     client, chat, api, _, _ = _spoken_voice_note()
-    chat.state = {**chat.state, "manual_actions": [_action("go", "Go")]}
+    chat.buttons = [_action("go", "Go")]
     api.fail_upload = True
     _post(client, _payload(mtype="audio"))
     assert api.timeline == ["typing", "buttons"]

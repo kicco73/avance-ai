@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { getMe, postEraseData } from '../api.js'
 import { profileFields } from '../skills/registry.js'
 import { confirmDialog, infoDialog, promptDialog } from '../dialogStore.js'
-import { disconnect as disconnectChat } from '../chatClient.js'
+import { busChannel } from '../busChannel.js'
 import { requireLogin } from '../authStore.js'
 import AppHeader from './AppHeader.vue'
 
@@ -78,7 +78,7 @@ async function eraseAllData() {
     body: 'All your data has been erased.\nLogging you out.\n\n Thank you for being with us!',
     okLabel: 'Bye!'
   })
-  disconnectChat()
+  busChannel.disconnect()
   requireLogin()
 }
 </script>

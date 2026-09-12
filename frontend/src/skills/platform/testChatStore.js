@@ -23,7 +23,6 @@ export const testStore = createChatStore({
   getCurrentSession: (sessionId) => getCurrentTestSession(sessionId, projectId),
   getSessionsList: () => getTestSessions(projectId),
   createSession: () => postCreateTestSession(projectId),
-  postAction: (actionName, sessionId) => postSessionAction(actionName, sessionId),
   getMessages: (sessionId) => getTranscript(sessionId),
   resetSession: () => postResetTestSessions(projectId),
   confirmNewSession: false,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from system import bus
-from system.bus import MAIL_SEND, POINT_CORE_SERVICES
+from system.bus import TOOL_SEND_MAIL, POINT_CORE_SERVICES
 from system.logging_factory import LoggerFactory
 from system.skills import Skill
 from mail import config as mail_config
@@ -32,7 +32,7 @@ class MailSkill(Skill):
             logger.info("mail-service is not enabled — task.send_mail can't run.")
             return
 
-        bus.subscribe(MAIL_SEND, self.on_mail_send)
+        bus.subscribe(TOOL_SEND_MAIL, self.on_mail_send)
         logger.info("mail-service started.")
 
     def describe_section(self, snapshot: dict) -> None:
@@ -45,7 +45,7 @@ class MailSkill(Skill):
     def _mail_service(self) -> MailService:
         # Built on the first mail rather than at start: MailService needs
         # the scheduler, which does not exist at boot. By the time
-        # anything publishes MAIL_SEND the core is composed, so this is
+        # anything publishes TOOL_SEND_MAIL the core is composed, so this is
         # the whole difference between "needs a core object" and "takes
         # one as a parameter" (see bus.POINT_CORE_SERVICES).
         for service in filter(None, [self._service]):
@@ -56,11 +56,11 @@ class MailSkill(Skill):
         raise RuntimeError("mail-service is not enabled — task.send_mail can't run.")
 
     def stop(self) -> None:
-        bus.unsubscribe(MAIL_SEND, self.on_mail_send)
+        bus.unsubscribe(TOOL_SEND_MAIL, self.on_mail_send)
 
     def required_by(self, automaton, sources: dict[str, str | bytes]) -> bool:
         """A project that calls task.send_mail cannot run in a build without
-        this package: the call would find nobody registered for MAIL_SEND
+        this package: the call would find nobody registered for TOOL_SEND_MAIL
         and raise where the automaton expects a mail to go out."""
         return any("task.send_mail" in (action.task or "") for action in _actions(automaton))
 

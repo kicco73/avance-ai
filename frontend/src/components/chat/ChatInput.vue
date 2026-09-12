@@ -7,7 +7,14 @@ import { chatInputControls } from '../../skills/registry.js'
 
 defineProps({
   disabled: { type: Boolean, default: false },
-  store: { type: Object, required: true }
+  store: { type: Object, required: true },
+  // A row that stands for a chat rather than being one — the frozen
+  // previews of a project's design and of an app's page. It shows every
+  // control this build has, because it is showing what a chat looks
+  // like; a real row shows what its own conversation can reach (see
+  // backend docs/BUS.md's own ui.services), which a sample has no way of
+  // knowing and no business guessing.
+  sample: { type: Boolean, default: false }
 })
 
 const draft = defineModel({ type: String, default: '' })
@@ -39,6 +46,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
       :is="control.component"
       :store="store"
       :disabled="disabled"
+      :sample="sample"
     />
   </form>
 </template>

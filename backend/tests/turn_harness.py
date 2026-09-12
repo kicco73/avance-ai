@@ -104,18 +104,24 @@ def turn_service_for(tmp_path):
 
 #: Every type a turn publishes, and what a test collects to see what one
 #: did — see turn/input_listener.py.
-TURN_FRAMES = ("turn.started", "output.text", "output.speech", "turn.tool", "turn.ended", "turn.failed")
-_TERMINAL = ("turn.ended", "turn.failed")
+TURN_FRAMES = (
+    "output.text_stream", "output.text", "output.speech", "output.tool", "output.reaction",
+    "state.changed", "ui.buttons", "output.error",
+)
+def _is_terminal(kinds: list[str]) -> bool:
+    """The answer is the `output.text` published after `ui.buttons` — an
+    earlier one is a message the state owed before it could answer. An
+    `output.error` replaces the answer and ends the exchange too."""
+    return kinds[-1] == "output.error" or (kinds[-1] == "output.text" and "ui.buttons" in kinds)
 
 
-async def drive_turn(turn_service, db, session_id: int, stream_id: str, text: str) -> list[tuple[str, dict]]:
+async def drive_turn(turn_service, db, session_id: int, _unused: str, text: str) -> list[tuple[str, dict]]:
     """One turn, through the real listener, with the frames it published.
 
     The listener runs a turn as its own task — a channel that awaited one
     would hold up everyone else on the Bus — so there is nothing to await
     from outside and the terminal frame is what says it is over. Frames
-    are picked out by `stream_id`, so two turns can be in flight at once
-    without a test seeing the other's.
+    are picked out by the session they belong to.
     """
     from system import bus
     from system.bus import INPUT_TEXT, Message
@@ -130,10 +136,10 @@ async def drive_turn(turn_service, db, session_id: int, stream_id: str, text: st
     finished = asyncio.Event()
 
     async def take(message) -> None:
-        if message.stream_id != stream_id:
+        if message.session_id != session_id:
             return
         collected.append(message)
-        if message.type in _TERMINAL:
+        if _is_terminal([m.type for m in collected]):
             finished.set()
 
     for message_type in TURN_FRAMES:
@@ -142,8 +148,8 @@ async def drive_turn(turn_service, db, session_id: int, stream_id: str, text: st
         TurnInput(turn_service, db).register()
     try:
         await bus.publish(Message(
-            type=INPUT_TEXT, body=text, username=WebSession().user, session_id=session_id,
-            channel="webchat", origin_id=f"connection-{stream_id}", stream_id=stream_id,
+            type=INPUT_TEXT, body={"text": text}, username=WebSession().user, session_id=session_id,
+            channel="webchat", origin_id=f"connection-{_unused}",
         ))
         await asyncio.wait_for(finished.wait(), timeout=10)
     finally:

@@ -15,9 +15,10 @@ from fastapi import WebSocketDisconnect
 from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME
 from system import bus
-from system.bus import TURN_ENDED, UI_NOTIFICATION, UI_PROGRESS
+from system.bus import UI_BUTTONS, UI_NOTIFICATION, UI_PROGRESS
 from system.bus_channel import (
-    SUPERSEDED_CLOSE_CODE, SWITCHED_TO_OTHER_CLIENT, HumanNotConnectedError, WsConnection, BusChannel,
+    HUMAN_PROMPT, SUPERSEDED_CLOSE_CODE, SWITCHED_TO_OTHER_CLIENT, HumanNotConnectedError, WsConnection,
+    BusChannel,
 )
 from turn.input_listener import TurnInput
 from webchat.webchat_service import WebchatService
@@ -91,66 +92,9 @@ class _RecordingConnection:
         self.sent.append(payload)
 
 
-class TestPush:
-    def test_returns_false_when_no_connection_is_registered(self):
-        channel = BusChannel(_FakeAuthService())
-
-        assert asyncio.run(channel.push(USERNAME, {"type": "ui.notification"})) is False
-
-    def test_sends_the_payload_and_returns_true_when_a_connection_exists(self):
-        channel = BusChannel(_FakeAuthService())
-        connection = _RecordingConnection()
-        channel._connections[USERNAME] = [connection]
-
-        payload = {"type": "ui.notification", "project_name": "proj", "state": {"key": "x"}, "task": "notify('hi')"}
-        assert asyncio.run(channel.push(USERNAME, payload)) is True
-        assert connection.sent == [payload]
-
-    def test_never_reaches_a_different_users_own_connection(self):
-        channel = BusChannel(_FakeAuthService())
-        other = _RecordingConnection()
-        channel._connections["other-user"] = [other]
-
-        assert asyncio.run(channel.push(USERNAME, {"type": "ui.notification"})) is False
-        assert other.sent == []
-
-    def test_broadcasts_to_every_one_of_the_users_own_connections(self):
-        channel = BusChannel(_FakeAuthService())
-        first, second = _RecordingConnection(), _RecordingConnection()
-        first.id = "conn-1"
-        second.id = "conn-2"
-        channel._connections[USERNAME] = [first, second]
-
-        payload = {"type": "ui.notification"}
-        assert asyncio.run(channel.push(USERNAME, payload)) is True
-        assert first.sent == [payload]
-        assert second.sent == [payload]
-
-    def test_exclude_connection_id_skips_only_that_connection(self):
-        channel = BusChannel(_FakeAuthService())
-        first, second = _RecordingConnection(), _RecordingConnection()
-        first.id = "conn-1"
-        second.id = "conn-2"
-        channel._connections[USERNAME] = [first, second]
-
-        payload = {"type": "human_prompt"}
-        assert asyncio.run(channel.push(USERNAME, payload, exclude_connection_id="conn-1")) is True
-        assert first.sent == []
-        assert second.sent == [payload]
-
-    def test_exclude_connection_id_returns_false_when_it_was_the_only_connection(self):
-        channel = BusChannel(_FakeAuthService())
-        only = _RecordingConnection()
-        only.id = "conn-1"
-        channel._connections[USERNAME] = [only]
-
-        assert asyncio.run(channel.push(USERNAME, {"type": "human_prompt"}, exclude_connection_id="conn-1")) is False
-        assert only.sent == []
-
-
 class TestPushEvent:
-    """A Bus event reaches a connection only once that connection
-    registered for its type — being connected is not being subscribed."""
+    """A frame reaches a connection only once that connection registered
+    for its type — being connected is not being subscribed."""
 
     def test_reaches_only_the_connections_that_registered_for_that_type(self):
         channel = BusChannel(_FakeAuthService())
@@ -171,6 +115,25 @@ class TestPushEvent:
 
         assert asyncio.run(channel.push_event(USERNAME, UI_NOTIFICATION, {"type": UI_NOTIFICATION})) is False
 
+    def test_reaches_every_one_of_that_users_registered_connections(self):
+        channel = BusChannel(_FakeAuthService())
+        first, second = _RecordingConnection(UI_NOTIFICATION), _RecordingConnection(UI_NOTIFICATION)
+        first.id, second.id = "conn-1", "conn-2"
+        channel._connections[USERNAME] = [first, second]
+
+        payload = {"type": UI_NOTIFICATION}
+        assert asyncio.run(channel.push_event(USERNAME, UI_NOTIFICATION, payload)) is True
+        assert first.sent == [payload]
+        assert second.sent == [payload]
+
+    def test_never_reaches_a_different_users_own_connection(self):
+        channel = BusChannel(_FakeAuthService())
+        other = _RecordingConnection(UI_NOTIFICATION)
+        channel._connections["other-user"] = [other]
+
+        assert asyncio.run(channel.push_event(USERNAME, UI_NOTIFICATION, {"type": UI_NOTIFICATION})) is False
+        assert other.sent == []
+
 
 class TestRegistration:
     def test_a_subscribe_frame_registers_only_the_exportable_types_and_unsubscribe_drops_them(self):
@@ -178,11 +141,11 @@ class TestRegistration:
         connection = _RecordingConnection()
 
         channel._handle_frame(
-            connection, json.dumps({"type": "subscribe", "events": [UI_NOTIFICATION, "input.text", "turn.ended"]})
+            connection, json.dumps({"type": "subscribe", "events": [UI_NOTIFICATION, "input.text", "output.text"]})
         )
         assert connection.wants(UI_NOTIFICATION) is True
         assert connection.wants("input.text") is False
-        assert connection.wants("turn.ended") is False
+        assert connection.wants("output.text") is False
 
         channel._handle_frame(connection, json.dumps({"type": "unsubscribe", "events": [UI_NOTIFICATION]}))
         assert connection.wants(UI_NOTIFICATION) is False
@@ -196,6 +159,37 @@ class TestRegistration:
         channel._handle_frame(connection, json.dumps({"type": "subscribe", "events": [{"a": 1}]}))
 
         assert connection.wants(UI_NOTIFICATION) is False
+
+
+class TestInboundFrames:
+    """What a client says reaches the Bus whole: the frame is the body,
+    minus what the envelope carries. A type that grows a field needs no
+    change here — and the field is not silently dropped, which is exactly
+    what happened to a button's own id."""
+
+    def test_a_frame_reaches_the_bus_with_every_field_it_carried(self):
+        channel = BusChannel(_FakeAuthService())
+        channel.owned_by("webchat")
+        connection = _RecordingConnection()
+        published: list = []
+
+        async def take(message):
+            published.append(message)
+
+        async def scenario():
+            bus.subscribe("input.button", take)
+            try:
+                channel._handle_frame(connection, json.dumps({
+                    "type": "input.button", "session_id": 7, "id": "go-loud",
+                }))
+                await asyncio.sleep(0)
+            finally:
+                bus.unsubscribe("input.button", take)
+
+        asyncio.run(scenario())
+        assert [(m.type, m.session_id, m.body) for m in published] == [
+            ("input.button", 7, {"id": "go-loud"}),
+        ]
 
 
 class TestChannelLoop:
@@ -212,17 +206,22 @@ class TestChannelLoop:
         pushed = {}
 
         class _ObservingWebSocket(_FakeWebSocket):
+            """Pushes once its own subscribe frame has been read and
+            handled — a connection is sent nothing it did not ask for."""
+
             async def receive_text(self):
-                if "done" not in pushed:
-                    pushed["done"] = await channel.push(USERNAME, {"type": "ui.notification", "project_name": "p"})
+                if not self._frames and "done" not in pushed:
+                    pushed["done"] = await channel.push_event(
+                        USERNAME, UI_NOTIFICATION, {"type": UI_NOTIFICATION, "project_name": "p"},
+                    )
                     await asyncio.sleep(0)
                 return await super().receive_text()
 
-        websocket = _ObservingWebSocket()
+        websocket = _ObservingWebSocket([json.dumps({"type": "subscribe", "events": [UI_NOTIFICATION]})])
         asyncio.run(channel.channel_loop(websocket))
 
         assert pushed["done"] is True
-        assert websocket.sent == [{"type": "ui.notification", "project_name": "p"}]
+        assert websocket.sent == [{"type": UI_NOTIFICATION, "project_name": "p"}]
 
     def test_the_registration_is_removed_on_disconnect(self):
         channel = BusChannel(_FakeAuthService())
@@ -230,7 +229,7 @@ class TestChannelLoop:
         asyncio.run(channel.channel_loop(_FakeWebSocket()))
 
         assert USERNAME not in channel._connections
-        assert asyncio.run(channel.push(USERNAME, {})) is False
+        assert asyncio.run(channel.push_event(USERNAME, UI_NOTIFICATION, {})) is False
 
     def test_a_different_users_own_registration_is_left_alone(self):
         channel = BusChannel(_FakeAuthService())
@@ -362,7 +361,7 @@ class TestHumanPrompt:
         """The operator's own frame carries session_id, never a prompt_id
         it may never have seen — see _current_prompt_for_session."""
         channel = BusChannel(_FakeAuthService())
-        connection = _RecordingConnection()
+        connection = _RecordingConnection(HUMAN_PROMPT)
         connection.id = "conn-1"
         channel._connections[USERNAME] = [connection]
 
@@ -375,7 +374,7 @@ class TestHumanPrompt:
 
     def test_a_human_typing_frame_resolves_wait_for_typing(self):
         channel = BusChannel(_FakeAuthService())
-        connection = _RecordingConnection()
+        connection = _RecordingConnection(HUMAN_PROMPT)
         connection.id = "conn-1"
         channel._connections[USERNAME] = [connection]
 
@@ -390,9 +389,9 @@ class TestHumanPrompt:
         """Any signed-in user can name a session_id; the reply is only a
         reply when it comes from the identity the prompt went to."""
         channel = BusChannel(_FakeAuthService())
-        operator = _RecordingConnection()
+        operator = _RecordingConnection(HUMAN_PROMPT)
         operator.id = "conn-1"
-        intruder = _RecordingConnection()
+        intruder = _RecordingConnection(HUMAN_PROMPT)
         intruder.id = "conn-2"
         channel._connections[USERNAME] = [operator]
         channel._connections["someone-else@example.com"] = [intruder]
@@ -410,7 +409,7 @@ class TestHumanPrompt:
 
     def test_await_human_reply_clears_the_sessions_current_prompt(self):
         channel = BusChannel(_FakeAuthService())
-        connection = _RecordingConnection()
+        connection = _RecordingConnection(HUMAN_PROMPT)
         connection.id = "conn-1"
         channel._connections[USERNAME] = [connection]
 
@@ -425,30 +424,58 @@ class TestHumanPrompt:
 
         assert asyncio.run(scenario()) is None
 
-    def test_exclude_connection_id_keeps_the_sending_tab_from_seeing_its_own_prompt(self):
+    def test_only_a_connection_that_registered_is_sent_the_prompt(self):
+        """Registering is what says "I am the one answering as a person".
+        A tab that never asked is not an operator, whatever else it has
+        open — which is what the sender used to guess at, by excluding
+        whichever tab had just written."""
         channel = BusChannel(_FakeAuthService())
-        sender, other = _RecordingConnection(), _RecordingConnection()
-        sender.id, other.id = "conn-sender", "conn-other"
-        channel._connections[USERNAME] = [sender, other]
+        operator, bystander = _RecordingConnection(HUMAN_PROMPT), _RecordingConnection()
+        operator.id, bystander.id = "conn-operator", "conn-bystander"
+        channel._connections[USERNAME] = [bystander, operator]
 
-        asyncio.run(channel.send_human_prompt(
-            USERNAME, session_id=1, prompt_text="hi", exclude_connection_id="conn-sender",
-        ))
+        asyncio.run(channel.send_human_prompt(USERNAME, session_id=1, prompt_text="hi"))
 
-        assert sender.sent == []
-        assert len(other.sent) == 1
-        assert other.sent[0]["type"] == "human_prompt"
+        assert bystander.sent == []
+        assert [frame["type"] for frame in operator.sent] == [HUMAN_PROMPT]
 
-    def test_raises_when_excluding_the_only_connection(self):
+    def test_raises_when_the_only_connection_never_registered(self):
         channel = BusChannel(_FakeAuthService())
-        only = _RecordingConnection()
-        only.id = "conn-1"
-        channel._connections[USERNAME] = [only]
+        bystander = _RecordingConnection()
+        bystander.id = "conn-1"
+        channel._connections[USERNAME] = [bystander]
 
         with pytest.raises(HumanNotConnectedError):
-            asyncio.run(channel.send_human_prompt(
-                USERNAME, session_id=1, prompt_text="hi", exclude_connection_id="conn-1",
-            ))
+            asyncio.run(channel.send_human_prompt(USERNAME, session_id=1, prompt_text="hi"))
+
+    def test_a_prompt_that_fired_first_is_delivered_when_a_connection_registers(self):
+        """The operator's view opens from a takeover notification, which
+        is after the turn already asked: a one-shot push would leave it
+        with nothing to answer."""
+        channel = BusChannel(_FakeAuthService())
+        operator, latecomer = _RecordingConnection(HUMAN_PROMPT), _RecordingConnection()
+        operator.id, latecomer.id = "conn-1", "conn-2"
+        channel._connections[USERNAME] = [operator, latecomer]
+
+        asyncio.run(channel.send_human_prompt(USERNAME, session_id=1, prompt_text="what do I say?"))
+        channel._handle_frame(latecomer, json.dumps({"type": "subscribe", "events": [HUMAN_PROMPT]}))
+
+        assert [frame["text"] for frame in latecomer.sent] == ["what do I say?"]
+
+    def test_an_answered_prompt_is_not_delivered_to_whoever_registers_next(self):
+        channel = BusChannel(_FakeAuthService())
+        operator, latecomer = _RecordingConnection(HUMAN_PROMPT), _RecordingConnection()
+        operator.id, latecomer.id = "conn-1", "conn-2"
+        channel._connections[USERNAME] = [operator, latecomer]
+
+        async def scenario():
+            prompt_id = await channel.send_human_prompt(USERNAME, session_id=1, prompt_text="what do I say?")
+            channel._handle_frame(operator, json.dumps({"type": "human_reply", "session_id": 1, "text": "say hi"}))
+            await channel.await_human_reply(prompt_id)
+            channel._handle_frame(latecomer, json.dumps({"type": "subscribe", "events": [HUMAN_PROMPT]}))
+
+        asyncio.run(scenario())
+        assert latecomer.sent == []
 
 
 class _GatedProvider:
@@ -500,7 +527,7 @@ class _ScriptedWebSocket(_FakeWebSocket):
 
     async def send_json(self, payload: dict):
         self.sent.append(payload)
-        finished = len([f for f in self.sent if f.get("type") in ("turn.ended", "turn.failed")])
+        finished = len([f for f in self.sent if f.get("type") in ("output.text", "output.error")])
         if self._stop_after_finished is not None and finished >= self._stop_after_finished:
             self.disconnect_now.set()
 
@@ -512,8 +539,8 @@ async def _wait_for(predicate, timeout: float = 5.0) -> None:
         await asyncio.sleep(0.005)
 
 
-def _frames_of(frames: list[dict], turn_id: str) -> list[dict]:
-    return [frame for frame in frames if frame.get("stream_id") == turn_id]
+def _frames_of(frames: list[dict], session_id: int) -> list[dict]:
+    return [frame for frame in frames if frame.get("session_id") == session_id]
 
 
 @pytest.mark.regression
@@ -539,8 +566,8 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     WebchatService(turn_service, None, channel).register()
     websocket = _ScriptedWebSocket(
         [
-            json.dumps({"type": "input.text", "stream_id": "first", "session_id": session["id"], "body": "I have a problem"}),
-            json.dumps({"type": "input.text", "stream_id": "second", "session_id": session["id"], "body": "with flight VY3003"}),
+            json.dumps({"type": "input.text", "session_id": session["id"], "text": "I have a problem"}),
+            json.dumps({"type": "input.text", "session_id": session["id"], "text": "with flight VY3003"}),
         ],
         stop_after_finished=2,
     )
@@ -559,14 +586,12 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     assert [m["role"] for m in persisted] == ["user", "user", "assistant", "assistant"]
     assert [m["content"] for m in persisted if m["role"] == "user"] == ["I have a problem", "with flight VY3003"]
 
-    # Each frame's own turn reported under its own turn_id: a "turn.started"
-    # frame first (see tracking_processor.py's own process()), chunks,
-    # then done.
-    for turn_id in ("first", "second"):
-        own = _frames_of(websocket.sent, turn_id)
-        assert own[-1]["type"] == "turn.ended", own
-        assert own[0]["type"] == "turn.started", own
-        assert set(f["type"] for f in own[1:-1]) == {"output.text"}
+    # Two answers, one per exchange: the first message was already being
+    # answered when the second arrived, so the second got its own (see
+    # turn/input_listener.py's own coalescing).
+    own = _frames_of(websocket.sent, session["id"])
+    assert own[0] == {**own[0], "type": "output.text_stream", "text": ""}, own
+    assert [f["type"] for f in own if f["type"] == "output.text"] and own[-1]["type"] == "output.text", own
 
 
 @pytest.mark.regression
@@ -582,7 +607,7 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
     TurnInput(turn_service, db).register()
     WebchatService(turn_service, None, channel).register()
     websocket = _ScriptedWebSocket(
-        [json.dumps({"type": "input.text", "stream_id": "dropped", "session_id": session["id"], "body": "hello?"})],
+        [json.dumps({"type": "input.text", "session_id": session["id"], "text": "hello?"})],
     )
 
     # The turn is core's task now, not this service's, so there is
@@ -594,7 +619,7 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
     async def note_the_end(_message):
         finished.set()
 
-    bus.subscribe(TURN_ENDED, note_the_end)
+    bus.subscribe(UI_BUTTONS, note_the_end)
 
     loop_task = asyncio.create_task(channel.channel_loop(websocket))
     await _wait_for(provider.first_round_started.is_set)
@@ -605,11 +630,11 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
     await asyncio.wait_for(finished.wait(), 5)
 
     assert [m["role"] for m in db.get_messages(session["id"])] == ["user", "assistant"]
-    # The only frame queued before the browser actually left is the
-    # "turn.started" one process() always sends first (see tracking_processor.
-    # py) — nothing from the reply itself made it, since generation was
-    # still gated behind provider.release at the moment of disconnect.
-    assert [f["type"] for f in websocket.sent] == ["turn.started"]
+    # The only frame queued before the browser actually left is the empty
+    # chunk process() always sends first (see tracking_processor.py) —
+    # nothing from the reply itself made it, since generation was still
+    # gated behind provider.release at the moment of disconnect.
+    assert [(f["type"], f["text"]) for f in websocket.sent] == [("output.text_stream", "")]
 
 
 @pytest.mark.regression
@@ -618,14 +643,17 @@ def test_every_outgoing_frame_of_a_turn_carries_its_turn_id_and_chunks_precede_d
 
     frames = chat_turn_frames(client, session["id"], "hi", turn_id="abc-123")
 
-    assert {f["stream_id"] for f in frames} == {"abc-123"}
-    assert frames[-1]["type"] == "turn.ended"
-    # "turn.started" always precedes generation (see tracking_processor.py's
-    # own process()), then every chunk, then done.
-    assert frames[0]["type"] == "turn.started"
-    chunks = frames[1:-1]
-    assert chunks and set(f["type"] for f in chunks) == {"output.text"}
-    assert frames[-1]["reply"][0]["content"] == "".join(f["body"] for f in chunks)
+    kinds = [f["type"] for f in frames]
+    assert frames[-1]["type"] == "output.text"
+    # The empty chunk always precedes generation (see tracking_processor.py's
+    # own process()), then the pieces, then every whole message.
+    assert (frames[0]["type"], frames[0]["text"]) == ("output.text_stream", "")
+    chunks = [f for f in frames if f["type"] == "output.text_stream" and f["text"]]
+    whole = [f for f in frames if f["type"] == "output.text"]
+    assert chunks and whole
+    assert kinds.index("output.text") > max(i for i, kind in enumerate(kinds) if kind == "output.text_stream")
+    # The last whole message is the answer, and the pieces were pieces of it.
+    assert whole[-1]["text"] == "".join(f["text"] for f in chunks)
 
 
 @pytest.mark.contract
@@ -633,11 +661,10 @@ def test_a_turn_on_someone_elses_session_is_answered_with_an_error_frame(client,
     session = client.get("/api/skills/webchat/sessions/current").json()
 
     with chat_socket(client, username="intruder") as ws:
-        ws.send_json({"type": "input.text", "stream_id": "x", "session_id": session["id"], "body": "hi"})
+        ws.send_json({"type": "input.text", "session_id": session["id"], "text": "hi"})
         frame = ws.receive_json()
 
-    assert frame["type"] == "turn.failed"
-    assert frame["stream_id"] == "x"
+    assert frame["type"] == "output.error"
     assert frame["code"] == "session_not_found"
     assert [m for m in app_db.get_messages(session["id"]) if m["role"] == "user"] == []
 
@@ -649,5 +676,5 @@ def test_a_turn_on_a_closed_session_is_answered_with_session_closed(client, hell
 
     final = chat_turn_frames(client, session["id"], "hi")[-1]
 
-    assert final["type"] == "turn.failed"
+    assert final["type"] == "output.error"
     assert final["code"] == "session_closed"

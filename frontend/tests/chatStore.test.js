@@ -20,7 +20,6 @@ vi.mock('../src/api.js', () => ({
   getMessages: vi.fn()
 }))
 vi.mock('../src/busChannel.js', () => ({ busChannel: { subscribe: vi.fn(() => () => {}) } }))
-vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 
 describe('handleAction (manual test action) never runs an task script off the response', () => {
   let chatStore

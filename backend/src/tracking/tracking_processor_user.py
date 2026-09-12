@@ -73,6 +73,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			self.metadata.on_metadata('chunk', buffered_text_before_signals_resolved)
 
 		transitioned = self.user.state != self.out.state
+		self.moved_before_reply = transitioned
 
 		if transitioned:
 			# Wrong guess — the async method moved the automaton.

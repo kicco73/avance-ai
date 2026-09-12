@@ -15,7 +15,7 @@ files it references by name (§6).
 chat feature is built on it.** There is no HTTP or SSE fallback, and no
 alternative endpoint: a user message travels as an `input.text` frame on
 the single `/api/core/bus` connection a page holds, and that turn's
-own `output.text`, `turn.tool`, `turn.ended` and `turn.failed` frames
+own `output.text_stream`, `output.tool`, `turn.ended` and `output.error` frames
 come back on the same socket, each carrying the `stream_id` the client
 minted — the only correlation there is. Everything else (manual actions,
 session bootstrap, history, project management) stays plain HTTP.
