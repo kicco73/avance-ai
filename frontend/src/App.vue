@@ -13,6 +13,7 @@ import HumanTakeoverToasts from './components/HumanTakeoverToasts.vue'
 import DialogHost from './components/DialogHost.vue'
 import { requestedOperatorSession, clearRequestedOperatorSession } from './humanTakeoverStore.js'
 import { busChannel } from './busChannel.js'
+import { activateProject } from './api.js'
 import { needsLogin } from './authStore.js'
 import { activeDialog } from './dialogStore.js'
 import { useAppBoot } from './composables/useAppBoot.js'
@@ -74,7 +75,31 @@ const {
 // contributed home asks the shell for, since the chat window is the
 // shell's. Whoever emits it has already done whatever its own screen
 // needed first (activating the project, say).
-function openChatOn(projectId) {
+// Which project the chat serves is decided server-side, by whichever one
+// is active (see TurnService.get_current_session_if_any_or_create_new,
+// which reads it and takes nothing from the client) — so opening a chat
+// on a project means making it the active one first. Here rather than in
+// whoever asked: the app store's "Chat now", the admin's own chat button
+// and a shared link all arrive at this one function, and every one of
+// them meant the same thing by it. Without this they opened the chat of
+// whatever was active before — a real conversation with the wrong
+// automaton, not a display mistake.
+//
+// Awaited before anything moves, never between two things that move:
+// what is on screen still changes in one go, exactly as it did when
+// nothing was awaited at all.
+async function activated(projectId) {
+  if (!projectId) return true
+  try {
+    await activateProject(projectId)
+    return true
+  } catch {
+    return false // already surfaced via apiFetch — better no chat than the wrong one
+  }
+}
+
+async function openChatOn(projectId) {
+  if (!await activated(projectId)) return
   landingProjectId.value = projectId
   pushView('chat')
 }
@@ -105,9 +130,12 @@ watch(requestedOperatorSession, (request) => {
   clearRequestedOperatorSession()
 })
 
+// Over the home, not instead of it: the chat is the next step of the
+// stack, and leaving it comes back to the step below — which is the home
+// you opened it from (see the template, where the home lives inside the
+// flipping face).
 function openChatFromPreview(projectId) {
-  closeHomePreview()
-  openChatOn(projectId)
+  return openChatOn(projectId)
 }
 
 function openStoreFromPreview() {
@@ -256,6 +284,36 @@ onBeforeUnmount(() => {
               v-on="overlayListeners"
             />
           </Transition>
+
+          <!-- The home, when it is being shown: inside the flipping face,
+               not above it. It is one step of the same stack — Manage
+               projects, then the home, then the chat — so it slides in
+               over the screen below it and the chat flips over *it*.
+               Painted above the flip base instead, it had to be closed
+               for the chat to be seen at all, and coming back out of the
+               chat landed two steps down, on Manage projects. -->
+          <Transition :name="slideTransitionName">
+            <LiveChatWindow
+              v-if="homePreviewRole === 'user'"
+              role="admin"
+              :project-id="landingProjectId"
+              :profile="currentUserProfile"
+              @project-select="selectLandingProject"
+              @manage-projects="closeHomePreview"
+              v-on="profileMenuListeners"
+            />
+            <component
+              v-else-if="previewedHome"
+              :is="previewedHome.component"
+              :key="previewedHome.role"
+              :standalone="false"
+              :project-id="landingProjectId"
+              :current-user-role="currentUserRole"
+              :profile="currentUserProfile"
+              :view-stack="viewStack"
+              v-on="homePreviewListeners"
+            />
+          </Transition>
         </div>
 
         <Transition
@@ -276,29 +334,6 @@ onBeforeUnmount(() => {
         </Transition>
       </template>
     </div>
-
-    <Transition :name="slideTransitionName">
-      <LiveChatWindow
-        v-if="homePreviewRole === 'user'"
-        role="admin"
-        :project-id="landingProjectId"
-        :profile="currentUserProfile"
-        @project-select="selectLandingProject"
-        @manage-projects="closeHomePreview"
-        v-on="profileMenuListeners"
-      />
-      <component
-        v-else-if="previewedHome"
-        :is="previewedHome.component"
-        :key="previewedHome.role"
-        :standalone="false"
-        :project-id="landingProjectId"
-        :current-user-role="currentUserRole"
-        :profile="currentUserProfile"
-        :view-stack="viewStack"
-        v-on="homePreviewListeners"
-      />
-    </Transition>
 
     <Transition :name="slideTransitionName">
       <ProfileView v-if="showProfile" @close="closeProfile" />

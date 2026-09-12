@@ -67,7 +67,11 @@ async function loadSkinForApp(app) {
   } catch {
     css = ''
   }
-  if (skinRequestAlive) setSkinCss(css, app.id)
+  // Stale-response guard, the same one loadSkin has (see chatSkin.js):
+  // picking another app while this one's stylesheet is in flight left the
+  // late answer winning, and the panel wearing the look of an app nobody
+  // had selected.
+  if (skinRequestAlive && props.app?.id === app.id) setSkinCss(css, app.id)
 }
 
 watch(() => props.app?.id, () => loadSkinForApp(props.app), { immediate: true })

@@ -124,6 +124,22 @@ class ProjectController(BaseController):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
+    @post("/api/core/projects/{project_id}/activate", role="user")
+    async def activate_project(self, project_id: str):
+        """Makes `project_id` the one this server answers turns for.
+
+        Core, not the authoring skill it used to live in: which project is
+        active is what decides the conversation a person is having (see
+        TurnService.get_current_session_if_any_or_create_new, which reads
+        it and takes nothing from the client), and the invite flow
+        activates the project it just redeemed in every build, editor or
+        not. The frontend has always called it here."""
+        try:
+            await self.project_service.activate_project_idempotent(project_id, self._activate_project)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return {"success": True, "project_id": project_id}
+
     @get("/api/core/projects")
     def get_projects(self):
         """Which projects this caller can see, and which one is active.
