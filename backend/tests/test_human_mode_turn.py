@@ -124,20 +124,25 @@ async def test_a_human_operators_reply_arrives_as_the_turns_own_done_frame(turn_
 
     events = await _run_turn(turn_service, turn_service_for.db, session["id"], "turn-1", "hello, is anyone there?")
 
-    kinds = [event for event, _ in events]
     # _FakeHumanTalker always yields an empty string first (standing in
-    # for HumanTalker's own typing-race first yield) — _process_human_turn
-    # dispatches an empty chunk as "typing", never "chunk" (see
-    # turn/input_listener.py's own on_metadata).
-    assert kinds == ["turn.started", "output.text", "turn.ended"]
-    assert events[-1][1]["reply"][0]["content"] == "sure, let me check"
-    assert events[-1][1]["state_changed"] is False
-    assert events[-1][1]["new_state"] is None
+    # for HumanTalker's own typing-race first yield): the operator has
+    # started writing and nothing is readable yet, which is what an empty
+    # chunk says (see turn/input_listener.py's own on_metadata).
+    assert [event for event, _ in events] == [
+        "output.text_stream", "output.text_stream", "ui.buttons", "output.text",
+    ]
+    assert [body.get("text") for event, body in events[:2]] == ["", "sure, let me check"]
+    assert [data["text"] for event, data in events if event == "output.text"] == ["sure, let me check"]
+    # Nothing moved: no state.changed at all.
+    assert "state.changed" not in [event for event, _ in events]
 
 
-async def test_a_human_mode_turn_never_holds_the_session_lock(turn_service_for):
-    """A second turn on the same session must not wait for the first —
-    the whole point of dropping _session_scope for human mode."""
+async def test_a_second_message_waits_for_the_operator_rather_than_being_answered_alone(turn_service_for):
+    """A message sent while the operator is still writing is not answered
+    on its own: it is accepted at once — the order of the conversation is
+    fixed the moment it arrives — and taken into the next answer (see
+    turn/input_listener.py's own coalescing). Human mode is no exception:
+    one person writing one reply answers what arrived while they wrote."""
     started = asyncio.Event()
     finish = asyncio.Event()
     turn_service, namespace_factory = turn_service_for(
@@ -152,21 +157,24 @@ async def test_a_human_mode_turn_never_holds_the_session_lock(turn_service_for):
 
     task = asyncio.create_task(first_turn())
     await started.wait()
-    await asyncio.sleep(0)  # let the first turn actually reach the (would-be) lock
+    await asyncio.sleep(0)
 
-    # The second turn completes without waiting on the first's own reply.
-    second_events = await asyncio.wait_for(
-        _run_turn(
-            turn_service, turn_service_for.db, session["id"], "turn-2",
-            "second message, sent before the first is answered",
-        ),
-        timeout=1.0,
-    )
-    assert [event for event, _ in second_events][-1] == "turn.ended"
+    second = asyncio.create_task(_run_turn(
+        turn_service, turn_service_for.db, session["id"], "turn-2",
+        "second message, sent before the first is answered",
+    ))
+    await asyncio.sleep(0)
+    # Accepted, in arrival order, while the operator is still writing.
+    assert [m["content"] for m in turn_service_for.db.get_messages(session["id"]) if m["role"] == "user"] == [
+        "first message", "second message, sent before the first is answered",
+    ]
+    assert not second.done()
 
     finish.set()
     first_events = await asyncio.wait_for(task, timeout=1.0)
-    assert [event for event, _ in first_events][-1] == "turn.ended"
+    second_events = await asyncio.wait_for(second, timeout=1.0)
+    assert [event for event, _ in first_events][-1] == "output.text"
+    assert [event for event, _ in second_events][-1] == "output.text"
 
 
 async def test_a_human_mode_session_never_auto_generates_an_opening_message(turn_service_for):

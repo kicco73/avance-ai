@@ -1,16 +1,15 @@
-// Regression for chatClient.js's own normalizeResult: it explicitly
-// whitelists which fields survive from the backend's turn response (the
-// websocket `done` frame) into what chatStore.js consumes — a field added
-// to the backend response but never added here gets silently dropped
-// before chatStore.js ever sees it, exactly what happened to
-// user_message_reaction.
+// Regression for chatClient.js's own normalizeResult: what one exchange
+// produced is gathered from the messages it actually sent — the whole
+// messages, the choices, the state when it moved — and a field that stops
+// being gathered is silently dropped before chatStore.js ever sees it,
+// exactly what happened to user_message_reaction.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installFakeChatSocket, turnIdOf } from './fakeChatSocket.js'
 
 vi.mock('../src/api.js', () => ({ createChatSocket: vi.fn() }))
 vi.mock('../src/errorStore.js', () => ({ setApiError: vi.fn() }))
 
-describe('sendMessage normalizes the full turn response', () => {
+describe('sendMessage gathers one exchange from the messages it produced', () => {
   let chatClient
   let sockets
 
@@ -27,31 +26,45 @@ describe('sendMessage normalizes the full turn response', () => {
     vi.clearAllMocks()
   })
 
-  it('carries every whitelisted field through from the backend response', async () => {
+  it('takes the answer from the last whole message, and what came before it as prepared', async () => {
     const pending = chatClient.sendMessage('hi', 1)
+    const turnId = turnIdOf(sockets[0])
 
+    sockets[0].emit({ type: 'output.text', stream_id: turnId, message_id: 4, text: 'Wrapping up.' })
+    sockets[0].emit({ type: 'output.reaction', stream_id: turnId, message_id: 42, reaction: 'listening' })
     sockets[0].emit({
-      type: 'turn.ended',
-      stream_id: turnIdOf(sockets[0]),
-      reply: [{ id: 5, content: 'Hello.', timestamp: 't' }],
-      user_message_id: 42,
-      user_message_reaction: 'listening',
-      assistant_message_id: 5,
-      state: { key: 'a', ui_label: 'A', actions: [] },
-      state_changed: true,
-      new_state: 'a',
-      triggered_action: 'advance',
-      'on-enter': null,
-      ai_model: { auto: true, current_index: 0, models: [] },
-      session_id: 1,
+      type: 'state.changed', stream_id: turnId,
+      state: { key: 'a', ui_label: 'A', actions: [] }, new_state: 'a', triggered_action: 'advance',
     })
+    sockets[0].emit({ type: 'ui.buttons', stream_id: turnId, actions: [{ name: 'go', ui_button: 'Go' }] })
+    // The answer is published last, and is what ends the exchange.
+    sockets[0].emit({ type: 'output.text', stream_id: turnId, message_id: 5, text: 'Hello.' })
 
     const result = await pending
+    expect(result.reply).toEqual([{ id: 5, content: 'Hello.' }])
+    expect(result.prepared).toEqual([{ id: 4, content: 'Wrapping up.' }])
+    expect(result.assistant_message_id).toBe(5)
+    expect(result.user_message_id).toBe(42)
     expect(result.user_message_reaction).toBe('listening')
+    expect(result.manual_actions).toEqual([{ name: 'go', ui_button: 'Go' }])
+    expect(result.state).toEqual({ key: 'a', ui_label: 'A', actions: [] })
     expect(result.state_changed).toBe(true)
     expect(result.new_state).toBe('a')
     expect(result.triggered_action).toBe('advance')
-    expect(result.ai_model).toEqual({ auto: true, current_index: 0, models: [] })
-    expect(result.reply).toEqual([{ id: 5, content: 'Hello.', timestamp: 't' }])
+    expect(result.session_id).toBe(1)
+  })
+
+  it('reports no state change when nothing moved, and still carries the answer', async () => {
+    const pending = chatClient.sendMessage('hi', 1)
+    const turnId = turnIdOf(sockets[0])
+
+    sockets[0].emit({ type: 'ui.buttons', stream_id: turnId, actions: [] })
+    sockets[0].emit({ type: 'output.text', stream_id: turnId, message_id: 5, text: 'Hello.' })
+
+    const result = await pending
+    expect(result.state_changed).toBe(false)
+    expect(result.state).toBe(null)
+    expect(result.reply).toEqual([{ id: 5, content: 'Hello.' }])
+    expect(result.prepared).toEqual([])
   })
 })

@@ -9,12 +9,13 @@
 // human_prompt push is one-shot — a tab that opens after it already fired
 // would otherwise never know what to reply to) — see system/bus_channel.
 // py's own _current_prompt_for_session.
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import MessageBubble from '../../../components/chat/MessageBubble.vue'
 import ActionButtons from '../../../components/chat/ActionButtons.vue'
 import { getMessages, getOperatorState, postAction } from '../api.js'
 import { busChannel } from '../../../busChannel.js'
 import { getHumanPromptForSession, removeHumanPrompt } from '../../../humanPromptStore.js'
+import { listenForHumanPrompts } from '../../../humanPromptBus.js'
 
 const props = defineProps({
   sessionId: { type: [Number, String], required: true }
@@ -34,7 +35,10 @@ function pushMessage(role, content) {
   messages.value.push({ id: ++nextId, role, content, timestamp: new Date().toISOString() })
 }
 
+let stopListeningForPrompts = null
+
 onMounted(async () => {
+  stopListeningForPrompts = listenForHumanPrompts()
   try {
     const [history, sessionState] = await Promise.all([
       getMessages(props.sessionId),
@@ -45,6 +49,11 @@ onMounted(async () => {
   } catch {
     loadFailed.value = true // already surfaced via apiFetch
   }
+})
+
+onUnmounted(() => {
+  stopListeningForPrompts?.()
+  stopListeningForPrompts = null
 })
 
 async function handleAction(actionName) {

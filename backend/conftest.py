@@ -218,7 +218,7 @@ def _frame_deadline(seconds: float, frames: list[dict]):
     names the frames which did arrive."""
     def ring(signum, stack):
         raise AssertionError(
-            f"No turn.ended/turn.failed within {seconds:g}s. Frames so far: "
+            f"No output.text/output.error within {seconds:g}s. Frames so far: "
             f"{[frame.get('type') for frame in frames] or 'none'}"
         )
 
@@ -237,25 +237,51 @@ def chat_turn_frames(client: TestClient, session_id: int, text: str, turn_id: st
     frames = []
     with _frame_deadline(turn_frame_seconds(), frames):
         with chat_socket(client) as ws:
-            ws.send_json({"type": "input.text", "stream_id": turn_id, "session_id": session_id, "body": text})
+            ws.send_json({"type": "input.text", "stream_id": turn_id, "session_id": session_id, "text": text})
             while True:
                 frame = ws.receive_json()
                 frames.append(frame)
-                if frame["type"] in ("turn.ended", "turn.failed"):
+                # The answer is the `output.text` published after the
+                # choices; an earlier one is a message the state owed
+                # before it could answer.
+                kinds = [f["type"] for f in frames]
+                if kinds[-1] == "output.error" or (kinds[-1] == "output.text" and "ui.buttons" in kinds):
                     return frames
 
 
 def chat_turn(client: TestClient, session_id: int, text: str = "hi") -> dict:
-    """The `done` body of one turn, exactly what the browser's own store
-    gets (see chatClient.js) — asserts the turn did not fail."""
-    final = chat_turn_frames(client, session_id, text)[-1]
-    assert final["type"] == "turn.ended", final
-    return final
+    """What one exchange produced, gathered from the messages it sent —
+    the same assembly the browser does (see chatClient.js's own
+    normalizeResult), so a test reads what a reader actually gets rather
+    than one payload that no longer exists. Asserts the exchange did not
+    fail."""
+    frames = chat_turn_frames(client, session_id, text)
+    assert frames[-1]["type"] == "output.text", frames[-1]
+    said = [frame for frame in frames if frame["type"] == "output.text"]
+    buttons = [frame for frame in frames if frame["type"] == "ui.buttons"]
+    changed = [frame for frame in frames if frame["type"] == "state.changed"]
+    return {
+        **frames[-1],
+        "reply": [{"id": frame["assistant_message_id"], "content": frame["text"]} for frame in said[-1:]],
+        "prepared": [{"id": frame["assistant_message_id"], "content": frame["text"]} for frame in said[:-1]],
+        "assistant_message_id": said[-1]["assistant_message_id"] if said else None,
+        "user_message_id": next(
+            (frame["user_message_id"] for frame in frames if frame["type"] == "output.reaction"), None,
+        ),
+        "user_message_reaction": next(
+            (frame["reaction"] for frame in frames if frame["type"] == "output.reaction"), None,
+        ),
+        "manual_actions": buttons[-1]["actions"] if buttons else None,
+        "state": changed[-1]["state"] if changed else None,
+        "state_changed": bool(changed),
+        "new_state": changed[-1]["new_state"] if changed else None,
+        "triggered_action": changed[-1]["triggered_action"] if changed else None,
+    }
 
 
 def chat_turn_error(client: TestClient, session_id: int, text: str = "hi") -> dict:
     final = chat_turn_frames(client, session_id, text)[-1]
-    assert final["type"] == "turn.failed", final
+    assert final["type"] == "output.error", final
     return final
 
 

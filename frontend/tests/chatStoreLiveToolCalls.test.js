@@ -16,7 +16,7 @@ vi.mock('../src/api.js', () => ({
   getMessages: vi.fn(),
   getSessionState: vi.fn(),
 }))
-vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
+vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), getConnectionState: vi.fn(() => 'open'), onButtons: vi.fn(() => () => {}), sendButton: vi.fn(), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 
 describe('a live turn backfills its own persisted tool-call trace once it lands', () => {
   let chatStore

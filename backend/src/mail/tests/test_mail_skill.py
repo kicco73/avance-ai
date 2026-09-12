@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from system import bus
-from system.bus import MAIL_SEND, Message
+from system.bus import TOOL_SEND_MAIL, Message
 from mail.config import parse as parse_mail_config
 from tracking.actuators.actuator_set import LiveTaskNamespace
 
@@ -47,7 +47,7 @@ def test_send_mail_reaches_whatever_subscribed_to_mail_send():
     async def fake_mail_handler(message: Message) -> None:
         received.append(message.body)
 
-    bus.subscribe(MAIL_SEND, fake_mail_handler)
+    bus.subscribe(TOOL_SEND_MAIL, fake_mail_handler)
 
     LiveTaskNamespace(dispatcher=None).send_mail("ada@example.com", "hi")
 

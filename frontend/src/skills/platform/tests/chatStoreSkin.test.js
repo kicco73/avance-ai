@@ -10,7 +10,7 @@ import { installApiBackedLiveChannel } from '../../../../tests/liveChatChannelSt
 import { nextTick } from 'vue'
 
 vi.mock('../../../taskActions.js', () => ({ runTaskScript: vi.fn() }))
-vi.mock('../../../chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), getConnectionState: vi.fn(() => 'open'), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
+vi.mock('../../../chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), getConnectionState: vi.fn(() => 'open'), onButtons: vi.fn(() => () => {}), sendButton: vi.fn(), onConnectionState: vi.fn(() => () => {}), resolvePendingTurnsAfterReload: vi.fn() }))
 vi.mock('../../../dialogStore.js', () => ({ confirmDialog: vi.fn() }))
 vi.mock('../../../api.js', () => ({
   getCurrentSession: vi.fn(),

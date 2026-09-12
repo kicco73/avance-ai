@@ -42,8 +42,23 @@ INPUT_TEXT = "input.text"
 # Outbound: what is being said back, in increasing concreteness — the
 # written reply, the text meant to be spoken, the audio itself.
 OUTPUT_TEXT = "output.text"
+# One piece of a message being written, as it is written. An empty one
+# means the writing has started and nothing is readable yet — which is
+# what an interface shows as typing dots, and the only honest moment to
+# show them: a message accepted is not a reply being composed, and a turn
+# can still be refused in between.
+OUTPUT_TEXT_STREAM = "output.text_stream"
 OUTPUT_SPEECH = "output.speech"
 OUTPUT_AUDIO_STREAM = "output.audio_stream"
+
+# One tool call, in both its phases — what the conversation is doing
+# while nothing readable is being written.
+OUTPUT_TOOL = "output.tool"
+
+# The choices a person is being offered right now. They belong to the
+# state the conversation is in, not to whatever produced the last
+# message, which is why they travel on their own.
+UI_BUTTONS = "ui.buttons"
 
 # Something one identity's interfaces may want to show — a task's own
 # snippet, a state that moved while nobody was looking. Not content and
@@ -70,13 +85,21 @@ UI_SYSTEM_WARNING = "ui.system_warning"
 # broadcaster.Broadcaster).
 UI_PROGRESS = "ui.progress"
 
-# Facts about a turn that are not its content.
-TURN_STARTED = "turn.started"
-TURN_ENDED = "turn.ended"
-TURN_FAILED = "turn.failed"
-TURN_TOOL = "turn.tool"
+# Somebody reacted to a message — the model to what the person just
+# said. A fact about that message, not about the answer to it.
+OUTPUT_REACTION = "output.reaction"
 
-MAIL_SEND = "mail.send"
+# The conversation moved: which state it is in now, and what moved it.
+# Published when it changes, because that is when it is news — a reader
+# keeps the last one it was told.
+STATE_CHANGED = "state.changed"
+
+# What went wrong, when something did: `code` is what happened, and
+# whoever is speaking to the person writes the sentence. It ends an
+# exchange in place of the answer.
+OUTPUT_ERROR = "output.error"
+
+TOOL_SEND_MAIL = "tool.send_mail"
 
 # Named places the core assembles something and anything may add to it.
 # Not messages: nothing is delivered and nobody is notified — someone

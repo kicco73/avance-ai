@@ -1,9 +1,9 @@
 // The input stays open while the model answers, so a user can send again
 // before the previous reply lands. Every send gets its own bubble and its
 // own placeholder; the turn that answers several messages at once
-// reconciles one of them, and the requests it answered for report no
-// reply of their own — which drops their placeholder (see the backend's
-// own coalescing, and submitMessage's assistant_message_id branch).
+// reconciles one of them, and the requests it answered for report that
+// same message — already on screen, so their placeholder is dropped
+// rather than filled (see the backend's own coalescing).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
@@ -17,7 +17,7 @@ vi.mock('../src/api.js', () => ({
 vi.mock('../src/chatClient.js', () => ({
   sendMessage: vi.fn(),
   getConnectionState: vi.fn(() => 'open'),
-  onConnectionState: vi.fn(() => () => {}),
+  onButtons: vi.fn(() => () => {}), sendButton: vi.fn(), onConnectionState: vi.fn(() => () => {}),
   resolvePendingTurnsAfterReload: vi.fn(),
 }))
 
@@ -34,11 +34,15 @@ function answered(id, content) {
   }
 }
 
-function alreadyAnswered(userMessageId) {
+// A request the coalescer took along with another one: it was answered,
+// by that other request's reply — the same message, reported here too
+// (see TurnService._already_answered_response). It is already on screen,
+// so this request's own placeholder is dropped rather than filled.
+function alreadyAnswered(userMessageId, answer) {
   return {
-    reply: [],
+    reply: [answer],
     user_message_id: userMessageId,
-    assistant_message_id: null,
+    assistant_message_id: answer.id,
     state: STATE,
     'task': null,
     session_id: 1,
@@ -77,7 +81,8 @@ describe('several messages sent while a turn is still running', () => {
 
     pending[0](answered(11, 'Let me look.'))
     pending[1](answered(21, 'Found it: on time.'))
-    pending[2](alreadyAnswered(20))
+    // Answered by the second send's own reply — the very same message.
+    pending[2](alreadyAnswered(20, { id: 21, content: 'Found it: on time.', timestamp: 't' }))
     await Promise.all([first, second, third])
 
     // Each send keeps its own bubble and its own placeholder, so a reply

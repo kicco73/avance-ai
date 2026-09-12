@@ -172,6 +172,11 @@ class TrackingProcessor(object):
 		self.db = db
 		self.user = user_variables
 		self.auto_tracking_enabled = auto_tracking_enabled
+		# True when the automaton moved *before* this turn's own answer was
+		# written (see TrackingProcessorAfterUserMessage): what a state had
+		# prepared to say belongs to the state the conversation has just
+		# left, and is not said.
+		self.moved_before_reply = False
 		self.input_token_budget_per_turn = input_token_budget_per_turn
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder, auto_tracking_enabled)
 
@@ -647,6 +652,7 @@ class TrackingProcessor(object):
 			"user_message_reaction": self.metadata.reaction if user_message_id is not None else None,
 			"state": self._current_state_payload(self.user.automaton, self.out.state, self.metadata.button_translations),
 			"state_changed": action is not None,
+			"moved_before_reply": self.moved_before_reply,
 			"new_state": action.target if action else None,
 			"triggered_action": action.name if action else None,
 			"ai_model": self.ai_service.get_models_info(),

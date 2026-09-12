@@ -38,7 +38,7 @@ class SpeechDecoder:
         bus.subscribe(INPUT_AUDIO, self.decode)
 
     async def decode(self, message: Message) -> None:
-        audio = await self._bytes_of(message.body)
+        audio = await self._bytes_of((message.body or {}).get("audio"))
         if not audio:
             logger.warning("Nothing to transcribe for %s.", message.origin_id)
             return
@@ -50,7 +50,7 @@ class SpeechDecoder:
         if not text:
             logger.info("Transcription of %s came back empty.", message.origin_id)
             return
-        await bus.publish(message.converted(INPUT_TEXT, text))
+        await bus.publish(message.converted(INPUT_TEXT, {"text": text}))
 
     @staticmethod
     async def _bytes_of(source: AudioSource) -> bytes:

@@ -39,7 +39,7 @@ class InboundVoiceNote(object):
             # be decoded at the same time, and neither may take the
             # other's text.
             if converted.origin_id == message.id:
-                decoded.append(str(converted.body))
+                decoded.append(str((converted.body or {}).get("text") or ""))
 
         async def fetch() -> bytes:
             audio, mime_type = await self._client.download_media(audio_id)
@@ -49,7 +49,7 @@ class InboundVoiceNote(object):
         bus.subscribe(INPUT_TEXT, take)
         try:
             await bus.publish(Message(
-                type=INPUT_AUDIO, body=fetch, mime="audio/ogg",
+                type=INPUT_AUDIO, body={"audio": fetch}, mime="audio/ogg",
                 username=WebSession().user, channel=CHANNEL, origin_id=message.id,
             ))
         except httpx.HTTPError as exc:

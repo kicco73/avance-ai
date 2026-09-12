@@ -4,7 +4,7 @@ A router, not a turn engine: an inbound text from a linked number is
 posted on the Bus as `input.text` for that account's own current live
 session (its active project, its sessions, its Terms acceptance —
 nothing WhatsApp-specific is persisted), and what the turn reports back
-on `turn.ended`/`turn.failed` goes out through the Cloud API. Which
+on `turn.ended`/`output.error` goes out through the Cloud API. Which
 session, and what a refusal sounds like here, is all this channel
 decides for itself — see whatsapp/turn_exchange.py and docs/BUS.md.
 
@@ -150,7 +150,8 @@ class WhatsAppService(object):
 
     async def _send_outbound(self, message: Message) -> None:
         for _ in filter(CHANNEL.__eq__, [message.channel]):
-            await self.send_message(str(message.username), str(message.body), str(message.project_id))
+            body = message.body if isinstance(message.body, dict) else {"text": message.body}
+            await self.send_message(str(message.username), str(body.get("text") or ""), str(message.project_id))
 
     async def close(self) -> None:
         bus.unsubscribe(OUTPUT_TEXT, self._send_outbound)

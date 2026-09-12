@@ -9,11 +9,10 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING, TypeVar
 
-from system import bus
 from automaton.automaton import Action, DeferredExpression, JsSnippet
 from automaton.project_services import ProjectServices
 from automaton.scope import EvaluationScope
-from system.bus import MAIL_SEND, OUTPUT_TEXT, Message
+from system.bus import TOOL_SEND_MAIL, OUTPUT_TEXT, Message
 from system.logging_factory import LoggerFactory
 from scheduler import SchedulerService
 from system.web_session import WebSession
@@ -222,7 +221,7 @@ class LiveTaskNamespace(TaskNamespace):
 
     def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
         _run_sync(self._services["mail"].deliver(Message(
-            type=MAIL_SEND, username=WebSession().user,
+            type=TOOL_SEND_MAIL, username=WebSession().user,
             body={"to": to, "subject": _SEND_MAIL_SUBJECT, "body_md": body_md},
         ), _NoMailService()))
         return None
@@ -240,7 +239,8 @@ class LiveTaskNamespace(TaskNamespace):
         # contribution is meant to end — but it names it in one place
         # now instead of two.
         return _run_sync(self._services[_WHATSAPP].publish(Message(
-            type=OUTPUT_TEXT, body=message_md, username=phone_number.strip().lstrip("+"),
+            type=OUTPUT_TEXT, body={"text": message_md, "message_id": None},
+            username=phone_number.strip().lstrip("+"),
             channel=_WHATSAPP, project_id=self._dispatcher.project_id,
         )))
 

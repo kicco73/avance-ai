@@ -5,8 +5,8 @@ uses — not a separate bot. An inbound text from a linked number is posted
 on the Bus as `input.text` for that account's current live session (its
 active project, its Terms acceptance, its history); core runs the turn
 and what it reports back goes out through the Cloud API. This channel
-routes and never runs a turn itself — see BUS.md, *A channel runs a turn
-by posting one*. Nothing
+routes and never runs a turn itself — see BUS.md per chi pubblica e chi
+riceve ciascun tipo. Nothing
 WhatsApp-specific is stored: a conversation started on WhatsApp shows up
 in the web UI's Sessions panel, "Label sessions", metrics, etc. exactly
 like one started in the browser.
@@ -138,7 +138,7 @@ email at all.
   manual actions behaves exactly as before — plain text only. Same 24h
   free-form window as any other reply (see below) — buttons/lists are
   never sent outside it either.
-- Non-chat/final state (`turn.failed`, code `state_not_chat`): a short
+- Non-chat/final state (`output.error`, code `state_not_chat`): a short
   notice pointing to the web, with the current state's own buttons — a
   notice that says "use an action instead" had better come with actions.
   A session no longer this channel's own (a race right after

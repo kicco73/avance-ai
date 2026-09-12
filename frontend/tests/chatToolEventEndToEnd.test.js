@@ -73,21 +73,18 @@ describe('a live turn shows the tool status then the persisted trace, end to end
     const turnId = turnIdOf(sockets[0])
     const socket = sockets[0]
 
-    socket.emit({ type: 'turn.tool', stream_id: turnId, ...TOOL_START })
+    socket.emit({ type: 'output.tool', stream_id: turnId, ...TOOL_START })
     await vi.waitFor(() => {
       const msg = chatStore.messages.value.find((m) => m.role === 'assistant')
       expect(msg?.statusText).toBe(TOOL_START.status_text)
     })
 
-    socket.emit({ type: 'turn.tool', stream_id: turnId, ...TOOL_RESULT })
+    socket.emit({ type: 'output.tool', stream_id: turnId, ...TOOL_RESULT })
     for (const content of ['Your ', 'flight ', 'is on time.']) {
-      socket.emit({ type: 'output.text', stream_id: turnId, content })
+      socket.emit({ type: 'output.text_stream', stream_id: turnId, text: content })
     }
-    socket.emit({
-      type: 'turn.ended', stream_id: turnId,
-      reply: [{ id: 51, content: 'Your flight is on time.', timestamp: 't' }],
-      assistant_message_id: 51, session_id: 1,
-    })
+    socket.emit({ type: 'ui.buttons', stream_id: turnId, actions: [] })
+    socket.emit({ type: 'output.text', stream_id: turnId, message_id: 51, text: 'Your flight is on time.' })
 
     await sendPromise
 

@@ -621,16 +621,20 @@ class TurnService(object):
 	def _already_answered_response(
 		self, session_id: int, automaton: Automaton, state: State, user_message_id: int,
 	) -> dict:
-		"""A turn whose own message a previous turn already consumed: it is
-		over the moment it gets the lock, with no reply of its own. The
-		frontend already has a branch for "no reply was generated this
-		turn" (a null assistant_message_id drops the placeholder bubble),
-		which is exactly this case."""
+		"""A request a previous one already took along with its own: it is
+		over the moment it gets the lock, and what answered it is that
+		other request's reply — a message that exists and has an id. It is
+		reported here as this request's answer too, because it is: one
+		answer covered both. A reader that has it already knows so by its
+		id, and does not show it twice."""
+		answer = self._db.get_message(user_message_id) or {}
+		answered_by = answer.get("answered_by")
+		reply = [m for m in [self._db.get_message(answered_by)] if answered_by and m]
 		return {
-			"reply": [],
+			"reply": reply,
 			"user_message_id": user_message_id,
 			"user_message_reaction": None,
-			"assistant_message_id": None,
+			"assistant_message_id": answered_by,
 			"state": self._with_manual_actions(session_id, automaton.get_state_payload(state)),
 			"state_changed": False,
 			"new_state": None,

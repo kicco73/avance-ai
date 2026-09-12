@@ -15,7 +15,7 @@ vi.mock('../src/audio.js', () => ({
 vi.mock('../src/chatClient.js', () => ({
   sendMessage: vi.fn(),
   getConnectionState: vi.fn(() => 'open'),
-  onConnectionState: vi.fn(() => () => {}),
+  onButtons: vi.fn(() => () => {}), sendButton: vi.fn(), onConnectionState: vi.fn(() => () => {}),
   resolvePendingTurnsAfterReload: vi.fn(),
 }))
 vi.mock('../src/api.js', () => ({

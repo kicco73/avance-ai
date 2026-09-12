@@ -77,13 +77,16 @@ def test_a_typed_message_runs_a_turn_and_its_reply_speaks_on_the_audio_route(web
 
     frames = chat_turn_frames(client, session_id, "hola")
 
+    # Two whole messages: what the state owed before it could answer, and
+    # the answer. Only the second was streamed, so only it has chunks.
     assert [frame["type"] for frame in frames] == [
-        "turn.started", "output.speech", "output.text", "turn.ended",
+        "output.text_stream", "output.speech", "output.text_stream",
+        "output.text", "ui.buttons", "output.text",
     ]
-    assert [frame["body"] for frame in frames if frame["type"] == "output.speech"] == [SPOKEN_REPLY]
-    assert [frame["body"] for frame in frames if frame["type"] == "output.text"] == [REPLY_TEXT]
+    assert [frame["text"] for frame in frames if frame["type"] == "output.speech"] == [SPOKEN_REPLY]
+    assert [frame["text"] for frame in frames if frame["type"] == "output.text_stream" and frame["text"]] == [REPLY_TEXT]
 
-    message_id = frames[-1]["assistant_message_id"]
+    message_id = [frame for frame in frames if frame["type"] == "output.text"][-1]["assistant_message_id"]
     assert client.app.state.db.get_message_audio_text(message_id) == SPOKEN_REPLY
     audio = client.get(f"/api/skills/talk/messages/{message_id}/audio")
     assert audio.status_code == 200
@@ -105,7 +108,7 @@ def test_a_voice_note_on_an_open_connection_runs_the_very_same_turn(webchat):
                 WebSession().user = "user"
                 WebSession().role = "supervisor"
                 await bus.publish(Message(
-                    type=INPUT_AUDIO, body=VOICE_NOTE, mime="audio/ogg", username="user",
+                    type=INPUT_AUDIO, body={"audio": VOICE_NOTE}, mime="audio/ogg", username="user",
                     session_id=session_id, origin_id=connection_id, stream_id="t1",
                 ))
 
@@ -113,12 +116,12 @@ def test_a_voice_note_on_an_open_connection_runs_the_very_same_turn(webchat):
             while True:
                 frame = ws.receive_json()
                 frames.append(frame)
-                if frame["type"] in ("turn.ended", "turn.failed"):
+                if frame["type"] in ("output.text", "output.error") and "ui.buttons" in [f["type"] for f in frames]:
                     break
 
     assert listen.heard == [VOICE_NOTE]
-    assert frames[-1]["type"] == "turn.ended"
-    assert [frame["body"] for frame in frames if frame["type"] == "output.text"] == [REPLY_TEXT]
+    assert frames[-1]["type"] == "output.text"
+    assert [frame["text"] for frame in frames if frame["type"] == "output.text_stream" and frame["text"]] == [REPLY_TEXT]
     assert talk.spoken == [SPOKEN_REPLY]
     messages = client.app.state.db.get_messages(session_id)
     assert [(m["role"], m["content"]) for m in messages][-2:] == [("user", TRANSCRIPT), ("assistant", REPLY_TEXT)]

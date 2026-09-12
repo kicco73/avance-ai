@@ -33,12 +33,11 @@ describe('sendMessage over the chat websocket', () => {
     const frame = sockets[0].sent[0]
     expect(frame.type).toBe('input.text')
     expect(frame.session_id).toBe(7)
-    expect(frame.body).toBe('where is my flight?')
+    expect(frame.text).toBe('where is my flight?')
 
-    sockets[0].emit({
-      type: 'turn.ended', stream_id: frame.stream_id, reply: [], user_message_id: 42, user_message_reaction: 'listening',
-      assistant_message_id: 5, state: { key: 'a', ui_label: 'A', actions: [] }, 'on-enter': null, session_id: 7,
-    })
+    sockets[0].emit({ type: 'output.reaction', stream_id: frame.stream_id, message_id: 42, reaction: 'listening' })
+    sockets[0].emit({ type: 'ui.buttons', stream_id: frame.stream_id, actions: [] })
+    sockets[0].emit({ type: 'output.text', stream_id: frame.stream_id, message_id: 5, text: 'Here it is.' })
 
     const result = await pending
     expect(result.user_message_id).toBe(42)
@@ -61,11 +60,13 @@ describe('sendMessage over the chat websocket', () => {
     const secondId = turnIdOf(sockets[0], 1)
     expect(firstId).not.toBe(secondId)
 
-    sockets[0].emit({ type: 'turn.tool', stream_id: secondId, phase: 'start', status_text: 'Searching Flights…' })
-    sockets[0].emit({ type: 'output.text', stream_id: firstId, body: 'A' })
-    sockets[0].emit({ type: 'output.text', stream_id: secondId, body: 'B' })
-    sockets[0].emit({ type: 'turn.ended', stream_id: secondId, reply: [], session_id: 1 })
-    sockets[0].emit({ type: 'turn.ended', stream_id: firstId, reply: [], session_id: 1 })
+    sockets[0].emit({ type: 'output.tool', stream_id: secondId, phase: 'start', status_text: 'Searching Flights…' })
+    sockets[0].emit({ type: 'output.text_stream', stream_id: firstId, text: 'A' })
+    sockets[0].emit({ type: 'output.text_stream', stream_id: secondId, text: 'B' })
+    sockets[0].emit({ type: 'ui.buttons', stream_id: secondId, actions: [] })
+    sockets[0].emit({ type: 'output.text', stream_id: secondId, message_id: 2, text: 'B' })
+    sockets[0].emit({ type: 'ui.buttons', stream_id: firstId, actions: [] })
+    sockets[0].emit({ type: 'output.text', stream_id: firstId, message_id: 1, text: 'A' })
 
     await Promise.all([firstPending, secondPending])
     expect(first.chunks).toEqual(['A'])
@@ -79,7 +80,7 @@ describe('sendMessage over the chat websocket', () => {
     const turnId = turnIdOf(sockets[0])
 
     sockets[0].emit({
-      type: 'turn.failed', stream_id: turnId, message: 'Session is closed.', detail: null, code: 'session_closed',
+      type: 'output.error', stream_id: turnId, message: 'Session is closed.', detail: null, code: 'session_closed',
     })
 
     await expect(pending).rejects.toMatchObject({ code: 'session_closed', message: 'Session is closed.' })

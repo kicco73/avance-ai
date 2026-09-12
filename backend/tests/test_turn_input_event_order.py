@@ -1,7 +1,7 @@
 """End to end, through the real listener (turn/input_listener.py) and a
 real AiService driven by a fake provider: every frame a turn raises
 reaches the Bus in the order it was raised, each with the turn's own
-stream_id, and "turn.ended" always comes last — after every chunk,
+stream_id, and "ui.buttons" always comes last — after every chunk,
 whether the turn made tool calls (a collected round replayed without ever
 yielding the loop) or not.
 
@@ -62,7 +62,11 @@ class _FakeProvider:
 
 
 
-_TERMINAL = ("turn.ended", "turn.failed")
+def _is_terminal(kinds: list[str]) -> bool:
+    """The answer is the `output.text` published after `ui.buttons` — an
+    earlier one is a message the state owed before it could answer. An
+    `output.error` replaces the answer and ends the exchange too."""
+    return kinds[-1] == "output.error" or (kinds[-1] == "output.text" and "ui.buttons" in kinds)
 
 
 class _Recorder:
@@ -76,7 +80,7 @@ class _Recorder:
 
     async def take(self, message: Message) -> None:
         self.messages.append(message)
-        if message.type in _TERMINAL:
+        if _is_terminal([m.type for m in self.messages]):
             self.finished.set()
 
 
@@ -88,12 +92,15 @@ async def _streamed_events(turn_service: TurnService, db, text: str) -> list[tup
     session = await turn_service.get_current_session_if_any_or_create_new(None)
 
     recorder = _Recorder()
-    for message_type in ("turn.started", "output.text", "output.speech", "turn.tool", *_TERMINAL):
+    for message_type in (
+        "output.text_stream", "output.text", "output.speech", "output.tool", "output.reaction",
+        "state.changed", "ui.buttons", "output.error",
+    ):
         bus.subscribe(message_type, recorder.take)
     TurnInput(turn_service, db).register()
 
     await bus.publish(Message(
-        type=INPUT_TEXT, body=text, username=WebSession().user,
+        type=INPUT_TEXT, body={"text": text}, username=WebSession().user,
         session_id=session["id"], channel="webchat",
         origin_id="connection-1", stream_id="turn-1",
     ))
@@ -105,14 +112,18 @@ async def _streamed_events(turn_service: TurnService, db, text: str) -> list[tup
 
 
 def _kinds(events: list[tuple[str, dict]]) -> list[str]:
+    """The empty chunk is its own kind here: it says the reply has started
+    being written, and every other chunk carries some of it."""
     return [
-        f"tool({data['phase']})" if event == "turn.tool" else event
+        f"tool({data['phase']})" if event == "output.tool"
+        else "writing" if (event == "output.text_stream" and data["text"] == "")
+        else event
         for event, data in events
     ]
 
 
 def _streamed_text(events: list[tuple[str, dict]]) -> str:
-    return "".join(data["body"] for event, data in events if event == "output.text")
+    return "".join(data["text"] for event, data in events if event == "output.text_stream")
 
 
 async def test_with_declared_sources_every_chunk_of_the_replayed_final_round_precedes_done(turn_service_for):
@@ -123,15 +134,17 @@ async def test_with_declared_sources_every_chunk_of_the_replayed_final_round_pre
     events = await _streamed_events(turn_service, turn_service_for.db, "where's my flight?")
 
     kinds = _kinds(events)
-    # "turn.started" always precedes generation (see tracking_processor.py's
+    # The empty chunk always precedes generation (see tracking_processor.py's
     # own process()), before even the first tool call.
-    assert kinds[0] == "turn.started"
+    assert kinds[0] == "writing"
     assert kinds[1:3] == ["tool(start)", "tool(result)"]
-    assert kinds[-1] == "turn.ended"
-    chunk_kinds = kinds[3:-1]
-    assert chunk_kinds and set(chunk_kinds) == {"output.text"}
+    chunk_kinds = kinds[3:-2]
+    assert chunk_kinds and set(chunk_kinds) == {"output.text_stream"}
+    assert kinds[-2:] == ["ui.buttons", "output.text"]
     assert _streamed_text(events) == "Your flight is on time."
-    assert events[-1][1]["reply"][0]["content"] == "Your flight is on time."
+    # The whole message is its own publication now, not a field of the
+    # terminal frame (see turn/input_listener.py's own said()).
+    assert [data["text"] for event, data in events if event == "output.text"] == ["Your flight is on time."]
 
 
 async def test_without_sources_and_tracking_after_the_user_message_every_chunk_precedes_done(turn_service_for):
@@ -142,9 +155,11 @@ async def test_without_sources_and_tracking_after_the_user_message_every_chunk_p
     events = await _streamed_events(turn_service, turn_service_for.db, "hello")
 
     kinds = _kinds(events)
-    assert kinds[-1] == "turn.ended"
-    assert kinds[0] == "turn.started"
-    assert kinds[1:-1] and set(kinds[1:-1]) == {"output.text"}
+    assert kinds[0] == "writing"
+    # Every piece first, then the whole message, then what can be done
+    # next, then the terminal frame.
+    assert kinds[-2:] == ["ui.buttons", "output.text"]
+    assert set(kinds[1:-2]) == {"output.text_stream"}
     assert _streamed_text(events) == "Your flight is on time."
 
 
@@ -156,7 +171,9 @@ async def test_with_declared_sources_but_no_tool_call_the_answer_streams_then_do
     events = await _streamed_events(turn_service, turn_service_for.db, "hello")
 
     kinds = _kinds(events)
-    assert kinds[-1] == "turn.ended"
-    assert kinds[0] == "turn.started"
-    assert kinds[1:-1] and set(kinds[1:-1]) == {"output.text"}
+    assert kinds[0] == "writing"
+    # Every piece first, then the whole message, then what can be done
+    # next, then the terminal frame.
+    assert kinds[-2:] == ["ui.buttons", "output.text"]
+    assert set(kinds[1:-2]) == {"output.text_stream"}
     assert _streamed_text(events) == "Your flight is on time."

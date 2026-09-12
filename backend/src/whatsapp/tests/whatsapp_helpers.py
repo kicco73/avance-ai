@@ -157,9 +157,12 @@ class _FakeChatService:
         self.accepted_terms_for: list[str] = []
         self.in_turn = False
         # When True, process_turn persists the user message but reports no
-        # reply of its own — a turn already in flight took this message
-        # along with its own fragments (see TurnService's own coalescing).
+        # reply of its own: a turn already in flight took this message
+        # along with its own fragments and answered for both, so what it
+        # reports is *that* turn's message — the same row, reported again
+        # (see TurnService._already_answered_response).
         self.turn_already_answered = False
+        self.answered_by_message_id: int | None = None
         self.announces_audio = True
         self.announced_audio_text: str | None = None
 
@@ -228,7 +231,12 @@ class _FakeChatService:
             if user_message_id is None:
                 self.db.add(session_id, "user", text)
             if self.turn_already_answered:
-                return {"session_id": session_id, "state": self.state, "assistant_message_id": None, "reply": []}
+                answered_by = self.answered_by_message_id
+                return {
+                    "session_id": session_id, "state": self.state,
+                    "assistant_message_id": answered_by,
+                    "reply": [self.db.row(answered_by)] if answered_by else [],
+                }
             assistant_id = self.db.add(
                 session_id, "assistant", f"**Hola** — has dicho: {text}", audio_text=audio_text,
             )
@@ -371,7 +379,7 @@ def _build(config=None, talk=None, listen=None):
     if talk is not None:
         async def speak(message: Message) -> None:
             await bus.publish(message.converted(
-                OUTPUT_AUDIO_STREAM, AudioStream(talk, str(message.body)), mime="audio/wav",
+                OUTPUT_AUDIO_STREAM, {"stream": AudioStream(talk, str(message.body["text"]))}, mime="audio/wav",
             ))
 
         bus.subscribe(OUTPUT_SPEECH, speak)

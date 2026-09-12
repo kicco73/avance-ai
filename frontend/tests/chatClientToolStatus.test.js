@@ -31,9 +31,10 @@ describe('sendMessage forwards the tool frame as onStatus', () => {
     const pending = chatClient.sendMessage('hi', 1, { onStatus: (text) => statuses.push(text) })
     const turnId = turnIdOf(sockets[0])
 
-    sockets[0].emit({ type: 'turn.tool', stream_id: turnId, phase: 'start', status_text: 'Searching Flights…' })
-    sockets[0].emit({ type: 'turn.tool', stream_id: turnId, phase: 'result' })
-    sockets[0].emit({ type: 'turn.ended', stream_id: turnId, reply: [], session_id: 1 })
+    sockets[0].emit({ type: 'output.tool', stream_id: turnId, phase: 'start', status_text: 'Searching Flights…' })
+    sockets[0].emit({ type: 'output.tool', stream_id: turnId, phase: 'result' })
+    sockets[0].emit({ type: 'ui.buttons', stream_id: turnId, actions: [] })
+    sockets[0].emit({ type: 'output.text', stream_id: turnId, message_id: 1, text: 'Hello.' })
 
     await pending
     expect(statuses).toEqual(['Searching Flights…', ''])
@@ -44,8 +45,9 @@ describe('sendMessage forwards the tool frame as onStatus', () => {
     const pending = chatClient.sendMessage('hi', 1, { onStatus: (text) => statuses.push(text) })
     const turnId = turnIdOf(sockets[0])
 
-    sockets[0].emit({ type: 'output.text', stream_id: turnId, body: 'Hello.' })
-    sockets[0].emit({ type: 'turn.ended', stream_id: turnId, reply: [], session_id: 1 })
+    sockets[0].emit({ type: 'output.text_stream', stream_id: turnId, text: 'Hello.' })
+    sockets[0].emit({ type: 'ui.buttons', stream_id: turnId, actions: [] })
+    sockets[0].emit({ type: 'output.text', stream_id: turnId, message_id: 1, text: 'Hello.' })
 
     await pending
     expect(statuses).toEqual([])

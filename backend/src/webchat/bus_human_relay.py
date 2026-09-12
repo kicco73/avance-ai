@@ -15,8 +15,6 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from system.web_session import WebSession
-
 from system.bus_channel import BusChannel
 
 
@@ -36,17 +34,12 @@ class BusHumanRelay:
         self._project_id = project_id
 
     async def notify(self, prompt_text: str) -> None:
-        # Best-effort: exclude the connection running this turn (the tab
-        # that just sent the message) from also seeing its own prompt.
-        # WebSession().connection_id is None for anything that didn't come
-        # in over a websocket (e.g. WhatsApp) — nothing to exclude then.
         self._prompt_id = await self._bus_channel.send_human_prompt(
             self._username,
             self._session_id,
             prompt_text,
             session_type=self._session_type,
             project_id=self._project_id,
-            exclude_connection_id=WebSession().connection_id,
         )
 
     async def receive(self) -> str:

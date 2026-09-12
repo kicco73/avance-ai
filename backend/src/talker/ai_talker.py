@@ -68,12 +68,12 @@ class AiTalker(BaseTalker):
 		streams: dict[str, Any] = {}
 
 		async def take(message: Message) -> None:
-			streams[str(message.origin_id)] = message.body
+			streams[str(message.origin_id)] = (message.body or {}).get("stream")
 
 		bus.subscribe(OUTPUT_AUDIO_STREAM, take)
 		try:
 			await bus.publish(Message(
-				type=OUTPUT_SPEECH, body=text, username=WebSession().user, origin_id=origin,
+				type=OUTPUT_SPEECH, body={"text": text}, username=WebSession().user, origin_id=origin,
 			))
 		finally:
 			bus.unsubscribe(OUTPUT_AUDIO_STREAM, take)

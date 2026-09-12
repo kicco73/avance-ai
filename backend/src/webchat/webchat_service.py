@@ -21,8 +21,8 @@ from __future__ import annotations
 
 from system import bus
 from system.bus import (
-    OUTPUT_SPEECH, OUTPUT_TEXT, POINT_SPOKEN_REPLY, TURN_ENDED, TURN_FAILED, TURN_STARTED,
-    TURN_TOOL, Message,
+    OUTPUT_REACTION, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TEXT_STREAM, OUTPUT_TOOL,
+    POINT_SPOKEN_REPLY, STATE_CHANGED, OUTPUT_ERROR, UI_BUTTONS, Message,
 )
 from system.logging_factory import LoggerFactory
 from system.wiring import construct
@@ -39,7 +39,10 @@ logger = LoggerFactory.get_logger(__name__)
 #: What a turn produces, and what this forwards. Not CLIENT_INJECTABLE's
 #: mirror image: that is what a browser may put *on* the Bus, and this is
 #: what comes back.
-TURN_FORWARDED = (TURN_STARTED, OUTPUT_TEXT, OUTPUT_SPEECH, TURN_TOOL, TURN_ENDED, TURN_FAILED)
+TURN_FORWARDED = (
+    OUTPUT_TEXT_STREAM, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TOOL, OUTPUT_REACTION, UI_BUTTONS,
+    STATE_CHANGED, OUTPUT_ERROR,
+)
 
 
 class WebchatService:
@@ -76,15 +79,18 @@ class WebchatService:
 
         The wire carries the Bus's own type names and field names:
         nothing is translated on the way out, so a listener and a browser
-        read the same message. A dict body is the frame's own fields and
-        is spread; anything else is the body and travels as one."""
+        read the same message. A frame is the message's own body with its
+        type on it — every body is a dict, so there is one shape and no
+        wrapping."""
         connection_id = message.origin_id
         if connection_id is None or not self._notifications.has_connection(connection_id):
             return
-        body = message.body
-        payload = dict(body) if isinstance(body, dict) else {"body": body}
         self._notifications.send_to_connection(
-            connection_id, {"type": message.type, "stream_id": message.stream_id or "", **payload},
+            connection_id,
+            {
+                "type": message.type, "stream_id": message.stream_id or "",
+                "session_id": message.session_id, **(message.body or {}),
+            },
         )
 
     def human_talker_factory(

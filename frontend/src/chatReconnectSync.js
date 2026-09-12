@@ -1,4 +1,4 @@
-import { onConnectionState, resolvePendingTurnsAfterReload } from './chatClient.js'
+import { onConnectionState } from './chatClient.js'
 import { getSessionState } from './api.js'
 import { liveChatChannel } from './liveChatChannel.js'
 
@@ -39,7 +39,7 @@ export class ChatReconnectSync {
     // local bubble carried over, so rejecting it can still mark it failed.
     const localBefore = chat.messages.value
     const unsent = []
-    resolvePendingTurnsAfterReload((pending) => {
+    chat.settleOpenExchanges((pending) => {
       const rebuilt = this.rebuildTurn(history, pending)
       if (rebuilt === null) {
         const bubble = localBefore.find(
