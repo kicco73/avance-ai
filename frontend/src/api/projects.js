@@ -3,6 +3,12 @@ import { apiFetch } from './core.js'
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 
 
+// Which project this person is working on — and, through that, which
+// conversation they are having: the server reads the active project and
+// never takes one from the client (see TurnService.
+// get_current_session_if_any_or_create_new). Core, not the authoring
+// skill, because the invite flow activates what it just redeemed in
+// every build, editor or not.
 export function activateProject(projectId) {
   return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/activate`, {
     method: 'POST',

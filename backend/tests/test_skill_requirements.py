@@ -131,4 +131,6 @@ def test_the_deprecated_talk_enabled_flag_still_says_required_or_disabled(db):
         db.publish_project(project_id)
         automaton = project_service.get_automaton(project_id, db.get_project_revision(project_id))
         assert automaton.services.as_raw() == {"talk": expected}
-        assert any("talk-enabled is deprecated" in warning for warning in automaton.build_warnings)
+        assert any(
+            "talk-enabled is deprecated" in warning["message"] for warning in automaton.build_warnings
+        )

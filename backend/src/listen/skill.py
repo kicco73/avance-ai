@@ -61,17 +61,22 @@ class ListenSkill(Skill):
         self._service = service
         SpeechDecoder(service).register()
         bus.contribute(POINT_API_STATE, lambda payload: payload.update(
-            {"listen_enabled": self._project_listen().narrow(service.enabled)}
+            {"listen_enabled": self._project_listen().narrow(bool(self._providers))}
         ))
         bus.contribute(POINT_SESSION_SERVICES, self._answer_session_services)
         logger.info("listen-service started with %d provider(s).", len(self._providers))
 
     def _answer_session_services(self, session) -> None:
-        """Whether this conversation can be spoken *to* — asked of the
-        session's own project, and of the service itself, which becomes
-        ready only once its model has finished loading (see
-        ListenService._initialize)."""
-        session.offers(self.key, self._service is not None and self._service.enabled)
+        """Whether this conversation can be spoken *to*: what the server
+        has installed, narrowed by what the session's own project
+        declared. Deliberately not `service.enabled`, which says the
+        model has finished loading — that becomes true a few seconds
+        after boot, and a conversation opened in the meantime was told
+        "no" and never told otherwise. What a build can reach does not
+        change while it runs; whether it is ready this second is the
+        business of the moment somebody presses the button, and the
+        route says so itself."""
+        session.offers(self.key, bool(self._providers))
 
     def describe_section(self, snapshot: dict) -> None:
         snapshot[self.key] = self.section(listen_config.public_fields(self._providers))

@@ -140,7 +140,7 @@ class CoreAutomaton(object):
         # but almost certainly isn't what the author meant (see
         # AutomatonBuilder._actions_sanity_check). Never populated for an
         # Automaton built in-memory by hand.
-        build_warnings: list[str] | None = None,
+        build_warnings: "list[dict] | list[str] | None" = None,
     ):
         # A real Action (not just a target state string) so it can also
         # carry its own task/env — see TurnService._ensure_project_bootstrap.
@@ -162,7 +162,14 @@ class CoreAutomaton(object):
         self.autotracking_on_ai_message = autotracking_on_ai_message
         self.services = ProjectServices(project_services)
         self.new_session_strategy = new_session_strategy
-        self.build_warnings = list(build_warnings or [])
+        # {message, line, section} each (see BuildCursor.warn). A build
+        # compiled before warnings knew where they were found carries
+        # plain strings, and reads as a warning with no place to go
+        # rather than as a shape nobody can render.
+        self.build_warnings = [
+            warning if isinstance(warning, dict) else {"message": warning, "line": None, "section": None}
+            for warning in (build_warnings or [])
+        ]
         # Which DB storage revision this Automaton actually came from —
         # unset here (never a build()-time concern: most callers,
         # including nearly every test, build one purely in-memory with

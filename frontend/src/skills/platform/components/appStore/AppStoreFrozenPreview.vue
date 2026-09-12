@@ -4,6 +4,7 @@ import MessageBubble from '../../../../components/chat/MessageBubble.vue'
 import ActionButtons from '../../../../components/chat/ActionButtons.vue'
 import ChatInput from '../../../../components/chat/ChatInput.vue'
 import { getAppPreviewTranscript } from '../../api.js'
+import ChatWaitingPanel from '../../../../components/chat/ChatWaitingPanel.vue'
 import { spokenTextEnabled } from '../../../../chatStoreFactory.js'
 import { liveStore } from '../../../../chatStore.js'
 
@@ -30,19 +31,34 @@ const MOCK_ACTIONS = [
 
 const draft = ref('')
 const messages = ref(DEFAULT_MESSAGES)
+// The panel around this draws at once — it has the app from the list
+// already — and only this part waits, on the same panel every other
+// chat waits on. Before, the sample of whichever app was picked last
+// stayed on screen until the new one's transcript arrived, which reads
+// as the wrong app rather than as loading.
+const loading = ref(false)
 
 async function loadTranscript() {
-  if (!props.appId) {
+  const asked = props.appId
+  if (!asked) {
     messages.value = DEFAULT_MESSAGES
     return
   }
+  loading.value = true
   try {
-    const res = await getAppPreviewTranscript(props.appId)
+    const res = await getAppPreviewTranscript(asked)
+    if (props.appId !== asked) return
+    // Stale-response guard, the same one loadSkin has (see chatSkin.js):
+    // picking another app while this one's transcript is in flight left
+    // the late answer winning, and this card showing a conversation that
+    // belongs to an app nobody had selected.
     messages.value = res.messages?.length
       ? res.messages.map((m) => ({ messageId: m.id, role: m.role, content: m.content, timestamp: m.timestamp }))
       : DEFAULT_MESSAGES
   } catch {
-    messages.value = DEFAULT_MESSAGES
+    if (props.appId === asked) messages.value = DEFAULT_MESSAGES
+  } finally {
+    if (props.appId === asked) loading.value = false
   }
 }
 
@@ -68,6 +84,7 @@ watch(() => props.appId, loadTranscript, { immediate: true })
         />
       </div>
     </div>
+    <ChatWaitingPanel v-if="loading" />
   </div>
 </template>
 

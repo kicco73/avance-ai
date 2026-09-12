@@ -136,7 +136,8 @@ class AutomatonBuilder(object):
         for field in sorted(set(raw_action) - ACTION_FIELDS):
             self._cursor.warn(
                 f"Action '{raw_action.get('name', '?')}': '{field}' is not a field an action has, "
-                f"so it is ignored — expected one of {', '.join(sorted(ACTION_FIELDS))}."
+                f"so it is ignored — expected one of {', '.join(sorted(ACTION_FIELDS))}.",
+                line=BuildCursor.line_of(raw_action, field),
             )
 
     def _build_state_source_lists(self, key: str, raw_state: dict) -> dict[str, list[str]]:

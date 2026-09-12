@@ -41,6 +41,12 @@ def _discard_package(app, tmp_path, project_id: str) -> None:
     shutil.rmtree(package_dir(tmp_path / "apps", module_name_for(project_id), revision))
 
 
+def _state_of(client: TestClient, session_id: int) -> dict:
+    response = client.get(f"/api/core/sessions/{session_id}/state")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
 def _served_automaton(app, project_id: str):
     db = app.state.db
     loader = app.state.project_service.automaton_loader
@@ -52,9 +58,13 @@ def test_a_project_serves_interpreted_until_it_is_built_and_compiled_after(
 ):
     _discard_package(app, tmp_path, hello_project)
     assert type(_served_automaton(app, hello_project)).__name__ == "Automaton"
-    before = chat_turn(client, client.get("/api/skills/webchat/sessions/current").json()["id"], "hello")
+    session_id = client.get("/api/skills/webchat/sessions/current").json()["id"]
+    before = chat_turn(client, session_id, "hello")
     assert before["reply"][0]["content"]
-    assert before["state"]["key"] == "Hello"
+    # Where the conversation is now, asked rather than read off the turn:
+    # a turn says so only when it *moved* (see docs/BUS.md's own
+    # state.changed), and this one stays put.
+    assert _state_of(client, session_id)["key"] == "Hello"
 
     response = client.post(f"/api/skills/build/projects/{hello_project}/local-module")
     assert response.status_code == 200, response.text
@@ -64,9 +74,12 @@ def test_a_project_serves_interpreted_until_it_is_built_and_compiled_after(
     )
 
     assert isinstance(_served_automaton(app, hello_project), CompiledAutomaton)
-    after = chat_turn(client, client.get("/api/skills/webchat/sessions/current").json()["id"], "hello")
+    after_session_id = client.get("/api/skills/webchat/sessions/current").json()["id"]
+    after = chat_turn(client, after_session_id, "hello")
     assert after["reply"][0]["content"] == before["reply"][0]["content"]
-    assert after["state"] == before["state"], "the same turn, the same answer, from a package"
+    assert _state_of(client, after_session_id) == _state_of(client, session_id), (
+        "the same turn, the same answer, from a package"
+    )
 
 
 def test_the_app_store_listing_reports_whether_the_project_is_served_compiled(

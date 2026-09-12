@@ -13,7 +13,7 @@ const props = defineProps({
   viewStack: { type: Object, required: true },
 })
 
-const emit = defineEmits(['open-chat', 'home', 'profile', 'logout'])
+const emit = defineEmits(['open-chat', 'home', 'profile', 'logout', 'about'])
 
 defineOptions({ inheritAttrs: false })
 
@@ -43,6 +43,10 @@ const listeners = {
   'manage-services': () => props.viewStack.pushView('services'),
   'app-store': () => props.viewStack.pushView('appStore'),
   chat: (projectId) => emit('open-chat', projectId),
+  // Passed up rather than answered here: what this deployment is comes
+  // from /api/core/settings, which is the shell's business (see
+  // useServerAdminActions).
+  about: () => emit('about'),
   home: () => emit('home'),
   profile: () => emit('profile'),
   logout: () => emit('logout'),

@@ -16,8 +16,12 @@ describe('the input row', () => {
     document.body.appendChild(container)
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     container.remove()
+    // Whatever a test said this conversation could reach, the next one
+    // starts from a build that has everything.
+    const { publishServices } = await import('../src/skillServices.js')
+    publishServices(Object.fromEntries(chatInputControls.value.map((control) => [control.id.split('-')[0], true])))
   })
 
   function show(props) {
@@ -41,31 +45,27 @@ describe('the input row', () => {
   })
 
   it('draws every one of them in a sample row, whatever any conversation can reach', async () => {
-    const talk = await import('../src/skills/talk/availability.js')
-    const listen = await import('../src/skills/listen/availability.js')
-    talk.configured.value = false
-    listen.configured.value = false
+    // Told the way the app tells them — no control is named here, which
+    // is the point: this file is about the row, not about who fills it.
+    const { publishServices } = await import('../src/skillServices.js')
+    publishServices(Object.fromEntries(chatInputControls.value.map((c) => [c.id.split('-')[0], false])))
 
     const app = show({ sample: true })
 
     expect(container.querySelectorAll('.chat-input-control').length).toBe(chatInputControls.value.length)
 
     app.unmount()
-    talk.configured.value = true
-    listen.configured.value = true
   })
 
   it('draws only what this conversation can reach in a real row', async () => {
-    const talk = await import('../src/skills/talk/availability.js')
-    talk.configured.value = false
+    const { publishServices } = await import('../src/skillServices.js')
+    publishServices(Object.fromEntries(chatInputControls.value.map((c) => [c.id.split('-')[0], false])))
 
     const app = show({})
 
-    expect([...container.querySelectorAll('.chat-input-control')].map((el) => el.className))
-      .not.toContain('chat-input-control audio-btn')
+    expect(container.querySelectorAll('.chat-input-control')).toHaveLength(0)
 
     app.unmount()
-    talk.configured.value = true
   })
 
   it('draws a sample row\'s controls unselected, whatever this person has switched on', async () => {

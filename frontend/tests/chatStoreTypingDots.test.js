@@ -90,11 +90,13 @@ describe('an empty output.text_stream is what shows the dots', () => {
   })
 })
 
+// What each control does with the answer is that control's own business
+// (and its own skill's tests) — what belongs here is that the answer
+// leaves the conversation and reaches whoever asked to hear it.
 describe('what the conversation can reach', () => {
   let chatStore
   let deliver
-  let talk
-  let listen
+  let heard
 
   beforeEach(async () => {
     vi.resetModules()
@@ -102,26 +104,21 @@ describe('what the conversation can reach', () => {
     bus.resetFakeBus()
     deliver = bus.deliver
     chatStore = await import('../src/chatStore.js')
-    talk = await import('../src/skills/talk/availability.js')
-    listen = await import('../src/skills/listen/availability.js')
+    heard = []
+    const { onServices } = await import('../src/skillServices.js')
+    onServices((available) => heard.push(available))
     chatStore.currentSessionId.value = 1
   })
 
-  it('is the session\'s own answer, not a switch read once at boot', () => {
-    talk.stateListener.stateReceived({ talk_enabled: true })
-    expect(talk.configured.value).toBe(true)
+  it('hands on what this session says it can reach', () => {
+    deliver({ type: 'ui.services', session_id: 1, services: { one: false, other: true } })
 
-    deliver({ type: 'ui.services', session_id: 1, services: { talk: false, listen: true } })
-
-    expect(talk.configured.value).toBe(false)
-    expect(listen.configured.value).toBe(true)
+    expect(heard).toEqual([{ one: false, other: true }])
   })
 
   it('says nothing about a conversation that is not the one on screen', () => {
-    talk.configured.value = true
+    deliver({ type: 'ui.services', session_id: 2, services: { one: false } })
 
-    deliver({ type: 'ui.services', session_id: 2, services: { talk: false } })
-
-    expect(talk.configured.value).toBe(true)
+    expect(heard).toEqual([])
   })
 })

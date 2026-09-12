@@ -62,10 +62,18 @@ def served_by(call: tuple[str, ...], declared: set[tuple[str, ...]]) -> bool:
     """A placeholder stands for some value, so it matches a literal: the
     editor addresses both .../files/index.yml/ai-edit and its index.css
     twin through one `${fileName}` builder, and those are two real routes
-    rather than a call nobody serves."""
+    rather than a call nobody serves.
+
+    The last segment is the exception, and has to be: a call that ends in
+    a word is naming something, and a route that ends in a parameter takes
+    a value. Letting those two match made
+    `/api/core/projects/{}/activate` look served by
+    `/api/core/projects/invitations/{}` — so the frontend called a route
+    nobody had for as long as it took somebody to notice by hand."""
     return any(
         len(route) == len(call)
-        and all(PLACEHOLDER in (ours, theirs) or ours == theirs for ours, theirs in zip(route, call))
+        and all(PLACEHOLDER in (ours, theirs) or ours == theirs for ours, theirs in zip(route[:-1], call[:-1]))
+        and (route[-1] == call[-1] or PLACEHOLDER == route[-1] == call[-1])
         for route in declared
     )
 
