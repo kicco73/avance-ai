@@ -63,6 +63,7 @@ watch(() => props.appId, loadTranscript, { immediate: true })
         <ChatInput
           v-model="draft"
           disabled
+          sample
           :store="liveStore"
         />
       </div>

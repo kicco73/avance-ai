@@ -11,11 +11,12 @@ Aggiornare qui nello stesso commit che cambia il bus.
 | `input.audio` | `{audio}` — i byte, o una callable che li scarica | `whatsapp/inbound_voice_note.py` | `listen/decoder.py` |
 | `output.text_stream` | `{text}` — un pezzo di un messaggio mentre viene scritto. **Vuoto** = la scrittura è cominciata e non c'è ancora niente da leggere | `turn/input_listener.py` | `webchat/webchat_service.py` |
 | `output.tool` | `dict` — una tool call; `phase` distingue inizio e risultato | `turn/input_listener.py` | `webchat/webchat_service.py` |
-| `output.reaction` | `{message_id, reaction}` — qualcuno ha reagito a **quel** messaggio | `turn/input_listener.py` | `webchat/webchat_service.py` |
+| `output.reaction` | `{user_message_id, reaction}` — qualcuno ha reagito a **quel** messaggio | `turn/input_listener.py` | `webchat/webchat_service.py` |
 | `state.changed` | `{state, new_state, triggered_action}` — solo **quando cambia**: chi legge tiene l'ultimo che gli è stato detto | `turn/input_listener.py` | `webchat/webchat_service.py` |
-| `ui.buttons` | `{actions}` — le scelte offerte adesso. Chi mostra la chat apre i bottoni **appena arriva questo**, senza aspettare altro | `turn/input_listener.py` | `webchat/webchat_service.py`, `whatsapp/turn_exchange.py` |
+| `ui.buttons` | `{actions}` — le scelte offerte adesso, e l'**unico** posto in cui stanno: il payload di stato non le porta più. Chi mostra la chat apre i bottoni appena arriva questo, senza aspettare altro | `turn/input_listener.py` | `webchat/webchat_service.py`, `whatsapp/turn_exchange.py` |
 | `input.button` | `{id}` — una di quelle scelte, presa. Stessa strada di `input.text`, così le due non si sorpassano | `system/bus_channel.py` (frame del browser) | `turn/input_listener.py` |
-| `session.new` | `{}` — una conversazione è stata aperta. Non è qualcosa che è stato detto: è l'occasione perché l'automa parli per primo, se quello stato ha qualcosa con cui aprire. Una conversazione già cominciata non produce niente | `system/bus_channel.py` (frame del browser) | `turn/input_listener.py` |
+| `session.new` | `{}` — una conversazione è stata aperta. Non è qualcosa che è stato detto: è l'occasione perché l'automa parli per primo, se quello stato ha qualcosa con cui aprire. Risponde **sempre** con `ui.services` e `ui.buttons`, anche a una conversazione già cominciata, che non ha niente da farsi dire ma ha comunque bisogno che si sappia cosa offre | `system/bus_channel.py` (frame del browser) | `turn/input_listener.py` |
+| `ui.services` | `{services}` — `{nome: bool}`, cosa **questa** conversazione può raggiungere. Lo decide il progetto della sessione, non quello che la persona ha attivo altrove, e lo dice quando la conversazione si apre. Chi mostra la chat accende o nasconde i propri comandi su questo | `turn/input_listener.py` | `webchat/webchat_service.py` |
 | `output.text` | `{text, assistant_message_id, timestamp}` — un messaggio intero. L'**ultimo** è la risposta, ed è quello che dice che lo scambio è finito. Il testo da pronunciare è un messaggio a parte (`output.speech`), non un campo di questo | `turn/input_listener.py`, `tracking/actuators/actuator_set.py` (`task.whatsapp`) | `webchat/webchat_service.py`, `whatsapp/whatsapp_service.py`, `whatsapp/turn_exchange.py` |
 | `output.error` | `{message, detail, code}` — al posto della risposta: `code` dice cosa è successo, la frase la scrive chi parla alla persona | `turn/input_listener.py` | `webchat/webchat_service.py`, `whatsapp/turn_exchange.py` |
 | `output.speech` | `{text}` — il testo da pronunciare: la versione parlata della risposta, che il modello scrive accanto a quella scritta. Arriva mentre la risposta è ancora in scrittura, e un annuncio successivo sostituisce il precedente — l'ultimo è quello salvato col messaggio | `turn/input_listener.py` (lo annuncia), `talker/ai_talker.py` (lo chiede) | `talk/skill.py`, `webchat/webchat_service.py`, `whatsapp/turn_exchange.py` |
@@ -52,8 +53,16 @@ Non c'è un messaggio terminale a parte: **la risposta è la fine**. Quando
 qualcosa va storto, al suo posto arriva `output.error`.
 
 Chi legge non aspetta un payload finale, mette insieme quello che è stato
-pubblicato — lo fanno allo stesso modo `chatClient.js` (`normalizeResult`) e
-`conftest.chat_turn`, così un test legge quello che legge davvero un browser.
+pubblicato — lo fa allo stesso modo `conftest.chat_turn`, così un test legge
+quello che legge davvero un browser.
+
+Aprendo una conversazione l'ordine è invece:
+
+```text
+ui.services                     cosa questa conversazione può raggiungere
+ui.buttons                      cosa si può fare adesso
+output.text_stream / output.text  il messaggio d'apertura, se lo stato ne ha uno
+```
 
 ## Frame del websocket (`/api/core/bus`)
 
@@ -97,3 +106,4 @@ riempie la sua parte.
 | `core.services` | il core composto | ogni skill | `main.py`, `testing` |
 | `automaton.loader` | quale loader risponde «dammi questo automa» | `main.py` | `avance_platform`, `product` |
 | `turn.spoken_reply` | `SpokenReply` — `want()` chi gestisce l'interfaccia, `ask()` chi sa parlare | `tracking/tracking_processor.py` | `talk`, `webchat`, `whatsapp` |
+| `session.services` | `SessionServices` — `offers(nome, installato)`: cosa ogni servizio può fare per **una** conversazione. Il progetto della sessione può solo restringere l'interruttore del server | `turn/turn_service.py` | `talk`, `listen` |

@@ -5,6 +5,7 @@ import {
   postTruncateSession, deleteSession, postCloseSession, putMessageReaction,
 } from './api.js'
 import { busChannel } from './busChannel.js'
+import { publishServices } from './skillServices.js'
 import { ChatReconnectSync } from './chatReconnectSync.js'
 import { ChatExchange } from './chatExchange.js'
 import { modelSelector } from './modelSelector.js'
@@ -133,6 +134,15 @@ export function createChatStore({
   // the moment 'ui.buttons' arrives, on top of whichever state is held,
   // The choices the conversation offers now: shown the moment they
   // arrive, never held until an exchange ends.
+  // What this conversation can reach — its own project's answer, said
+  // when it opens. The skills that put a control on screen read it from
+  // here instead of from a switch read once at boot for whichever
+  // project the person happened to have active.
+  busChannel.subscribe('ui.services', (frame) => {
+    if (frame.session_id !== currentSessionId.value) return
+    publishServices(frame.services || {})
+  })
+
   busChannel.subscribe('ui.buttons', (frame) => {
     if (frame.session_id !== currentSessionId.value) return
     buttons.value = frame.actions || []

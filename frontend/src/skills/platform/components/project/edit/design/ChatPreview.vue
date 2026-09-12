@@ -24,6 +24,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import MessageBubble from '../../../../../../components/chat/MessageBubble.vue'
 import ActionButtons from '../../../../../../components/chat/ActionButtons.vue'
 import ChatInput from '../../../../../../components/chat/ChatInput.vue'
+import { liveStore } from '../../../../../../chatStore.js'
 import { setSkinCss, invalidateSkin } from '../../../../../../chatStore.js'
 
 const props = defineProps({
@@ -91,7 +92,7 @@ onBeforeUnmount(() => {
     </div>
     <div class="chat-footer">
       <ActionButtons :actions="MOCK_ACTIONS" :auto-tracking-enabled="false" />
-      <ChatInput v-model="draft" disabled :recording="false" :mic-available="false" :talk-available="false" :audio-enabled="false" :spoken-text-enabled="false" />
+      <ChatInput v-model="draft" disabled sample :store="liveStore" />
     </div>
   </div>
 </template>

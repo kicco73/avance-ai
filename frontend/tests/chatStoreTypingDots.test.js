@@ -89,3 +89,39 @@ describe('an empty output.text_stream is what shows the dots', () => {
     ])
   })
 })
+
+describe('what the conversation can reach', () => {
+  let chatStore
+  let deliver
+  let talk
+  let listen
+
+  beforeEach(async () => {
+    vi.resetModules()
+    const bus = await import('./fakeBus.js')
+    bus.resetFakeBus()
+    deliver = bus.deliver
+    chatStore = await import('../src/chatStore.js')
+    talk = await import('../src/skills/talk/availability.js')
+    listen = await import('../src/skills/listen/availability.js')
+    chatStore.currentSessionId.value = 1
+  })
+
+  it('is the session\'s own answer, not a switch read once at boot', () => {
+    talk.stateListener.stateReceived({ talk_enabled: true })
+    expect(talk.configured.value).toBe(true)
+
+    deliver({ type: 'ui.services', session_id: 1, services: { talk: false, listen: true } })
+
+    expect(talk.configured.value).toBe(false)
+    expect(listen.configured.value).toBe(true)
+  })
+
+  it('says nothing about a conversation that is not the one on screen', () => {
+    talk.configured.value = true
+
+    deliver({ type: 'ui.services', session_id: 2, services: { talk: false } })
+
+    expect(talk.configured.value).toBe(true)
+  })
+})
