@@ -445,11 +445,10 @@ class TurnService(object):
 		has to say which (see turn/sessions/session_type_strategy.py).
 		Whoever is only looking at a transcript wants read_transcript."""
 		self._ownership.require_own_session(session_id)
-		init_message = await self.open_if_needed(session_id)
-		messages = self._db.get_messages(session_id, last_n=last_n)
-		if init_message is not None:
-			messages.insert(0, init_message)
-		return self._with_tool_calls(session_id, messages)
+		# Whatever it wrote is persisted like any other message, and the
+		# read below picks it up.
+		await self.open_if_needed(session_id)
+		return self._with_tool_calls(session_id, self._db.get_messages(session_id, last_n=last_n))
 
 	def read_transcript(self, session_id: int, last_n: int | None = None) -> list[dict]:
 		"""What is already there, and nothing else. The editor's Run panel,

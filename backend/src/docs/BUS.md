@@ -15,6 +15,7 @@ Aggiornare qui nello stesso commit che cambia il bus.
 | `state.changed` | `{state, new_state, triggered_action}` — solo **quando cambia**: chi legge tiene l'ultimo che gli è stato detto | `turn/input_listener.py` | `webchat/webchat_service.py` |
 | `ui.buttons` | `{actions}` — le scelte offerte adesso. Chi mostra la chat apre i bottoni **appena arriva questo**, senza aspettare altro | `turn/input_listener.py` | `webchat/webchat_service.py`, `whatsapp/turn_exchange.py` |
 | `input.button` | `{id}` — una di quelle scelte, presa. Stessa strada di `input.text`, così le due non si sorpassano | `system/bus_channel.py` (frame del browser) | `turn/input_listener.py` |
+| `session.new` | `{}` — una conversazione è stata aperta. Non è qualcosa che è stato detto: è l'occasione perché l'automa parli per primo, se quello stato ha qualcosa con cui aprire. Una conversazione già cominciata non produce niente | `system/bus_channel.py` (frame del browser) | `turn/input_listener.py` |
 | `output.text` | `{text, assistant_message_id, timestamp}` — un messaggio intero. L'**ultimo** è la risposta, ed è quello che dice che lo scambio è finito. Il testo da pronunciare è un messaggio a parte (`output.speech`), non un campo di questo | `turn/input_listener.py`, `tracking/actuators/actuator_set.py` (`task.whatsapp`) | `webchat/webchat_service.py`, `whatsapp/whatsapp_service.py`, `whatsapp/turn_exchange.py` |
 | `output.error` | `{message, detail, code}` — al posto della risposta: `code` dice cosa è successo, la frase la scrive chi parla alla persona | `turn/input_listener.py` | `webchat/webchat_service.py`, `whatsapp/turn_exchange.py` |
 | `output.speech` | `{text}` — il testo da pronunciare: la versione parlata della risposta, che il modello scrive accanto a quella scritta. Arriva mentre la risposta è ancora in scrittura, e un annuncio successivo sostituisce il precedente — l'ultimo è quello salvato col messaggio | `turn/input_listener.py` (lo annuncia), `talker/ai_talker.py` (lo chiede) | `talk/skill.py`, `webchat/webchat_service.py`, `whatsapp/turn_exchange.py` |
@@ -62,6 +63,7 @@ Non passano dal bus: sono del socket.
 | --- | --- | --- |
 | `input.text` | browser → server | Quello che la persona scrive: l'unico tipo che un client può mettere sul bus (`CLIENT_INJECTABLE`) |
 | `input.button` | browser → server | Un bottone è stato cliccato, col suo `id` — va sul bus come `input.text` (`CLIENT_INJECTABLE`) |
+| `session.new` | browser → server | Una conversazione è stata aperta |
 | `subscribe` / `unsubscribe` | browser → server | Registra i tipi che questa connessione vuole ricevere (`CLIENT_REGISTRABLE`) |
 | `ping` / `pong` | browser ↔ server | Tenuta in vita |
 | `human_prompt` | server → browser | Un turno aspetta una risposta da una persona. Va solo alle connessioni registrate |

@@ -21,6 +21,7 @@ picks out its own without core knowing who is listening.
 from __future__ import annotations
 
 import asyncio
+from itertools import takewhile
 
 from db import Db
 from system import bus
@@ -243,20 +244,14 @@ class _Requests(object):
 
     def take(self) -> tuple[list[Message], list[int], list[dict]]:
         """One answer's worth: every text that piled up, answered
-        together — or a single press, which is one thing done and never
-        merged with anything."""
-        for _ in filter(INPUT_BUTTON.__eq__, [self.waiting[0].type]):
-            pressed, self.waiting = self.waiting[:1], self.waiting[1:]
-            self.accepted = self.accepted[1:]
-            return pressed, [], []
-        texts = [m for m in self.waiting if m.type == INPUT_TEXT]
-        taken = len(texts) if len(texts) == len(self.waiting) else self.waiting.index(
-            next(m for m in self.waiting if m.type != INPUT_TEXT)
-        )
+        together — or one of anything else, which is a single thing done
+        and is never merged with another. Never empty: the caller only
+        asks while something is waiting."""
+        taken = len(list(takewhile(lambda m: m.type == INPUT_TEXT, self.waiting))) or 1
         batch, self.waiting = self.waiting[:taken], self.waiting[taken:]
         accepted, self.accepted = self.accepted[:taken], self.accepted[taken:]
         prepared, self.prepared = self.prepared, []
-        return batch, accepted, prepared
+        return batch, [a for a in accepted if a is not None], prepared
 
 
 class _Outbound(object):

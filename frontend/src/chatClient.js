@@ -13,6 +13,13 @@ export function sendMessage(text, sessionId) {
   return busChannel.send({ type: 'input.text', session_id: sessionId, text })
 }
 
+// A conversation has just been opened. Whether the automaton has
+// anything to say before anybody says anything is its own business —
+// what comes back, if anything, is an ordinary message.
+export function sendSessionOpened(sessionId) {
+  return busChannel.send({ type: 'session.new', session_id: sessionId })
+}
+
 export function sendButton(id, sessionId) {
   return busChannel.send({ type: 'input.button', session_id: sessionId, id })
 }

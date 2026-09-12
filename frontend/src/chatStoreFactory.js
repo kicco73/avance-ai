@@ -5,7 +5,7 @@ import {
   postTruncateSession, deleteSession, postCloseSession, putMessageReaction,
 } from './api.js'
 import {
-  sendMessage as sendChatMessage, sendButton, onConnectionState, getConnectionState,
+  sendMessage as sendChatMessage, sendButton, sendSessionOpened, onConnectionState, getConnectionState,
 } from './chatClient.js'
 import { busChannel } from './busChannel.js'
 import { ChatReconnectSync } from './chatReconnectSync.js'
@@ -243,6 +243,10 @@ export function createChatStore({
     if (useAutoTracking) await loadAutoTracking()
     if (useActuatorsToggle) await loadActuators()
     await syncAudioPreference()
+    // The conversation is open: whether it has something to say first is
+    // the automaton's business, and what comes back is an ordinary
+    // message (see backend docs/BUS.md's own session.new).
+    sendSessionOpened(session.id)
     return session.id
   }
 
