@@ -62,7 +62,13 @@ export function setTotalTokenBudgetPerSession(value) {
 // `kind` ('live'|'test') only ever drives chatSkin.js's routing, nothing
 // about session resolution itself.
 export function createChatStore({
-  kind, getCurrentSession, getSessionsList, createSession, getMessages, resetSession = null,
+  kind, getCurrentSession, getSessionsList, createSession, resetSession = null,
+  // A chat with no history to read: the app store's preview starts empty
+  // every time and has everything it shows said to it (see
+  // appStorePreviewStore.js). It used to leave this out entirely and have
+  // the read throw, which the loader swallowed — the same shape, only
+  // said out loud.
+  getMessages = () => Promise.resolve([]),
   getAutoTracking = null, putAutoTracking = null,
   confirmNewSession = true, useAutoTracking = false, useActuatorsToggle = false,
   subscribeToNotifications = false,
@@ -267,11 +273,21 @@ export function createChatStore({
     if (useAutoTracking) await loadAutoTracking()
     if (useActuatorsToggle) await loadActuators()
     await syncAudioPreference()
-    // The conversation is open: whether it has something to say first is
-    // the automaton's business, and what comes back is an ordinary
-    // message (see backend docs/BUS.md's own session.new).
-    busChannel.send({ type: 'session.new', session_id: session.id })
     return session.id
+  }
+
+  // The conversation is open: whether it has something to say first is
+  // the automaton's business, and what comes back is an ordinary message
+  // (see backend docs/BUS.md's own session.new).
+  //
+  // Said only once what is already on screen is on screen. Announcing it
+  // first raced the history being read: the opening message arrived on
+  // the socket and the reply to the read — taken before it was written —
+  // replaced the whole list, bubble included. Whoever reads no history at
+  // all never saw this, which is why the app store's preview always
+  // worked and the live chat did not.
+  function announceSession(sessionId) {
+    busChannel.send({ type: 'session.new', session_id: sessionId })
   }
 
   async function loadMessages() {
@@ -280,6 +296,7 @@ export function createChatStore({
       if (sessionId == null) return // paused
       const history = await getMessages(sessionId)
       messages.value = history.map(toStoreMessage)
+      announceSession(sessionId)
       // The sessions panel (if open) was still showing the previous
       // project's list — refresh it so switching projects doesn't look
       // like it wiped the sessions.
@@ -335,6 +352,7 @@ export function createChatStore({
     try {
       const [history, sessionState] = await Promise.all([getMessages(session.id), getSessionState(session.id)])
       messages.value = history.map(toStoreMessage)
+      announceSession(session.id)
       state.value = sessionState
     } catch {
       // already surfaced via apiFetch

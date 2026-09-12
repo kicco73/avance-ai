@@ -20,7 +20,7 @@ vi.mock('../api.js', () => ({
   getTestChatModels: vi.fn(),
   postTestChatModelSelection: vi.fn(),
   postSessionAction: vi.fn(),
-  getTranscript: vi.fn(async () => []),
+  getHistory: vi.fn(async () => []),
   getSessions: vi.fn(async () => []),
   getSessionSignals: vi.fn(async () => []),
 }))

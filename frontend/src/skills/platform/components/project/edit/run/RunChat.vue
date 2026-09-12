@@ -7,7 +7,7 @@ import ChatView from '../../../../../../components/chat/ChatView.vue'
 import ChatTimeline from '../../../../../../components/chat/ChatTimeline.vue'
 import RestartFromHereButton from '../../../../../../components/chat/RestartFromHereButton.vue'
 import SessionsPanel from '../../../../../../components/chat/SessionsPanel.vue'
-import { getTranscript, deleteSession } from '../../../../api.js'
+import { getHistory, deleteSession } from '../../../../api.js'
 import { spokenTextEnabled, totalTokenBudgetPerSession } from '../../../../../../chatStoreFactory.js'
 import { applyAspect } from '../../../../../../chatSkin.js'
 import { testStore } from '../../../../testChatStore.js'
@@ -22,7 +22,7 @@ const {
 } = testStore
 
 // Input tokens burnt so far in the live session — same source
-// (getTranscript's own per-message `tokens`) and math as EditProjectView.
+// (getHistory's own per-message `tokens`) and math as EditProjectView.
 // vue's own autoSessionInputTokens, just event-driven off this store's
 // currentSessionId/turnCount instead of a session picked in Test mode.
 // Naturally reads as zero the moment a new/switched session has no
@@ -35,7 +35,7 @@ async function refreshSessionTokensBurnt() {
     return
   }
   try {
-    const history = await getTranscript(sessionId)
+    const history = await getHistory(sessionId)
     sessionTokensBurnt.value = history
       .filter((m) => m.role === 'user')
       .reduce((sum, m) => sum + (m.tokens ?? 0), 0)

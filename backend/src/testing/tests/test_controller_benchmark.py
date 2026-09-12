@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import chat_turn
+from conftest import chat_turn, open_chat
 
 
 def _metrics(client, project_id, query: str = "") -> dict:
@@ -16,8 +16,11 @@ def _metrics(client, project_id, query: str = "") -> dict:
 
 def _first_message_of_a_second_session(client) -> tuple[int, int]:
     first = client.get("/api/skills/webchat/sessions/current").json()
-    client.get(f"/api/skills/webchat/sessions/{first['id']}/messages")
+    open_chat(client, first["id"])
     second = client.post("/api/skills/webchat/sessions").json()
+    # Said because the window said `session.new`, not because this asked
+    # for the history: reading opens nothing (see TurnService.read_history).
+    open_chat(client, second["id"])
     messages = client.get(f"/api/skills/webchat/sessions/{second['id']}/messages").json()
     assert messages
     return second["id"], messages[0]["id"]

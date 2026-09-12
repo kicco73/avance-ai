@@ -15,10 +15,11 @@ export function getOperatorState(sessionId) {
   return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/operator-state`)
 }
 
-// Reading the chat window's own history, which opens the conversation if
-// it has not started: the opening message is a real turn, so this asks
-// to be on a channel and says which. getTranscript is the read that is
-// only a read.
+// The chat window's own history. A read and nothing else: what a
+// conversation opens with arrives because the window said `session.new`
+// (see backend docs/BUS.md), never because somebody asked what had been
+// said. This route stays webchat's own because a chat session belongs to
+// the channel that opened it.
 export function getMessages(sessionId) {
   return apiFetch(`${API_URL}/skills/webchat/sessions/${encodeURIComponent(sessionId)}/messages`)
 }

@@ -24,12 +24,12 @@ export function postCloseSession(sessionId) {
   return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/close`, { method: 'POST' })
 }
 
-// The transcript as it already is. Never opens the conversation — a
-// session nobody has started yet reads as empty rather than running its
-// opening turn under the reader (see turn/turn_service.py's own
-// read_transcript, and get_messages for the one that does open it).
-export function getTranscript(sessionId) {
-  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/transcript`)
+// A session's history as it already is. Nothing here opens a
+// conversation — that is `session.new`'s job and nobody else's (see
+// backend docs/BUS.md), so a session nobody has started yet reads as
+// empty rather than running its opening turn under whoever looked.
+export function getHistory(sessionId) {
+  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/history`)
 }
 
 export function getSessionState(sessionId) {
