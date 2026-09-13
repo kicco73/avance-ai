@@ -675,11 +675,8 @@ class TurnService(object):
 		return not self._db.has_messages_since(session_id, gate_since)
 
 	async def _messages_for_transition(
-		self, session_id: int, new_state: State, *, is_self_loop: bool, on_metadata: OnMetadata | None = None,
+		self, session_id: int, on_metadata: OnMetadata | None = None,
 	) -> tuple[list[dict], dict | None]:
-		should_open = not is_self_loop and self._state_speaks_unprompted(session_id, new_state)
-		if not should_open:
-			return [], None
 		turn_result = await self._process_turn_body(session_id, on_metadata=on_metadata)
 		message_id = turn_result["assistant_message_id"]
 		if message_id is None:
@@ -708,9 +705,7 @@ class TurnService(object):
 				automaton, action, {}, source_state_key, username=WebSession().user, project_id=project_id,
 				session_id=session["id"],
 			)
-			reply, fresh_state_payload = await self._messages_for_transition(
-				session["id"], state, is_self_loop=(action.target == source_state_key), on_metadata=on_metadata,
-			)
+			reply, fresh_state_payload = await self._messages_for_transition(session["id"], on_metadata=on_metadata)
 			self.__session_manager.touch_session(session["id"], state.key)
 			fresh = fresh_state_payload if fresh_state_payload is not None else state_payload
 			return {
