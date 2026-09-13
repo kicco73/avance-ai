@@ -33,15 +33,10 @@ from system.bus import (
 )
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
-from system.web_session import WebSession
-from turn.outbound import Outbound
+from turn.outbound import Outbound, publishing
 from turn.turn_service import TurnService
 
 logger = LoggerFactory.get_logger(__name__)
-
-#: What a sender with no user row gets: the bottom of the ladder in
-#: auth/roles.py, never nothing.
-_LEAST_PRIVILEGED = "pending"
 
 class TurnInput(object):
 
@@ -75,28 +70,24 @@ class TurnInput(object):
         operator has been handed one session and nothing else, and a
         person browsing past conversations picks one. Both are entering,
         and the envelope already carries either name."""
-        role = self._role_of(message.username)
         kind = str((message.body or {}).get("session_type") or "live")
-        with WebSession().for_sender(message.username, role=role, channel=message.channel):
-            entering = Outbound(message)
+        async with publishing(message, self._db) as entering:
             try:
                 session = await self._resolved(message, kind)
             except ServiceError as exc:
                 entering.failed(exc, [])
-                await entering.flush()
                 return
             refusal = self._refusal_of(session)
             if refusal is not None:
                 entering.put(SESSION_BLOCKED, {**refusal, "session_type": kind})
-                await entering.flush()
                 return
             entered = replace(message, session_id=session["id"])
             said = self._turn_service.read_history(session["id"])
-            outbound = Outbound(entered)
-            outbound.informed(session, self._turn_service.services_for(session["id"]), kind)
-            outbound.recalled(said)
-            outbound.offered(self._turn_service.buttons_for(session["id"], session["state"]))
-            await outbound.flush()
+            announcement = Outbound(entered)
+            announcement.informed(session, self._turn_service.services_for(session["id"]), kind)
+            announcement.recalled(said)
+            announcement.offered(self._turn_service.buttons_for(session["id"], session["state"]))
+            await announcement.flush()
         # Only a conversation with nothing in it has just been opened.
         # The transcript is already in hand, and it is the whole answer:
         # anyone hearing this is told a fact, not asked to work one out.
@@ -137,16 +128,13 @@ class TurnInput(object):
         self._turn_service.set_message_reaction(body.get("assistant_message_id"), body.get("reaction"))
 
     async def _answering(self, message: Message, say, first=None) -> None:
-        role = self._role_of(message.username)
-        with WebSession().for_sender(message.username, role=role, channel=message.channel):
-            outbound = Outbound(message)
+        async with publishing(message, self._db) as outbound:
             try:
                 if first is not None:
                     await first(message.session_id)
                 say(outbound)
             except ServiceError as exc:
                 outbound.failed(exc, [])
-            await outbound.flush()
 
     async def _requested(self, message: Message) -> None:
         """One request, accepted here and answered with whatever else has
@@ -160,9 +148,8 @@ class TurnInput(object):
         exchanges, not three, and nothing downstream has to recognise an
         exchange that produces nothing.
         """
-        role = self._role_of(message.username)
-        with WebSession().for_sender(message.username, role=role, channel=message.channel):
-            accepted = await self._accept(message)
+        async with publishing(message, self._db) as outbound:
+            accepted = await self._accept(message, outbound)
             if accepted is None:
                 return
             requests = self._requests.setdefault(message.session_id, _Requests())
@@ -173,18 +160,16 @@ class TurnInput(object):
         # Not awaited: an answer is written for as long as the model
         # takes, and bus.publish awaits each listener in order — awaiting
         # here would hold up whoever published the request.
-        task = asyncio.create_task(self._answer(message.session_id, requests, role))
+        task = asyncio.create_task(self._answer(message.session_id, requests))
         self._turns.add(task)
         task.add_done_callback(self._turns.discard)
 
-    async def _accept(self, message: Message) -> _Accepted | None:
+    async def _accept(self, message: Message, outbound: "Outbound") -> _Accepted | None:
         """Persists what the person said, right now. None when it was
         refused — that request is answered with the refusal, never joins
         the ones waiting, and opens no queue of its own."""
-        outbound = Outbound(message)
         for _ in filter(None, [not isinstance(message.session_id, int)]):
             outbound.failed(ServiceError("Session not found.", status_code=404, code="session_not_found"), [])
-            await outbound.flush()
             return None
         for _ in filter(INPUT_BUTTON.__eq__, [message.type]):
             # Nothing to persist: a choice taken is recorded by the
@@ -201,43 +186,24 @@ class TurnInput(object):
             # Whatever the state owed was written before the refusal and
             # is owed either way.
             outbound.failed(exc, prepared)
-            await outbound.flush()
             return None
         return _Accepted(message, message_id, prepared)
 
-    async def _answer(self, session_id: int, requests: "_Requests", role: str) -> None:
+    async def _answer(self, session_id: int, requests: "_Requests") -> None:
         try:
             while requests.waiting:
                 batch, accepted, prepared = requests.take()
                 # Addressed the way the last request of the batch was: it
                 # is the most recent thing the person is looking at.
-                await self._run(batch[-1], accepted, prepared, role)
+                await self._run(batch[-1], accepted, prepared)
         finally:
             requests.answering = False
             for _ in filter(None, [not requests.waiting]):
                 self._requests.pop(session_id, None)
 
-    def _role_of(self, username: str) -> str:
-        """The sender's privileges, looked up rather than taken off the
-        wire — a channel must not be able to declare its own caller's.
-
-        A sender with no row at all is the least privileged there is, not
-        a reason to drop the message: whoever sent it is owed an answer,
-        and refusing to run the turn silently is the one failure a
-        channel cannot report. The turn fails on its own ownership check
-        instead, which says what happened."""
-        user = self._db.get_user_by_id(username)
-        return user["role"] if user is not None else _LEAST_PRIVILEGED
-
-    async def _run(self, message: Message, accepted: list[int], prepared: list[dict], role: str) -> None:
-        with WebSession().for_sender(message.username, role=role, channel=message.channel):
-            outbound = Outbound(message)
-            drain = asyncio.create_task(outbound.drain())
-            try:
-                await self._turn(message, accepted, prepared, outbound)
-            finally:
-                outbound.close()
-                await drain
+    async def _run(self, message: Message, accepted: list[int], prepared: list[dict]) -> None:
+        async with publishing(message, self._db) as outbound:
+            await self._turn(message, accepted, prepared, outbound)
 
     async def _turn(
         self, message: Message, accepted: list[int], prepared: list[dict], outbound: "Outbound",
@@ -262,10 +228,7 @@ class TurnInput(object):
             # just left and never reaches the person.
             for _ in filter(None, [not result.get("moved_before_reply")]):
                 outbound.said(prepared)
-            outbound.reacted(result)
-            outbound.moved(result)
-            outbound.offered(result.get("buttons"))
-            outbound.said(result["reply"])
+            outbound.ran(result)
         except ServiceError as exc:
             outbound.failed(exc, prepared)
         except Exception as exc:  # noqa: BLE001
@@ -291,12 +254,7 @@ class TurnInput(object):
         except ServiceError as exc:
             outbound.failed(exc, [])
             return
-        outbound.moved({
-            "state_changed": True, "state": result["state"],
-            "new_state": result["state"].get("key"), "triggered_action": action,
-        })
-        outbound.offered(result.get("buttons"))
-        outbound.said(result["reply"])
+        outbound.ran(result)
 
 
 @dataclass

@@ -9,6 +9,7 @@ this; whoever decides one should run does not have to own it too.
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 
 from system import bus
 from system.bus import (
@@ -17,9 +18,14 @@ from system.bus import (
 )
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
+from system.web_session import WebSession
 from turn.tool_status_text import tool_status_text
 
 logger = LoggerFactory.get_logger(__name__)
+
+#: What a sender with no user row gets: the bottom of the ladder in
+#: auth/roles.py, never nothing.
+_LEAST_PRIVILEGED = "pending"
 
 #: Ends the drain below. Not a Message: a sentinel a producer could
 #: never publish by accident.
@@ -57,8 +63,7 @@ class Outbound(object):
         self._queue.put_nowait(_DONE)
 
     async def flush(self) -> None:
-        """Publishes what is queued and stops — for a refusal, which has
-        no answer to run alongside it."""
+        """Publishes what is queued and stops."""
         self.close()
         await self.drain()
 
@@ -136,6 +141,13 @@ class Outbound(object):
         state either: this message is the only place the choices are."""
         self.put(STATE_BUTTONS, {"actions": buttons or []})
 
+    def ran(self, result: dict | None) -> None:
+        for turn in filter(None, [result]):
+            self.reacted(turn)
+            self.moved(turn)
+            self.offered(turn.get("buttons"))
+            self.said(turn["reply"])
+
     def failed(self, exc: ServiceError, prepared: list[dict]) -> None:
         """What the state owed is owed either way: it was written before
         the refusal and goes out as any other message, so the terminal
@@ -164,3 +176,17 @@ class Outbound(object):
             # (see tool_status_text); "result" carries the payload as it
             # is.
             self.put(OUTPUT_TOOL, {**value, "status_text": tool_status_text(value)} if value["phase"] == "start" else value)
+
+
+@asynccontextmanager
+async def publishing(message: Message, db):
+    user = db.get_user_by_id(message.username)
+    role = user["role"] if user is not None else _LEAST_PRIVILEGED
+    with WebSession().for_sender(message.username, role=role, channel=message.channel):
+        outbound = Outbound(message)
+        drain = asyncio.create_task(outbound.drain())
+        try:
+            yield outbound
+        finally:
+            outbound.close()
+            await drain

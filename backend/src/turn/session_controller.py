@@ -23,7 +23,7 @@ from http import HTTPStatus
 from fastapi import HTTPException
 
 from controllers.base_controller import BaseController, delete, get, post, put
-from schemas import ActionRequest, ActuatorsRequest, TruncateSessionRequest
+from schemas import ActuatorsRequest, TruncateSessionRequest
 from project.project_service import ProjectService
 from turn.turn_service import TurnService
 
@@ -42,19 +42,6 @@ class SessionController(BaseController):
     def delete_session(self, session_id: int):
         self.turn_service.delete_session(session_id)
         return {"success": True}
-
-    @post("/api/core/sessions/{session_id}/actions")
-    async def post_action(self, session_id: int, req: ActionRequest):
-        """Firing an action on a session that has no channel — a test or
-        preview one, where SessionTypeStrategy.is_valid_write_target
-        admits any caller. A *live* session refuses this route for the
-        same reason it admits webchat's: the write asks who is speaking
-        and this caller cannot say, so it is turned away rather than
-        given a default (code session_channel_mismatch)."""
-        try:
-            return await self.turn_service.apply_manual_action(req.action_name, session_id)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @get("/api/core/sessions/{session_id}/signals", role="supervisor")
     def get_session_signals(self, session_id: int):

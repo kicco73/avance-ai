@@ -1,11 +1,11 @@
 """The chat window, as a thing that delivers rather than a thing that
 answers.
 
-One object, built once by the skill. It runs no turns: core listens for
-`input.text` and publishes every frame a turn produces (see
-turn/input_listener.py), and this forwards the ones addressed to a
-connection it holds — `origin_id`, put there by system.bus_channel,
-which this package also tells which channel it speaks on.
+One object, built once by the skill. Core listens for `input.text` and
+publishes every frame a turn produces (see turn/input_listener.py), and
+this forwards the ones addressed to a connection it holds — `origin_id`,
+put there by system.bus_channel, which this package also tells which
+channel it speaks on.
 
 It owns no HTTP surface: a conversation lives on the bus, so the
 routes and the thing that serves them are packaged together.
@@ -22,17 +22,19 @@ from __future__ import annotations
 from system import bus
 from system.bus import (
     OUTPUT_REACTION, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TEXT_STREAM, OUTPUT_TOOL,
-    POINT_SPOKEN_REPLY, STATE_CHANGED, STATE_BUTTONS, OUTPUT_ERROR,
-    SESSION_INFO, SESSION_MESSAGES, SESSION_BLOCKED, SESSION_ENDED, Message,
+    STATE_CHANGED, STATE_BUTTONS, OUTPUT_ERROR,
+    SESSION_INFO, SESSION_MESSAGES, SESSION_BLOCKED, SESSION_ENDED,
+    POINT_SPOKEN_REPLY, SESSION_OPENED, Message,
 )
 from system.logging_factory import LoggerFactory
 from system.bus_channel import BusChannel
+from system.service_error import ServiceError
 from talker import HumanTalker
 from project.project_service import ProjectService
+from turn.outbound import publishing
 from turn.turn_service import TurnService
 
 from .bus_human_relay import BusHumanRelay
-from .conversation_opener import ConversationOpener
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -54,13 +56,22 @@ class WebchatService:
     ) -> None:
         self._turn_service = turn_service
         self._notifications = notifications
-        self._opener = ConversationOpener(turn_service, db)
+        self._db = db
 
     def register(self) -> None:
         for message_type in TURN_FORWARDED:
             bus.subscribe(message_type, self._forward)
+        bus.subscribe(SESSION_OPENED, self._opened)
         bus.contribute(POINT_SPOKEN_REPLY, self._spoken_reply)
-        self._opener.register()
+
+    async def _opened(self, message: Message) -> None:
+        async with publishing(message, self._db) as outbound:
+            try:
+                opened = await self._turn_service.open_conversation(message.session_id, outbound.on_metadata)
+            except ServiceError as exc:
+                outbound.failed(exc, [])
+                return
+            outbound.ran(opened)
 
     def _spoken_reply(self, spoken) -> None:
         for _ in filter(self._turn_service.is_audio_enabled, filter(None, [spoken.session_id])):

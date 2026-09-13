@@ -313,6 +313,36 @@ def chat_turn(client: TestClient, session_id: int, text: str = "hi") -> dict:
     }
 
 
+def chat_action_frames(client: TestClient, session_id: int, action_name: str) -> list[dict]:
+    frames = []
+    with _frame_deadline(turn_frame_seconds(), frames):
+        with chat_socket(client) as ws:
+            ws.send_json({"type": "input.button", "session_id": session_id, "id": action_name})
+            while True:
+                frames.append(ws.receive_json())
+                if frames[-1]["type"] in ("state.buttons", "output.error"):
+                    return frames
+    return frames
+
+
+def chat_action(client: TestClient, session_id: int, action_name: str) -> dict:
+    frames = chat_action_frames(client, session_id, action_name)
+    assert frames[-1]["type"] == "state.buttons", frames[-1]
+    changed = [frame for frame in frames if frame["type"] == "state.changed"]
+    return {
+        "state": changed[-1]["state"] if changed else None,
+        "buttons": frames[-1]["actions"],
+        "new_state": changed[-1]["new_state"] if changed else None,
+        "triggered_action": changed[-1]["triggered_action"] if changed else None,
+    }
+
+
+def chat_action_error(client: TestClient, session_id: int, action_name: str) -> dict:
+    final = chat_action_frames(client, session_id, action_name)[-1]
+    assert final["type"] == "output.error", final
+    return final
+
+
 def chat_turn_error(client: TestClient, session_id: int, text: str = "hi") -> dict:
     final = chat_turn_frames(client, session_id, text)[-1]
     assert final["type"] == "output.error", final

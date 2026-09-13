@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from conftest import enter_chat, parse_sse_result, session_of
+from conftest import chat_action, enter_chat, parse_sse_result, session_of
 from system.web_session import WebSession
 
 pytestmark = pytest.mark.regression
@@ -33,8 +33,7 @@ def _upload_and_reach_b(client):
     project_id = parse_sse_result(resp)["project_id"]
 
     session_id = session_of(enter_chat(client, project_id))
-    action_resp = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go"})
-    assert action_resp.status_code == 200, action_resp.text
+    chat_action(client, session_id, "go")
     return project_id, session_id
 
 
@@ -44,8 +43,7 @@ def test_editing_the_current_users_stale_state_never_touches_another_users_live_
     app_db.set_active_project_id(project_id, "bob")
     with WebSession().impersonate("bob"):
         bob_session_id = session_of(enter_chat(client, project_id))
-        bob_action_resp = client.post(f"/api/core/sessions/{bob_session_id}/actions", json={"action_name": "go"})
-        assert bob_action_resp.status_code == 200, bob_action_resp.text
+        chat_action(client, bob_session_id, "go")
 
     resp = client.put("/api/skills/platform/projects/proj/files/index.yml", content=YML_WITHOUT_B.encode())
     assert resp.status_code == 200, resp.text
@@ -74,8 +72,7 @@ def test_editing_the_current_users_stale_state_never_touches_an_imported_session
 def test_editing_a_stale_state_deletes_the_current_users_own_test_session(client, app_db):
     project_id, _ = _upload_and_reach_b(client)
     test_session = client.post(f"/api/skills/platform/projects/{project_id}/test-sessions").json()
-    action_resp = client.post(f"/api/core/sessions/{test_session['id']}/actions", json={"action_name": "go"})
-    assert action_resp.status_code == 200, action_resp.text
+    chat_action(client, test_session["id"], "go")
 
     resp = client.put("/api/skills/platform/projects/proj/files/index.yml", content=YML_WITHOUT_B.encode())
     assert resp.status_code == 200, resp.text

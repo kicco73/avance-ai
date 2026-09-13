@@ -62,7 +62,6 @@ GET    /api/core/sessions/{id}/history      someone else's transcript, read by t
                                             editor, the labelling screen, benchmark
 GET    /api/core/sessions/{id}/signals      the inspector
 GET|PUT /api/core/sessions/{id}/actuators   the inspector
-POST   /api/core/sessions/{id}/actions      the inspector moves the automaton
 POST   /api/core/sessions/{id}/truncate     the Run panel's "restart from here",
                                             which keeps a prefix that closing and
                                             recreating would lose

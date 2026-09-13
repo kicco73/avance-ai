@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import enter_chat, session_of
+from conftest import chat_action, enter_chat, session_of
 
 pytestmark = pytest.mark.contract
 
@@ -37,8 +37,7 @@ def _upload(client, yml: str, publish: bool = True):
 def _fire_action(client, session_id: int) -> None:
     """Establishes current_state reliably — a session with no real action
     fired yet is wiped the next time the project is edited."""
-    response = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go"})
-    assert response.status_code == 200, response.text
+    chat_action(client, session_id, "go")
 
 
 def _pinned_live_session(client) -> int:

@@ -9,7 +9,7 @@ import zipfile
 
 import pytest
 
-from conftest import enter_chat, parse_sse_result, session_of
+from conftest import chat_action, enter_chat, parse_sse_result, session_of
 
 
 def _zip_of(files: dict[str, str]) -> bytes:
@@ -174,9 +174,7 @@ def test_undo_does_not_reset_or_reload_the_active_conversation(client):
     resp = client.post("/api/skills/platform/projects/proj2/publish", json={})
     assert resp.status_code == 200, resp.text
     session_id = session_of(enter_chat(client, "proj2"))
-    action_resp = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go"})
-    assert action_resp.status_code == 200, action_resp.text
-    assert action_resp.json()["state"]["key"] == "b"
+    assert chat_action(client, session_id, "go")["state"]["key"] == "b"
 
     # A real edit that leaves "b" untouched (adds unrelated state "c"),
     # so the conversation survives this Save and undo has something to

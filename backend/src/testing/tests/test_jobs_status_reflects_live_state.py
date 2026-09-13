@@ -105,7 +105,7 @@ class _BlockingCancelableJob(CancelableJob):
         self._release.wait(timeout=2.0)
 
 
-def test_root_shows_running_via_the_broadcaster_even_though_it_never_persists(client, hello_project):
+def test_root_shows_running_via_the_broadcaster_even_though_it_never_persists(client):
     """RootAggregationJob never writes a TestAggregateResult of its own
     (see its class) — the only way to ever know it's running is the
     queue's own last broadcast, so it must never be silently dropped."""

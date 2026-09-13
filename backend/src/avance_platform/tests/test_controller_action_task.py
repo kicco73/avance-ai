@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from system.bus_channel import BusChannel
-from conftest import FakeWebSocket, enter_chat, parse_sse_result, session_of
+from conftest import FakeWebSocket, chat_action, enter_chat, parse_sse_result, session_of
 
 pytestmark = pytest.mark.contract
 
@@ -57,12 +57,9 @@ def test_manual_action_pushes_its_on_exits_own_chat_snippets_synchronously(clien
     session_id = _upload_and_get_session(client)
     websocket = _attach_websocket(app, app_db.get_chat_session(session_id)["username"])
 
-    resp = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go-loud"})
+    moved = chat_action(client, session_id, "go-loud")
 
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["state"]["key"] == "b"
-    assert "task" not in body
+    assert moved["state"]["key"] == "b"
     # Never hibernated as a Task: on-exit's own chat.* runs inline, not
     # through the job queue at all (see TrackingEngine.apply_action_env).
     assert app_db.list_tasks() == []
@@ -72,12 +69,9 @@ def test_manual_action_pushes_its_on_exits_own_chat_snippets_synchronously(clien
 def test_manual_action_without_on_exit_reports_none_even_for_the_same_target_state(client, app_db):
     session_id = _upload_and_get_session(client)
 
-    resp = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go-quiet"})
+    moved = chat_action(client, session_id, "go-quiet")
 
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["state"]["key"] == "b"
-    assert "task" not in body
+    assert moved["state"]["key"] == "b"
     assert app_db.list_tasks() == []
 
 
@@ -85,10 +79,10 @@ def test_state_payload_never_carries_on_exit_itself(client):
     """on-exit is per-action, never present on the state payload itself."""
     session_id = _upload_and_get_session(client)
 
-    resp = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go-loud"})
+    moved = chat_action(client, session_id, "go-loud")
 
-    assert "on-exit" not in resp.json()["state"]
-    for action in resp.json()["state"]["actions"]:
+    assert "on-exit" not in moved["state"]
+    for action in moved["state"]["actions"]:
         assert "on-exit" in action  # present per outgoing action instead
 
 

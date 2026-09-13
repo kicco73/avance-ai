@@ -24,7 +24,7 @@ class _FakeCancelableJob(CancelableJob):
         return
 
 
-def test_abort_all_jobs_cancels_only_jobs_still_in_flight(client, hello_project):
+def test_abort_all_jobs_cancels_only_jobs_still_in_flight(client):
     """The square "run all" button's stop action must cancel every job
     genuinely still running, but never retroactively flip an already
     completed one to 'aborted' — see TestingService.abort_all_jobs()."""

@@ -24,10 +24,6 @@ class AcceptTermsRequest(BaseModel):
     invite_code: str | None = None
 
 
-class ActionRequest(BaseModel):
-    action_name: str
-
-
 class AutoTrackingRequest(BaseModel):
     enabled: bool
 

@@ -351,9 +351,13 @@ async def test_abort_broadcasts_a_parent_left_only_waiting_on_a_child():
     job_queue.cancel(waiter)
 
     messages = []
+    aborted = set()
     try:
-        while True:
-            messages.append(await asyncio.wait_for(connection.get(), timeout=1.0))
+        while not {waiter.key, blocking.key} <= aborted:
+            message = await asyncio.wait_for(connection.get(), timeout=1.0)
+            messages.append(message)
+            if message["job_status"] == "aborted":
+                aborted.add(message["key"])
     except asyncio.TimeoutError:
         pass
 

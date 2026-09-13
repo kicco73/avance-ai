@@ -9,7 +9,7 @@ import zipfile
 
 import pytest
 
-from conftest import enter_chat, parse_sse_result, session_of
+from conftest import chat_action, enter_chat, parse_sse_result, session_of
 
 pytestmark = pytest.mark.contract
 
@@ -50,8 +50,7 @@ def _upload_activate_and_establish_state(client, project_name: str):
     assert client.post(f"/api/skills/platform/projects/{project_name}/publish", json={}).status_code == 200
 
     session_id = session_of(enter_chat(client, project_name))
-    action_response = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go"})
-    assert action_response.status_code == 200, action_response.text
+    chat_action(client, session_id, "go")
 
 
 def _create_test_session(client, project_name: str) -> int:

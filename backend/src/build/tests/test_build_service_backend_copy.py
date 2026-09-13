@@ -191,27 +191,25 @@ def test_the_installed_skills_are_read_off_the_source_tree():
 
 
 @pytest.mark.contract
-def test_a_skill_left_out_of_a_build_is_a_directory_that_is_not_copied(tmp_path):
+def test_a_skill_left_out_of_a_build_is_a_directory_that_is_not_copied():
     """The switch is the absence of the code, not a flag inside it —
     there is nothing in the built copy that records the choice, and
     nothing at run time that could read it back."""
-    import shutil
+    import os
 
     from build.backend_copy import BACKEND_DIR, _ignore_for
 
-    full = tmp_path / "full"
-    without = tmp_path / "without"
-    shutil.copytree(BACKEND_DIR, full, ignore=_ignore_for([]))
-    shutil.copytree(BACKEND_DIR, without, ignore=_ignore_for(["listen"]))
+    source = BACKEND_DIR / "src"
+    names = os.listdir(source)
 
-    assert (full / "src" / "listen" / "skill.py").is_file()
-    assert not (without / "src" / "listen").exists()
+    kept = _ignore_for([])(str(source), names)
+    without_listen = _ignore_for(["listen"])(str(source), names)
+
+    assert (source / "listen" / "skill.py").is_file()
+    assert "listen" in without_listen
     # Only that one directory: excluding a skill must not take anything
     # else with it.
-    assert (
-        {path.name for path in (full / "src").iterdir()} - {path.name for path in (without / "src").iterdir()}
-        == {"listen"}
-    )
+    assert without_listen - kept == {"listen"}
 
 
 def test_webchat_is_offered_as_something_a_build_can_leave_out(tmp_path):
@@ -277,20 +275,11 @@ mail-service:
 FALLBACK_TITLE_MARK = "misconfigured"
 
 
-def _boot(copy: "Path") -> "tuple[int, str]":
-    """Starts the copied backend's app object in a fresh interpreter and
-    reports the title it ended up with. Not a subprocess server and no
-    port: the question is only whether create_app() got to the end."""
-    import subprocess
-    import sys
-
-    (copy / "src" / ".config.yml").write_text(BOOTABLE_CONFIG)
-    result = subprocess.run(
-        [sys.executable, "-c",
-         "import sys; sys.path.insert(0, 'src'); import main; print('TITLE:' + main.app.title)"],
-        cwd=copy, capture_output=True, text=True, timeout=300,
-    )
-    return result.returncode, result.stdout + result.stderr
+BOOT_SHAPES = {
+    "full": [],
+    "product": ["avance_platform", "build", "webchat", "testing"],
+    "without_voice": ["listen", "talk", "whatsapp"],
+}
 
 
 def _copy_backend(tmp_path: "Path", excluded: "list[str]") -> "Path":
@@ -303,14 +292,39 @@ def _copy_backend(tmp_path: "Path", excluded: "list[str]") -> "Path":
     return copy
 
 
+@pytest.fixture(scope="session")
+def booted_copies(tmp_path_factory) -> "dict[str, tuple[int, str]]":
+    """Every shape below started in a fresh interpreter of its own, all
+    three at once: the boot is five seconds of imports and wiring, and
+    waiting for one before starting the next was the whole cost of these
+    tests. Not a subprocess server and no port — the question is only
+    whether create_app() got to the end."""
+    import sys
+
+    running = {}
+    for name, excluded in BOOT_SHAPES.items():
+        copy = _copy_backend(tmp_path_factory.mktemp(f"boot-{name}"), excluded)
+        (copy / "src" / ".config.yml").write_text(BOOTABLE_CONFIG)
+        running[name] = subprocess.Popen(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0, 'src'); import main; print('TITLE:' + main.app.title)"],
+            cwd=copy, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        )
+    booted = {}
+    for name, process in running.items():
+        output, _ = process.communicate(timeout=300)
+        booted[name] = (process.returncode, output)
+    return booted
+
+
 @pytest.mark.slow
-def test_a_full_backend_copy_starts_for_real_and_not_as_the_fallback_app(tmp_path):
+def test_a_full_backend_copy_starts_for_real_and_not_as_the_fallback_app(booted_copies):
     """The check `import main` alone never made: main.py catches a failed
     create_app() and serves a fallback app that answers 503 to
     everything, so the import succeeds no matter how broken startup is.
     Every skill is in this copy, including product/ — which is in every
     build until somebody unticks it."""
-    code, output = _boot(_copy_backend(tmp_path, []))
+    code, output = booted_copies["full"]
 
     assert code == 0, output
     assert "TITLE:" in output, output
@@ -318,14 +332,13 @@ def test_a_full_backend_copy_starts_for_real_and_not_as_the_fallback_app(tmp_pat
 
 
 @pytest.mark.slow
-def test_a_product_copy_starts_with_no_platform_no_chat_and_no_benchmark(tmp_path):
+def test_a_product_copy_starts_with_no_platform_no_chat_and_no_benchmark(booted_copies):
     """The shape the whole exercise is for: one compiled project, a
     channel, and nothing to author with — and no compiler either, since
     a product serves a package somebody else built. It has no
     /api/core/auth/providers and no /api/core/state, which is why the build's own
     launch check cannot probe a named route."""
-    copy = _copy_backend(tmp_path, ["avance_platform", "build", "webchat", "testing"])
-    code, output = _boot(copy)
+    code, output = booted_copies["product"]
 
     assert code == 0, output
     assert FALLBACK_TITLE_MARK not in output, output
@@ -333,8 +346,8 @@ def test_a_product_copy_starts_with_no_platform_no_chat_and_no_benchmark(tmp_pat
 
 @pytest.mark.contract
 @pytest.mark.slow
-def test_a_backend_without_listen_talk_or_whatsapp_starts_for_real(tmp_path):
-    code, output = _boot(_copy_backend(tmp_path, ["listen", "talk", "whatsapp"]))
+def test_a_backend_without_listen_talk_or_whatsapp_starts_for_real(booted_copies):
+    code, output = booted_copies["without_voice"]
 
     assert code == 0, output
     assert "TITLE:" in output, output

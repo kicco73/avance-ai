@@ -735,15 +735,6 @@ class TurnService(object):
 		return automaton, state
 
 	async def open_conversation(self, session_id: int, on_metadata: OnMetadata | None = None) -> dict | None:
-		"""What the automaton has to say before anybody says anything,
-		said as an ordinary turn. Returns it, so a caller that is
-		reporting an exchange can report this one too.
-
-		Asked for, never worked out here: whoever asks has just read the
-		transcript and found nothing in it (see docs/BUS.md,
-		`session.opened`), so a conversation that has already spoken
-		never reaches this. None for an imported session, which has no
-		automaton to speak for it."""
 		automaton, _ = await self._ensure_project_bootstrap(session_id)
 		for _ in filter(None, [automaton is None]):
 			return None
@@ -823,6 +814,9 @@ class TurnService(object):
 			fresh = fresh_state_payload if fresh_state_payload is not None else state_payload
 			return {
 				"state": fresh,
+				"state_changed": True,
+				"new_state": fresh.get("key"),
+				"triggered_action": action_name,
 				"buttons": self.buttons_for(session["id"], fresh),
 				"reply": reply,
 				"ai_model": self.get_ai_models_info(),

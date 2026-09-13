@@ -83,6 +83,36 @@ what you would delete to make it shorter.
 bin/filter_tests.py test_stats.json -d
 ```
 
+## The run you do while you work, and the one that gates a commit
+
+```
+python3 -m pytest -m "not slow"     # while iterating
+python3 -m pytest                   # once, before a commit
+```
+
+`slow` is what `pytest.ini` says it is: a test that spawns a real subprocess
+or otherwise takes several seconds. There are thirteen of them and they are
+23 s of a 4½-minute suite, so the first command is the one to live in. It is
+not in `addopts` on purpose — the gate has to pay them.
+
+## What a test costs before it asserts anything
+
+Two fixtures are most of the suite's floor, and both are per-test by design:
+`app_db` gives each test a database of its own, `hello_project` a project
+uploaded and published through the real routes. Measured on this machine:
+`app` sets up in ~0.2 s, `hello_project` adds ~0.25 s on top, and 290 of the
+1594 tests take one or both.
+
+`app_db` therefore copies a database instead of creating one: the schema is
+built once per session in `app_db_template` and each test gets a copy of that
+file. Creating it costs 92 ms, copying it 25 ms, and the difference is 19 s
+over a full run. The isolation is unchanged — a copy is still a database
+nobody else writes to.
+
+This is also why the deletion list below is nearly useless under a second:
+what it ranks there is the fixture, not the test. Two of the entries a
+one-minute cut proposed were a two-line 404 and a three-line document read.
+
 ## Three traps, which are what half the options are for
 
 **`last_seconds` is written by a full run only.** It is the field the tool
@@ -181,6 +211,13 @@ Two defenses, on by default or nearly:
 When there is not enough time above the floor to reach the target, the tool
 says so instead of quietly handing back a list that falls short. The right
 answer then is usually a smaller cut.
+
+And the list is not stable enough to execute anyway: asked for one minute
+twice, twenty minutes apart, with a peer's run landing in between, it named
+36 nodes of which 25 had changed. Around a second the ranking is measurement
+noise. Everything above a second is worth 61 s in all, so "cut a minute" is
+not a cut — it is the whole candidate list, contracts and concurrency tests
+included.
 
 ## Open: an intermittent hang in test_reactions_end_to_end
 

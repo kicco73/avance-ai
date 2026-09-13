@@ -278,11 +278,6 @@ class WhatsAppService(object):
         accepting terms mid-conversation, where the baseline is whatever
         the session already had before this call)."""
         last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
-        # This channel has no `session.enter` of its own, so bootstrapping
-        # *is* where it says "this conversation is beginning" — and it
-        # decides that here, on the transcript it has just read, the way
-        # the core decides it for a chat (see docs/BUS.md,
-        # `session.opened`). Nothing said yet is the whole of it.
         for _ in filter(None, [not last_seen_id]):
             await self._turn_service.open_conversation(session_id)
         messages = self._turn_service.read_history(session_id)

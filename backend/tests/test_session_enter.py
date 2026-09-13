@@ -7,7 +7,7 @@ what it offers (`state.buttons`).
 
 Whether the conversation should now *speak* is not decided here — the
 announcement ends with `session.opened` and a chat answers it (see
-webchat/conversation_opener.py). What this defends is that the
+webchat/webchat_service.py). What this defends is that the
 announcement comes first and that the event says the truth: a
 conversation with something in it has not just been opened.
 

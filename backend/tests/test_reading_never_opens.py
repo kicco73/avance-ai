@@ -1,11 +1,3 @@
-"""Being asked what has been said says nothing.
-
-Reading the transcript used to open the conversation as a side effect, so
-a browser that said `session.new` and read the history in the same breath
-opened it twice. Opening is asked for now, by whoever has read the
-transcript and found nothing in it (see webchat/conversation_opener.py),
-and reading is only reading.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -52,8 +44,6 @@ async def test_reading_the_history_opens_nothing(turn_service_for):
 
 
 async def test_opening_it_is_asked_for_and_speaks(turn_service_for):
-    """The other side of the same fact: asked to open, it opens — it does
-    not ask itself whether it should."""
     db = turn_service_for.db
     provider = _CountingProvider()
     turn_service = turn_service_for(

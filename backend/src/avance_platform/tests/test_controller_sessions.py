@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 import pytest
 
 from conftest import (
-    _frame_deadline, chat_socket, chat_turn, chat_turn_error, enter_chat, session_of,
+    _frame_deadline, chat_action, chat_action_error, chat_socket, chat_turn, chat_turn_error,
+    enter_chat, session_of,
     turn_frame_seconds,
 )
 from conftest import parse_sse_result
@@ -159,7 +160,7 @@ def test_labeled_title_and_comment_work_for_an_imported_session_which_is_never_a
 
 
 @pytest.mark.contract
-def test_title_and_delete_reject_an_unknown_session(client, hello_project):
+def test_title_and_delete_reject_an_unknown_session(client):
     assert client.put("/api/skills/platform/sessions/999999/title", json={"title": "x"}).status_code == 404
     assert client.delete("/api/core/sessions/999999").status_code == 404
 
@@ -185,10 +186,9 @@ def test_a_manual_new_session_closes_and_supersedes_the_bootstrap_one_rejecting_
     assert "closed" in error["message"].lower()
     assert error["code"] == "session_closed"
 
-    response = client.post(f"/api/core/sessions/{older_id}/actions", json={"action_name": "chat"})
-    assert response.status_code == 409
-    assert "closed" in response.json()["error"]["message"].lower()
-    assert response.json()["error"]["code"] == "session_closed"
+    refused = chat_action_error(client, older_id, "chat")
+    assert "closed" in refused["message"].lower()
+    assert refused["code"] == "session_closed"
 
 
 @pytest.mark.regression
@@ -214,16 +214,14 @@ def test_someone_elses_session_exposes_session_not_found_on_turns_and_actions(cl
 
     assert _turn_error(client, session_id)["code"] == "session_not_found"
 
-    response = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "advance"})
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "session_not_found"
+    assert chat_action_error(client, session_id, "advance")["code"] == "session_not_found"
 
 
 @pytest.mark.contract
 def test_a_turn_in_a_non_chat_state_exposes_state_not_chat(client, app_db):
     _setup_channel_codes_project(app_db)
     session_id = session_of(enter_chat(client, "channel-codes-proj"))
-    client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "advance"})
+    chat_action(client, session_id, "advance")
 
     assert _turn_error(client, session_id)["code"] == "state_not_chat"
 
@@ -262,12 +260,11 @@ async def test_manual_action_exposes_turn_in_progress_code(client, app_db):
     lock = turn_service._session_locks.get(str(session_id))
     await lock.acquire()
     try:
-        response = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "advance"})
+        refused = chat_action_error(client, session_id, "advance")
     finally:
         lock.release()
 
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "turn_in_progress"
+    assert refused["code"] == "turn_in_progress"
 
 
 @pytest.mark.regression
@@ -304,9 +301,7 @@ def test_manual_new_session_starts_at_the_automatons_current_state_not_the_initi
     bootstrap_id = session_of(enter_chat(client, project_id))
     assert _sessions_by_id(client, project_id)[bootstrap_id]["start_state"] == "welcome"
 
-    action_response = client.post(f"/api/core/sessions/{bootstrap_id}/actions", json={"action_name": "unit-subjuntive"})
-    assert action_response.status_code == 200
-    current_state = action_response.json()["state"]["key"]
+    current_state = chat_action(client, bootstrap_id, "unit-subjuntive")["state"]["key"]
     assert current_state != "welcome"
 
     new_id = session_of(_new_chat(client, project_id))

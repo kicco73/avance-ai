@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import enter_chat, parse_sse_result, session_of
+from conftest import chat_action, enter_chat, parse_sse_result, session_of
 
 pytestmark = pytest.mark.regression
 
@@ -34,9 +34,7 @@ def _upload_and_reach_b(client) -> int:
     assert resp.status_code == 200, resp.text
 
     session_id = session_of(enter_chat(client, project_id))
-    action_resp = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go"})
-    assert action_resp.status_code == 200, action_resp.text
-    assert action_resp.json()["state"]["key"] == "b"
+    assert chat_action(client, session_id, "go")["state"]["key"] == "b"
     return session_id
 
 

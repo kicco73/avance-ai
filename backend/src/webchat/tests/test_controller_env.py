@@ -90,7 +90,7 @@ def test_env_with_an_unknown_message_id_is_404(client, hello_project):
     assert response.status_code == 404
 
 
-def test_env_for_an_unknown_session_is_404(client, hello_project):
+def test_env_for_an_unknown_session_is_404(client):
     response = client.get("/api/skills/platform/sessions/999999/env")
     assert response.status_code == 404
 

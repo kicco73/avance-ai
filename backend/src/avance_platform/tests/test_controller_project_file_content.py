@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import enter_chat, parse_sse_result, session_of
+from conftest import chat_action, enter_chat, parse_sse_result, session_of
 from automaton.file_types import MAX_AUDIO_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_BYTES, ProjectFileTypes
 
 pytestmark = pytest.mark.contract
@@ -145,8 +145,7 @@ class TestGetProjectFileContent:
         _publish_two_state_project_with_red_css(client)
 
         session_id = session_of(enter_chat(client, "proj"))
-        action_response = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go"})
-        assert action_response.status_code == 200, action_response.text
+        chat_action(client, session_id, "go")
 
         # A later edit + publish moves the draft/published revision ahead —
         # the already-created session must keep seeing revision 1.
@@ -165,8 +164,7 @@ class TestGetProjectFileContent:
         test_session_response = client.post("/api/skills/platform/projects/proj/test-sessions")
         assert test_session_response.status_code == 200, test_session_response.text
         test_session_id = test_session_response.json()["id"]
-        action_response = client.post(f"/api/core/sessions/{test_session_id}/actions", json={"action_name": "go"})
-        assert action_response.status_code == 200, action_response.text
+        chat_action(client, test_session_id, "go")
 
         # Edited *after* the Test session was already open — a 'test'
         # session must still see this, unlike a live/native one.

@@ -10,7 +10,7 @@ import contextvars
 import pytest
 
 from conftest import (
-    _frame_deadline, chat_socket, chat_turn, enter_chat, parse_sse_result, session_of,
+    _frame_deadline, chat_action, chat_socket, chat_turn, enter_chat, parse_sse_result, session_of,
     turn_frame_seconds,
 )
 from system.web_session import WebSession
@@ -219,9 +219,7 @@ def test_a_turn_against_a_test_session_sees_a_draft_edit_made_after_it_was_creat
         "/api/skills/platform/projects/test_session_sees_live_draft/states/a/actions"
     ).json()
 
-    response = client.post(f"/api/core/sessions/{test_session['id']}/actions", json={"action_name": new_action["name"]})
-
-    assert response.status_code == 200
+    chat_action(client, test_session["id"], new_action["name"])
 
 
 def test_a_test_session_opened_from_the_editor_has_no_channel(client):

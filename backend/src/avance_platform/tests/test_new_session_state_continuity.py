@@ -9,7 +9,8 @@ from __future__ import annotations
 import pytest
 
 from conftest import (
-    _frame_deadline, chat_socket, enter_chat, parse_sse_result, session_of, turn_frame_seconds,
+    _frame_deadline, chat_action, chat_socket, enter_chat, parse_sse_result, session_of,
+    turn_frame_seconds,
 )
 
 pytestmark = pytest.mark.contract
@@ -67,9 +68,7 @@ def test_new_live_session_resumes_the_users_current_state_not_init(client):
     frames = enter_chat(client, project_id)
     assert _info_of(frames)["state"]["key"] == "a"
 
-    resp = client.post(f"/api/core/sessions/{session_of(frames)}/actions", json={"action_name": "go"})
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["state"]["key"] == "b"
+    assert chat_action(client, session_of(frames), "go")["state"]["key"] == "b"
 
     created = _created(client, project_id)
     assert created["state"]["key"] == "b"
@@ -105,7 +104,7 @@ def test_new_live_session_from_a_chatless_final_state_still_resumes_there(client
     assert resp.status_code == 200, resp.text
 
     session_id = session_of(enter_chat(client, project_id))
-    client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go"})
+    chat_action(client, session_id, "go")
 
     created = _created(client, project_id)
 
@@ -122,9 +121,7 @@ def test_new_test_session_still_restarts_at_init_every_time(client, app_db):
     assert "task" not in first
     assert [t["payload"]["script"].strip() for t in app_db.list_tasks()] == ["task.send_mail(user.email, 'hi')"]
 
-    resp = client.post(f"/api/core/sessions/{first['id']}/actions", json={"action_name": "go"})
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["state"]["key"] == "b"
+    assert chat_action(client, first["id"], "go")["state"]["key"] == "b"
 
     resp = client.post(f"/api/skills/platform/projects/{project_id}/test-sessions")
     assert resp.status_code == 200, resp.text
