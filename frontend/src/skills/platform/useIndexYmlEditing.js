@@ -68,11 +68,13 @@ export function useIndexYmlEditing(
   }
 
   function handleSetStateField(stateName, field, value) {
-    guardedAction(`edit "${field}"`, async () => {
+    return guardedAction(`edit "${field}"`, async () => {
       try {
         await putStateField(projectId, stateName, field, value)
+        return true
       } catch {
         // already surfaced via apiFetch
+        return false
       }
     })
   }

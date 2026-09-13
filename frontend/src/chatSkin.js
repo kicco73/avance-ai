@@ -82,9 +82,25 @@ class SessionSkinSource {
 export function registerSkinSource(kind, projectIdRef, sessionIdRef) {
   sources[kind] = new SessionSkinSource(projectIdRef, sessionIdRef)
   watch([projectIdRef, sessionIdRef], () => {
-    if (currentSource() === sources[kind]) scheduleSkinLoad()
+    if (skinIsOwnedByChat(kind)) scheduleSkinLoad()
   })
 }
+
+class ActiveChatSkinSource {
+  _delegate() {
+    return sources[activeChatMode.value] ?? null
+  }
+
+  key() {
+    return this._delegate()?.key() ?? ''
+  }
+
+  async css() {
+    return (await this._delegate()?.css()) ?? null
+  }
+}
+
+export const activeChatSkin = new ActiveChatSkinSource()
 
 // The panels that show an app's skin without being that app's chat — the
 // store's "Try me!", Manage projects' "Test", the design editor's live
@@ -105,7 +121,11 @@ export function holdSkin(source) {
 }
 
 function currentSource() {
-  return holds[holds.length - 1] ?? sources[activeChatMode.value] ?? null
+  return holds[holds.length - 1] ?? activeChatSkin
+}
+
+function skinIsOwnedByChat(kind) {
+  return currentSource() === activeChatSkin && activeChatMode.value === kind
 }
 
 let skinStyleEl = null
@@ -156,7 +176,7 @@ function scheduleSkinLoad() {
 
 async function loadSkin() {
   const source = currentSource()
-  if (!applyAspect.value || source === null) {
+  if (!applyAspect.value) {
     clearSkin()
     return
   }
@@ -179,7 +199,7 @@ async function loadSkin() {
     return
   }
   writeSkin(css)
-  if (source === sources.live) {
+  if (skinIsOwnedByChat('live')) {
     for (const callback of liveSkinAppliedCallbacks) callback()
   }
 }

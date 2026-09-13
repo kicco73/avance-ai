@@ -14,24 +14,23 @@ vi.mock('../api.js', () => ({
 
 const InspectorStateIOTab = (await import('../components/inspector/InspectorStateIOTab.vue')).default
 
-async function mount(stateKey, stateData) {
+async function mount(stateKey, stateData, saveField = vi.fn()) {
   const host = document.createElement('div')
   document.body.appendChild(host)
   const selection = ref({ stateKey, stateData })
-  const setField = vi.fn()
   const app = createApp({
     setup: () => () => h(InspectorStateIOTab, {
       projectId: 'p',
       stateKey: selection.value.stateKey,
       stateData: selection.value.stateData,
-      onSetField: setField,
+      saveField,
     })
   })
   app.mount(host)
   await nextTick()
   await nextTick()
   await nextTick()
-  return { host, selection, setField }
+  return { host, selection }
 }
 
 function boxes(host, field) {
@@ -64,8 +63,10 @@ describe('the state I/O tab', () => {
     expect(boxes(host, 'output').map((b) => b.checked)).toEqual([true, false, false])
   })
 
-  it('leaves no tick behind when the write does not land', async () => {
-    const { host, setField } = await mount('s1', { input: [], output: [] })
+  it('keeps the tick while the write is in flight, and drops it if the write never lands', async () => {
+    let land
+    const setField = vi.fn(() => new Promise((resolve) => { land = resolve }))
+    const { host } = await mount('s1', { input: [], output: [] }, setField)
     const box = host.querySelectorAll('input[type=checkbox]')[0]
 
     box.checked = true
@@ -73,7 +74,31 @@ describe('the state I/O tab', () => {
     await nextTick()
 
     expect(setField).toHaveBeenCalledWith('input', ['alpha'])
+    expect(box.checked).toBe(true)
+
+    land(false)
+    await nextTick()
+    await nextTick()
+
     expect(box.checked).toBe(false)
+  })
+
+  it('keeps the tick when the write lands and the state comes back listing it', async () => {
+    let land
+    const setField = vi.fn(() => new Promise((resolve) => { land = resolve }))
+    const { host, selection } = await mount('s1', { input: [], output: [] }, setField)
+    const box = host.querySelectorAll('input[type=checkbox]')[0]
+
+    box.checked = true
+    box.dispatchEvent(new Event('change'))
+    await nextTick()
+
+    selection.value = { stateKey: 's1', stateData: { input: ['alpha'], output: [] } }
+    land(true)
+    await nextTick()
+    await nextTick()
+
+    expect(box.checked).toBe(true)
   })
 
   it('refuses a variable the model could not be told about', async () => {

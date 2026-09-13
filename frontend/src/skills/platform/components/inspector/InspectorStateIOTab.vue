@@ -12,6 +12,7 @@ const props = defineProps({
   projectId: { type: String, required: true },
   stateKey: { type: String, default: null },
   stateData: { type: Object, default: null },
+  saveField: { type: Function, required: true },
 })
 
 const emit = defineEmits(['set-field', 'jump-to-definition'])
@@ -55,11 +56,11 @@ function isChecked(field, name) {
   return (field === 'input' ? inputNames.value : outputNames.value).has(name)
 }
 
-function toggle(field, name, event) {
+async function toggle(field, name, event) {
   const current = field === 'input' ? props.stateData?.input || [] : props.stateData?.output || []
   const next = current.includes(name) ? current.filter((n) => n !== name) : [...current, name]
+  await props.saveField(field, next)
   event.target.checked = isChecked(field, name)
-  emit('set-field', field, next)
 }
 
 function jumpToEnvKey(name) {

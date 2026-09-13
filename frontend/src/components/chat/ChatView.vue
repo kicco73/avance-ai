@@ -114,8 +114,10 @@ const chatDisabled = computed(() => !state.value?.key || !state.value?.chat_enab
 // no chat has nothing generic to say here — it may have no actions
 // either, so pointing at "use an action instead" would be wrong as often
 // as not; the input stays disabled with no explanation for that case.
+// Neither does a window with no state at all: nothing reaching this is
+// a menu away from a conversation — a sample stands for one, and a real
+// chat that hasn't entered yet is still starting up.
 const chatDisabledReason = computed(() => {
-  if (!state.value?.key) return 'Please select a project from the menu.'
   if (!selectedSessionActive.value) {
     if (currentSessionId.value == null) return 'No active session for this project yet.'
     if (conversationElsewhere.value) return 'This conversation is continuing on another channel.'
@@ -343,6 +345,7 @@ watch(
         v-model="draft"
         :disabled="chatDisabled || !chatConnected"
         :store="store"
+        :sample="store.sample === true"
         @submit="submit"
       />
     </div>

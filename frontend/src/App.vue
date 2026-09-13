@@ -21,6 +21,7 @@ import { useViewStack } from './composables/useViewStack.js'
 import { useServerAdminActions } from './composables/useServerAdminActions.js'
 import { peekInviteCode } from './shareLink.js'
 import { pushedViews, roleHomes } from './skills/registry.js'
+import { activeChatSkin, holdSkin } from './chatSkin.js'
 
 const hasSharedInvite = !!peekInviteCode()
 
@@ -85,6 +86,15 @@ function openChatOn(projectId) {
 function selectLandingProject(projectId) {
   landingProjectId.value = projectId
 }
+
+let releaseCoveredHomeSkin = null
+watch(
+  () => pushedView.value !== null || chatOpen.value || homePreviewRole.value !== null,
+  (covered) => {
+    releaseCoveredHomeSkin?.()
+    releaseCoveredHomeSkin = covered ? holdSkin(activeChatSkin) : null
+  }
+)
 
 // A renamed project keeps the editor open on its new id.
 function renameOpenProject(projectId) {

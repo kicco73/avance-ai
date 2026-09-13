@@ -651,6 +651,7 @@ async function handleSetSessionComment(sessionId, comment) {
                 :project-id="projectId"
                 :state-key="selectedStateKey"
                 :state-data="selectedStateData"
+                :save-field="(field, value) => handleSetStateField(selectedStateKey, field, value)"
                 @set-field="(field, value) => handleSetStateField(selectedStateKey, field, value)"
                 @jump-to-definition="jumpSilently"
               />

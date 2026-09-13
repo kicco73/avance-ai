@@ -239,3 +239,51 @@ describe('the real Test-mode bootstrap sequence (loadMessages -> session.info) a
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
   })
 })
+
+describe("a panel that took the skin and was then covered doesn't keep painting over the chat on top", () => {
+  let chatStore
+  let testChatStore
+  let chatSkin
+  let fetchMock
+
+  beforeEach(async () => {
+    vi.resetModules()
+    document.head.innerHTML = ''
+    chatStore = await import('../../../chatStore.js')
+    testChatStore = await import('../testChatStore.js')
+    testChatStore.setTestProject('draft-project')
+    chatSkin = await import('../../../chatSkin.js')
+    fetchMock = vi.fn()
+    global.fetch = fetchMock
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+    document.head.innerHTML = ''
+  })
+
+  it("hands the skin to whichever chat the screen on top is showing, and back to the panel once it is uncovered again", async () => {
+    fetchMock.mockResolvedValue({ ok: true, text: async () => css('published') })
+    const panelSource = {
+      key: () => 'manage-projects-detail-panel',
+      css: async () => css('published'),
+    }
+    const releasePanel = chatSkin.holdSkin(panelSource)
+    await vi.waitFor(() => expect(currentSkinStyleTags()[0].textContent).toContain(css('published')))
+
+    testChatStore.currentProjectId.value = 'draft-project'
+    testChatStore.currentSessionId.value = 99
+    chatSkin.activeChatMode.value = 'test'
+    await nextTick()
+    await nextTick()
+    expect(currentSkinStyleTags()[0].textContent).toContain(css('published'))
+
+    fetchMock.mockResolvedValue({ ok: true, text: async () => css('draft') })
+    const releaseCover = chatSkin.holdSkin(chatSkin.activeChatSkin)
+    await vi.waitFor(() => expect(currentSkinStyleTags()[0].textContent).toContain(css('draft')))
+
+    releaseCover()
+    await vi.waitFor(() => expect(currentSkinStyleTags()[0].textContent).toContain(css('published')))
+    releasePanel()
+  })
+})
