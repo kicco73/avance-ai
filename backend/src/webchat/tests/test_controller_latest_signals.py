@@ -12,7 +12,8 @@ import pytest
 
 from system.web_session import WebSession
 
-from conftest import chat_turn
+from conftest import chat_turn, enter_chat, session_of
+from webchat.tests.webchat_helpers import new_chat
 
 pytestmark = pytest.mark.contract
 
@@ -20,47 +21,47 @@ pytestmark = pytest.mark.contract
 def test_latest_signals_returns_the_most_recent_sessions_latest_snapshot(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
     with WebSession().impersonate("alice"):
-        session = client.get("/api/skills/webchat/sessions/current").json()
-        turn = chat_turn(client, session['id'], "hi")
-        app_db.save_signal_snapshot({"foo": 1}, session["id"])
-        app_db.save_signal_snapshot({"foo": 42}, session["id"], message_id=turn["assistant_message_id"])
+        session_id = session_of(enter_chat(client, hello_project))
+        turn = chat_turn(client, session_id, "hi")
+        app_db.save_signal_snapshot({"foo": 1}, session_id)
+        app_db.save_signal_snapshot({"foo": 42}, session_id, message_id=turn["assistant_message_id"])
 
     response = client.get(f"/api/core/projects/{hello_project}/users/alice/latest-signals")
 
     assert response.status_code == 200
     body = response.json()
-    assert body["session_id"] == session["id"]
-    assert body["last_session"]["id"] == session["id"]
+    assert body["session_id"] == session_id
+    assert body["last_session"]["id"] == session_id
     assert json.loads(body["values"]) == {"foo": 42}
 
 
 def test_latest_signals_falls_back_to_an_earlier_session_when_the_latest_has_none(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "carol")
     with WebSession().impersonate("carol"):
-        older = client.get("/api/skills/webchat/sessions/current").json()
-        app_db.save_signal_snapshot({"foo": 7}, older["id"])
-        newer = client.post("/api/skills/webchat/sessions").json()
+        older = session_of(enter_chat(client, hello_project))
+        app_db.save_signal_snapshot({"foo": 7}, older)
+        newer = new_chat(client, hello_project)
 
     response = client.get(f"/api/core/projects/{hello_project}/users/carol/latest-signals")
 
     assert response.status_code == 200
     body = response.json()
-    assert body["last_session"]["id"] == newer["id"]
-    assert body["session_id"] == older["id"]
+    assert body["last_session"]["id"] == newer
+    assert body["session_id"] == older
     assert json.loads(body["values"]) == {"foo": 7}
 
 
 def test_latest_signals_has_no_values_for_a_session_with_no_signal_snapshot(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "bob")
     with WebSession().impersonate("bob"):
-        session = client.get("/api/skills/webchat/sessions/current").json()
+        session_id = session_of(enter_chat(client, hello_project))
 
     response = client.get(f"/api/core/projects/{hello_project}/users/bob/latest-signals")
 
     assert response.status_code == 200
     body = response.json()
-    assert body["last_session"]["id"] == session["id"]
-    assert body["session_id"] == session["id"]
+    assert body["last_session"]["id"] == session_id
+    assert body["session_id"] == session_id
     assert body["values"] is None
 
 

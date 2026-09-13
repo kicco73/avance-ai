@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from automaton.automaton import JsSnippet
 from system.logging_factory import LoggerFactory
 from system import bus
-from system.bus import UI_HUMAN_TAKEOVER, UI_NOTIFICATION, Message
+from system.bus import SESSION_TAKEN_OVER, UI_NOTIFICATION, Message
 from system.web_session import WebSession
 
 from .actuator_set import _run_sync
@@ -95,8 +95,8 @@ class LiveChatNamespace(ChatNamespace):
             return None
         self._factory.set_human_operator(self._session_id, user_id)
         _run_sync(bus.publish(Message(
-            type=UI_HUMAN_TAKEOVER, username=user_id,
-            body={"session_id": self._session_id, "project_id": self._project_id},
+            type=SESSION_TAKEN_OVER, username=user_id, session_id=self._session_id,
+            body={"project_id": self._project_id},
         )))
         return None
 

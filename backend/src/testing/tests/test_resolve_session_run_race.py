@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from conftest import chat_turn
+from conftest import chat_turn, enter_chat, session_of
 
 from system.web_session import WebSession
 from testing.testing_service import PooledAggregationJob, TestingService
@@ -16,11 +16,11 @@ pytestmark = pytest.mark.contract
 def _make_labeled_session(client, app_db, project_name, username):
     WebSession().user = username
     app_db.set_active_project_id(project_name, username)
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    chat_turn(client, session['id'], "hi")
-    client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})
+    session_id = session_of(enter_chat(client, project_name))
+    chat_turn(client, session_id, "hi")
+    client.put(f"/api/skills/platform/sessions/{session_id}/labeled", json={"labeled": True})
     WebSession().user = "user"
-    return session["id"]
+    return session_id
 
 
 def test_resolve_or_construct_session_run_serializes_racing_callers(monkeypatch, client, app_db, hello_project):

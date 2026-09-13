@@ -13,7 +13,7 @@ import time
 
 import pytest
 
-from conftest import chat_turn
+from conftest import chat_turn, enter_chat, session_of
 
 from system.web_session import WebSession
 
@@ -26,11 +26,11 @@ def _make_labeled_session(client, app_db, project_name, username):
     # compare against — set_active_project_id directly is the same
     # effect for a brand new username with no chat history yet.
     app_db.set_active_project_id(project_name, username)
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    chat_turn(client, session['id'], "hi")
-    client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})
+    session_id = session_of(enter_chat(client, project_name))
+    chat_turn(client, session_id, "hi")
+    client.put(f"/api/skills/platform/sessions/{session_id}/labeled", json={"labeled": True})
     WebSession().user = "user"
-    return session["id"]
+    return session_id
 
 
 def _wait_until(predicate, timeout=5.0, interval=0.02):

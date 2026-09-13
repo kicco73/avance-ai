@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import {
-  getCurrentTestSession, postCreateTestSession, getTestSessions, postResetTestSessions,
-  getTestChatModels, postTestChatModelSelection, postSessionAction, getHistory
+  getTestSessions, postResetTestSessions,
+  getTestChatModels, postTestChatModelSelection
 } from './api.js'
 import { createChatStore } from '../../chatStoreFactory.js'
 
@@ -12,19 +12,15 @@ import { createChatStore } from '../../chatStoreFactory.js'
 // refs, toggled by a testModeProjectId flag, which is exactly what let
 // browsing an imported session (or anything else touching the shared
 // refs) bleed into the live chat and vice versa.
-let projectId = null
 export function setTestProject(name) {
-  projectId = name
   testStore.clearChatUi()
+  testStore.setProject(name)
 }
 
 export const testStore = createChatStore({
   kind: 'test',
-  getCurrentSession: (sessionId) => getCurrentTestSession(sessionId, projectId),
-  getSessionsList: () => getTestSessions(projectId),
-  createSession: () => postCreateTestSession(projectId),
-  getMessages: (sessionId) => getHistory(sessionId),
-  resetSession: () => postResetTestSessions(projectId),
+  getSessionsList: () => getTestSessions(testStore.currentProjectId.value),
+  resetSession: () => postResetTestSessions(testStore.currentProjectId.value),
   confirmNewSession: false,
   useAutoTracking: true,
   useActuatorsToggle: true,
@@ -32,10 +28,11 @@ export const testStore = createChatStore({
 })
 
 export const {
-  state, currentSessionId, selectedSessionActive, projectPaused, projectPausedReason,
+  state, currentSessionId, selectedSessionActive, blockedReason, blockedDetail,
   sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
   messages, historyLoaded, chatLoading, chatStatus, actionLoading,
   autoTrackingEnabled, autoTrackingLoading, actuatorsEnabled, actuatorsLoading, draft, turnCount,
+  setProject,
   handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
   selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking, toggleActuators,
   toggleAudio, handleSend, beginVoiceMessage, handleResend, handleReact, handleAction,

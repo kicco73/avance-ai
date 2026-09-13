@@ -4,11 +4,9 @@ final state instead of looping back to "engaged".
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from conftest import parse_sse_result
+from conftest import enter_chat, parse_sse_result, session_of
 
 from conftest import SAMPLES_DIR
 
@@ -27,24 +25,24 @@ def _upload_and_activate(client):
 
 @pytest.mark.contract
 def test_the_sample_loads_and_starts_at_lobby(client):
-    _upload_and_activate(client)
+    project_id = _upload_and_activate(client)
 
-    session = client.get("/api/skills/webchat/sessions/current").json()
+    info = next(frame for frame in enter_chat(client, project_id) if frame["type"] == "session.info")
 
-    assert session["start_state"] == "lobby"
+    assert info["state"]["key"] == "lobby"
 
 
 @pytest.mark.regression
 def test_firing_notice_mood_actually_moves_to_its_own_dedicated_state(client):
-    _upload_and_activate(client)
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    move = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "warm_up"})
+    project_id = _upload_and_activate(client)
+    session_id = session_of(enter_chat(client, project_id))
+    move = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "warm_up"})
     assert move.json()["state"]["key"] == "engaged"
 
     # Manual invocation (like clicking the button) never checks the
     # trigger — see Automaton.move — so this exercises the real target
     # state without needing the "mood" signal to actually be >= 70.
-    response = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "notice_mood"})
+    response = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "notice_mood"})
 
     assert response.status_code == 200
     assert response.json()["state"]["key"] == "mood_reached"

@@ -305,7 +305,7 @@ session by id and belongs to the core (`turn/session_controller.py`).
 `TurnService.read_history` is what came of that cut. There were two
 reads for a while — one that opened the conversation as a side effect of
 being asked for the history, and one that did not — until the browser
-began saying `session.new` (see BUS.md) and a session opened twice for
+began saying `session.enter` (see BUS.md) and a session opened twice for
 one conversation. Opening is something a channel does on purpose; the
 history is a read, and there is one of it. Second, the frontend followed the seam `createChatStore`
 already had: the live store and the test store are two instances with two

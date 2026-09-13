@@ -137,6 +137,7 @@ def turn_service_for(db):
 
 async def _bootstrap_session(turn_service: TurnService) -> int:
     session = await turn_service.get_current_session_if_any_or_create_new(None)
+    await turn_service.open_if_needed(session["id"])
     return session["id"]
 
 
@@ -296,7 +297,7 @@ async def test_opening_message_never_evaluates_signals_in_before_mode(db, turn_s
     await turn_service.open_if_needed(session_id)
 
     assert db.get_current_state(PROJECT_ID) == "a", "opening message must not have fired a transition"
-    messages = await turn_service.get_messages(session_id)
+    messages = turn_service.read_history(session_id)
     assert len(messages) == 1
     assert db.get_signal_row_by_message(messages[0]["id"]) is None
 
@@ -324,7 +325,7 @@ async def test_message_linking_end_to_end_bootstrap_and_one_real_turn(db, turn_s
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
     session_id = await _bootstrap_session(turn_service)
 
-    messages = await turn_service.get_messages(session_id)  # triggers open_if_needed
+    messages = turn_service.read_history(session_id)
     assert len(messages) == 1
     opening_message_id = messages[0]["id"]
 

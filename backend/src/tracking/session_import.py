@@ -9,7 +9,7 @@ import re
 
 from pydantic import ValidationError
 
-from db import Db
+from db import Db, validated_role
 from db.utils import _parse_iso
 from schemas import SessionImportJsonRequest
 
@@ -109,10 +109,11 @@ class SessionImportManager:
                 self._db.set_session_comment(session_id, session_data['comment'])
             for message in messages:
                 self._import_message(session_id, message)
-        except (KeyError, TypeError):
+        except (KeyError, TypeError, ValueError):
             # No transaction of its own — cleaned up by hand instead, so a
-            # malformed session never leaves a message-less CoreSession row
-            # behind for a retrying caller to mistake for a genuine one.
+            # malformed session never leaves a message-less (or half-written,
+            # when Db.save_message rejects a message's own role) CoreSession
+            # row behind for a retrying caller to mistake for a genuine one.
             self._db.delete_chat_session(session_id)
             raise
         return session_id
@@ -175,11 +176,12 @@ class SessionImportManager:
     _TRACKING_FIELDS = ('old_state', 'action', 'new_state', 'values', 'expected_state', 'expected_values', 'comment', 'origin')
 
     def _import_message(self, session_id: int, message: dict) -> None:
+        role = validated_role(message['role'])
         text = message['text']
-        if message['role'] == 'assistant' and not text:
+        if role == 'assistant' and not text:
             text = '…'
         message_id = self._db.save_message(
-            message['role'], text, session_id,
+            role, text, session_id,
             audio_text=message.get('audio_text'),
             tokens=message.get('tokens'),
             timestamp=_parse_iso(message.get('timestamp')),

@@ -23,7 +23,7 @@ from http import HTTPStatus
 from fastapi import HTTPException
 
 from controllers.base_controller import BaseController, delete, get, post, put
-from schemas import ActionRequest, ActuatorsRequest, AudioEnabledRequest, ReactionRequest, TruncateSessionRequest
+from schemas import ActionRequest, ActuatorsRequest, TruncateSessionRequest
 from project.project_service import ProjectService
 from turn.turn_service import TurnService
 
@@ -42,10 +42,6 @@ class SessionController(BaseController):
     def delete_session(self, session_id: int):
         self.turn_service.delete_session(session_id)
         return {"success": True}
-
-    @post("/api/core/sessions/{session_id}/close")
-    async def post_close_session(self, session_id: int):
-        return await self.turn_service.close_session(session_id)
 
     @post("/api/core/sessions/{session_id}/actions")
     async def post_action(self, session_id: int, req: ActionRequest):
@@ -81,22 +77,9 @@ class SessionController(BaseController):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return self.project_service.inspector.get_active_state_payload()
 
-    @get("/api/core/sessions/{session_id}/state")
-    def get_session_state(self, session_id: int):
-        return self.turn_service.get_state_for_session(session_id)
-
     @get("/api/core/sessions/{session_id}/history")
     def get_transcript(self, session_id: int):
         return self.turn_service.read_history(session_id)
-
-    @get("/api/core/sessions/{session_id}/audio")
-    def get_session_audio(self, session_id: int):
-        return {"enabled": self.turn_service.is_audio_enabled(session_id)}
-
-    @put("/api/core/sessions/{session_id}/audio")
-    def put_session_audio(self, session_id: int, req: AudioEnabledRequest):
-        self.turn_service.set_audio_enabled(session_id, req.enabled)
-        return {"enabled": self.turn_service.is_audio_enabled(session_id)}
 
     @get("/api/core/sessions/{session_id}/actuators")
     def get_actuators(self, session_id: int):
@@ -106,7 +89,3 @@ class SessionController(BaseController):
     def put_actuators(self, session_id: int, req: ActuatorsRequest):
         self.turn_service.set_actuators_enabled(session_id, req.enabled)
         return {"enabled": self.turn_service.is_actuators_enabled(session_id)}
-
-    @put("/api/core/messages/{message_id}/reaction")
-    def put_message_reaction(self, message_id: int, req: ReactionRequest):
-        return self.turn_service.set_message_reaction(message_id, req.reaction)

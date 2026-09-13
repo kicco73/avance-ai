@@ -17,6 +17,16 @@ logger = LoggerFactory.get_logger(__name__)
 # sentinel since it's the explicit value being distinguished for.
 _TIMESTAMP_UNSET = object()
 
+_ROLES = ("user", "assistant")
+
+
+def validated_role(role: str) -> str:
+    normalized = role.strip().lower() if isinstance(role, str) else role
+    if normalized not in _ROLES:
+        raise ValueError(f"Message role must be one of {_ROLES}, not {role!r}.")
+    return normalized
+
+
 def _turn_key(row: dict) -> tuple:
     """Where a message sits in the conversation *by turn*, not by id. A
     user message belongs to the turn that answered it (`answered_by`); an
@@ -69,7 +79,7 @@ class MessageMixin:
         self, role: str, content: str, session_id: int, audio_text: str | None=None, reaction: str | None=None,
         timestamp: datetime | None | object=_TIMESTAMP_UNSET, tokens: int | None=None,
     ) -> int:
-        fields: dict[str, Any] = {"role": role, "content": content, "session": session_id, "audio_text": audio_text, "reaction": reaction, "tokens": tokens}
+        fields: dict[str, Any] = {"role": validated_role(role), "content": content, "session": session_id, "audio_text": audio_text, "reaction": reaction, "tokens": tokens}
         if timestamp is not _TIMESTAMP_UNSET:
             fields["timestamp"] = timestamp
         message = Message.create(**fields)
@@ -124,8 +134,8 @@ class MessageMixin:
         """The conversation as the model sees it: in turn order, with each
         turn's own user fragments as ONE entry whose `content` is the list
         of their texts, so they arrive as a single user message of several
-        blocks rather than as separate turns (see PROJECT_SPECS.md's own
-        turn section). A lone fragment keeps `content` a plain string,
+        blocks rather than as separate turns (see PROJECT_SPECS.md §0.1).
+        A lone fragment keeps `content` a plain string,
         exactly as before, so nothing changes for existing sessions. The
         token budget still cuts message by message, oldest first; a group
         it would cut in half is dropped whole instead."""
@@ -181,12 +191,7 @@ class MessageMixin:
         return [_history_row(m, session_id) for m in query]
 
     def unconsumed_user_fragments(self, session_id: int) -> list[dict]:
-        """Every user message no turn has answered yet — the fragments
-        this session has accumulated. The queue of a coalesced turn is
-        exactly this, read off the database rather than held in memory, so
-        a restart loses nothing; and unlike "everything after the last
-        reply", it stays right for a message that arrived while that reply
-        was still being generated."""
+        """Every user message no reply has answered yet."""
         query = (Message
                  .select()
                  .where(
@@ -200,9 +205,7 @@ class MessageMixin:
         ]
 
     def mark_messages_answered(self, message_ids: list[int], assistant_message_id: int) -> None:
-        """Closes the turn over its own fragments: every one of them now
-        points at the reply that answered it, so no later turn picks it up
-        again (see unconsumed_user_fragments)."""
+        """Every one of them now points at the reply that answered it."""
         if not message_ids:
             return
         (Message

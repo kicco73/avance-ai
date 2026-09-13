@@ -1,10 +1,15 @@
-"""Opening a chat and then talking in it, through the real listener.
+"""Entering a chat and then talking in it, through the real listener.
 
-This is what a browser does the moment somebody opens the page: it says
-`session.new`, and the person starts typing without waiting for anything.
-Both requests land on the same session, one after the other, and both are
-owed an answer — the second one especially, since a chat where the first
-thing you type is never answered is a chat that does not work.
+`session.enter` is the only way into a conversation: it names a project,
+the server resolves or creates the session, and answers with what the
+conversation is (`session.info`), what was said (`session.messages`),
+what it offers (`state.buttons`) and — if the state has one — its
+opening message.
+
+Then the person types without waiting for anything, and that request
+lands on the same session. Both are owed an answer, the second one
+especially: a chat where the first thing you type is never answered is a
+chat that does not work.
 """
 from __future__ import annotations
 
@@ -13,16 +18,17 @@ import asyncio
 import pytest
 
 from system import bus
-from system.bus import INPUT_TEXT, SESSION_NEW, Message
+from system.bus import INPUT_TEXT, SESSION_ENTER, Message
 from system.web_session import WebSession
 from turn.input_listener import TurnInput
-from turn_harness import one_state_automaton, turn_service_for  # noqa: F401 — turn_service_for is a fixture
+from turn_harness import PROJECT_ID, one_state_automaton, turn_service_for  # noqa: F401 — turn_service_for is a fixture
 
 pytestmark = pytest.mark.regression
 
 _PUBLISHED = (
     "output.text_stream", "output.text", "output.speech", "output.tool", "output.reaction",
-    "state.changed", "ui.buttons", "output.error",
+    "state.changed", "state.buttons", "output.error",
+    "session.info", "session.messages", "session.blocked", "session.ended",
 )
 
 
@@ -84,12 +90,47 @@ def _asked(kind: str, session_id: int, body: dict) -> Message:
     )
 
 
+def _entering(project_id: str) -> Message:
+    return Message(
+        type=SESSION_ENTER, body={"type": "live"}, username=WebSession().user,
+        project_id=project_id, channel="webchat", origin_id="connection-1",
+    )
+
+
+async def test_entering_says_what_the_conversation_is_before_anything_it_says(turn_service_for):
+    """The order matters and used to be the other way round: the pieces
+    of the opening message came out before what framed them, so a chat
+    could be reading a reply before it knew where it stood."""
+    turn_service = turn_service_for(
+        one_state_automaton(with_sources=False, autotracking_on_ai_message=False), _FakeProvider(),
+    )
+
+    recorder, _ = await _drive(turn_service, turn_service_for.db, [_entering(PROJECT_ID)], answers=1)
+
+    kinds = recorder.kinds()
+    assert kinds[:3] == ["session.info", "session.messages", "state.buttons"]
+    assert recorder.texts() == ["hello"]
+    assert kinds.index("state.buttons") < kinds.index("output.text")
+
+
+async def test_entering_names_the_project_and_the_conversation_comes_back(turn_service_for):
+    turn_service = turn_service_for(
+        one_state_automaton(with_sources=False, autotracking_on_ai_message=False), _FakeProvider(),
+    )
+
+    recorder, _ = await _drive(turn_service, turn_service_for.db, [_entering(PROJECT_ID)], answers=1)
+
+    info = next(m for m in recorder.messages if m.type == "session.info")
+    assert info.session_id is not None
+    assert info.body["project_id"] == PROJECT_ID
+    assert info.body["state"]["key"] == "a"
+
+
 async def test_typing_the_moment_the_chat_opens_is_still_answered(turn_service_for):
-    """What a browser really does: it says `session.new` and the person
-    starts typing without waiting. The two requests queue up together —
-    the opener may well be dropped, since somebody has since spoken and
-    a conversation is only opened for someone who has said nothing — but
-    what was typed is answered, and nothing stays in the queue."""
+    """What a browser really does: it enters and the person starts typing
+    without waiting. The opener may well be dropped — a conversation is
+    only opened for someone who has said nothing — but what was typed is
+    answered, and nothing stays in the queue."""
     db = turn_service_for.db
     turn_service = turn_service_for(
         one_state_automaton(with_sources=False, autotracking_on_ai_message=False), _FakeProvider(),
@@ -97,7 +138,7 @@ async def test_typing_the_moment_the_chat_opens_is_still_answered(turn_service_f
     session = await turn_service.get_current_session_if_any_or_create_new(None)
 
     recorder, listener = await _drive(turn_service, db, [
-        _asked(SESSION_NEW, session["id"], {}),
+        _entering(PROJECT_ID),
         _asked(INPUT_TEXT, session["id"], {"text": "hi"}),
     ], answers=1)
 
@@ -105,17 +146,3 @@ async def test_typing_the_moment_the_chat_opens_is_still_answered(turn_service_f
     assert listener._requests == {}
     said = db.get_messages(session["id"])
     assert [(m["role"], m["content"]) for m in said] == [("user", "hi"), ("assistant", "hello")]
-
-
-async def test_a_chat_opened_and_never_typed_in_still_gets_its_first_message(turn_service_for):
-    turn_service = turn_service_for(
-        one_state_automaton(with_sources=False, autotracking_on_ai_message=False), _FakeProvider(),
-    )
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
-
-    recorder, _ = await _drive(turn_service, turn_service_for.db, [
-        _asked(SESSION_NEW, session["id"], {}),
-    ], answers=1)
-
-    assert recorder.texts() == ["hello"]
-    assert recorder.kinds().index("ui.buttons") < recorder.kinds().index("output.text")

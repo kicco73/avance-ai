@@ -3,10 +3,10 @@
 A router, not a turn engine: an inbound text from a linked number is
 posted on the Bus as `input.text` for that account's own current live
 session (its active project, its sessions, its Terms acceptance —
-nothing WhatsApp-specific is persisted), and what the turn reports back
-on `turn.ended`/`output.error` goes out through the Cloud API. Which
-session, and what a refusal sounds like here, is all this channel
-decides for itself — see whatsapp/turn_exchange.py and docs/BUS.md.
+nothing WhatsApp-specific is persisted), and what comes back on the Bus
+goes out through the Cloud API. Which session, and what a refusal sounds
+like here, is all this channel decides for itself — see
+whatsapp/turn_exchange.py and docs/BUS.md.
 
 Voice: an inbound voice note is downloaded from Meta, transcribed with
 ListenService (faster-whisper reads OGG/Opus as is) and processed as if
@@ -278,7 +278,7 @@ class WhatsAppService(object):
         accepting terms mid-conversation, where the baseline is whatever
         the session already had before this call)."""
         last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
-        # Opened on purpose, then read: this channel has no `session.new`
+        # Opened on purpose, then read: this channel has no `session.enter`
         # of its own, so bootstrapping *is* where it says "this
         # conversation is beginning" (see TurnService.read_history,
         # which no longer does it for anybody as a side effect).

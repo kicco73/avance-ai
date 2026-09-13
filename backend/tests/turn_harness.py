@@ -106,13 +106,13 @@ def turn_service_for(tmp_path):
 #: did — see turn/input_listener.py.
 TURN_FRAMES = (
     "output.text_stream", "output.text", "output.speech", "output.tool", "output.reaction",
-    "state.changed", "ui.buttons", "output.error",
+    "state.changed", "state.buttons", "output.error",
 )
 def _is_terminal(kinds: list[str]) -> bool:
-    """The answer is the `output.text` published after `ui.buttons` — an
+    """The answer is the `output.text` published after `state.buttons` — an
     earlier one is a message the state owed before it could answer. An
     `output.error` replaces the answer and ends the exchange too."""
-    return kinds[-1] == "output.error" or (kinds[-1] == "output.text" and "ui.buttons" in kinds)
+    return kinds[-1] == "output.error" or (kinds[-1] == "output.text" and "state.buttons" in kinds)
 
 
 async def drive_turn(turn_service, db, session_id: int, _unused: str, text: str) -> list[tuple[str, dict]]:

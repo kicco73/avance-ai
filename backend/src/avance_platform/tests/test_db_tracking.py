@@ -4,6 +4,8 @@ from datetime import datetime
 
 import pytest
 
+from conftest import enter_chat, session_of
+
 
 def _make_session(db, *, username="user", project_name="proj", start=datetime(2026, 1, 1, 10, 0, 0), start_state="start"):
     db.ensure_project(project_name)
@@ -256,15 +258,12 @@ def test_session_bootstrap_records_origin_init_action_and_a_manual_action_origin
     )
     app_db.publish_project("origin-proj")
     app_db.set_active_project_id("origin-proj", "user")
-    session = client.get("/api/skills/webchat/sessions/current").json()
+    session_id = session_of(enter_chat(client, "origin-proj"))
 
-    # Opening a session's own first message is what triggers TurnService's
-    # bootstrap (_ensure_project_bootstrap), not the session lookup itself.
-    client.get(f"/api/skills/webchat/sessions/{session['id']}/messages")
-    response = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "advance"})
+    response = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "advance"})
     assert response.status_code == 200, response.text
 
-    signals = app_db.get_signals(session["id"])
+    signals = app_db.get_signals(session_id)
     init_rows = [row for row in signals if row["old_state"] == ""]
     assert len(init_rows) == 1
     assert init_rows[0]["origin"] == "init-action"

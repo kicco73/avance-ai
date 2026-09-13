@@ -1,88 +1,109 @@
-// A socket that drops mid-turn takes the turn's own `done` with it, but
-// not the turn: the backend finishes and persists it regardless (see
-// backend system/bus_channel.py). On reconnection the store re-reads
-// the session and settles whatever was still pending against what
-// actually landed — resolving it from the reloaded messages, or failing
-// the bubble so the user can send it again.
+// A socket that drops mid-exchange takes with it every frame that was
+// still coming, but not the exchange: the backend finishes and persists
+// it regardless (see backend system/bus_channel.py). A fresh socket also
+// knows nothing about which conversation this store is showing, and both
+// are answered by the same sentence — enter the conversation again. What
+// comes back is the whole of it, so whatever was half-written on screen
+// is replaced by what actually landed rather than reconciled by hand
+// (see chatReconnectSync.js).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { installFakeChatSocket } from './fakeChatSocket.js'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
-  postAction: vi.fn(),
   getSessions: vi.fn(),
   getAiModels: vi.fn(),
-  getMessages: vi.fn(),
-  getSessionState: vi.fn(),
+  getHistory: vi.fn(),
+  getActuators: vi.fn(),
+  putActuators: vi.fn(),
+  postTruncateSession: vi.fn(),
+  deleteSession: vi.fn(),
+  projectFileContentUrl: vi.fn(() => '/skin.css'),
   createChatSocket: vi.fn(),
 }))
 vi.mock('../src/errorStore.js', () => ({ setApiError: vi.fn(), clearApiError: vi.fn() }))
 
 const STATE = { key: 'a', ui_label: 'A', actions: [], chat_enabled: true }
 
-describe('a turn interrupted by a dropped socket', () => {
+describe('an exchange interrupted by a dropped socket', () => {
   let chatStore
-  let chatClient
+  let busChannel
   let api
   let sockets
+
+  // What the server answers `session.enter` with, in its own order (see
+  // backend docs/BUS.md) — put on the wire, since this file drives the
+  // real channel rather than a fake bus.
+  function enter(socket, messages) {
+    socket.emit({
+      type: 'session.info', session_id: 1, project_id: 'proj', state: STATE,
+      services: {}, audio: false, current: true, channel: 'webchat',
+    })
+    socket.emit({ type: 'session.messages', session_id: 1, messages })
+    socket.emit({ type: 'state.buttons', session_id: 1, actions: [] })
+  }
+
+  function entered(socket) {
+    return socket.sent.filter((f) => f.type === 'session.enter')
+  }
 
   beforeEach(async () => {
     vi.useFakeTimers()
     vi.resetModules()
     chatStore = await import('../src/chatStore.js')
-    chatClient = await import('../src/chatClient.js')
+    ;({ busChannel } = await import('../src/busChannel.js'))
     api = await import('../src/api.js')
-    await installApiBackedLiveChannel(api)
     sockets = installFakeChatSocket(api)
-    api.getSessionState.mockResolvedValue(STATE)
-    chatStore.currentSessionId.value = 1
-    chatClient.connect()
+    busChannel.connect()
     sockets[0].open()
+    await chatStore.loadMessages('proj')
+    enter(sockets[0], [])
   })
 
   afterEach(() => {
-    chatClient.disconnect()
+    busChannel.disconnect()
     vi.useRealTimers()
     vi.clearAllMocks()
   })
 
-  it('resolves from the reloaded history when the reply did land, with no duplicated bubble', async () => {
-    api.getMessages.mockResolvedValue([
+  it('enters the conversation again on the new socket, and shows what actually landed', async () => {
+    await chatStore.handleSend('where is my flight?')
+    expect(sockets[0].sent.some((f) => f.type === 'input.text')).toBe(true)
+    sockets[0].emit({ type: 'output.text_stream', session_id: 1, text: '' })
+    sockets[0].emit({ type: 'output.text_stream', session_id: 1, text: 'On ti' })
+
+    sockets[0].close()
+    await vi.advanceTimersByTimeAsync(1000)
+    sockets[1].open()
+
+    expect(entered(sockets[1])).toHaveLength(1)
+
+    enter(sockets[1], [
       { id: 10, role: 'user', content: 'where is my flight?', timestamp: 't1' },
       { id: 11, role: 'assistant', content: 'On time.', timestamp: 't2' },
     ])
 
-    const sendPromise = chatStore.handleSend('where is my flight?')
-    await vi.waitFor(() => expect(sockets[0].sent.some((f) => f.type === 'input.text')).toBe(true))
-
-    sockets[0].close()
-    await vi.advanceTimersByTimeAsync(1000)
-    sockets[1].open()
-    await sendPromise
-
     const rendered = chatStore.messages.value.map((m) => [m.role, m.content])
     expect(rendered).toEqual([['user', 'where is my flight?'], ['assistant', 'On time.']])
     expect(chatStore.messages.value.every((m) => !m.failed)).toBe(true)
+    // The half-written bubble was given up on with the socket, so nothing
+    // is left waiting on frames that will never come.
+    expect(chatStore.chatLoading.value).toBe(false)
   })
 
-  it('fails the bubble when the user message never made it, so it can be resent', async () => {
-    api.getMessages.mockResolvedValue([])
-
-    const sendPromise = chatStore.handleSend('never arrived')
-    await vi.waitFor(() => expect(sockets[0].sent.some((f) => f.type === 'input.text')).toBe(true))
+  it('drops a message the conversation never received, rather than leaving a ghost of it on screen', async () => {
+    await chatStore.handleSend('never arrived')
 
     sockets[0].close()
     await vi.advanceTimersByTimeAsync(1000)
     sockets[1].open()
-    await sendPromise
+    enter(sockets[1], [])
 
-    const user = chatStore.messages.value.find((m) => m.role === 'user')
-    expect(user.failed).toBe(true)
+    expect(chatStore.messages.value).toEqual([])
   })
 
   it('fails the bubble right away when the socket is not connected at all', async () => {
-    chatClient.disconnect()
+    busChannel.disconnect()
 
     await chatStore.handleSend('offline')
 

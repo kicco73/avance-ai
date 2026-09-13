@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import parse_sse_result
+from conftest import (
+    _frame_deadline, chat_socket, enter_chat, parse_sse_result, session_of, turn_frame_seconds,
+)
 
 pytestmark = pytest.mark.contract
 
@@ -26,6 +28,31 @@ YML = (
 )
 
 
+def _frames_until_buttons(client, payload: dict) -> list[dict]:
+    frames = []
+    with _frame_deadline(turn_frame_seconds(), frames):
+        with chat_socket(client) as ws:
+            ws.send_json(payload)
+            while True:
+                frames.append(ws.receive_json())
+                if frames[-1]["type"] in ("state.buttons", "session.blocked", "output.error"):
+                    return frames
+
+
+def _info_of(frames: list[dict]) -> dict:
+    return next(frame for frame in frames if frame["type"] == "session.info")
+
+
+def _created(client, project_id: str) -> dict:
+    return _info_of(_frames_until_buttons(
+        client, {"type": "session.create", "project_id": project_id, "session_type": "live"},
+    ))
+
+
+def _reopened(client, session_id: int) -> dict:
+    return _info_of(_frames_until_buttons(client, {"type": "session.enter", "session_id": session_id}))
+
+
 def _upload_and_publish(client):
     resp = client.post("/api/skills/platform/projects/upload", content=YML.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
@@ -36,27 +63,22 @@ def _upload_and_publish(client):
 
 
 def test_new_live_session_resumes_the_users_current_state_not_init(client):
-    _upload_and_publish(client)
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    assert session["state"]["key"] == "a"
+    project_id = _upload_and_publish(client)
+    frames = enter_chat(client, project_id)
+    assert _info_of(frames)["state"]["key"] == "a"
 
-    resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "go"})
+    resp = client.post(f"/api/core/sessions/{session_of(frames)}/actions", json={"action_name": "go"})
     assert resp.status_code == 200, resp.text
     assert resp.json()["state"]["key"] == "b"
 
-    resp = client.post("/api/skills/webchat/sessions")
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["start_state"] == "b"
-    assert "task" not in body
+    created = _created(client, project_id)
+    assert created["state"]["key"] == "b"
+    assert "task" not in created
 
-    # A brand-new session has no Tracking rows of its own yet — re-fetching
-    # it (exactly what the frontend's loadMessages() does right after
-    # creating it) must still read "b" off the session's own persisted
+    # A brand-new session has no Tracking rows of its own yet — entering
+    # it by its own id must still read "b" off the session's own persisted
     # start_state, not fall back to init for lack of a transition to read.
-    resp = client.get(f"/api/skills/webchat/sessions/current?session_id={body['id']}")
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["state"]["key"] == "b"
+    assert _reopened(client, created["session_id"])["state"]["key"] == "b"
 
 
 CHATLESS_FINAL_YML = (
@@ -82,16 +104,12 @@ def test_new_live_session_from_a_chatless_final_state_still_resumes_there(client
     resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
 
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "go"})
+    session_id = session_of(enter_chat(client, project_id))
+    client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go"})
 
-    resp = client.post("/api/skills/webchat/sessions")
-    assert resp.status_code == 200, resp.text
-    new_session_id = resp.json()["id"]
+    created = _created(client, project_id)
 
-    resp = client.get(f"/api/skills/webchat/sessions/current?session_id={new_session_id}")
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["state"]["key"] == "crisis"
+    assert _reopened(client, created["session_id"])["state"]["key"] == "crisis"
 
 
 def test_new_test_session_still_restarts_at_init_every_time(client, app_db):
@@ -104,7 +122,7 @@ def test_new_test_session_still_restarts_at_init_every_time(client, app_db):
     assert "task" not in first
     assert [t["payload"]["script"].strip() for t in app_db.list_tasks()] == ["task.send_mail(user.email, 'hi')"]
 
-    resp = client.post(f"/api/skills/webchat/sessions/{first['id']}/actions", json={"action_name": "go"})
+    resp = client.post(f"/api/core/sessions/{first['id']}/actions", json={"action_name": "go"})
     assert resp.status_code == 200, resp.text
     assert resp.json()["state"]["key"] == "b"
 

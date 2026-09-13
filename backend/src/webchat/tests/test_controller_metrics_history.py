@@ -4,7 +4,8 @@ from datetime import datetime
 
 import pytest
 
-from conftest import chat_turn
+from conftest import chat_turn, enter_chat, session_of
+from webchat.tests.webchat_helpers import new_chat
 from system.web_session import WebSession
 
 pytestmark = pytest.mark.contract
@@ -13,10 +14,10 @@ pytestmark = pytest.mark.contract
 def test_metrics_history_spans_every_session_chronologically(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
     with WebSession().impersonate("alice"):
-        older = client.get("/api/skills/webchat/sessions/current").json()
-        chat_turn(client, older['id'], "hi")
-        newer = client.post("/api/skills/webchat/sessions").json()
-        chat_turn(client, newer['id'], "hello again")
+        older = session_of(enter_chat(client, hello_project))
+        chat_turn(client, older, "hi")
+        newer = new_chat(client, hello_project)
+        chat_turn(client, newer, "hello again")
     response = client.get(f"/api/core/projects/{hello_project}/users/alice/metrics-history")
 
     assert response.status_code == 200
@@ -31,12 +32,12 @@ def test_metrics_history_spans_every_session_chronologically(client, app_db, hel
 def test_metrics_history_is_scoped_to_the_given_user_and_project(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
     with WebSession().impersonate("alice"):
-        client.get("/api/skills/webchat/sessions/current")
+        enter_chat(client, hello_project)
 
     app_db.set_active_project_id(hello_project, "carol")
     with WebSession().impersonate("carol"):
-        session = client.get("/api/skills/webchat/sessions/current").json()
-        chat_turn(client, session['id'], "hi")
+        session_id = session_of(enter_chat(client, hello_project))
+        chat_turn(client, session_id, "hi")
     alice_body = client.get(f"/api/core/projects/{hello_project}/users/alice/metrics-history").json()
     carol_body = client.get(f"/api/core/projects/{hello_project}/users/carol/metrics-history").json()
 
@@ -48,9 +49,9 @@ def test_metrics_history_is_scoped_to_the_given_user_and_project(client, app_db,
 def test_metrics_history_includes_one_session_start_per_session(client, app_db, hello_project):
     app_db.set_active_project_id(hello_project, "alice")
     with WebSession().impersonate("alice"):
-        older = client.get("/api/skills/webchat/sessions/current").json()
-        chat_turn(client, older['id'], "hi")
-        client.post("/api/skills/webchat/sessions")
+        older = session_of(enter_chat(client, hello_project))
+        chat_turn(client, older, "hi")
+        new_chat(client, hello_project)
 
     body = client.get(f"/api/core/projects/{hello_project}/users/alice/metrics-history").json()
 
@@ -94,7 +95,7 @@ def test_metrics_history_survives_an_imported_transcript_without_timestamps(clie
     it by that instant compared None with None and 500'd the whole
     user's history. It has no instant to plot at, so it just contributes
     no point."""
-    from conftest import parse_sse_result, chat_turn
+    from conftest import parse_sse_result
 
     response = client.post(
         f"/api/skills/platform/projects/{hello_project}/sessions/import",

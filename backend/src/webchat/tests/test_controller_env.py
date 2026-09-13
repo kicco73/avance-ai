@@ -9,17 +9,17 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import chat_turn
+from conftest import chat_turn, enter_chat, session_of
 
 pytestmark = pytest.mark.contract
 
 
-def _session_id(client) -> int:
-    return client.get("/api/skills/webchat/sessions/current").json()["id"]
+def _session_id(client, project_id) -> int:
+    return session_of(enter_chat(client, project_id))
 
 
 def test_env_endpoint_reports_stored_and_action_set_only(client, hello_project):
-    session_id = _session_id(client)
+    session_id = _session_id(client, hello_project)
 
     response = client.get(f"/api/skills/platform/sessions/{session_id}/env")
 
@@ -29,7 +29,7 @@ def test_env_endpoint_reports_stored_and_action_set_only(client, hello_project):
 
 
 def test_put_env_value_stores_it(client, hello_project):
-    session_id = _session_id(client)
+    session_id = _session_id(client, hello_project)
 
     response = client.put(f"/api/skills/platform/sessions/{session_id}/env/favorite_color", json={"value": "blue"})
 
@@ -39,7 +39,7 @@ def test_put_env_value_stores_it(client, hello_project):
 
 
 def test_put_env_value_overwrites_an_existing_key(client, hello_project):
-    session_id = _session_id(client)
+    session_id = _session_id(client, hello_project)
     client.put(f"/api/skills/platform/sessions/{session_id}/env/favorite_color", json={"value": "blue"})
 
     response = client.put(f"/api/skills/platform/sessions/{session_id}/env/favorite_color", json={"value": "green"})
@@ -48,7 +48,7 @@ def test_put_env_value_overwrites_an_existing_key(client, hello_project):
 
 
 def test_delete_env_value_removes_the_key(client, hello_project):
-    session_id = _session_id(client)
+    session_id = _session_id(client, hello_project)
     client.put(f"/api/skills/platform/sessions/{session_id}/env/favorite_color", json={"value": "blue"})
     client.put(f"/api/skills/platform/sessions/{session_id}/env/mood", json={"value": "happy"})
 
@@ -60,7 +60,7 @@ def test_delete_env_value_removes_the_key(client, hello_project):
 
 
 def test_delete_env_value_for_an_unknown_key_is_a_noop(client, hello_project):
-    session_id = _session_id(client)
+    session_id = _session_id(client, hello_project)
     client.put(f"/api/skills/platform/sessions/{session_id}/env/mood", json={"value": "happy"})
 
     response = client.delete(f"/api/skills/platform/sessions/{session_id}/env/does-not-exist")
@@ -70,7 +70,7 @@ def test_delete_env_value_for_an_unknown_key_is_a_noop(client, hello_project):
 
 
 def test_env_with_a_message_id_restricts_to_a_point_in_time(client, hello_project):
-    session_id = _session_id(client)
+    session_id = _session_id(client, hello_project)
     message_id = chat_turn(client, session_id, "hello")["assistant_message_id"]
 
     # A value set *after* that message must not show up in its own
@@ -85,7 +85,7 @@ def test_env_with_a_message_id_restricts_to_a_point_in_time(client, hello_projec
 
 
 def test_env_with_an_unknown_message_id_is_404(client, hello_project):
-    session_id = _session_id(client)
+    session_id = _session_id(client, hello_project)
     response = client.get(f"/api/skills/platform/sessions/{session_id}/env?message_id=999999")
     assert response.status_code == 404
 
@@ -96,7 +96,7 @@ def test_env_for_an_unknown_session_is_404(client, hello_project):
 
 
 def test_clear_env_wipes_every_stored_key(client, hello_project):
-    session_id = _session_id(client)
+    session_id = _session_id(client, hello_project)
     client.put(f"/api/skills/platform/sessions/{session_id}/env/favorite_color", json={"value": "blue"})
     client.put(f"/api/skills/platform/sessions/{session_id}/env/mood", json={"value": "happy"})
 

@@ -57,35 +57,98 @@ OUTPUT_TOOL = "output.tool"
 
 # The choices a person is being offered right now. They belong to the
 # state the conversation is in, not to whatever produced the last
-# message, which is why they travel on their own.
-UI_BUTTONS = "ui.buttons"
-
-# What this conversation can reach: which optional services are available
-# to it, as {name: bool}. A fact about the session — its project decides,
-# not whichever project the person happens to have active elsewhere — so
-# it is said when the conversation opens, like the choices are.
-UI_SERVICES = "ui.services"
+# message, which is why they travel on their own — and why the scope is
+# the state and not the interface showing them.
+STATE_BUTTONS = "state.buttons"
 
 # One of those choices, taken. A person acting in a conversation, like
 # saying something — and on the same road, so the two cannot overtake
 # each other.
 INPUT_BUTTON = "input.button"
 
-# Somebody just opened a conversation. Not something said — an occasion
-# for the automaton to speak first, if this state has anything to open
-# with. Nothing is owed when the conversation has already started.
-SESSION_NEW = "session.new"
+# The person's own reaction to a message somebody else wrote. The
+# model's own reaction to theirs is OUTPUT_REACTION: two facts about two
+# different messages, never one field of the other.
+INPUT_REACTION = "input.reaction"
+
+# --- One conversation --------------------------------------------------
+#
+# Requests are verbs and announcements are nouns; the first segment is
+# the scope, never the direction. Everything here is addressed by
+# session_id except the two that cannot be: entering a conversation and
+# creating one name the project instead, because the session is what
+# they are asking for.
+
+# I am showing a conversation of this kind for this project: give me the
+# active one, or make one if there is none. It also says this connection
+# is now watching that session, which is how anything the server decides
+# on its own can reach it.
+SESSION_ENTER = "session.enter"
+
+# Make a new one regardless, closing whatever was active.
+SESSION_CREATE = "session.create"
+
+# I have stopped watching. Not symmetry: without it a connection that
+# navigated away keeps being told about a conversation it no longer
+# shows, and an operator has no way to say they left. Handled by the
+# socket itself and never published: who is watching what is the
+# socket's own bookkeeping, and no listener has anything to do about it.
+SESSION_EXIT = "session.exit"
+
+# Which conversation this is, and everything that describes it: where it
+# stands, what it can reach, whether it speaks. Announced on entering and
+# on creating, never asked for on its own.
+SESSION_INFO = "session.info"
+
+# Bring back what was said before this point — paging backwards. What is
+# on screen when a conversation opens arrives without asking (see
+# SESSION_MESSAGES).
+SESSION_RECALL = "session.recall"
+
+# What was said, in answer to entering or recalling.
+SESSION_MESSAGES = "session.messages"
+
+# Somebody is now in this conversation and has been told what it is. What
+# a state has to say before anybody says anything is said in answer to
+# this, by whoever runs turns — so entering announces, and opening is a
+# reaction to the announcement rather than a kind of request that the
+# queue of requests has to recognise. Published after the whole
+# announcement, never before: what frames a conversation reaches the
+# person ahead of anything the conversation says.
+SESSION_OPENED = "session.opened"
+
+# The person closes the conversation.
+SESSION_TERMINATE = "session.terminate"
+
+# It has been closed, by whoever decided — often the server itself
+# (another channel taking over, a revision that stopped building). Named
+# apart from the request on purpose: one letter between a verb and a fact
+# is an invitation to get it wrong.
+SESSION_ENDED = "session.ended"
+
+# There is no conversation to be had, and why: the project is paused, its
+# terms have not been accepted, there is no project at all, or nothing in
+# this build answers for chat. A refusal, not a failure — whoever shows a
+# chat shows a different screen for each.
+SESSION_BLOCKED = "session.blocked"
+
+# Speak, or stop speaking, in this conversation: whether the model is
+# asked for the spoken version of its reply. Its own message because it
+# changes mid-conversation, and because a turn nobody asked for — an
+# opening message — has no request to carry it.
+SESSION_SPEAK = "session.speak"
+
+# This conversation has been handed to a person. Named for the session
+# because that is what it is about, but delivered to that identity's
+# connections rather than to whoever is watching the session: the point
+# of it is to reach an operator who is not in the conversation yet.
+SESSION_TAKEN_OVER = "session.taken_over"
 
 # Something one identity's interfaces may want to show — a task's own
 # snippet, a state that moved while nobody was looking. Not content and
 # not a fact about a turn: a nudge, addressed to whoever that person has
 # open. Whether anything is listening is not the producer's business.
 UI_NOTIFICATION = "ui.notification"
-
-# One identity is being asked to take a session over as a human. Its own
-# type rather than a flavour of the one above: an interface subscribes to
-# what it can act on, and paging an operator is not showing a nudge.
-UI_HUMAN_TAKEOVER = "ui.human_takeover"
 
 # An administrator-facing warning about the installation itself — a
 # published revision that stopped building, and whatever joins it later.
@@ -176,7 +239,11 @@ POINT_SESSION_SERVICES = "session.services"
 # be an open injection point: a browser could publish an internal type
 # and find listeners for it. A client speaks as a person, and a person
 # says things.
-CLIENT_INJECTABLE = frozenset({INPUT_TEXT, INPUT_BUTTON, SESSION_NEW})
+CLIENT_INJECTABLE = frozenset({
+    INPUT_TEXT, INPUT_BUTTON, INPUT_REACTION,
+    SESSION_ENTER, SESSION_CREATE, SESSION_RECALL,
+    SESSION_TERMINATE, SESSION_SPEAK,
+})
 
 # How deep a chain of conversions may go before something is looping: a
 # handler that publishes the type it consumes would otherwise recur

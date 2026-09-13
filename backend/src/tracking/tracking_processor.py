@@ -213,11 +213,10 @@ class TrackingProcessor(object):
 		on_metadata: MetadataCallback | None = None,
 		user_message_ids: list[int] | None = None,
 	) -> dict:
-		"""`text` is this turn's own user fragments: every user message
-		that arrived since the last reply, which this one turn answers
-		together (see PROJECT_SPECS.md's own turn section). Empty for an
-		AI-initiated turn. Signals and triggers are evaluated once, for
-		the whole turn."""
+		"""`text` is the batch of user messages this one reply answers
+		together (see PROJECT_SPECS.md §0.1). Empty for an AI-initiated
+		reply. Signals and triggers are evaluated once, for the whole
+		batch."""
 		fragments = [text] if isinstance(text, str) else list(text or [])
 		state = self.user.state
 

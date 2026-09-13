@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import pytest
 
+from conftest import enter_chat, session_of
+
 pytestmark = pytest.mark.contract
 
 TWO_STATE_YML = (
@@ -35,15 +37,13 @@ def _upload(client, yml: str, publish: bool = True):
 def _fire_action(client, session_id: int) -> None:
     """Establishes current_state reliably — a session with no real action
     fired yet is wiped the next time the project is edited."""
-    response = client.post(f"/api/skills/webchat/sessions/{session_id}/actions", json={"action_name": "go"})
+    response = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go"})
     assert response.status_code == 200, response.text
 
 
 def _pinned_live_session(client) -> int:
     _upload(client, TWO_STATE_YML)
-    response = client.get("/api/skills/webchat/sessions/current")
-    assert response.status_code == 200, response.text
-    session_id = response.json()["id"]
+    session_id = session_of(enter_chat(client, "proj"))
     _fire_action(client, session_id)
     return session_id
 

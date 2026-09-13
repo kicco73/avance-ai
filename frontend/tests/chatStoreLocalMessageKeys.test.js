@@ -8,27 +8,29 @@
 // from the same counter as every placeholder, so no loaded message can
 // ever collide with one.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 
 vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
-  postAction: vi.fn(),
   getSessions: vi.fn(),
   getAiModels: vi.fn(),
-  getMessages: vi.fn(),
-  getCurrentSession: vi.fn(),
+  getHistory: vi.fn(),
+  getActuators: vi.fn(),
+  putActuators: vi.fn(),
+  postTruncateSession: vi.fn(),
+  deleteSession: vi.fn(),
 }))
 
 describe('every store message carries a unique local id, loaded or placeholder', () => {
   let chatStore
-  let api
+  let deliverEntered
 
   beforeEach(async () => {
     vi.resetModules()
+    const bus = await import('./fakeBus.js')
+    bus.resetFakeBus()
+    deliverEntered = bus.deliverEntered
     chatStore = await import('../src/chatStore.js')
-    api = await import('../src/api.js')
-    await installApiBackedLiveChannel(api)
   })
 
   afterEach(() => {
@@ -36,12 +38,14 @@ describe('every store message carries a unique local id, loaded or placeholder',
   })
 
   it('never lets a loaded message and a later placeholder share the same local id', async () => {
-    api.getCurrentSession.mockResolvedValue({ id: 1, current: true, state: { key: 'x', ui_label: 'X', actions: [] } })
-    api.getMessages.mockResolvedValue([
-      { id: 1, role: 'assistant', content: 'loaded reply', audio_text: null, timestamp: 't1' },
-    ])
+    await chatStore.loadMessages('proj')
+    deliverEntered({
+      sessionId: 1,
+      projectId: 'proj',
+      state: { key: 'x', ui_label: 'X', actions: [] },
+      messages: [{ id: 1, role: 'assistant', content: 'loaded reply', audio_text: null, timestamp: 't1' }],
+    })
 
-    await chatStore.loadMessages()
     const loaded = chatStore.messages.value[0]
 
     const userMessage = { id: loaded.id + 1000, role: 'user', content: 'placeholder', failed: false, timestamp: 't2' }

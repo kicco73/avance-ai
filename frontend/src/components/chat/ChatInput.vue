@@ -12,7 +12,7 @@ defineProps({
   // previews of a project's design and of an app's page. It shows every
   // control this build has, because it is showing what a chat looks
   // like; a real row shows what its own conversation can reach (see
-  // backend docs/BUS.md's own ui.services), which a sample has no way of
+  // backend docs/BUS.md's own session.info), which a sample has no way of
   // knowing and no business guessing.
   sample: { type: Boolean, default: false }
 })

@@ -1,4 +1,4 @@
-// The one consumer of chatClient's single notification handler.
+// The one consumer of `ui.notification` frames.
 //
 // Every server-pushed "notification" frame carries at most a task
 // script (an action's chat.celebrate()/notify()/show() output — which

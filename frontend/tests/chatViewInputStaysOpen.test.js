@@ -4,7 +4,6 @@
 // things that still close it are an unusable session and a chat socket
 // that is not connected.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { createApp } from 'vue'
 
 vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))
@@ -14,33 +13,25 @@ vi.mock('../src/audio.js', () => ({
   playMessageChime: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn(),
 }))
 vi.mock('../src/api.js', () => ({
-  getCurrentSession: vi.fn(),
-  postCreateSession: vi.fn(),
-  postCloseSession: vi.fn(),
-  getCurrentTestSession: vi.fn(),
-  postCreateTestSession: vi.fn(),
-  getSessions: vi.fn(),
-  getTestSessions: vi.fn(),
+  getSessions: vi.fn().mockResolvedValue([]),
+  getHistory: vi.fn().mockResolvedValue([]),
+  getActuators: vi.fn(),
+  putActuators: vi.fn(),
   deleteSession: vi.fn(),
-  getMessages: vi.fn().mockResolvedValue([]),
-  getSessionState: vi.fn(),
-  postAction: vi.fn(),
-  getAutoTracking: vi.fn(),
-  putAutoTracking: vi.fn(),
   getAiModels: vi.fn(),
   postAiModelSelection: vi.fn(),
-  putMessageReaction: vi.fn(),
-  postResetTestSessions: vi.fn(),
   postTruncateSession: vi.fn(),
   getProjects: vi.fn().mockResolvedValue({ projects: [{ id: 'proj', ui_label: 'Proj' }], active: 'proj' }),
   projectFileContentUrl: vi.fn(() => '/skin.css'),
 }))
 
-// Mounting ChatView is the heaviest thing this suite does, and vitest's
-// 5s default is measured against an idle machine. This file alone takes
-// about 8s; under the whole suite's parallel load it lost to a 10s ceiling,
-// so the limit is that observed ceiling plus 30%.
-vi.setConfig({ testTimeout: 13_000 })
+// Mounting ChatView is the heaviest thing this suite does, and the whole
+// component tree is transformed here, at import time, rather than inside
+// whichever test imports it first: that cost is 6.3s on its own and
+// 16.3s with the whole suite running in parallel, and vitest charged it
+// to that test's own 5s budget. A file's own imports are not timed, so
+// the import below is left with nothing but the re-evaluation.
+await import('../src/components/chat/ChatView.vue')
 
 describe('ChatView keeps the input open while a reply is being generated', () => {
   let chatStore
@@ -54,7 +45,6 @@ describe('ChatView keeps the input open while a reply is being generated', () =>
     bus.resetFakeBus()
     chatStore = await import('../src/chatStore.js')
     api = await import('../src/api.js')
-    await installApiBackedLiveChannel(api)
     container = document.createElement('div')
     document.body.appendChild(container)
   })
@@ -65,13 +55,14 @@ describe('ChatView keeps the input open while a reply is being generated', () =>
   })
 
   it('leaves the text input enabled with a turn in flight, and takes a second message', async () => {
-    api.getCurrentSession.mockResolvedValue({
-      id: 1, current: true, state: { key: 'x', ui_label: 'X', actions: [], chat_enabled: true },
-    })
     const ChatWindow = (await import('../src/components/chat/ChatView.vue')).default
     const app = createApp(ChatWindow, { hideSessionsPanel: false })
     app.mount(container)
-    await chatStore.loadMessages()
+    await chatStore.loadMessages('proj')
+    bus.deliverEntered({
+      sessionId: 1, projectId: 'proj',
+      state: { key: 'x', ui_label: 'X', actions: [], chat_enabled: true },
+    })
 
     await chatStore.handleSend('I have a problem')
     bus.deliver({ type: 'output.text_stream', session_id: 1, text: '' })

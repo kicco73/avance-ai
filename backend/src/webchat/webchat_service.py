@@ -7,7 +7,7 @@ turn/input_listener.py), and this forwards the ones addressed to a
 connection it holds — `origin_id`, put there by system.bus_channel,
 which this package also tells which channel it speaks on.
 
-It owns the chat window's HTTP surface too (WebchatController), so the
+It owns no HTTP surface: a conversation lives on the bus, so the
 routes and the thing that serves them are packaged together.
 
 It also owns the human-takeover seam. `HumanTalker` reaches a person
@@ -22,16 +22,15 @@ from __future__ import annotations
 from system import bus
 from system.bus import (
     OUTPUT_REACTION, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TEXT_STREAM, OUTPUT_TOOL,
-    POINT_SPOKEN_REPLY, STATE_CHANGED, OUTPUT_ERROR, UI_BUTTONS, UI_SERVICES, Message,
+    POINT_SPOKEN_REPLY, STATE_CHANGED, STATE_BUTTONS, OUTPUT_ERROR,
+    SESSION_INFO, SESSION_MESSAGES, SESSION_BLOCKED, SESSION_ENDED, Message,
 )
 from system.logging_factory import LoggerFactory
-from system.wiring import construct
 from system.bus_channel import BusChannel
 from talker import HumanTalker
 from project.project_service import ProjectService
 from turn.turn_service import TurnService
 
-from .webchat_controller import WebchatController
 from .bus_human_relay import BusHumanRelay
 
 logger = LoggerFactory.get_logger(__name__)
@@ -40,8 +39,9 @@ logger = LoggerFactory.get_logger(__name__)
 #: mirror image: that is what a browser may put *on* the Bus, and this is
 #: what comes back.
 TURN_FORWARDED = (
-    OUTPUT_TEXT_STREAM, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TOOL, OUTPUT_REACTION, UI_BUTTONS,
-    UI_SERVICES, STATE_CHANGED, OUTPUT_ERROR,
+    OUTPUT_TEXT_STREAM, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TOOL, OUTPUT_REACTION,
+    STATE_BUTTONS, STATE_CHANGED, OUTPUT_ERROR,
+    SESSION_INFO, SESSION_MESSAGES, SESSION_BLOCKED, SESSION_ENDED,
 )
 
 
@@ -53,10 +53,6 @@ class WebchatService:
     ) -> None:
         self._turn_service = turn_service
         self._notifications = notifications
-        # The /api/skills/webchat/* routes travel with the service that answers
-        # them: the skill hands this to POINT_HTTP_CONTROLLERS and a
-        # build without this package has nothing to register.
-        self.controller = construct(WebchatController, {"turn_service": turn_service})
 
     def register(self) -> None:
         for message_type in TURN_FORWARDED:
@@ -81,16 +77,24 @@ class WebchatService:
         nothing is translated on the way out, so a listener and a browser
         read the same message. A frame is the message's own body with its
         type on it — every body is a dict, so there is one shape and no
-        wrapping."""
+        wrapping.
+
+        Two deliveries, one rule each: an answer goes back to whoever
+        asked, and an announcement — a session closed from elsewhere, a
+        conversation handed to a person — goes to whoever is showing that
+        conversation. The second has no request behind it and so no
+        `origin_id` to answer to."""
+        frame = {"type": message.type, "session_id": message.session_id, **(message.body or {})}
+        for project_id in filter(None, [message.project_id]):
+            frame.setdefault("project_id", project_id)
         connection_id = message.origin_id
         if connection_id is None or not self._notifications.has_connection(connection_id):
+            for session_id in filter(None, [message.session_id]):
+                self._notifications.send_to_watchers(session_id, frame)
             return
-        self._notifications.send_to_connection(
-            connection_id,
-            {
-                "type": message.type, "session_id": message.session_id, **(message.body or {}),
-            },
-        )
+        self._notifications.send_to_connection(connection_id, frame)
+        for _ in filter(SESSION_INFO.__eq__, [message.type]):
+            self._notifications.watch_session(connection_id, message.session_id)
 
     def human_talker_factory(
         self, username: str, session_id: int, session_type: str, project_id: str,

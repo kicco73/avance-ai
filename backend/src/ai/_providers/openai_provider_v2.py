@@ -155,7 +155,9 @@ class OpenAICompatibleProvider(LLMProvider):
                 })
                 continue
 
-            role_out = "assistant" if role == "assistant" else "user"
+            if role not in ("user", "assistant"):
+                continue
+
             content = message.get("content")
             # The fragments of a coalesced turn travel as content parts of
             # one message; anything else is still one flat text.
@@ -170,11 +172,11 @@ class OpenAICompatibleProvider(LLMProvider):
             # priming) desync the template's role assignment instead of
             # erroring, so merge them rather than send them as separate
             # turns — never across a tool/tool_calls message, which always
-            # stays standalone (see the two `continue`s above).
-            if messages and messages[-1]["role"] == role_out:
+            # stays standalone (see the `continue`s above).
+            if messages and messages[-1]["role"] == role:
                 messages[-1]["content"] = _merged_content(messages[-1]["content"], parts)
             else:
-                messages.append({"role": role_out, "content": _one_content(parts)})
+                messages.append({"role": role, "content": _one_content(parts)})
         return messages
 
     @staticmethod

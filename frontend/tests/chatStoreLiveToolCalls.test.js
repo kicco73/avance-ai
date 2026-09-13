@@ -1,74 +1,72 @@
-// Regression: a live SSE turn that made a tool call used to leave the
+// Regression: a live turn that made a tool call used to leave the
 // assistant bubble's own toolCalls unset — MessageBubble.vue's permanent
 // trace (see toStoreMessage) only ever appeared after a manual reload,
-// since a live turn only ever streams chunk/status_text, never the
-// persisted trace itself. submitMessage now backfills it, once, from the
-// same getMessages source a reload uses — see chatStoreFactory.js's own
-// hadToolCall/result.assistant_message_id branch.
+// since a live turn only ever publishes the pieces and the tool's own
+// status, never the persisted trace itself. The store now backfills it,
+// once, from the same history a reload reads — see chatStoreFactory.js's
+// own loadToolTrace.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 
+vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
-  postAction: vi.fn(),
   getSessions: vi.fn(),
   getAiModels: vi.fn(),
-  getMessages: vi.fn(),
-  getSessionState: vi.fn(),
+  getHistory: vi.fn(),
+  getActuators: vi.fn(),
+  putActuators: vi.fn(),
+  postTruncateSession: vi.fn(),
+  deleteSession: vi.fn(),
 }))
+
+const TOOL_CALL_RECORD = {
+  name: 'source_flights_select', arguments: { values: ['VY3003'] }, result: 'city\nParis\n',
+  label: 'Flights', rows: 1, error: false, duration_ms: 12,
+}
 
 describe('a live turn backfills its own persisted tool-call trace once it lands', () => {
   let chatStore
-  let chatClient
+  let deliver
   let api
 
   beforeEach(async () => {
     vi.resetModules()
+    const bus = await import('./fakeBus.js')
+    bus.resetFakeBus()
+    deliver = bus.deliver
     chatStore = await import('../src/chatStore.js')
-    chatClient = await import('../src/chatClient.js')
     api = await import('../src/api.js')
-    await installApiBackedLiveChannel(api)
+    chatStore.currentSessionId.value = 1
   })
 
   afterEach(() => {
     vi.clearAllMocks()
   })
 
-  it('fetches and attaches tool_calls after a turn that fired a tool_call status', async () => {
-    chatStore.currentSessionId.value = 1
-    chatClient.sendMessage.mockImplementation(async (_text, _sessionId, { onStatus }) => {
-      onStatus('Searching Flights…')
-      onStatus('')
-      return {
-        reply: [], user_message_id: 40, assistant_message_id: 51,
-        state: { key: 'a', ui_label: 'A', actions: [] }, 'task': null, session_id: 1,
-      }
-    })
-    const toolCallRecord = {
-      name: 'source_flights_select', arguments: { values: ['VY3003'] }, result: 'city\nParis\n',
-      label: 'Flights', rows: 1, error: false, duration_ms: 12,
-    }
-    api.getMessages.mockResolvedValue([
-      { id: 51, role: 'assistant', content: 'Found it.', timestamp: 't', tool_calls: [toolCallRecord] },
+  it('fetches and attaches tool_calls after a turn that fired a tool call', async () => {
+    api.getHistory.mockResolvedValue([
+      { id: 51, role: 'assistant', content: 'Found it.', timestamp: 't', tool_calls: [TOOL_CALL_RECORD] },
     ])
 
     await chatStore.handleSend('where is my flight?')
+    deliver({ type: 'output.text_stream', session_id: 1, text: '' })
+    deliver({ type: 'output.tool', session_id: 1, phase: 'start', status_text: 'Searching Flights…' })
+    deliver({ type: 'output.tool', session_id: 1, phase: 'result' })
+    deliver({ type: 'state.buttons', session_id: 1, actions: [] })
+    deliver({ type: 'output.text', session_id: 1, assistant_message_id: 51, text: 'Found it.', timestamp: 't' })
 
     await vi.waitFor(() => {
       const msg = chatStore.messages.value.find((m) => m.messageId === 51)
-      expect(msg?.toolCalls).toEqual([toolCallRecord])
+      expect(msg?.toolCalls).toEqual([TOOL_CALL_RECORD])
     })
   })
 
-  it('never calls getMessages when no tool call happened this turn', async () => {
-    chatStore.currentSessionId.value = 1
-    chatClient.sendMessage.mockResolvedValue({
-      reply: [], user_message_id: 40, assistant_message_id: 52,
-      state: { key: 'a', ui_label: 'A', actions: [] }, 'task': null, session_id: 1,
-    })
-
+  it('never reads the history when no tool call happened this turn', async () => {
     await chatStore.handleSend('hi')
+    deliver({ type: 'output.text_stream', session_id: 1, text: '' })
+    deliver({ type: 'state.buttons', session_id: 1, actions: [] })
+    deliver({ type: 'output.text', session_id: 1, assistant_message_id: 52, text: 'Hello.', timestamp: 't' })
 
-    expect(api.getMessages).not.toHaveBeenCalled()
+    expect(api.getHistory).not.toHaveBeenCalled()
   })
 })

@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from conftest import SAMPLES_DIR
 
-from conftest import parse_sse_result, chat_turn
+from conftest import parse_sse_result, chat_turn, enter_chat, session_of
 
 # retention/activity_consistency are scoped to {all_sessions_per_user,
 # all_sessions}, so they're excluded from the one_session context here.
@@ -30,7 +28,7 @@ def test_metrics_endpoint_returns_every_core_metric_with_ui_metadata(client, hel
 def test_metrics_reflect_an_empty_conversation_at_baseline(client, hello_project):
     # Bootstrapping alone creates a session, so only message-driven
     # metrics like signal_stability stay at the floor.
-    client.get("/api/skills/webchat/sessions/current")
+    enter_chat(client, hello_project)
 
     body = client.get(f"/api/core/projects/{hello_project}/metrics").json()
     by_name = {m["name"]: m["value"] for m in body}
@@ -40,11 +38,11 @@ def test_metrics_reflect_an_empty_conversation_at_baseline(client, hello_project
 
 @pytest.mark.regression
 def test_engagement_rises_after_sending_messages(client, hello_project):
-    session = client.get("/api/skills/webchat/sessions/current").json()
+    session_id = session_of(enter_chat(client, hello_project))
     baseline = {m["name"]: m["value"] for m in client.get(f"/api/core/projects/{hello_project}/metrics").json()}["engagement"]
 
     for text in ("hi", "how are you", "tell me more"):
-        chat_turn(client, session['id'], text)
+        chat_turn(client, session_id, text)
 
     after = {m["name"]: m["value"] for m in client.get(f"/api/core/projects/{hello_project}/metrics").json()}["engagement"]
     assert after > baseline
@@ -62,9 +60,9 @@ def test_metrics_are_scoped_to_the_url_project(client):
         assert resp.status_code == 200, resp.text
 
     client.post(f"/api/skills/platform/projects/{names['hello']}/activate")
-    session = client.get("/api/skills/webchat/sessions/current").json()
+    session_id = session_of(enter_chat(client, names["hello"]))
     for text in ("hi", "again", "and again"):
-        chat_turn(client, session['id'], text)
+        chat_turn(client, session_id, text)
     hello_engagement = {m["name"]: m["value"] for m in client.get(f"/api/core/projects/{names['hello']}/metrics").json()}["engagement"]
 
     client.post(f"/api/skills/platform/projects/{names['cat']}/activate")

@@ -121,7 +121,7 @@ def test_task_prompt_fires_through_the_real_app_end_to_end(client, app):
     # would really try to dial the (dummy, unreachable) SMTP config
     # instead (see test_action_task.py's own module docstring).
     session = client.post(f"/api/skills/platform/projects/{project_id}/test-sessions").json()
-    action_response = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "go"})
+    action_response = client.post(f"/api/core/sessions/{session['id']}/actions", json={"action_name": "go"})
 
     assert action_response.status_code == 200, action_response.text
     assert "task" not in action_response.json()

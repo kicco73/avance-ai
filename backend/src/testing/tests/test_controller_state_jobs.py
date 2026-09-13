@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from conftest import chat_turn
+from conftest import chat_turn, enter_chat, session_of
 
 pytestmark = pytest.mark.contract
 
@@ -25,19 +25,19 @@ def _wait_for_aggregate_result(client, project_name, kind, strategy, target=None
     return response
 
 
-def _make_session_annotated_at_hello(client, *, labeled=False):
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    turn = chat_turn(client, session['id'], "hi")
+def _make_session_annotated_at_hello(client, project_id, *, labeled=False):
+    session_id = session_of(enter_chat(client, project_id))
+    turn = chat_turn(client, session_id, "hi")
     client.put(
         f"/api/skills/platform/messages/{turn['assistant_message_id']}/expected-state", json={"expected_state": "Hello"},
     )
     if labeled:
-        client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})
-    return session["id"]
+        client.put(f"/api/skills/platform/sessions/{session_id}/labeled", json={"labeled": True})
+    return session_id
 
 
 def test_state_test_aggregates_signal_accuracy_across_sessions(client, hello_project):
-    _make_session_annotated_at_hello(client, labeled=True)
+    _make_session_annotated_at_hello(client, hello_project, labeled=True)
 
     response = client.post(
         f"/api/skills/testing/projects/{hello_project}/runs/states/Hello", json={"strategy": "turn_by_turn"},
@@ -50,7 +50,7 @@ def test_state_test_aggregates_signal_accuracy_across_sessions(client, hello_pro
 
 
 def test_state_test_ignores_an_unlabeled_sessions_leftover_annotation(client, hello_project):
-    session_id = _make_session_annotated_at_hello(client)
+    session_id = _make_session_annotated_at_hello(client, hello_project)
 
     client.post(f"/api/skills/testing/projects/{hello_project}/runs/states/Hello", json={"strategy": "turn_by_turn"})
 

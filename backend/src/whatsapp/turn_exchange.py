@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 from system import bus
 from system.bus import (
-    INPUT_TEXT, OUTPUT_TEXT, OUTPUT_SPEECH, POINT_SPOKEN_REPLY, OUTPUT_ERROR, UI_BUTTONS, Message,
+    INPUT_TEXT, OUTPUT_TEXT, OUTPUT_SPEECH, POINT_SPOKEN_REPLY, OUTPUT_ERROR, STATE_BUTTONS, Message,
 )
 from system.logging_factory import LoggerFactory
 
@@ -52,7 +52,7 @@ class TurnExchange(object):
     project_id: str | None = None
     voice: TextReply | VoiceReply = field(default_factory=TextReply)
     #: What this exchange produced, gathered as it is published: whole
-    #: messages on `output.text`, the choices on `ui.buttons`. The
+    #: messages on `output.text`, the choices on `state.buttons`. The
     #: terminal frame says it is over, not what was said.
     said: list[dict] = field(default_factory=list)
     actions: list[dict] | None = None
@@ -66,7 +66,7 @@ class TurnExchange(object):
         self._outcome: asyncio.Future[TurnOutcome] = asyncio.get_running_loop().create_future()
         bus.subscribe(OUTPUT_ERROR, self._failed)
         bus.subscribe(OUTPUT_TEXT, self._said)
-        bus.subscribe(UI_BUTTONS, self._offered)
+        bus.subscribe(STATE_BUTTONS, self._offered)
         bus.subscribe(OUTPUT_SPEECH, self._speech)
         bus.contribute(POINT_SPOKEN_REPLY, self._spoken_reply)
         try:
@@ -75,7 +75,7 @@ class TurnExchange(object):
         finally:
             bus.withdraw(POINT_SPOKEN_REPLY, self._spoken_reply)
             bus.unsubscribe(OUTPUT_SPEECH, self._speech)
-            bus.unsubscribe(UI_BUTTONS, self._offered)
+            bus.unsubscribe(STATE_BUTTONS, self._offered)
             bus.unsubscribe(OUTPUT_TEXT, self._said)
             bus.unsubscribe(OUTPUT_ERROR, self._failed)
 

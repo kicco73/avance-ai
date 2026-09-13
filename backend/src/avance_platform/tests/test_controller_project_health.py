@@ -11,7 +11,7 @@ from http import HTTPStatus
 
 import pytest
 
-from conftest import parse_sse_result
+from conftest import enter_chat, parse_sse_result, session_of
 from conftest import rewrite_archive_content
 
 pytestmark = pytest.mark.regression
@@ -89,8 +89,9 @@ def test_a_session_pinned_to_an_old_now_broken_revision_is_flagged_unsupported(c
     and builds fine) — only the one session still pinned to the older,
     since-superseded revision that broke is affected."""
     _upload(client, "flaky", VALID_YML)
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    assert session["project_revision"] == 0
+    session_id = session_of(enter_chat(client, "flaky"))
+    sessions = client.get("/api/core/projects/flaky/sessions").json()
+    assert next(s for s in sessions if s["id"] == session_id)["project_revision"] == 0
 
     # A second, still-valid revision gets published — the session above
     # keeps running against revision 0, exactly as before.
@@ -106,7 +107,7 @@ def test_a_session_pinned_to_an_old_now_broken_revision_is_flagged_unsupported(c
     app.state.turn_service._project_service.manager._automaton_loader.invalidate_cache("flaky")
 
     sessions = client.get("/api/core/projects/flaky/sessions").json()
-    row = next(s for s in sessions if s["id"] == session["id"])
+    row = next(s for s in sessions if s["id"] == session_id)
     assert row["unsupported_revision"] is True
 
     runtime_status = client.get("/api/skills/platform/settings/projects/runtime-status").json()["projects"]

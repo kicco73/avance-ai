@@ -5,12 +5,12 @@
 // and participate in the admin push/pop flip transition; ChatView itself
 // carries no opinion about that at all, since RunChat.vue's embedded Test
 // chat uses the exact same ChatView as a normal contained flex item.
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ChatView from './ChatView.vue'
 import TermsView from '../TermsView.vue'
 import SplashScreen from '../SplashScreen.vue'
 import { getLegalTermsStatus, postAcceptProjectTerms } from '../../api.js'
-import { loadMessages } from '../../chatStore.js'
+import { blockedReason, historyLoaded, loadMessages } from '../../chatStore.js'
 import { onLiveSkinApplied } from '../../chatSkin.js'
 import { setCanvasColor, restoreCanvasColor } from '../../canvasColor.js'
 
@@ -31,31 +31,15 @@ const props = defineProps({
 
 defineEmits(['project-select', 'project-download', 'manage-projects', 'home', 'profile', 'logout'])
 
-const termsPending = ref(null)
-const termsContent = ref('')
-const checkFailed = ref(false)
-
-async function checkTerms() {
-  // No project to check terms for at all — see the projectId prop's
-  // own comment. Leaves termsPending/checkFailed alone (both still their
-  // initial null/false), so none of the other branches below render
-  // either; the template's own !projectId check is what actually shows
-  // something for this case.
-  if (!props.projectId) return
-  termsPending.value = null
-  checkFailed.value = false
-  try {
-    const status = await getLegalTermsStatus(props.projectId)
-    termsContent.value = status.content || ''
-    termsPending.value = status.pending
-    if (!status.pending) loadMessages()
-  } catch {
-    checkFailed.value = true
-  }
-}
+// Whether this project's terms are still owed is the conversation's own
+// answer: entering it is refused with `session.blocked`, reason 'terms'
+// (see chatStoreFactory.js). The text of those terms is not on the bus
+// — TermsView asks for it here when it is the screen being shown.
+const termsPending = computed(() => blockedReason.value === 'terms')
 
 async function fetchProjectTerms() {
-  return { content: termsContent.value }
+  const status = await getLegalTermsStatus(props.projectId)
+  return { content: status.content || '' }
 }
 
 async function acceptTerms() {
@@ -64,11 +48,10 @@ async function acceptTerms() {
   } catch {
     return
   }
-  termsPending.value = false
-  loadMessages()
+  loadMessages(props.projectId)
 }
 
-watch(() => props.projectId, checkTerms, { immediate: true })
+watch(() => props.projectId, (projectId) => loadMessages(projectId), { immediate: true })
 
 // Canvas-color sync (see canvasColor.js's own comment for why this
 // exists at all): keeps <html>'s background-color matching .chat-footer's
@@ -133,16 +116,15 @@ onBeforeUnmount(() => {
 <template>
   <div class="live-chat-window" ref="rootEl">
     <SplashScreen v-if="!projectId" variant="no-project" />
-    <SplashScreen v-else-if="checkFailed" variant="failed" @retry="checkTerms" />
-    <SplashScreen v-else-if="termsPending === null" variant="connecting" />
     <TermsView
-      v-if="termsPending"
+      v-else-if="termsPending"
       :show-reject="false"
       :fetch-terms="fetchProjectTerms"
       @accept="acceptTerms"
     />
+    <SplashScreen v-else-if="!historyLoaded" variant="connecting" />
     <ChatView
-      v-else-if="termsPending === false"
+      v-else
       :hide-sessions-panel="hideSessionsPanel"
       :role="role"
       :profile="profile"

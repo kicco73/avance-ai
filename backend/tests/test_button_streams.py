@@ -26,7 +26,7 @@ pytestmark = pytest.mark.regression
 
 _PUBLISHED = (
     "output.text_stream", "output.text", "output.speech", "output.tool", "output.reaction",
-    "state.changed", "ui.buttons", "output.error",
+    "state.changed", "state.buttons", "output.error",
 )
 _REPLY = "Here we are."
 

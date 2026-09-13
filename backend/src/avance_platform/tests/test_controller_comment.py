@@ -6,30 +6,30 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import chat_turn
+from conftest import chat_turn, enter_chat, session_of
 
 pytestmark = pytest.mark.contract
 
 
 @pytest.mark.contract
 def test_put_comment_sets_and_is_visible_in_session_signals(client, hello_project):
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    turn = chat_turn(client, session['id'], "hi")
+    session_id = session_of(enter_chat(client, hello_project))
+    turn = chat_turn(client, session_id, "hi")
     message_id = turn["assistant_message_id"]
 
     response = client.put(f"/api/skills/platform/messages/{message_id}/comment", json={"comment": "Worth a second look."})
 
     assert response.status_code == 200
     assert response.json()["comment"] == "Worth a second look."
-    signals = client.get(f"/api/core/sessions/{session['id']}/signals").json()
+    signals = client.get(f"/api/core/sessions/{session_id}/signals").json()
     row = next(r for r in signals if r["message_id"] == message_id)
     assert row["comment"] == "Worth a second look."
 
 
 @pytest.mark.contract
 def test_put_comment_clears_with_null(client, hello_project):
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    turn = chat_turn(client, session['id'], "hi")
+    session_id = session_of(enter_chat(client, hello_project))
+    turn = chat_turn(client, session_id, "hi")
     message_id = turn["assistant_message_id"]
     client.put(f"/api/skills/platform/messages/{message_id}/comment", json={"comment": "note"})
 
@@ -41,8 +41,8 @@ def test_put_comment_clears_with_null(client, hello_project):
 
 @pytest.mark.contract
 def test_put_comment_strips_whitespace_and_treats_blank_as_clear(client, hello_project):
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    turn = chat_turn(client, session['id'], "hi")
+    session_id = session_of(enter_chat(client, hello_project))
+    turn = chat_turn(client, session_id, "hi")
     message_id = turn["assistant_message_id"]
 
     padded = client.put(f"/api/skills/platform/messages/{message_id}/comment", json={"comment": "  spaced out  "})
@@ -56,8 +56,8 @@ def test_put_comment_strips_whitespace_and_treats_blank_as_clear(client, hello_p
 def test_put_comment_succeeds_for_a_non_evaluation_point_message(client, hello_project):
     """A comment is never gated on evaluation-point status, unlike
     expected-state (see test_controller_benchmark.py)."""
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    turn = chat_turn(client, session['id'], "hi")
+    session_id = session_of(enter_chat(client, hello_project))
+    turn = chat_turn(client, session_id, "hi")
     message_id = turn["assistant_message_id"]
 
     response = client.put(f"/api/skills/platform/messages/{message_id}/comment", json={"comment": "still commentable"})
@@ -74,10 +74,9 @@ def test_put_comment_is_404_for_an_unknown_message(client, hello_project):
 
 @pytest.mark.regression
 def test_put_comment_does_not_disturb_expected_state_on_the_same_row(client, hello_project):
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    chat_turn(client, session['id'], "hi")
-    session_id = session["id"]
-    messages = client.get(f"/api/skills/webchat/sessions/{session_id}/messages").json()
+    session_id = session_of(enter_chat(client, hello_project))
+    chat_turn(client, session_id, "hi")
+    messages = client.get(f"/api/core/sessions/{session_id}/history").json()
     # The evaluation point is the *assistant* line: a turn records what the
     # automaton decided, and the user's own message is not a decision. This
     # test used to pick the user side, where set_message_expected_state

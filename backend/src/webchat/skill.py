@@ -6,7 +6,9 @@ out has a running system with an open /api/core/bus that nobody
 answers a turn on, and no human takeover — and nothing left in the code
 saying either ever existed.
 
-Its controller arrives from `register_controllers`, not from
+It has no HTTP surface at all any more: a conversation lives on the
+bus (see docs/BUS.md), and what addresses a session by id belongs to the
+core. What it contributes arrives from `register_controllers`, not from
 `start_service`: starting runs at boot, before the turn engine exists;
 the router is assembled after (see bus.POINT_CORE_SERVICES).
 """
@@ -43,5 +45,4 @@ class WebchatSkill(Skill):
         core["bus_channel"].owned_by(self.key)
         service.register()
         core["tracking_service"].set_human_talker_factory(service.human_talker_factory)
-        controllers.append(service.controller)
         logger.info("webchat started — a turn typed into the browser has somewhere to go.")

@@ -1,4 +1,4 @@
-"""POST /api/action fires the action's own task (its snippets reach the
+"""Firing an action fires the action's own task (its snippets reach the
 browser over the websocket as a background ActionTask, never in this
 response) and, separately, its own on-exit script — including any
 chat.* calls, pushed synchronously, in this same request, never
@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from system.bus_channel import BusChannel
-from conftest import FakeWebSocket, parse_sse_result
+from conftest import FakeWebSocket, enter_chat, parse_sse_result, session_of
 
 pytestmark = pytest.mark.contract
 
@@ -32,7 +32,7 @@ YML = (
 )
 
 
-def _upload_and_get_session(client):
+def _upload_and_get_session(client) -> int:
     resp = client.post("/api/skills/platform/projects/upload", content=YML.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
@@ -40,7 +40,7 @@ def _upload_and_get_session(client):
     assert resp.status_code == 200, resp.text
     resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
-    return client.get("/api/skills/webchat/sessions/current").json()
+    return session_of(enter_chat(client, project_id))
 
 
 def _attach_websocket(app, username: str) -> FakeWebSocket:
@@ -54,10 +54,10 @@ def _attach_websocket(app, username: str) -> FakeWebSocket:
 
 
 def test_manual_action_pushes_its_on_exits_own_chat_snippets_synchronously(client, app, app_db):
-    session = _upload_and_get_session(client)
-    websocket = _attach_websocket(app, session["username"])
+    session_id = _upload_and_get_session(client)
+    websocket = _attach_websocket(app, app_db.get_chat_session(session_id)["username"])
 
-    resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "go-loud"})
+    resp = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go-loud"})
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -70,9 +70,9 @@ def test_manual_action_pushes_its_on_exits_own_chat_snippets_synchronously(clien
 
 
 def test_manual_action_without_on_exit_reports_none_even_for_the_same_target_state(client, app_db):
-    session = _upload_and_get_session(client)
+    session_id = _upload_and_get_session(client)
 
-    resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "go-quiet"})
+    resp = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go-quiet"})
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -83,9 +83,9 @@ def test_manual_action_without_on_exit_reports_none_even_for_the_same_target_sta
 
 def test_state_payload_never_carries_on_exit_itself(client):
     """on-exit is per-action, never present on the state payload itself."""
-    session = _upload_and_get_session(client)
+    session_id = _upload_and_get_session(client)
 
-    resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "go-loud"})
+    resp = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go-loud"})
 
     assert "on-exit" not in resp.json()["state"]
     for action in resp.json()["state"]["actions"]:

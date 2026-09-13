@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-from conftest import chat_turn
+from conftest import chat_turn, enter_chat, session_of
 
 pytestmark = pytest.mark.contract
 
@@ -36,15 +36,15 @@ def _wait_for_run_terminal(client, project_name, run_id, timeout=5.0, interval=0
     return client.get(f"/api/skills/testing/projects/{project_name}/tests/{run_id}").json()
 
 
-def _make_labeled_session(client):
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    chat_turn(client, session['id'], "hi")
-    client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})
-    return session["id"]
+def _make_labeled_session(client, project_id):
+    session_id = session_of(enter_chat(client, project_id))
+    chat_turn(client, session_id, "hi")
+    client.put(f"/api/skills/platform/sessions/{session_id}/labeled", json={"labeled": True})
+    return session_id
 
 
 def test_signal_test_completes_with_no_samples_when_never_annotated(client, hello_project):
-    _make_labeled_session(client)
+    _make_labeled_session(client, hello_project)
 
     response = client.post(
         f"/api/skills/testing/projects/{hello_project}/runs/signals/foo", json={"strategy": "turn_by_turn"},
@@ -61,7 +61,7 @@ def test_signal_test_completes_with_no_samples_when_never_annotated(client, hell
 
 
 def test_signal_test_reuses_an_existing_fresh_session_run_instead_of_replaying(client, hello_project):
-    session_id = _make_labeled_session(client)
+    session_id = _make_labeled_session(client, hello_project)
 
     leaf_run = client.post(
         f"/api/skills/testing/projects/{hello_project}/tests",
@@ -88,7 +88,7 @@ def test_signal_test_rejects_unknown_strategy(client, hello_project):
 
 
 def test_signal_test_picks_up_a_session_labeled_after_the_shared_sessions_job_was_cached(client, hello_project):
-    _make_labeled_session(client)
+    _make_labeled_session(client, hello_project)
 
     response = client.post(
         f"/api/skills/testing/projects/{hello_project}/runs/signals/foo", json={"strategy": "turn_by_turn"},
@@ -97,7 +97,7 @@ def test_signal_test_picks_up_a_session_labeled_after_the_shared_sessions_job_wa
     result = _wait_for_aggregate_result(client, hello_project, "signal", "turn_by_turn", target="foo")
     assert result.status_code == 200, result.text
 
-    _make_labeled_session(client)
+    _make_labeled_session(client, hello_project)
 
     response = client.post(
         f"/api/skills/testing/projects/{hello_project}/runs/signals/bar", json={"strategy": "turn_by_turn"},

@@ -1,10 +1,10 @@
 """A conversation opens once, however many people ask it to.
 
-Two callers ask at the very start: the browser says `session.new`, and in
-the same breath reads the transcript — and reading it opens the
-conversation too (see TurnService.get_messages). Both found nothing said
-yet and both generated, so a live chat began by saying the same thing
-twice.
+Two callers asked at the very start: the browser said so, and in the same
+breath read the transcript — and reading it opened the conversation too.
+Both found nothing said yet and both generated, so a live chat began by
+saying the same thing twice. Reading opens nothing now (see
+TurnService.read_history), and this is what keeps it opening once.
 """
 from __future__ import annotations
 

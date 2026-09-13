@@ -25,7 +25,7 @@ Meta ──POST /api/skills/whatsapp/webhook──▶ WhatsAppController   (role
                              TurnExchange.run  ──input.text──▶ BUS
                                          │                      │
                                          │              turn.input_listener (core)
-                                         ◀──turn.ended/failed───┘
+                                         ◀──output.text/error───┘
                                          │  prepared, then the turn's own reply
                                          ▼
                                   WhatsAppCloudApiClient.send_text

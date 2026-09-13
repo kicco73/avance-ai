@@ -1,6 +1,5 @@
-"""GET /api/skills/webchat/messages for an imported session must not 409, even when
-the live conversation's current state is final/chat:false —
-TurnService.open_if_needed returns immediately for imported sessions.
+"""Reading an imported session's history must not 409, even when the
+live conversation's current state is final/chat:false.
 """
 from __future__ import annotations
 
@@ -9,7 +8,7 @@ import zipfile
 
 import pytest
 
-from conftest import parse_sse_result
+from conftest import enter_chat, parse_sse_result, session_of
 
 pytestmark = pytest.mark.contract
 
@@ -45,9 +44,8 @@ def test_reading_an_imported_sessions_messages_survives_a_final_live_state(clien
     assert client.post("/api/skills/platform/projects/proj/publish", json={}).status_code == 200
 
     # Bootstraps the live conversation into its final, no-chat state.
-    native = client.post("/api/skills/webchat/sessions")
-    assert native.status_code == 200, native.text
-    assert client.get(f"/api/skills/webchat/sessions/{native.json()['id']}/messages").status_code == 200
+    native_id = session_of(enter_chat(client, "proj"))
+    assert client.get(f"/api/core/sessions/{native_id}/history").status_code == 200
 
     imported = client.post(
         "/api/skills/platform/projects/proj/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: hello\n", "text/plain"))]
@@ -55,7 +53,7 @@ def test_reading_an_imported_sessions_messages_survives_a_final_live_state(clien
     assert imported.status_code == 200, imported.text
     session_id = parse_sse_result(imported)["last_session_id"]
 
-    resp = client.get(f"/api/skills/webchat/sessions/{session_id}/messages")
+    resp = client.get(f"/api/core/sessions/{session_id}/history")
     assert resp.status_code == 200, resp.text
     messages = resp.json()
     assert [m["role"] for m in messages] == ["user", "assistant"]

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import FakeAiService, chat_socket, chat_turn_frames, installed_skill, turn_frame_seconds, _frame_deadline
+from conftest import (
+    FakeAiService, chat_socket, chat_turn_frames, enter_chat, installed_skill, session_of,
+    turn_frame_seconds, _frame_deadline,
+)
 from listen.decoder import SpeechDecoder
 from system import bus
 from system.bus import INPUT_AUDIO, Message
@@ -67,9 +70,8 @@ def talk_provider(monkeypatch) -> _FakePiper:
 def webchat(talk_provider, client, hello_project):
     installed_skill("webchat")
     installed_skill("talk")
-    response = client.get("/api/skills/webchat/sessions/current")
-    assert response.status_code == 200, response.text
-    return client, response.json()["id"], talk_provider
+    session_id = session_of(enter_chat(client, hello_project))
+    return client, session_id, talk_provider
 
 
 def test_a_typed_message_runs_a_turn_and_its_reply_speaks_on_the_audio_route(webchat):
@@ -77,11 +79,9 @@ def test_a_typed_message_runs_a_turn_and_its_reply_speaks_on_the_audio_route(web
 
     frames = chat_turn_frames(client, session_id, "hola")
 
-    # Two whole messages: what the state owed before it could answer, and
-    # the answer. Only the second was streamed, so only it has chunks.
     assert [frame["type"] for frame in frames] == [
         "output.text_stream", "output.speech", "output.text_stream",
-        "output.text", "ui.buttons", "output.text",
+        "state.buttons", "output.text",
     ]
     assert [frame["text"] for frame in frames if frame["type"] == "output.speech"] == [SPOKEN_REPLY]
     assert [frame["text"] for frame in frames if frame["type"] == "output.text_stream" and frame["text"]] == [REPLY_TEXT]
@@ -116,7 +116,7 @@ def test_a_voice_note_on_an_open_connection_runs_the_very_same_turn(webchat):
             while True:
                 frame = ws.receive_json()
                 frames.append(frame)
-                if frame["type"] in ("output.text", "output.error") and "ui.buttons" in [f["type"] for f in frames]:
+                if frame["type"] in ("output.text", "output.error") and "state.buttons" in [f["type"] for f in frames]:
                     break
 
     assert listen.heard == [VOICE_NOTE]

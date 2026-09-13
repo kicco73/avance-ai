@@ -70,8 +70,8 @@ const {
   handleResend,
   handleReact,
   handleAction,
-  projectPaused,
-  projectPausedReason,
+  blockedReason,
+  blockedDetail,
   reloadMessages
 } = props.store
 
@@ -278,12 +278,17 @@ watch(
       </template>
     </AppHeader>
 
-    <SplashScreen v-if="!hideSessionsPanel && projectPaused" variant="paused" :reason="projectPausedReason" embedded />
-    <!-- Only once the session has actually resolved: before that there is
-         no state.key yet simply because the bootstrap is still in flight,
-         and "no project" would be the wrong thing to say about a chat that
-         is merely starting up — ChatWaitingPanel below covers that. -->
-    <SplashScreen v-else-if="!hideSessionsPanel && historyLoaded && !state?.key" variant="no-project" embedded />
+    <SplashScreen v-if="!hideSessionsPanel && blockedReason === 'paused'" variant="paused" :reason="blockedDetail" embedded />
+    <!-- Only once the conversation has actually answered: before that
+         there is no state.key yet simply because entering is still in
+         flight, and "no project" would be the wrong thing to say about a
+         chat that is merely starting up — ChatWaitingPanel below covers
+         that. -->
+    <SplashScreen
+      v-else-if="!hideSessionsPanel && (blockedReason !== null || (historyLoaded && !state?.key))"
+      variant="no-project"
+      embedded
+    />
     <template v-else>
     <div class="chat-header">
       <div class="chat-header-icon"></div>
@@ -308,7 +313,7 @@ watch(
       v-if="!chatSuperseded && !chatConnected"
       class="chat-ended-notice"
     >
-      Connection to chat not available, trying again…
+      Connection not available, trying again…
     </p>
 
     <p

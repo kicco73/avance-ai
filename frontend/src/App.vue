@@ -13,7 +13,6 @@ import HumanTakeoverToasts from './components/HumanTakeoverToasts.vue'
 import DialogHost from './components/DialogHost.vue'
 import { requestedOperatorSession, clearRequestedOperatorSession } from './humanTakeoverStore.js'
 import { busChannel } from './busChannel.js'
-import { activateProject } from './api.js'
 import { needsLogin } from './authStore.js'
 import { activeDialog } from './dialogStore.js'
 import { useAppBoot } from './composables/useAppBoot.js'
@@ -74,32 +73,10 @@ const {
 // "Take me to the conversation for this project" — the one navigation a
 // contributed home asks the shell for, since the chat window is the
 // shell's. Whoever emits it has already done whatever its own screen
-// needed first (activating the project, say).
-// Which project the chat serves is decided server-side, by whichever one
-// is active (see TurnService.get_current_session_if_any_or_create_new,
-// which reads it and takes nothing from the client) — so opening a chat
-// on a project means making it the active one first. Here rather than in
-// whoever asked: the app store's "Chat now", the admin's own chat button
-// and a shared link all arrive at this one function, and every one of
-// them meant the same thing by it. Without this they opened the chat of
-// whatever was active before — a real conversation with the wrong
-// automaton, not a display mistake.
-//
-// Awaited before anything moves, never between two things that move:
-// what is on screen still changes in one go, exactly as it did when
-// nothing was awaited at all.
-async function activated(projectId) {
-  if (!projectId) return true
-  try {
-    await activateProject(projectId)
-    return true
-  } catch {
-    return false // already surfaced via apiFetch — better no chat than the wrong one
-  }
-}
-
-async function openChatOn(projectId) {
-  if (!await activated(projectId)) return
+// needed first. The conversation names its own project when it is
+// entered (see chatStoreFactory.js), so nothing has to be made active
+// first for the chat to be the right one.
+function openChatOn(projectId) {
   landingProjectId.value = projectId
   pushView('chat')
 }

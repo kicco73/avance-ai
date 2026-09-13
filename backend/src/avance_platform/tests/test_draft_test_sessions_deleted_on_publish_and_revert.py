@@ -9,7 +9,7 @@ import zipfile
 
 import pytest
 
-from conftest import parse_sse_result
+from conftest import enter_chat, parse_sse_result, session_of
 
 pytestmark = pytest.mark.contract
 
@@ -49,9 +49,8 @@ def _upload_activate_and_establish_state(client, project_name: str):
     assert client.post(f"/api/skills/platform/projects/{project_name}/activate").status_code == 200
     assert client.post(f"/api/skills/platform/projects/{project_name}/publish", json={}).status_code == 200
 
-    session_response = client.get("/api/skills/webchat/sessions/current")
-    assert session_response.status_code == 200, session_response.text
-    action_response = client.post(f"/api/skills/webchat/sessions/{session_response.json()['id']}/actions", json={"action_name": "go"})
+    session_id = session_of(enter_chat(client, project_name))
+    action_response = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go"})
     assert action_response.status_code == 200, action_response.text
 
 
@@ -112,7 +111,7 @@ def test_revert_deletes_every_unlabeled_test_session_but_only_when_there_was_a_d
 
 def test_native_and_imported_sessions_are_both_unaffected_by_publish(client):
     _upload_activate_and_establish_state(client, "proj")
-    native_session_id = client.get("/api/skills/webchat/sessions/current").json()["id"]
+    native_session_id = session_of(enter_chat(client, "proj"))
     response = client.post(
         "/api/skills/platform/projects/proj/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: hello\n", "text/plain"))]
     )

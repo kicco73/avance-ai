@@ -21,13 +21,16 @@ picks out its own without core knowing who is listening.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from itertools import takewhile
 
 from db import Db
 from system import bus
 from system.bus import (
     INPUT_TEXT, OUTPUT_REACTION, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TEXT_STREAM, OUTPUT_TOOL,
-    STATE_CHANGED, OUTPUT_ERROR, INPUT_BUTTON, SESSION_NEW, UI_BUTTONS, UI_SERVICES, Message,
+    STATE_CHANGED, OUTPUT_ERROR, INPUT_BUTTON, INPUT_REACTION, STATE_BUTTONS,
+    SESSION_ENTER, SESSION_CREATE, SESSION_INFO, SESSION_MESSAGES, SESSION_BLOCKED,
+    SESSION_OPENED, SESSION_RECALL, SESSION_TERMINATE, SESSION_SPEAK, Message,
 )
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
@@ -60,9 +63,113 @@ class TurnInput(object):
         # A button taken is a request too, and goes into the same queue:
         # it must not move the conversation in the middle of an answer.
         bus.subscribe(INPUT_BUTTON, self._requested)
-        # Opening a conversation is an occasion for the automaton to
-        # speak first, and it queues like everything else.
-        bus.subscribe(SESSION_NEW, self._requested)
+        # Entering a conversation names a project, not a session, so it
+        # never goes near the queue, which is keyed by session. It
+        # answers, and says so; what a conversation opens with is a
+        # reaction to that.
+        bus.subscribe(SESSION_ENTER, self._entering)
+        bus.subscribe(SESSION_CREATE, self._entering)
+        bus.subscribe(SESSION_OPENED, self._opening)
+        bus.subscribe(SESSION_RECALL, self._recalled)
+        bus.subscribe(SESSION_TERMINATE, self._terminated)
+        bus.subscribe(SESSION_SPEAK, self._speaking)
+        bus.subscribe(INPUT_REACTION, self._reacted)
+
+    async def _entering(self, message: Message) -> None:
+        """Into a conversation, named the way whoever is asking knows it.
+
+        A chat knows the project and asks for its conversation there; an
+        operator has been handed one session and nothing else, and a
+        person browsing past conversations picks one. Both are entering,
+        and the envelope already carries either name."""
+        role = self._role_of(message.username)
+        kind = str((message.body or {}).get("session_type") or "live")
+        with WebSession().for_sender(message.username, role=role, channel=message.channel):
+            entering = _Outbound(message)
+            try:
+                session = await self._resolved(message, kind)
+            except ServiceError as exc:
+                entering.failed(exc, [])
+                await entering.flush()
+                return
+            refusal = self._refusal_of(session)
+            if refusal is not None:
+                entering.put(SESSION_BLOCKED, {**refusal, "session_type": kind})
+                await entering.flush()
+                return
+            entered = replace(message, session_id=session["id"])
+            outbound = _Outbound(entered)
+            outbound.informed(session, self._turn_service.services_for(session["id"]), kind)
+            outbound.recalled(self._turn_service.read_history(session["id"]))
+            outbound.offered(self._turn_service.buttons_for(session["id"], session["state"]))
+            await outbound.flush()
+        await bus.publish(replace(entered, type=SESSION_OPENED, body={}))
+
+    async def _resolved(self, message: Message, kind: str) -> dict:
+        for session_id in filter(None, [None if message.type == SESSION_CREATE else message.session_id]):
+            return self._turn_service.session_named(session_id)
+        if message.type == SESSION_CREATE:
+            return await self._turn_service.create_session_of(message.project_id, kind)
+        return await self._turn_service.enter_session(message.project_id, kind)
+
+    @staticmethod
+    def _refusal_of(session: dict) -> dict | None:
+        for reason in filter(None, [session.get("blocked")]):
+            return {"reason": reason, "detail": session.get("detail") or ""}
+        for _ in filter(None, [session.get("legal_terms_pending")]):
+            return {"reason": "terms", "detail": session.get("project_id") or ""}
+        for _ in filter(None, [session.get("paused")]):
+            return {"reason": "paused", "detail": session.get("paused_reason") or ""}
+        return None
+
+    async def _opening(self, message: Message) -> None:
+        """Whatever this conversation opens with. Its own task, like an
+        answer: publishing the announcement must not wait for a model.
+        Not a request — nobody asked for it — so it never joins the queue
+        of requests, which is what fixes the order of what a person says
+        and has nothing to fix here."""
+        role = self._role_of(message.username)
+        task = asyncio.create_task(self._greeting(message, role))
+        self._turns.add(task)
+        task.add_done_callback(self._turns.discard)
+
+    async def _greeting(self, message: Message, role: str) -> None:
+        with WebSession().for_sender(message.username, role=role, channel=message.channel):
+            outbound = _Outbound(message)
+            drain = asyncio.create_task(outbound.drain())
+            try:
+                await self._open_session(message, outbound)
+            finally:
+                outbound.close()
+                await drain
+
+    async def _recalled(self, message: Message) -> None:
+        await self._answering(message, lambda outbound: outbound.recalled(
+            self._turn_service.read_history(message.session_id, (message.body or {}).get("limit")),
+        ))
+
+    async def _terminated(self, message: Message) -> None:
+        await self._answering(message, lambda outbound: None, self._turn_service.close_session)
+
+    async def _speaking(self, message: Message) -> None:
+        enabled = bool((message.body or {}).get("enabled"))
+        self._turn_service.set_audio_enabled(message.session_id, enabled)
+
+    async def _reacted(self, message: Message) -> None:
+        body = message.body or {}
+        self._turn_service.set_message_reaction(body.get("assistant_message_id"), body.get("reaction"))
+
+    async def _answering(self, message: Message, say, first=None) -> None:
+        role = self._role_of(message.username)
+        with WebSession().for_sender(message.username, role=role, channel=message.channel):
+            outbound = _Outbound(message)
+            try:
+                if first is not None:
+                    await first(message.session_id)
+                say(outbound)
+            except ServiceError as exc:
+                outbound.failed(exc, [])
+            await outbound.flush()
 
     async def _requested(self, message: Message) -> None:
         """One request, accepted here and answered with whatever else has
@@ -96,9 +203,9 @@ class TurnInput(object):
         refused — that request is answered with the refusal and never
         joins the ones waiting."""
         outbound = _Outbound(message)
-        for _ in filter(lambda kind: kind in (INPUT_BUTTON, SESSION_NEW), [message.type]):
+        for _ in filter(INPUT_BUTTON.__eq__, [message.type]):
             # Nothing to persist: a choice taken is recorded by the
-            # automaton itself, and opening a conversation says nothing.
+            # automaton itself.
             requests.waiting.append(message)
             requests.accepted.append(None)
             return True
@@ -162,9 +269,6 @@ class TurnInput(object):
         for _ in filter(INPUT_BUTTON.__eq__, [message.type]):
             await self._take_action(message, outbound)
             return
-        for _ in filter(SESSION_NEW.__eq__, [message.type]):
-            await self._open_session(message, outbound)
-            return
         session_id = message.session_id
         text = str((message.body or {}).get("text") or "").strip()
         try:
@@ -195,27 +299,19 @@ class TurnInput(object):
 
 
     async def _open_session(self, message: Message, outbound: "_Outbound") -> None:
-        """A conversation just opened. What it offers is always said —
-        it is how whoever is showing the chat learns which choices to
-        put on screen, and the only way they arrive now that no payload
-        carries them. If this state also has something to say before
-        anybody says anything, it is said here too, as an ordinary
-        message; a conversation already under way is owed no message,
-        only its choices."""
+        """What a state has to say before anybody says anything, said as
+        an ordinary message — to whoever is reading there is no
+        difference between a greeting and an answer. A conversation
+        already under way is owed nothing and this is silent."""
         try:
             result = await self._turn_service.open_if_needed(message.session_id, outbound.on_metadata)
         except ServiceError as exc:
             outbound.failed(exc, [])
             return
-        outbound.reaches(self._turn_service.services_for(message.session_id))
         for opened in filter(None, [result]):
             outbound.moved(opened)
             outbound.offered(opened.get("buttons"))
             outbound.said(opened["reply"])
-        for _ in filter(None, [result is None]):
-            outbound.offered(self._turn_service.buttons_for(
-                message.session_id, self._turn_service.get_state_for_session(message.session_id),
-            ))
 
     async def _take_action(self, message: Message, outbound: "_Outbound") -> None:
         """One of the choices the state offered, taken. It produces what
@@ -352,19 +448,26 @@ class _Outbound(object):
                 "triggered_action": result.get("triggered_action"),
             })
 
-    def reaches(self, services: dict) -> None:
-        """What this conversation can reach — whether it can be spoken,
-        whether it can be spoken to. A fact about the session, said when
-        it opens, so whoever is showing it knows which controls to put on
-        screen without asking about anything global."""
-        self.put(UI_SERVICES, {"services": services})
+    def informed(self, session: dict, services: dict, kind: str) -> None:
+        self.put(SESSION_INFO, {
+            "state": session.get("state"),
+            "services": services,
+            "audio": session.get("audio", False),
+            "current": session.get("current", True),
+            "channel": session.get("channel"),
+            "project_id": session.get("project_id"),
+            "session_type": kind,
+        })
+
+    def recalled(self, messages: list[dict]) -> None:
+        self.put(SESSION_MESSAGES, {"messages": messages})
 
     def offered(self, buttons: list[dict] | None) -> None:
         """What the person may do now. A fact about the state the
         conversation is in, which is why it does not ride on whatever
         message happened to come last — and why it is not a field of the
         state either: this message is the only place the choices are."""
-        self.put(UI_BUTTONS, {"actions": buttons or []})
+        self.put(STATE_BUTTONS, {"actions": buttons or []})
 
     def failed(self, exc: ServiceError, prepared: list[dict]) -> None:
         """What the state owed is owed either way: it was written before
