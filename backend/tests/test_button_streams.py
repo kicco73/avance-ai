@@ -22,6 +22,10 @@ from system.web_session import WebSession
 from turn.input_listener import TurnInput
 from turn_harness import PROJECT_ID, turn_service_for  # noqa: F401 — a fixture, used by name
 
+REACHES_INTO = {
+    "_requests": "no queue at all, not merely an empty one: a None key would be shared by every session-less sender",
+}
+
 pytestmark = pytest.mark.regression
 
 _PUBLISHED = (

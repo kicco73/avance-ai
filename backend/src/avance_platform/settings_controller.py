@@ -12,6 +12,7 @@ editor was ever installed, and none of them touches a project's contents.
 from __future__ import annotations
 
 from http import HTTPStatus
+from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import HTTPException, Request, Response
@@ -23,6 +24,8 @@ from scheduler import SchedulerService
 from system.web_session import WebSession
 
 from controllers.base_controller import BaseController, delete, get, post
+
+NEW_PROJECT_TEMPLATE = Path(__file__).resolve().parent / "new_project_template.zip"
 
 
 class SettingsController(BaseController):
@@ -73,13 +76,15 @@ class SettingsController(BaseController):
     @post("/api/skills/platform/projects", role="admin")
     async def post_new_project(self):
         """"New project" — same effect as POST /api/skills/platform/projects/upload with
-        backend/samples/Hello world.zip as the body, minus a real upload
-        (see ProjectService.create_new_project — its own project.id is
-        always freshly minted, since project.id must be globally unique).
-        The built-in template bundles no sessions/test results, so
-        there's nothing for the returned job to do — no progress worth
-        reporting, plain JSON response, unlike a real upload."""
-        result, _job = await self.project_service.create_new_project()
+        NEW_PROJECT_TEMPLATE as the body, minus a real upload (see
+        ProjectService.create_new_project — its own project.id is always
+        freshly minted, since project.id must be globally unique). The
+        template travels with this skill, not with the core: a build
+        without an authoring surface has no way to create a project and
+        nothing to create it from. It bundles no sessions/test results,
+        so there's nothing for the returned job to do — no progress
+        worth reporting, plain JSON response, unlike a real upload."""
+        result, _job = await self.project_service.create_new_project(NEW_PROJECT_TEMPLATE.read_bytes())
         return result
 
     @get("/api/skills/platform/projects/{project_id}", role="admin")

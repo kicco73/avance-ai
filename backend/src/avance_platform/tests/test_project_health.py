@@ -27,6 +27,11 @@ from project.project_service import ProjectService
 from system.service_error import ServiceError
 from conftest import rewrite_archive_content
 
+REACHES_INTO = {
+    "_file": "the build error's own fields, not a service's internals",
+    "_line": "the build error's own fields, not a service's internals",
+}
+
 pytestmark = pytest.mark.contract
 
 USERNAME = "user"

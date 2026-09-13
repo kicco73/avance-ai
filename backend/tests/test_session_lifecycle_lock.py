@@ -19,6 +19,10 @@ from metrics.metric_service import MetricService
 from system.web_session import WebSession
 from tracking.tracking_service import TrackingService
 
+REACHES_INTO = {
+    "_session_lifecycle_locks": "the lock is the subject; a caller must be pinned inside it or the test passes vacuously",
+}
+
 pytestmark = pytest.mark.contract
 
 PROJECT_ID = "lock-proj"

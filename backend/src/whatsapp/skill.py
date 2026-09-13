@@ -16,6 +16,9 @@ class WhatsAppSkill(Skill):
     ui_description = "Chat channel over the WhatsApp Cloud API."
     project_declarable = True
 
+    def docs(self) -> dict[str, str]:
+        return {"project-specs": "PROJECT_SPECS.md"}
+
     def __init__(self) -> None:
         self._config = None
         self._installed = NoWhatsApp(None)

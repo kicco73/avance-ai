@@ -13,6 +13,10 @@ from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 
+REACHES_INTO = {
+    "_providers": "a real GoogleAuthProvider needs a real client id; the fake replaces it",
+}
+
 pytestmark = pytest.mark.contract
 
 

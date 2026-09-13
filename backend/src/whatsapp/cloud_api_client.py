@@ -1,5 +1,5 @@
 """Thin async client for the Meta WhatsApp Cloud API (the outbound half of
-the channel — see docs/WHATSAPP.md). Only what the channel needs: send
+the channel — see whatsapp/docs/WHATSAPP.md). Only what the channel needs: send
 a text, buttons or an audio, mark a message read, move media in and out. Never touches Avance's own services."""
 from __future__ import annotations
 

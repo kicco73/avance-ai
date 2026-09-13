@@ -6,6 +6,10 @@ import pytest
 
 from jobs import CancelableJob
 
+REACHES_INTO = {
+    "_jobs_by_key": "no public writer; a deterministic done/in-flight pair needs one",
+}
+
 pytestmark = pytest.mark.contract
 
 

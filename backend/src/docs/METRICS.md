@@ -1,4 +1,4 @@
-# metrics_framework
+# Core metrics
 
 Core, domain-agnostic analytics for one user and one project.
 
@@ -62,28 +62,3 @@ Every result is normalized to `0..100`.
 
 These are intentionally domain-agnostic. Progress, momentum, exploration and
 state-specific semantics are outside this package.
-
-## Benchmark metrics
-
-The `benchmark_metrics` package compares expert annotations against actual project behavior.
-
-All benchmark metric values are normalized to `0..100`, with `100` meaning perfect.
-
-Core benchmark metrics:
-
-1. `state_accuracy`
-2. `signal_accuracy`
-3. `transition_responsiveness`
-4. `benchmark_accuracy`
-5. `benchmark_stability`
-6. `benchmark_consistency`
-
-The application should supply the unified system setting:
-
-```yaml
-turn-service:
-  max-session-duration-in-minutes: 60
-```
-
-The benchmark framework does not access Peewee directly. Its DB facade must expose
-`expected_state` on messages and `expected_values` on signal events.

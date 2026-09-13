@@ -29,7 +29,7 @@ class _RecordingAiService:
     def is_provider_with_schema(self) -> bool:
         return True
 
-    def get_models_info(self) -> dict:
+    def get_models_snapshot(self) -> dict:
         return {"auto": True, "current_index": 0, "models": []}
 
     async def generate_stream_with_metadata(

@@ -223,6 +223,7 @@ class PlatformService(object):
         for app in apps:
             app["icon_file"] = self._find_app_icon_file(app["id"])
             automaton = self.project_service.get_automaton(app["id"], self.project_service.get_published_revision(app["id"]))
+            app["family"] = automaton.family
             app["reactions_enabled"] = any(automaton.reactions_enabled_for(s) for s in automaton.states.values())
             app["compiled"] = isinstance(automaton, CompiledAutomaton)
         return apps

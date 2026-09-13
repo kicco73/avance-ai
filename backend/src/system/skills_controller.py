@@ -19,26 +19,26 @@ from http import HTTPStatus
 from fastapi import HTTPException
 
 from controllers.base_controller import BaseController, get
-from system import skills
-from system.doc_catalog import DOCS
+from system import doc_catalog, skills
 
 
 class SkillsController(BaseController):
 
     @get("/api/core/docs/{name}")
     def get_doc(self, name: str):
-        """Raw markdown of one of src/docs/'s fixed set of reference docs
-        — what each "(?)" documentation button reads, instead of
-        duplicating it into the frontend bundle. Unknown `name` is a 404.
+        """Raw markdown of one reference document — what each "(?)"
+        documentation button reads, instead of duplicating it into the
+        frontend bundle. A slug this build has nothing behind is a 404.
 
-        Here rather than with the authoring surface: one of these docs is
-        the skills page this build assembles out of whatever it installed
-        (see system/doc_catalog.py), and a product with no editor still
+        Here rather than with the authoring surface: every one of these
+        is assembled out of whatever this build installed (see
+        system/doc_catalog.py), and a product with no editor still
         answers for itself."""
-        doc = DOCS.get(name)
+        doc = doc_catalog.catalog().get(name)
         if doc is None:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"Unknown doc '{name}'.")
         return {"content": doc.render()}
+
     @get("/api/skills", role="admin")
     def get_skills(self):
         """Every skill this backend has installed: key, package, ui_label,

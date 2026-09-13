@@ -10,6 +10,10 @@ from conftest import chat_turn, enter_chat, session_of
 from system.web_session import WebSession
 from testing.testing_service import PooledAggregationJob, TestingService
 
+REACHES_INTO = {
+    "_resolve_or_construct_session_run": "the deterministic interleaving is the subject; nothing public parks a caller inside it",
+}
+
 pytestmark = pytest.mark.contract
 
 

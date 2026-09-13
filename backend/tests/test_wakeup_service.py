@@ -20,6 +20,10 @@ from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 from tracking.wakeup_service import WakeupService
 
+REACHES_INTO = {
+    "_reevaluate_and_apply": "pre-existing; the public path needs the file-backed db fixture and a wait loop",
+}
+
 pytestmark = pytest.mark.contract
 
 USERNAME = "user"

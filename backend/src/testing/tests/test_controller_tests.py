@@ -182,3 +182,23 @@ def test_delete_tests_forces_a_fresh_run_instead_of_a_cache_hit(client, hello_pr
         f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
     ).json()
     _wait_for_terminal_status(client, hello_project, second["id"])
+
+
+def test_a_run_records_which_models_produced_it_and_not_the_catalogue_shown_to_a_human(client, hello_project):
+    """The snapshot is written once per run and never read back, so what
+    it costs is what it stores: the words the Settings page shows about
+    a model are not what produced a result."""
+    session_id = _make_labeled_session(client, hello_project)
+
+    response = client.post(
+        f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
+    )
+
+    assert response.status_code == 200, response.text
+    run = response.json()
+    snapshot = run["ai_model_snapshot"]
+    assert set(snapshot) == {"auto", "current_index", "models"}
+    for model in snapshot["models"]:
+        assert set(model) == {"driver", "model", "url"}
+
+    _wait_for_terminal_status(client, hello_project, run["id"])

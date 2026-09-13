@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import re
-import sqlite3
 import tempfile
 from datetime import datetime
 
@@ -242,11 +241,20 @@ class Db(
 
     @staticmethod
     def _backup_to_path(dest_path: str) -> None:
-        dest_conn = sqlite3.connect(dest_path)
-        try:
-            database.connection().backup(dest_conn)
-        finally:
-            dest_conn.close()
+        if os.path.exists(dest_path):
+            os.remove(dest_path)
+        database.execute_sql('VACUUM INTO ?', (dest_path,))
+
+    @staticmethod
+    def reclaim_free_space() -> None:
+        """Gives back the pages a bulk delete freed. SQLite keeps them
+        in the file's own freelist and reuses them, so nothing here is
+        needed for correctness — but a working database that deleted
+        most of what it held stays the size it was at its largest, and
+        so does every backup taken from it. Must run with nothing else
+        writing and no transaction open: the callers are the admin
+        operations that already hold global exclusive access."""
+        database.execute_sql('VACUUM')
 
     def backup_now(self, reason: str) -> str | None:
         """Same timestamped-backup-plus-warning dance

@@ -32,6 +32,7 @@ SRC_ROOT = BACKEND_ROOT / "src"
 
 ROUTE_DECORATORS = {"get", "post", "put", "delete", "route"}
 PLACEHOLDER = "{}"
+MARKER = "${API_URL}"
 # `${API_URL}` followed by the path, up to the end of the template
 # literal or the start of a query string.
 CALL = re.compile(r"\$\{API_URL\}(/[^`?\s]*)")
@@ -96,11 +97,15 @@ def _route_of(decorator) -> list[str]:
     return wanted[:1] * (name in ROUTE_DECORATORS)
 
 
+def _sources() -> dict[Path, str]:
+    return {source: source.read_text(encoding="utf-8") for source in sorted(FRONTEND_SRC.rglob("*.js"))}
+
+
 def frontend_calls() -> list[tuple[Path, str]]:
     return [
         (source.relative_to(FRONTEND_SRC), normalised(match))
-        for source in sorted(FRONTEND_SRC.rglob("*.js"))
-        for match in CALL.findall(source.read_text(encoding="utf-8"))
+        for source, text in _sources().items()
+        for match in CALL.findall(text)
     ]
 
 
@@ -119,8 +124,23 @@ def test_every_frontend_call_reaches_a_declared_route():
     )
 
 
-def test_the_frontend_actually_was_scanned():
-    """A regex that matches nothing passes the test above for free. This
-    fails if the frontend stops being readable from here, or stops
-    writing its URLs the way the pattern expects."""
-    assert len(frontend_calls()) > 100
+def test_every_call_written_in_the_frontend_was_read():
+    """A regex that matches nothing passes the test above for free, and a
+    count would only say so for the tree it was written against — a build
+    ships fewer skills and fewer calls. So: the scan has to reach a
+    frontend and read something at all, and every `${API_URL}` written
+    there must come back out of the pattern. A URL written in a shape the
+    pattern does not expect is one this file never checked."""
+    assert FRONTEND_SRC.is_dir() and frontend_calls(), (
+        f"no frontend call was read at all under {FRONTEND_SRC}: the two tests here "
+        "then pass without checking anything."
+    )
+    unread = {
+        source.relative_to(FRONTEND_SRC).as_posix(): (text.count(MARKER), len(CALL.findall(text)))
+        for source, text in _sources().items()
+        if text.count(MARKER) != len(CALL.findall(text))
+    }
+    assert not unread, (
+        "these files write a call the pattern did not read (written, read):\n"
+        + "\n".join(f"  {source} → {counts}" for source, counts in sorted(unread.items()))
+    )

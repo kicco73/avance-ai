@@ -45,7 +45,6 @@ from tracking.tracking_service import TrackingService
 
 BACKEND_DIR = Path(__file__).resolve().parent
 SRC_ROOT = BACKEND_DIR / "src"
-SAMPLES_DIR = BACKEND_DIR / "samples" / "projects"
 TEST_STATS_PATH = BACKEND_DIR / "test_stats.json"
 
 
@@ -470,6 +469,9 @@ class FakeAiService:
     def get_models_info(self) -> dict:
         return {"auto": True, "current_index": 0, "models": []}
 
+    def get_models_snapshot(self) -> dict:
+        return {"auto": True, "current_index": 0, "models": []}
+
     def select_model(self, index: int | None) -> None:
         pass
 
@@ -772,28 +774,33 @@ def live_server(app: FastAPI):
         thread.join(timeout=5.0)
 
 
-@pytest.fixture
-def hello_project(client: TestClient) -> str:
-    """Uploads, activates, and publishes the bundled "Hello world" sample
-    project — a project needs a published revision before it can have
-    chat sessions. Returns the project's own id (its index.yml declares
-    "legacy.hello_world" — put_project.py always uses whatever the
-    upload's own project.id says, there's no separate name to request)."""
-    # Uploading, activating and publishing are the authoring surface's own
-    # routes (see avance_platform/settings_controller.py) — a build without
-    # it has no way to put a project there at all.
+def new_project(client: TestClient) -> str:
+    """One more project, created, activated and published — the id is
+    the template's own, made unique where a project already has it.
+    What a test reaches for when it needs a second project to tell two
+    of something apart; `hello_project` is the same thing as a fixture."""
     installed_skill("avance_platform")
-    content = (SAMPLES_DIR / "Hello world.zip").read_bytes()
-    response = client.post(
-        "/api/skills/platform/projects/upload", content=content, headers={"Content-Type": "application/zip"}
-    )
+    response = client.post("/api/skills/platform/projects")
     assert response.status_code == 200, response.text
-    project_id = parse_sse_result(response)["project_id"]
+    project_id = response.json()["project_id"]
     response = client.post(f"/api/core/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
     response = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
     return project_id
+
+
+@pytest.fixture
+def hello_project(client: TestClient) -> str:
+    """Creates, activates and publishes a "Hello world" project — a
+    project needs a published revision before it can have chat sessions.
+    Returns the project's own id, the one the template declares.
+
+    It goes through "New project" rather than uploading a file from
+    `samples/`: creating a project is the authoring surface's own route
+    (see avance_platform/settings_controller.py), the template it uses
+    travels with that skill, and no build copies `samples/`."""
+    return new_project(client)
 
 
 def pytest_runtest_logreport(report) -> None:

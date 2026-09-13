@@ -78,7 +78,23 @@ describe("chatSkin.js's shared index.css skin loader, driven by the live store",
       expect.objectContaining({ credentials: 'include', cache: 'no-store' })
     )
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
-    expect(currentSkinStyleTags()[0].textContent).toBe('.chat-window-shell { color: red; }')
+    expect(currentSkinStyleTags()[0].textContent).toContain('.chat-window-shell { color: red; }')
+  })
+
+  it('what lands in the head reaches no further than the chat box, and keeps the skin @keyframes the chat animates with', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => '@keyframes pulse { to { opacity: 0; } }\nbody { color: red; }\n.chat-header { color: blue; }'
+    })
+    chatStore.currentProjectId.value = 'proj'
+    chatStore.currentSessionId.value = 1
+    await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
+
+    const applied = currentSkinStyleTags()[0].textContent
+    expect(applied.indexOf('@keyframes pulse')).toBeLessThan(applied.indexOf('@scope (.chat-window-shell) {'))
+    expect(applied).toContain('body { color: red; }')
+    expect(applied.slice(applied.indexOf('@scope'))).toContain('.chat-header { color: blue; }')
+    expect(applied.slice(applied.indexOf('@scope'))).toContain('body { color: red; }')
   })
 
   it('a skinVersion bump re-fetches into the same tag, and a non-ok response clears it rather than leaving a stale one', async () => {
@@ -86,7 +102,7 @@ describe("chatSkin.js's shared index.css skin loader, driven by the live store",
 
     fetchMock.mockResolvedValue({ ok: true, text: async () => css('blue') })
     chatSkin.invalidateSkin()
-    await vi.waitFor(() => expect(currentSkinStyleTags()[0]?.textContent).toBe(css('blue')))
+    await vi.waitFor(() => expect(currentSkinStyleTags()[0]?.textContent).toContain(css('blue')))
     expect(currentSkinStyleTags()).toHaveLength(1)
     expect(fetchMock).toHaveBeenCalledTimes(2)
 
@@ -105,7 +121,7 @@ describe("chatSkin.js's shared index.css skin loader, driven by the live store",
     fetchMock.mockResolvedValue({ ok: true, text: async () => css('green') })
     chatSkin.applyAspect.value = true
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
-    expect(currentSkinStyleTags()[0].textContent).toBe(css('green'))
+    expect(currentSkinStyleTags()[0].textContent).toContain(css('green'))
   })
 
   it('switching project+session (e.g. leaving then re-entering Test) fetches the new one', async () => {
@@ -121,7 +137,7 @@ describe("chatSkin.js's shared index.css skin loader, driven by the live store",
       expect.anything()
     )
     expect(currentSkinStyleTags()).toHaveLength(1)
-    expect(currentSkinStyleTags()[0].textContent).toBe(css('purple'))
+    expect(currentSkinStyleTags()[0].textContent).toContain(css('purple'))
   })
 })
 
@@ -160,20 +176,20 @@ describe('chatSkin.js only ever applies the currently active store — live vs t
     testChatStore.currentSessionId.value = 99
     await nextTick()
     await nextTick()
-    expect(currentSkinStyleTags()[0].textContent).toBe(css('red'))
+    expect(currentSkinStyleTags()[0].textContent).toContain(css('red'))
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
     // Switching modes (EditProjectView's setMode('run')) immediately
     // swaps to the test store's own already-resolved project/session.
     chatSkin.activeChatMode.value = 'test'
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    await vi.waitFor(() => expect(currentSkinStyleTags()[0].textContent).toBe(css('draft')))
+    await vi.waitFor(() => expect(currentSkinStyleTags()[0].textContent).toContain(css('draft')))
 
     // Leaving 'run' mode swaps straight back — the live store's project/
     // session never had to be touched or reloaded to make this happen.
     fetchMock.mockResolvedValue({ ok: true, text: async () => css('red') })
     chatSkin.activeChatMode.value = 'live'
-    await vi.waitFor(() => expect(currentSkinStyleTags()[0].textContent).toBe(css('red')))
+    await vi.waitFor(() => expect(currentSkinStyleTags()[0].textContent).toContain(css('red')))
   })
 })
 

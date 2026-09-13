@@ -7,8 +7,7 @@ with.
 
 What follows is this installation: every section below is written by the
 skill it describes, so this page lists what is actually here and nothing
-else. How a skill is built, isolated and left out of a build is a
-separate matter — see `docs/BUILDING_PLATFORMS.md`.
+else.
 
 Two words recur. A skill is **installed** when its package is part of
 this build — a decision taken once, when the build was produced, that

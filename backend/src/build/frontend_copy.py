@@ -29,11 +29,13 @@ from pathlib import Path
 
 from system.logging_factory import LoggerFactory
 
+from .copy_ignore import DEV_ONLY_DIRS
+
 logger = LoggerFactory.get_logger(__name__)
 
 _SOURCE_SUFFIXES = {".js", ".vue", ".css", ".html", ".json", ".md"}
 
-_FRONTEND_COPY_IGNORE = shutil.ignore_patterns("node_modules", "dist", ".vite", "*.log")
+_FRONTEND_COPY_IGNORE = shutil.ignore_patterns("node_modules", "dist", "*.log", *DEV_ONLY_DIRS)
 
 
 class FrontendBuildError(Exception):

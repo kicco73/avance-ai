@@ -129,7 +129,7 @@ secrets). Top-level sections:
   prompt can carry: walking backward from the latest message, as many
   messages as fit within this many cumulative tokens (`Message.tokens`)
   are sent to the model. Combined with a project state's own
-  `history-cutoff` (see `PROJECT_SPECS.md` §5) in a single query
+  `history-cutoff` (see `PROJECT_SPECS.md` §4) in a single query
   (`Db.get_turn_history`) rather than replacing it — whichever cutoff is
   tighter wins.
 - **`turn-service.total-token-budget-per-session`** — optional, defaults

@@ -13,6 +13,10 @@ from system.web_session import WebSession
 from tracking.tracking_processor import TrackingProcessor
 from turn_harness import PROJECT_ID, turn_service_for  # noqa: F401 — a pytest fixture, used by name
 
+REACHES_INTO = {
+    "_button_labels_to_translate": "pins this filter to the public pressable_actions it duplicates and could drift from",
+}
+
 pytestmark = pytest.mark.regression
 
 

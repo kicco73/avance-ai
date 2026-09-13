@@ -9,7 +9,6 @@ from system.web_session import WebSession
 
 pytestmark = pytest.mark.regression
 
-from conftest import SAMPLES_DIR
 MINIMAL_YML = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
 
 
@@ -19,16 +18,6 @@ def _build_zip(files: dict[str, bytes]) -> bytes:
         for name, content in files.items():
             zf.writestr(name, content)
     return buffer.getvalue()
-
-
-def _upload(client, sample):
-    """Returns the project's own id — declared entirely by the upload's
-    own content (project.id), never a name chosen via the URL (there is
-    no URL name anymore, see POST /api/skills/platform/projects/upload)."""
-    content = (SAMPLES_DIR / sample).read_bytes()
-    response = client.post("/api/skills/platform/projects/upload", content=content, headers={"Content-Type": "application/zip"})
-    assert response.status_code == 200, response.text
-    return parse_sse_result(response)["project_id"]
 
 
 def _upload_yaml(client, project_id: str):
@@ -68,8 +57,9 @@ def test_a_fresh_install_has_no_active_project_and_still_reports_the_configured_
 
 
 def test_deleting_the_active_project_falls_back_to_a_remaining_one_and_degrades_gracefully_when_none_is_left(client):
-    hello = _upload(client, "Hello world.zip")
-    cat = _upload(client, "Aprendr català.zip")
+    hello, cat = "hello", "cat"
+    _upload_yaml(client, hello)
+    _upload_yaml(client, cat)
     client.post(f"/api/skills/platform/projects/{cat}/publish", json={})
     client.post(f"/api/core/projects/{hello}/activate")
 
@@ -152,8 +142,9 @@ def test_a_plain_user_only_sees_the_projects_they_have_a_userproject_row_for(app
     """See Db.list_projects_with_availability_for_user — every other role
     (the default test session's own "supervisor", and admin) still sees
     everything, per the tests above."""
-    hello = _upload(client, "Hello world.zip")
-    _upload(client, "Aprendr català.zip")
+    hello = "hello"
+    _upload_yaml(client, hello)
+    _upload_yaml(client, "cat")
     WebSession().role = "user"
 
     assert client.get("/api/core/projects").json()["projects"] == []

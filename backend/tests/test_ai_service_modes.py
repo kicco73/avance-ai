@@ -10,6 +10,10 @@ import pytest
 from ai import AiService
 from ai.llm_provider import AIServiceConfig
 
+REACHES_INTO = {
+    "_auto_provider": "AiService exposes no accessor for its auto cascade",
+}
+
 pytestmark = pytest.mark.contract
 
 
@@ -106,3 +110,18 @@ class TestNoAutoMode:
 
         info = service.get_models_info()
         assert info["models"][info["current_index"]]["model"] == "fallback"
+
+
+def test_the_snapshot_a_run_stores_names_the_models_without_the_prose_the_page_shows():
+    """get_models_info() feeds a screen, get_models_snapshot() is
+    written to a row — same models, and the ui_* text belongs only to
+    the first."""
+    service = AiService.for_live([_config("primary"), _config("fallback")])
+
+    snapshot = service.get_models_snapshot()
+    info = service.get_models_info()
+
+    assert [m["model"] for m in snapshot["models"]] == ["primary", "fallback"]
+    assert all(set(m) == {"driver", "model", "url"} for m in snapshot["models"])
+    assert all(m["ui_label"] for m in info["models"])
+    assert (snapshot["auto"], snapshot["current_index"]) == (info["auto"], info["current_index"])

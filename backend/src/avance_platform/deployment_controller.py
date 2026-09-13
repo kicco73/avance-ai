@@ -8,7 +8,8 @@ build, and it is the core's. Choosing among them is an operation somebody
 performs from a screen, and the screen is here.
 
 A delivered product does not decide: it runs the one project it was built
-around (see product/skill.py), on the model its configuration names. That
+around (see project/archive/loader_choice.py), on the model its
+configuration names. That
 is why none of this has to survive a build that drops the editor, and why
 putting it in the core — which is where it spent an afternoon — made the
 core answer questions a product has no one to ask.

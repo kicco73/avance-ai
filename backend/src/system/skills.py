@@ -33,7 +33,8 @@ from system.logging_factory import LoggerFactory
 logger = LoggerFactory.get_logger(__name__)
 
 SKILL_MODULE = "skill"
-DOC_FILE = "docs/SKILL.md"
+DOC_DIR = "docs"
+SKILL_DOC = "SKILL.md"
 
 
 class Skill:
@@ -76,8 +77,15 @@ class Skill:
     def requirements(self) -> list[str]:
         return []
 
-    def documentation(self) -> str:
-        path = Path(inspect.getfile(type(self))).resolve().parent / DOC_FILE
+    def docs(self) -> dict[str, str]:
+        """The reference documents this skill serves, as slug -> file name
+        under its own `docs/`. A slug the core also has a file for is
+        appended to it; one it does not exists only where this skill was
+        copied. Empty for a skill that documents itself and nothing else."""
+        return {}
+
+    def documentation(self, file_name: str = SKILL_DOC) -> str:
+        path = Path(inspect.getfile(type(self))).resolve().parent / DOC_DIR / file_name
         try:
             return path.read_text(encoding="utf-8").strip()
         except FileNotFoundError:
@@ -143,9 +151,20 @@ def installed(source_root: Path | None = None) -> list[dict]:
     ]
 
 
-def documentation(source_root: Path | None = None) -> str:
-    sections = [skill.documentation() for skill in discover(source_root)]
+def documentation(source_root: Path | None = None, file_name: str = SKILL_DOC) -> str:
+    sections = [skill.documentation(file_name) for skill in discover(source_root)]
     return "\n\n".join(section for section in sections if section)
+
+
+def documented_slugs(source_root: Path | None = None) -> dict[str, str]:
+    """Every slug an installed skill carries a document for, mapped to the
+    file name it is written in. Two skills contributing the same slug
+    contribute to the same document and must agree on the file name."""
+    return {
+        slug: file_name
+        for skill in discover(source_root)
+        for slug, file_name in skill.docs().items()
+    }
 
 
 def requirements_of(packages: list[str], source_root: Path | None = None) -> list[str]:

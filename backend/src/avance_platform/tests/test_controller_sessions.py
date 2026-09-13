@@ -34,7 +34,30 @@ states:
     chat-enabled: false
 """
 
-from conftest import SAMPLES_DIR
+MINIMAL_YML = (
+    "project:\n  id: {project_id}\n"
+    "init-action:\n  target: a\n"
+    "states:\n"
+    "  a:\n"
+    "    contextual-prompt: hi\n"
+)
+
+WELCOME_YML = (
+    "project:\n  id: welcoming\n"
+    "init-action:\n  target: welcome\n"
+    "states:\n"
+    "  welcome:\n"
+    "    contextual-prompt: hola\n"
+    "    actions:\n"
+    "      - name: unit-subjuntive\n"
+    "        target: subjuntive\n"
+    "  subjuntive:\n"
+    "    contextual-prompt: som-hi\n"
+)
+
+REACHES_INTO = {
+    "_session_locks": "needs a turn still in flight, and the app fixture's AI service never blocks",
+}
 
 
 def _setup_channel_codes_project(app_db, project_name="channel-codes-proj"):
@@ -65,9 +88,8 @@ def _import_session(client, project_id) -> int:
     return parse_sse_result(imported)["last_session_id"]
 
 
-def _upload_and_publish(client, sample: str) -> str:
-    content = (SAMPLES_DIR / sample).read_bytes()
-    resp = client.post("/api/skills/platform/projects/upload", content=content, headers={"Content-Type": "application/zip"})
+def _upload_and_publish(client, yml: str) -> str:
+    resp = client.post("/api/skills/platform/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
     resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
@@ -298,7 +320,7 @@ def test_manual_new_session_starts_at_the_automatons_current_state_not_the_initi
     """A brand new session must start wherever the project's shared
     automaton position currently sits, never silently rewound to
     init_action.target."""
-    project_id = _upload_and_publish(client, "Aprendr català.zip")
+    project_id = _upload_and_publish(client, WELCOME_YML)
     client.post(f"/api/core/projects/{project_id}/activate")
 
     bootstrap_id = session_of(enter_chat(client, project_id))
@@ -316,8 +338,8 @@ def test_switching_the_active_project_keeps_the_other_projects_sessions_and_the_
     """GET /api/core/projects/{project_name}/sessions must return that exact
     project's own sessions regardless of which project is currently
     active, and switching must never touch another project's sessions."""
-    hello = _upload_and_publish(client, "Hello world.zip")
-    cat = _upload_and_publish(client, "Aprendr català.zip")
+    hello = _upload_and_publish(client, MINIMAL_YML.format(project_id="hello"))
+    cat = _upload_and_publish(client, MINIMAL_YML.format(project_id="cat"))
 
     client.post(f"/api/core/projects/{hello}/activate")
     hello_session_id = session_of(enter_chat(client, hello))

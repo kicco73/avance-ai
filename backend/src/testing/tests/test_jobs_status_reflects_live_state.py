@@ -16,6 +16,11 @@ from jobs import CancelableJob
 from testing.jobs.state_aggregation_job import StateAggregationJob
 from system.broadcaster import Broadcaster
 
+REACHES_INTO = {
+    "_compute": "the abstract hook a job subclass implements, held open to observe a live status",
+    "_submit": "the only door to a job parked mid-run, and jobs/job_queue.py is off-limits",
+}
+
 pytestmark = pytest.mark.contract
 
 

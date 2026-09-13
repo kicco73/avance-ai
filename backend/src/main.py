@@ -39,7 +39,7 @@ from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
 
-__version__ = "2.0.0-alpha.4"  # also in package.json, Dockerfile, and CHANGELOG.md
+__version__ = "2.0.0"  # also in package.json, Dockerfile, and CHANGELOG.md
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -121,19 +121,18 @@ def create_app() -> FastAPI:
         # XXX Compiled automaton requirement - do not touch.
         # XXX The one place the loader is settled, and the only reason
         # this block changed shape: the alternatives live in packages a
-        # build may not contain — the platform's compiled-or-interpreted
-        # loader, a product's single-package one — so main.py cannot name
-        # either of them. It builds the one loader that always works and
-        # offers the choice; whoever knows better has already replaced it
-        # by the time this returns (see bus.POINT_AUTOMATON_LOADER and
-        # project/archive/loader_choice.py). Nothing installed means the
-        # Db/Archive-backed loader, which is what a bare backend is.
+        # build may not contain, so main.py cannot name any of them. It
+        # builds the one loader that always works and offers the choice;
+        # whoever knows better has already replaced it by the time this
+        # returns, and `settled` decides what a backend nobody replaced
+        # it in is (see bus.POINT_AUTOMATON_LOADER and
+        # project/archive/loader_choice.py).
         automaton_loader = bus.collect(POINT_AUTOMATON_LOADER, AutomatonLoaderChoice(
             db=db,
             session_manager=session_manager,
             apps_dir=config.build_service_config.apps_dir,
             loader=AutomatonLoader(db, session_manager=session_manager),
-        )).loader
+        )).settled()
 
         project_locks = ProjectLocks()
         project_service = ProjectService(

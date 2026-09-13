@@ -19,6 +19,10 @@ from conftest import chat_turn, enter_chat, installed_skill, parse_sse_result, s
 from jobs.job_queue import JobQueue
 from testing.jobs.base import _AggregationJob
 
+REACHES_INTO = {
+    "_observations_for_run": "built-once is a performance property; a build and a cache hit are identical to every caller",
+}
+
 pytestmark = pytest.mark.contract
 
 SIGNAL_NAMES = ("foo", "bar", "baz")

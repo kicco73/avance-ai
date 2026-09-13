@@ -7,17 +7,40 @@ of what you just did, no restating the question. A few lines is normal; a
 wall of text is not. Detail belongs in the code and in `backend/src/docs/`,
 not in the reply.
 
-The conventions live in `backend/src/docs/`, one file per subject, and they
-are written to be read before the code they describe:
+**A document lives with the code it describes**, the way a test does. The
+core's own are in `backend/src/docs/`, one file per subject, and they name
+no skill:
 
-- `TESTS.md` — where a test lives (with the code it tests), the markers, and
-  what the suite costs
+- `TESTS.md` — where a test lives, what a core test may assume about the
+  tree it runs in, the markers, and what the suite costs
 - `BUS.md` — `system/bus.py`, the seam a package uses to reach something it
   must not name; any change to the bus updates this file in the same diff
-- `SKILLS.md`, `BUILDING_PLATFORMS.md` — what a skill is, and what a build
-  leaves out
-- `PROJECT_SPECS.md`, `SESSION_SPECS.md`, `METRICS.md`, `BENCHMARK.md`,
-  `SKIN_SPECS.md`, `COMPILED_AUTOMATON.md`, `TERMS.md` — the domain
+- `API.md` — the HTTP surface, and how a failure becomes a status
+- `SKILLS.md` — what a skill is; each installed one writes its own section
+- `PROJECT_SPECS.md`, `METRICS.md` — the domain
+
+Everything else belongs to a skill and is in `backend/src/<package>/docs/`,
+where it leaves with its package:
+
+- `SKILL.md` — every skill has one: what it does, in the customer's words
+- `avance_platform/` — `SESSION_SPECS.md`, `SKIN_SPECS.md`,
+  `MARKDOWN_GUIDE.md`
+- `build/` — `BUILDING_PLATFORMS.md`, `COMPILED_AUTOMATON.md`
+- `testing/` — `BENCHMARK.md`
+- `whatsapp/` — `WHATSAPP.md`; `webchat/` — `WEBCHAT.md`
+
+A skill's document never mentions another skill. Where two need to say
+something about one subject, each writes its own half and
+`system/doc_catalog.py` assembles what this build installed — that is what
+`/api/core/docs/{slug}` serves, and why a project format whose services
+each document their own `task.*` call reads complete in every build.
+
+**A `docs/` directory is never delivered**, at any level, so nothing a
+visitor or the running product needs may live in one. Text the product
+serves lives with the code that serves it — the Terms of Service are
+`auth/terms.md`, beside the route — and only reference material an author
+reads in the editor is allowed to degrade when a build drops its
+directory.
 
 `README.md` covers architecture, install and configuration.
 

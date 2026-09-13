@@ -12,14 +12,21 @@ without one and still serve anybody.
 from __future__ import annotations
 
 from http import HTTPStatus
+from pathlib import Path
+
 from fastapi import HTTPException, Request, Response
 
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from schemas import AcceptTermsRequest, LoginRequest, SetWhatsAppPhoneNumberRequest
-from system.doc_catalog import TERMS_PATH
 from system.web_session import WebSession
 
 from controllers.base_controller import BaseController, get, post, put
+
+#: The Terms of Service the registration screen shows before there is an
+#: account to gate on. Here rather than in docs/, which no build copies:
+#: this is not reference material, it is what a visitor must read before
+#: they can sign up at all.
+TERMS_PATH = Path(__file__).resolve().parent / "terms.md"
 
 
 class AuthController(BaseController):

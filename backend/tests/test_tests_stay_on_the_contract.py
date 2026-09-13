@@ -9,10 +9,14 @@ so its assertion passed whether the gate worked, was inverted, or was
 deleted.
 
 This counted 240 reaches across 56 files when it was written. What is
-left is EXEMPTED below, one entry per file, each with the reason it
-cannot be expressed against the public surface. The list only ever
-shrinks: a new reach fails here, and an exemption whose test stops
-needing it fails here too, so the list cannot rot into a blanket.
+left is declared by the test that does it, in a module-level
+`REACHES_INTO` mapping each private member to the reason it cannot be
+expressed against the public surface. The declaration lives in the file
+rather than in a list here for the same reason a skill's tests live in
+its package: a central list names, to every customer, the skills a build
+left out — and it rots, because a file it names can leave while the
+entry stays behind. A reach nobody declared fails here, and a
+declaration whose test stopped needing it fails here too.
 
 Name mangling is not what holds this line. GeminiProvider already
 mangles `__build_contents` and the tests reached in anyway, spelling it
@@ -31,92 +35,30 @@ from conftest import SRC_ROOT
 pytestmark = pytest.mark.contract
 
 TESTS_ROOT = Path(__file__).resolve().parent
+SAMPLES_TESTS_ROOT = TESTS_ROOT.parent / "samples" / "tests"
 
 #: Named test seams, not reach-ins: each is a reset the harness owns and
 #: the process needs between tests (see conftest's autouse fixtures).
 SEAMS = {"_reset_for_tests"}
 
-#: file -> {member: why it cannot be public}. Every entry is a decision.
-EXEMPT: dict[str, dict[str, str]] = {
-    "src/auth/tests/test_auth_service.py": {
-        "_providers": "a real GoogleAuthProvider needs a real client id; the fake replaces it",
-    },
-    "src/avance_platform/tests/test_controller_sessions.py": {
-        "_session_locks": "needs a turn still in flight, and the app fixture's AI service never blocks",
-    },
-    "src/avance_platform/tests/test_project_health.py": {
-        "_file": "the build error's own fields, not a service's internals",
-        "_line": "the build error's own fields, not a service's internals",
-    },
-    "src/build/tests/test_requirements_pruning.py": {
-        "_write_requirements": "the only public driver is copy_backend(), which copytrees the whole backend first",
-    },
-    "src/talk/tests/test_talk_answers_for_itself.py": {
-        "_INSTALLATIONS": "the skill's install registry is how a build without talk is simulated",
-        "_NoTalk": "the skill's install registry is how a build without talk is simulated",
-    },
-    "src/testing/tests/test_abort_all_jobs.py": {
-        "_jobs_by_key": "no public writer; a deterministic done/in-flight pair needs one",
-    },
-    "src/testing/tests/test_all_signals_shared_observations.py": {
-        "_observations_for_run": "built-once is a performance property; a build and a cache hit are identical to every caller",
-    },
-    "src/testing/tests/test_controller_users_aggregation.py": {
-        "_resolve_or_construct_dependencies": "rebuilding the tree resolves to the same completed rows, so it leaves no trace to observe",
-    },
-    "src/testing/tests/test_jobs_status_reflects_live_state.py": {
-        "_compute": "the abstract hook a job subclass implements, held open to observe a live status",
-        "_submit": "the only door to a job parked mid-run, and jobs/job_queue.py is off-limits",
-    },
-    "src/testing/tests/test_resolve_session_run_race.py": {
-        "_resolve_or_construct_session_run": "the deterministic interleaving is the subject; nothing public parks a caller inside it",
-    },
-    "src/webchat/tests/test_webchat_flow.py": {
-        "_PROVIDER_CLASSES": "the talk skill's provider registry, how a fake voice is installed",
-        "_connections": "nothing tells a connection its own id, and input.audio is not CLIENT_INJECTABLE",
-    },
-    "src/whatsapp/tests/test_whatsapp_channel.py": {
-        "_conversations": "owned by another session's rewrite",
-    },
-    "src/whatsapp/tests/test_whatsapp_webhook.py": {
-        "_client": "the httpx transport seam, the public surface being the Cloud API itself",
-    },
-    "tests/test_ai_service_modes.py": {
-        "_auto_provider": "AiService exposes no accessor for its auto cascade",
-    },
-    "tests/test_button_streams.py": {
-        "_requests": "no queue at all, not merely an empty one: a None key would be shared by every session-less sender",
-    },
-    "tests/test_button_translation.py": {
-        "_button_labels_to_translate": "pins this filter to the public pressable_actions it duplicates and could drift from",
-    },
-    "tests/test_provider_event_loops.py": {
-        "_async_clients": "an unpruned per-loop client dict leaks silently and has no other observable",
-    },
-    "tests/test_session_enter.py": {
-        "_requests": "no queue at all, not merely an empty one: a None key would be shared by every session-less sender",
-    },
-    "tests/test_session_lifecycle_lock.py": {
-        "_session_lifecycle_locks": "the lock is the subject; a caller must be pinned inside it or the test passes vacuously",
-    },
-    "tests/test_wakeup_service.py": {
-        "_reevaluate_and_apply": "pre-existing; the public path needs the file-backed db fixture and a wait loop",
-    },
-    "tests/test_watchdog_timeout.py": {
-        "_recorded_seconds": "its subject is conftest's own watchdog, so conftest is the code under test",
-    },
-}
+DECLARATION = "REACHES_INTO"
 
 
 def _test_files() -> list[Path]:
     return sorted(
-        [p for p in SRC_ROOT.rglob("tests/test_*.py")] + [p for p in TESTS_ROOT.glob("test_*.py")]
+        [p for p in SRC_ROOT.rglob("tests/test_*.py")]
+        + [p for p in TESTS_ROOT.glob("test_*.py")]
+        + [p for p in SAMPLES_TESTS_ROOT.glob("test_*.py")]
     )
 
 
-def _reaches(path: Path) -> set[str]:
+def _parsed(path: Path) -> ast.Module:
+    return ast.parse(path.read_text(encoding="utf-8"))
+
+
+def _reaches(tree: ast.Module) -> set[str]:
     found = set()
-    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+    for node in ast.walk(tree):
         if not isinstance(node, ast.Attribute):
             continue
         if not node.attr.startswith("_") or node.attr.startswith("__") or node.attr in SEAMS:
@@ -130,6 +72,17 @@ def _reaches(path: Path) -> set[str]:
     return found
 
 
+def _declared(tree: ast.Module) -> dict[str, str]:
+    """What the file says about itself: the literal value of its
+    module-level REACHES_INTO, read rather than imported, so a suite of
+    1500 tests is checked without starting any of them."""
+    for node in tree.body:
+        targets = getattr(node, "targets", [])
+        if any(isinstance(target, ast.Name) and target.id == DECLARATION for target in targets):
+            return ast.literal_eval(node.value)
+    return {}
+
+
 def _relative(path: Path) -> str:
     for root, prefix in ((SRC_ROOT, "src"), (TESTS_ROOT, "tests")):
         if root in path.parents or root == path.parent:
@@ -137,31 +90,29 @@ def _relative(path: Path) -> str:
     return path.as_posix()
 
 
-def test_no_test_reaches_into_an_implementation_that_is_not_exempted():
+def test_no_test_reaches_into_an_implementation_it_did_not_declare():
     offenders = {}
     for path in _test_files():
-        name = _relative(path)
-        unexplained = _reaches(path) - set(EXEMPT.get(name, {}))
+        tree = _parsed(path)
+        unexplained = _reaches(tree) - set(_declared(tree))
         if unexplained:
-            offenders[name] = sorted(unexplained)
+            offenders[_relative(path)] = sorted(unexplained)
     assert not offenders, (
         "These tests read or call another object's private members. Drive the public entry "
         "point and observe the public result instead (CLAUDE.md, 'What a test may look at'). "
-        f"If one genuinely has no public form, add it to EXEMPT with its reason: {offenders}"
+        f"If one genuinely has no public form, declare it in that file's {DECLARATION} with "
+        f"its reason: {offenders}"
     )
 
 
-def test_every_exemption_is_still_needed():
+def test_every_declaration_is_still_needed():
     stale = {}
-    for name, reasons in EXEMPT.items():
-        path = SRC_ROOT / name[len("src/"):] if name.startswith("src/") else TESTS_ROOT / name[len("tests/"):]
-        if not path.exists():
-            stale[name] = "file is gone"
-            continue
-        unused = sorted(set(reasons) - _reaches(path))
+    for path in _test_files():
+        tree = _parsed(path)
+        unused = sorted(set(_declared(tree)) - _reaches(tree))
         if unused:
-            stale[name] = unused
+            stale[_relative(path)] = unused
     assert not stale, (
-        "These exemptions are no longer used by the test that needed them. Delete the entry — "
-        f"the list is only allowed to shrink: {stale}"
+        f"These {DECLARATION} entries are no longer used by the test that needed them. Delete "
+        f"them — a declaration is only allowed to shrink: {stale}"
     )

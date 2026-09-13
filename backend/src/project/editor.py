@@ -12,7 +12,7 @@ from automaton.file_types import ProjectFileTypes
 from automaton.build_error import AutomatonBuildError
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
 from db import ContentRestored, Db, FileRenamed
-from system.doc_catalog import DOCS_DIR
+from system import doc_catalog
 from system.logging_factory import LoggerFactory
 from system.web_session import WebSession
 from tracking.project_files import PROJECT_FILE_CACHE
@@ -174,15 +174,22 @@ class ProjectEditor:
         names.sort(key=lambda name: (name != "index.yml", name))
         return names
 
-    async def _run_ai_edit(self, system_prompt_template: str, spec_file_name: str, user_turn: str) -> str:
+    async def _run_ai_edit(self, system_prompt_template: str, spec_slug: str, user_turn: str) -> str:
         """Shared by generate_index_yml_ai_edit/generate_index_css_ai_edit
         below: fills `system_prompt_template`'s %%SPEC%% placeholder with
-        `spec_file_name`'s own text, sends `user_turn` as the one user
-        message, and pulls the new file's content out of the reply's own
-        fenced code block."""
+        the text of the document `spec_slug` names, sends `user_turn` as
+        the one user message, and pulls the new file's content out of the
+        reply's own fenced code block.
+
+        By slug rather than by path, so the model is given the spec as
+        this build actually assembled it — a format whose services each
+        document their own half is only complete once they have."""
         if self._ai_service is None:
             raise ValueError("No AiService is configured for this deployment.")
-        spec = (DOCS_DIR / spec_file_name).read_text(encoding="utf-8")
+        doc = doc_catalog.catalog().get(spec_slug)
+        if doc is None:
+            raise FileNotFoundError(f"This build serves no '{spec_slug}' specification.")
+        spec = doc.render()
         system_prompt = system_prompt_template.replace(_SPEC_PLACEHOLDER, spec)
         reply = await self._ai_service.generate(system_prompt, [{"role": "user", "content": user_turn}])
         match = _CODE_FENCE_RE.search(reply)
@@ -190,7 +197,7 @@ class ProjectEditor:
 
     async def _generate_file_ai_edit(
         self, project_id: str, instruction: str, file_name: str, directory: str, fence_language: str,
-        spec_file_name: str, uploads_label: str, system_prompt_template: str,
+        spec_slug: str, uploads_label: str, system_prompt_template: str,
     ) -> str:
         content = self._db.get_archive(project_id, file_name)
         if content is None:
@@ -203,12 +210,12 @@ class ProjectEditor:
             f"{uploads_label} already uploaded under {directory}/: {uploads_line}\n\n"
             f"Requested change:\n{instruction}"
         )
-        return await self._run_ai_edit(system_prompt_template, spec_file_name, user_turn)
+        return await self._run_ai_edit(system_prompt_template, spec_slug, user_turn)
 
     async def generate_index_yml_ai_edit(self, project_id: str, instruction: str) -> str:
         """Backs the "Edit project" index.yml editor's AI button
         (IndexYmlEditorPanel.vue): sends the AiService a prompt built from
-        the format spec (PROJECT_SPECS.md), this project's current
+        the project format spec, this project's current
         index.yml, the basenames of its own already-uploaded `behaviour/`
         attachments (so the model never invents an `attachments:` entry or
         a `sources:` entry's own `url: avance:behaviour/...` pointing at a
@@ -219,20 +226,20 @@ class ProjectEditor:
         the result into its own (unsaved) editor buffer."""
         return await self._generate_file_ai_edit(
             project_id, instruction, "index.yml", BEHAVIOUR_DIR, "yaml",
-            "PROJECT_SPECS.md", "Attachments", INDEX_YML_AI_EDIT_SYSTEM_PROMPT,
+            "project-specs", "Attachments", INDEX_YML_AI_EDIT_SYSTEM_PROMPT,
         )
 
     async def generate_index_css_ai_edit(self, project_id: str, instruction: str) -> str:
         """Backs the "Edit project" index.css (Aspect) editor's AI button
         (IndexCssEditorPanel.vue) — same shape as generate_index_yml_ai_edit
-        above, built from the skin format spec (SKIN_SPECS.md), this
+        above, built from the skin format spec, this
         project's current index.css, the basenames of its own already-
         uploaded `aspect/` assets (so the model never invents a `url(...)`
         reference to a file that doesn't exist), and `instruction`. A pure
         preview, nothing persisted here — see generate_index_yml_ai_edit."""
         return await self._generate_file_ai_edit(
             project_id, instruction, "index.css", ASPECT_DIR, "css",
-            "SKIN_SPECS.md", "Assets", INDEX_CSS_AI_EDIT_SYSTEM_PROMPT,
+            "skin-specs", "Assets", INDEX_CSS_AI_EDIT_SYSTEM_PROMPT,
         )
 
     def get_project_file_content(

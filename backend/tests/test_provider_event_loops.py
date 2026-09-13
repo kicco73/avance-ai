@@ -25,6 +25,10 @@ from ai._providers.gemini_provider_v2 import REQUEST_TIMEOUT_MS
 from ai.llm_provider import AIServiceConfig, AIServiceError
 from ai._providers.openai_provider_v2 import OpenAICompatibleProvider, REQUEST_TIMEOUT as OPENAI_REQUEST_TIMEOUT
 
+REACHES_INTO = {
+    "_async_clients": "an unpruned per-loop client dict leaks silently and has no other observable",
+}
+
 pytestmark = [pytest.mark.contract, pytest.mark.slow]
 
 EXPECTED = '{"text": "hi"}'

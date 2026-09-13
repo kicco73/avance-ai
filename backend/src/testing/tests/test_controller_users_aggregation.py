@@ -15,6 +15,10 @@ from conftest import chat_turn, enter_chat, session_of
 from system.web_session import WebSession
 from testing.testing_service import UsersAggregationJob
 
+REACHES_INTO = {
+    "_resolve_or_construct_dependencies": "rebuilding the tree resolves to the same completed rows, so it leaves no trace to observe",
+}
+
 pytestmark = pytest.mark.contract
 
 

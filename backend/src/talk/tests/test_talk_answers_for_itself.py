@@ -30,6 +30,11 @@ from system.api_state_controller import ApiStateController
 from talk.skill import TalkSkill
 from tracking.spoken_reply import SpokenReply
 
+REACHES_INTO = {
+    "_INSTALLATIONS": "the skill's install registry is how a build without talk is simulated",
+    "_NoTalk": "the skill's install registry is how a build without talk is simulated",
+}
+
 pytestmark = pytest.mark.contract
 
 #: The smallest .config.yml that gives this server a TTS provider (see

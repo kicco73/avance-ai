@@ -14,6 +14,10 @@ from whatsapp.tests.whatsapp_helpers import (  # noqa: F401 — env is a fixture
     _interactive_payload, _payload, env,
 )
 
+REACHES_INTO = {
+    "_conversations": "owned by another session's rewrite",
+}
+
 pytestmark = pytest.mark.contract
 
 REPLY_TEXT = "*Hola* — has dicho: hola"

@@ -1,6 +1,7 @@
 import { ref, watch } from 'vue'
 import { projectFileContentUrl } from './api.js'
 import { resolveCssAssetUrls } from './cssAssetUrls.js'
+import { scopeSkinToChat } from './chatSkinScope.js'
 
 // A project's index.css "skin" — one single <style> element for the whole
 // app, not one per chat store. It has exactly one owner at a time: the
@@ -119,7 +120,7 @@ function writeSkin(css) {
     skinStyleEl = document.createElement('style')
     document.head.appendChild(skinStyleEl)
   }
-  skinStyleEl.textContent = css
+  skinStyleEl.textContent = scopeSkinToChat(css)
 }
 
 // Registrable hook for "the live skin's own CSS was just (re)written" —

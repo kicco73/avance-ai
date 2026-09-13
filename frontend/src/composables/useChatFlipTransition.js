@@ -54,6 +54,9 @@ export function useChatFlipTransition(navDirection) {
         // Back to resting on the CSS class's own z-index:100 — the inline
         // 101 above only needed to hold during the transition itself.
         el.style.zIndex = ''
+        el.style.transform = ''
+        el.style.transition = ''
+        el.style.backfaceVisibility = ''
         done()
       })
     }, duration)

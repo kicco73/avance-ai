@@ -13,7 +13,7 @@ LEGAL_TERMS_FILE_NAME = "legal/terms.md"
 
 # Seeded by ProjectEditor.add_legal_terms into a fresh legal/terms.md —
 # per-app terms shown once, on top of the platform's own general Terms of
-# Service (see backend/src/docs/TERMS.md).
+# Service (see auth/terms.md).
 LEGAL_TERMS_SKELETON = """# Terms of this application
 
 These are the specific terms of this application, in addition to the
