@@ -71,7 +71,6 @@ export function useIndexYmlEditing(
     guardedAction(`edit "${field}"`, async () => {
       try {
         await putStateField(projectId, stateName, field, value)
-        selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateName) ?? null
       } catch {
         // already surfaced via apiFetch
       }

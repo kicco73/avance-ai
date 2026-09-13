@@ -4,13 +4,13 @@
 // already-declared `env:` variables (see automaton.State.input/output).
 // No metadata is duplicated here; a variable's own description/
 // ai-definition lives only on its env-key card (InspectorEnvKeysTab.vue).
-import { computed, ref, watch, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { getProjectEnvKeys, getProjectSources } from '../../api.js'
 import { identifierRegistry } from '../../../../identifierRegistry.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },
-  stateKey: { type: String, required: true },
+  stateKey: { type: String, default: null },
   stateData: { type: Object, default: null },
 })
 
@@ -43,6 +43,11 @@ defineExpose({ loadEnvKeys, refresh })
 
 onMounted(refresh)
 
+const IO_FIELDS = [
+  { name: 'input', label: 'Input', caption: 'What this state reads', badgeClass: 'inspector-detail-badge-env' },
+  { name: 'output', label: 'Output', caption: 'What this state produces', badgeClass: 'inspector-detail-badge-output' },
+]
+
 const inputNames = computed(() => new Set(props.stateData?.input || []))
 const outputNames = computed(() => new Set(props.stateData?.output || []))
 
@@ -50,9 +55,10 @@ function isChecked(field, name) {
   return (field === 'input' ? inputNames.value : outputNames.value).has(name)
 }
 
-function toggle(field, name) {
+function toggle(field, name, event) {
   const current = field === 'input' ? props.stateData?.input || [] : props.stateData?.output || []
   const next = current.includes(name) ? current.filter((n) => n !== name) : [...current, name]
+  event.target.checked = isChecked(field, name)
   emit('set-field', field, next)
 }
 
@@ -91,70 +97,62 @@ function setSourceAccess(name, level) {
 
 <template>
   <div class="inspector-signals-section">
-    <p v-if="envKeysLoading" class="signals-status">Loading…</p>
-    <template v-else-if="!envKeys.length">
-      <p class="signals-status">No env keys declared yet — declare one in the Env tab first.</p>
-    </template>
+    <p v-if="stateKey == null" class="signals-status">Select a state in the graph to edit what it reads and produces.</p>
     <template v-else>
-      <div class="inspector-io-block">
-        <div class="inspector-signal-header">
-          <span class="inspector-detail-badge inspector-detail-badge-env">Input</span>
-          <span class="inspector-signal-name">What this state reads</span>
+      <p v-if="envKeysLoading" class="signals-status">Loading…</p>
+      <p v-else-if="!envKeys.length" class="signals-status">No env keys declared yet — declare one in the Env tab first.</p>
+      <template v-else>
+        <div v-for="field in IO_FIELDS" :key="field.name" class="inspector-io-block">
+          <div class="inspector-signal-header">
+            <span class="inspector-detail-badge" :class="field.badgeClass">{{ field.label }}</span>
+            <span class="inspector-signal-name">{{ field.caption }}</span>
+          </div>
+          <label
+            v-for="key in envKeys"
+            :key="`${field.name}-${key.name}`"
+            class="inspector-io-row"
+            :class="{ 'inspector-io-row-undefined': !key.ai_definition }"
+            @click="jumpToEnvKey(key.name)"
+          >
+            <input
+              type="checkbox"
+              :checked="isChecked(field.name, key.name)"
+              :disabled="!key.ai_definition"
+              @click.stop
+              @change="toggle(field.name, key.name, $event)"
+            />
+            <span class="inspector-io-name">{{ key.name }}</span>
+            <span v-if="key.ai_definition" class="inspector-io-definition">{{ key.ai_definition }}</span>
+            <span v-else class="inspector-io-undefined">needs an AI definition — click to write one</span>
+          </label>
         </div>
-        <label v-for="key in envKeys" :key="`input-${key.name}`" class="inspector-io-row" @click="jumpToEnvKey(key.name)">
-          <input
-            type="checkbox"
-            :checked="isChecked('input', key.name)"
-            @click.stop
-            @change="toggle('input', key.name)"
-          />
-          <span class="inspector-io-name">{{ key.name }}</span>
-          <span v-if="key.ai_definition" class="inspector-io-definition">{{ key.ai_definition }}</span>
-        </label>
-      </div>
+      </template>
 
       <div class="inspector-io-block">
         <div class="inspector-signal-header">
-          <span class="inspector-detail-badge inspector-detail-badge-output">Output</span>
-          <span class="inspector-signal-name">What this state produces</span>
+          <span class="inspector-detail-badge inspector-detail-badge-sources">Sources</span>
+          <span class="inspector-signal-name">What this state may access</span>
         </div>
-        <label v-for="key in envKeys" :key="`output-${key.name}`" class="inspector-io-row" @click="jumpToEnvKey(key.name)">
-          <input
-            type="checkbox"
-            :checked="isChecked('output', key.name)"
-            @click.stop
-            @change="toggle('output', key.name)"
-          />
-          <span class="inspector-io-name">{{ key.name }}</span>
-          <span v-if="key.ai_definition" class="inspector-io-definition">{{ key.ai_definition }}</span>
-        </label>
+        <p v-if="sourcesLoading" class="signals-status">Loading…</p>
+        <p v-else-if="!sources.length" class="signals-status">
+          No sources declared yet — declare one in the Sources branch first.
+        </p>
+        <div v-for="src in sources" :key="`source-${src.name}`" class="inspector-io-row inspector-io-row-source">
+          <span class="inspector-io-name">{{ src.name }}</span>
+          <span v-if="src.ai_definition" class="inspector-io-definition">{{ src.ai_definition }}</span>
+          <select
+            class="inspector-io-source-select"
+            :value="sourceAccess(src.name)"
+            @change="setSourceAccess(src.name, $event.target.value)"
+          >
+            <option value="none">No access</option>
+            <option value="may">May read</option>
+            <option value="must">Must read</option>
+            <option v-if="sourceSupportsWrite(src.name)" value="write">May write</option>
+          </select>
+        </div>
       </div>
     </template>
-
-    <div class="inspector-io-block">
-      <div class="inspector-signal-header">
-        <span class="inspector-detail-badge inspector-detail-badge-sources">Sources</span>
-        <span class="inspector-signal-name">What this state may access</span>
-      </div>
-      <p v-if="sourcesLoading" class="signals-status">Loading…</p>
-      <p v-else-if="!sources.length" class="signals-status">
-        No sources declared yet — declare one in the Sources branch first.
-      </p>
-      <div v-for="src in sources" :key="`source-${src.name}`" class="inspector-io-row inspector-io-row-source">
-        <span class="inspector-io-name">{{ src.name }}</span>
-        <span v-if="src.ai_definition" class="inspector-io-definition">{{ src.ai_definition }}</span>
-        <select
-          class="inspector-io-source-select"
-          :value="sourceAccess(src.name)"
-          @change="setSourceAccess(src.name, $event.target.value)"
-        >
-          <option value="none">No access</option>
-          <option value="may">May read</option>
-          <option value="must">Must read</option>
-          <option v-if="sourceSupportsWrite(src.name)" value="write">May write</option>
-        </select>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -174,5 +172,7 @@ function setSourceAccess(name, level) {
 .inspector-io-row-source:hover { background: none; }
 .inspector-io-name { flex-shrink: 0; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; font-size: 0.8rem; color: #333; }
 .inspector-io-definition { flex: 1; min-width: 0; font-size: 0.76rem; color: #777; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inspector-io-undefined { flex: 1; min-width: 0; font-size: 0.76rem; font-style: italic; color: #b06a00; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inspector-io-row-undefined .inspector-io-name { color: #999; }
 .inspector-io-source-select { flex-shrink: 0; font-size: 0.76rem; padding: 0.1rem 0.35rem; border-radius: 4px; border: 1px solid #ccc; background: white; color: #333; }
 </style>

@@ -170,6 +170,12 @@ const selectedStateKey = computed(() => {
     : selectedGraphElement.value.data.matchStateKey
 })
 
+const selectedStateData = computed(() => {
+  const element = selectedGraphElement.value
+  if (element?.kind === 'state') return element.data
+  return indexYmlEditorRef.value?.stateElementFor(selectedStateKey.value)?.data ?? null
+})
+
 const runCurrentSession = computed(() => runSessions.value.find((s) => s.id === currentSessionId.value) ?? null)
 
 const {
@@ -198,13 +204,11 @@ const inspectorTabs = computed(() => {
   if (mode.value === 'edit' && (currentSourceName.value != null || sourcesRootSelected.value || !isBehaviorNodeSelected.value)) {
     return [{ id: 'state', label: 'Info' }]
   }
-  const thirdTab = selectedGraphElement.value?.kind === 'state'
-    ? { id: 'output', label: 'I/O' }
-    : { id: 'env-keys', label: 'Env' }
   return [
     { id: 'state', label: 'Info' },
     { id: 'signals', label: 'Signals' },
-    thirdTab
+    { id: 'output', label: 'I/O' },
+    { id: 'env-keys', label: 'Env' }
   ]
 })
 const inspectorActiveTab = ref('states')
@@ -643,11 +647,10 @@ async function handleSetSessionComment(sessionId, comment) {
             </template>
             <template #tab-output="{ registerTab }">
               <InspectorStateIOTab
-                v-if="selectedStateKey"
                 :ref="registerTab('output')"
                 :project-id="projectId"
                 :state-key="selectedStateKey"
-                :state-data="selectedGraphElement?.data"
+                :state-data="selectedStateData"
                 @set-field="(field, value) => handleSetStateField(selectedStateKey, field, value)"
                 @jump-to-definition="jumpSilently"
               />

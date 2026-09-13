@@ -82,10 +82,13 @@ describe('useIndexYmlEditing', () => {
     expect(flashRecentlyAdded).toHaveBeenCalledWith('action:greeting/go')
   })
 
-  it('handleSetStateField re-resolves the graph selection while handleSetProjectField has no selection side effect', async () => {
-    await s.handleSetStateField('greeting', 'ui-label', 'Hi there')
-    expect(putStateField).toHaveBeenCalledWith('proj', 'greeting', 'ui-label', 'Hi there')
-    expect(selectedGraphElement.value).toEqual({ kind: 'state', data: { id: 'greeting' } })
+  it('neither handleSetStateField nor handleSetProjectField moves the selection', async () => {
+    const actionEl = { kind: 'action', data: { matchStateKey: 'greeting', actionName: 'go' } }
+    selectedGraphElement.value = actionEl
+
+    await s.handleSetStateField('greeting', 'input', ['amount'])
+    expect(putStateField).toHaveBeenCalledWith('proj', 'greeting', 'input', ['amount'])
+    expect(selectedGraphElement.value).toEqual(actionEl)
 
     selectedGraphElement.value = null
     putProjectField.mockResolvedValue({ id: 'my-project', project_id: 'my-project' })
