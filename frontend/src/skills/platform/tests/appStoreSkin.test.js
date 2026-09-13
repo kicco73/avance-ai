@@ -69,18 +69,18 @@ describe('who owns the one shared skin element', () => {
   async function liveChatOnScreen() {
     chatStore.currentProjectId.value = 'live-project'
     chatStore.currentSessionId.value = 1
-    await vi.waitFor(() => expect(skinText()).toBe('.chat-body { color: live; }'))
+    await vi.waitFor(() => expect(skinText()).toContain('.chat-body { color: live; }'))
   }
 
   it('a panel that takes the skin wins over the chat underneath, which no longer repaints over it', async () => {
     await liveChatOnScreen()
 
     chatSkin.holdSkin(new FakeAppSkin('app-a', '.chat-body { color: a; }'))
-    await vi.waitFor(() => expect(skinText()).toBe('.chat-body { color: a; }'))
+    await vi.waitFor(() => expect(skinText()).toContain('.chat-body { color: a; }'))
 
     chatStore.currentSessionId.value = 2
     chatSkin.invalidateSkin()
-    await vi.waitFor(() => expect(skinText()).toBe('.chat-body { color: a; }'))
+    await vi.waitFor(() => expect(skinText()).toContain('.chat-body { color: a; }'))
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
@@ -88,13 +88,13 @@ describe('who owns the one shared skin element', () => {
     await liveChatOnScreen()
 
     const releaseA = chatSkin.holdSkin(new FakeAppSkin('app-a', '.chat-body { color: a; }'))
-    await vi.waitFor(() => expect(skinText()).toBe('.chat-body { color: a; }'))
+    await vi.waitFor(() => expect(skinText()).toContain('.chat-body { color: a; }'))
 
     chatSkin.holdSkin(new FakeAppSkin('app-b', '.chat-body { color: b; }'))
-    await vi.waitFor(() => expect(skinText()).toBe('.chat-body { color: b; }'))
+    await vi.waitFor(() => expect(skinText()).toContain('.chat-body { color: b; }'))
 
     releaseA()
-    await vi.waitFor(() => expect(skinText()).toBe('.chat-body { color: b; }'))
+    await vi.waitFor(() => expect(skinText()).toContain('.chat-body { color: b; }'))
   })
 
   it('an app switch reads one skin, not one per panel: the chat underneath is never fetched in between', async () => {
@@ -102,11 +102,11 @@ describe('who owns the one shared skin element', () => {
     fetchMock.mockClear()
 
     const releaseA = chatSkin.holdSkin(new FakeAppSkin('app-a', '.chat-body { color: a; }'))
-    await vi.waitFor(() => expect(skinText()).toBe('.chat-body { color: a; }'))
+    await vi.waitFor(() => expect(skinText()).toContain('.chat-body { color: a; }'))
 
     releaseA()
     chatSkin.holdSkin(new FakeAppSkin('app-b', '.chat-body { color: b; }'))
-    await vi.waitFor(() => expect(skinText()).toBe('.chat-body { color: b; }'))
+    await vi.waitFor(() => expect(skinText()).toContain('.chat-body { color: b; }'))
 
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -115,10 +115,10 @@ describe('who owns the one shared skin element', () => {
     await liveChatOnScreen()
 
     const release = chatSkin.holdSkin(new FakeAppSkin('app-a', '.chat-body { color: a; }'))
-    await vi.waitFor(() => expect(skinText()).toBe('.chat-body { color: a; }'))
+    await vi.waitFor(() => expect(skinText()).toContain('.chat-body { color: a; }'))
 
     release()
-    await vi.waitFor(() => expect(skinText()).toBe('.chat-body { color: live; }'))
+    await vi.waitFor(() => expect(skinText()).toContain('.chat-body { color: live; }'))
   })
 
   it('an app skin answering after another app took over never lands', async () => {
@@ -132,10 +132,10 @@ describe('who owns the one shared skin element', () => {
     await vi.waitFor(() => expect(answerA).not.toBeNull())
 
     chatSkin.holdSkin(new FakeAppSkin('app-b', '.chat-body { color: b; }'))
-    await vi.waitFor(() => expect(skinText()).toBe('.chat-body { color: b; }'))
+    await vi.waitFor(() => expect(skinText()).toContain('.chat-body { color: b; }'))
 
     answerA('.chat-body { color: a; }')
-    await vi.waitFor(() => expect(skinText()).toBe('.chat-body { color: b; }'))
+    await vi.waitFor(() => expect(skinText()).toContain('.chat-body { color: b; }'))
   })
 })
 

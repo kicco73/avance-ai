@@ -24,7 +24,7 @@ from tracking.user_facts import UserFacts
 pytestmark = pytest.mark.contract
 
 PROJECT_ID = "vueling_refunds"
-SAMPLE_DIR = Path(__file__).resolve().parents[1] / "samples" / "projects" / "Vueling Refund"
+SAMPLE_DIR = Path(__file__).resolve().parents[1] / "projects" / "Vueling Refund"
 
 # A customer with more than one booking on file — exercises "the first
 # matching row" for value(), same as the sample's own ai-definition warns

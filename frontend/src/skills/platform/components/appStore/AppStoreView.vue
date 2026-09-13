@@ -5,6 +5,7 @@ import ProfileMenu from '../../../../components/ProfileMenu.vue'
 import AppDetailPanel from './AppDetailPanel.vue'
 import CustomerAppDetailPanel from './CustomerAppDetailPanel.vue'
 import { getAppStoreApps, appStoreFileContentUrl } from '../../api.js'
+import { familySections } from '../../familySections.js'
 import avanceLogoUrl from '../../../../assets/avance-logo.png'
 import avanceLogoLargeUrl from '../../../../assets/avance-logo-large.png'
 
@@ -29,7 +30,11 @@ const selectedId = ref(null)
 const iconFailedById = ref({})
 const searchQuery = ref('')
 
-const visibleApps = computed(() => props.subscribedOnly ? apps.value.filter((app) => app.installed) : apps.value)
+const sections = computed(() => {
+  const shown = props.subscribedOnly ? apps.value.filter((app) => app.installed) : apps.value
+  return familySections(shown.map((app) => ({ family: app.family, title: appTitle(app), item: app })))
+})
+const visibleApps = computed(() => sections.value.flatMap((section) => section.items.map((entry) => entry.item)))
 const selectedApp = computed(() => apps.value.find((app) => app.id === selectedId.value) ?? null)
 
 function appTitle(app) {
@@ -112,28 +117,33 @@ defineExpose({ refresh: load })
         <div class="app-store-card-list">
           <p v-if="loading" class="app-store-status">Loading…</p>
           <p v-else-if="!visibleApps.length" class="app-store-status">No apps found.</p>
-          <button
-            v-for="app in visibleApps"
-            :key="app.id"
-            type="button"
-            class="app-store-card"
-            :class="{ 'app-store-card-active': app.id === selectedId }"
-            @click="selectApp(app.id)"
-          >
-            <span class="app-store-card-icon">
-              <img
-                v-if="app.icon_file && !iconFailedById[app.id]"
-                :src="appStoreFileContentUrl(app.id, app.icon_file)"
-                alt=""
-                @error="iconFailedById[app.id] = true"
-              />
-              <img v-else :src="avanceLogoUrl" class="app-store-card-fallback" alt="" />
-            </span>
-            <span class="app-store-card-body">
-              <span class="app-store-card-title">{{ appTitle(app) }}</span>
-              <span v-if="app.ui_description" class="app-store-card-desc">{{ app.ui_description }}</span>
-            </span>
-          </button>
+          <section v-for="section in sections" :key="section.key" class="app-store-section">
+            <h3 class="app-store-section-header">{{ section.label }}</h3>
+            <div class="app-store-section-items">
+              <button
+                v-for="{ item: app } in section.items"
+                :key="app.id"
+                type="button"
+                class="app-store-card"
+                :class="{ 'app-store-card-active': app.id === selectedId }"
+                @click="selectApp(app.id)"
+              >
+                <span class="app-store-card-icon">
+                  <img
+                    v-if="app.icon_file && !iconFailedById[app.id]"
+                    :src="appStoreFileContentUrl(app.id, app.icon_file)"
+                    alt=""
+                    @error="iconFailedById[app.id] = true"
+                  />
+                  <img v-else :src="avanceLogoUrl" class="app-store-card-fallback" alt="" />
+                </span>
+                <span class="app-store-card-body">
+                  <span class="app-store-card-title">{{ appTitle(app) }}</span>
+                  <span v-if="app.ui_description" class="app-store-card-desc">{{ app.ui_description }}</span>
+                </span>
+              </button>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -214,10 +224,41 @@ defineExpose({ refresh: load })
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  background: #f2f2f7;
+  border-radius: 10px;
+  padding-bottom: 0.75rem;
+}
+
+.app-store-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-store-section-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 0.75rem 1rem 0.35rem 15px;
+  background: #f2f2f7;
+  color: #8e8e93;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.app-store-section-items {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0.5rem;
+  background: white;
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 .app-store-card {
+  position: relative;
   flex-shrink: 0;
   box-sizing: border-box;
   display: flex;
@@ -225,16 +266,25 @@ defineExpose({ refresh: load })
   gap: 0.6rem;
   width: 100%;
   padding: 0.5rem 0.7rem;
-  border: 1px solid #eee;
-  border-radius: 8px;
-  background: #fafafa;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   cursor: pointer;
   text-align: left;
   font: inherit;
 }
 
+.app-store-card + .app-store-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: calc(0.7rem + 65px + 0.6rem);
+  right: 0;
+  height: 1px;
+  background: #e5e5ea;
+}
+
 .app-store-card-active {
-  border-color: #4a6fa5;
   background: #eef3fa;
 }
 

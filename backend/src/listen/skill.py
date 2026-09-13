@@ -41,6 +41,9 @@ class ListenSkill(Skill):
     ui_description = "Speech to text."
     project_declarable = True
 
+    def docs(self) -> dict[str, str]:
+        return {"project-specs": "PROJECT_SPECS.md"}
+
     def requirements(self) -> list[str]:
         return ["faster-whisper>=1.0"]
 

@@ -199,3 +199,44 @@ def test_restore_backup_replaces_data_and_reconnects(file_db):
     # one created afterward is gone.
     assert file_db.get_chat_session(kept_id) is not None
     assert file_db.get_latest_chat_session("user", "proj2") is None
+
+
+def _free_pages(content: bytes, tmp_path, name: str) -> int:
+    path = tmp_path / name
+    path.write_bytes(content)
+    connection = sqlite3.connect(path)
+    try:
+        return connection.execute("PRAGMA freelist_count").fetchone()[0]
+    finally:
+        connection.close()
+
+
+def _fill_and_empty(file_db, rows: int) -> None:
+    for index in range(rows):
+        file_db.ensure_project(f"proj{index}")
+        file_db.save_project_files(
+            f"proj{index}", {"index.yml": (b"x" * 40000)}, {"index.yml": "text/yaml"},
+        )
+    for index in range(rows):
+        file_db.delete_archives(f"proj{index}")
+
+
+@pytest.mark.contract
+def test_a_backup_carries_no_free_pages_however_much_the_working_file_deleted(file_db, tmp_path):
+    """What an operator downloads is the size of what is in it, not of
+    the largest the database ever was — SQLite keeps deleted pages in
+    the file and would copy them too."""
+    _fill_and_empty(file_db, 20)
+    assert os.path.getsize(file_db.backup_file_path()) > len(file_db.export_backup())
+
+    assert _free_pages(file_db.export_backup(), tmp_path, "backup.db") == 0
+
+
+@pytest.mark.contract
+def test_reclaiming_gives_the_freed_pages_back_to_the_filesystem(file_db):
+    _fill_and_empty(file_db, 20)
+    bloated = os.path.getsize(file_db.backup_file_path())
+
+    file_db.reclaim_free_space()
+
+    assert os.path.getsize(file_db.backup_file_path()) < bloated

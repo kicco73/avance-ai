@@ -15,6 +15,10 @@ from whatsapp.tests.whatsapp_helpers import (  # noqa: F401 — env is a fixture
     Env, _interactive_payload, _payload, _post, env,
 )
 
+REACHES_INTO = {
+    "_client": "the httpx transport seam, the public surface being the Cloud API itself",
+}
+
 pytestmark = pytest.mark.contract
 
 

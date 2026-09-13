@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import SAMPLES_DIR
-
-from conftest import parse_sse_result, chat_turn, enter_chat, session_of
+from conftest import chat_turn, enter_chat, new_project, session_of
 
 # retention/activity_consistency are scoped to {all_sessions_per_user,
 # all_sessions}, so they're excluded from the one_session context here.
@@ -50,14 +48,7 @@ def test_engagement_rises_after_sending_messages(client, hello_project):
 
 @pytest.mark.contract
 def test_metrics_are_scoped_to_the_url_project(client):
-    names = {}
-    for key, sample in (("hello", "Hello world.zip"), ("cat", "Aprendr català.zip")):
-        content = (SAMPLES_DIR / sample).read_bytes()
-        resp = client.post("/api/skills/platform/projects/upload", content=content, headers={"Content-Type": "application/zip"})
-        assert resp.status_code == 200, resp.text
-        names[key] = parse_sse_result(resp)["project_id"]
-        resp = client.post(f"/api/skills/platform/projects/{names[key]}/publish", json={})
-        assert resp.status_code == 200, resp.text
+    names = {"hello": new_project(client), "cat": new_project(client)}
 
     client.post(f"/api/core/projects/{names['hello']}/activate")
     session_id = session_of(enter_chat(client, names["hello"]))

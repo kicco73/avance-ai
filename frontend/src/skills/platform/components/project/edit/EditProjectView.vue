@@ -515,23 +515,21 @@ async function handleSetSessionComment(sessionId, comment) {
           @renamed="handleFileRenamedByHistory"
         />
 
-        <Transition name="panel-slide-bottom">
-          <RunChat
-            v-if="runOpen"
-            ref="runChatRef"
-            :timeline="timeline"
-            :signals-log="signalsLog"
-            :selected="selected"
-            :has-theme="hasTheme"
-            :resolve-state-label="stateLabelFor"
-            :resolve-action-label="actionLabelFor"
-            :is-state-gone="isStateGone"
-            @select-message="selectMessage"
-            @select-transition="selectTransition"
-            @restart-prefill="restartAndPrefill"
-            @restart-resend="restartAndResend"
-          />
-        </Transition>
+        <RunChat
+          v-if="runOpen"
+          ref="runChatRef"
+          :timeline="timeline"
+          :signals-log="signalsLog"
+          :selected="selected"
+          :has-theme="hasTheme"
+          :resolve-state-label="stateLabelFor"
+          :resolve-action-label="actionLabelFor"
+          :is-state-gone="isStateGone"
+          @select-message="selectMessage"
+          @select-transition="selectTransition"
+          @restart-prefill="restartAndPrefill"
+          @restart-resend="restartAndResend"
+        />
 
         <component v-if="activeMode.panel" :is="activeMode.panel" :workspace="workspace" />
       </div>
@@ -739,29 +737,11 @@ async function handleSetSessionComment(sessionId, comment) {
 }
 
 .edit-project-panels {
-  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-}
-
-.panel-slide-bottom-enter-active,
-.panel-slide-bottom-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
-  position: absolute;
-  inset: 0;
-}
-
-.panel-slide-bottom-leave-active {
-  z-index: -1;
-}
-
-.panel-slide-bottom-enter-from,
-.panel-slide-bottom-leave-to {
-  opacity: 0;
-  transform: translateY(16px);
 }
 
 .split-divider {

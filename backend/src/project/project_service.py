@@ -158,8 +158,8 @@ class ProjectService(object):
     async def add_state(self, project_id: str) -> StatePayload:
         return await self.editor.add_state(project_id)
 
-    async def create_new_project(self) -> tuple[dict, ProjectImportBundleJob]:
-        return await self.manager.create_new_project()
+    async def create_new_project(self, template: bytes) -> tuple[dict, ProjectImportBundleJob]:
+        return await self.manager.create_new_project(template)
 
     async def delete_action(self, project_id: str, state_name: str, action_name: str) -> None:
         await self.editor.delete_action(project_id, state_name, action_name)

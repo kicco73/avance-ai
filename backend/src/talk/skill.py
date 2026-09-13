@@ -88,6 +88,9 @@ class TalkSkill(Skill):
     ui_description = "Text to speech."
     project_declarable = True
 
+    def docs(self) -> dict[str, str]:
+        return {"project-specs": "PROJECT_SPECS.md"}
+
     def requirements(self) -> list[str]:
         return ["piper-tts>=1.6"]
 

@@ -9,7 +9,18 @@ import pytest
 from conftest import chat_action, enter_chat, parse_sse_result, session_of
 from system.web_session import WebSession
 
-from conftest import SAMPLES_DIR
+WELCOME_YML = (
+    "project:\n  id: welcoming\n"
+    "init-action:\n  target: welcome\n"
+    "states:\n"
+    "  welcome:\n"
+    "    contextual-prompt: hola\n"
+    "    actions:\n"
+    "      - name: unit-subjuntive\n"
+    "        target: subjuntive\n"
+    "  subjuntive:\n"
+    "    contextual-prompt: som-hi\n"
+)
 
 
 @pytest.mark.contract
@@ -65,8 +76,10 @@ def test_truncate_deletes_trailing_turns_and_rolls_the_live_state_back(client):
     """End-to-end: move a real automaton away from its initial state via
     a manual action, then truncate at that transition's timestamp — the
     transition and the state it produced must both be gone."""
-    content = (SAMPLES_DIR / "Aprendr català.zip").read_bytes()
-    resp = client.post("/api/skills/platform/projects/upload", content=content, headers={"Content-Type": "application/zip"})
+    resp = client.post(
+        "/api/skills/platform/projects/upload", content=WELCOME_YML.encode(),
+        headers={"Content-Type": "application/x-yaml"},
+    )
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
     client.post(f"/api/core/projects/{project_id}/activate")

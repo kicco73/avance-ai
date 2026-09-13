@@ -7,11 +7,20 @@ inside the skill's own package; everything else is core and lives in
 ```
 backend/
   conftest.py            the shared harness — fixtures, fakes, helpers
-  pytest.ini             testpaths = tests src
+  pytest.ini             testpaths = tests src samples
   tests/                 the core's own tests
     turn_harness.py      a turn engine standing on its own, for direct drives
   src/<skill>/tests/     that skill's tests, and nobody else's
+  samples/tests/         what exercises a sample project, and leaves with it
+  src/docs/tests/        what asserts the docs themselves, same reason
 ```
+
+`samples/` is a directory a build never copies, so it is a switch exactly
+as a skill's package is: a test that needs `samples/projects/<something>.zip` lives in
+`samples/tests/` and is simply not collected where the samples are not.
+A test that only needs *a project* never touches them — `hello_project`,
+or `conftest.new_project(client)` for a second one, both created through
+"New project", whose template travels with the authoring surface.
 
 ## Why a directory and not a marker
 
@@ -22,8 +31,8 @@ last step runs the built backend's own test suite (see
 `build/backend_copy.py`).
 
 A marker cannot do this job. pytest *imports* every test module before it
-applies `-m`, so a deselected module that imports `whatsapp.whatsapp_service`
-is still a collection error in a build without WhatsApp. A directory that
+applies `-m`, so a deselected module that imports a skill's own service is
+still a collection error in a build without that skill. A directory that
 was never copied is not there to import. The same absence that removes
 the code removes its tests, with nothing to keep in sync.
 
@@ -33,18 +42,68 @@ the code removes its tests, with nothing to keep in sync.
 in its `tests/` package. This is the hard case and the only one a marker
 could not have handled.
 
-**Needs a second skill as well.** `pytest.importorskip("talk.talk_service")`
+**Needs a second skill as well.** `pytest.importorskip("<package>.<module>")`
 at the top, so the module still collects where that skill is absent and
-says why it did not run. WhatsApp's voice tests do this for `talk` and
-`listen`.
+says why it did not run. A channel's voice tests do this for whatever
+speaks and whatever transcribes.
 
 **Reaches a skill only through its HTTP surface.** Nothing to import, so
 nothing breaks at collection — but the routes are not there to answer.
 The core harness abstains for it: `conftest.installed_skill(package)`
 skips when the package is not in this build, and the two helpers that
-need one call it — `hello_project` (the authoring surface uploads and
-publishes the project) and `chat_socket` (webchat is what answers a turn).
+need one call it — `new_project`, which `hello_project` is the fixture
+form of (the authoring surface creates, activates and publishes the
+project) and `chat_socket` (a channel is what answers a turn).
 A core test that reaches a skill's surface some other way calls it itself.
+
+## What a core test may assume about the tree it runs in
+
+The build copies whole directories, so a test **file** is atomic: it goes
+into every delivery or into none, and there is no third outcome. That
+single fact decides everything below, and the build's last step — running
+the copied suite — is what turns a wrong decision into a red build rather
+than a surprise at a customer's site.
+
+**A file belongs entirely to one side.** A test that drives
+`/api/skills/<key>/…` belongs in `src/<key>/tests/`, named after the
+controller it drives, and it leaves with the skill. The same file in
+`backend/tests/` ships everywhere and returns 404 wherever the skill was
+not copied. A file that mixes the two is the bug: split it, move the
+skill's half, and leave the core's half where it is. `backend/tests/`
+holding a test of one skill's own settings route is what a build without
+that skill fails on, and the fix is never to delete the test, mark it, or
+teach it to tolerate a 404.
+
+**A core test may not assume the whole tree.** It runs against whatever
+was built, so anything it knows about the source must be derived from
+what is installed, not written down:
+
+- Parametrise over `skills.discover()` rather than naming keys. «these
+  two are on the page, those two are not» is a test of the tree it was
+  written in; «each installed skill, copied alone, produces exactly its
+  own page» is the same claim, stronger, and true of every build.
+- Never assert a size taken from this tree. A floor of «more than 100
+  frontend calls» says nothing in a build that ships forty of them —
+  count what the source itself offers instead, and compare the two
+  numbers: every `${API_URL}` written must be one the scan read.
+- A guard that derives its subject can become vacuous when the subject is
+  empty. Say out loud that something was found, or the test passes by
+  finding nothing.
+
+**No core file may name a skill.** A table in `backend/tests/` keyed by
+`src/<package>/tests/…` hands every customer the list of packages they
+did not buy, and it rots besides: the file it names leaves with its skill
+while the entry stays behind, so the table needs an exception for
+«absent», which is the same as no rule at all. Let the file that needs
+the exception carry it — that is what `REACHES_INTO` is — and a
+declaration leaves with the test that wrote it.
+
+The shape of the mistake is always the same, and it is worth recognising
+before writing the code: a core test that wants to ask *whether this
+build has X* is a test that is in the wrong file. `installed_skill` is
+for the few places where a core behaviour is genuinely observed through a
+skill's surface — a chat turn needs somebody to answer it — not a way to
+keep a skill's test in the core.
 
 ## The harness composes the way the system composes
 
@@ -78,8 +137,8 @@ off the `session.info` frame those helpers return, and that id is what
 
 ## One thing pytest gets wrong on its own
 
-`build/` is a skill here, and pytest's built-in `norecursedirs` excludes a
-directory of that name — so its tests collect when you name the path and
+One package here is named `build`, and pytest's built-in `norecursedirs`
+excludes a directory of that name — so its tests collect when you name the path and
 vanish from a full run. `pytest.ini` therefore sets `norecursedirs`
 explicitly: pytest's own default with `build` taken out.
 
@@ -90,6 +149,31 @@ explicitly: pytest's own default with `build` taken out.
 `spawns_a_build` is the one with teeth: it marks a test that builds a
 backend copy and runs its tests. A build's own test run deselects it,
 because a build that builds a backend that builds a backend does not end.
+
+# What a test may look at, and what checks it
+
+CLAUDE.md states the rule: a test drives a public entry point and observes
+a public result, never how the thing is made. `tests/test_tests_stay_on_the_contract.py`
+is what enforces it — it walks the AST of every test module and fails on a
+test that reads or calls another object's private member.
+
+It counted 240 such reaches across 56 files when it was written. What
+survived is declared by the test that does it: a module-level
+`REACHES_INTO` mapping each private member to the reason it has no public
+form — a performance property nothing can observe, a concurrency window
+that must be held open, a registry with no public writer. A second test
+fails when a declared member stops being reached, so a declaration can
+only shrink and cannot rot into a blanket.
+
+The declaration lives in the file, not in a table in the core, for the
+reason a skill's tests live in its package: a central list would name, in
+every delivered build, the skills that build left out, and it rots when a
+file it names leaves while the entry stays behind.
+
+Name mangling is not what holds this line, and the repo already proves it:
+`GeminiProvider` mangles `__build_contents`, and tests reached in anyway as
+`provider._GeminiProvider__build_contents  # type: ignore`. Mangling buys a
+deterrent and a visible diff. This test is the gate.
 
 # What the suite costs, and the tool that says so
 
@@ -118,7 +202,7 @@ not in `addopts` on purpose — the gate has to pay them.
 
 Two fixtures are most of the suite's floor, and both are per-test by design:
 `app_db` gives each test a database of its own, `hello_project` a project
-uploaded and published through the real routes. Measured on this machine:
+created and published through the real routes. Measured on this machine:
 `app` sets up in ~0.2 s, `hello_project` adds ~0.25 s on top, and 290 of the
 1594 tests take one or both.
 
@@ -245,9 +329,9 @@ run when it happens and because what is known about it took two
 afternoons to collect.
 
 **What is seen.** A full-suite run stops making progress inside
-`src/avance_platform/tests/test_reactions_end_to_end.py` — observed twice
-on the same day, at `test_message_list_and_reaction_endpoint_round_trip`
-and at the test before it. The process stays alive with no output. Before
+`test_reactions_end_to_end.py` — observed twice on the same day, at
+`test_message_list_and_reaction_endpoint_round_trip` and at the test
+before it. The process stays alive with no output. Before
 the watchdog existed, that meant a run that never returned.
 
 **What is known.** It needs load: it appeared only while three or four

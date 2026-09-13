@@ -31,6 +31,13 @@ class PlatformSkill(Skill):
     ui_label = "Platform"
     ui_description = "Editor, benchmark and admin for the authoring app."
 
+    def docs(self) -> dict[str, str]:
+        return {
+            "session-specs": "SESSION_SPECS.md",
+            "skin-specs": "SKIN_SPECS.md",
+            "markdown-guide": "MARKDOWN_GUIDE.md",
+        }
+
     def register_controllers(self, controllers: list) -> None:
         from avance_platform.platform_service import PlatformService
 

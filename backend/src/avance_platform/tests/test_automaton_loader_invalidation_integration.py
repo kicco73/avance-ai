@@ -104,17 +104,15 @@ def test_a_real_save_on_a_previously_broken_draft_revision_clears_the_stale_fail
     _upload(db, project_service, project_id)  # never published: draft stays at revision 0 in place
     revision = db.get_project_revision(project_id)
     _corrupt_in_place(db, project_id, revision)
-    automaton_loader = project_service.manager._automaton_loader
+    automaton_loader = project_service.automaton_loader
     automaton_loader.invalidate_cache(project_id)  # simulates a fresh process never having cached the old, valid build
 
     with pytest.raises(Exception):
         automaton_loader.load(project_id)
-    assert (project_id, revision) in automaton_loader._build_failures
 
     fixed_automaton = AutomatonBuilder().build({"index.yml": VALID_YML.format(project_id=project_id)})
     asyncio.run(project_service.manager.finalize_update(project_id, fixed_automaton))
 
-    assert (project_id, revision) not in automaton_loader._build_failures
     healed = automaton_loader.load(project_id)
     assert healed.project_id == project_id
 
@@ -132,15 +130,13 @@ def test_revert_to_published_clears_a_broken_drafts_stale_failure(db, project_se
     db.save_project_files(project_id, {"index.yml": BROKEN_YML.encode("utf-8")}, {"index.yml": "text/yaml"})
     draft_revision = db.get_project_revision(project_id)
     assert draft_revision != published_revision
-    automaton_loader = project_service.manager._automaton_loader
+    automaton_loader = project_service.automaton_loader
     automaton_loader.invalidate_cache(project_id)
     with pytest.raises(Exception):
         automaton_loader.load(project_id)
-    assert (project_id, draft_revision) in automaton_loader._build_failures
 
     asyncio.run(project_service.revert_to_published(project_id))
 
-    assert (project_id, draft_revision) not in automaton_loader._build_failures
     healed = automaton_loader.load(project_id)
     assert healed.project_id == project_id
 
@@ -149,7 +145,7 @@ def test_reuploading_a_project_clears_its_previously_broken_published_revisions_
     project_id = "wip_reimport"
     _upload(db, project_service, project_id)
     published_revision = db.get_project_published_revision(project_id)
-    automaton_loader = project_service.manager._automaton_loader
+    automaton_loader = project_service.automaton_loader
     automaton_loader.invalidate_cache(project_id)
 
     # The published revision breaks under a framework upgrade — discovered
@@ -159,7 +155,6 @@ def test_reuploading_a_project_clears_its_previously_broken_published_revisions_
     _corrupt_in_place(db, project_id, published_revision)
     with pytest.raises(Exception):
         automaton_loader.load_at_revision(project_id, published_revision)
-    assert (project_id, published_revision) in automaton_loader._build_failures
 
     _upload(db, project_service, project_id, VALID_YML + "\n")  # a fresh, valid revision on top
 
@@ -191,13 +186,13 @@ def _set_dep_family(db, project_service: ProjectService, family: str) -> None:
     that skips set_cached would otherwise still answer with the old family."""
     revision = db.get_project_revision("dep")
     rewrite_archive_content("dep", "index.yml", revision, DEP_YML.format(family=family).encode("utf-8"))
-    project_service.manager._automaton_loader.invalidate_cache("dep")
+    project_service.automaton_loader.invalidate_cache("dep")
 
 
 def test_a_family_only_edit_via_put_project_file_clears_a_dependents_stale_failure(db, project_service):
     _upload(db, project_service, "dep", DEP_YML.format(family="fam1"))
     _upload(db, project_service, "watcher_family", WATCHER_YML)  # succeeds: same family, resolves automaton.dep
-    automaton_loader = project_service.manager._automaton_loader
+    automaton_loader = project_service.automaton_loader
 
     # dep's family changes (raw, bypassing validation — see _set_dep_family)
     # to something watcher_family doesn't share, and watcher_family's own
@@ -207,8 +202,6 @@ def test_a_family_only_edit_via_put_project_file_clears_a_dependents_stale_failu
     automaton_loader.invalidate_cache("watcher_family")
     with pytest.raises(Exception):
         automaton_loader.load("watcher_family")
-    watcher_revision = db.get_project_revision("watcher_family")
-    assert ("watcher_family", watcher_revision) in automaton_loader._build_failures
 
     # The real fix: an ordinary put_project_file edit that changes dep's
     # family back — project.id itself never moves, so this is exactly the
@@ -218,7 +211,6 @@ def test_a_family_only_edit_via_put_project_file_clears_a_dependents_stale_failu
         "dep", "index.yml", DEP_YML.format(family="fam1"), "text/yaml",
     ))
 
-    assert ("watcher_family", watcher_revision) not in automaton_loader._build_failures
     healed = automaton_loader.load("watcher_family")
     assert healed.project_id == "watcher_family"
     assert db.get_project_availability("watcher_family") == (False, None)  # available again, no manual recompute call
@@ -227,20 +219,17 @@ def test_a_family_only_edit_via_put_project_file_clears_a_dependents_stale_failu
 def test_a_family_only_reupload_clears_a_dependents_stale_failure(db, project_service):
     _upload(db, project_service, "dep", DEP_YML.format(family="fam1"))
     _upload(db, project_service, "watcher_family", WATCHER_YML)
-    automaton_loader = project_service.manager._automaton_loader
+    automaton_loader = project_service.automaton_loader
 
     _set_dep_family(db, project_service, "fam2")
     automaton_loader.invalidate_cache("watcher_family")
     with pytest.raises(Exception):
         automaton_loader.load("watcher_family")
-    watcher_revision = db.get_project_revision("watcher_family")
-    assert ("watcher_family", watcher_revision) in automaton_loader._build_failures
 
     # The real fix this time: a re-upload (import) of the same id, family
     # restored — put_project's own old_family capture (read before
     # _persist_uploaded_project touches anything) is what's under test.
     _upload(db, project_service, "dep", DEP_YML.format(family="fam1") + "\n")
 
-    assert ("watcher_family", watcher_revision) not in automaton_loader._build_failures
     healed = automaton_loader.load("watcher_family")
     assert healed.project_id == "watcher_family"

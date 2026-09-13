@@ -1,19 +1,31 @@
 from __future__ import annotations
 
+from typing import AsyncIterator
+
 import pytest
 
 from ai import AiService
 from ai._providers.cascading_llm_provider import AutoLiveLLMProvider
+from ai.llm_provider import AIServiceProviderRateLimitedError
 
 pytestmark = pytest.mark.contract
 
 
 class _FakeProvider:
-    """Minimal stand-in for an LLMProvider — only get_total_tokens() is
-    exercised here, so nothing else needs implementing."""
+    """Minimal stand-in for an LLMProvider: reports a fixed total, and
+    fails the way a throttled provider does — before yielding anything,
+    which is what makes the live cascade fail over to the next one."""
 
     def __init__(self, tokens: int) -> None:
         self._tokens = tokens
+        self._chunks: list[str] = []
+
+    async def generate_stream_with_schema(
+        self, system_prompt: str, history: list[dict], schema: dict[str, str], on_metadata=None,
+    ) -> AsyncIterator[str]:
+        for chunk in self._chunks:
+            yield chunk
+        raise AIServiceProviderRateLimitedError("rate limited")
 
     def get_total_tokens(self) -> int:
         return self._tokens
@@ -25,11 +37,15 @@ class TestAutoLiveLLMProviderGetTotalTokens:
         cascade = AutoLiveLLMProvider([("a", _FakeProvider(10)), ("b", _FakeProvider(5))])
         assert cascade.get_total_tokens() == 15
 
-    def test_counts_a_provider_the_cascade_already_advanced_past(self):
+    async def test_counts_a_provider_the_cascade_already_advanced_past(self):
         # A cascade that failed over from "a" to "b" must still count
         # whatever "a" already burned before the fallback kicked in.
         cascade = AutoLiveLLMProvider([("a", _FakeProvider(10)), ("b", _FakeProvider(5))])
-        cascade._cascade.advance()
+
+        with pytest.raises(AIServiceProviderRateLimitedError):
+            async for _ in cascade.generate_stream_with_schema("sys", [], {"text": "t"}):
+                pass
+
         assert cascade.current_index == 1
         assert cascade.get_total_tokens() == 15
 

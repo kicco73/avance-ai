@@ -45,7 +45,6 @@ from tracking.tracking_service import TrackingService
 
 BACKEND_DIR = Path(__file__).resolve().parent
 SRC_ROOT = BACKEND_DIR / "src"
-SAMPLES_DIR = BACKEND_DIR / "samples" / "projects"
 TEST_STATS_PATH = BACKEND_DIR / "test_stats.json"
 
 
@@ -470,6 +469,9 @@ class FakeAiService:
     def get_models_info(self) -> dict:
         return {"auto": True, "current_index": 0, "models": []}
 
+    def get_models_snapshot(self) -> dict:
+        return {"auto": True, "current_index": 0, "models": []}
+
     def select_model(self, index: int | None) -> None:
         pass
 
@@ -669,41 +671,39 @@ def app(
     # assembled, which is when a skill's own _install has run.
     for name, service in bus.collect(POINT_CORE_SERVICES, {}).items():
         setattr(fastapi_app.state, name, service)
-    # For tests that need to watch a task run: start the
-    # service and register a fake websocket on the factory (see
-    # run_pending_tasks below). Never started here — most tests only
-    # ever assert on the Task rows a task leaves behind.
+    # The scheduler is never started here — most tests only ever assert on
+    # the Task rows a task leaves behind. run_pending_tasks starts it.
     fastapi_app.state.namespace_factory = namespace_factory
     return fastapi_app
 
 
-class FakeWebSocket:
-    """Just enough to stand in for a WsConnection in BusChannel'
-    username -> connection registry: push only calls send on it, and a
-    Bus event only reaches a connection that registered for its type —
-    this one stands in for a browser, so it registers for everything the
-    socket may export (see BusChannel._exportable)."""
+class RecordedMessages:
+    """Whatever an interface would have shown, taken off the Bus instead
+    of off a socket: a producer publishes and never learns whether anyone
+    was connected, so the Bus is where its contract ends (see BUS.md)."""
 
-    def __init__(self):
-        self.id = "fake-connection"
-        self.sent: list[dict] = []
+    def __init__(self, *types: str) -> None:
+        self.messages: list = []
+        for type in types:
+            bus.subscribe(type, self.record)
 
-    def wants(self, event_type: str) -> bool:
-        return event_type in WEB_FORWARDED
+    async def record(self, message) -> None:
+        self.messages.append(message)
 
-    def send(self, payload: dict):
-        self.sent.append(payload)
+    def for_user(self, username: str) -> list:
+        return [message for message in self.messages if message.username == username]
+
+    def of_type(self, type: str) -> list:
+        return [message for message in self.messages if message.type == type]
 
 
-def run_pending_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0) -> list[dict]:
-    """Starts the app fixture's SchedulerService (once), attaches a FakeWebSocket
-    for `username`, waits until no task is pending or dispatched,
-    and returns the frames the browser would have received. Stops the
-    service afterwards so its thread never outlives the test."""
+def run_pending_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0) -> list:
+    """Starts the app fixture's SchedulerService (once), records everything
+    a browser would have been forwarded, waits until no task is pending or
+    dispatched, and returns that identity's Bus messages. Stops the service
+    afterwards so its thread never outlives the test."""
     import time
-    websocket = FakeWebSocket()
-    bus_channel = BusChannel(auth_service=None)
-    bus_channel._connections[username] = [websocket]
+    recorded = RecordedMessages(*WEB_FORWARDED)
     scheduler_service = app.state.scheduler_service
     scheduler_service.start()
     try:
@@ -715,7 +715,7 @@ def run_pending_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0
             time.sleep(0.02)
     finally:
         scheduler_service.stop()
-    return websocket.sent
+    return recorded.for_user(username)
 
 
 @pytest.fixture
@@ -774,28 +774,33 @@ def live_server(app: FastAPI):
         thread.join(timeout=5.0)
 
 
-@pytest.fixture
-def hello_project(client: TestClient) -> str:
-    """Uploads, activates, and publishes the bundled "Hello world" sample
-    project — a project needs a published revision before it can have
-    chat sessions. Returns the project's own id (its index.yml declares
-    "legacy.hello_world" — put_project.py always uses whatever the
-    upload's own project.id says, there's no separate name to request)."""
-    # Uploading, activating and publishing are the authoring surface's own
-    # routes (see avance_platform/settings_controller.py) — a build without
-    # it has no way to put a project there at all.
+def new_project(client: TestClient) -> str:
+    """One more project, created, activated and published — the id is
+    the template's own, made unique where a project already has it.
+    What a test reaches for when it needs a second project to tell two
+    of something apart; `hello_project` is the same thing as a fixture."""
     installed_skill("avance_platform")
-    content = (SAMPLES_DIR / "Hello world.zip").read_bytes()
-    response = client.post(
-        "/api/skills/platform/projects/upload", content=content, headers={"Content-Type": "application/zip"}
-    )
+    response = client.post("/api/skills/platform/projects")
     assert response.status_code == 200, response.text
-    project_id = parse_sse_result(response)["project_id"]
+    project_id = response.json()["project_id"]
     response = client.post(f"/api/core/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
     response = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
     return project_id
+
+
+@pytest.fixture
+def hello_project(client: TestClient) -> str:
+    """Creates, activates and publishes a "Hello world" project — a
+    project needs a published revision before it can have chat sessions.
+    Returns the project's own id, the one the template declares.
+
+    It goes through "New project" rather than uploading a file from
+    `samples/`: creating a project is the authoring surface's own route
+    (see avance_platform/settings_controller.py), the template it uses
+    travels with that skill, and no build copies `samples/`."""
+    return new_project(client)
 
 
 def pytest_runtest_logreport(report) -> None:

@@ -300,23 +300,26 @@ class AiService(object):
 			self._input_tokens_cache[cache_key] = tokens
 		return tokens
 
-	def get_models_info(self) -> dict:
-		auto = self._selected_index is None
-		current_index = self._current_config_index
+	def get_models_snapshot(self) -> dict:
+		"""What identifies the models a result was produced with, and
+		nothing else. Kept apart from get_models_info() because this one
+		is written down and kept, once per recorded result: the words a
+		page shows a human are not part of what produced an answer."""
 		return {
-			"auto": auto,
-			"current_index": current_index,
+			"auto": self._selected_index is None,
+			"current_index": self._current_config_index,
 			"models": [
-				{
-					"driver": c.driver,
-					"model": c.model,
-					"url": c.url,
-					"ui_label": c.ui_label,
-					"ui_description": c.ui_description,
-				}
+				{"driver": c.driver, "model": c.model, "url": c.url}
 				for c in self._configs
 			],
 		}
+
+	def get_models_info(self) -> dict:
+		info = self.get_models_snapshot()
+		for model, config in zip(info["models"], self._configs):
+			model["ui_label"] = config.ui_label
+			model["ui_description"] = config.ui_description
+		return info
 
 	async def generate(
 		self,

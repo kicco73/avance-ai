@@ -6,18 +6,14 @@ the Tracking row.
 from __future__ import annotations
 
 import json
-from datetime import datetime
 
 import pytest
 
 from automaton.automaton import Action, Automaton, Signal, State
 from metrics.metric_service import MetricService
+from system.web_session import WebSession
 from tracking.fixed_project_context import FixedProjectContext
-from conftest import make_test_namespace_factory
-from tracking.tracking_service import TrackingService
-
-USERNAME = "user"
-PROJECT_ID = "proj"
+from turn_harness import PROJECT_ID, turn_service_for  # noqa: F401 — a pytest fixture, used by name
 
 # Each test verifies one fact about metric-in-trigger evaluation:
 # fires/doesn't fire, never leaks into the persisted Tracking row,
@@ -44,25 +40,8 @@ def _automaton_with_trigger(trigger_expr: str, target: str = "b") -> Automaton:
         signals=[Signal(name="mySignal", ui_label="My signal", definition="whatever")],
         general_attachments={},
         autotracking_on_ai_message=True,
+        project_id=PROJECT_ID,
     )
-
-
-class FakeProjectService:
-    def __init__(self, automaton: Automaton, state_key: str = "a") -> None:
-        self._automaton = automaton
-        self._state_key = state_key
-
-    def get_active_automaton_and_state(self):
-        return self._automaton, self._automaton.states[self._state_key]
-
-    def get_automaton_and_state_for_session(self, session_id: int):
-        return self._automaton, self._automaton.states[self._state_key]
-
-    def get_active_project_id(self) -> str:
-        return PROJECT_ID
-
-    def get_project_availability(self, project_id: str):
-        return (False, None)
 
 
 class FakeSchemaAiService:
@@ -90,131 +69,117 @@ class FakeSchemaAiService:
         yield "Hi!"
 
 
-def _tracking_service(db, automaton: Automaton, signals_json: str) -> tuple[TrackingService, FakeSchemaAiService]:
-    ai_service = FakeSchemaAiService(signals_json)
-    project_service = FakeProjectService(automaton)
-    metrics = MetricService(db, FixedProjectContext(project_id=PROJECT_ID))
-    return TrackingService(db, project_service, metrics, make_test_namespace_factory(db)), ai_service
+async def _talking_in(turn_service_for, automaton: Automaton, signals_json: str = '{"mySignal": 1}'):
+    """A turn service over `automaton`, and a live session to talk in —
+    a freshly entered session already scores "engagement" above zero via
+    its session component alone, enough to drive these triggers."""
+    turn_service = turn_service_for(automaton, ai_service=FakeSchemaAiService(signals_json))
+    db = turn_service_for.db
+    db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
+    return turn_service, session["id"]
 
 
-def _session_id(db) -> int:
-    # A freshly bootstrapped session already scores "engagement" above
-    # zero via its session component alone, enough to drive these triggers.
-    db.ensure_project(PROJECT_ID)
-    db.publish_project(PROJECT_ID)
-    return db.create_chat_session(
-        username=USERNAME,
-        project_id=PROJECT_ID,
-        revision=db.get_project_published_revision(PROJECT_ID),
-        datetime_start=datetime(2026, 1, 1),
-        datetime_end=datetime(2026, 1, 1),
-        start_state="a",
-        end_state="a",
-    )
+async def test_a_trigger_referencing_only_a_metric_can_fire(turn_service_for):
+    turn_service, session_id = await _talking_in(turn_service_for, _automaton_with_trigger("engagement >= 1"))
 
-
-async def test_a_trigger_referencing_only_a_metric_can_fire(db):
-    automaton = _automaton_with_trigger("engagement >= 1")
-    session_id = _session_id(db)
-    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
-
-    result = await service._process(session_id, "hello", ai_service)
+    result = await turn_service.process_turn(session_id, "hello")
 
     assert result["state_changed"] is True
     assert result["new_state"] == "b"
 
 
-async def test_a_metric_referencing_trigger_that_is_not_met_does_not_fire(db):
-    automaton = _automaton_with_trigger("engagement >= 99")
-    session_id = _session_id(db)
-    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
+async def test_a_metric_referencing_trigger_that_is_not_met_does_not_fire(turn_service_for):
+    turn_service, session_id = await _talking_in(turn_service_for, _automaton_with_trigger("engagement >= 99"))
 
-    result = await service._process(session_id, "hello", ai_service)
+    result = await turn_service.process_turn(session_id, "hello")
 
     assert result["state_changed"] is False
     assert result["new_state"] is None
 
 
-async def test_metric_values_used_for_evaluation_are_never_persisted(db):
+async def test_metric_values_used_for_evaluation_are_never_persisted(turn_service_for):
     # mySignal must appear in the trigger too, not just engagement — a
     # signal no trigger references is dropped before persisting, same as
     # a metric, so an engagement-only trigger would filter it out too.
-    automaton = _automaton_with_trigger("signal.mySignal >= 1 and engagement >= 1")
-    session_id = _session_id(db)
-    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 42}')
+    turn_service, session_id = await _talking_in(
+        turn_service_for, _automaton_with_trigger("signal.mySignal >= 1 and engagement >= 1"), '{"mySignal": 42}',
+    )
 
-    await service._process(session_id, "hello", ai_service)
+    await turn_service.process_turn(session_id, "hello")
 
-    persisted = db.get_signals(session_id)
+    persisted = [row for row in turn_service.get_session_signals(session_id) if row["values"]]
     assert len(persisted) == 1
     # Only the real, model-reported signal is stored — "engagement" (or
     # any metric) must never leak into the Tracking log.
     assert json.loads(persisted[0]["values"]) == {"mySignal": 42}
 
 
-async def test_metrics_are_never_computed_when_no_trigger_in_the_state_references_one(db, monkeypatch):
-    automaton = _automaton_with_trigger("signal.mySignal >= 1")
-    session_id = _session_id(db)
-    tracking_service, ai_service = _tracking_service(db, automaton, '{"mySignal": 42}')
-    calls = []
-    monkeypatch.setattr(tracking_service._metrics, "calculate_values", lambda: calls.append(1) or {})
+def test_metric_values_are_merged_into_the_evaluation_names_only_when_a_trigger_references_one(db):
+    # The gate itself, where it lives: a full history load is what
+    # computing metrics costs, and a state whose triggers name none of
+    # them must not pay it.
+    metrics = MetricService(db, FixedProjectContext(project_id=PROJECT_ID))
+    names = {"mySignal": 42}
 
-    await tracking_service._process(session_id, "hello", ai_service)
+    unreferenced = metrics.merge_if_referenced(_automaton_with_trigger("signal.mySignal >= 1"), "a", names)
+    referenced = metrics.merge_if_referenced(_automaton_with_trigger("engagement >= 1"), "a", names)
 
-    assert calls == []
+    assert unreferenced == names
+    assert referenced["mySignal"] == 42
+    assert "engagement" in referenced
 
 
-async def test_a_trigger_can_combine_a_signal_and_a_metric(db):
-    automaton = _automaton_with_trigger("signal.mySignal >= 40 and engagement >= 1")
-    session_id = _session_id(db)
-    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 42}')
+async def test_a_trigger_can_combine_a_signal_and_a_metric(turn_service_for):
+    turn_service, session_id = await _talking_in(
+        turn_service_for, _automaton_with_trigger("signal.mySignal >= 40 and engagement >= 1"), '{"mySignal": 42}',
+    )
 
-    result = await service._process(session_id, "hello", ai_service)
+    result = await turn_service.process_turn(session_id, "hello")
 
     assert result["state_changed"] is True
     assert result["new_state"] == "b"
 
 
-async def test_a_trigger_referencing_only_env_can_fire(db):
+async def test_a_trigger_referencing_only_env_can_fire(turn_service_for):
     """Mirror of the metric-only case for the other signal-less namespace:
     no signal is requested from the model (nothing in the trigger needs
     one), the trigger is still evaluated every turn against the empty
-    signals set — the gate only ever switches off the request."""
-    automaton = _automaton_with_trigger("env.ready == 'yes'")
-    session_id = _session_id(db)
-    db.set_action_env(session_id, {"ready": "yes"})
-    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
+    signals set — the gate only ever switches off the request.
 
-    result = await service._process(session_id, "hello", ai_service)
+    The action-set store is seeded straight through the db: it is what an
+    action's own `env:` field writes, and no service-level writer for it
+    exists (set_env_value writes memory, which `env.` never reads)."""
+    turn_service, session_id = await _talking_in(turn_service_for, _automaton_with_trigger("env.ready == 'yes'"))
+    turn_service_for.db.set_action_env(session_id, {"ready": "yes"})
+
+    result = await turn_service.process_turn(session_id, "hello")
 
     assert result["state_changed"] is True
     assert result["new_state"] == "b"
 
 
-async def test_a_trigger_referencing_only_env_is_evaluated_before_the_reply_too(db):
+async def test_a_trigger_referencing_only_env_is_evaluated_before_the_reply_too(turn_service_for):
     """Same, under the "before" strategy (signal-tracking-on-ai-message:
     false): evaluated upfront, the optimistic reply in the old state is
     skipped and the one reply generated is already the new state's."""
     automaton = _automaton_with_trigger("env.ready == 'yes'")
     automaton.autotracking_on_ai_message = False
-    session_id = _session_id(db)
-    db.set_action_env(session_id, {"ready": "yes"})
-    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
+    turn_service, session_id = await _talking_in(turn_service_for, automaton)
+    turn_service_for.db.set_action_env(session_id, {"ready": "yes"})
 
-    result = await service._process(session_id, "hello", ai_service)
+    result = await turn_service.process_turn(session_id, "hello")
 
     assert result["state_changed"] is True
     assert result["new_state"] == "b"
-    assert db.get_signals(session_id)[-1]["new_state"] == "b"
+    assert turn_service.get_session_signals(session_id)[-1]["new_state"] == "b"
 
 
-async def test_a_signal_less_evaluation_that_fires_nothing_leaves_no_snapshot_row(db):
-    automaton = _automaton_with_trigger("env.ready == 'yes'")
-    session_id = _session_id(db)
-    db.set_action_env(session_id, {"ready": "no"})
-    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
+async def test_a_signal_less_evaluation_that_fires_nothing_leaves_no_snapshot_row(turn_service_for):
+    turn_service, session_id = await _talking_in(turn_service_for, _automaton_with_trigger("env.ready == 'yes'"))
+    turn_service_for.db.set_action_env(session_id, {"ready": "no"})
 
-    result = await service._process(session_id, "hello", ai_service)
+    result = await turn_service.process_turn(session_id, "hello")
 
     assert result["state_changed"] is False
-    assert db.get_signals(session_id) == []
+    assert turn_service.get_session_signals(session_id) == []

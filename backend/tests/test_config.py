@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from config import AppConfig, ConfigError
+from config import (
+    AppConfig, ConfigError, optional_choice, optional_non_negative_int, optional_positive_int, optional_section,
+)
 
 pytestmark = pytest.mark.contract
 
@@ -42,86 +44,56 @@ def _load(monkeypatch, tmp_path, content: str) -> AppConfig:
     return AppConfig()
 
 
-class TestGetOptionalPositiveFloat:
-    def _get(self, raw):
-        return AppConfig._get_optional_positive_float(raw, "turn-service", "max-session-duration-in-minutes", "cfg", default=60.0)
-
-    def test_returns_the_default_when_absent_and_the_configured_int_or_float_when_present(self):
-        assert self._get({"turn-service": {"transport": "rest"}}) == 60.0
-        assert self._get({"turn-service": {"max-session-duration-in-minutes": 30}}) == 30.0
-        assert self._get({"turn-service": {"max-session-duration-in-minutes": 12.5}}) == 12.5
-
-    @pytest.mark.parametrize("raw", [
-        {"turn-service": {"max-session-duration-in-minutes": 0}},
-        {"turn-service": {"max-session-duration-in-minutes": -5}},
-        {"turn-service": {"max-session-duration-in-minutes": "60"}},
-        {"turn-service": {"max-session-duration-in-minutes": True}},
-        {"turn-service": {"max-session-duration-in-minutes": None}},
-        {},
-    ])
-    def test_rejects_non_positive_non_numeric_values_and_a_missing_section(self, raw):
+class TestOptionalSection:
+    def test_an_absent_section_reads_as_empty_the_present_one_is_returned_and_a_non_mapping_one_is_rejected(self):
+        assert optional_section({}, "jobs", "cfg") == {}
+        assert optional_section({"jobs": {"max_concurrent": 5}}, "jobs", "cfg") == {"max_concurrent": 5}
         with pytest.raises(ConfigError):
-            self._get(raw)
+            optional_section({"jobs": "nope"}, "jobs", "cfg")
 
 
-class TestGetOptionalChoice:
-    def _get(self, raw):
-        return AppConfig._get_optional_choice(raw, "database", "migration-strategy", "cfg", default="stop", choices=("stop", "upgrade", "drop"))
+class TestOptionalChoice:
+    def _get(self, section):
+        return optional_choice(section, "database", "migration-strategy", "cfg", "stop", ("stop", "upgrade", "drop"))
 
     def test_returns_the_default_when_absent_and_any_listed_choice_when_present(self):
-        assert self._get({"database": {"url": "sqlite:///x.db"}}) == "stop"
+        assert self._get({"url": "sqlite:///x.db"}) == "stop"
         for configured in ("stop", "upgrade", "drop"):
-            assert self._get({"database": {"migration-strategy": configured}}) == configured
+            assert self._get({"migration-strategy": configured}) == configured
 
     @pytest.mark.parametrize("bad_value", ["wipe", True, 1, None])
     def test_rejects_values_outside_the_choices(self, bad_value):
         with pytest.raises(ConfigError):
-            self._get({"database": {"migration-strategy": bad_value}})
+            self._get({"migration-strategy": bad_value})
 
 
-class TestGetOptionalPositiveInt:
-    def _get(self, raw):
-        return AppConfig._get_optional_positive_int(raw, "jobs", "max_concurrent", "cfg", default=2)
+class TestOptionalPositiveInt:
+    def _get(self, section):
+        return optional_positive_int(section, "jobs", "max_concurrent", "cfg", 2)
 
-    def test_returns_the_default_when_the_field_or_section_is_absent_and_the_configured_value_when_present(self):
-        assert self._get({"jobs": {}}) == 2
+    def test_returns_the_default_when_the_field_is_absent_and_the_configured_value_when_present(self):
         assert self._get({}) == 2
-        assert self._get({"jobs": {"max_concurrent": 5}}) == 5
+        assert self._get({"max_concurrent": 5}) == 5
 
-    @pytest.mark.parametrize("raw", [
-        {"jobs": {"max_concurrent": 0}},
-        {"jobs": {"max_concurrent": -1}},
-        {"jobs": {"max_concurrent": 1.5}},
-        {"jobs": {"max_concurrent": "2"}},
-        {"jobs": {"max_concurrent": True}},
-        {"jobs": {"max_concurrent": None}},
-        {"jobs": "nope"},
-    ])
-    def test_rejects_non_positive_non_integer_values_and_a_non_mapping_section(self, raw):
+    @pytest.mark.parametrize("bad_value", [0, -1, 1.5, "2", True, None])
+    def test_rejects_non_positive_and_non_integer_values(self, bad_value):
         with pytest.raises(ConfigError):
-            self._get(raw)
+            self._get({"max_concurrent": bad_value})
 
 
-class TestGetOptionalNonNegativeInt:
-    def _get(self, raw, default=0):
-        return AppConfig._get_optional_non_negative_int(raw, "jobs", "min_job_interval_ms", "cfg", default=default)
+class TestOptionalNonNegativeInt:
+    def _get(self, section, default=0):
+        return optional_non_negative_int(section, "jobs", "min_job_interval_ms", "cfg", default)
 
     def test_returns_the_default_when_absent_and_accepts_zero_or_positive_values(self):
-        assert self._get({"jobs": {}}) == 0
-        assert self._get({"jobs": {"min_job_interval_ms": 500}}) == 500
-        assert self._get({"jobs": {"min_job_interval_ms": 0}}, default=1) == 0
+        assert self._get({}) == 0
+        assert self._get({"min_job_interval_ms": 500}) == 500
+        assert self._get({"min_job_interval_ms": 0}, default=1) == 0
 
-    @pytest.mark.parametrize("raw", [
-        {"jobs": {"min_job_interval_ms": -1}},
-        {"jobs": {"min_job_interval_ms": 1.5}},
-        {"jobs": {"min_job_interval_ms": "2"}},
-        {"jobs": {"min_job_interval_ms": True}},
-        {"jobs": {"min_job_interval_ms": None}},
-        {"jobs": "nope"},
-    ])
-    def test_rejects_negative_non_integer_values_and_a_non_mapping_section(self, raw):
+    @pytest.mark.parametrize("bad_value", [-1, 1.5, "2", True, None])
+    def test_rejects_negative_and_non_integer_values(self, bad_value):
         with pytest.raises(ConfigError):
-            self._get(raw)
+            self._get({"min_job_interval_ms": bad_value})
 
 
 def _chat(field: str, value) -> str:
@@ -165,6 +137,21 @@ class TestOptionalSettingsEndToEnd:
         assert getattr(_load(monkeypatch, tmp_path, custom_yaml), attribute) == custom_value
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, invalid_yaml)
+
+
+class TestMaxSessionDurationInMinutes:
+    def test_reads_an_int_or_a_float_and_always_yields_a_float(self, monkeypatch, tmp_path):
+        assert _load(monkeypatch, tmp_path, _chat("max-session-duration-in-minutes", 30)).max_session_duration_in_minutes == 30.0
+        assert _load(monkeypatch, tmp_path, _chat("max-session-duration-in-minutes", 12.5)).max_session_duration_in_minutes == 12.5
+
+    @pytest.mark.parametrize("bad_value", ["-5", '"60"', "true", "null"])
+    def test_rejects_non_positive_and_non_numeric_values(self, monkeypatch, tmp_path, bad_value):
+        with pytest.raises(ConfigError):
+            _load(monkeypatch, tmp_path, _chat("max-session-duration-in-minutes", bad_value))
+
+    def test_rejects_a_missing_turn_service_section(self, monkeypatch, tmp_path):
+        with pytest.raises(ConfigError):
+            _load(monkeypatch, tmp_path, MINIMAL_CONFIG.replace("turn-service: {}", ""))
 
 
 _ONE_PROVIDER = "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n"

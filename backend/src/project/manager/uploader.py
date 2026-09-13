@@ -27,8 +27,6 @@ if TYPE_CHECKING:
 
 logger = LoggerFactory.get_logger(__name__)
 
-NEW_PROJECT_TEMPLATE = Path(__file__).resolve().parents[3] / "samples" / "projects" / "Hello world.zip"
-
 
 class ProjectUploader:
     def __init__(
@@ -171,13 +169,12 @@ class ProjectUploader:
             suffix += 1
         return f"{base}_{suffix}"
 
-    async def create_new_project(self) -> tuple[dict, ProjectImportBundleJob]:
-        content = NEW_PROJECT_TEMPLATE.read_bytes()
-        template_files, _, _ = self.extract_upload_files(content, "application/zip")
+    async def create_new_project(self, template: bytes) -> tuple[dict, ProjectImportBundleJob]:
+        template_files, _, _ = self.extract_upload_files(template, "application/zip")
         base_id, _, _ = AutomatonBuilder.read_declared_env_keys(template_files["index.yml"])
         project_id = self._unique_project_id(base_id or "hello_world")
         automaton, files, sessions_to_import, tests_to_import = self._build_from_upload(
-            content, "application/zip", force_project_id=project_id,
+            template, "application/zip", force_project_id=project_id,
         )
         return await self._persist_uploaded_project(
             project_id, automaton.project_revision, automaton, files, sessions_to_import, tests_to_import,

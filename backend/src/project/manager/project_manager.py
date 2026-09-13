@@ -80,8 +80,8 @@ class ProjectManager:
     ) -> tuple[dict, ProjectImportBundleJob]:
         return await self._uploader.put_project(content, content_type)
 
-    async def create_new_project(self) -> tuple[dict, ProjectImportBundleJob]:
-        return await self._uploader.create_new_project()
+    async def create_new_project(self, template: bytes) -> tuple[dict, ProjectImportBundleJob]:
+        return await self._uploader.create_new_project(template)
 
     def accept_legal_terms(self, username: str, project_id: str) -> None:
         current = self._db.get_archive_row(
@@ -164,9 +164,12 @@ class ProjectManager:
 
     def wipe_all_live_sessions(self) -> None:
         self._db.wipe_live_sessions_for_all_projects()
+        self._db.reclaim_free_space()
 
     def clean_unused_revisions(self) -> int:
-        return self._db.delete_unused_archive_revisions()
+        deleted = self._db.delete_unused_archive_revisions()
+        self._db.reclaim_free_space()
+        return deleted
 
     def preview_publish(self, project_id: str) -> dict:
         if project_id not in self._db.list_projects():

@@ -19,6 +19,9 @@ class MailSkill(Skill):
     ui_description = "Sends email on behalf of a project."
     project_declarable = True
 
+    def docs(self) -> dict[str, str]:
+        return {"project-specs": "PROJECT_SPECS.md"}
+
     def requirements(self) -> list[str]:
         return ["aiosmtplib>=5.0", "markdown>=3.7"]
 

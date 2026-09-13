@@ -74,12 +74,12 @@ class _LinkCollector(HTMLParser):
         if tag != "a":
             return
         href = dict(attrs).get("href")
-        target = _resolve_result_url(href) if href else None
+        target = resolve_result_url(href) if href else None
         if target is not None and target not in self.urls:
             self.urls.append(target)
 
 
-def _resolve_result_url(href: str) -> str | None:
+def resolve_result_url(href: str) -> str | None:
     href = unescape(href)
     if href.startswith("//"):
         href = f"https:{href}"

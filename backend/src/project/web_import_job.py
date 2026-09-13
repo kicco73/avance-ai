@@ -88,10 +88,10 @@ class WebImportJob(CancelableJob):
             "and nothing else.\n\n"
             f"{self._corpus()}"
         )
-        return self._parse_columns(reply)
+        return self.parse_columns(reply)
 
     @staticmethod
-    def _parse_columns(reply: str) -> list[str]:
+    def parse_columns(reply: str) -> list[str]:
         text = _strip_fence(reply)
         start, end = text.find("["), text.rfind("]")
         if start == -1 or end <= start:
@@ -115,10 +115,10 @@ class WebImportJob(CancelableJob):
             "never invent one. Answer with CSV only, no commentary.\n\n"
             f"{self._corpus()}"
         )
-        return self._normalize_csv(reply, self._columns)
+        return self.__normalize_csv(reply, self._columns)
 
     @staticmethod
-    def _normalize_csv(reply: str, columns: list[str]) -> str:
+    def __normalize_csv(reply: str, columns: list[str]) -> str:
         rows = [row for row in csv.reader(io.StringIO(_strip_fence(reply))) if any(cell.strip() for cell in row)]
         if rows and [cell.strip().lower() for cell in rows[0]] == [column.lower() for column in columns]:
             rows = rows[1:]

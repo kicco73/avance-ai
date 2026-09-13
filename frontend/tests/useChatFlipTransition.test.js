@@ -81,6 +81,26 @@ describe('useChatFlipTransition', () => {
     expect(el.style.zIndex).toBe('') // released back to the CSS class's own z-index
   })
 
+  // A leftover rotateY(0deg)/backface-visibility keeps the full-viewport,
+  // position: fixed chat window on a composited layer of its own for as
+  // long as the chat is open, and iOS WebKit stops repainting that layer
+  // once a turn's stream of DOM writes ends — the finished bubble goes
+  // blank at its full size until a scroll re-tiles it.
+  it('onChatEnter leaves no 3D inline style behind once the flip is over', async () => {
+    const s = mount()
+    const el = document.createElement('div')
+
+    s.onChatBeforeEnter(el)
+    s.onChatEnter(el, () => {})
+    await vi.advanceTimersByTimeAsync(250)
+    flushRaf()
+    el.dispatchEvent(new TransitionEvent('transitionend', { propertyName: 'transform' }))
+
+    expect(el.style.transform).toBe('')
+    expect(el.style.transition).toBe('')
+    expect(el.style.backfaceVisibility).toBe('')
+  })
+
   it('onChatEnter ignores a transitionend for a different property', async () => {
     const s = mount()
     const el = document.createElement('div')

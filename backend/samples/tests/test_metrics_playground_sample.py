@@ -3,11 +3,13 @@ triggers over every core metric.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from conftest import enter_chat, parse_sse_result
 
-from conftest import SAMPLES_DIR
+SAMPLES_DIR = Path(__file__).resolve().parents[1] / "projects"
 
 
 def _upload_and_activate(client):

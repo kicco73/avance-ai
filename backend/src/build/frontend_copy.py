@@ -29,11 +29,13 @@ from pathlib import Path
 
 from system.logging_factory import LoggerFactory
 
+from .copy_ignore import DEV_ONLY_DIRS
+
 logger = LoggerFactory.get_logger(__name__)
 
 _SOURCE_SUFFIXES = {".js", ".vue", ".css", ".html", ".json", ".md"}
 
-_FRONTEND_COPY_IGNORE = shutil.ignore_patterns("node_modules", "dist", ".vite", "*.log")
+_FRONTEND_COPY_IGNORE = shutil.ignore_patterns("node_modules", "dist", "*.log", *DEV_ONLY_DIRS)
 
 
 class FrontendBuildError(Exception):
@@ -52,9 +54,9 @@ class FrontendCopy:
         return self._destination / "src" / "skills"
 
     def build(self) -> dict:
-        self._copy()
-        excluded_keys = self._excluded_keys()
-        dropped = self._prune_skills(excluded_keys)
+        self.__copy()
+        excluded_keys = self.__excluded_keys()
+        dropped = self.__prune_skills(excluded_keys)
         leaked = self._leaked(excluded_keys)
         if leaked:
             raise FrontendBuildError(
@@ -62,11 +64,11 @@ class FrontendCopy:
             )
         return {"path": str(self._destination), "dropped_skills": sorted(dropped)}
 
-    def _copy(self) -> None:
+    def __copy(self) -> None:
         shutil.rmtree(self._destination, ignore_errors=True)
         shutil.copytree(self._source, self._destination, ignore=_FRONTEND_COPY_IGNORE)
 
-    def _excluded_keys(self) -> set[str]:
+    def __excluded_keys(self) -> set[str]:
         """The keys of every excluded package, whether or not it owns a
         directory here. A skill with no frontend of its own is still gone
         from the backend, so the frontend must stop naming it just the
@@ -78,7 +80,7 @@ class FrontendCopy:
         excluded = set(self._excluded_skills)
         return {entry["key"] for entry in skills.installed() if entry["package"] in excluded}
 
-    def _prune_skills(self, excluded_keys: set[str]) -> set[str]:
+    def __prune_skills(self, excluded_keys: set[str]) -> set[str]:
         dropped = set()
         for key in excluded_keys:
             directory = self.skills_dir / key

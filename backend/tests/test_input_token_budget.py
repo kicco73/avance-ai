@@ -1,29 +1,18 @@
 """turn-service.input-token-budget-per-turn."""
 from __future__ import annotations
 
-from datetime import datetime
-
 import pytest
 
 from ai import AiService
 from ai.llm_provider import ToolCall, ToolCallsRequested, ToolSpec
 from automaton.automaton import Action, Automaton, State
+from system.web_session import WebSession
 from turn.errors import TurnServiceError
-from conftest import make_test_namespace_factory
-from metrics.metric_service import MetricService
-from tracking.env import PersistedEnv
-from tracking.evaluation_scope import EvaluationScopeBuilder
-from tracking.fixed_project_context import FixedProjectContext
-from tracking.session_facts import SessionFacts
-from tracking.tracking_processor import UserVariables
-from tracking.tracking_service import TrackingService
-from tracking.user_facts import UserFacts
-from tracking.tracking_processor_user import TrackingProcessorAfterUserMessage
+from turn_harness import PROJECT_ID, turn_service_for  # noqa: F401 — a pytest fixture, used by name
 
 pytestmark = pytest.mark.regression
 
 USERNAME = "user"
-PROJECT_ID = "budget_proj"
 
 
 def _automaton(contextual_prompt: str = "hi") -> Automaton:
@@ -36,18 +25,8 @@ def _automaton(contextual_prompt: str = "hi") -> Automaton:
         signals=[],
         general_attachments={},
         autotracking_on_ai_message=False,
+        project_id=PROJECT_ID,
     )
-
-
-class FakeProjectService:
-    def __init__(self, automaton: Automaton) -> None:
-        self._automaton = automaton
-
-    def get_automaton_and_state_for_session(self, session_id: int):
-        return self._automaton, self._automaton.states["a"]
-
-    def get_active_project_id(self) -> str:
-        return PROJECT_ID
 
 
 class RecordingAiService:
@@ -65,58 +44,46 @@ class RecordingAiService:
         yield "should never run"  # pragma: no cover - the budget check must reject first
 
 
-def _session_id(db) -> int:
-    db.ensure_project(PROJECT_ID)
-    db.publish_project(PROJECT_ID)
-    return db.create_chat_session(
-        username=USERNAME, project_id=PROJECT_ID, revision=db.get_project_published_revision(PROJECT_ID),
-        datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
-        start_state="a", end_state="a",
+class RecordingAiServiceThatFinishes(RecordingAiService):
+    async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, **kwargs):
+        self.called = True
+        yield "hi"
+
+
+async def _talking_in(turn_service_for, contextual_prompt: str, ai_service, budget: int | None = None):
+    turn_service = turn_service_for(
+        _automaton(contextual_prompt), ai_service=ai_service, input_token_budget_per_turn=budget,
     )
+    db = turn_service_for.db
+    db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
+    return turn_service, session["id"]
 
 
-async def test_a_turn_whose_system_prompt_alone_exceeds_the_budget_is_rejected_before_calling_the_provider(db):
-    automaton = _automaton(contextual_prompt="x" * 200)
-    session_id = _session_id(db)
-    project_service = FakeProjectService(automaton)
-    metrics = MetricService(db, project_service)
+async def test_a_turn_whose_system_prompt_alone_exceeds_the_budget_is_rejected_before_calling_the_provider(turn_service_for):
     ai_service = RecordingAiService()
-    service = TrackingService(
-        db, project_service, metrics, make_test_namespace_factory(db), input_token_budget_per_turn=10,
-    )
+    turn_service, session_id = await _talking_in(turn_service_for, "x" * 200, ai_service, budget=10)
 
     with pytest.raises(TurnServiceError) as exc_info:
-        await service._process(session_id, "hello", ai_service)
+        await turn_service.process_turn(session_id, "hello")
 
     assert exc_info.value.status_code == 413
     assert exc_info.value.code == "input_budget_exceeded"
     assert ai_service.called is False
-    warnings = db.get_system_warnings(USERNAME, PROJECT_ID)
+    warnings = turn_service_for.db.get_system_warnings(USERNAME, PROJECT_ID)
     assert len(warnings) == 1
     assert warnings[0]["kind"] == "input_budget_exceeded"
     assert "prompt" in warnings[0]["message"]
 
 
-async def test_a_turn_within_budget_is_not_rejected(db):
-    automaton = _automaton(contextual_prompt="hi")
-    session_id = _session_id(db)
-    project_service = FakeProjectService(automaton)
-    metrics = MetricService(db, project_service)
+async def test_a_turn_within_budget_is_not_rejected(turn_service_for):
     ai_service_ok = RecordingAiServiceThatFinishes()
-    service = TrackingService(
-        db, project_service, metrics, make_test_namespace_factory(db), input_token_budget_per_turn=100000,
-    )
+    turn_service, session_id = await _talking_in(turn_service_for, "hi", ai_service_ok, budget=100000)
 
-    await service._process(session_id, "hello", ai_service_ok)
+    await turn_service.process_turn(session_id, "hello")
 
     assert ai_service_ok.called is True
-    assert db.get_system_warnings(USERNAME, PROJECT_ID) == []
-
-
-class RecordingAiServiceThatFinishes(RecordingAiService):
-    async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, **kwargs):
-        self.called = True
-        yield "hi"
+    assert turn_service_for.db.get_system_warnings(USERNAME, PROJECT_ID) == []
 
 
 class _FakeToolProvider:
@@ -175,10 +142,6 @@ async def test_ai_services_own_tool_loop_rejects_a_round_that_exceeds_the_budget
     assert provider.calls == 1
 
 
-def _user_variables(automaton: Automaton, session_id: int) -> UserVariables:
-    return UserVariables(automaton=automaton, state=automaton.states["a"], project_id=PROJECT_ID, session_id=session_id)
-
-
 class MultiRoundAiService:
 
     def is_provider_with_schema(self) -> bool:
@@ -195,28 +158,6 @@ class MultiRoundAiService:
         yield "hi"
 
 
-async def test_message_tokens_is_the_sum_of_every_rounds_own_input_tokens(db):
-    automaton = _automaton(contextual_prompt="hi")
-    session_id = _session_id(db)
-    project_service = FixedProjectContext(project_id=PROJECT_ID)
-    metrics = MetricService(db, project_service)
-    env = PersistedEnv(db, project_service, session_id)
-    scope_builder = EvaluationScopeBuilder(env, metrics, SessionFacts(db, project_service), UserFacts(db), db)
-
-    processor = TrackingProcessorAfterUserMessage(
-        MultiRoundAiService(), scope_builder, env, db, _user_variables(automaton, session_id),
-    )
-    # Persisted before the turn runs and handed over as an id, the way
-    # the real caller does it (see TurnService.accept_user_message): a
-    # turn is bound to the messages it answers, and one nobody sent is
-    # bound to none.
-    said = db.save_message("user", "hello", session_id)
-    result = await processor.process("hello", user_message_ids=[said])
-
-    user_message = db.get_message(result["user_message_id"])
-    assert user_message["tokens"] == 250
-
-
 class MultiRoundAiServiceWithCacheReads(MultiRoundAiService):
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, **kwargs):
         on_metadata("input_tokens", 100)
@@ -228,24 +169,20 @@ class MultiRoundAiServiceWithCacheReads(MultiRoundAiService):
         yield "hi"
 
 
-async def test_message_cache_read_tokens_is_also_summed_across_every_round(db):
-    automaton = _automaton(contextual_prompt="hi")
-    session_id = _session_id(db)
-    project_service = FixedProjectContext(project_id=PROJECT_ID)
-    metrics = MetricService(db, project_service)
-    env = PersistedEnv(db, project_service, session_id)
-    scope_builder = EvaluationScopeBuilder(env, metrics, SessionFacts(db, project_service), UserFacts(db), db)
+async def test_message_tokens_is_the_sum_of_every_rounds_own_input_tokens(turn_service_for):
+    turn_service, session_id = await _talking_in(turn_service_for, "hi", MultiRoundAiService())
 
-    processor = TrackingProcessorAfterUserMessage(
-        MultiRoundAiServiceWithCacheReads(), scope_builder, env, db, _user_variables(automaton, session_id),
-    )
-    # Persisted before the turn runs and handed over as an id, the way
-    # the real caller does it (see TurnService.accept_user_message): a
-    # turn is bound to the messages it answers, and one nobody sent is
-    # bound to none.
-    said = db.save_message("user", "hello", session_id)
-    result = await processor.process("hello", user_message_ids=[said])
+    result = await turn_service.process_turn(session_id, "hello")
 
-    user_message = db.get_message(result["user_message_id"])
+    user_message = turn_service_for.db.get_message(result["user_message_id"])
+    assert user_message["tokens"] == 250
+
+
+async def test_message_cache_read_tokens_is_also_summed_across_every_round(turn_service_for):
+    turn_service, session_id = await _talking_in(turn_service_for, "hi", MultiRoundAiServiceWithCacheReads())
+
+    result = await turn_service.process_turn(session_id, "hello")
+
+    user_message = turn_service_for.db.get_message(result["user_message_id"])
     assert user_message["tokens"] == 250
     assert user_message["cache_read_tokens"] == 100

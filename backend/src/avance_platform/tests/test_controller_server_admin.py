@@ -1,3 +1,6 @@
+"""The operator's own database routes (server_admin_controller.py):
+backup, restore, and the two clean-ups under /settings/database.
+"""
 from __future__ import annotations
 
 import sqlite3
@@ -75,3 +78,40 @@ def test_switching_projects_right_after_a_restore_does_not_crash(client, hello_p
 
     # What the frontend does right after any switch: it enters the chat.
     assert session_of(enter_chat(client, hello_project))
+
+
+@pytest.mark.contract
+def test_wipe_all_live_sessions_deletes_sessions_across_every_project(client, hello_project):
+    session_id = session_of(enter_chat(client, hello_project))
+    assert client.get(f"/api/core/sessions/{session_id}/history").status_code == 200
+
+    response = client.post("/api/skills/platform/settings/database/wipe-live-sessions")
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    assert client.get(f"/api/core/sessions/{session_id}/history").status_code == 404
+
+    # The project definition itself is untouched — only its live sessions.
+    assert client.get(f"/api/skills/platform/projects/{hello_project}").status_code == 200
+
+
+@pytest.mark.contract
+def test_clean_unused_revisions_deletes_only_superseded_unpublished_drafts(client, hello_project):
+    """hello_project leaves revision 0 published; editing a file forks a
+    draft, and publishing it makes revision 0 the superseded one. The
+    second edit forks revision 2, the draft that must survive."""
+    assert client.put(f"/api/skills/platform/projects/{hello_project}/files/index.css", content=b"/* v1 */").status_code == 200
+    assert client.post(f"/api/skills/platform/projects/{hello_project}/publish", json={}).status_code == 200
+    assert client.put(f"/api/skills/platform/projects/{hello_project}/files/index.css", content=b"/* v2 */").status_code == 200
+
+    response = client.post("/api/skills/platform/settings/database/clean-unused-revisions")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    # One revision superseded (revision 0), even though it spans two files
+    # (index.yml + index.css) — "deleted" counts revisions, not rows.
+    assert body["deleted"] == 1
+
+    # The current draft and the still-published revision are untouched.
+    assert client.get(f"/api/skills/platform/projects/{hello_project}/files/index.css").json()["content"] == "/* v2 */"

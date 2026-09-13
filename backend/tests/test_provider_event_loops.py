@@ -18,13 +18,16 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-import anthropic
 import pytest
 
-from ai._providers.anthropic_provider_v2 import AnthropicProvider, SDK_MAX_RETRIES as ANTHROPIC_SDK_MAX_RETRIES
-from ai._providers.gemini_provider_v2 import GeminiProvider, REQUEST_TIMEOUT_MS
-from ai.llm_provider import AIServiceConfig
-from ai._providers.openai_provider_v2 import OpenAICompatibleProvider
+from ai._providers.anthropic_provider_v2 import AnthropicProvider, REQUEST_TIMEOUT_SECONDS as ANTHROPIC_REQUEST_TIMEOUT_SECONDS
+from ai._providers.gemini_provider_v2 import REQUEST_TIMEOUT_MS
+from ai.llm_provider import AIServiceConfig, AIServiceError
+from ai._providers.openai_provider_v2 import OpenAICompatibleProvider, REQUEST_TIMEOUT as OPENAI_REQUEST_TIMEOUT
+
+REACHES_INTO = {
+    "_async_clients": "an unpruned per-loop client dict leaks silently and has no other observable",
+}
 
 pytestmark = [pytest.mark.contract, pytest.mark.slow]
 
@@ -75,6 +78,22 @@ class _FakeApi(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
 
+class _FailingApi(_FakeApi):
+    """The same API, permanently down: every POST is a 500, the status an
+    SDK left on its own defaults would silently retry."""
+
+    posts = 0
+
+    def do_POST(self):
+        _FailingApi.posts += 1
+        self.rfile.read(int(self.headers.get("content-length", 0)))
+        self.send_response(500)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", "2")
+        self.end_headers()
+        self.wfile.write(b"{}")
+
+
 @pytest.fixture(scope="module")
 def fake_api_url():
     server = ThreadingHTTPServer(("127.0.0.1", 0), _FakeApi)
@@ -84,13 +103,18 @@ def fake_api_url():
     server.shutdown()
 
 
+@pytest.fixture
+def failing_api_url():
+    _FailingApi.posts = 0
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _FailingApi)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{server.server_port}"
+    server.shutdown()
+
+
 def _anthropic(fake_api_url: str) -> AnthropicProvider:
-    provider = AnthropicProvider(AIServiceConfig("anthropic", "c", "k", None, "x"))
-    # Point every per-loop client at the fake API.
-    provider._new_async_client = lambda: anthropic.AsyncAnthropic(  # type: ignore[method-assign]
-        api_key="k", base_url=fake_api_url, timeout=10.0, max_retries=ANTHROPIC_SDK_MAX_RETRIES,
-    )
-    return provider
+    return AnthropicProvider(AIServiceConfig("anthropic", "c", "k", fake_api_url, "x"))
 
 
 def _openai(fake_api_url: str) -> OpenAICompatibleProvider:
@@ -153,29 +177,29 @@ def test_anthropic_keeps_one_client_per_loop_and_prunes_closed_ones(fake_api_url
         asyncio.run(_one_call(provider))
     # Every one of those loops is closed by now; the next new loop's
     # first use sweeps them, so the dict never grows without bound.
+    # Private read on purpose: the pruning has no other observable
+    # consequence — an unpruned dict leaks silently and forever.
     asyncio.run(_one_call(provider))
     assert len(provider._async_clients) == 1
 
 
-def test_sdk_retries_are_off_and_timeouts_explicit():
-    """The cascade is the one retry policy; a silent upstream must time
-    out rather than hang a turn or a worker forever — and never wait
-    longer than 30s doing it, the same cap every provider shares."""
-    openai_provider = OpenAICompatibleProvider(AIServiceConfig("openai", "m", "k", None, "x"))
-    assert openai_provider._client.max_retries == 0
-    assert openai_provider._client.timeout.read == 30.0
-    assert openai_provider._client.timeout.read <= 30.0
+@pytest.mark.parametrize("make_provider", [_anthropic, _openai], ids=["anthropic", "openai"])
+def test_a_failing_upstream_is_hit_exactly_once(failing_api_url, make_provider):
+    """The cascade is the one retry policy: a 500 both SDKs would retry
+    twice on their own defaults must reach the upstream once and surface
+    straight away, or the cascade's own 5 attempts stack on top of them."""
+    provider = make_provider(failing_api_url)
 
-    anthropic_provider = AnthropicProvider(AIServiceConfig("anthropic", "c", "k", None, "x"))
-    assert anthropic_provider._sync_client.max_retries == 0
-    assert anthropic_provider._new_async_client().max_retries == 0
-    from ai._providers.anthropic_provider_v2 import REQUEST_TIMEOUT_SECONDS
-    assert REQUEST_TIMEOUT_SECONDS <= 30.0
+    with pytest.raises(AIServiceError):
+        asyncio.run(_one_call(provider))
 
-    gemini_provider = GeminiProvider(AIServiceConfig("gemini", "m", "k", None, "x"))
+    assert _FailingApi.posts == 1
 
-    async def client():
-        return gemini_provider._GeminiProvider__client()
 
-    assert asyncio.run(client())._api_client._http_options.timeout == REQUEST_TIMEOUT_MS
+def test_no_provider_waits_longer_than_thirty_seconds_on_a_silent_upstream():
+    """A silent upstream must time out rather than hang a turn or a
+    worker forever — and never wait longer than 30s doing it, the same
+    cap every provider shares."""
+    assert OPENAI_REQUEST_TIMEOUT.read == 30.0
+    assert ANTHROPIC_REQUEST_TIMEOUT_SECONDS <= 30.0
     assert REQUEST_TIMEOUT_MS <= 30_000

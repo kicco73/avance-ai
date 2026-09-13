@@ -139,6 +139,10 @@ async def test_a_built_backend_copy_is_a_whole_backend_around_one_project(tmp_pa
     assert (built / "src" / db_path.name).is_file()
     assert (built / "apps" / f"{PROJECT_A}.{revision}").is_dir()
     assert not (built / ".venv").exists()
+    for dev_only in ("bin", "samples", ".pytest_cache", ".vite"):
+        assert not (built / dev_only).exists()
+    assert not (built / "src" / "docs").exists()
+    assert not (built / "src" / "webchat" / "docs").exists()
     # The tests travel with the code they test — that is what the build's
     # own last step runs (see build/backend_copy.py).
     assert (built / "tests" / "test_wiring_contract.py").is_file()
@@ -322,8 +326,8 @@ def test_a_full_backend_copy_starts_for_real_and_not_as_the_fallback_app(booted_
     """The check `import main` alone never made: main.py catches a failed
     create_app() and serves a fallback app that answers 503 to
     everything, so the import succeeds no matter how broken startup is.
-    Every skill is in this copy, including product/ — which is in every
-    build until somebody unticks it."""
+    Every skill is in this copy, so this is the widest startup there is:
+    anything that fails only when two packages are present fails here."""
     code, output = booted_copies["full"]
 
     assert code == 0, output

@@ -1,0 +1,8 @@
+.chat-header, .chat-body, .chat-footer {
+background: linear-gradient(
+  135deg,
+  #3d1f00,
+  #b84d00,
+  #ff7a00
+);
+}

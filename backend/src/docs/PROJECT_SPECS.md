@@ -112,8 +112,7 @@ project:
   ui-description: A friendly description.
   signal-tracking-on-ai-message: false
   services:
-    talk: required
-    mail: disabled
+    <service>: required
 ```
 
 | Field | Required | Type | Default | Meaning |
@@ -128,28 +127,25 @@ project:
 
 ### 1.2 `project.services:`
 
-Every service the platform can offer a project — `talk`, `listen`,
-`mail`, `whatsapp` — is declared at one of three levels. A service this
-mapping never names is `optional`.
+Every service this installation can offer a project is declared at one of
+three levels. A service this mapping never names is `optional`. Which
+services exist, and what each one is called, is what this installation
+was built with — Settings > Manage services lists them, and each one
+states its own name at the end of this document.
 
 | Level | Build | Run time |
 | --- | --- | --- |
 | `required` | The build must include it; the Build view ticks it and refuses to untick it. | Used whenever it is there. |
 | `optional` (default) | Free choice. | Used if the build has it, done without if not. |
-| `disabled` | Defaults to left out, still includable. | Never used, even in a build that has it: a call into it comes back exactly as it does when nothing in the build is listening — `task.send_mail` raises, `task.whatsapp(...)` returns `false`, and no `audio` metadata is ever asked for. |
+| `disabled` | Defaults to left out, still includable. | Never used, even in a build that has it: a call into it comes back exactly as it does when nothing in the build is listening. |
 
-A service a project uses through a task call (`task.send_mail`,
-`task.whatsapp`) is `required` for a build whether or not it is written
-down here — declaring it `disabled` and calling it anyway is reported in
-the Build view, and the call bounces at run time.
+A service a project uses through a `task.<name>(...)` call is `required`
+for a build whether or not it is written down here — declaring it
+`disabled` and calling it anyway is reported in the Build view, and the
+call bounces at run time.
 
-The name is the service's own, as Settings > Manage services shows it.
 Naming a service this backend does not have installed is not an error: a
 project is authored once and built against many backends.
-
-> **Deprecated:** `project.talk-enabled: true|false` still reads as
-> `services: {talk: required}` / `services: {talk: disabled}` and builds
-> with a warning. Write `services:` instead.
 
 ## 2. Names, identifiers, and reserved words
 
@@ -361,7 +357,7 @@ actions:
     target: next_state          # omit for a self-loop (stays on this state)
     trigger: "signal.mood >= 70 and engagement >= 20"
     task: |
-      task.send_mail(user.email, task.prompt('Write a short celebratory one-liner.'))
+      line = task.prompt('Write a short celebratory one-liner.')
     on-exit: chat.celebrate()
     env:
       reset_counter: True
@@ -690,8 +686,8 @@ span several lines, and a `#` comment just works). Each line is
 
 Unlike `task` (§5.4), a line here may only be one of those two shapes
 — no bare local variables, and no `task.<name>(...)` calls: `task:`'s
-own `send_mail`/`whatsapp`/`defer`/`prompt` stay off-limits, that
-remains `task`'s own job:
+own `task.<name>(...)` calls stay off-limits, that remains `task`'s own
+job:
 
 ```yaml
     actions:
@@ -760,18 +756,16 @@ time:
 
 ```yaml
 task: |
-  task.send_mail(user.email, 'You reached **state B**.')
   translated = task.prompt('Translate to Catalan: The party starts at 9pm.')
-  task.send_mail(user.email, translated)
+  task.defer(lambda: task.prompt(translated), datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1))
 ```
 
 **Every task script runs as a task, never inside the request that
 fired it.** The transition and the action's `env:` writes are applied
 synchronously (they feed the very next prompt); the script itself is
 hibernated in the database as a task due immediately and executed by a
-background worker — `task.prompt` is a model call and
-`task.send_mail` a network call, and neither belongs in a chat
-turn's own response time. Whatever the script tunnels reaches the
+background worker — a `task.*` call is a model call or a network call,
+and neither belongs in a chat turn's own response time. Whatever the script tunnels reaches the
 browser over the websocket as a `ui.notification` frame, a moment after
 the turn's own response, never inside it; a script that fails to
 evaluate is logged and its task settles with nothing to push, exactly
@@ -783,34 +777,19 @@ rejected at build time. `name` is visible inside
 a `task.defer(...)` lambda too, the same way `user`/`signal`/`env`
 are — frozen at the moment `defer` runs, not re-evaluated later.
 
-**`task.*`** is code-defined, not project-declared. Four methods exist —
-`celebrate`/`notify`/`show`/`switch_to_human`/`switch_to_ai` used to
-live here too; they moved to `chat.*`, reachable only from `on-exit:`
-(§5.3bis), since only there does firing an action have anything left to
-tunnel to the browser synchronously:
+**`task.*`** is code-defined, not project-declared, and what it holds
+depends on what this installation was built with: the two below are
+always there, and each installed service adds its own — see the end of
+this document. (`celebrate`/`notify`/`show`/`switch_to_human`/
+`switch_to_ai` used to live here too; they moved to `chat.*`, reachable
+only from `on-exit:` (§5.3bis), since only there does firing an action
+have anything left to tunnel to the browser synchronously.)
 
-- `task.send_mail(to, body_md)` — queues an email on the job queue,
-  fire-and-forget, no frontend-visible effect.
-- `task.whatsapp(phone_number, message_md)` — sends a WhatsApp
-  message to `phone_number` (E.164 digits, `+` optional) through the same
-  Cloud API the WhatsApp channel itself sends replies with, markdown
-  converted the same way. Unlike `send_mail` it isn't fire-and-forget:
-  the task blocks on the API call and the statement's own value
-  is `True` once it's accepted, `False` — nothing sent — for a
-  `phone_number` with no linked user account or a failed API call, so a
-  script can react to it, e.g. `sent = task.whatsapp(to, body)`. Once
-  sent, `message_md` is also appended as an `assistant` message to the
-  recipient's own live session on *this* action's project (the one
-  bound to the task namespace the task script is running under, not
-  necessarily the recipient's own active project) — the recipient's
-  currently open one if there is any (any channel), or a freshly opened
-  `whatsapp-chat` one otherwise. Best-effort: a failure recording it
-  never turns a successful send back into `False`.
 - `task.defer(act, when)` — schedules another task call for
   later. `act` **must** be a zero-argument `lambda:` wrapping the real
   call; `when` **must** be `datetime.datetime(...)`/`.now(...)`,
   optionally ± one or more `datetime.timedelta(...)` — e.g.
-  `task.defer(lambda: task.send_mail(user.email, 'Reminder'), datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=env.reminder_days))`.
+  `task.defer(lambda: task.prompt('Reminder'), datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=env.reminder_days))`.
   A `timedelta`'s args may reference `env.*`/`signal.*`; `when` can never
   be a bare `env.<key>` or a string. Both rules, and the lambda's arity,
   are checked at build time. A deferred call is hibernated in the DB the
@@ -825,34 +804,28 @@ tunnel to the browser synchronously:
   isolated from the conversation: no system prompt beyond `prompt`
   itself, no `general-prompt`/`contextual-prompt`, no attachments, no
   signal/env context, no chat history. `prompt` is the entire request.
-  Returns its reply text for another `task.*` call to use (usually
-  `send_mail`'s `body_md`):
+  Returns its reply text for a later statement in the same script to
+  use:
 
   ```yaml
   task: |
-    task.send_mail(user.email, task.prompt('Translate to Catalan: Nice to reach this state!'))
+    greeting = task.prompt('Translate to Catalan: Nice to reach this state!')
   ```
 
   Nothing is persisted, and it never updates `env`/evaluates a signal/fires a
-  transition — read-only, like `send_mail`, but its return value is real
-  text. This is what replaced the old, removed `action-prompt` field.
+  transition — read-only, but its return value is real text. This is what
+  replaced the old, removed `action-prompt` field.
 
-A call with nothing to tunnel (`send_mail`, `whatsapp`, `defer`,
-`prompt`) contributes nothing to the browser, even though `whatsapp`'s
-own `True`/`False` and `prompt`'s own reply text are both available to
-an assignment. Multiple lines concatenate in order — in practice
-`task:` no longer has anything of its own to concatenate, since every
-`task.*` member returns either `None`, a plain value for an assignment,
-or a bool, never a JsSnippet; only `on-exit`'s own `chat.*` calls tunnel
-JS to the browser now (§5.3bis).
+**No `task.*` call tunnels anything to the browser.** Every member
+returns `None`, a plain value for an assignment, or a bool, never a
+JsSnippet; only `on-exit`'s own `chat.*` calls tunnel JS now (§5.3bis).
+A call's own return value is still available to an assignment.
 
-`send_mail`/`whatsapp`/`defer`/`task.prompt(...)` never run during a
-test replay/benchmark. A real side effect (`send_mail`, `whatsapp`,
-`defer`) also never runs in a draft/test conversation unless actuators
-are explicitly enabled for it — while off (the default there) it's
-suppressed and reported back as a `notify(...)` toast describing what
-would have happened instead. `prompt` has no real-world side effect to
-suppress, so it always runs.
+**A real side effect never runs in a draft/test conversation** unless
+actuators are explicitly enabled for it — while off (the default there)
+it is suppressed and reported back as a `notify(...)` toast describing
+what would have happened instead. `prompt` has no real-world side effect
+to suppress, so it always runs.
 
 ## 6. Attachments
 

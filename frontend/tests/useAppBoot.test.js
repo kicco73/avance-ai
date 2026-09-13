@@ -29,6 +29,7 @@ vi.mock('../src/skills/registry.js', () => ({
   messageListeners: { value: [] },
   stateListeners: { value: [{ stateReceived: (...args) => stateReceivedSpy(...args) }] },
   modelSelectors: { value: [] },
+  chatChannel: { value: 'webchat' },
 }))
 vi.mock('../src/skillRoster.js', () => ({
   loadSkillRoster: vi.fn(),

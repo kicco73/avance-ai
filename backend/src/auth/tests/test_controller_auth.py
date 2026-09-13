@@ -32,3 +32,15 @@ def test_a_regular_identity_is_not_invite_exempt(client):
 
     assert response.status_code == 200
     assert response.json() == {"invite_exempt": False}
+
+
+@pytest.mark.contract
+def test_the_terms_of_service_are_readable_in_whatever_was_built(client):
+    """Registration is gated on TermsView.vue showing this, so the file
+    behind it has to travel with every delivery. It used to live in
+    docs/, which no build copies — a product could be installed where
+    nobody was able to sign up, and nothing here said so."""
+    response = client.get("/api/core/auth/terms")
+
+    assert response.status_code == 200
+    assert response.json()["content"].strip()

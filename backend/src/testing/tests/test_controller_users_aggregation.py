@@ -15,6 +15,10 @@ from conftest import chat_turn, enter_chat, session_of
 from system.web_session import WebSession
 from testing.testing_service import UsersAggregationJob
 
+REACHES_INTO = {
+    "_resolve_or_construct_dependencies": "rebuilding the tree resolves to the same completed rows, so it leaves no trace to observe",
+}
+
 pytestmark = pytest.mark.contract
 
 
@@ -137,6 +141,9 @@ def test_users_aggregation_rerun_skips_dependency_resolution_when_cached(client,
         calls.append(1)
         return original(self)
 
+    # Nothing a caller sees changes when the tree is rebuilt: every
+    # sub-run is already completed, so resolving it again hands back the
+    # very same rows. Only the call itself distinguishes the two.
     with patch.object(UsersAggregationJob, "_resolve_or_construct_dependencies", spy):
         first = client.post(f"/api/skills/testing/projects/{hello_project}/aggregations/users", json={"strategy": "turn_by_turn"})
         assert first.status_code == 200, first.text

@@ -7,12 +7,11 @@ is exhaustive and self-contained: following it precisely is enough to
 build a valid, working skin with no other context, whether by hand or
 programmatically (e.g. an LLM generating one).
 
-The two things that actually enforce these rules are
-`backend/src/project/archive/css_validator.py` (`CssValidator` — syntax
-and asset-reference checks, run on every save) and
-`backend/src/project/editor.py` (`ProjectEditor.put_project_file` /
-`delete_project_file` — where those checks are wired in, plus the
-cascade-delete rule in §6).
+The two things that enforce these rules are `CssValidator`
+(`project/archive/css_validator.py` — syntax and asset-reference checks,
+run on every save) and `ProjectEditor.put_project_file` /
+`delete_project_file` (`project/editor.py` — where those checks are wired
+in, plus the cascade-delete rule in §6).
 
 ## 1. What a skin is, on disk/in the API
 
@@ -95,12 +94,20 @@ transitions/animations are all plain, unrestricted CSS.
 
 ## 3. How the skin is actually applied
 
-`index.css`'s text is injected **verbatim** into one `<style>` element
-shared by the whole app (`chatSkin.js`) — there is no scoping, no CSS
-Modules, no shadow DOM. Whatever selector you write matches the real,
-live chat DOM exactly as an inline stylesheet would.
+`index.css`'s text goes into one `<style>` element shared by the whole
+app (`chatSkin.js`), wrapped in `@scope (.chat-window-shell)` — there is
+no CSS Modules, no shadow DOM. Whatever selector you write matches the
+real, live chat DOM exactly as an inline stylesheet would, but **only
+inside the chat box**: a rule that would otherwise reach the app around
+it (`body`, `section`, `button`, `h3` …) matches nothing there. Nothing
+outside the chat is yours to restyle, and the editor, the project list
+and the store are unaffected by whichever skin happens to be loaded.
 
-Two things happen to that text before it's applied, both purely
+`@keyframes`, `@font-face`, `@property`, `@import`, `@charset` and
+`@namespace` are document-level by nature and stay outside that wrapper,
+so an animation your chat rules reference still resolves.
+
+Two more things happen to that text before it's applied, both purely
 client-side:
 
 - **`url(...)` rewriting.** Every relative `url(basename)` is rewritten
@@ -110,7 +117,7 @@ client-side:
   is stripped and replaced regardless. Absolute URLs (`https://...`,
   `data:...`) are left untouched, so an external image/font/data-URI
   works too — it just isn't checked for existing at all.
-- **Scope.** The skin is only ever "live" for **one** chat at a time —
+- **Ownership.** The skin is only ever "live" for **one** chat at a time —
   whichever chat is currently on screen (the real live chat, or the
   Design/Run tabs' own preview/test chat below). It applies while an
   actual conversation state is showing (header + message list + footer);
@@ -309,7 +316,7 @@ specific state change (upload `icon-calm.svg`, `icon-alert.svg`, and
 - Images: `.png`/`.jpg`/`.jpeg`/`.gif`/`.webp`/`.svg` only, 5 MB max each.
 - `<key>` in `.state-<key>`/`[data-state="<key>"]`/`[data-prev-state="<key>"]`
   must exactly match a state key declared in this project's `index.yml`
-  (see `PROJECT_SPECS.md` §3 for state key rules) — case-sensitive,
+  (see `docs/PROJECT_SPECS.md` §2 for state key rules) — case-sensitive,
   used literally.
 - An absolute URL (`https://...`, `//...`, `data:...`) in `url(...)`
   skips the missing-asset check entirely — usable for an external

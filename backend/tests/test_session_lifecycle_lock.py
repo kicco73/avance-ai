@@ -19,6 +19,10 @@ from metrics.metric_service import MetricService
 from system.web_session import WebSession
 from tracking.tracking_service import TrackingService
 
+REACHES_INTO = {
+    "_session_lifecycle_locks": "the lock is the subject; a caller must be pinned inside it or the test passes vacuously",
+}
+
 pytestmark = pytest.mark.contract
 
 PROJECT_ID = "lock-proj"
@@ -112,6 +116,9 @@ class _PausableLock:
 
 
 def _install_pausable_lock(turn_service: TurnService) -> _PausableLock:
+    # Deliberate seam: the lock itself is the subject, and no public
+    # observation exists for "a second caller blocked on it" — the only
+    # alternative is a timing race, which passes vacuously when it loses.
     lock = _PausableLock()
     turn_service._session_lifecycle_locks.get = lambda key: lock
     return lock

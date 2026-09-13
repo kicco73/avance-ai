@@ -11,6 +11,10 @@ import pytest
 import conftest
 from conftest import BACKEND_DIR
 
+REACHES_INTO = {
+    "_recorded_seconds": "its subject is conftest's own watchdog, so conftest is the code under test",
+}
+
 pytestmark = pytest.mark.contract
 
 

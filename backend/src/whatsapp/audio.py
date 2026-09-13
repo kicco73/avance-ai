@@ -1,4 +1,4 @@
-"""WAV -> MP3 for WhatsApp audio messages (see docs/WHATSAPP.md).
+"""WAV -> MP3 for WhatsApp audio messages (see whatsapp/docs/WHATSAPP.md).
 
 TalkService.generate yields WAV: PcmWavCodec.streaming_header (RIFF/data
 sizes set to the 0xFFFFFFFF streaming sentinel) followed by raw 16-bit

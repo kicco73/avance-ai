@@ -13,6 +13,7 @@
 // yamlValueHighlightStyle comment).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from 'vue'
+import CodeEditor from '../CodeEditor.vue'
 
 vi.mock('../../../api.js', () => ({
   getProjectFile: vi.fn().mockResolvedValue({
@@ -28,7 +29,6 @@ describe('CodeEditor.vue colors index.yml plain scalar values, not just keys', (
   let container
 
   beforeEach(() => {
-    vi.resetModules()
     container = document.createElement('div')
     document.body.appendChild(container)
   })
@@ -39,7 +39,6 @@ describe('CodeEditor.vue colors index.yml plain scalar values, not just keys', (
   })
 
   it('wraps both the key and its plain-scalar value in a highlighted span', async () => {
-    const CodeEditor = (await import('../CodeEditor.vue')).default
     const app = createApp(CodeEditor, { projectId: 'proj', fileName: 'index.yml' })
     const instance = app.mount(container)
     await vi.waitFor(() => expect(instance.loading).toBe(false))

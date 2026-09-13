@@ -29,8 +29,9 @@ def test_the_copy_leaves_out_what_a_frontend_never_needs(tmp_path):
     source = _frontend_tree(tmp_path / "frontend")
     copy = FrontendCopy(source, tmp_path / "out", [])
 
-    copy._copy()
+    report = copy.build()
 
+    assert report["dropped_skills"] == []
     assert (tmp_path / "out" / "package.json").is_file()
     assert not (tmp_path / "out" / "node_modules").exists()
     assert not (tmp_path / "out" / "dist").exists()
@@ -39,11 +40,10 @@ def test_the_copy_leaves_out_what_a_frontend_never_needs(tmp_path):
 def test_an_excluded_package_takes_its_frontend_directory_with_it(tmp_path):
     source = _frontend_tree(tmp_path / "frontend")
     copy = FrontendCopy(source, tmp_path / "out", ["talk"])
-    copy._copy()
 
-    dropped = copy._prune_skills(copy._excluded_keys())
+    report = copy.build()
 
-    assert dropped == {"talk"}
+    assert report["dropped_skills"] == ["talk"]
     assert not (copy.skills_dir / "talk").exists()
     assert (copy.skills_dir / "build").is_dir()
     assert (copy.skills_dir / "registry.js").is_file()
@@ -54,20 +54,18 @@ def test_the_directory_is_named_by_key_where_the_package_is_named_otherwise(tmp_
     after keys. avance_platform/platform is the pair that tells them apart."""
     source = _frontend_tree(tmp_path / "frontend")
     copy = FrontendCopy(source, tmp_path / "out", ["avance_platform"])
-    copy._copy()
 
-    dropped = copy._prune_skills(copy._excluded_keys())
+    report = copy.build()
 
-    assert dropped == {"platform"}
+    assert report["dropped_skills"] == ["platform"]
     assert not (copy.skills_dir / "platform").exists()
 
 
 def test_a_package_with_no_frontend_of_its_own_drops_nothing(tmp_path):
     source = _frontend_tree(tmp_path / "frontend")
     copy = FrontendCopy(source, tmp_path / "out", ["mail"])
-    copy._copy()
 
-    assert copy._prune_skills(copy._excluded_keys()) == set()
+    assert copy.build()["dropped_skills"] == []
     assert sorted(path.name for path in copy.skills_dir.iterdir()) == ["build", "platform", "registry.js", "talk"]
 
 

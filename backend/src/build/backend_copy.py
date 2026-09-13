@@ -27,6 +27,7 @@ from project.archive.packages import (
 from system.logging_factory import LoggerFactory
 
 from .compiler import CompileError, compile_contents
+from .copy_ignore import DEV_ONLY_DIRS
 from .frontend_copy import FrontendCopy
 
 if TYPE_CHECKING:
@@ -47,6 +48,7 @@ _TEST_OUTPUT_TAIL_LINES = 40
 
 _BACKEND_COPY_IGNORE = shutil.ignore_patterns(
     ".venv", "__pycache__", "*.pyc", "*.egg-info", "apps", "*.db", "*.sqlite", "*.sqlite3",
+    *DEV_ONLY_DIRS,
 )
 
 

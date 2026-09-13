@@ -9,6 +9,7 @@ import { findIconFile } from '../../../../projectIcon.js'
 import { ensureProjectFileTypes } from '../../../../projectFileTypes.js'
 import { useHeaderLogoFit } from '../../../../composables/useHeaderLogoFit.js'
 import { onProjectsChanged } from '../../../../projectChangeEvents.js'
+import { familySections } from '../../familySections.js'
 import SettingsMenu from './SettingsMenu.vue'
 import StatusToggleButton from '../../../../components/services/StatusToggleButton.vue'
 import ProfileMenu from '../../../../components/ProfileMenu.vue'
@@ -120,15 +121,21 @@ function iconSrcFor(id) {
   return projectFileContentUrl(id, iconFileById.value[id])
 }
 
-const visibleRows = computed(() => {
+const sections = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
-  if (!q) return rows.value
-  return rows.value.filter((row) => {
+  const matching = !q ? rows.value : rows.value.filter((row) => {
     const label = projectTitle(row.id).toLowerCase()
     const description = (projectDescription(row.id) || '').toLowerCase()
     return label.includes(q) || description.includes(q)
   })
+  return familySections(matching.map((row) => ({
+    family: metadataById.value[row.id]?.family,
+    title: projectTitle(row.id),
+    item: row,
+  })))
 })
+
+const visibleRows = computed(() => sections.value.flatMap((section) => section.items.map((entry) => entry.item)))
 
 function replaceRow(updated) {
   const idx = rows.value.findIndex((r) => r.id === updated.id)
@@ -269,9 +276,16 @@ onBeforeUnmount(() => {
           <p v-else-if="!visibleRows.length" class="manage-projects-status">No projects found.</p>
 
           <table v-else class="manage-projects-table">
-            <tbody>
+            <colgroup>
+              <col class="manage-projects-col-status" />
+              <col class="manage-projects-col-name" />
+            </colgroup>
+            <tbody v-for="section in sections" :key="section.key">
+              <tr>
+                <th colspan="2" class="manage-projects-section-header">{{ section.label }}</th>
+              </tr>
               <tr
-                v-for="row in visibleRows"
+                v-for="{ item: row } in section.items"
                 :key="row.id"
                 class="manage-projects-row"
                 :class="{ 'manage-projects-row-selected': selectedProjectId === row.id }"
@@ -298,6 +312,8 @@ onBeforeUnmount(() => {
                   />
                 </td>
               </tr>
+            </tbody>
+            <tbody>
               <tr v-if="uploading">
                 <td class="manage-projects-col-status-actions"></td>
                 <td class="manage-projects-name">
@@ -314,22 +330,24 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="manage-projects-preview">
-        <ProjectDetailPanel
-          v-if="selectedAppStoreApp"
-          :key="selectedAppStoreApp.id"
-          :app="selectedAppStoreApp"
-          :published-revision="selectedRow?.published_revision ?? null"
-          :revision="selectedRow?.revision ?? null"
-          @edit="selectEdit"
-          @label="selectLabelSessions"
-          @download="selectDownload"
-          @share="selectShare"
-          @delete="selectDelete"
-          @publish="selectPublish"
-          @open-skill-view="selectSkillView"
-        />
-        <p v-else-if="selectedProjectId" class="manage-projects-status">This project hasn't been published yet — no preview available.</p>
-        <p v-else class="manage-projects-status">Select a project to see its details.</p>
+        <Transition name="manage-projects-detail">
+          <ProjectDetailPanel
+            v-if="selectedAppStoreApp"
+            :key="selectedAppStoreApp.id"
+            :app="selectedAppStoreApp"
+            :published-revision="selectedRow?.published_revision ?? null"
+            :revision="selectedRow?.revision ?? null"
+            @edit="selectEdit"
+            @label="selectLabelSessions"
+            @download="selectDownload"
+            @share="selectShare"
+            @delete="selectDelete"
+            @publish="selectPublish"
+            @open-skill-view="selectSkillView"
+          />
+          <p v-else-if="selectedProjectId" key="unpublished" class="manage-projects-status">This project hasn't been published yet — no preview available.</p>
+          <p v-else key="nothing-selected" class="manage-projects-status">Select a project to see its details.</p>
+        </Transition>
       </div>
     </div>
   </div>
@@ -433,19 +451,51 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding-bottom: var(--safe-area-bottom);
+  background: #f2f2f7;
+  border-radius: 10px;
+  padding-bottom: calc(0.75rem + var(--safe-area-bottom));
 }
 
 .manage-projects-row {
   cursor: pointer;
 }
 
+.manage-projects-row .project-card {
+  position: relative;
+  max-width: none;
+  border: none;
+  border-radius: 0;
+  background: white;
+}
+
+.manage-projects-row + .manage-projects-row .project-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: calc(0.7rem + 65px + 0.6rem);
+  right: 0;
+  height: 1px;
+  background: #e5e5ea;
+}
+
+.manage-projects-table tbody tr:nth-of-type(2) .project-card {
+  border-radius: 10px 10px 0 0;
+}
+
+.manage-projects-table tbody tr:last-of-type .project-card {
+  border-radius: 0 0 10px 10px;
+}
+
+.manage-projects-table tbody tr:nth-of-type(2):last-of-type .project-card {
+  border-radius: 10px;
+}
+
 .manage-projects-row-selected .project-card {
-  border-color: #4a6fa5;
   background: #eef3fa;
 }
 
 .manage-projects-preview {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -454,6 +504,22 @@ onBeforeUnmount(() => {
   gap: 0.5rem;
   overflow-y: auto;
   padding: 20px 0 var(--safe-area-bottom);
+}
+
+.manage-projects-detail-enter-active,
+.manage-projects-detail-leave-active {
+  transition: opacity 0.12s ease;
+}
+
+.manage-projects-detail-enter-from,
+.manage-projects-detail-leave-to {
+  opacity: 0;
+}
+
+.manage-projects-detail-leave-active {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 .manage-projects-status {
@@ -469,14 +535,36 @@ onBeforeUnmount(() => {
   font-size: 0.88rem;
 }
 
+.manage-projects-col-status {
+  width: 2.88rem;
+}
+
+.manage-projects-col-name {
+  width: 320px;
+}
+
 .manage-projects-name {
   width: 320px;
   padding: 0 0.75rem 0 0;
 }
 
 .manage-projects-table td {
-  padding: 0.5rem 0.75rem;
+  padding: 0 0.75rem;
   vertical-align: middle;
+}
+
+.manage-projects-section-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.75rem 0.75rem 0.35rem 15px;
+  background: #f2f2f7;
+  color: #8e8e93;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: left;
 }
 
 .manage-projects-col-status-actions {

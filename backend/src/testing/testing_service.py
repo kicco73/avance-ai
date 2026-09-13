@@ -101,7 +101,7 @@ class TestingService:
         automaton = self._load_automaton(project_id)
         project_draft_edit_count = self._db.get_project_draft_edit_count(project_id)
         session_labeling_revision = self._db.get_session_labeling_revision(session_id) if session_id is not None else None
-        ai_model_snapshot = self._ai_service.get_models_info()
+        ai_model_snapshot = self._ai_service.get_models_snapshot()
         scope_session_ids = self._resolve_scope(username, project_id, session_id)
         signal_source_cls = _SIGNAL_SOURCE_CLASS_BY_STRATEGY[strategy]
         total = (

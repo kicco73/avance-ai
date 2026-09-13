@@ -39,12 +39,12 @@ class AutomatonYamlEditor:
         # Ruamel's default 80-column width would silently line-wrap any
         # long scalar it re-dumps, even one an edit never touched.
         self._yaml.width = 4096
-        self._raw = self._yaml.load(raw_text)
+        self.__raw = self._yaml.load(raw_text)
         self._source_lines = raw_text.splitlines()
 
     def serialize(self) -> str:
         stream = io.StringIO()
-        self._yaml.dump(self._raw, stream)
+        self._yaml.dump(self.__raw, stream)
         return stream.getvalue()
 
     @staticmethod
@@ -54,16 +54,16 @@ class AutomatonYamlEditor:
         return collapsed.strip('_')
 
     def _states(self) -> CommentedMap:
-        return self._raw.setdefault("states", CommentedMap())
+        return self.__raw.setdefault("states", CommentedMap())
 
     def _signals(self) -> CommentedMap:
-        return self._raw.setdefault("signals", CommentedMap())
+        return self.__raw.setdefault("signals", CommentedMap())
 
     def _env(self) -> CommentedMap:
-        return self._raw.setdefault("env", CommentedMap())
+        return self.__raw.setdefault("env", CommentedMap())
 
     def _sources(self) -> CommentedMap:
-        return self._raw.setdefault("sources", CommentedMap())
+        return self.__raw.setdefault("sources", CommentedMap())
 
     def _state(self, state_name: str) -> CommentedMap:
         try:
@@ -198,7 +198,7 @@ class AutomatonYamlEditor:
         }
 
     def _project_payload(self) -> ProjectPayload:
-        raw_project = self._raw.get("project") or {}
+        raw_project = self.__raw.get("project") or {}
         return {
             "id": raw_project.get("id"),
             "family": raw_project.get("family") or None,
@@ -207,7 +207,7 @@ class AutomatonYamlEditor:
             "ui_description": raw_project.get("ui-description"),
             "services": self._declared_services(raw_project),
             "signal_tracking_on_ai_message": raw_project.get("signal-tracking-on-ai-message", False),
-            "general_prompt": self._raw.get("general-prompt", ""),
+            "general_prompt": self.__raw.get("general-prompt", ""),
         }
 
     def _env_key_payload(self, name: str) -> EnvKeyPayload:
@@ -317,7 +317,7 @@ class AutomatonYamlEditor:
         """Injects the 'name'/'target' keys ("init-action"/"" pseudo-state)
         the raw YAML lacks, and forces has_trigger off — AutomatonBuilder's
         _build_init_action never reads a stray trigger key."""
-        init_action = self._raw.get("init-action") or {}
+        init_action = self.__raw.get("init-action") or {}
         payload = self._action_payload_from_raw({**init_action, "name": "init-action"}, "")
         payload["has_trigger"] = False
         return payload
@@ -363,11 +363,11 @@ class AutomatonYamlEditor:
         `id`/`family` removes the key rather than storing an empty string."""
         if field == "general-prompt":
             if value:
-                self._raw["general-prompt"] = value
+                self.__raw["general-prompt"] = value
             else:
-                self._raw.pop("general-prompt", None)
+                self.__raw.pop("general-prompt", None)
             return self._project_payload()
-        project = self._raw.setdefault("project", CommentedMap())
+        project = self.__raw.setdefault("project", CommentedMap())
         if field in ("id", "family") and not value:
             project.pop(field, None)
         else:
@@ -380,7 +380,7 @@ class AutomatonYamlEditor:
         that declares nothing keeps the section out of its index.yml. The
         deprecated `talk-enabled` goes as soon as anything is declared
         here, so the two can never disagree."""
-        project = self._raw.setdefault("project", CommentedMap())
+        project = self.__raw.setdefault("project", CommentedMap())
         services = project.setdefault("services", CommentedMap())
         if level == project_services.OPTIONAL:
             services.pop(service, None)
@@ -403,7 +403,7 @@ class AutomatonYamlEditor:
         """Stamps `project.revision` directly — called only by
         ProjectManager.publish_project, never through the "Edit project"
         form (revision is system-managed, not a user-editable field)."""
-        project = self._raw.setdefault("project", CommentedMap())
+        project = self.__raw.setdefault("project", CommentedMap())
         project["revision"] = revision
         return self._project_payload()
 
@@ -413,7 +413,7 @@ class AutomatonYamlEditor:
         falsy-removes-the-key treatment as a regular action's env field."""
         if field == "target":
             return self.set_init_action_target(value)
-        init_action = self._raw.setdefault("init-action", CommentedMap())
+        init_action = self.__raw.setdefault("init-action", CommentedMap())
         if field == "env" and not value:
             init_action.pop(field, None)
         else:
@@ -425,7 +425,7 @@ class AutomatonYamlEditor:
         from here, only to move it to a different state (see
         delete_state's InitActionTargetError for the "can't delete the current one" guard)."""
         self._state(state_name)  # raises ValueError if unknown, same as every other set_*_field
-        init_action = self._raw.setdefault("init-action", CommentedMap())
+        init_action = self.__raw.setdefault("init-action", CommentedMap())
         init_action["target"] = state_name
         return self._state_payload(state_name)
 
@@ -484,7 +484,7 @@ class AutomatonYamlEditor:
         return self._source_payload(unique_new_name)
 
     def delete_state(self, state_name: str) -> None:
-        init_action = self._raw.get("init-action") or {}
+        init_action = self.__raw.get("init-action") or {}
         if init_action.get("target") == state_name:
             raise InitActionTargetError(
                 f"'{state_name}' is the init-action's own target and can't be deleted — "

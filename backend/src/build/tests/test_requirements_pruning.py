@@ -10,6 +10,10 @@ from pathlib import Path
 
 import pytest
 
+REACHES_INTO = {
+    "_write_requirements": "the only public driver is copy_backend(), which copytrees the whole backend first",
+}
+
 pytestmark = pytest.mark.contract
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent.parent.parent

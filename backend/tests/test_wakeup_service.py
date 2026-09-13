@@ -12,13 +12,17 @@ import time
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from system.bus_channel import BusChannel
+from system.bus import UI_NOTIFICATION
 from events import StateChanged, publish
-from conftest import FakeWebSocket, make_test_namespace_factory, make_test_scheduler_service
+from conftest import RecordedMessages, make_test_namespace_factory, make_test_scheduler_service
 from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 from tracking.wakeup_service import WakeupService
+
+REACHES_INTO = {
+    "_reevaluate_and_apply": "pre-existing; the public path needs the file-backed db fixture and a wait loop",
+}
 
 pytestmark = pytest.mark.contract
 
@@ -141,60 +145,52 @@ def test_reevaluating_fires_the_self_loop_only_once_the_observed_state_actually_
     assert after[-1]["origin"] == "system"
 
 
-class TestWsAdapterPush:
-    """A fired self-loop wake-up pushes a "notification" frame (state/
-    project_name) to whichever connection is registered for
-    `username`, never keyed on project_id (which only rides along
-    inside the payload). The payload key is deliberately still
-    "project_name", not "project_id": chatClient.js (frontend, off-limits)
-    parses this exact WS message shape by that literal key name — see
-    WakeupService._reevaluate_and_apply's own comment."""
+class TestWakeupNotification:
+    """A fired self-loop wake-up publishes a ui.notification (state/
+    project_name) addressed to `username`, never keyed on project_id
+    (which only rides along inside the body). The key is deliberately
+    still "project_name", not "project_id": chatClient.js (frontend,
+    off-limits) parses this exact message shape by that literal key name
+    — see WakeupService._reevaluate_and_apply's own comment."""
 
-    def _connected(self):
-        bus_channel = BusChannel(auth_service=None)
-        websocket = FakeWebSocket()
-        bus_channel._connections[USERNAME] = [websocket]
-        return bus_channel, websocket
-
-    def test_a_fired_self_loop_pushes_the_state_and_project_name_but_never_its_task(self, db, project_service):
+    def test_a_fired_self_loop_announces_the_state_and_project_name_but_never_its_task(self, db, project_service):
         _both_projects(db, project_service)
-        bus_channel, websocket = self._connected()
+        notified = RecordedMessages(UI_NOTIFICATION)
 
         _wake(db, project_service)
 
-        assert len(websocket.sent) == 1
-        assert websocket.sent[0]["type"] == "ui.notification"
-        assert websocket.sent[0]["project_name"] == "watcher"
-        assert websocket.sent[0]["state"]["key"] == "x"  # self-loop — the state itself never changes
+        (message,) = notified.for_user(USERNAME)
+        assert message.body["project_name"] == "watcher"
+        assert message.body["state"]["key"] == "x"  # self-loop — the state itself never changes
         # The fired action's task is a task of its own (see
-        # tracking/actuators/action_task.py), never part of this frame.
-        assert "task" not in websocket.sent[0]
+        # tracking/actuators/action_task.py), never part of this message.
+        assert "task" not in message.body
         # The fired action has a trigger and no tracking_service was wired
         # in (defaults to "always auto-tracked") — left out of the choices
         # the same way a live session's own would be.
-        assert websocket.sent[0]["buttons"] == []
+        assert message.body["buttons"] == []
 
     def test_the_choices_include_the_triggered_action_when_auto_tracking_is_disabled(self, db, project_service):
         watcher_session = _both_projects(db, project_service)
-        bus_channel, websocket = self._connected()
+        notified = RecordedMessages(UI_NOTIFICATION)
 
         _wake(db, project_service, tracking_service=_FakeTrackingService({watcher_session["id"]}))
 
-        assert [a["name"] for a in websocket.sent[0]["buttons"]] == ["notice"]
+        (message,) = notified.for_user(USERNAME)
+        assert [a["name"] for a in message.body["buttons"]] == ["notice"]
 
-    def test_nothing_is_pushed_when_the_self_loop_does_not_fire(self, db, project_service):
+    def test_nothing_is_announced_when_the_self_loop_does_not_fire(self, db, project_service):
         _both_projects(db, project_service, observed_moved=False)
-        bus_channel, websocket = self._connected()
+        notified = RecordedMessages(UI_NOTIFICATION)
 
         _wake(db, project_service)
 
-        assert websocket.sent == []
+        assert notified.messages == []
 
     def test_the_transition_is_applied_whether_or_not_anyone_is_listening(self, db, project_service):
         """The nudge is published either way; whether an interface is
         connected — or subscribed at all — is not this service's business."""
         unconnected_session = _both_projects(db, project_service)
-        BusChannel(auth_service=None)
         _wake(db, project_service)
         assert db.get_signals(unconnected_session["id"])[-1]["new_state"] == "x"
 

@@ -171,23 +171,19 @@ def test_with_no_session_manager_it_still_raises_but_closes_nothing(db):
     assert db.get_chat_session(session_id)["close_reason"] is None
 
 
-def test_the_close_sweep_only_runs_once_per_broken_revision(db, monkeypatch):
-    """load_at_revision is hit from several per-request read paths
-    (ProjectInspector) — a revision under active use must not re-run the
-    close sweep (a DB query) on every single failed load."""
+def test_the_close_sweep_only_runs_once_per_broken_revision(db):
     broken = _store(db, BROKEN_TASK_YML)
     loader = AutomatonLoader(db, session_manager=SessionManager(db))
-    calls = []
-    original = db.list_live_sessions_for_revision
+    first_session_id = _open_session_on(db, broken)
 
-    def _counting(*args, **kwargs):
-        calls.append(1)
-        return original(*args, **kwargs)
+    with pytest.raises(AutomatonBuildError):
+        loader.load_at_revision(PROJECT_ID, broken)
 
-    monkeypatch.setattr(db, "list_live_sessions_for_revision", _counting)
+    assert db.get_chat_session(first_session_id)["close_reason"] == "revision-invalid"
 
-    for _ in range(3):
-        with pytest.raises(AutomatonBuildError):
-            loader.load_at_revision(PROJECT_ID, broken)
+    second_session_id = _open_session_on(db, broken)
 
-    assert len(calls) == 1
+    with pytest.raises(AutomatonBuildError):
+        loader.load_at_revision(PROJECT_ID, broken)
+
+    assert db.get_chat_session(second_session_id)["close_reason"] is None

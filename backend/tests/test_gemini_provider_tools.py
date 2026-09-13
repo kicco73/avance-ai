@@ -36,8 +36,8 @@ async def test_a_plain_text_answer_still_streams_when_tools_are_offered_and_a_ca
     assert requested.calls[0].id
 
 
-def test_build_contents_round_trips_the_neutral_history_grouping_a_rounds_results_into_one_user_turn():
-    provider, _ = harness.provider([])
+async def test_build_contents_round_trips_the_neutral_history_grouping_a_rounds_results_into_one_user_turn():
+    provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')])
     history = [
         {"role": "user", "content": "where's my flight?"},
         {
@@ -52,8 +52,9 @@ def test_build_contents_round_trips_the_neutral_history_grouping_a_rounds_result
         {"role": "tool", "tool_call_id": "call_2", "content": "berlin row"},
     ]
 
-    contents = provider._GeminiProvider__build_contents(history)  # type: ignore[attr-defined]
+    await drain(provider.generate_stream_with_schema("sys", history, {"text": "t"}))
 
+    contents = harness.calls(fake_client)[0]["contents"]
     assert len(contents) == 3
     assert contents[0].role == "user" and contents[0].parts[0].text == "where's my flight?"
     assert contents[1].role == "model"
@@ -68,13 +69,20 @@ def test_build_contents_round_trips_the_neutral_history_grouping_a_rounds_result
     assert contents[2].parts[1].function_response.response == {"result": "berlin row"}
 
 
-async def test_the_respond_fallback_declares_the_schema_fields_and_is_parsed_exactly_like_a_schema_response():
-    provider, _ = harness.provider([harness.function_call_response("respond", {"text": "hi there", "env": "k: v"})])
-    declaration = provider._GeminiProvider__respond_tool_declaration({"text": "the reply", "env": "context"})  # type: ignore[attr-defined]
-    assert declaration.name == "respond"
-    assert set(declaration.parameters.properties.keys()) == {"text", "env"}
-    assert declaration.parameters.required == ["text", "env"]
+async def test_the_respond_fallback_is_declared_alongside_the_real_tools_and_forced():
+    provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')])
 
+    await drain(provider.generate_stream_with_schema(
+        "sys", [], {"text": "the reply", "env": "context"}, tools=[SELECT_SPEC],
+    ))
+
+    call = harness.calls(fake_client)[0]
+    assert harness.declared_names(call) == {"source_flights_select", "respond"}
+    harness.assert_declaration_shape(call, SELECT_SPEC)
+
+
+async def test_the_respond_fallback_is_parsed_exactly_like_a_schema_response():
+    provider, _ = harness.provider([harness.function_call_response("respond", {"text": "hi there", "env": "k: v"})])
     reported: dict[str, str] = {}
     chunks = [
         chunk async for chunk in AiService(provider).generate_stream_with_metadata(
@@ -93,19 +101,24 @@ async def test_a_tool_calls_thought_signature_is_replayed_verbatim_through_the_h
     model turn preceding the functionResponse — so the provider hands its
     own parts back through assistant_content and replays them verbatim.
     https://ai.google.dev/gemini-api/docs/thought-signatures"""
-    requested = await _raise_tool_calls(
+    provider, fake_client = harness.provider([
         harness.function_call_response("source_flights_select", {"value": "VY3003"}, call_id="c1", thought_signature=b"opaque-sig"),
-        history=[{"role": "user", "content": "hi"}],
-    )
-    provider, _ = harness.provider([])
+        harness.text_response('{"text": "VY3003 is on time."}'),
+    ])
+    with pytest.raises(ToolCallsRequested) as raised:
+        await drain(provider.generate_stream_with_schema(
+            "sys", [{"role": "user", "content": "hi"}], {"text": "t"}, tools=[SELECT_SPEC],
+        ))
+    requested = raised.value
     history = [
         {"role": "user", "content": "hi"},
         {"role": "assistant", "tool_calls": requested.calls, "content": requested.assistant_content},
         {"role": "tool", "tool_call_id": requested.calls[0].id, "content": "row"},
     ]
 
-    contents = provider._GeminiProvider__build_contents(history)  # type: ignore[attr-defined]
+    await drain(provider.generate_stream_with_schema("sys", history, {"text": "t"}, tools=[SELECT_SPEC]))
 
+    contents = harness.calls(fake_client)[1]["contents"]
     model_turn = contents[1]
     assert model_turn.role == "model"
     assert model_turn.parts[0].function_call.name == "source_flights_select"

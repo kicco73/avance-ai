@@ -4,11 +4,13 @@ final state instead of looping back to "engaged".
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from conftest import chat_action, enter_chat, parse_sse_result, session_of
 
-from conftest import SAMPLES_DIR
+SAMPLES_DIR = Path(__file__).resolve().parents[1] / "projects"
 
 
 def _upload_and_activate(client):

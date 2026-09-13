@@ -15,6 +15,7 @@ from conftest import FakeAiService
 from conftest import make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService
+from turn_harness import FakeProjectService
 
 # Each test verifies one fact about action-level env: persisted,
 # self-referencing, ordered before the next prompt.
@@ -50,45 +51,11 @@ def _automaton(action_env: dict, target: str = "b", model_reads_env: bool = Fals
     )
 
 
-class FakeProjectService:
-    def __init__(self, automaton: Automaton, state_key: str = "a") -> None:
-        self._automaton = automaton
-        self._state_key = state_key
-
-    def get_active_automaton_and_state(self, username: str | None = None):
-        return self._automaton, self._automaton.states[self._state_key]
-
-    def get_automaton_and_state(self, project_id: str, type: str = 'live', username: str | None = None):
-        return self._automaton, self._automaton.states[self._state_key]
-
-    def get_automaton_and_state_for_session(self, session_id: int):
-        return self._automaton, self._automaton.states[self._state_key]
-
-    def get_active_project_id(self) -> str:
-        return PROJECT_ID
-
-    def get_published_revision(self, project_id: str) -> int:
-        return 0
-
-    def legal_terms_pending(self, username: str, project_id: str) -> bool:
-        return False
-
-    def get_project_availability(self, project_id: str):
-        return (False, None)
-
-    def apply_manual_action(self, action_name: str, session_id: int):
-        automaton, state = self.get_active_automaton_and_state()
-        action = automaton.move(state.key, action_name)
-        new_state = automaton.get_state(action.target)
-        self._state_key = new_state.key
-        return automaton.get_state_payload(new_state), action, state.key
-
-
-def _turn_service(db, automaton: Automaton) -> TurnService:
+def _turn_service(db, automaton: Automaton) -> tuple[TurnService, FakeAiService]:
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
     ai_service = FakeAiService()
-    project_service = FakeProjectService(automaton)
+    project_service = FakeProjectService(automaton, db=db)
     metric_service = MetricService(db, project_service)
     scheduler_service = make_test_scheduler_service(db)
     namespace_factory = make_test_namespace_factory(db, scheduler_service)
@@ -105,7 +72,7 @@ def _turn_service(db, automaton: Automaton) -> TurnService:
         metric_service=metric_service,
         scheduler_service=scheduler_service,
         namespace_factory=namespace_factory,
-    )
+    ), ai_service
 
 
 def _env_for(db, session_id: int = 0) -> PersistedEnv:
@@ -115,7 +82,7 @@ def _env_for(db, session_id: int = 0) -> PersistedEnv:
 
 
 async def test_a_manually_fired_actions_env_is_persisted(db):
-    turn_service = _turn_service(db, _automaton({"reset_counter": "True"}))
+    turn_service, _ = _turn_service(db, _automaton({"reset_counter": "True"}))
     session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     await turn_service.apply_manual_action("advance", session["id"])
@@ -126,7 +93,7 @@ async def test_a_manually_fired_actions_env_is_persisted(db):
 
 
 async def test_an_action_with_no_env_field_never_touches_env(db):
-    turn_service = _turn_service(db, _automaton(None))
+    turn_service, _ = _turn_service(db, _automaton(None))
     session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     await turn_service.apply_manual_action("advance", session["id"])
@@ -137,7 +104,7 @@ async def test_an_action_with_no_env_field_never_touches_env(db):
 
 
 async def test_manual_actions_env_can_self_reference_a_previously_stored_value(db):
-    turn_service = _turn_service(db, _automaton({"number_of_steps": "env.number_of_steps + 1"}, target="a"))
+    turn_service, _ = _turn_service(db, _automaton({"number_of_steps": "env.number_of_steps + 1"}, target="a"))
     session = await turn_service.enter_session(PROJECT_ID, 'live')
     env = _env_for(db, session["id"])
     env.update_action_set({"number_of_steps": 3})
@@ -151,8 +118,7 @@ async def test_env_update_happens_before_the_transitions_own_prompt_is_built(db)
     """The destination state's own opening-message prompt must already
     see the updated env value, not last turn's — in its env block, which
     that state gets because it reads the avance:env source."""
-    turn_service = _turn_service(db, _automaton({"reset_counter": "True"}, model_reads_env=True))
-    ai_service = turn_service._ai_service
+    turn_service, ai_service = _turn_service(db, _automaton({"reset_counter": "True"}, model_reads_env=True))
     session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     await turn_service.apply_manual_action("advance", session["id"])
@@ -164,8 +130,7 @@ async def test_env_update_happens_before_the_transitions_own_prompt_is_built(db)
 async def test_an_unexported_env_key_never_reaches_the_prompt(db):
     """No state declares it in its own `input` (the default) — the
     automaton's env stays out of the model's prompt entirely."""
-    turn_service = _turn_service(db, _automaton({"reset_counter": "True"}))
-    ai_service = turn_service._ai_service
+    turn_service, ai_service = _turn_service(db, _automaton({"reset_counter": "True"}))
     session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     await turn_service.apply_manual_action("advance", session["id"])

@@ -51,7 +51,7 @@ class AutomatonLoader(object):
         # invalidate/invalidate_cache below). Doubles as what
         # _broken_revisions used to be for (never re-run the close sweep
         # for the same one twice) — a key present here already means that ran.
-        self._build_failures: dict[tuple[str, int], AutomatonBuildError] = {}
+        self.__build_failures: dict[tuple[str, int], AutomatonBuildError] = {}
 
     @staticmethod
     def is_safe_project_name(project_id: str) -> bool:
@@ -124,8 +124,8 @@ class AutomatonLoader(object):
             del self._automaton_cache[key]
         for key in [k for k in self._declared_meta_cache if k[0] == project_id]:
             del self._declared_meta_cache[key]
-        for key in [k for k in self._build_failures if k[0] == project_id]:
-            del self._build_failures[key]
+        for key in [k for k in self.__build_failures if k[0] == project_id]:
+            del self.__build_failures[key]
 
     def clear_all_build_failures(self) -> None:
         """Drops every cached build failure, for every project — the
@@ -139,7 +139,7 @@ class AutomatonLoader(object):
         without a full rescan. A rare event (create/import/rename), and
         the cost of over-clearing is just a rebuild on the next check —
         cheap next to leaving a now-fixable project paused until restart."""
-        self._build_failures.clear()
+        self.__build_failures.clear()
 
     def invalidate(self, project_id: str, revision: int) -> None:
         """Same as invalidate_cache, narrowed to one exact revision —
@@ -151,7 +151,7 @@ class AutomatonLoader(object):
         cache_key = (project_id, revision)
         self._automaton_cache.pop(cache_key, None)
         self._declared_meta_cache.pop(cache_key, None)
-        self._build_failures.pop(cache_key, None)
+        self.__build_failures.pop(cache_key, None)
 
     def set_cached(self, project_id: str, revision: int, automaton: Automaton) -> None:
         self._automaton_cache[(project_id, revision)] = automaton
@@ -160,14 +160,14 @@ class AutomatonLoader(object):
         )
         # A fresh success supersedes any stale failure cached for this
         # exact key (e.g. a save that fixes what a previous one broke).
-        self._build_failures.pop((project_id, revision), None)
+        self.__build_failures.pop((project_id, revision), None)
 
     def load_at_revision(self, project_id: str, revision: int) -> Automaton:
         cache_key = (project_id, revision)
         cached = self._automaton_cache.get(cache_key)
         if cached is not None:
             return cached
-        cached_failure = self._build_failures.get(cache_key)
+        cached_failure = self.__build_failures.get(cache_key)
         if cached_failure is not None:
             raise cached_failure
 
@@ -201,7 +201,7 @@ class AutomatonLoader(object):
             exc.project_id = exc.project_id or project_id
             exc.revision = revision
             exc.detail = f"Project '{project_id}', stored revision {revision}: index.yml no longer builds — {exc}"
-            self._build_failures[cache_key] = exc
+            self.__build_failures[cache_key] = exc
             self._handle_broken_revision(project_id, revision, exc)
             raise
         automaton.set_storage_location(revision)
@@ -215,10 +215,8 @@ class AutomatonLoader(object):
         pinned by some session alone — publishes ProjectRevisionBuildFailed
         so ProjectManager can recompute its availability. Only ever
         reached once per (project_id, revision) between invalidations:
-        load_at_revision checks/populates _build_failures before calling
-        this, so a cache hit never re-runs any of it (this used to be
-        its own separate _broken_revisions dedup set; the failure cache
-        now serves that purpose too)."""
+        load_at_revision checks/populates the failure cache before calling
+        this, so a cache hit never re-runs any of it."""
         logger.warning(
             "Project '%s', stored revision %s no longer builds — %s", project_id, revision, exc,
         )

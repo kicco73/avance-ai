@@ -37,7 +37,7 @@ def _break_project(app, app_db, project_id: str) -> None:
     earlier in its own lifetime (see test_project_health.py's own helper)."""
     revision = app_db.get_project_published_revision(project_id)
     rewrite_archive_content(project_id, "index.yml", revision, BROKEN_YML.encode("utf-8"))
-    app.state.turn_service._project_service.manager._automaton_loader.invalidate_cache(project_id)
+    app.state.project_service.automaton_loader.invalidate_cache(project_id)
 
 
 def test_automaton_derived_endpoints_return_409_project_broken(client, app, app_db):
@@ -104,7 +104,7 @@ def test_a_session_pinned_to_an_old_now_broken_revision_is_flagged_unsupported(c
 
     # Now revision 0 alone breaks — the currently published one (1) is untouched.
     rewrite_archive_content("flaky", "index.yml", 0, BROKEN_YML.encode("utf-8"))
-    app.state.turn_service._project_service.manager._automaton_loader.invalidate_cache("flaky")
+    app.state.project_service.automaton_loader.invalidate_cache("flaky")
 
     sessions = client.get("/api/core/projects/flaky/sessions").json()
     row = next(s for s in sessions if s["id"] == session_id)

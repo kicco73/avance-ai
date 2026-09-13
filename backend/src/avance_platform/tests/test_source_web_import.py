@@ -12,7 +12,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from project.web_import_crawler import CrawledPage, _resolve_result_url
+from project.web_import_crawler import CrawledPage, resolve_result_url
 from project.web_import_job import WebImportJob
 
 pytestmark = pytest.mark.contract
@@ -116,7 +116,7 @@ def test_web_import_reports_one_quarter_per_step_and_writes_the_csv_into_the_sou
 
 
 def test_web_import_normalizes_the_model_csv_against_the_extracted_schema(app, client, hello_project):
-    _install_fakes(app, csv_text="name,district,rating\nDr. Nuria,Eixample,4.8,ignored\nDr. Pau\n")
+    _install_fakes(app, csv_text="```csv\nname,district,rating\nDr. Nuria,Eixample,4.8,ignored\n\nDr. Pau\n```")
     source_name = _add_source(client, hello_project)
 
     response = _web_import(client, hello_project, source_name, "dentists")
@@ -149,23 +149,16 @@ def test_a_failing_step_ends_the_stream_as_a_failed_job_leaving_the_source_untou
     assert stored.json()["content"] == ""
 
 
-def test_normalize_csv_forces_the_schema_header_and_squares_every_row_off_against_it():
-    normalized = WebImportJob._normalize_csv(
-        "```csv\na,b\n1,2,3\n\n4\n```", ["a", "b"],
-    )
-    assert normalized == "a,b\n1,2\n4,\n"
-
-
 def test_parse_columns_reads_a_fenced_or_prefixed_json_array_and_refuses_anything_else():
-    assert WebImportJob._parse_columns('```json\n["a", " b "]\n```') == ["a", "b"]
-    assert WebImportJob._parse_columns('Here you go: ["a"]') == ["a"]
+    assert WebImportJob.parse_columns('```json\n["a", " b "]\n```') == ["a", "b"]
+    assert WebImportJob.parse_columns('Here you go: ["a"]') == ["a"]
     for bad in ("no array here", "[]", "[\"\"]"):
         with pytest.raises(ValueError):
-            WebImportJob._parse_columns(bad)
+            WebImportJob.parse_columns(bad)
 
 
 def test_a_search_result_link_resolves_to_its_real_target_and_never_to_the_engine_itself():
-    assert _resolve_result_url("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa&rut=x") == "https://example.com/a"
-    assert _resolve_result_url("https://example.com/b") == "https://example.com/b"
-    assert _resolve_result_url("https://duckduckgo.com/settings") is None
-    assert _resolve_result_url("/about") is None
+    assert resolve_result_url("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa&rut=x") == "https://example.com/a"
+    assert resolve_result_url("https://example.com/b") == "https://example.com/b"
+    assert resolve_result_url("https://duckduckgo.com/settings") is None
+    assert resolve_result_url("/about") is None

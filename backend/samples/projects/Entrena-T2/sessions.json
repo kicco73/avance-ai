@@ -1,0 +1,249 @@
+[
+  {
+    "name": "Live session 5",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-13T15:31:01.028364+00:00",
+    "datetime_end": "2026-09-13T15:56:16.673216+00:00",
+    "start_state": "Hello",
+    "end_state": "state-2",
+    "labeled": false,
+    "comment": null,
+    "closed_at": null,
+    "close_reason": null,
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "\u00a1Hola! Soy tu simulador de pacientes con inteligencia artificial. Imag\u00edname como un lienzo en blanco para que puedas perfeccionar tus habilidades de comunicaci\u00f3n. Mi \u00fanico y gran objetivo es ayudarte a aprender y practicar la entrevista motivacional, \u00a1as\u00ed que prep\u00e1rate para una sesi\u00f3n productiva y divertida! \u00bfTe gustar\u00eda elegir un caso?",
+        "timestamp": "2026-09-13T15:31:02.292976+00:00",
+        "audio_text": null,
+        "tokens": 95
+      },
+      {
+        "role": "user",
+        "text": "ok",
+        "timestamp": "2026-09-13T15:31:30.000021+00:00",
+        "audio_text": null,
+        "tokens": 1402,
+        "values": {
+          "afirmacion": 100
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "Hello",
+        "action": "action-0",
+        "new_state": "state-0",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "\u00a1Perfecto! Estoy listo para empezar. Elige el caso con el que te gustar\u00eda conversar:\n\n1. Manuel (tabaco): conductor bromista con EPOC reci\u00e9n diagnosticada que esquiva el tema con chistes y cree que \u00abcuando quiera lo deja\u00bb, hasta que aparece su futuro nieto.\n\n2. Laura (alcohol): directiva brillante y controladora que bebe cada noche para desconectar y se protege del diagn\u00f3stico compar\u00e1ndose con su padre, \u00abel que s\u00ed beb\u00eda\u00bb.\n\n3. Antonio (diabetes): mec\u00e1nico fatalista que dice \u00abs\u00ed, s\u00ed\u00bb a todo y no hace nada, convencido de que la insulina es lo que mat\u00f3 a su padre.\n\n4. Cristina (obesidad): administrativa perfeccionista de \u00abtodo o nada\u00bb que pide una dieta estricta como pidi\u00f3 las seis anteriores, y se hunde en la verg\u00fcenza cuando falla.\n\n5. Carmen (polimedicaci\u00f3n): viuda orgullosa que se ajusta las pastillas \u00aba su manera\u00bb y teme que admitir olvidos sea el primer paso hacia la residencia.\n\n6. Javier (dolor cr\u00f3nico): ex alba\u00f1il irritable y desconfiado que ve la medicaci\u00f3n como lo \u00fanico que le funciona y a los profesionales como quienes se la quieren quitar.\n\n7. Marc (cannabis): joven ir\u00f3nico enviado por sus padres que convierte la consulta en un debate y pone a prueba al profesional para no mostrar que suspender le duele.\n\n8. Nuria (depresi\u00f3n): dise\u00f1adora aut\u00f3noma y autoexigente que dej\u00f3 el antidepresivo por su cuenta porque \u00abdeber\u00eda poder sola\u00bb y oculta que est\u00e1 empeorando.\n\n9. Sergio (juego online): comercial encantador con deudas ocultas que viene por el ultim\u00e1tum de su pareja embarazada y promete r\u00e1pido para cerrar el conflicto sin tocar el juego.\n\n10. Ricardo (post-infarto): empresario hiperactivo que cree que el stent lo ha \u00abarreglado\u00bb, exige una lista de instrucciones que no cumplir\u00e1 y niega el miedo volviendo al trabajo.",
+        "timestamp": "2026-09-13T15:31:33.449591+00:00",
+        "audio_text": "Elige un caso de la lista para empezar a practicar la entrevista motivacional. Estoy listo cuando t\u00fa lo est\u00e9s.",
+        "tokens": 495
+      },
+      {
+        "role": "user",
+        "text": "2",
+        "timestamp": "2026-09-13T15:32:31.159833+00:00",
+        "audio_text": null,
+        "tokens": 5709,
+        "values": {
+          "caso_manuel": 0,
+          "caso_laura": 100,
+          "caso_antonio": 0,
+          "caso_cristina": 0,
+          "caso_carmen": 0,
+          "caso_javier": 0,
+          "caso_marc": 0,
+          "caso_nuria": 0,
+          "caso_sergio": 0,
+          "caso_ricardo": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "state-0",
+        "action": "elegir_caso_2",
+        "new_state": "state-2",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "Entendido, vamos con el caso de Laura. Para comenzar, \u00bfen qu\u00e9 nivel de dificultad prefieres trabajar: 1, 2 o 3?",
+        "timestamp": "2026-09-13T15:32:34.199539+00:00",
+        "audio_text": "He elegido el caso de Laura. Estoy listo, \u00bfqu\u00e9 nivel de dificultad prefieres para nuestra sesi\u00f3n?",
+        "tokens": 91
+      },
+      {
+        "role": "user",
+        "text": "hola",
+        "timestamp": "2026-09-13T15:32:42.989667+00:00",
+        "audio_text": null,
+        "tokens": 3833,
+        "values": {
+          "confusion": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Hola, doctor. He venido porque me han dado los resultados de la anal\u00edtica y prefiero que lo revisemos r\u00e1pido, que tengo una ma\u00f1ana cargada. \u00daltimamente me siento muy cansada y me despierto a las cuatro de la ma\u00f1ana sin motivo, as\u00ed que supongo que esto tendr\u00e1 que ver con el estr\u00e9s del trabajo. \u00bfQu\u00e9 dicen los resultados?",
+        "timestamp": "2026-09-13T15:32:44.417621+00:00",
+        "audio_text": null,
+        "tokens": 113
+      },
+      {
+        "role": "user",
+        "text": "que nivel soy",
+        "timestamp": "2026-09-13T15:33:20.626774+00:00",
+        "audio_text": null,
+        "tokens": 3916,
+        "values": {
+          "confusion": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Le pido disculpas, Laura. Por defecto, estamos trabajando en el Nivel 1. Usted me comentaba que se siente muy cansada y que esos despertares a las cuatro de la ma\u00f1ana le est\u00e1n afectando. Si le parece bien, cu\u00e9nteme un poco m\u00e1s sobre c\u00f3mo es su rutina actual para poder entender mejor qu\u00e9 puede estar influyendo en ese cansancio.",
+        "timestamp": "2026-09-13T15:33:21.879664+00:00",
+        "audio_text": null,
+        "tokens": 111
+      },
+      {
+        "role": "user",
+        "text": "basta",
+        "timestamp": "2026-09-13T15:35:11.964462+00:00",
+        "audio_text": null,
+        "tokens": 3494,
+        "values": {
+          "confusion": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Entiendo, parece que prefiere terminar la sesi\u00f3n aqu\u00ed. Si en alg\u00fan momento desea retomar la conversaci\u00f3n o hablar sobre cualquier otra cuesti\u00f3n, estar\u00e9 disponible.",
+        "timestamp": "2026-09-13T15:35:13.085233+00:00",
+        "audio_text": null,
+        "tokens": 66
+      },
+      {
+        "role": "user",
+        "text": "adios",
+        "timestamp": "2026-09-13T15:35:46.427355+00:00",
+        "audio_text": null,
+        "tokens": 3529,
+        "values": {
+          "confusion": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Entendido. Que tenga un buen d\u00eda.",
+        "timestamp": "2026-09-13T15:35:48.639991+00:00",
+        "audio_text": null,
+        "tokens": 44
+      },
+      {
+        "role": "user",
+        "text": "sal, termina sesi\u00f3n",
+        "timestamp": "2026-09-13T15:36:28.425132+00:00",
+        "audio_text": null,
+        "tokens": 3509,
+        "values": {
+          "confusion": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "De acuerdo, hemos finalizado la sesi\u00f3n por hoy. Quedo a su disposici\u00f3n si en otro momento decide retomar el seguimiento o consultar cualquier otra cuesti\u00f3n sobre su bienestar. Un saludo.",
+        "timestamp": "2026-09-13T15:36:29.784103+00:00",
+        "audio_text": null,
+        "tokens": 72
+      },
+      {
+        "role": "user",
+        "text": "1",
+        "timestamp": "2026-09-13T15:40:17.349746+00:00",
+        "audio_text": null,
+        "tokens": 3471,
+        "values": {
+          "confusion": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Entiendo, Laura. Tomo nota de que prefieres comenzar en el nivel 1 de dificultad. Como dec\u00edamos, me gustar\u00eda mucho que habl\u00e1ramos de c\u00f3mo te sientes \u00faltimamente: mencionaste ese cansancio y los despertares tempranos que te preocupan. \u00bfC\u00f3mo es una jornada t\u00edpica para ti y c\u00f3mo crees que est\u00e1 influyendo tu rutina actual en ese agotamiento?",
+        "timestamp": "2026-09-13T15:40:18.502908+00:00",
+        "audio_text": null,
+        "tokens": 112
+      },
+      {
+        "role": "user",
+        "text": "hola",
+        "timestamp": "2026-09-13T15:41:30.983251+00:00",
+        "audio_text": null,
+        "tokens": 3471,
+        "values": {
+          "confusion": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Hola. Pues ya me ve, aqu\u00ed estoy... Bueno, igual bebo un poco m\u00e1s de la cuenta; entre el divorcio y el trabajo, la verdad es que llego a casa y necesito desconectar, y el vino es mi momento del d\u00eda. Pero bueno, cu\u00e9nteme usted, que para eso he venido: \u00bfc\u00f3mo han salido los resultados de la anal\u00edtica?",
+        "timestamp": "2026-09-13T15:41:32.235609+00:00",
+        "audio_text": null,
+        "tokens": 129
+      }
+    ]
+  }
+]
