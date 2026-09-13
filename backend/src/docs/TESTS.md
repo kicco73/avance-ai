@@ -91,6 +91,25 @@ explicitly: pytest's own default with `build` taken out.
 backend copy and runs its tests. A build's own test run deselects it,
 because a build that builds a backend that builds a backend does not end.
 
+# What a test may look at, and what checks it
+
+CLAUDE.md states the rule: a test drives a public entry point and observes
+a public result, never how the thing is made. `tests/test_tests_stay_on_the_contract.py`
+is what enforces it — it walks the AST of every test module and fails on a
+test that reads or calls another object's private member.
+
+It counted 240 such reaches across 56 files when it was written. What
+survived is listed in its `EXEMPT` table, one entry per file, each carrying
+the reason it has no public form — a performance property nothing can
+observe, a concurrency window that must be held open, a registry with no
+public writer. A second test fails when an exemption stops being used, so
+the table can only shrink and cannot rot into a blanket.
+
+Name mangling is not what holds this line, and the repo already proves it:
+`GeminiProvider` mangles `__build_contents`, and tests reached in anyway as
+`provider._GeminiProvider__build_contents  # type: ignore`. Mangling buys a
+deterrent and a visible diff. This test is the gate.
+
 # What the suite costs, and the tool that says so
 
 `conftest.py` keeps a record of every test in `backend/test_stats.json` — how

@@ -1,6 +1,6 @@
 import { getSessions } from './api.js'
 import { createChatStore } from './chatStoreFactory.js'
-import { chatChannel } from './skills/registry.js'
+import { liveChatChannel } from './liveChatChannel.js'
 
 export {
   audioEnabled, spokenTextEnabled, inputTokenBudgetPerTurn, totalTokenBudgetPerSession,
@@ -14,7 +14,7 @@ export { applyAspect, invalidateSkin } from './chatSkin.js'
 // createChatStore() instance.
 export const liveStore = createChatStore({
   kind: 'live',
-  channel: chatChannel,
+  channel: liveChatChannel,
   getSessionsList: (includeImported, projectId) => getSessions(projectId, includeImported),
   confirmNewSession: true,
   useAutoTracking: false,

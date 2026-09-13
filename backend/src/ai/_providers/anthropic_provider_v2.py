@@ -110,6 +110,7 @@ class AnthropicProvider(LLMProvider):
 		self._max_output_tokens: int = config.max_output_tokens
 
 		self._api_key: str = config.key
+		self._base_url: str | None = config.url
 		# One AsyncAnthropic per event loop, same reasoning as
 		# GeminiProvider.__client: this provider is a single app-wide
 		# instance driven from the main FastAPI loop, from every JobQueue
@@ -128,6 +129,7 @@ class AnthropicProvider(LLMProvider):
 		# keeps that method callable with no running event loop.
 		self._sync_client: anthropic.Anthropic = anthropic.Anthropic(
 			api_key=config.key,
+			base_url=config.url,
 			timeout=REQUEST_TIMEOUT_SECONDS,
 			max_retries=SDK_MAX_RETRIES,
 		)
@@ -135,6 +137,7 @@ class AnthropicProvider(LLMProvider):
 	def _new_async_client(self) -> anthropic.AsyncAnthropic:
 		return anthropic.AsyncAnthropic(
 			api_key=self._api_key,
+			base_url=self._base_url,
 			timeout=REQUEST_TIMEOUT_SECONDS,
 			max_retries=SDK_MAX_RETRIES,
 		)
@@ -173,7 +176,7 @@ class AnthropicProvider(LLMProvider):
 			"additionalProperties": False,
 		}
 
-	def _build_messages(
+	def __build_messages(
 		self,
 		history: list[dict[str, Any]],
 	) -> list[MessageParam]:
@@ -320,7 +323,7 @@ class AnthropicProvider(LLMProvider):
 		tool_round: int = 1,
 		required_tools: list[ToolSpec] | None = None,
 	) -> AsyncIterator[str]:
-		messages: list[MessageParam] = self._build_messages(
+		messages: list[MessageParam] = self.__build_messages(
 			history
 		)
 

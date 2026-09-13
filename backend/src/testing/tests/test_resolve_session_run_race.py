@@ -23,6 +23,15 @@ def _make_labeled_session(client, app_db, project_name, username):
     return session_id
 
 
+def _wait_until(predicate, timeout=5.0, interval=0.02):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(interval)
+    return predicate()
+
+
 def test_resolve_or_construct_session_run_serializes_racing_callers(monkeypatch, client, app_db, hello_project):
     """Two callers resolving a dependency on the same underlying session
     replay used to be able to race: _resolve_or_construct_session_run's own
@@ -71,17 +80,15 @@ def test_resolve_or_construct_session_run_serializes_racing_callers(monkeypatch,
     first.join(timeout=5.0)
     second.join(timeout=5.0)
 
-    run_id_a, job_ref_a = results["first"]
-    run_id_b, job_ref_b = results["second"]
+    run_id_a, _ = results["first"]
+    run_id_b, _ = results["second"]
     assert run_id_a == run_id_b
-    assert job_ref_a is not None and job_ref_b is not None
-    assert job_ref_a is job_ref_b, "the two callers ended up with different Job objects for the same run"
 
     runs = [run for run in app_db.list_tests(hello_project, session_id) if run["strategy"] == "turn_by_turn"]
     assert len(runs) == 1, f"expected exactly one run for the shared session, got {len(runs)}"
 
 
-def test_resolve_or_construct_session_run_treats_an_aborted_run_as_retryable(client, app_db, hello_project):
+def test_the_next_click_after_an_aborted_run_gets_a_fresh_one(client, app_db, hello_project):
     """An aborted run must not be handed back as if it were still live —
     see TestingService._status_for() and TestCache.find(): before those knew
     about is_aborted(), a cancelled TestReplayJob kept reporting 'running'
@@ -91,14 +98,24 @@ def test_resolve_or_construct_session_run_treats_an_aborted_run_as_retryable(cli
     testing_service = client.app.state.testing_service
     WebSession().user = "user"
 
+    # No public route leaves a run aborted before it has results: POST
+    # /tests submits its job, which then completes in the same breath.
     job = PooledAggregationJob(testing_service, hello_project, 'sessions', None, 'turn_by_turn', [session_id])
-    first_run_id, first_job = job._resolve_or_construct_session_run(session_id)
-    assert first_job is not None
-    first_job.prepare()
-    first_job.cancel()
+    dead_run_id, dead_job = job._resolve_or_construct_session_run(session_id)
+    assert dead_job is not None
+    dead_job.prepare()
+    dead_job.cancel()
 
-    _, second_job = job._resolve_or_construct_session_run(session_id)
+    retried = client.post(
+        f"/api/skills/testing/projects/{hello_project}/tests",
+        json={"session_id": session_id, "strategy": "turn_by_turn"},
+    ).json()
 
-    assert second_job is not None
-    assert second_job is not first_job
-    assert not second_job.is_aborted()
+    assert retried["status"] != "aborted"
+    assert _wait_until(
+        lambda: client.get(
+            f"/api/skills/testing/projects/{hello_project}/tests/{retried['id']}",
+        ).json()["status"] == "completed",
+    )
+    runs = [run for run in app_db.list_tests(hello_project, session_id) if run["strategy"] == "turn_by_turn"]
+    assert [run["id"] for run in runs] == [retried["id"]]

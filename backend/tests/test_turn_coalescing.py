@@ -11,10 +11,24 @@ import asyncio
 import pytest
 
 from ai.llm_provider import content_to_text, is_text_fragments
-from db.messages import _group_user_fragments
+from provider_tools_helpers import AnthropicHarness, GeminiHarness, OpenAIHarness, drain
 from turn_harness import PROJECT_ID, one_state_automaton, turn_service_for  # noqa: F401 — a pytest fixture, used by name
 
 pytestmark = pytest.mark.contract
+
+FRAGMENTS = [{"role": "user", "content": ["I have a problem", "with VY3003"]}]
+
+
+def _session(db) -> int:
+    db.ensure_project("proj")
+    db.publish_project("proj")
+    return db.create_chat_session(
+        username="user", project_id="proj", revision=db.get_project_published_revision("proj"),
+    )
+
+
+def _contents(db, session_id: int) -> list:
+    return [entry["content"] for entry in db.get_turn_history(session_id, None, None)]
 
 
 class TestGrouping:
@@ -22,61 +36,59 @@ class TestGrouping:
     a user message belongs to, which stored ids alone no longer do once a
     fragment can arrive while the previous turn is still generating."""
 
-    def test_the_fragments_of_one_turn_become_one_entry_of_several_texts(self):
-        rows = [
-            {"id": 1, "role": "user", "content": "hi", "answered_by": 4},
-            {"id": 2, "role": "user", "content": "I have a problem", "answered_by": 4},
-            {"id": 3, "role": "user", "content": "with flight VY3003", "answered_by": 4},
-            {"id": 4, "role": "assistant", "content": "Let me look.", "answered_by": None},
-        ]
+    def test_the_fragments_of_one_turn_become_one_entry_of_several_texts(self, db):
+        session_id = _session(db)
+        fragments = [db.save_message("user", text, session_id) for text in ("hi", "I have a problem", "with flight VY3003")]
+        reply = db.save_message("assistant", "Let me look.", session_id)
+        db.mark_messages_answered(fragments, reply)
 
-        grouped = _group_user_fragments(rows)
-
-        assert [entry["content"] for entry in grouped] == [
+        assert _contents(db, session_id) == [
             ["hi", "I have a problem", "with flight VY3003"], "Let me look.",
         ]
 
-    def test_the_group_carries_the_last_fragments_own_id(self):
-        rows = [
-            {"id": 7, "role": "user", "content": "a", "answered_by": 10},
-            {"id": 9, "role": "user", "content": "b", "answered_by": 10},
-        ]
+    def test_the_group_carries_the_last_fragments_own_id(self, db):
+        session_id = _session(db)
+        opening = db.save_message("user", "a", session_id)
+        closing = db.save_message("user", "b", session_id)
+        reply = db.save_message("assistant", "r", session_id)
+        db.mark_messages_answered([opening, closing], reply)
 
-        assert _group_user_fragments(rows)[0]["id"] == 9
+        assert db.get_turn_history(session_id, None, None)[0]["id"] == closing
 
-    def test_a_lone_fragment_keeps_a_plain_string_exactly_as_before(self):
-        rows = [
-            {"id": 1, "role": "user", "content": "hi", "answered_by": 2},
-            {"id": 2, "role": "assistant", "content": "hello", "answered_by": None},
-            {"id": 3, "role": "user", "content": "again", "answered_by": None},
-        ]
+    def test_a_lone_fragment_keeps_a_plain_string_exactly_as_before(self, db):
+        session_id = _session(db)
+        asked = db.save_message("user", "hi", session_id)
+        reply = db.save_message("assistant", "hello", session_id)
+        db.mark_messages_answered([asked], reply)
+        db.save_message("user", "again", session_id)
 
-        assert [entry["content"] for entry in _group_user_fragments(rows)] == ["hi", "hello", "again"]
+        assert _contents(db, session_id) == ["hi", "hello", "again"]
 
-    def test_fragments_of_different_turns_are_never_merged(self):
-        rows = [
-            {"id": 1, "role": "user", "content": "a", "answered_by": 2},
-            {"id": 2, "role": "assistant", "content": "r", "answered_by": None},
-            {"id": 3, "role": "user", "content": "b", "answered_by": 5},
-            {"id": 4, "role": "user", "content": "c", "answered_by": 5},
-        ]
+    def test_fragments_of_different_turns_are_never_merged(self, db):
+        session_id = _session(db)
+        alone = db.save_message("user", "a", session_id)
+        first_reply = db.save_message("assistant", "r", session_id)
+        db.mark_messages_answered([alone], first_reply)
+        opening = db.save_message("user", "b", session_id)
+        closing = db.save_message("user", "c", session_id)
+        second_reply = db.save_message("assistant", "r2", session_id)
+        db.mark_messages_answered([opening, closing], second_reply)
 
-        assert [entry["content"] for entry in _group_user_fragments(rows)] == ["a", "r", ["b", "c"]]
+        assert _contents(db, session_id) == ["a", "r", ["b", "c"], "r2"]
 
-    def test_a_fragment_stored_before_the_previous_turns_reply_still_reads_after_it(self):
+    def test_a_fragment_stored_before_the_previous_turns_reply_still_reads_after_it(self, db):
         """The interleaving this whole key exists for: B arrived while the
         turn answering A was still generating, so B's id precedes that
         reply's — but B belongs to the next turn, and must read that way."""
-        rows = [
-            {"id": 1, "role": "user", "content": "A", "answered_by": 3},
-            {"id": 2, "role": "user", "content": "B", "answered_by": 4},
-            {"id": 3, "role": "assistant", "content": "answer to A", "answered_by": None},
-            {"id": 4, "role": "assistant", "content": "answer to B", "answered_by": None},
-        ]
+        session_id = _session(db)
+        a = db.save_message("user", "A", session_id)
+        b = db.save_message("user", "B", session_id)
+        answer_to_a = db.save_message("assistant", "answer to A", session_id)
+        answer_to_b = db.save_message("assistant", "answer to B", session_id)
+        db.mark_messages_answered([a], answer_to_a)
+        db.mark_messages_answered([b], answer_to_b)
 
-        assert [entry["content"] for entry in _group_user_fragments(rows)] == [
-            "A", "answer to A", "B", "answer to B",
-        ]
+        assert _contents(db, session_id) == ["A", "answer to A", "B", "answer to B"]
 
 
 class TestContentToText:
@@ -97,15 +109,13 @@ class TestProviderPayloads:
     """Every provider must render the fragments as several text blocks of
     ONE user message — never as separate turns, never concatenated."""
 
-    def test_anthropic_sends_one_user_message_with_a_text_block_per_fragment(self):
-        from ai._providers.anthropic_provider_v2 import AnthropicProvider
-        from config import AIServiceConfig
+    async def test_anthropic_sends_one_user_message_with_a_text_block_per_fragment(self):
+        harness = AnthropicHarness()
+        provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')])
 
-        provider = AnthropicProvider(AIServiceConfig("anthropic", "claude-x", "k", None, "x"))
+        await drain(provider.generate_stream_with_schema("sys", FRAGMENTS, {"text": "t"}))
 
-        messages = provider._build_messages([{"role": "user", "content": ["I have a problem", "with VY3003"]}])
-
-        assert messages == [{
+        assert harness.calls(fake_client)[0]["messages"] == [{
             "role": "user",
             "content": [
                 {"type": "text", "text": "I have a problem"},
@@ -113,15 +123,13 @@ class TestProviderPayloads:
             ],
         }]
 
-    def test_openai_sends_one_user_message_with_a_text_part_per_fragment(self):
-        from ai._providers.openai_provider_v2 import OpenAICompatibleProvider
-        from config import AIServiceConfig
+    async def test_openai_sends_one_user_message_with_a_text_part_per_fragment(self):
+        harness = OpenAIHarness()
+        provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')])
 
-        provider = OpenAICompatibleProvider(AIServiceConfig("openai", "gpt-x", "k", None, "x"))
+        await drain(provider.generate_stream_with_schema("sys", FRAGMENTS, {"text": "t"}))
 
-        messages = provider._build_messages([{"role": "user", "content": ["I have a problem", "with VY3003"]}])
-
-        assert messages == [{
+        assert harness.calls(fake_client)[0]["messages"][1:] == [{
             "role": "user",
             "content": [
                 {"type": "text", "text": "I have a problem"},
@@ -129,26 +137,21 @@ class TestProviderPayloads:
             ],
         }]
 
-    def test_openai_still_sends_a_lone_message_as_a_plain_string(self):
-        from ai._providers.openai_provider_v2 import OpenAICompatibleProvider
-        from config import AIServiceConfig
+    async def test_openai_still_sends_a_lone_message_as_a_plain_string(self):
+        harness = OpenAIHarness()
+        provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')])
 
-        provider = OpenAICompatibleProvider(AIServiceConfig("openai", "gpt-x", "k", None, "x"))
+        await drain(provider.generate_stream_with_schema("sys", [{"role": "user", "content": "just one"}], {"text": "t"}))
 
-        messages = provider._build_messages([{"role": "user", "content": "just one"}])
+        assert harness.calls(fake_client)[0]["messages"][1:] == [{"role": "user", "content": "just one"}]
 
-        assert messages == [{"role": "user", "content": "just one"}]
+    async def test_gemini_sends_one_content_with_a_part_per_fragment(self):
+        harness = GeminiHarness()
+        provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')])
 
-    def test_gemini_sends_one_content_with_a_part_per_fragment(self):
-        from ai._providers.gemini_provider_v2 import GeminiProvider
-        from config import AIServiceConfig
+        await drain(provider.generate_stream_with_schema("sys", FRAGMENTS, {"text": "t"}))
 
-        provider = GeminiProvider(AIServiceConfig("gemini", "gemini-x", "k", None, "x"))
-
-        contents = provider._GeminiProvider__build_contents(
-            [{"role": "user", "content": ["I have a problem", "with VY3003"]}]
-        )
-
+        contents = harness.calls(fake_client)[0]["contents"]
         assert len(contents) == 1
         assert contents[0].role == "user"
         assert [part.text for part in contents[0].parts] == ["I have a problem", "with VY3003"]

@@ -197,8 +197,7 @@ class TestRenameSignal:
         editor = make_editor()
         payload = editor.rename_signal("foo", "danger")
         assert payload["name"] == "danger"
-        assert list(editor._raw["signals"].keys()) == ["danger", "bar"]
-        assert {s.name for s in builds(editor.serialize()).signals} == {"danger", "bar"}
+        assert [s.name for s in builds(editor.serialize()).signals] == ["danger", "bar"]
 
         assert make_editor().rename_signal("foo", "bar")["name"] == "bar_2"
 
@@ -214,14 +213,15 @@ class TestDeleteState:
     def test_removes_the_state_and_incoming_actions_but_refuses_the_init_actions_own_target(self):
         editor = make_editor()
         editor.delete_state("c")
-        assert "c" not in editor._raw["states"]
-        action_names = {a.name for a in builds(editor.serialize()).states["a"].actions}
+        automaton = builds(editor.serialize())
+        assert "c" not in automaton.states
+        action_names = {a.name for a in automaton.states["a"].actions}
         assert "go-c" not in action_names
         assert "go-b" in action_names
 
         with pytest.raises(InitActionTargetError):
             editor.delete_state("a")
-        assert "a" in editor._raw["states"]
+        assert "a" in builds(editor.serialize()).states
 
     def test_outgoing_actions_vanish_along_with_the_state_itself(self):
         editor = make_editor("""\
@@ -257,8 +257,9 @@ class TestDeleteSignal:
     def test_removes_the_signal_dropping_just_its_operand_from_bool_ops_and_whole_lone_triggers(self):
         editor = make_editor()
         editor.delete_signal("bar")
-        assert "bar" not in editor._raw["signals"]
-        assert _action(builds(editor.serialize()), "a", "go-c").trigger == "signal.foo >= 50"
+        automaton = builds(editor.serialize())
+        assert "bar" not in {s.name for s in automaton.signals}
+        assert _action(automaton, "a", "go-c").trigger == "signal.foo >= 50"
 
         editor.delete_signal("foo")
         assert _action(builds(editor.serialize()), "a", "go-b").trigger is None

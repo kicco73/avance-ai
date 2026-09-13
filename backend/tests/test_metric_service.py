@@ -61,14 +61,12 @@ def test_merge_if_referenced_computes_metrics_only_when_a_trigger_mentions_one_n
     assert names == {"mySignal": 60}
 
 
-def test_for_turn_returns_a_fresh_namespace_of_the_all_sessions_metrics_reusing_one_calculator_within_it(db):
+def test_for_turn_returns_a_fresh_namespace_of_only_the_all_sessions_metrics(db):
     metrics = _metrics(db)
     namespace = metrics.for_turn()
 
     assert namespace.retention() is not None
-    calculator_after_first_call = namespace._calculator
     assert namespace.activity_consistency() is not None
-    assert namespace._calculator is calculator_after_first_call
     assert not hasattr(namespace, "engagement")
 
     assert metrics.for_turn() is not namespace

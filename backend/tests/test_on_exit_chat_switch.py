@@ -4,14 +4,14 @@ synchronously inside TrackingEngine.apply_action_env — never as a
 background ActionTask (that's task.*'s own job, see
 tracking/actuators/action_task.py). This is the on-exit/chat
 equivalent of what test_action_task.py exercises for task.*, end to
-end against a real TaskNamespaceFactory/BusChannel pair."""
+end against a real TaskNamespaceFactory."""
 from __future__ import annotations
 
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from system.bus_channel import BusChannel
-from conftest import FakeWebSocket, make_test_namespace_factory, make_test_scheduler_service
+from system.bus import SESSION_TAKEN_OVER, UI_NOTIFICATION
+from conftest import RecordedMessages, make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
 from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
@@ -88,8 +88,7 @@ def wired(db):
     scheduler_service = make_test_scheduler_service(db)
     project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     factory = make_test_namespace_factory(db, scheduler_service, project_service)
-    bus_channel = BusChannel(auth_service=None)
-    return db, project_service, factory, bus_channel
+    return db, project_service, factory
 
 
 def _session(db, project_service: ProjectService) -> int:
@@ -98,20 +97,20 @@ def _session(db, project_service: ProjectService) -> int:
 
 
 def test_switch_to_human_from_on_exit_records_the_operator_and_pages_them(wired):
-    db, project_service, factory, bus_channel = wired
-    admin_socket = FakeWebSocket()
-    bus_channel._connections["admin"] = [admin_socket]
+    db, project_service, factory = wired
+    paged = RecordedMessages(SESSION_TAKEN_OVER)
     _publish(db, project_service, "chat.switch_to_human('admin')")
     session_id = _session(db, project_service)
 
     _fire_go(db, factory, project_service, session_id)
 
     assert factory.get_human_operator(session_id) == "admin"
-    assert admin_socket.sent == [{"type": "session.taken_over", "session_id": session_id, "project_id": PROJECT}]
+    (message,) = paged.for_user("admin")
+    assert (message.session_id, message.body) == (session_id, {"project_id": PROJECT})
 
 
 def test_switch_to_ai_from_on_exit_clears_a_previously_set_operator(wired):
-    db, project_service, factory, _bus_channel = wired
+    db, project_service, factory = wired
     _publish(db, project_service, "chat.switch_to_ai()")
     session_id = _session(db, project_service)
     factory.set_human_operator(session_id, "admin")
@@ -124,27 +123,24 @@ def test_switch_to_ai_from_on_exit_clears_a_previously_set_operator(wired):
 def test_a_fake_chat_namespace_suppresses_switch_to_human_and_reports_it(wired):
     """Test session with "Run actuators" off: nobody is actually paged
     — same suppress-and-report shape task.* gets for send_mail/whatsapp/defer."""
-    db, project_service, factory, bus_channel = wired
-    user_socket = FakeWebSocket()
-    bus_channel._connections[USERNAME] = [user_socket]
+    db, project_service, factory = wired
+    notified = RecordedMessages(UI_NOTIFICATION)
     _publish(db, project_service, "chat.switch_to_human('admin')")
     session_id = _session(db, project_service)
 
     _fire_go(db, factory, project_service, session_id, fake=True)
 
     assert factory.get_human_operator(session_id) is None
-    (frame,) = user_socket.sent
-    assert frame["type"] == "ui.notification"
-    assert "Run actuators is off" in frame["task"]
-    assert "no one was paged" in frame["task"]
+    (message,) = notified.for_user(USERNAME)
+    assert "Run actuators is off" in message.body["task"]
+    assert "no one was paged" in message.body["task"]
 
 
 def test_a_mixed_on_exit_script_writes_env_and_pushes_a_chat_notification_synchronously(wired):
     """No background ActionTask involved at all — the push happens
     inline, in the same call that applies the env write."""
-    db, project_service, factory, bus_channel = wired
-    user_socket = FakeWebSocket()
-    bus_channel._connections[USERNAME] = [user_socket]
+    db, project_service, factory = wired
+    notified = RecordedMessages(UI_NOTIFICATION)
     _publish(db, project_service, "env.counter = env.counter + 1\nchat.celebrate()\nchat.notify('Nice!', 'Done.')")
     session_id = _session(db, project_service)
     db.set_action_env(session_id, {"counter": 0})
@@ -152,6 +148,6 @@ def test_a_mixed_on_exit_script_writes_env_and_pushes_a_chat_notification_synchr
     _fire_go(db, factory, project_service, session_id)
 
     assert db.get_action_env(PROJECT, USERNAME).get("counter") == 1
-    assert user_socket.sent == [{"type": "ui.notification", "task": 'celebrate()\nnotify("Nice!", "Done.")'}]
+    assert [m.body for m in notified.for_user(USERNAME)] == [{"task": 'celebrate()\nnotify("Nice!", "Done.")'}]
     # Never hibernated as a Task: on-exit's own chat.* never goes through ActionTask.
     assert db.list_tasks() == []

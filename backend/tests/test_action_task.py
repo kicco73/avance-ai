@@ -28,8 +28,8 @@ from datetime import datetime, timedelta
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from system.bus_channel import BusChannel
-from conftest import FakeWebSocket, FakeAiService, make_test_namespace_factory, make_test_scheduler_service
+from system.bus import UI_NOTIFICATION
+from conftest import RecordedMessages, FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from db import Db
 from db.models import Task as TaskRow, User
 from metrics.metric_service import MetricService
@@ -137,7 +137,7 @@ def _publish(db: Db, project_service: ProjectService, index_yml: str) -> None:
     asyncio.run(project_service.manager.finalize_update(PROJECT, automaton))
 
 
-def _process(db: Db, websocket: FakeWebSocket | None = None, *, start: bool = False, ai_service=None):
+def _process(db: Db, *, start: bool = False, ai_service=None):
     """One "process": a SchedulerService, a ProjectService and a namespace
     factory over `db`, wired the way main.py does — started only when
     asked, since a not-yet-started service is exactly what a process
@@ -146,11 +146,6 @@ def _process(db: Db, websocket: FakeWebSocket | None = None, *, start: bool = Fa
     _live_services.append(scheduler_service)
     project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     factory = make_test_namespace_factory(db, scheduler_service, project_service, ai_service)
-    if websocket is not None:
-        # Constructing it is the wiring: BusChannel subscribes to
-        # ui.notification itself, and nothing hands it to the factory.
-        bus_channel = BusChannel(auth_service=None)
-        bus_channel._connections[USERNAME] = [websocket]
     if start:
         scheduler_service.start()
     return scheduler_service, project_service, factory
@@ -233,18 +228,17 @@ def test_a_task_is_hibernated_as_a_task_due_now_not_run_inline(file_db):
     assert "session" not in row["payload"]["snapshot"]
 
 
-def test_a_task_reports_a_suppressed_send_mail_over_the_websocket_in_fake_mode(file_db):
-    websocket = FakeWebSocket()
-    _, project_service, factory = _process(file_db, websocket, start=True)
+def test_a_task_reports_a_suppressed_send_mail_in_fake_mode(file_db):
+    notified = RecordedMessages(UI_NOTIFICATION)
+    _, project_service, factory = _process(file_db, start=True)
     _publish(file_db, project_service, _yml("task.send_mail(user.name, 'welcome')"))
 
     _fire_go(file_db, factory, project_service, {"distress": 10})
 
-    assert _wait_until(lambda: websocket.sent), file_db.list_tasks()
-    (frame,) = websocket.sent
-    assert frame["type"] == "ui.notification"
-    assert "send_mail(to='Ada')" in frame["task"]
-    assert "Run actuators is off" in frame["task"]
+    assert _wait_until(lambda: notified.for_user(USERNAME)), file_db.list_tasks()
+    (message,) = notified.for_user(USERNAME)
+    assert "send_mail(to='Ada')" in message.body["task"]
+    assert "Run actuators is off" in message.body["task"]
     assert _wait_until(lambda: file_db.list_tasks()[0]["status"] == "done")
 
 
@@ -254,9 +248,9 @@ def test_task_prompt_runs_inside_the_task_with_the_firing_sessions_history(file_
     reply text is only observable here via the fake-mode wrapper's own
     `to` argument (see this file's module docstring) — task.prompt's
     result is passed as `to` deliberately, just to make it visible."""
-    websocket = FakeWebSocket()
+    notified = RecordedMessages(UI_NOTIFICATION)
     ai_service = FakeAiService()
-    _, project_service, factory = _process(file_db, websocket, start=True, ai_service=ai_service)
+    _, project_service, factory = _process(file_db, start=True, ai_service=ai_service)
     _publish(file_db, project_service, _yml("task.send_mail(task.prompt('Recap the last exchange.'), 'note')"))
     file_db.create_chat_session(username=USERNAME, project_id=PROJECT, revision=file_db.get_project_published_revision(PROJECT))
     session_id = file_db.get_latest_chat_session(USERNAME, PROJECT)["id"]
@@ -265,17 +259,17 @@ def test_task_prompt_runs_inside_the_task_with_the_firing_sessions_history(file_
 
     (row,) = file_db.list_tasks()
     assert row["payload"]["session_id"] == session_id
-    assert _wait_until(lambda: websocket.sent), file_db.list_tasks()
-    (frame,) = websocket.sent
-    assert "send_mail(to='Fake AI reply.')" in frame["task"]
+    assert _wait_until(lambda: notified.for_user(USERNAME)), file_db.list_tasks()
+    (message,) = notified.for_user(USERNAME)
+    assert "send_mail(to='Fake AI reply.')" in message.body["task"]
     assert file_db.get_messages(session_id) == []  # read-only, as before
 
 
 def test_a_fake_task_namespaces_task_still_runs_as_a_task_and_reports(file_db):
     """Test session with "Run actuators" off: send_mail/whatsapp are
     both suppressed and reported through the same task path."""
-    websocket = FakeWebSocket()
-    _, project_service, factory = _process(file_db, websocket, start=True)
+    notified = RecordedMessages(UI_NOTIFICATION)
+    _, project_service, factory = _process(file_db, start=True)
     _publish(file_db, project_service, _yml("task.send_mail(user.email, 'hi')\n          task.whatsapp('34600000001', 'hi')"))
     automaton = project_service.get_automaton(PROJECT, file_db.get_project_published_revision(PROJECT))
     context = FixedProjectContext(automaton=automaton, project_id=PROJECT)
@@ -290,10 +284,10 @@ def test_a_fake_task_namespaces_task_still_runs_as_a_task_and_reports(file_db):
 
     (row,) = file_db.list_tasks()
     assert row["payload"]["namespace_kind"] == "fake"
-    assert _wait_until(lambda: websocket.sent), file_db.list_tasks()
-    (frame,) = websocket.sent
-    assert "Run actuators is off" in frame["task"]
-    assert frame["task"].endswith("no message was sent.\")")
+    assert _wait_until(lambda: notified.for_user(USERNAME)), file_db.list_tasks()
+    (message,) = notified.for_user(USERNAME)
+    assert "Run actuators is off" in message.body["task"]
+    assert message.body["task"].endswith("no message was sent.\")")
 
 
 def test_a_task_survives_a_restart_and_runs_against_an_equivalent_environment(file_db):
@@ -304,15 +298,15 @@ def test_a_task_survives_a_restart_and_runs_against_an_equivalent_environment(fi
     # The process that accepted it is gone (never started claiming);
     # meanwhile the user is renamed.
     User.update(name="Grace").where(User.id == USERNAME).execute()
-    websocket = FakeWebSocket()
+    notified = RecordedMessages(UI_NOTIFICATION)
 
-    _process(file_db, websocket, start=True)
+    _process(file_db, start=True)
 
     assert _wait_until(lambda: file_db.get_task(row["key"])["status"] == "done"), file_db.get_task(row["key"])
     # user.name is the frozen "Ada", never the live-renamed "Grace" —
     # exactly what the in-turn evaluation would have seen.
-    (frame,) = websocket.sent
-    assert "send_mail(to='Ada')" in frame["task"]
+    (message,) = notified.for_user(USERNAME)
+    assert "send_mail(to='Ada')" in message.body["task"]
 
 
 # --- deferred ----------------------------------------------------------------
@@ -356,9 +350,8 @@ def test_a_deferred_call_runs_after_a_restart_against_the_frozen_scope(file_db):
     assert inner["payload"]["snapshot"]["user"]["name"] == "Ada"
     User.update(name="Grace").where(User.id == USERNAME).execute()
     _due_now(inner["key"])
-    websocket = FakeWebSocket()
 
-    _process(file_db, websocket, start=True)
+    _process(file_db, start=True)
 
     assert _wait_until(lambda: file_db.get_task(inner["key"])["status"] == "done"), file_db.get_task(inner["key"])
 
@@ -375,9 +368,8 @@ def test_a_deferred_lambda_sees_names_assigned_earlier_in_the_same_script(file_d
     inner = next(r for r in file_db.list_tasks() if r["status"] == "pending")
     assert inner["payload"]["snapshot"]["extra"] == {"greeting": "hello Ada"}
     _due_now(inner["key"])
-    websocket = FakeWebSocket()
 
-    _process(file_db, websocket, start=True)
+    _process(file_db, start=True)
 
     assert _wait_until(lambda: file_db.get_task(inner["key"])["status"] == "done"), file_db.get_task(inner["key"])
 
@@ -391,13 +383,13 @@ def test_the_task_runs_against_the_revision_it_was_written_for(file_db):
     (row,) = file_db.list_tasks()
     _publish(file_db, project_service, _yml("task.send_mail(user.name, 'new')").replace("ui-label: A", "ui-label: A2"))
     assert file_db.get_project_published_revision(PROJECT) != row["payload"]["project_revision"]
-    websocket = FakeWebSocket()
+    notified = RecordedMessages(UI_NOTIFICATION)
 
-    _process(file_db, websocket, start=True)
+    _process(file_db, start=True)
 
     assert _wait_until(lambda: file_db.get_task(row["key"])["status"] == "done"), file_db.get_task(row["key"])
-    (frame,) = websocket.sent
-    assert "send_mail(to='Ada')" in frame["task"]
+    (message,) = notified.for_user(USERNAME)
+    assert "send_mail(to='Ada')" in message.body["task"]
 
 
 def test_deleting_the_project_takes_its_pending_tasks_with_it(file_db):
@@ -421,11 +413,11 @@ def test_a_task_never_sees_a_session(file_db):
     (row,) = file_db.list_tasks()
     payload = {**row["payload"], "script": "task.send_mail(user.name, session.number_of_user_sessions())"}
     TaskRow.update(payload=json.dumps(payload)).where(TaskRow.key == row["key"]).execute()
-    websocket = FakeWebSocket()
+    notified = RecordedMessages(UI_NOTIFICATION)
 
-    _process(file_db, websocket, start=True)
+    _process(file_db, start=True)
 
     # render_task_script logs and skips a failing statement, same as
     # the in-turn evaluation always did: the task settles done with nothing to push.
     assert _wait_until(lambda: file_db.get_task(row["key"])["status"] == "done"), file_db.get_task(row["key"])
-    assert websocket.sent == []
+    assert notified.messages == []

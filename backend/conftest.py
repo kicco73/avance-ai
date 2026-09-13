@@ -669,41 +669,39 @@ def app(
     # assembled, which is when a skill's own _install has run.
     for name, service in bus.collect(POINT_CORE_SERVICES, {}).items():
         setattr(fastapi_app.state, name, service)
-    # For tests that need to watch a task run: start the
-    # service and register a fake websocket on the factory (see
-    # run_pending_tasks below). Never started here — most tests only
-    # ever assert on the Task rows a task leaves behind.
+    # The scheduler is never started here — most tests only ever assert on
+    # the Task rows a task leaves behind. run_pending_tasks starts it.
     fastapi_app.state.namespace_factory = namespace_factory
     return fastapi_app
 
 
-class FakeWebSocket:
-    """Just enough to stand in for a WsConnection in BusChannel'
-    username -> connection registry: push only calls send on it, and a
-    Bus event only reaches a connection that registered for its type —
-    this one stands in for a browser, so it registers for everything the
-    socket may export (see BusChannel._exportable)."""
+class RecordedMessages:
+    """Whatever an interface would have shown, taken off the Bus instead
+    of off a socket: a producer publishes and never learns whether anyone
+    was connected, so the Bus is where its contract ends (see BUS.md)."""
 
-    def __init__(self):
-        self.id = "fake-connection"
-        self.sent: list[dict] = []
+    def __init__(self, *types: str) -> None:
+        self.messages: list = []
+        for type in types:
+            bus.subscribe(type, self.record)
 
-    def wants(self, event_type: str) -> bool:
-        return event_type in WEB_FORWARDED
+    async def record(self, message) -> None:
+        self.messages.append(message)
 
-    def send(self, payload: dict):
-        self.sent.append(payload)
+    def for_user(self, username: str) -> list:
+        return [message for message in self.messages if message.username == username]
+
+    def of_type(self, type: str) -> list:
+        return [message for message in self.messages if message.type == type]
 
 
-def run_pending_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0) -> list[dict]:
-    """Starts the app fixture's SchedulerService (once), attaches a FakeWebSocket
-    for `username`, waits until no task is pending or dispatched,
-    and returns the frames the browser would have received. Stops the
-    service afterwards so its thread never outlives the test."""
+def run_pending_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0) -> list:
+    """Starts the app fixture's SchedulerService (once), records everything
+    a browser would have been forwarded, waits until no task is pending or
+    dispatched, and returns that identity's Bus messages. Stops the service
+    afterwards so its thread never outlives the test."""
     import time
-    websocket = FakeWebSocket()
-    bus_channel = BusChannel(auth_service=None)
-    bus_channel._connections[username] = [websocket]
+    recorded = RecordedMessages(*WEB_FORWARDED)
     scheduler_service = app.state.scheduler_service
     scheduler_service.start()
     try:
@@ -715,7 +713,7 @@ def run_pending_tasks(app: FastAPI, username: str = "user", timeout: float = 5.0
             time.sleep(0.02)
     finally:
         scheduler_service.stop()
-    return websocket.sent
+    return recorded.for_user(username)
 
 
 @pytest.fixture

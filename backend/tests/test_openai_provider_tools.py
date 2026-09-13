@@ -5,13 +5,13 @@ covered once for every provider in test_provider_tools.py.
 from __future__ import annotations
 
 from ai.llm_provider import ToolCall
-from provider_tools_helpers import OpenAIHarness
+from provider_tools_helpers import OpenAIHarness, drain
 
 harness = OpenAIHarness()
 
 
-def test_build_messages_round_trips_the_neutral_tool_history_shapes():
-    provider, _ = harness.provider([])
+async def test_build_messages_round_trips_the_neutral_tool_history_shapes():
+    provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')])
     history = [
         {"role": "user", "content": "where's my flight?"},
         {
@@ -22,9 +22,9 @@ def test_build_messages_round_trips_the_neutral_tool_history_shapes():
         {"role": "tool", "tool_call_id": "call_1", "content": "city,country\nParis,France\n"},
     ]
 
-    messages = provider._build_messages(history)
+    await drain(provider.generate_stream_with_schema("sys", history, {"text": "t"}))
 
-    assert messages == [
+    assert harness.calls(fake_client)[0]["messages"][1:] == [
         {"role": "user", "content": "where's my flight?"},
         {
             "role": "assistant",

@@ -40,8 +40,8 @@ async def test_a_tool_use_reports_the_preceding_text_as_assistant_content_or_non
     assert without_text.assistant_content is None
 
 
-def test_build_messages_round_trips_the_neutral_tool_history_shapes_omitting_an_empty_text_block():
-    provider, _ = harness.provider([])
+async def test_build_messages_round_trips_the_neutral_tool_history_shapes_omitting_an_empty_text_block():
+    provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')])
     history = [
         {"role": "user", "content": "where's my flight?"},
         {
@@ -53,9 +53,9 @@ def test_build_messages_round_trips_the_neutral_tool_history_shapes_omitting_an_
         {"role": "assistant", "tool_calls": [ToolCall(id="call_2", name="source_flights_read", arguments={})], "content": None},
     ]
 
-    messages = provider._build_messages(history)
+    await drain(provider.generate_stream_with_schema("sys", history, {"text": "t"}))
 
-    assert messages == [
+    assert harness.calls(fake_client)[0]["messages"] == [
         {"role": "user", "content": "where's my flight?"},
         {
             "role": "assistant",

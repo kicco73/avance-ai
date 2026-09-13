@@ -11,42 +11,47 @@ from __future__ import annotations
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from ai._providers.gemini_provider_v2 import GeminiProvider
-from ai.llm_provider import AIServiceConfig, ToolSpec
+from ai.llm_provider import ToolSpec
+from provider_tools_helpers import GeminiHarness, drain
 from tracking.sources import METHOD_SCHEMAS
 
 pytestmark = pytest.mark.contract
 
+harness = GeminiHarness()
 
-def _declaration(parameters: dict):
-    provider = GeminiProvider(AIServiceConfig("gemini", "gemini-x", "k", None, "x"))
+
+async def _declaration(parameters: dict):
+    provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')])
     spec = ToolSpec(name="source_env_update", description="d", parameters=parameters)
-    declarations = provider._GeminiProvider__tool_declarations([spec], {"text": "the reply"})  # type: ignore[attr-defined]
-    return declarations[1]
+
+    await drain(provider.generate_stream_with_schema("sys", [], {"text": "the reply"}, tools=[spec]))
+
+    declarations = harness.calls(fake_client)[0]["config"].tools[0].function_declarations
+    return next(declaration for declaration in declarations if declaration.name == "source_env_update")
 
 
-def test_the_uniform_read_schemas_become_objects_of_string_arrays_strings_and_enums():
-    declaration = _declaration(METHOD_SCHEMAS["select_rows_containing"])
+async def test_the_uniform_read_schemas_become_objects_of_string_arrays_strings_and_enums():
+    declaration = await _declaration(METHOD_SCHEMAS["select_rows_containing"])
 
     properties = declaration.parameters.properties
     assert declaration.parameters.type == "OBJECT"
     assert properties["values"].type == "ARRAY" and properties["values"].items.type == "STRING"
     assert declaration.parameters.required == ["values"]
 
-    column = _declaration(METHOD_SCHEMAS["select_rows_where"])
+    column = await _declaration(METHOD_SCHEMAS["select_rows_where"])
     assert column.parameters.properties["column"].type == "STRING"
     assert list(column.parameters.properties["operator"].enum) == ["=", "!=", ">", ">=", "<", "<="]
     assert column.parameters.required == ["column", "operator", "value"]
     assert column.parameters.properties["strings"].type == "ARRAY"
 
-    ranged = _declaration(METHOD_SCHEMAS["select_rows_in_range"])
+    ranged = await _declaration(METHOD_SCHEMAS["select_rows_in_range"])
     assert ranged.parameters.properties["start"].type == "STRING"
     assert ranged.parameters.required == ["column", "start", "end"]
     assert ranged.parameters.properties["strings"].type == "ARRAY"
 
 
-def test_a_narrowed_update_schema_keeps_enums_properties_and_descriptions_and_drops_the_unknown_keywords():
-    declaration = _declaration({
+async def test_a_narrowed_update_schema_keeps_enums_properties_and_descriptions_and_drops_the_unknown_keywords():
+    declaration = await _declaration({
         "type": "object",
         "properties": {
             "values": {"type": "array", "items": {"type": "string", "enum": ["a", "b"]}},

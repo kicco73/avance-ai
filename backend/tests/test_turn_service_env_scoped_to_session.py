@@ -17,7 +17,6 @@ import pytest
 
 from turn.turn_service import TurnService
 from turn.sessions.session_manager import SessionManager
-from turn.sessions.session_type_strategy import get_session_type_strategy
 from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from db.models import Tracking
 from metrics.metric_service import MetricService
@@ -48,6 +47,9 @@ states:
   a:
     ui-label: a
     contextual-prompt: hi
+    actions:
+      - name: advance
+        target: a
 """
 
 
@@ -85,16 +87,15 @@ def _env(db, project_id: str, username: str = USERNAME) -> PersistedEnv:
 
 
 @pytest.fixture
-def two_projects(db) -> tuple[ProjectService, TurnService]:
+def two_projects(db) -> TurnService:
     _publish(db, ACTIVE_PROJECT, _index_yml(ACTIVE_PROJECT, "active_key", "active-default"))
     _publish(db, OTHER_PROJECT, _index_yml(OTHER_PROJECT, "other_key", "other-default"))
     db.set_active_project_id(ACTIVE_PROJECT, USERNAME)
-    project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
-    return project_service, _turn_service(db, project_service)
+    return _turn_service(db, ProjectService(db, AutomatonLoader(db), SessionManager(db)))
 
 
 async def test_opening_another_projects_session_writes_that_projects_env_not_the_active_ones(db, two_projects):
-    project_service, turn_service = two_projects
+    turn_service = two_projects
     # The active project's own session, bootstrapped the normal way.
     active_session = await turn_service.enter_session(ACTIVE_PROJECT, 'live')
     await turn_service.open_conversation(active_session["id"])
@@ -102,9 +103,7 @@ async def test_opening_another_projects_session_writes_that_projects_env_not_the
 
     # A session of the *other* project (still ACTIVE_PROJECT active) —
     # what the Sessions panel or WhatsApp does.
-    other_session_id = turn_service._session_manager.create_session(
-        get_session_type_strategy("live"), project_service, USERNAME, OTHER_PROJECT
-    )["id"]
+    other_session_id = (await turn_service.enter_session(OTHER_PROJECT, 'live'))["id"]
     await turn_service.open_conversation(other_session_id)
 
     assert _env(db, OTHER_PROJECT).action_set() == {"other_key": "other-default"}
@@ -112,10 +111,8 @@ async def test_opening_another_projects_session_writes_that_projects_env_not_the
 
 
 async def test_another_projects_defaults_are_written_once_however_often_it_is_opened(db, two_projects):
-    project_service, turn_service = two_projects
-    other_session_id = turn_service._session_manager.create_session(
-        get_session_type_strategy("live"), project_service, USERNAME, OTHER_PROJECT
-    )["id"]
+    turn_service = two_projects
+    other_session_id = (await turn_service.enter_session(OTHER_PROJECT, 'live'))["id"]
 
     for _ in range(3):
         await turn_service.open_conversation(other_session_id)
@@ -130,18 +127,17 @@ async def test_another_projects_defaults_are_written_once_however_often_it_is_op
 
 
 async def test_a_supervisor_opening_someone_elses_session_touches_that_users_env(db, two_projects):
-    project_service, turn_service = two_projects
+    turn_service = two_projects
     db.get_or_create_user("test", "sub-alice", "alice", "alice", None)
     db.set_active_project_id(ACTIVE_PROJECT, "alice")
-    alice_session_id = turn_service._session_manager.create_session(
-        get_session_type_strategy("live"), project_service, "alice", ACTIVE_PROJECT
-    )["id"]
+    with WebSession().impersonate("alice"):
+        alice_session_id = (await turn_service.enter_session(ACTIVE_PROJECT, 'live'))["id"]
 
     # Default fixture identity is "user" with role supervisor. Only the
     # bootstrap half of open_conversation: the opening-message half is a
     # real turn, which a supervisor rightly can't run on alice's session.
     assert WebSession().user == USERNAME
-    await turn_service._ensure_project_bootstrap(alice_session_id)
+    assert await turn_service.prepare_user_initiated_turn(alice_session_id) == []
 
     assert _env(db, ACTIVE_PROJECT, username="alice").action_set() == {"active_key": "active-default"}
     assert db.get_action_env(ACTIVE_PROJECT, USERNAME) == {}

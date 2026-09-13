@@ -257,6 +257,9 @@ async def test_manual_action_exposes_turn_in_progress_code(client, app_db):
     _setup_channel_codes_project(app_db)
     session_id = session_of(enter_chat(client, "channel-codes-proj"))
     turn_service = client.app.state.turn_service
+    # Deliberate seam: the refusal only exists while a turn holds the
+    # session lock, and this app's AI service never blocks — driving it
+    # publicly would mean racing a turn that has already finished.
     lock = turn_service._session_locks.get(str(session_id))
     await lock.acquire()
     try:

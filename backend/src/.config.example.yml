@@ -201,7 +201,9 @@ whatsapp-service:
   # Optional, defaults to false (and the whole section can be omitted
   # entirely). If true, WhatsApp becomes one more chat client of the very
   # same live sessions the SPA uses (see backend/src/docs/WHATSAPP.md):
-  # Meta's webhook is served at /api/whatsapp/webhook.
+  # Meta's webhook is served at /api/skills/whatsapp/webhook — the URL to
+  # put in the Meta app's Webhook configuration, and the one thing here
+  # that is not read from this file.
   enabled: false
   # Any string you choose — repeated verbatim in the Meta app's webhook
   # configuration; Meta echoes it in the one-time verification GET.

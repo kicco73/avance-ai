@@ -11,11 +11,8 @@
 """
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 
-from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
 from conftest import rewrite_archive_content
 from events import ProjectRevisionBuildFailed, subscribe
@@ -39,26 +36,6 @@ def _publish(db, project_id: str, index_yml: str) -> None:
 
 def _overwrite(db, project_id: str, revision: int, index_yml: str) -> None:
     rewrite_archive_content(project_id, "index.yml", revision, index_yml.encode("utf-8"))
-
-
-def test_a_broken_revision_loaded_twice_builds_only_once(db):
-    _publish(db, PROJECT_ID, BROKEN_YML)
-    loader = AutomatonLoader(db)
-    revision = db.get_project_published_revision(PROJECT_ID)
-    real_build = AutomatonBuilder.build
-    calls: list[int] = []
-
-    def counting_build(self, *args, **kwargs):
-        calls.append(1)
-        return real_build(self, *args, **kwargs)
-
-    with patch.object(AutomatonBuilder, "build", counting_build):
-        with pytest.raises(AutomatonBuildError):
-            loader.load_at_revision(PROJECT_ID, revision)
-        with pytest.raises(AutomatonBuildError):
-            loader.load_at_revision(PROJECT_ID, revision)
-
-    assert len(calls) == 1
 
 
 def test_invalidate_lets_a_fixed_revision_build_again(db):

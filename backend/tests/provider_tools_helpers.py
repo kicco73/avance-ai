@@ -256,28 +256,31 @@ class _OpenAIStream:
 
 
 class _OpenAICompletions:
-    def __init__(self, responses: list[list[OpenAIChunk]]) -> None:
+    def __init__(self, responses: list[list[OpenAIChunk]], errors: list | None = None) -> None:
         self._responses = list(responses)
+        self._errors = list(errors or [])
         self.calls: list[dict] = []
 
     async def create(self, **kwargs):
         self.calls.append(kwargs)
+        for error in filter(None, [self._errors.pop(0) if self._errors else None]):
+            raise error
         return _OpenAIStream(self._responses.pop(0))
 
 
 class _OpenAIAsyncClient:
-    def __init__(self, responses: list[list[OpenAIChunk]]) -> None:
+    def __init__(self, responses: list[list[OpenAIChunk]], errors: list | None = None) -> None:
         self.chat = type("Chat", (), {})()
-        self.chat.completions = _OpenAICompletions(responses)
+        self.chat.completions = _OpenAICompletions(responses, errors)
 
 
 class OpenAIHarness:
     name = "openai"
     synthetic_tools: frozenset[str] = frozenset()
 
-    def provider(self, responses: list) -> tuple[OpenAICompatibleProvider, _OpenAIAsyncClient]:
+    def provider(self, responses: list, errors: list | None = None) -> tuple[OpenAICompatibleProvider, _OpenAIAsyncClient]:
         provider = OpenAICompatibleProvider(AIServiceConfig("openai", "gpt-x", "k", None, "x"))
-        fake_client = _OpenAIAsyncClient(responses)
+        fake_client = _OpenAIAsyncClient(responses, errors)
         provider._client = fake_client  # type: ignore[assignment]
         return provider, fake_client
 

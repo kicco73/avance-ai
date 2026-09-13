@@ -65,6 +65,9 @@ class AutoLiveLLMProvider(LLMProvider):
     def current_provider(self) -> LLMProvider:
         return self._cascade.current
 
+    def advance(self) -> None:
+        self._cascade.advance()
+
     def get_total_tokens(self) -> int:
         """Sums every wrapped provider's own counter, not just the
         currently-active one — a fallback that already burned tokens on an

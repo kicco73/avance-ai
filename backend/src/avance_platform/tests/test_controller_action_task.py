@@ -10,8 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from system.bus_channel import BusChannel
-from conftest import FakeWebSocket, chat_action, enter_chat, parse_sse_result, session_of
+from conftest import chat_action, chat_action_frames, enter_chat, parse_sse_result, session_of
 
 pytestmark = pytest.mark.contract
 
@@ -43,27 +42,19 @@ def _upload_and_get_session(client) -> int:
     return session_of(enter_chat(client, project_id))
 
 
-def _attach_websocket(app, username: str) -> FakeWebSocket:
-    """Same idea as conftest.run_pending_tasks, but wired up before the
-    action fires — on-exit's own chat.* push happens synchronously,
-    inside the /action request itself, never through the job queue."""
-    websocket = FakeWebSocket()
-    bus_channel = BusChannel(auth_service=None)
-    bus_channel._connections[username] = [websocket]
-    return websocket
-
-
-def test_manual_action_pushes_its_on_exits_own_chat_snippets_synchronously(client, app, app_db):
+def test_manual_action_pushes_its_on_exits_own_chat_snippets_synchronously(client, app_db):
+    """The notification reaches the very socket the button was pressed on,
+    and before the choices that end the exchange — on-exit's own chat.*
+    is pushed inside the action itself, never through the job queue."""
     session_id = _upload_and_get_session(client)
-    websocket = _attach_websocket(app, app_db.get_chat_session(session_id)["username"])
 
-    moved = chat_action(client, session_id, "go-loud")
+    frames = chat_action_frames(client, session_id, "go-loud")
 
-    assert moved["state"]["key"] == "b"
-    # Never hibernated as a Task: on-exit's own chat.* runs inline, not
-    # through the job queue at all (see TrackingEngine.apply_action_env).
+    assert [frame for frame in frames if frame["type"] == "state.changed"][-1]["state"]["key"] == "b"
     assert app_db.list_tasks() == []
-    assert websocket.sent == [{"type": "ui.notification", "task": "celebrate()"}]
+    assert [frame for frame in frames if frame["type"] == "ui.notification"] == [
+        {"type": "ui.notification", "task": "celebrate()"},
+    ]
 
 
 def test_manual_action_without_on_exit_reports_none_even_for_the_same_target_state(client, app_db):

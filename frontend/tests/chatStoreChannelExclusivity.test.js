@@ -31,6 +31,8 @@ describe('a conversation being had on another channel', () => {
     bus = await import('./fakeBus.js')
     bus.resetFakeBus()
     chatStore = await import('../src/chatStore.js')
+    const { installChatChannel } = await import('../src/liveChatChannel.js')
+    installChatChannel('webchat')
     api = await import('../src/api.js')
     api.getHistory.mockResolvedValue([])
     api.getSessions.mockResolvedValue([])

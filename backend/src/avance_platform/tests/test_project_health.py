@@ -68,7 +68,7 @@ def _corrupt_published_revision(db, project_service: ProjectService, project_id:
     never on one it already built successfully earlier in its own lifetime."""
     revision = db.get_project_published_revision(project_id)
     rewrite_archive_content(project_id, "index.yml", revision, BROKEN_YML.encode("utf-8"))
-    project_service.manager._automaton_loader.invalidate_cache(project_id)
+    project_service.automaton_loader.invalidate_cache(project_id)
 
 
 @pytest.fixture
@@ -305,12 +305,15 @@ def test_recovery_notification_job_clears_the_projects_own_warnings_and_tells_ev
 def test_a_broken_published_revision_reports_where_it_broke(db, project_service):
     _publish(db, project_service, "broken", VALID_YML)
     _corrupt_published_revision(db, project_service, "broken")
+    received = []
+    subscribe(ProjectPublishedHealthChanged, received.append)
 
-    health = project_service.manager._health_checker.current("broken")
+    project_service.recompute_availability("broken")
 
-    assert health.published.error is not None
-    assert health.published.file == "index.yml"
-    assert health.published.line == 0
+    assert len(received) == 1
+    assert received[0].error is not None
+    assert received[0].file == "index.yml"
+    assert received[0].line == 0
 
 
 def test_project_health_notifications_submits_a_job_on_the_event(db):
@@ -392,11 +395,9 @@ def test_a_stale_build_failure_that_depended_on_a_deleted_and_recreated_project_
     # check while 'dep' is still gone — this is what actually makes
     # watcher_a's *build* fail (a real AutomatonBuildError, not just a
     # dependency-unavailable pause) and cache that failure.
-    project_service.manager._automaton_loader.invalidate_cache("watcher_a")
-    health = project_service.manager._health_checker.current("watcher_a")
-    assert health.published is not None and "automaton.dep" in health.published.error
-    cache_key = ("watcher_a", db.get_project_published_revision("watcher_a"))
-    assert cache_key in project_service.manager._automaton_loader._build_failures
+    project_service.automaton_loader.invalidate_cache("watcher_a")
+    rows = {row["id"]: row for row in PlatformService(project_service).get_runtime_status()}
+    assert "automaton.dep" in rows["watcher_a"]["broken"]["published"]
 
     _publish(db, project_service, "dep", DEP_YML)  # recreated, same id/family
 
@@ -463,7 +464,7 @@ def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_fiel
     _publish(db, project_service, "old_format", VALID_YML)
     revision = db.get_project_published_revision("old_format")
     rewrite_archive_content("old_format", "index.yml", revision, TOOLS_FIELD_YML.encode("utf-8"))
-    project_service.manager._automaton_loader.invalidate_cache("old_format")
+    project_service.automaton_loader.invalidate_cache("old_format")
     before = db.get_archive("old_format", "index.yml", revision=revision)
 
     _make_admin(db, "admin1")

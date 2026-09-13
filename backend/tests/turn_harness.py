@@ -27,9 +27,16 @@ PROJECT_ID = "proj"
 
 
 class FakeProjectService:
-    def __init__(self, automaton: Automaton, state_key: str = "a") -> None:
+    def __init__(self, automaton: Automaton, state_key: str = "a", db: Db | None = None) -> None:
         self._automaton = automaton
         self._state_key = state_key
+        self._db = db
+
+    def get_draft_revision(self, project_id: str) -> int:
+        return self._db.get_project_revision(project_id)
+
+    def get_automaton(self, project_id: str, revision: int | None = None) -> Automaton:
+        return self._automaton
 
     def get_active_automaton_and_state(self, username: str | None = None):
         return self._automaton, self._automaton.states[self._state_key]
@@ -54,6 +61,12 @@ class FakeProjectService:
 
     def get_project_availability(self, project_id: str):
         return (False, None)
+
+    def apply_manual_action(self, action_name: str, session_id: int):
+        action = self._automaton.move(self._state_key, action_name)
+        source_key, self._state_key = self._state_key, action.target
+        state = self._automaton.states[self._state_key]
+        return self._automaton.get_state_payload(state), action, source_key
 
 
 def one_state_automaton(*, with_sources: bool, autotracking_on_ai_message: bool) -> Automaton:
@@ -82,14 +95,21 @@ def turn_service_for(tmp_path):
     db.save_project_files(PROJECT_ID, {"flights.csv": b"city,country\nParis,France\n"}, {"flights.csv": "text/csv"})
     db.publish_project(PROJECT_ID)
 
-    def make(automaton: Automaton, provider) -> TurnService:
+    def make(
+        automaton: Automaton, provider=None, *, ai_service=None, input_token_budget_per_turn=None,
+    ) -> TurnService:
         automaton.set_storage_location(db.get_project_revision(PROJECT_ID))
-        ai_service = AiService(provider)
-        project_service = FakeProjectService(automaton)
+        ai_service = ai_service if ai_service is not None else AiService(provider)
+        project_service = FakeProjectService(automaton, db=db)
         metric_service = MetricService(db, project_service)
         scheduler_service = make_test_scheduler_service(db)
         namespace_factory = make_test_namespace_factory(db, scheduler_service)
-        tracking_service = TrackingService(db, project_service, metric_service, namespace_factory)
+        budget = {} if input_token_budget_per_turn is None else {
+            "input_token_budget_per_turn": input_token_budget_per_turn,
+        }
+        tracking_service = TrackingService(db, project_service, metric_service, namespace_factory, **budget)
+        make.ai_service = ai_service
+        make.project_service = project_service
         return TurnService(
             ai_service=ai_service, ai_test_service=ai_service, project_service=project_service, db=db,
             session_manager=SessionManager(db), tracking_service=tracking_service,

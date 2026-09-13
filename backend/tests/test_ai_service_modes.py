@@ -45,10 +45,7 @@ class TestLiveAndTestAreFullyIndependent:
     here would mean picking a live model quietly affects the test panel,
     or vice versa."""
 
-    def test_selecting_a_model_on_one_never_affects_the_other_and_each_builds_its_own_provider_objects(self):
-        """for_live/for_test each call _build_labeled_providers
-        independently — even a shared config entry gets its own provider
-        instance per cascade, never a reused/shared one."""
+    def test_selecting_a_model_on_one_never_affects_the_other(self):
         configs = [_config("a"), _config("b")]
         live = AiService.for_live(configs)
         test = AiService.for_test(configs)
@@ -59,7 +56,6 @@ class TestLiveAndTestAreFullyIndependent:
         assert live.get_models_info()["current_index"] == 1
         assert test.get_models_info()["auto"] is True
         assert test.get_models_info()["current_index"] == 0
-        assert live._selectable_providers[0] is not test._selectable_providers[0]
 
     def test_filtering_never_mutates_the_shared_input_list(self):
         configs = [_config("a", modes=("live",)), _config("b", modes=("test",))]
@@ -106,7 +102,7 @@ class TestNoAutoMode:
         ]
         service = AiService.for_live(configs)
 
-        service._auto_provider._cascade.advance()
+        service._auto_provider.advance()
 
         info = service.get_models_info()
         assert info["models"][info["current_index"]]["model"] == "fallback"

@@ -47,8 +47,7 @@ class TestRenameEnvKey:
         editor = make_editor(ENV_BASE_YAML)
         payload = editor.rename_env_key("visits", "visit_count")
         assert payload["name"] == "visit_count"
-        assert list(editor._raw["env"].keys()) == ["visit_count", "score"]
-        assert {e.name for e in builds(editor.serialize()).env_keys} == {"visit_count", "score"}
+        assert [e.name for e in builds(editor.serialize()).env_keys] == ["visit_count", "score"]
 
         assert make_editor(ENV_BASE_YAML).rename_env_key("visits", "score")["name"] == "score_2"
 
@@ -64,8 +63,9 @@ class TestDeleteEnvKey:
     def test_removes_the_key_dropping_just_its_operand_from_bool_ops_and_whole_lone_triggers(self):
         editor = make_editor(ENV_BASE_YAML)
         editor.delete_env_key("score")
-        assert "score" not in editor._raw["env"]
-        assert _action(builds(editor.serialize()), "a", "go-c").trigger == "env.visits >= 1"
+        automaton = builds(editor.serialize())
+        assert "score" not in {e.name for e in automaton.env_keys}
+        assert _action(automaton, "a", "go-c").trigger == "env.visits >= 1"
 
         editor.delete_env_key("visits")
         assert _action(builds(editor.serialize()), "a", "go-b").trigger is None
@@ -109,8 +109,7 @@ class TestRenameSource:
         editor = make_editor(SOURCE_BASE_YAML)
         payload = editor.rename_source("pino", "flight_records")
         assert payload["name"] == "flight_records"
-        assert list(editor._raw["sources"].keys()) == ["flight_records", "cities"]
-        assert {s.name for s in builds(editor.serialize(), SOURCE_ARCHIVES).sources} == {"flight_records", "cities"}
+        assert [s.name for s in builds(editor.serialize(), SOURCE_ARCHIVES).sources] == ["flight_records", "cities"]
 
         assert make_editor(SOURCE_BASE_YAML).rename_source("pino", "cities")["name"] == "cities_2"
 
@@ -126,8 +125,9 @@ class TestDeleteSource:
     def test_removes_the_source_dropping_just_its_operand_from_bool_ops_and_whole_lone_triggers(self):
         editor = make_editor(SOURCE_BASE_YAML)
         editor.delete_source("cities")
-        assert "cities" not in editor._raw["sources"]
-        assert _action(builds(editor.serialize(), SOURCE_ARCHIVES), "a", "go-c").trigger == "source.pino.select_rows_containing('x') != 'nope'"
+        automaton = builds(editor.serialize(), SOURCE_ARCHIVES)
+        assert "cities" not in {s.name for s in automaton.sources}
+        assert _action(automaton, "a", "go-c").trigger == "source.pino.select_rows_containing('x') != 'nope'"
 
         editor.delete_source("pino")
         assert _action(builds(editor.serialize(), SOURCE_ARCHIVES), "a", "go-b").trigger is None

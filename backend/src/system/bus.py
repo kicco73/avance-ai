@@ -329,11 +329,8 @@ async def publish(message: Message) -> bool:
         )
         return False
     listeners = _listeners.get(message.type, ())
-    # INFO while the Bus is young: every delivery, with what identifies
-    # the conversation and how many listeners took it. Drop to DEBUG once
-    # the traffic is understood.
-    if logger.isEnabledFor(logging.INFO):
-        logger.info(
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
             "bus %s -> %d listener(s) | user=%s session=%s channel=%s origin=%s from=%s%s",
             message.type, len(listeners), message.username, message.session_id, message.channel,
             message.origin_id, message.converted_from, _body_summary(message),

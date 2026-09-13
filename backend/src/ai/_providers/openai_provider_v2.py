@@ -119,7 +119,7 @@ class OpenAICompatibleProvider(LLMProvider):
             "additionalProperties": False,
         }
 
-    def _build_messages(self, history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def __build_messages(self, history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Two more provider-neutral message shapes beyond plain
         {role, content} — see LLMProvider.generate_stream_with_schema's own
         docstring: an assistant turn that asked for tools (translated to
@@ -207,7 +207,7 @@ class OpenAICompatibleProvider(LLMProvider):
         # prefix: `stable` first, unconditionally, so the single system
         # message stays that identical prefix turn after turn.
         messages: List[Dict[str, Any]] = [{"role": "system", "content": SystemPrompt.coerce(system_prompt).full_text()}]
-        messages.extend(self._build_messages(history))
+        messages.extend(self.__build_messages(history))
 
         extra_kwargs: Dict[str, Any] = {}
         if schema:

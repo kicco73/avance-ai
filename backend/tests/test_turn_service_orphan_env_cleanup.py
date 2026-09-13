@@ -7,7 +7,6 @@ import pytest
 
 from turn.turn_service import TurnService
 from turn.sessions.session_manager import SessionManager
-from turn.sessions.session_type_strategy import get_session_type_strategy
 from conftest import FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from db.models import Tracking
 from metrics.metric_service import MetricService
@@ -69,9 +68,7 @@ async def test_a_new_live_sessions_bootstrap_drops_a_key_its_own_revision_no_lon
     _publish(db, ["keep_key"])
     project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     turn_service = _turn_service(db, project_service)
-    new_session_id = turn_service._session_manager.create_session(
-        get_session_type_strategy("live"), project_service, USERNAME, PROJECT_ID
-    )["id"]
+    new_session_id = (await turn_service.create_session_of(PROJECT_ID, 'live'))["id"]
 
     await turn_service.open_conversation(new_session_id)
 
@@ -84,9 +81,7 @@ async def test_the_cleanup_only_writes_once_however_often_it_is_opened(db):
     _publish(db, ["keep_key"])
     project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     turn_service = _turn_service(db, project_service)
-    new_session_id = turn_service._session_manager.create_session(
-        get_session_type_strategy("live"), project_service, USERNAME, PROJECT_ID
-    )["id"]
+    new_session_id = (await turn_service.create_session_of(PROJECT_ID, 'live'))["id"]
 
     for _ in range(3):
         await turn_service.open_conversation(new_session_id)
@@ -100,9 +95,7 @@ async def test_no_cleanup_write_when_nothing_is_orphaned(db):
     _seed_older_session_with_action_env(db, {"keep_key": 2})
     project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     turn_service = _turn_service(db, project_service)
-    new_session_id = turn_service._session_manager.create_session(
-        get_session_type_strategy("live"), project_service, USERNAME, PROJECT_ID
-    )["id"]
+    new_session_id = (await turn_service.create_session_of(PROJECT_ID, 'live'))["id"]
 
     await turn_service.open_conversation(new_session_id)
 

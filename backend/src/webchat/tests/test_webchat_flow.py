@@ -110,7 +110,7 @@ def test_a_voice_note_on_an_open_connection_runs_the_very_same_turn(webchat):
     frames: list[dict] = []
     with _frame_deadline(turn_frame_seconds(), frames):
         with chat_socket(client) as ws:
-            connection_id = _only_connection(client).id
+            connection_id = _own_connection_id(client)
 
             async def speak_into_the_socket() -> None:
                 WebSession().user = "user"
@@ -135,11 +135,13 @@ def test_a_voice_note_on_an_open_connection_runs_the_very_same_turn(webchat):
     assert [(m["role"], m["content"]) for m in messages][-2:] == [("user", TRANSCRIPT), ("assistant", REPLY_TEXT)]
 
 
-def _only_connection(client):
-    connections = [
-        connection
+def _own_connection_id(client) -> str:
+    """The one reach-in this module keeps, and why: a voice note has to
+    name the connection it arrived on, INPUT_AUDIO is not CLIENT_INJECTABLE
+    so a browser cannot send one down this socket, and nothing tells a
+    connection its own id (see system/bus_channel.py, has_connection)."""
+    return next(
+        connection.id
         for open_connections in client.app.state.bus_channel._connections.values()
         for connection in open_connections
-    ]
-    assert len(connections) == 1, connections
-    return connections[0]
+    )

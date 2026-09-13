@@ -13,7 +13,6 @@ import pytest
 from conftest import chat_turn, enter_chat, session_of
 
 from jobs import CancelableJob
-from testing.jobs import AllStatesAggregationJob
 from testing.jobs.state_aggregation_job import StateAggregationJob
 from system.broadcaster import Broadcaster
 
@@ -27,6 +26,11 @@ def _wait_until(predicate, timeout=5.0, interval=0.02):
             return True
         time.sleep(interval)
     return predicate()
+
+
+def _status_event(client, project_name, key):
+    events = client.get(f"/api/skills/testing/projects/{project_name}/status").json()["events"]
+    return next((event for event in events if event.get("key") == key), None)
 
 
 def test_the_broadcaster_records_every_push_and_still_delivers_it():
@@ -77,14 +81,13 @@ def test_get_test_status_returns_the_broadcaster_snapshot(client, hello_project)
     """A job that already finished before anyone asked must still be
     visible in the very next snapshot read — the whole point of
     the broadcaster recording rather than only ever forwarding."""
-    testing_service = client.app.state.testing_service
-    testing_service._status_broadcaster.push(
+    client.app.state.progress_broadcaster.push(
         "user", {"key": "batch:root", "job_status": "completed", "queue_status": "exited", "error": None},
     )
 
-    events = client.get(f"/api/skills/testing/projects/{hello_project}/status").json()["events"]
+    event = _status_event(client, hello_project, "batch:root")
 
-    assert any(m.get("key") == "batch:root" and m.get("job_status") == "completed" for m in events), events
+    assert event is not None and event["job_status"] == "completed"
 
 
 class _BlockingCancelableJob(CancelableJob):
@@ -105,19 +108,20 @@ class _BlockingCancelableJob(CancelableJob):
         self._release.wait(timeout=2.0)
 
 
-def test_root_shows_running_via_the_broadcaster_even_though_it_never_persists(client):
+def test_root_shows_running_via_the_broadcaster_even_though_it_never_persists(client, hello_project):
     """RootAggregationJob never writes a TestAggregateResult of its own
     (see its class) — the only way to ever know it's running is the
     queue's own last broadcast, so it must never be silently dropped."""
-    testing_service = client.app.state.testing_service
     started = threading.Event()
     release = threading.Event()
     job = _BlockingCancelableJob("batch:root", started, release)
-    testing_service._submit(job)
+    # _submit is the only door a job goes through, and observing a *live*
+    # 'running' broadcast needs one parked mid-run.
+    client.app.state.testing_service._submit(job)
     assert started.wait(timeout=2.0)
 
-    last = testing_service._status_broadcaster.last_status("batch:root")
-    assert last["job_status"] == "running"
+    event = _status_event(client, hello_project, "batch:root")
+    assert event is not None and event["job_status"] == "running"
 
     release.set()
 
@@ -137,16 +141,20 @@ def test_an_individual_state_job_reports_its_own_running_status_via_all_states(m
         release.wait(timeout=2.0)
         return await original_compute(self)
 
+    # _compute is _AggregationJob's own abstract extension hook, the
+    # designed place to park a state job mid-run.
     monkeypatch.setattr(StateAggregationJob, "_compute", blocking_compute)
 
-    testing_service = client.app.state.testing_service
-    job = AllStatesAggregationJob(testing_service, hello_project, "batch", {"Hello": []})
-    testing_service._submit(job)
+    response = client.post(
+        f"/api/skills/testing/projects/{hello_project}/aggregations/states", json={"strategy": "batch"},
+    )
+    assert response.status_code == 200, response.text
     assert started.wait(timeout=2.0)
 
-    last = testing_service._status_broadcaster.last_status("batch:state:Hello")
-    assert last["job_status"] == "running"
-    assert last["queue_status"] == "running"
+    event = _status_event(client, hello_project, "batch:state:Hello")
+    assert event is not None
+    assert event["job_status"] == "running"
+    assert event["queue_status"] == "running"
 
     release.set()
 
@@ -164,15 +172,13 @@ def test_reset_cache_clears_the_broadcasters_recorded_state(client, hello_projec
     response = client.post(f"/api/skills/testing/projects/{hello_project}/runs/sessions", json={"strategy": "turn_by_turn"})
     assert response.status_code == 200, response.text
 
-    testing_service = client.app.state.testing_service
-
     def sessions_completed():
-        last = testing_service._status_broadcaster.last_status("turn_by_turn:sessions-branch")
-        return last is not None and last["job_status"] == "completed"
+        event = _status_event(client, hello_project, "turn_by_turn:sessions-branch")
+        return event is not None and event["job_status"] == "completed"
 
     assert _wait_until(sessions_completed)
 
     response = client.delete(f"/api/skills/testing/projects/{hello_project}/tests")
     assert response.status_code == 200, response.text
 
-    assert testing_service._status_broadcaster.last_status("turn_by_turn:sessions-branch") is None
+    assert _status_event(client, hello_project, "turn_by_turn:sessions-branch") is None

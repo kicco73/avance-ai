@@ -62,8 +62,8 @@ class TurnService(object):
 		self._db = db
 		self._ai_service = ai_service
 		self._ai_test_service = ai_test_service
-		self._project_service = project_service
-		self._session_manager = session_manager
+		self.__project_service = project_service
+		self.__session_manager = session_manager
 		self._tracking_service = tracking_service
 		self.metric_service = metric_service
 		self._namespace_factory = namespace_factory
@@ -119,7 +119,7 @@ class TurnService(object):
 
 	@property
 	def _active_project_id(self) -> str:
-		return self._project_service.get_active_project_id()
+		return self.__project_service.get_active_project_id()
 
 	@property
 	def _username(self) -> str:
@@ -155,7 +155,7 @@ class TurnService(object):
 			"channel": session["channel"],
 			"closed_at": _utc_iso(session["closed_at"]),
 			"close_reason": session["close_reason"],
-			"open": self._session_manager.is_open(session),
+			"open": self.__session_manager.is_open(session),
 			# Whether this is the session its type's active slot holds —
 			# nothing about whether *you* may write to it. Writability is
 			# this AND the session having been opened on your own channel,
@@ -172,13 +172,13 @@ class TurnService(object):
 		if session["type"] == "test":
 			return False
 		try:
-			self._project_service.get_automaton(session["project_id"], session["project_revision"])
+			self.__project_service.get_automaton(session["project_id"], session["project_revision"])
 		except (AutomatonBuildError, FileNotFoundError, ValueError):
 			return True
 		return False
 
 	def _ensure_project_available(self, project_id: str) -> None:
-		is_paused, paused_reason = self._project_service.get_project_availability(project_id)
+		is_paused, paused_reason = self.__project_service.get_project_availability(project_id)
 		if is_paused:
 			raise TurnServiceError(
 				paused_reason or "This project is currently paused.",
@@ -187,7 +187,7 @@ class TurnService(object):
 
 	def _get_automaton_and_state_or_raise_unsupported(self, session_id: int, session: dict) -> tuple[Automaton, State]:
 		try:
-			return self._project_service.get_automaton_and_state_for_session(session_id)
+			return self.__project_service.get_automaton_and_state_for_session(session_id)
 		except (AutomatonBuildError, FileNotFoundError, ValueError) as exc:
 			if session["type"] == "test":
 				raise
@@ -199,25 +199,25 @@ class TurnService(object):
 
 	def _require_active_session(self, session_id: int | None, project_id: str, current_state: str) -> dict:
 		try:
-			return self._session_manager.require_active_session(
+			return self.__session_manager.require_active_session(
 				self._username, project_id, session_id, current_state
 			)
 		except SessionNotWritable as exc:
 			raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT, code=exc.code) from exc
 
 	def get_legal_terms_status(self, project_id: str) -> dict:
-		return self._project_service.get_legal_terms_status(self._username, project_id)
+		return self.__project_service.get_legal_terms_status(self._username, project_id)
 
 	def accept_legal_terms(self, project_id: str) -> None:
-		self._project_service.accept_legal_terms(self._username, project_id)
+		self.__project_service.accept_legal_terms(self._username, project_id)
 
 	def _legal_terms_pending_response(self, project_id: str) -> dict | None:
-		if self._project_service.legal_terms_pending(self._username, project_id):
+		if self.__project_service.legal_terms_pending(self._username, project_id):
 			return {"legal_terms_pending": True, "project_id": project_id}
 		return None
 
 	def _session_response(self, session: dict, *, current: bool) -> dict:
-		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
+		automaton, state = self.__project_service.get_automaton_and_state_for_session(session["id"])
 		return {**self._session_payload(session, current=current), "state": automaton.get_state_payload(state)}
 
 	async def _get_current_session_if_any_or_create_new_of_type(
@@ -225,15 +225,15 @@ class TurnService(object):
 	) -> dict:
 		async with self._session_lifecycle_scope(self._username, project_id):
 			try:
-				if strategy.type_name == 'live' and self._session_manager.get_active_session(self._username, project_id) is None:
+				if strategy.type_name == 'live' and self.__session_manager.get_active_session(self._username, project_id) is None:
 					pending = self._legal_terms_pending_response(project_id)
 					if pending is not None:
 						return pending
-				_, state = self._project_service.get_automaton_and_state(
+				_, state = self.__project_service.get_automaton_and_state(
 					project_id, type=strategy.type_name, username=self._username
 				)
-				session = self._session_manager.get_current_session_if_any_or_create_new(
-					strategy, self._project_service, self._username, project_id, session_id, state.key
+				session = self.__session_manager.get_current_session_if_any_or_create_new(
+					strategy, self.__project_service, self._username, project_id, session_id, state.key
 				)
 			except ValueError as exc:
 				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
@@ -257,7 +257,7 @@ class TurnService(object):
 		project, made if there is none. The project is named by whoever
 		is showing the chat: reading the active project here is what let
 		a preview of one app open the chat of another."""
-		is_paused, paused_reason = self._project_service.get_project_availability(project_id)
+		is_paused, paused_reason = self.__project_service.get_project_availability(project_id)
 		if is_paused:
 			return {"blocked": "paused", "detail": paused_reason or ""}
 		return await self._get_current_session_if_any_or_create_new_of_type(
@@ -265,25 +265,25 @@ class TurnService(object):
 		)
 
 	async def create_session_of(self, project_id: str, type: str) -> dict:
-		is_paused, paused_reason = self._project_service.get_project_availability(project_id)
+		is_paused, paused_reason = self.__project_service.get_project_availability(project_id)
 		if is_paused:
 			return {"blocked": "paused", "detail": paused_reason or ""}
 		return await self._create_session_of_type(get_session_type_strategy(type), project_id)
 
 	async def acquire_exclusive_session(self) -> dict:
 		project_id = self._active_project_id
-		is_paused, paused_reason = self._project_service.get_project_availability(project_id)
+		is_paused, paused_reason = self.__project_service.get_project_availability(project_id)
 		if is_paused:
 			return {"paused": True, "paused_reason": paused_reason}
 		async with self._session_lifecycle_scope(self._username, project_id):
-			if self._session_manager.get_active_session(self._username, project_id) is None:
+			if self.__session_manager.get_active_session(self._username, project_id) is None:
 				pending = self._legal_terms_pending_response(project_id)
 				if pending is not None:
 					return pending
-			_, state = self._project_service.get_automaton_and_state(project_id, type='live', username=self._username)
+			_, state = self.__project_service.get_automaton_and_state(project_id, type='live', username=self._username)
 			try:
-				session = self._session_manager.acquire_exclusive_session(
-					get_session_type_strategy('live'), self._project_service, self._username, project_id, state.key
+				session = self.__session_manager.acquire_exclusive_session(
+					get_session_type_strategy('live'), self.__project_service, self._username, project_id, state.key
 				)
 			except ValueError as exc:
 				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
@@ -296,10 +296,10 @@ class TurnService(object):
 		whatever channel the caller has set — this service does not know
 		which channels exist, let alone which one is speaking."""
 		async with self._session_lifecycle_scope(username, project_id):
-			session = self._session_manager.get_active_session(username, project_id)
+			session = self.__session_manager.get_active_session(username, project_id)
 			if session is None:
-				session = self._session_manager.create_session(
-					get_session_type_strategy('live'), self._project_service, username, project_id,
+				session = self.__session_manager.create_session(
+					get_session_type_strategy('live'), self.__project_service, username, project_id,
 				)
 			self._db.save_message('assistant', content, session["id"])
 
@@ -307,18 +307,18 @@ class TurnService(object):
 		async with self._session_lifecycle_scope(self._username, project_id):
 			try:
 				if strategy.type_name == 'live':
-					if self._project_service.legal_terms_pending(self._username, project_id):
+					if self.__project_service.legal_terms_pending(self._username, project_id):
 						return {"legal_terms_pending": True, "project_id": project_id}
-					active = self._session_manager.get_active_session(self._username, project_id)
+					active = self.__session_manager.get_active_session(self._username, project_id)
 					if active is not None:
 						reason = "force-new-session" if active["channel"] == strategy.caller_channel() else "channel-switch"
-						self._session_manager.close_session(active, reason)
-				session = self._session_manager.create_session(
-					strategy, self._project_service, self._username, project_id
+						self.__session_manager.close_session(active, reason)
+				session = self.__session_manager.create_session(
+					strategy, self.__project_service, self._username, project_id
 				)
 			except ValueError as exc:
 				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		automaton = self._project_service.get_automaton_for_session(session["id"])
+		automaton = self.__project_service.get_automaton_for_session(session["id"])
 		response = self._session_response(session, current=True)
 		if strategy.task_for_new_session(automaton) is not None:
 			self._schedule_task(automaton, automaton.init_action, session["id"], project_id)
@@ -328,18 +328,18 @@ class TurnService(object):
 		reset_session_ids = [
 			session["id"] for session in self._db.list_chat_sessions(self._username, project_id, type='test')
 		]
-		self._project_service.reset_test_sessions(project_id)
+		self.__project_service.reset_test_sessions(project_id)
 		for reset_id in reset_session_ids:
 			EphemeralEnvRegistry().discard(reset_id)
 			self._db.delete_archives_with_prefix(project_id, f"{CACHE_DIR}/sessions/{reset_id}/")
-		automaton, state = self._project_service.get_automaton_and_state(project_id, type='test')
+		automaton, state = self.__project_service.get_automaton_and_state(project_id, type='test')
 		self._schedule_task(automaton, automaton.init_action, None, project_id)
 		return automaton.get_state_payload(state)
 
 	def _list_sessions_by_type(self, project_id: str, type: str | tuple[str, ...], active_type: str) -> list[dict]:
 		sessions = self._db.list_chat_sessions(None, project_id, type=type)
 		sessions = [s for s in sessions if self._ownership.owns_session(s['username'])]
-		active = self._session_manager.get_active_session(self._username, project_id, type=active_type)
+		active = self.__session_manager.get_active_session(self._username, project_id, type=active_type)
 		return [
 			{
 				**self._session_payload(s, current=get_session_type_strategy(s["type"]).is_current(s, active)),
@@ -372,7 +372,7 @@ class TurnService(object):
 		async with self._session_lifecycle_scope(self._username, project_id):
 			session = self._db.get_chat_session(session_id)
 			assert session is not None
-			self._session_manager.close_session(session, "manual-user")
+			self.__session_manager.close_session(session, "manual-user")
 		EphemeralEnvRegistry().discard(session_id)
 		return self._reloaded_session_payload(session_id)
 
@@ -380,7 +380,7 @@ class TurnService(object):
 		session = self._db.get_chat_session(session_id)
 		assert session is not None
 		strategy = get_session_type_strategy(session["type"])
-		active_session = self._session_manager.get_active_session(self._username, session["project_id"], type=session["type"])
+		active_session = self.__session_manager.get_active_session(self._username, session["project_id"], type=session["type"])
 		return self._session_payload(session, current=strategy.is_current(session, active_session))
 
 	def set_session_title(self, session_id: int, title: str | None) -> dict:
@@ -409,7 +409,7 @@ class TurnService(object):
 			session = self._db.get_chat_session(session_id)
 			assert session is not None
 			latest = self._db.latest_message_or_signal_timestamp(session_id)
-			_, state = self._project_service.get_automaton_and_state_for_session(session_id)
+			_, state = self.__project_service.get_automaton_and_state_for_session(session_id)
 			self._db.touch_chat_session(session_id, latest or session["datetime_start"], state.key)
 
 	def get_state_for_session(self, session_id: int) -> dict:
@@ -445,7 +445,7 @@ class TurnService(object):
 		self._ownership.require_own_session(session_id)
 		until = self._ownership.until_from_message(message_id)
 		env = self._env_for_session(session_id)
-		automaton = self._project_service.get_automaton_for_session(session_id)
+		automaton = self.__project_service.get_automaton_for_session(session_id)
 		return {
 			"memory": env.memory(until),
 			"action_set": env.action_set(until),
@@ -547,7 +547,7 @@ class TurnService(object):
 		"""What this conversation can reach, asked of the session's own
 		project rather than of whichever project the person has active
 		(see tracking/session_services.py)."""
-		automaton = self._project_service.get_automaton_for_session(session_id)
+		automaton = self.__project_service.get_automaton_for_session(session_id)
 		return bus.collect(POINT_SESSION_SERVICES, SessionServices(services=automaton.services)).available
 
 	def buttons_for(self, session_id: int, state_payload: dict) -> list[dict]:
@@ -709,12 +709,12 @@ class TurnService(object):
 				"A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT, code="turn_in_progress",
 			)
 		async with self._session_scope(project_id, session_id):
-			_, source_state = self._project_service.get_automaton_and_state_for_session(session_id)
+			_, source_state = self.__project_service.get_automaton_and_state_for_session(session_id)
 			session = self._require_active_session(session_id, project_id, source_state.key)
-			state_payload, action, source_state_key = self._project_service.apply_manual_action(
+			state_payload, action, source_state_key = self.__project_service.apply_manual_action(
 				action_name, session["id"]
 			)
-			automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
+			automaton, state = self.__project_service.get_automaton_and_state_for_session(session["id"])
 			tracking_engine, _ = self._tracking_engine_for_session(session["id"])
 			tracking_engine.apply_action_env(
 				automaton, action, {}, source_state_key, username=WebSession().user, project_id=project_id,
@@ -723,7 +723,7 @@ class TurnService(object):
 			reply, fresh_state_payload = await self._messages_for_transition(
 				session["id"], state, is_self_loop=(action.target == source_state_key), on_metadata=on_metadata,
 			)
-			self._session_manager.touch_session(session["id"], state.key)
+			self.__session_manager.touch_session(session["id"], state.key)
 			fresh = fresh_state_payload if fresh_state_payload is not None else state_payload
 			return {
 				"state": fresh,
@@ -816,7 +816,7 @@ class TurnService(object):
 				on_metadata("typing", None)
 		assistant_message_id = self._db.save_message("assistant", accumulated, session_id)
 		self._db.mark_messages_answered([f["id"] for f in fragments], assistant_message_id)
-		self._session_manager.touch_session(session_id, state.key)
+		self.__session_manager.touch_session(session_id, state.key)
 		return {
 			"reply": [self._db.get_message(assistant_message_id)],
 			"user_message_id": (user_message_ids or [None])[-1],
@@ -851,6 +851,6 @@ class TurnService(object):
 			session_id, [f["content"] for f in fragments], ai_service, on_metadata,
 			user_message_ids=[f["id"] for f in fragments],
 		)
-		self._session_manager.touch_session(reply['session_id'], reply['state']['key'])
+		self.__session_manager.touch_session(reply['session_id'], reply['state']['key'])
 		reply['buttons'] = self.buttons_for(session_id, reply['state'])
 		return reply

@@ -5,6 +5,8 @@
 // landed since) must suppress it instead.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from 'vue'
+import CodeEditor from '../CodeEditor.vue'
+import * as api from '../../../api.js'
 
 vi.mock('../../../api.js', () => ({
   getProjectFile: vi.fn().mockResolvedValue({ content: 'a: 1\n', can_undo: false, can_redo: false }),
@@ -20,12 +22,9 @@ function buildError(fields) {
 }
 
 describe('CodeEditor.vue save() build-error handling', () => {
-  let api
   let container
 
-  beforeEach(async () => {
-    vi.resetModules()
-    api = await import('../../../api.js')
+  beforeEach(() => {
     container = document.createElement('div')
     document.body.appendChild(container)
   })
@@ -40,7 +39,6 @@ describe('CodeEditor.vue save() build-error handling', () => {
   // Vue 3's own onXxx-prop-as-listener convention catches 'build-error'
   // without needing a wrapping parent component.
   async function mountEditor(props) {
-    const CodeEditor = (await import('../CodeEditor.vue')).default
     const buildErrorCalls = []
     const app = createApp(CodeEditor, { ...props, onBuildError: (line) => buildErrorCalls.push(line) })
     const instance = app.mount(container)

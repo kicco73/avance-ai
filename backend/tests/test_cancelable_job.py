@@ -3,6 +3,8 @@ from __future__ import annotations
 import pytest
 
 from jobs import CancelableJob
+from jobs.job_queue import JobQueue
+from system.broadcaster import Broadcaster
 
 pytestmark = pytest.mark.contract
 
@@ -24,22 +26,13 @@ class _Node(CancelableJob):
         self.ran = True
 
 
-def _link(job: CancelableJob, parent: CancelableJob | None = None) -> None:
-    """Mirrors JobQueue.submit()'s own prepare/registration logic, without
-    a real queue or worker threads, so these tests can build a dependency
-    graph and assert on it deterministically."""
-    if not job.is_pending():
-        if parent is not None:
-            job._add_parent_job(parent)
-        return
-    children = job.prepare(parent)
-    for child in children:
-        _link(child, parent=job)
+def _queue_with_no_workers() -> JobQueue:
+    return JobQueue(max_concurrent=0, broadcaster=Broadcaster())
 
 
 async def test_cancelling_a_standalone_job_aborts_it_and_it_refuses_to_run_afterwards():
     a = _Node("a")
-    _link(a)
+    _queue_with_no_workers().submit(a)
 
     a.cancel()
 
@@ -55,7 +48,7 @@ def test_cancelling_a_root_cascades_down_its_whole_dependency_graph():
     x = _Node("x", [b])
     y = _Node("y", [b])
     a = _Node("a", [x, y])
-    _link(a)
+    _queue_with_no_workers().submit(a)
 
     a.cancel()
 
@@ -68,10 +61,11 @@ def test_cancelling_a_root_cascades_down_its_whole_dependency_graph():
 def test_a_dependency_survives_while_anything_else_still_needs_it_and_aborts_once_nothing_does():
     """A->B, C->B: cancelling A alone must leave B running for C's sake;
     a job launched on its own is never taken down by a dependent either."""
+    job_queue = _queue_with_no_workers()
     independent = _Node("b")
-    _link(independent)
+    job_queue.submit(independent)
     depends_on_it = _Node("a", [independent])
-    _link(depends_on_it)
+    job_queue.submit(depends_on_it)
 
     depends_on_it.cancel()
     assert depends_on_it.is_aborted()
@@ -80,8 +74,8 @@ def test_a_dependency_survives_while_anything_else_still_needs_it_and_aborts_onc
     shared = _Node("b")
     a = _Node("a", [shared])
     c = _Node("c", [shared])
-    _link(a)
-    _link(c)
+    job_queue.submit(a)
+    job_queue.submit(c)
 
     a.cancel()
     assert a.is_aborted()
@@ -97,11 +91,12 @@ def test_force_aborting_a_shared_dependency_cascades_upward_to_every_root_that_n
     """abort() is an explicit, forced command: cancelling B directly must
     take A and C down too, since neither can proceed without it -- not
     just orphan B while leaving A/C running forever waiting on it."""
+    job_queue = _queue_with_no_workers()
     b = _Node("b")
     a = _Node("a", [b])
     c = _Node("c", [b])
-    _link(a)
-    _link(c)
+    job_queue.submit(a)
+    job_queue.submit(c)
 
     b.cancel()
 

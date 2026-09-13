@@ -20,7 +20,7 @@ from system import bus
 from system.bus import INPUT_BUTTON, Message
 from system.web_session import WebSession
 from turn.input_listener import TurnInput
-from turn_harness import FakeProjectService, PROJECT_ID, turn_service_for  # noqa: F401 — a fixture, used by name
+from turn_harness import PROJECT_ID, turn_service_for  # noqa: F401 — a fixture, used by name
 
 pytestmark = pytest.mark.regression
 
@@ -45,21 +45,6 @@ class _FakeProvider:
 
     def get_max_output_tokens(self) -> int:
         return 4096
-
-
-class _MovingProjectService(FakeProjectService):
-    """The harness' project service always answers with one fixed state.
-    A button is a move, so this one follows it — the same three things
-    the real one returns (see project/inspector.py)."""
-
-    def __init__(self, automaton: Automaton) -> None:
-        super().__init__(automaton, "a")
-
-    def apply_manual_action(self, action_name: str, session_id: int):
-        action = self._automaton.move(self._state_key, action_name)
-        source_key, self._state_key = self._state_key, action.target
-        state = self._automaton.states[self._state_key]
-        return self._automaton.get_state_payload(state), action, source_key
 
 
 def two_state_automaton() -> Automaton:
@@ -94,7 +79,6 @@ async def test_a_button_says_it_is_writing_and_streams_what_it_writes(turn_servi
     db = turn_service_for.db
     automaton = two_state_automaton()
     turn_service = turn_service_for(automaton, _FakeProvider())
-    turn_service._project_service = _MovingProjectService(automaton)
 
     bus._reset_for_tests()
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
@@ -128,7 +112,6 @@ async def test_a_button_naming_no_session_is_refused_and_never_joins_a_queue(tur
     db = turn_service_for.db
     automaton = two_state_automaton()
     turn_service = turn_service_for(automaton, _FakeProvider())
-    turn_service._project_service = _MovingProjectService(automaton)
 
     bus._reset_for_tests()
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
