@@ -5067,10 +5067,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.173,
+    "runs": 84,
+    "seconds": 0.175,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestChannelLoop::test_a_ping_is_answered_with_a_pong_and_an_unknown_frame_is_ignored": {
@@ -5078,10 +5078,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.201,
+    "runs": 84,
+    "seconds": 0.203,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestChannelLoop::test_a_pushed_frame_reaches_the_socket_while_connected": {
@@ -5089,10 +5089,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T07:55:09+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.203,
+    "runs": 84,
+    "seconds": 0.204,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestChannelLoop::test_an_unauthenticated_socket_is_closed_with_4401_before_accept": {
@@ -5100,10 +5100,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.141,
+    "runs": 84,
+    "seconds": 0.142,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestChannelLoop::test_the_registration_is_removed_on_disconnect": {
@@ -5111,10 +5111,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T07:55:09+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.003,
-    "runs": 83,
-    "seconds": 0.228,
+    "runs": 84,
+    "seconds": 0.23,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestConnectionCap::test_a_second_connection_for_a_plain_user_supersedes_the_first": {
@@ -5122,10 +5122,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.194,
+    "runs": 84,
+    "seconds": 0.196,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestConnectionCap::test_a_third_connection_for_an_admin_supersedes_the_oldest_only": {
@@ -5133,10 +5133,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.171,
+    "runs": 84,
+    "seconds": 0.173,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestConnectionCap::test_an_admin_may_open_a_second_connection_without_superseding": {
@@ -5144,10 +5144,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.177,
+    "runs": 84,
+    "seconds": 0.179,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestConnectionCap::test_the_superseded_connection_stops_being_registered": {
@@ -5155,10 +5155,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.184,
+    "runs": 84,
+    "seconds": 0.185,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestHumanPrompt::test_a_human_reply_resolves_await_human_reply_with_its_text": {
@@ -5166,10 +5166,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.172,
+    "runs": 84,
+    "seconds": 0.173,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestHumanPrompt::test_a_human_typing_frame_resolves_wait_for_typing": {
@@ -5177,10 +5177,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.168,
+    "runs": 84,
+    "seconds": 0.169,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestHumanPrompt::test_a_prompt_that_fired_first_is_delivered_when_a_connection_registers": {
@@ -5188,9 +5188,9 @@
     "first_run": "2026-09-12T07:55:09+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
-    "runs": 72,
-    "seconds": 0.13,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 73,
+    "seconds": 0.132,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestHumanPrompt::test_an_answered_prompt_is_not_delivered_to_whoever_registers_next": {
@@ -5198,9 +5198,9 @@
     "first_run": "2026-09-12T07:55:09+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
-    "runs": 72,
-    "seconds": 0.141,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 73,
+    "seconds": 0.143,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestHumanPrompt::test_await_human_reply_clears_the_sessions_current_prompt": {
@@ -5208,10 +5208,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.163,
+    "runs": 84,
+    "seconds": 0.164,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestHumanPrompt::test_exclude_connection_id_keeps_the_sending_tab_from_seeing_its_own_prompt": {
@@ -5230,9 +5230,9 @@
     "first_run": "2026-09-12T07:55:09+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
-    "runs": 72,
-    "seconds": 0.128,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 73,
+    "seconds": 0.129,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestHumanPrompt::test_only_the_operator_who_was_asked_can_answer": {
@@ -5240,10 +5240,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.187,
+    "runs": 84,
+    "seconds": 0.189,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestHumanPrompt::test_raises_when_excluding_the_only_connection": {
@@ -5262,9 +5262,9 @@
     "first_run": "2026-09-12T07:55:09+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
-    "runs": 72,
-    "seconds": 0.145,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 73,
+    "seconds": 0.147,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestHumanPrompt::test_raises_when_the_user_has_no_open_connection": {
@@ -5272,10 +5272,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.15,
+    "runs": 84,
+    "seconds": 0.152,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestInboundFrames::test_a_frame_reaches_the_bus_with_every_field_it_carried": {
@@ -5283,9 +5283,9 @@
     "first_run": "2026-09-12T12:46:49+00:00",
     "last_failed": "2026-09-12T12:46:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
-    "runs": 31,
-    "seconds": 0.068,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 32,
+    "seconds": 0.069,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestPush::test_broadcasts_to_every_one_of_the_users_own_connections": {
@@ -5359,9 +5359,9 @@
     "first_run": "2026-09-12T07:55:09+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
-    "runs": 72,
-    "seconds": 0.126,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 73,
+    "seconds": 0.127,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestPushEvent::test_reaches_every_one_of_that_users_registered_connections": {
@@ -5369,9 +5369,9 @@
     "first_run": "2026-09-12T07:55:09+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
-    "runs": 72,
-    "seconds": 0.13,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 73,
+    "seconds": 0.131,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestPushEvent::test_reaches_only_the_connections_that_registered_for_that_type": {
@@ -5379,10 +5379,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.22,
+    "runs": 84,
+    "seconds": 0.222,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestPushEvent::test_returns_false_when_the_only_connection_never_registered": {
@@ -5390,10 +5390,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.152,
+    "runs": 84,
+    "seconds": 0.154,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestRegistration::test_a_malformed_events_field_registers_nothing": {
@@ -5401,10 +5401,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.001,
-    "runs": 83,
-    "seconds": 0.099,
+    "runs": 84,
+    "seconds": 0.1,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestRegistration::test_a_subscribe_frame_registers_only_the_exportable_types_and_unsubscribe_drops_them": {
@@ -5412,10 +5412,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.001,
-    "runs": 83,
-    "seconds": 0.13,
+    "runs": 84,
+    "seconds": 0.131,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestSupersede::test_a_frame_arriving_after_it_was_superseded_is_not_answered": {
@@ -5423,10 +5423,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.141,
+    "runs": 84,
+    "seconds": 0.143,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::TestSupersede::test_sends_the_switched_frame_then_closes_with_the_superseded_code": {
@@ -5434,10 +5434,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.002,
-    "runs": 83,
-    "seconds": 0.139,
+    "runs": 84,
+    "seconds": 0.14,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn": {
@@ -5445,10 +5445,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T09:16:59+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.163,
-    "runs": 83,
-    "seconds": 14.482,
+    "runs": 84,
+    "seconds": 14.625,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::test_a_turn_on_a_closed_session_is_answered_with_session_closed": {
@@ -5456,10 +5456,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.588,
-    "runs": 83,
-    "seconds": 62.859,
+    "runs": 84,
+    "seconds": 63.453,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::test_a_turn_on_someone_elses_session_is_answered_with_an_error_frame": {
@@ -5467,10 +5467,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:37:04+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.589,
-    "runs": 83,
-    "seconds": 66.101,
+    "runs": 84,
+    "seconds": 66.805,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::test_every_outgoing_frame_of_a_turn_carries_its_turn_id_and_chunks_precede_done": {
@@ -5478,10 +5478,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:37:04+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.623,
-    "runs": 84,
-    "seconds": 75.601,
+    "runs": 85,
+    "seconds": 76.339,
     "skips": 0
   },
   "src/webchat/tests/test_bus_channel.py::test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_order_even_when_the_first_turn_is_slower": {
@@ -5489,10 +5489,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:37:04+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.187,
-    "runs": 83,
-    "seconds": 18.901,
+    "runs": 84,
+    "seconds": 19.08,
     "skips": 0
   },
   "src/webchat/tests/test_channel.py::test_a_choice_taken_in_the_chat_window_is_admitted_on_its_channel": {
@@ -5510,9 +5510,9 @@
     "first_run": "2026-09-13T08:15:29+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
-    "runs": 10,
-    "seconds": 10.413,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 11,
+    "seconds": 10.943,
     "skips": 0
   },
   "src/webchat/tests/test_channel.py::test_the_core_history_of_the_same_session_needs_no_channel": {
@@ -5520,9 +5520,9 @@
     "first_run": "2026-09-13T08:15:29+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
-    "runs": 10,
-    "seconds": 8.781,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 11,
+    "seconds": 9.317,
     "skips": 0
   },
   "src/webchat/tests/test_controller_channel.py::test_a_manual_action_is_admitted_on_the_chat_window_s_channel": {
@@ -5595,10 +5595,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.617,
-    "runs": 81,
-    "seconds": 60.531,
+    "runs": 82,
+    "seconds": 61.105,
     "skips": 0
   },
   "src/webchat/tests/test_controller_env.py::test_delete_env_value_for_an_unknown_key_is_a_noop": {
@@ -5606,10 +5606,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.586,
-    "runs": 81,
-    "seconds": 59.853,
+    "runs": 82,
+    "seconds": 60.41,
     "skips": 0
   },
   "src/webchat/tests/test_controller_env.py::test_delete_env_value_removes_the_key": {
@@ -5617,10 +5617,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 1.021,
-    "runs": 81,
-    "seconds": 61.904,
+    "runs": 82,
+    "seconds": 62.479,
     "skips": 0
   },
   "src/webchat/tests/test_controller_env.py::test_env_endpoint_reports_stored_and_action_set_only": {
@@ -5628,10 +5628,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.561,
-    "runs": 81,
-    "seconds": 56.916,
+    "runs": 82,
+    "seconds": 57.456,
     "skips": 0
   },
   "src/webchat/tests/test_controller_env.py::test_env_for_an_unknown_session_is_404": {
@@ -5639,10 +5639,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.544,
-    "runs": 81,
-    "seconds": 59.087,
+    "runs": 82,
+    "seconds": 59.571,
     "skips": 0
   },
   "src/webchat/tests/test_controller_env.py::test_env_with_a_message_id_restricts_to_a_point_in_time": {
@@ -5650,10 +5650,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:10:35+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.688,
-    "runs": 81,
-    "seconds": 66.908,
+    "runs": 82,
+    "seconds": 67.734,
     "skips": 0
   },
   "src/webchat/tests/test_controller_env.py::test_env_with_an_unknown_message_id_is_404": {
@@ -5661,10 +5661,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.573,
-    "runs": 81,
-    "seconds": 67.318,
+    "runs": 82,
+    "seconds": 67.876,
     "skips": 0
   },
   "src/webchat/tests/test_controller_env.py::test_put_env_value_overwrites_an_existing_key": {
@@ -5672,10 +5672,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.576,
-    "runs": 81,
-    "seconds": 69.711,
+    "runs": 82,
+    "seconds": 70.284,
     "skips": 0
   },
   "src/webchat/tests/test_controller_env.py::test_put_env_value_stores_it": {
@@ -5683,10 +5683,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.587,
-    "runs": 81,
-    "seconds": 60.331,
+    "runs": 82,
+    "seconds": 61.068,
     "skips": 0
   },
   "src/webchat/tests/test_controller_latest_signals.py::test_latest_signals_falls_back_to_an_earlier_session_when_the_latest_has_none": {
@@ -5694,10 +5694,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-13T08:18:57+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.974,
-    "runs": 79,
-    "seconds": 92.141,
+    "runs": 80,
+    "seconds": 92.962,
     "skips": 0
   },
   "src/webchat/tests/test_controller_latest_signals.py::test_latest_signals_has_no_values_for_a_session_with_no_signal_snapshot": {
@@ -5705,10 +5705,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.558,
-    "runs": 79,
-    "seconds": 65.636,
+    "runs": 80,
+    "seconds": 66.198,
     "skips": 0
   },
   "src/webchat/tests/test_controller_latest_signals.py::test_latest_signals_is_none_for_a_user_with_no_sessions": {
@@ -5716,10 +5716,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.609,
-    "runs": 79,
-    "seconds": 52.779,
+    "runs": 80,
+    "seconds": 53.255,
     "skips": 0
   },
   "src/webchat/tests/test_controller_latest_signals.py::test_latest_signals_returns_the_most_recent_sessions_latest_snapshot": {
@@ -5727,10 +5727,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:10:06+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.643,
-    "runs": 79,
-    "seconds": 68.091,
+    "runs": 80,
+    "seconds": 68.684,
     "skips": 0
   },
   "src/webchat/tests/test_controller_metrics_history.py::test_metrics_history_includes_one_session_start_per_session": {
@@ -5738,10 +5738,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-13T08:18:57+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.694,
-    "runs": 79,
-    "seconds": 102.525,
+    "runs": 80,
+    "seconds": 103.405,
     "skips": 0
   },
   "src/webchat/tests/test_controller_metrics_history.py::test_metrics_history_is_scoped_to_the_given_user_and_project": {
@@ -5749,10 +5749,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:10:06+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.758,
-    "runs": 79,
-    "seconds": 66.37,
+    "runs": 80,
+    "seconds": 67.043,
     "skips": 0
   },
   "src/webchat/tests/test_controller_metrics_history.py::test_metrics_history_orders_points_by_end_time_even_when_sessions_overlap": {
@@ -5760,10 +5760,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.56,
-    "runs": 79,
-    "seconds": 65.968,
+    "runs": 80,
+    "seconds": 66.458,
     "skips": 0
   },
   "src/webchat/tests/test_controller_metrics_history.py::test_metrics_history_spans_every_session_chronologically": {
@@ -5771,10 +5771,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-13T08:18:57+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.789,
-    "runs": 79,
-    "seconds": 105.031,
+    "runs": 80,
+    "seconds": 105.779,
     "skips": 0
   },
   "src/webchat/tests/test_controller_metrics_history.py::test_metrics_history_survives_an_imported_transcript_without_timestamps": {
@@ -5782,10 +5782,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.692,
-    "runs": 79,
-    "seconds": 61.012,
+    "runs": 80,
+    "seconds": 61.59,
     "skips": 0
   },
   "src/webchat/tests/test_controller_timeline.py::test_timeline_excludes_signal_rows_but_still_includes_the_initial_state": {
@@ -5793,10 +5793,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:51:24+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.705,
-    "runs": 80,
-    "seconds": 66.168,
+    "runs": 81,
+    "seconds": 66.768,
     "skips": 0
   },
   "src/webchat/tests/test_controller_timeline.py::test_timeline_includes_state_transitions": {
@@ -5804,10 +5804,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T15:13:32+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.622,
-    "runs": 80,
-    "seconds": 67.448,
+    "runs": 81,
+    "seconds": 68.232,
     "skips": 0
   },
   "src/webchat/tests/test_controller_timeline.py::test_timeline_is_scoped_to_the_given_user_and_project": {
@@ -5815,10 +5815,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.589,
-    "runs": 80,
-    "seconds": 60.31,
+    "runs": 81,
+    "seconds": 60.939,
     "skips": 0
   },
   "src/webchat/tests/test_controller_timeline.py::test_timeline_signals_span_every_session_chronologically": {
@@ -5826,10 +5826,20 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-13T08:18:57+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.993,
-    "runs": 80,
-    "seconds": 88.731,
+    "runs": 81,
+    "seconds": 89.359,
+    "skips": 0
+  },
+  "src/webchat/tests/test_conversation_opens_once.py::test_two_tabs_opening_at_once_are_greeted_once": {
+    "failures": 1,
+    "first_run": "2026-09-13T09:06:06+00:00",
+    "last_failed": "2026-09-13T09:06:15+00:00",
+    "last_outcome": "passed",
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 4,
+    "seconds": 0.731,
     "skips": 0
   },
   "src/webchat/tests/test_entering_opens_the_conversation.py::test_a_new_session_asked_for_outright_is_greeted_too": {
@@ -5837,9 +5847,9 @@
     "first_run": "2026-09-13T08:31:46+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
-    "runs": 6,
-    "seconds": 5.726,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 7,
+    "seconds": 6.353,
     "skips": 0
   },
   "src/webchat/tests/test_entering_opens_the_conversation.py::test_entering_it_again_greets_nobody_twice": {
@@ -5847,9 +5857,9 @@
     "first_run": "2026-09-13T08:29:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
-    "runs": 8,
-    "seconds": 8.676,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 9,
+    "seconds": 9.486,
     "skips": 0
   },
   "src/webchat/tests/test_entering_opens_the_conversation.py::test_it_is_written_in_pieces_like_any_other_answer": {
@@ -5857,9 +5867,9 @@
     "first_run": "2026-09-13T08:29:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
-    "runs": 8,
-    "seconds": 7.475,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 9,
+    "seconds": 8.003,
     "skips": 0
   },
   "src/webchat/tests/test_entering_opens_the_conversation.py::test_the_opening_message_arrives_on_the_socket": {
@@ -5867,9 +5877,9 @@
     "first_run": "2026-09-13T08:29:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
-    "runs": 8,
-    "seconds": 11.327,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 9,
+    "seconds": 11.859,
     "skips": 0
   },
   "src/webchat/tests/test_session_summary.py::test_a_session_merely_expired_by_the_open_window_is_never_queued": {
@@ -5877,10 +5887,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:10:06+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 1.068,
-    "runs": 79,
-    "seconds": 72.155,
+    "runs": 80,
+    "seconds": 72.815,
     "skips": 0
   },
   "src/webchat/tests/test_session_summary.py::test_a_still_open_session_has_no_summary": {
@@ -5888,10 +5898,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:10:06+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.619,
-    "runs": 79,
-    "seconds": 63.551,
+    "runs": 80,
+    "seconds": 64.177,
     "skips": 0
   },
   "src/webchat/tests/test_session_summary.py::test_closing_a_live_session_also_sets_the_title_and_the_apps_ai_summary": {
@@ -5899,10 +5909,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:10:06+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.648,
-    "runs": 79,
-    "seconds": 66.024,
+    "runs": 80,
+    "seconds": 66.679,
     "skips": 0
   },
   "src/webchat/tests/test_session_summary.py::test_closing_a_live_session_produces_a_summary": {
@@ -5910,10 +5920,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:10:06+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.658,
-    "runs": 79,
-    "seconds": 65.981,
+    "runs": 80,
+    "seconds": 66.626,
     "skips": 0
   },
   "src/webchat/tests/test_spoken_reply_toggle.py::test_a_turn_that_names_no_session_is_never_asked_about_one": {
@@ -5921,10 +5931,10 @@
     "first_run": "2026-09-12T06:30:27+00:00",
     "last_failed": "2026-09-12T06:31:00+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.119,
-    "runs": 76,
-    "seconds": 9.676,
+    "runs": 77,
+    "seconds": 9.784,
     "skips": 0
   },
   "src/webchat/tests/test_spoken_reply_toggle.py::test_only_a_session_with_the_toggle_on_wants_a_spoken_reply": {
@@ -5932,10 +5942,10 @@
     "first_run": "2026-09-12T06:30:27+00:00",
     "last_failed": "2026-09-12T06:30:50+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.124,
-    "runs": 76,
-    "seconds": 10.455,
+    "runs": 77,
+    "seconds": 10.588,
     "skips": 0
   },
   "src/webchat/tests/test_webchat_flow.py::test_a_choice_taken_streams_its_message_like_any_other": {
@@ -5953,10 +5963,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-13T08:14:17+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.634,
-    "runs": 96,
-    "seconds": 83.905,
+    "runs": 97,
+    "seconds": 84.839,
     "skips": 0
   },
   "src/webchat/tests/test_webchat_flow.py::test_a_voice_note_on_an_open_connection_runs_the_very_same_turn": {
@@ -5964,10 +5974,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-13T08:12:54+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.638,
-    "runs": 87,
-    "seconds": 74.958,
+    "runs": 88,
+    "seconds": 75.551,
     "skips": 0
   },
   "src/webchat/tests/test_zz_sanity.py::test_enter": {
@@ -5985,10 +5995,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T13:37:42+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.034,
-    "runs": 67,
-    "seconds": 2.814,
+    "runs": 68,
+    "seconds": 2.844,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_gone_session_is_retried_once_for_turns_and_actions_reporting_a_technical_problem_if_it_fails_again[session_not_found]": {
@@ -5996,10 +6006,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T13:37:42+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.028,
-    "runs": 67,
-    "seconds": 2.658,
+    "runs": 68,
+    "seconds": 2.689,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_non_chat_state_becomes_a_notice_after_the_states_own_wrap_up_and_with_its_own_buttons": {
@@ -6007,10 +6017,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T13:37:42+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.019,
-    "runs": 67,
-    "seconds": 1.352,
+    "runs": 68,
+    "seconds": 1.368,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_second_inbound_answered_by_the_turn_already_running_sends_nothing": {
@@ -6029,10 +6039,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T15:13:06+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.014,
-    "runs": 68,
-    "seconds": 1.305,
+    "runs": 69,
+    "seconds": 1.322,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_accepting_terms_bootstraps_with_the_opening_message_or_a_plain_confirmation_never_resending_history": {
@@ -6040,10 +6050,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T15:12:56+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.021,
-    "runs": 67,
-    "seconds": 1.35,
+    "runs": 68,
+    "seconds": 1.366,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_an_action_with_no_message_falls_back_to_the_states_ui_label_then_done_and_an_invalid_one_gets_a_notice_with_buttons": {
@@ -6051,10 +6061,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T13:37:42+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.025,
-    "runs": 67,
-    "seconds": 1.965,
+    "runs": 68,
+    "seconds": 1.985,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_bad_signatures_status_updates_and_redeliveries_never_produce_a_second_turn": {
@@ -6062,10 +6072,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:36:15+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.013,
-    "runs": 68,
-    "seconds": 1.314,
+    "runs": 69,
+    "seconds": 1.329,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_button_and_list_replies_apply_the_action_as_the_linked_account_while_an_unsupported_reply_is_ignored": {
@@ -6073,10 +6083,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T13:37:42+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.016,
-    "runs": 67,
-    "seconds": 1.371,
+    "runs": 68,
+    "seconds": 1.385,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_buttons_become_buttons_excluding_triggered_ones_truncating_long_titles_and_plain_text_when_none": {
@@ -6084,9 +6094,9 @@
     "first_run": "2026-09-12T13:38:03+00:00",
     "last_failed": "2026-09-12T13:38:03+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
-    "runs": 20,
-    "seconds": 0.651,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 21,
+    "seconds": 0.676,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_cloud_api_client_sends_the_read_receipt_with_the_typing_indicator_and_swallows_a_failure": {
@@ -6094,10 +6104,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.032,
-    "runs": 67,
-    "seconds": 5.726,
+    "runs": 68,
+    "seconds": 5.82,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_five_buttons_send_a_list": {
@@ -6105,9 +6115,9 @@
     "first_run": "2026-09-12T13:38:03+00:00",
     "last_failed": "2026-09-12T13:38:12+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
-    "runs": 21,
-    "seconds": 0.291,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 22,
+    "seconds": 0.299,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_five_manual_actions_send_a_list": {
@@ -6126,10 +6136,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:36:15+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.005,
-    "runs": 67,
-    "seconds": 0.37,
+    "runs": 68,
+    "seconds": 0.375,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_manual_actions_become_buttons_excluding_triggered_ones_truncating_long_titles_and_plain_text_when_none": {
@@ -6148,10 +6158,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:36:15+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.008,
-    "runs": 67,
-    "seconds": 0.793,
+    "runs": 68,
+    "seconds": 0.802,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_paused_project_gate_is_relayed": {
@@ -6159,10 +6169,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.009,
-    "runs": 67,
-    "seconds": 0.712,
+    "runs": 68,
+    "seconds": 0.719,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_pending_terms_send_the_content_with_an_accept_button_instead_of_a_turn": {
@@ -6170,10 +6180,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.011,
-    "runs": 67,
-    "seconds": 0.775,
+    "runs": 68,
+    "seconds": 0.782,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_registration_with_pending_terms_sends_terms_instead_of_the_welcome": {
@@ -6181,10 +6191,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.012,
-    "runs": 67,
-    "seconds": 0.725,
+    "runs": 68,
+    "seconds": 0.734,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_taken_over_codes_become_the_taken_over_notice_for_turns_and_actions": {
@@ -6192,10 +6202,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:36:15+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.041,
-    "runs": 67,
-    "seconds": 2.72,
+    "runs": 68,
+    "seconds": 2.749,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_turn_in_progress_becomes_the_busy_notice_for_turns_and_actions_with_no_buttons": {
@@ -6203,10 +6213,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:36:15+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.021,
-    "runs": 67,
-    "seconds": 1.471,
+    "runs": 68,
+    "seconds": 1.486,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_turn_runs_as_the_linked_account_after_a_typing_indicator_replying_only_with_the_new_assistant_message": {
@@ -6214,10 +6224,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:36:15+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.009,
-    "runs": 67,
-    "seconds": 1.05,
+    "runs": 68,
+    "seconds": 1.062,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_two_messages_one_after_the_other_each_get_their_own_answer": {
@@ -6225,9 +6235,9 @@
     "first_run": "2026-09-12T12:30:50+00:00",
     "last_failed": "2026-09-12T12:36:15+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
-    "runs": 35,
-    "seconds": 0.552,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 36,
+    "seconds": 0.567,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_unexpected_error_during_redeem_gets_an_apology_not_silence": {
@@ -6235,10 +6245,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.01,
-    "runs": 67,
-    "seconds": 0.833,
+    "runs": 68,
+    "seconds": 0.844,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_unlinked_unregistered_or_non_text_senders_get_a_canned_reply_and_no_turn": {
@@ -6246,10 +6256,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.027,
-    "runs": 67,
-    "seconds": 2.591,
+    "runs": 68,
+    "seconds": 2.618,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_verification_handshake_echoes_the_challenge_and_rejects_a_wrong_token": {
@@ -6257,10 +6267,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.012,
-    "runs": 68,
-    "seconds": 2.513,
+    "runs": 69,
+    "seconds": 2.525,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_flow.py::test_a_typed_message_runs_a_real_turn_and_the_reply_goes_back_as_text": {
@@ -6268,10 +6278,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T09:21:30+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.626,
-    "runs": 67,
-    "seconds": 58.657,
+    "runs": 68,
+    "seconds": 59.252,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_flow.py::test_a_voice_note_is_decoded_runs_the_same_turn_and_comes_back_spoken": {
@@ -6279,10 +6289,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T09:21:30+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.907,
-    "runs": 67,
-    "seconds": 59.286,
+    "runs": 68,
+    "seconds": 59.884,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_skill.py::test_an_absent_section_or_enabled_false_leaves_the_channel_disabled": {
@@ -6290,10 +6300,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.001,
-    "runs": 67,
-    "seconds": 0.076,
+    "runs": 68,
+    "seconds": 0.077,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_skill.py::test_enabled_parses_with_or_without_a_phone_number_normalized_to_digits_and_a_default_graph_version": {
@@ -6301,10 +6311,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.001,
-    "runs": 67,
-    "seconds": 0.078,
+    "runs": 68,
+    "seconds": 0.079,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_skill.py::test_public_fields_say_it_is_off_without_inventing_values": {
@@ -6312,10 +6322,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.001,
-    "runs": 67,
-    "seconds": 0.077,
+    "runs": 68,
+    "seconds": 0.078,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_skill.py::test_rejects_what_it_cannot_use[raw0-phone-number]": {
@@ -6323,10 +6333,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.001,
-    "runs": 67,
-    "seconds": 0.103,
+    "runs": 68,
+    "seconds": 0.104,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_skill.py::test_rejects_what_it_cannot_use[raw1-verify-token]": {
@@ -6334,10 +6344,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.001,
-    "runs": 67,
-    "seconds": 0.096,
+    "runs": 68,
+    "seconds": 0.097,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_skill.py::test_rejects_what_it_cannot_use[raw2-voice-replies]": {
@@ -6345,10 +6355,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.001,
-    "runs": 67,
-    "seconds": 0.093,
+    "runs": 68,
+    "seconds": 0.094,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_skill.py::test_the_phone_number_id_may_arrive_as_the_int_yaml_reads_it_as": {
@@ -6356,10 +6366,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.001,
-    "runs": 67,
-    "seconds": 0.076,
+    "runs": 68,
+    "seconds": 0.077,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_a_voice_note_that_cannot_be_transcribed_gets_a_notice_and_no_turn": {
@@ -6367,10 +6377,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.046,
-    "runs": 70,
-    "seconds": 4.396,
+    "runs": 71,
+    "seconds": 4.433,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_buttons_follow_a_spoken_reply_as_buttons_and_stay_on_the_text_fallback": {
@@ -6378,9 +6388,9 @@
     "first_run": "2026-09-12T13:38:03+00:00",
     "last_failed": "2026-09-12T13:39:24+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
-    "runs": 21,
-    "seconds": 2.529,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 22,
+    "seconds": 2.652,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_every_voice_note_failure_falls_back_to_the_text_reply": {
@@ -6388,10 +6398,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:36:15+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.264,
-    "runs": 70,
-    "seconds": 16.294,
+    "runs": 71,
+    "seconds": 16.555,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_incremental_encoder_matches_whole_file_encoding_and_finishes_empty_with_no_audio": {
@@ -6399,10 +6409,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.323,
-    "runs": 70,
-    "seconds": 25.987,
+    "runs": 71,
+    "seconds": 26.27,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_manual_actions_follow_a_spoken_reply_as_buttons_and_stay_on_the_text_fallback": {
@@ -6421,10 +6431,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.003,
-    "runs": 70,
-    "seconds": 0.104,
+    "runs": 71,
+    "seconds": 0.105,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_notices_are_never_spoken": {
@@ -6432,10 +6442,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.01,
-    "runs": 70,
-    "seconds": 0.811,
+    "runs": 71,
+    "seconds": 0.82,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_split_wav_handles_streaming_header_and_complete_file": {
@@ -6443,10 +6453,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.008,
-    "runs": 70,
-    "seconds": 0.624,
+    "runs": 71,
+    "seconds": 0.632,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_synthesis_starts_mid_turn_when_announced_otherwise_from_the_persisted_text_and_afresh_when_it_differs": {
@@ -6454,10 +6464,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:40:43+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.171,
-    "runs": 67,
-    "seconds": 9.972,
+    "runs": 68,
+    "seconds": 10.136,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_the_always_policy_speaks_text_replies_and_the_never_policy_stays_text": {
@@ -6465,10 +6475,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:36:15+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.07,
-    "runs": 70,
-    "seconds": 4.657,
+    "runs": 71,
+    "seconds": 4.73,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_the_default_policy_answers_in_kind_voice_for_voice_and_text_for_text": {
@@ -6476,10 +6486,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:36:15+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.072,
-    "runs": 70,
-    "seconds": 4.718,
+    "runs": 71,
+    "seconds": 4.788,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_the_voice_note_follows_what_the_reply_announced_and_the_last_announcement_wins": {
@@ -6497,10 +6507,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T12:36:15+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.012,
-    "runs": 73,
-    "seconds": 1.887,
+    "runs": 74,
+    "seconds": 1.896,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_wav_to_mp3_produces_mono_48k_mp3_and_rejects_empty_audio": {
@@ -6508,10 +6518,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:52:00+00:00",
+    "last_run": "2026-09-13T09:08:06+00:00",
     "last_seconds": 0.046,
-    "runs": 70,
-    "seconds": 3.292,
+    "runs": 71,
+    "seconds": 3.331,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_deferred_call_runs_after_a_restart_against_the_frozen_scope": {
@@ -6530,10 +6540,10 @@
     "first_run": "2026-09-03T13:02:28+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.133,
-    "runs": 101,
-    "seconds": 14.34,
+    "runs": 102,
+    "seconds": 14.473,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_deferred_lambda_sees_names_assigned_earlier_in_the_same_script": {
@@ -6574,10 +6584,10 @@
     "first_run": "2026-09-03T13:02:28+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.162,
-    "runs": 101,
-    "seconds": 15.701,
+    "runs": 102,
+    "seconds": 15.844,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_task_reports_a_suppressed_send_mail_over_the_websocket_in_fake_mode": {
@@ -6607,10 +6617,10 @@
     "first_run": "2026-09-05T13:06:01+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.121,
-    "runs": 103,
-    "seconds": 13.73,
+    "runs": 104,
+    "seconds": 13.861,
     "skips": 0
   },
   "tests/test_action_task.py::test_deleting_the_project_takes_its_pending_tasks_with_it": {
@@ -6629,10 +6639,10 @@
     "first_run": "2026-09-05T13:06:01+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.017,
-    "runs": 101,
-    "seconds": 2.256,
+    "runs": 102,
+    "seconds": 2.276,
     "skips": 0
   },
   "tests/test_action_task.py::test_task_prompt_runs_inside_the_task_with_the_firing_sessions_history": {
@@ -6640,10 +6650,10 @@
     "first_run": "2026-09-07T21:38:23+00:00",
     "last_failed": "2026-09-11T11:50:02+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.14,
-    "runs": 101,
-    "seconds": 20.706,
+    "runs": 102,
+    "seconds": 20.838,
     "skips": 0
   },
   "tests/test_action_task.py::test_the_task_runs_against_the_revision_it_was_written_for": {
@@ -7762,10 +7772,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.003,
-    "runs": 91,
-    "seconds": 0.44,
+    "runs": 92,
+    "seconds": 0.445,
     "skips": 0
   },
   "tests/test_automaton_builder_env_triggers.py::test_a_trigger_may_reference_any_session_call_or_user_field[session.last_user_session_datetime() != None]": {
@@ -7773,10 +7783,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.004,
-    "runs": 91,
-    "seconds": 0.42,
+    "runs": 92,
+    "seconds": 0.424,
     "skips": 0
   },
   "tests/test_automaton_builder_env_triggers.py::test_a_trigger_may_reference_any_session_call_or_user_field[session.number_of_user_sessions() != None]": {
@@ -7784,10 +7794,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.003,
-    "runs": 91,
-    "seconds": 0.447,
+    "runs": 92,
+    "seconds": 0.451,
     "skips": 0
   },
   "tests/test_automaton_builder_env_triggers.py::test_a_trigger_may_reference_any_session_call_or_user_field[session.state_duration_in_minutes() != None]": {
@@ -7795,10 +7805,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.003,
-    "runs": 91,
-    "seconds": 0.448,
+    "runs": 92,
+    "seconds": 0.453,
     "skips": 0
   },
   "tests/test_automaton_builder_env_triggers.py::test_a_trigger_may_reference_any_session_call_or_user_field[user.active_project != None]": {
@@ -7806,10 +7816,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.003,
-    "runs": 92,
-    "seconds": 0.404,
+    "runs": 93,
+    "seconds": 0.408,
     "skips": 0
   },
   "tests/test_automaton_builder_env_triggers.py::test_a_trigger_may_reference_any_session_call_or_user_field[user.created_at != None]": {
@@ -7817,10 +7827,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.003,
-    "runs": 91,
-    "seconds": 0.414,
+    "runs": 92,
+    "seconds": 0.418,
     "skips": 0
   },
   "tests/test_automaton_builder_env_triggers.py::test_a_trigger_may_reference_any_session_call_or_user_field[user.email != None]": {
@@ -7828,10 +7838,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.004,
-    "runs": 92,
-    "seconds": 0.452,
+    "runs": 93,
+    "seconds": 0.456,
     "skips": 0
   },
   "tests/test_automaton_builder_env_triggers.py::test_a_trigger_may_reference_any_session_call_or_user_field[user.last_login != None]": {
@@ -7839,10 +7849,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.004,
-    "runs": 91,
-    "seconds": 0.442,
+    "runs": 92,
+    "seconds": 0.446,
     "skips": 0
   },
   "tests/test_automaton_builder_env_triggers.py::test_a_trigger_may_reference_any_session_call_or_user_field[user.name != None]": {
@@ -7850,10 +7860,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.004,
-    "runs": 91,
-    "seconds": 0.432,
+    "runs": 92,
+    "seconds": 0.436,
     "skips": 0
   },
   "tests/test_automaton_builder_env_triggers.py::test_a_trigger_may_reference_any_session_call_or_user_field[user.picture_url != None]": {
@@ -7861,10 +7871,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.005,
-    "runs": 91,
-    "seconds": 0.451,
+    "runs": 92,
+    "seconds": 0.455,
     "skips": 0
   },
   "tests/test_automaton_builder_env_triggers.py::test_a_trigger_may_reference_any_session_call_or_user_field[user.provider != None]": {
@@ -7872,10 +7882,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.005,
-    "runs": 91,
-    "seconds": 0.417,
+    "runs": 92,
+    "seconds": 0.421,
     "skips": 0
   },
   "tests/test_automaton_builder_env_triggers.py::test_a_trigger_may_reference_any_session_call_or_user_field[user.provider_user_id != None]": {
@@ -7883,10 +7893,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.004,
-    "runs": 91,
-    "seconds": 0.413,
+    "runs": 92,
+    "seconds": 0.417,
     "skips": 0
   },
   "tests/test_automaton_builder_env_triggers.py::test_a_trigger_may_reference_any_session_call_or_user_field[user.role != None]": {
@@ -7894,10 +7904,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.003,
-    "runs": 91,
-    "seconds": 0.473,
+    "runs": 92,
+    "seconds": 0.476,
     "skips": 0
   },
   "tests/test_automaton_builder_env_triggers.py::test_a_trigger_may_reference_any_session_call_or_user_field[user.whatsapp_phone_number != None]": {
@@ -7905,10 +7915,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.004,
-    "runs": 91,
-    "seconds": 0.478,
+    "runs": 92,
+    "seconds": 0.481,
     "skips": 0
   },
   "tests/test_automaton_builder_env_triggers.py::test_a_trigger_referencing_anything_undeclared_or_mistyped_is_rejected_at_build_time[bare-signal-name]": {
@@ -8994,10 +9004,10 @@
     "first_run": "2026-09-07T11:18:11+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.011,
-    "runs": 92,
-    "seconds": 1.35,
+    "runs": 93,
+    "seconds": 1.362,
     "skips": 0
   },
   "tests/test_automaton_builder_thread_safety.py::test_concurrent_builds_never_interleave_documents": {
@@ -9224,10 +9234,10 @@
     "first_run": "2026-09-05T09:25:56+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.034,
-    "runs": 89,
-    "seconds": 3.134,
+    "runs": 90,
+    "seconds": 3.163,
     "skips": 0
   },
   "tests/test_automaton_loader_legacy_revision.py::test_a_broken_revision_never_touches_a_different_revisions_session": {
@@ -9235,10 +9245,10 @@
     "first_run": "2026-09-05T09:25:56+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.037,
-    "runs": 89,
-    "seconds": 3.686,
+    "runs": 90,
+    "seconds": 3.721,
     "skips": 0
   },
   "tests/test_automaton_loader_legacy_revision.py::test_a_stored_revision_that_no_longer_builds_names_itself": {
@@ -9301,10 +9311,10 @@
     "first_run": "2026-09-05T09:25:56+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.032,
-    "runs": 89,
-    "seconds": 3.001,
+    "runs": 90,
+    "seconds": 3.032,
     "skips": 0
   },
   "tests/test_automaton_namespace.py::test_a_project_that_is_unknown_unfamilied_or_of_another_family_is_indistinguishable_and_warns_project_not_found": {
@@ -9334,10 +9344,10 @@
     "first_run": "2026-09-06T12:59:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.031,
-    "runs": 91,
-    "seconds": 3.454,
+    "runs": 92,
+    "seconds": 3.487,
     "skips": 0
   },
   "tests/test_automaton_project_refs.py::test_automaton_env_refs_reports_only_env_keys_grouped_by_their_own_project[keys-grouped]": {
@@ -10027,10 +10037,10 @@
     "first_run": "2026-08-01T16:52:31+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.044,
-    "runs": 88,
-    "seconds": 4.976,
+    "runs": 89,
+    "seconds": 5.022,
     "skips": 0
   },
   "tests/test_benchmark_calculator_integration.py::test_calculator_reads_expected_state_from_the_linked_signals_row": {
@@ -10213,9 +10223,9 @@
     "first_run": "2026-09-13T08:53:01+00:00",
     "last_failed": "2026-09-13T08:56:34+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
-    "runs": 6,
-    "seconds": 0.693,
+    "last_run": "2026-09-13T09:08:23+00:00",
+    "runs": 8,
+    "seconds": 0.899,
     "skips": 0
   },
   "tests/test_button_streams.py::test_a_button_says_it_is_writing_and_streams_what_it_writes": {
@@ -10223,9 +10233,9 @@
     "first_run": "2026-09-12T13:11:57+00:00",
     "last_failed": "2026-09-12T13:12:05+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
-    "runs": 26,
-    "seconds": 4.779,
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 27,
+    "seconds": 5.154,
     "skips": 0
   },
   "tests/test_button_translation.py::test_a_state_with_a_manual_action_requests_translations_and_the_result_reaches_the_final_state_payload[malformed-falls-back]": {
@@ -10948,10 +10958,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.01,
-    "runs": 94,
-    "seconds": 1.022,
+    "runs": 95,
+    "seconds": 1.033,
     "skips": 0
   },
   "tests/test_config.py::TestOptionalSettingsEndToEnd::test_reads_a_custom_value_and_rejects_an_invalid_one[total_token_budget_per_session]": {
@@ -10959,10 +10969,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.01,
-    "runs": 94,
-    "seconds": 1.073,
+    "runs": 95,
+    "seconds": 1.084,
     "skips": 0
   },
   "tests/test_controller_backup.py::test_app_keeps_working_after_a_rejected_restore": {
@@ -11080,10 +11090,10 @@
     "first_run": "2026-09-11T10:55:31+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.344,
-    "runs": 70,
-    "seconds": 39.601,
+    "runs": 71,
+    "seconds": 40.557,
     "skips": 0
   },
   "tests/test_controller_docs.py::test_get_doc_returns_the_files_own_content[skills]": {
@@ -11179,10 +11189,10 @@
     "first_run": "2026-09-11T11:04:49+00:00",
     "last_failed": "2026-09-13T08:14:30+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.926,
-    "runs": 61,
-    "seconds": 60.165,
+    "runs": 62,
+    "seconds": 60.755,
     "skips": 0
   },
   "tests/test_datetime_end_readers_contract.py::test_datetime_end_is_only_read_by_the_allowlisted_files": {
@@ -11256,10 +11266,10 @@
     "first_run": "2026-09-05T10:12:01+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.023,
-    "runs": 89,
-    "seconds": 3.017,
+    "runs": 90,
+    "seconds": 3.045,
     "skips": 0
   },
   "tests/test_db_archive_file_content.py::test_a_file_is_dropped_once_no_archive_row_references_it": {
@@ -11377,10 +11387,10 @@
     "first_run": "2026-09-03T18:13:05+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.026,
-    "runs": 92,
-    "seconds": 3.124,
+    "runs": 93,
+    "seconds": 3.153,
     "skips": 0
   },
   "tests/test_db_archive_history.py::test_delete_unused_archive_revisions_removes_superseded_unpublished_drafts_across_every_project": {
@@ -11641,10 +11651,10 @@
     "first_run": "2026-09-05T10:12:01+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.03,
-    "runs": 89,
-    "seconds": 2.613,
+    "runs": 90,
+    "seconds": 2.638,
     "skips": 0
   },
   "tests/test_db_erase_user_data.py::test_erase_user_data_cascades_through_a_chat_session": {
@@ -11652,10 +11662,10 @@
     "first_run": "2026-08-26T11:13:16+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.029,
-    "runs": 89,
-    "seconds": 2.763,
+    "runs": 90,
+    "seconds": 2.789,
     "skips": 0
   },
   "tests/test_db_erase_user_data.py::test_erase_user_data_never_touches_another_users_data": {
@@ -11751,10 +11761,10 @@
     "first_run": "2026-09-06T12:28:33+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.027,
-    "runs": 91,
-    "seconds": 2.864,
+    "runs": 92,
+    "seconds": 2.888,
     "skips": 0
   },
   "tests/test_db_messages.py::test_get_turn_history_combines_since_and_budget_in_one_pass_treating_an_unknown_cost_as_free": {
@@ -11794,10 +11804,10 @@
     "first_run": "2026-09-11T17:19:33+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.14,
-    "runs": 21,
-    "seconds": 3.332,
+    "runs": 22,
+    "seconds": 3.444,
     "skips": 0
   },
   "tests/test_db_migration_strategy.py::test_an_unknown_strategy_is_rejected_and_stop_refuses_an_incompatible_schema_untouched": {
@@ -12003,10 +12013,10 @@
     "first_run": "2026-09-11T15:19:37+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.027,
-    "runs": 32,
-    "seconds": 1.342,
+    "runs": 33,
+    "seconds": 1.366,
     "skips": 0
   },
   "tests/test_db_sessions.py::test_create_chat_session_rejects_a_nonexistent_project_and_stamps_whatever_revision_the_caller_resolved": {
@@ -12014,10 +12024,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.033,
-    "runs": 97,
-    "seconds": 3.366,
+    "runs": 98,
+    "seconds": 3.394,
     "skips": 0
   },
   "tests/test_db_sessions.py::test_delete_chat_session_removes_it_and_its_data_leaving_other_sessions_alone_with_the_fk_cascade_enforced_by_sqlite": {
@@ -12025,10 +12035,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.033,
-    "runs": 95,
-    "seconds": 3.633,
+    "runs": 96,
+    "seconds": 3.662,
     "skips": 0
   },
   "tests/test_db_sessions.py::test_get_latest_chat_session_picks_the_most_recent_start_scoped_by_username_and_project": {
@@ -12036,10 +12046,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.03,
-    "runs": 97,
-    "seconds": 3.306,
+    "runs": 98,
+    "seconds": 3.332,
     "skips": 0
   },
   "tests/test_db_sessions.py::test_reset_project_deletes_every_users_sessions_and_messages_while_reset_for_user_touches_only_theirs_in_that_project": {
@@ -12047,10 +12057,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.035,
-    "runs": 97,
-    "seconds": 3.926,
+    "runs": 98,
+    "seconds": 3.961,
     "skips": 0
   },
   "tests/test_db_sessions.py::test_set_session_labeled_toggles_only_the_given_session_starting_unlabeled": {
@@ -12058,10 +12068,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.029,
-    "runs": 95,
-    "seconds": 2.94,
+    "runs": 96,
+    "seconds": 2.965,
     "skips": 0
   },
   "tests/test_db_sessions.py::test_the_default_title_counts_per_type_and_username_and_never_overrides_an_explicit_one": {
@@ -12069,10 +12079,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.036,
-    "runs": 95,
-    "seconds": 4.015,
+    "runs": 96,
+    "seconds": 4.047,
     "skips": 0
   },
   "tests/test_db_sessions.py::test_touch_updates_only_the_end_and_messages_are_scoped_by_session_not_project": {
@@ -12080,10 +12090,10 @@
     "first_run": "2026-09-06T07:54:14+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.024,
-    "runs": 97,
-    "seconds": 2.897,
+    "runs": 98,
+    "seconds": 2.924,
     "skips": 0
   },
   "tests/test_dependent_job.py::test_add_parent_job_reports_whether_the_dependency_had_already_finished": {
@@ -12234,10 +12244,10 @@
     "first_run": "2026-09-06T12:59:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.097,
-    "runs": 88,
-    "seconds": 10.104,
+    "runs": 89,
+    "seconds": 10.191,
     "skips": 0
   },
   "tests/test_ephemeral_env.py::test_resetting_deleting_or_closing_a_test_session_discards_its_ephemeral_env[close]": {
@@ -12245,10 +12255,10 @@
     "first_run": "2026-09-06T12:59:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.082,
-    "runs": 88,
-    "seconds": 7.553,
+    "runs": 89,
+    "seconds": 7.623,
     "skips": 0
   },
   "tests/test_ephemeral_env.py::test_resetting_deleting_or_closing_a_test_session_discards_its_ephemeral_env[delete]": {
@@ -12256,10 +12266,10 @@
     "first_run": "2026-09-06T12:59:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.08,
-    "runs": 88,
-    "seconds": 7.424,
+    "runs": 89,
+    "seconds": 7.494,
     "skips": 0
   },
   "tests/test_ephemeral_env.py::test_resetting_deleting_or_closing_a_test_session_discards_its_ephemeral_env[reset]": {
@@ -12267,10 +12277,10 @@
     "first_run": "2026-09-06T12:59:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.074,
-    "runs": 88,
-    "seconds": 7.319,
+    "runs": 89,
+    "seconds": 7.403,
     "skips": 0
   },
   "tests/test_evaluation_scope.py::test_a_declared_source_is_readable_from_an_env_expression_end_to_end": {
@@ -12300,10 +12310,10 @@
     "first_run": "2026-09-06T12:59:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.031,
-    "runs": 88,
-    "seconds": 2.597,
+    "runs": 89,
+    "seconds": 2.62,
     "skips": 0
   },
   "tests/test_evaluation_scope.py::test_a_session_fact_a_user_fact_and_an_action_set_env_value_are_each_usable_in_a_trigger_end_to_end": {
@@ -12311,10 +12321,10 @@
     "first_run": "2026-09-06T12:59:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.032,
-    "runs": 88,
-    "seconds": 2.718,
+    "runs": 89,
+    "seconds": 2.748,
     "skips": 0
   },
   "tests/test_evaluation_scope.py::test_attachment_read_resolves_a_text_archive_from_both_scope_views_and_raises_for_anything_else": {
@@ -12388,10 +12398,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-12T14:02:54+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.093,
-    "runs": 19,
-    "seconds": 2.133,
+    "runs": 20,
+    "seconds": 2.291,
     "skips": 0
   },
   "tests/test_frontend_reads_real_fields.py::test_the_payload_was_actually_read": {
@@ -12520,10 +12530,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-13T08:00:31+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:57:12+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.11,
-    "runs": 63,
-    "seconds": 9.314,
+    "runs": 64,
+    "seconds": 9.401,
     "skips": 0
   },
   "tests/test_human_mode_turn.py::test_a_human_mode_turn_never_holds_the_session_lock": {
@@ -12805,10 +12815,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.031,
-    "runs": 14,
-    "seconds": 0.516,
+    "runs": 15,
+    "seconds": 0.539,
     "skips": 0
   },
   "tests/test_legal_terms_pending_regression.py::test_accept_legal_terms_resolves_pending_even_with_a_diverged_draft": {
@@ -12838,10 +12848,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.072,
-    "runs": 14,
-    "seconds": 1.174,
+    "runs": 15,
+    "seconds": 1.223,
     "skips": 0
   },
   "tests/test_legal_terms_pending_regression.py::test_republishing_identical_terms_never_asks_again": {
@@ -13102,10 +13112,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.024,
-    "runs": 14,
-    "seconds": 0.378,
+    "runs": 15,
+    "seconds": 0.395,
     "skips": 0
   },
   "tests/test_metric_service.py::test_merge_if_referenced_computes_metrics_only_when_a_trigger_mentions_one_never_mutating_the_input": {
@@ -13190,10 +13200,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.005,
-    "runs": 14,
-    "seconds": 0.063,
+    "runs": 15,
+    "seconds": 0.066,
     "skips": 0
   },
   "tests/test_metrics_calculator_facade.py::TestAnalyticsCalculator::test_until_and_since_each_restrict_metrics_to_their_side_of_the_cutoff": {
@@ -13234,10 +13244,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.008,
-    "runs": 15,
-    "seconds": 0.158,
+    "runs": 16,
+    "seconds": 0.165,
     "skips": 0
   },
   "tests/test_metrics_calculator_facade.py::TestUserAnalyticsDataBuilder::test_since_excludes_earlier_messages_and_ended_sessions_and_combines_with_until_into_a_window": {
@@ -13245,10 +13255,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.012,
-    "runs": 15,
-    "seconds": 0.21,
+    "runs": 16,
+    "seconds": 0.218,
     "skips": 0
   },
   "tests/test_metrics_calculator_facade.py::TestUserAnalyticsDataBuilder::test_until_excludes_later_messages_signals_and_unstarted_sessions_while_none_means_full_history": {
@@ -13256,10 +13266,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.019,
-    "runs": 15,
-    "seconds": 0.341,
+    "runs": 16,
+    "seconds": 0.354,
     "skips": 0
   },
   "tests/test_metrics_calculators.py::TestActivityConsistencyMetric::test_consistent_daily_volume_scores_100_and_bursty_volume_scores_low": {
@@ -13311,10 +13321,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.01,
-    "runs": 14,
-    "seconds": 0.148,
+    "runs": 15,
+    "seconds": 0.155,
     "skips": 0
   },
   "tests/test_metrics_calculators.py::TestRetentionMetric::test_gaps_beyond_the_horizon_score_zero_and_mixed_gaps_the_partial_return_rate": {
@@ -13366,10 +13376,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.01,
-    "runs": 14,
-    "seconds": 0.169,
+    "runs": 15,
+    "seconds": 0.175,
     "skips": 0
   },
   "tests/test_metrics_normalization.py::test_clamp_bounds_the_value_to_0_100_or_to_custom_bounds": {
@@ -13498,10 +13508,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.019,
-    "runs": 14,
-    "seconds": 0.299,
+    "runs": 15,
+    "seconds": 0.313,
     "skips": 0
   },
   "tests/test_persisted_env_requires_session_id.py::test_persisted_env_raises_on_a_none_session_id": {
@@ -13509,10 +13519,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.024,
-    "runs": 14,
-    "seconds": 0.605,
+    "runs": 15,
+    "seconds": 0.62,
     "skips": 0
   },
   "tests/test_persisted_scheduler.py::TestTheTableIsTheQueue::test_a_claim_older_than_the_lease_or_predating_the_lease_column_runs_again_while_a_fresh_one_is_left_alone": {
@@ -13771,10 +13781,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.049,
-    "runs": 14,
-    "seconds": 1.042,
+    "runs": 15,
+    "seconds": 1.082,
     "skips": 0
   },
   "tests/test_project_service_revisions.py::test_a_transition_in_one_session_type_never_leaks_into_the_other[live-test]": {
@@ -13782,10 +13792,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.038,
-    "runs": 14,
-    "seconds": 0.771,
+    "runs": 15,
+    "seconds": 0.801,
     "skips": 0
   },
   "tests/test_project_service_revisions.py::test_a_transition_in_one_session_type_never_leaks_into_the_other[test-live]": {
@@ -13793,10 +13803,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.038,
-    "runs": 14,
-    "seconds": 0.808,
+    "runs": 15,
+    "seconds": 0.839,
     "skips": 0
   },
   "tests/test_project_service_revisions.py::test_load_at_revision_caches_by_project_and_revision": {
@@ -13815,10 +13825,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.042,
-    "runs": 14,
-    "seconds": 0.893,
+    "runs": 15,
+    "seconds": 0.928,
     "skips": 0
   },
   "tests/test_project_services.py::test_a_disabled_service_answers_false_without_publishing": {
@@ -14217,6 +14227,46 @@
     "seconds": 2.225,
     "skips": 0
   },
+  "tests/test_reading_never_opens.py::test_opening_it_is_asked_for_and_speaks": {
+    "failures": 0,
+    "first_run": "2026-09-13T09:06:45+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-13T09:08:23+00:00",
+    "runs": 3,
+    "seconds": 0.357,
+    "skips": 0
+  },
+  "tests/test_reading_never_opens.py::test_reading_the_history_opens_nothing": {
+    "failures": 0,
+    "first_run": "2026-09-13T06:26:14+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-13T09:08:06+00:00",
+    "runs": 13,
+    "seconds": 2.41,
+    "skips": 0
+  },
+  "tests/test_reading_never_opens.py::test_reading_the_transcript_while_it_opens_still_sees_one_message": {
+    "failures": 3,
+    "first_run": "2026-09-12T15:10:34+00:00",
+    "last_failed": "2026-09-12T15:17:08+00:00",
+    "last_outcome": "failed",
+    "last_run": "2026-09-12T15:17:08+00:00",
+    "runs": 6,
+    "seconds": 1.119,
+    "skips": 0
+  },
+  "tests/test_reading_never_opens.py::test_two_callers_opening_at_once_produce_one_message": {
+    "failures": 1,
+    "first_run": "2026-09-12T15:10:34+00:00",
+    "last_failed": "2026-09-12T15:10:44+00:00",
+    "last_outcome": "passed",
+    "last_run": "2026-09-13T08:49:47+00:00",
+    "runs": 17,
+    "seconds": 4.762,
+    "skips": 0
+  },
   "tests/test_regeneration_skips_signals.py::test_a_turn_that_fires_a_trigger_records_origin_trigger": {
     "failures": 0,
     "first_run": "2026-09-11T18:47:32+00:00",
@@ -14415,10 +14465,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.021,
-    "runs": 15,
-    "seconds": 0.376,
+    "runs": 16,
+    "seconds": 0.397,
     "skips": 0
   },
   "tests/test_session_channel_context.py::test_creating_a_test_session_without_a_channel_is_how_it_is_supposed_to_work": {
@@ -14426,10 +14476,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.025,
-    "runs": 15,
-    "seconds": 0.427,
+    "runs": 16,
+    "seconds": 0.449,
     "skips": 0
   },
   "tests/test_session_channel_context.py::test_reading_channel_outside_a_request_context_raises": {
@@ -14437,10 +14487,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.001,
-    "runs": 15,
-    "seconds": 0.019,
+    "runs": 16,
+    "seconds": 0.02,
     "skips": 0
   },
   "tests/test_session_channel_context.py::test_the_middleware_authenticates_and_declares_no_channel": {
@@ -14448,10 +14498,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.009,
-    "runs": 15,
-    "seconds": 0.13,
+    "runs": 16,
+    "seconds": 0.136,
     "skips": 0
   },
   "tests/test_session_channels.py::test_a_live_session_with_no_channel_is_writable_from_nowhere": {
@@ -14459,10 +14509,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.023,
-    "runs": 16,
-    "seconds": 0.474,
+    "runs": 19,
+    "seconds": 0.545,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[absent-webchat]": {
@@ -14470,10 +14520,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.022,
-    "runs": 16,
-    "seconds": 0.541,
+    "runs": 19,
+    "seconds": 0.605,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[absent-whatsapp]": {
@@ -14481,10 +14531,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.024,
-    "runs": 16,
-    "seconds": 0.466,
+    "runs": 19,
+    "seconds": 0.529,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[closed-webchat]": {
@@ -14492,10 +14542,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.026,
-    "runs": 16,
-    "seconds": 0.539,
+    "runs": 19,
+    "seconds": 0.619,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[closed-whatsapp]": {
@@ -14503,10 +14553,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.026,
-    "runs": 16,
-    "seconds": 0.58,
+    "runs": 19,
+    "seconds": 0.66,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[expired-webchat]": {
@@ -14514,10 +14564,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.026,
-    "runs": 16,
-    "seconds": 0.526,
+    "runs": 19,
+    "seconds": 0.601,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[expired-whatsapp]": {
@@ -14525,10 +14575,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.028,
-    "runs": 16,
-    "seconds": 0.525,
+    "runs": 19,
+    "seconds": 0.606,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[other_channel_open-webchat]": {
@@ -14536,10 +14586,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.028,
-    "runs": 16,
-    "seconds": 0.573,
+    "runs": 19,
+    "seconds": 0.66,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[other_channel_open-whatsapp]": {
@@ -14547,10 +14597,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.03,
-    "runs": 16,
-    "seconds": 0.568,
+    "runs": 19,
+    "seconds": 0.653,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[same_channel_open-webchat]": {
@@ -14558,10 +14608,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.022,
-    "runs": 16,
-    "seconds": 0.466,
+    "runs": 19,
+    "seconds": 0.534,
     "skips": 0
   },
   "tests/test_session_channels.py::test_acquire_exclusive_session_matrix[same_channel_open-whatsapp]": {
@@ -14569,10 +14619,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.025,
-    "runs": 16,
-    "seconds": 0.558,
+    "runs": 19,
+    "seconds": 0.631,
     "skips": 0
   },
   "tests/test_session_channels.py::test_admitting_a_write_still_refuses_a_caller_with_no_channel_at_all": {
@@ -14580,10 +14630,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.024,
-    "runs": 16,
-    "seconds": 0.463,
+    "runs": 19,
+    "seconds": 0.536,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[absent-webchat]": {
@@ -14591,10 +14641,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.022,
-    "runs": 16,
-    "seconds": 0.451,
+    "runs": 19,
+    "seconds": 0.513,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[absent-whatsapp]": {
@@ -14602,10 +14652,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.024,
-    "runs": 16,
-    "seconds": 0.449,
+    "runs": 19,
+    "seconds": 0.513,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[closed-webchat]": {
@@ -14613,10 +14663,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.026,
-    "runs": 16,
-    "seconds": 0.502,
+    "runs": 19,
+    "seconds": 0.576,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[closed-whatsapp]": {
@@ -14624,10 +14674,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.026,
-    "runs": 16,
-    "seconds": 0.501,
+    "runs": 19,
+    "seconds": 0.573,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[expired-webchat]": {
@@ -14635,10 +14685,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.027,
-    "runs": 16,
-    "seconds": 0.518,
+    "runs": 19,
+    "seconds": 0.596,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[expired-whatsapp]": {
@@ -14646,10 +14696,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.026,
-    "runs": 16,
-    "seconds": 0.503,
+    "runs": 19,
+    "seconds": 0.58,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[other_channel_open-webchat]": {
@@ -14657,10 +14707,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.025,
-    "runs": 16,
-    "seconds": 0.504,
+    "runs": 19,
+    "seconds": 0.579,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[other_channel_open-whatsapp]": {
@@ -14668,10 +14718,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.031,
-    "runs": 16,
-    "seconds": 0.501,
+    "runs": 19,
+    "seconds": 0.581,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[same_channel_open-webchat]": {
@@ -14679,10 +14729,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.031,
-    "runs": 16,
-    "seconds": 0.652,
+    "runs": 19,
+    "seconds": 0.753,
     "skips": 0
   },
   "tests/test_session_channels.py::test_apply_manual_action_matrix[same_channel_open-whatsapp]": {
@@ -14690,10 +14740,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.035,
-    "runs": 16,
-    "seconds": 0.611,
+    "runs": 19,
+    "seconds": 0.705,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[absent-webchat]": {
@@ -14701,10 +14751,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.025,
-    "runs": 16,
-    "seconds": 0.479,
+    "runs": 19,
+    "seconds": 0.549,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[absent-whatsapp]": {
@@ -14712,10 +14762,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.028,
-    "runs": 16,
-    "seconds": 0.489,
+    "runs": 19,
+    "seconds": 0.565,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[closed-webchat]": {
@@ -14723,10 +14773,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.029,
-    "runs": 16,
-    "seconds": 0.681,
+    "runs": 19,
+    "seconds": 0.761,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[closed-whatsapp]": {
@@ -14734,10 +14784,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.026,
-    "runs": 16,
-    "seconds": 0.572,
+    "runs": 19,
+    "seconds": 0.65,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[expired-webchat]": {
@@ -14745,10 +14795,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.032,
-    "runs": 16,
-    "seconds": 0.685,
+    "runs": 19,
+    "seconds": 0.762,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[expired-whatsapp]": {
@@ -14756,10 +14806,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.027,
-    "runs": 16,
-    "seconds": 0.561,
+    "runs": 19,
+    "seconds": 0.635,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[other_channel_open-webchat]": {
@@ -14767,10 +14817,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.03,
-    "runs": 16,
-    "seconds": 0.672,
+    "runs": 19,
+    "seconds": 0.76,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[other_channel_open-whatsapp]": {
@@ -14778,10 +14828,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.03,
-    "runs": 16,
-    "seconds": 0.677,
+    "runs": 19,
+    "seconds": 0.768,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[same_channel_open-webchat]": {
@@ -14789,10 +14839,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.031,
-    "runs": 16,
-    "seconds": 0.603,
+    "runs": 19,
+    "seconds": 0.686,
     "skips": 0
   },
   "tests/test_session_channels.py::test_create_session_matrix[same_channel_open-whatsapp]": {
@@ -14800,10 +14850,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.032,
-    "runs": 16,
-    "seconds": 0.622,
+    "runs": 19,
+    "seconds": 0.712,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[absent-webchat]": {
@@ -14811,10 +14861,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.023,
-    "runs": 16,
-    "seconds": 0.624,
+    "runs": 19,
+    "seconds": 0.687,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[absent-whatsapp]": {
@@ -14822,10 +14872,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.021,
-    "runs": 16,
-    "seconds": 0.436,
+    "runs": 19,
+    "seconds": 0.497,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[closed-webchat]": {
@@ -14833,10 +14883,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.026,
-    "runs": 16,
-    "seconds": 0.502,
+    "runs": 19,
+    "seconds": 0.58,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[closed-whatsapp]": {
@@ -14844,10 +14894,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.026,
-    "runs": 16,
-    "seconds": 0.489,
+    "runs": 19,
+    "seconds": 0.56,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[expired-webchat]": {
@@ -14855,10 +14905,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.027,
-    "runs": 16,
-    "seconds": 0.522,
+    "runs": 19,
+    "seconds": 0.603,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[expired-whatsapp]": {
@@ -14866,10 +14916,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.026,
-    "runs": 16,
-    "seconds": 0.487,
+    "runs": 19,
+    "seconds": 0.559,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[other_channel_open-webchat]": {
@@ -14877,10 +14927,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.022,
-    "runs": 16,
-    "seconds": 0.428,
+    "runs": 19,
+    "seconds": 0.499,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[other_channel_open-whatsapp]": {
@@ -14888,10 +14938,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.021,
-    "runs": 16,
-    "seconds": 0.445,
+    "runs": 19,
+    "seconds": 0.515,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[same_channel_open-webchat]": {
@@ -14899,10 +14949,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.023,
-    "runs": 16,
-    "seconds": 0.457,
+    "runs": 19,
+    "seconds": 0.525,
     "skips": 0
   },
   "tests/test_session_channels.py::test_get_current_session_if_any_or_create_new_matrix[same_channel_open-whatsapp]": {
@@ -14910,10 +14960,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.024,
-    "runs": 16,
-    "seconds": 0.46,
+    "runs": 19,
+    "seconds": 0.529,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[absent-webchat]": {
@@ -14921,10 +14971,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.022,
-    "runs": 16,
-    "seconds": 0.444,
+    "runs": 19,
+    "seconds": 0.512,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[absent-whatsapp]": {
@@ -14932,10 +14982,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.023,
-    "runs": 16,
-    "seconds": 0.464,
+    "runs": 19,
+    "seconds": 0.529,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[closed-webchat]": {
@@ -14943,10 +14993,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.032,
-    "runs": 16,
-    "seconds": 0.507,
+    "runs": 19,
+    "seconds": 0.591,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[closed-whatsapp]": {
@@ -14954,10 +15004,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.027,
-    "runs": 16,
-    "seconds": 0.599,
+    "runs": 19,
+    "seconds": 0.674,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[expired-webchat]": {
@@ -14965,10 +15015,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.025,
-    "runs": 16,
-    "seconds": 0.529,
+    "runs": 19,
+    "seconds": 0.606,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[expired-whatsapp]": {
@@ -14976,10 +15026,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.026,
-    "runs": 16,
-    "seconds": 0.51,
+    "runs": 19,
+    "seconds": 0.584,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[other_channel_open-webchat]": {
@@ -14987,10 +15037,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.027,
-    "runs": 16,
-    "seconds": 0.52,
+    "runs": 19,
+    "seconds": 0.598,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[other_channel_open-whatsapp]": {
@@ -14998,10 +15048,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.026,
-    "runs": 16,
-    "seconds": 0.54,
+    "runs": 19,
+    "seconds": 0.623,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[same_channel_open-webchat]": {
@@ -15009,10 +15059,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.039,
-    "runs": 16,
-    "seconds": 0.803,
+    "runs": 19,
+    "seconds": 0.924,
     "skips": 0
   },
   "tests/test_session_channels.py::test_process_turn_with_explicit_session_id_matrix[same_channel_open-whatsapp]": {
@@ -15020,10 +15070,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.038,
-    "runs": 16,
-    "seconds": 0.908,
+    "runs": 19,
+    "seconds": 1.023,
     "skips": 0
   },
   "tests/test_session_channels.py::test_reporting_on_a_session_never_asks_which_channel_the_caller_is_on": {
@@ -15031,10 +15081,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.029,
-    "runs": 16,
-    "seconds": 0.523,
+    "runs": 19,
+    "seconds": 0.604,
     "skips": 0
   },
   "tests/test_session_channels.py::test_takeover_web_to_whatsapp_via_run_turn_then_prepare_user_initiated_turn": {
@@ -15042,10 +15092,20 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.04,
-    "runs": 16,
-    "seconds": 0.719,
+    "runs": 19,
+    "seconds": 0.821,
+    "skips": 0
+  },
+  "tests/test_session_channels.py::test_takeover_whatsapp_to_web_via_new_session_then_open_conversation": {
+    "failures": 0,
+    "first_run": "2026-09-13T09:06:55+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-13T09:08:23+00:00",
+    "runs": 3,
+    "seconds": 0.128,
     "skips": 0
   },
   "tests/test_session_channels.py::test_takeover_whatsapp_to_web_via_new_session_then_open_if_needed": {
@@ -15074,9 +15134,9 @@
     "first_run": "2026-09-13T08:48:11+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
-    "runs": 2,
-    "seconds": 0.374,
+    "last_run": "2026-09-13T09:08:23+00:00",
+    "runs": 4,
+    "seconds": 0.694,
     "skips": 0
   },
   "tests/test_session_enter.py::test_entering_names_the_project_and_the_conversation_comes_back": {
@@ -15084,9 +15144,9 @@
     "first_run": "2026-09-13T07:58:26+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
-    "runs": 10,
-    "seconds": 2.005,
+    "last_run": "2026-09-13T09:08:23+00:00",
+    "runs": 12,
+    "seconds": 2.217,
     "skips": 0
   },
   "tests/test_session_enter.py::test_entering_says_what_the_conversation_is_before_anything_it_says": {
@@ -15094,9 +15154,9 @@
     "first_run": "2026-09-13T07:58:26+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
-    "runs": 10,
-    "seconds": 2.04,
+    "last_run": "2026-09-13T09:08:23+00:00",
+    "runs": 12,
+    "seconds": 2.248,
     "skips": 0
   },
   "tests/test_session_enter.py::test_opening_a_chat_and_typing_in_it_are_both_answered": {
@@ -15114,9 +15174,9 @@
     "first_run": "2026-09-12T12:56:15+00:00",
     "last_failed": "2026-09-12T12:56:22+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
-    "runs": 28,
-    "seconds": 5.447,
+    "last_run": "2026-09-13T09:08:23+00:00",
+    "runs": 30,
+    "seconds": 5.718,
     "skips": 0
   },
   "tests/test_session_facts.py::test_current_session_duration_is_zero_without_a_session_and_otherwise_measured_from_the_most_recent_one": {
@@ -15124,10 +15184,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.024,
-    "runs": 14,
-    "seconds": 0.401,
+    "runs": 15,
+    "seconds": 0.425,
     "skips": 0
   },
   "tests/test_session_facts.py::test_last_user_session_datetime_is_none_for_a_first_ever_session_and_the_previous_ones_start_afterwards": {
@@ -15135,10 +15195,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.026,
-    "runs": 14,
-    "seconds": 0.427,
+    "runs": 15,
+    "seconds": 0.452,
     "skips": 0
   },
   "tests/test_session_facts.py::test_number_of_user_sessions_counts_every_session_of_this_user_and_project": {
@@ -15146,10 +15206,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.024,
-    "runs": 14,
-    "seconds": 0.441,
+    "runs": 15,
+    "seconds": 0.465,
     "skips": 0
   },
   "tests/test_session_facts.py::test_state_duration_is_zero_until_a_real_transition_then_measured_from_it": {
@@ -15157,10 +15217,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.025,
-    "runs": 14,
-    "seconds": 0.394,
+    "runs": 15,
+    "seconds": 0.419,
     "skips": 0
   },
   "tests/test_session_for_sender.py::test_a_channel_left_undeclared_does_not_clobber_one_already_set": {
@@ -15168,10 +15228,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.001,
-    "runs": 14,
-    "seconds": 0.02,
+    "runs": 15,
+    "seconds": 0.021,
     "skips": 0
   },
   "tests/test_session_for_sender.py::test_a_message_with_no_channel_leaves_the_channel_undeclared": {
@@ -15179,10 +15239,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.001,
-    "runs": 14,
-    "seconds": 0.015,
+    "runs": 15,
+    "seconds": 0.016,
     "skips": 0
   },
   "tests/test_session_for_sender.py::test_everything_it_set_is_put_back_on_the_way_out": {
@@ -15190,10 +15250,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.001,
-    "runs": 14,
-    "seconds": 0.014,
+    "runs": 15,
+    "seconds": 0.015,
     "skips": 0
   },
   "tests/test_session_for_sender.py::test_it_puts_things_back_even_when_the_handler_raises": {
@@ -15201,10 +15261,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.001,
-    "runs": 14,
-    "seconds": 0.016,
+    "runs": 15,
+    "seconds": 0.017,
     "skips": 0
   },
   "tests/test_session_for_sender.py::test_it_sets_the_identity_a_listener_needs_from_nothing_at_all": {
@@ -15212,10 +15272,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.001,
-    "runs": 14,
-    "seconds": 0.014,
+    "runs": 15,
+    "seconds": 0.015,
     "skips": 0
   },
   "tests/test_session_lifecycle_lock.py::test_concurrent_acquire_exclusive_session_from_different_channels_serializes": {
@@ -15223,10 +15283,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.087,
-    "runs": 14,
-    "seconds": 1.304,
+    "runs": 15,
+    "seconds": 1.389,
     "skips": 0
   },
   "tests/test_session_lifecycle_lock.py::test_get_current_session_concurrent_with_acquire_exclusive_session_never_double_creates": {
@@ -15234,10 +15294,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.088,
-    "runs": 14,
-    "seconds": 1.22,
+    "runs": 15,
+    "seconds": 1.303,
     "skips": 0
   },
   "tests/test_session_manager.py::test_a_manual_new_session_supersedes_a_still_open_one_and_touch_refreshes_the_end_state": {
@@ -15245,10 +15305,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.028,
-    "runs": 14,
-    "seconds": 0.485,
+    "runs": 15,
+    "seconds": 0.512,
     "skips": 0
   },
   "tests/test_session_manager.py::test_a_new_session_is_created_once_the_current_one_has_gone_idle": {
@@ -15256,10 +15316,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.028,
-    "runs": 14,
-    "seconds": 0.746,
+    "runs": 15,
+    "seconds": 0.775,
     "skips": 0
   },
   "tests/test_session_manager.py::test_a_new_session_is_created_when_none_exists_stamped_with_the_current_channel": {
@@ -15267,10 +15327,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.028,
-    "runs": 14,
-    "seconds": 0.477,
+    "runs": 15,
+    "seconds": 0.504,
     "skips": 0
   },
   "tests/test_session_manager.py::test_an_open_session_is_reused_with_its_end_state_refreshed_never_trusting_the_callers_session_id": {
@@ -15278,10 +15338,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.032,
-    "runs": 14,
-    "seconds": 0.566,
+    "runs": 15,
+    "seconds": 0.597,
     "skips": 0
   },
   "tests/test_session_manager.py::test_close_session_deletes_its_own_source_read_cache_but_nothing_else": {
@@ -15289,10 +15349,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.031,
-    "runs": 14,
-    "seconds": 0.495,
+    "runs": 15,
+    "seconds": 0.524,
     "skips": 0
   },
   "tests/test_session_manager.py::test_closing_a_session_makes_it_neither_open_nor_active_nor_writable_idempotently_and_without_touching_its_end": {
@@ -15300,10 +15360,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.031,
-    "runs": 14,
-    "seconds": 0.527,
+    "runs": 15,
+    "seconds": 0.558,
     "skips": 0
   },
   "tests/test_session_manager.py::test_has_open_sessions_for_revision_counts_only_live_sessions_still_within_the_window": {
@@ -15311,10 +15371,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.03,
-    "runs": 14,
-    "seconds": 0.487,
+    "runs": 15,
+    "seconds": 0.514,
     "skips": 0
   },
   "tests/test_session_manager.py::test_is_open_never_crashes_without_a_datetime_end_expires_test_sessions_after_five_minutes_and_is_false_for_imported": {
@@ -15322,10 +15382,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.023,
-    "runs": 14,
-    "seconds": 0.376,
+    "runs": 15,
+    "seconds": 0.397,
     "skips": 0
   },
   "tests/test_session_manager.py::test_open_window_defaults_to_60_minutes_and_is_configurable": {
@@ -15333,10 +15393,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.024,
-    "runs": 14,
-    "seconds": 0.414,
+    "runs": 15,
+    "seconds": 0.439,
     "skips": 0
   },
   "tests/test_session_manager.py::test_require_active_session_accepts_and_touches_the_open_session_and_rejects_every_other": {
@@ -15344,10 +15404,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.036,
-    "runs": 14,
-    "seconds": 0.569,
+    "runs": 15,
+    "seconds": 0.61,
     "skips": 0
   },
   "tests/test_session_manager.py::test_require_active_session_rejects_an_idle_session_without_rotating_it": {
@@ -15355,10 +15415,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.031,
-    "runs": 14,
-    "seconds": 0.419,
+    "runs": 15,
+    "seconds": 0.447,
     "skips": 0
   },
   "tests/test_session_manager.py::test_the_active_session_is_the_most_recently_started_open_one_and_a_superseded_one_is_read_only": {
@@ -15366,40 +15426,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.034,
-    "runs": 14,
-    "seconds": 0.517,
-    "skips": 0
-  },
-  "tests/test_session_opens_once.py::test_reading_the_history_opens_nothing": {
-    "failures": 0,
-    "first_run": "2026-09-13T06:26:14+00:00",
-    "last_failed": null,
-    "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
-    "runs": 11,
-    "seconds": 2.192,
-    "skips": 0
-  },
-  "tests/test_session_opens_once.py::test_reading_the_transcript_while_it_opens_still_sees_one_message": {
-    "failures": 3,
-    "first_run": "2026-09-12T15:10:34+00:00",
-    "last_failed": "2026-09-12T15:17:08+00:00",
-    "last_outcome": "failed",
-    "last_run": "2026-09-12T15:17:08+00:00",
-    "runs": 6,
-    "seconds": 1.119,
-    "skips": 0
-  },
-  "tests/test_session_opens_once.py::test_two_callers_opening_at_once_produce_one_message": {
-    "failures": 1,
-    "first_run": "2026-09-12T15:10:34+00:00",
-    "last_failed": "2026-09-12T15:10:44+00:00",
-    "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
-    "runs": 17,
-    "seconds": 4.762,
+    "runs": 15,
+    "seconds": 0.548,
     "skips": 0
   },
   "tests/test_signal_attachments_reach_the_turn.py::test_a_state_that_triggers_from_no_signal_sends_no_signal_attachments": {
@@ -15781,10 +15811,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.031,
-    "runs": 14,
-    "seconds": 0.649,
+    "runs": 15,
+    "seconds": 0.677,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::TestPerSessionReadCache::test_different_sessions_get_independent_cache_copies_and_select_matches_through_them": {
@@ -15792,10 +15822,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.03,
-    "runs": 14,
-    "seconds": 0.461,
+    "runs": 15,
+    "seconds": 0.486,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_create_delete_and_read_do_not_exist_and_update_is_unsupported_on_the_archive_driver": {
@@ -16385,10 +16415,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.035,
-    "runs": 15,
-    "seconds": 0.645,
+    "runs": 16,
+    "seconds": 0.673,
     "skips": 0
   },
   "tests/test_tracking_engine_freeze.py::test_freezing_one_test_session_never_affects_another": {
@@ -16396,10 +16426,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.034,
-    "runs": 15,
-    "seconds": 0.612,
+    "runs": 16,
+    "seconds": 0.643,
     "skips": 0
   },
   "tests/test_tracking_engine_freeze.py::test_signals_are_still_computed_and_logged_while_frozen": {
@@ -16550,10 +16580,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.033,
-    "runs": 15,
-    "seconds": 0.546,
+    "runs": 16,
+    "seconds": 0.572,
     "skips": 0
   },
   "tests/test_tracking_processor_signals_gate.py::test_the_same_env_only_trigger_fires_on_the_first_real_user_message": {
@@ -16649,10 +16679,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.001,
-    "runs": 14,
-    "seconds": 0.016,
+    "runs": 15,
+    "seconds": 0.017,
     "skips": 0
   },
   "tests/test_trigger_type_violations.py::test_a_string_typed_identifier_ordered_against_a_number_is_flagged_once_per_offending_leg[string-vs-number]": {
@@ -16748,10 +16778,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.001,
-    "runs": 14,
-    "seconds": 0.02,
+    "runs": 15,
+    "seconds": 0.021,
     "skips": 0
   },
   "tests/test_trigger_type_violations.py::test_no_violation_for_comparable_types_equality_or_operands_that_are_not_statically_typeable[session-metric]": {
@@ -16759,10 +16789,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.001,
-    "runs": 14,
-    "seconds": 0.018,
+    "runs": 15,
+    "seconds": 0.019,
     "skips": 0
   },
   "tests/test_trigger_type_violations.py::test_no_violation_for_comparable_types_equality_or_operands_that_are_not_statically_typeable[signal-vs-number]": {
@@ -17078,10 +17108,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.024,
-    "runs": 18,
-    "seconds": 0.713,
+    "runs": 19,
+    "seconds": 0.736,
     "skips": 0
   },
   "tests/test_turn_service_buttons.py::test_live_session_always_excludes_triggered_actions": {
@@ -17089,10 +17119,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.025,
-    "runs": 18,
-    "seconds": 0.677,
+    "runs": 19,
+    "seconds": 0.701,
     "skips": 0
   },
   "tests/test_turn_service_buttons.py::test_test_session_excludes_triggered_actions_while_auto_tracking_is_on": {
@@ -17100,10 +17130,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.031,
-    "runs": 18,
-    "seconds": 0.691,
+    "runs": 19,
+    "seconds": 0.714,
     "skips": 0
   },
   "tests/test_turn_service_buttons.py::test_test_session_includes_triggered_actions_once_auto_tracking_is_off": {
@@ -17111,10 +17141,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.026,
-    "runs": 18,
-    "seconds": 0.632,
+    "runs": 19,
+    "seconds": 0.658,
     "skips": 0
   },
   "tests/test_turn_service_declared_env_defaults.py::test_a_chain_of_three_resolves_in_declaration_order": {
@@ -17122,10 +17152,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.06,
-    "runs": 14,
-    "seconds": 1.196,
+    "runs": 16,
+    "seconds": 1.295,
     "skips": 0
   },
   "tests/test_turn_service_declared_env_defaults.py::test_a_key_present_only_in_memory_is_not_already_set_the_default_still_applies": {
@@ -17133,10 +17163,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.053,
-    "runs": 14,
-    "seconds": 0.89,
+    "runs": 16,
+    "seconds": 0.982,
     "skips": 0
   },
   "tests/test_turn_service_declared_env_defaults.py::test_a_key_that_already_has_a_value_is_never_recomputed": {
@@ -17144,10 +17174,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.05,
-    "runs": 14,
-    "seconds": 0.94,
+    "runs": 16,
+    "seconds": 1.02,
     "skips": 0
   },
   "tests/test_turn_service_declared_env_defaults.py::test_a_later_keys_default_sees_an_earlier_keys_freshly_applied_value": {
@@ -17155,10 +17185,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.062,
-    "runs": 14,
-    "seconds": 0.989,
+    "runs": 16,
+    "seconds": 1.084,
     "skips": 0
   },
   "tests/test_turn_service_env_scoped_to_session.py::test_a_supervisor_opening_someone_elses_session_touches_that_users_env": {
@@ -17166,10 +17196,20 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.051,
-    "runs": 14,
-    "seconds": 1.086,
+    "runs": 16,
+    "seconds": 1.179,
+    "skips": 0
+  },
+  "tests/test_turn_service_env_scoped_to_session.py::test_another_projects_defaults_are_written_once_however_often_it_is_opened": {
+    "failures": 0,
+    "first_run": "2026-09-13T09:08:23+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-13T09:08:23+00:00",
+    "runs": 1,
+    "seconds": 0.102,
     "skips": 0
   },
   "tests/test_turn_service_env_scoped_to_session.py::test_opening_another_projects_session_writes_that_projects_env_not_the_active_ones": {
@@ -17177,10 +17217,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.106,
-    "runs": 14,
-    "seconds": 2.336,
+    "runs": 16,
+    "seconds": 2.539,
     "skips": 0
   },
   "tests/test_turn_service_env_scoped_to_session.py::test_reopening_another_projects_session_is_a_no_op_once_its_defaults_are_set": {
@@ -17188,10 +17228,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:06:55+00:00",
     "last_seconds": 0.077,
-    "runs": 14,
-    "seconds": 1.628,
+    "runs": 15,
+    "seconds": 1.737,
     "skips": 0
   },
   "tests/test_turn_service_evaluation_points.py::test_ai_message_evaluation_is_linked_to_the_assistant_message": {
@@ -17199,10 +17239,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.047,
-    "runs": 18,
-    "seconds": 1.404,
+    "runs": 20,
+    "seconds": 1.518,
     "skips": 0
   },
   "tests/test_turn_service_evaluation_points.py::test_message_linking_end_to_end_bootstrap_and_one_real_turn": {
@@ -17210,10 +17250,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-13T08:02:22+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.061,
-    "runs": 18,
-    "seconds": 1.517,
+    "runs": 20,
+    "seconds": 1.643,
     "skips": 0
   },
   "tests/test_turn_service_evaluation_points.py::test_opening_message_never_evaluates_signals_in_before_mode": {
@@ -17221,10 +17261,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-13T08:00:31+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.045,
-    "runs": 18,
-    "seconds": 1.111,
+    "runs": 20,
+    "seconds": 1.189,
     "skips": 0
   },
   "tests/test_turn_service_evaluation_points.py::test_process_turn_touches_the_session_with_the_plain_state_key_not_the_payload": {
@@ -17232,10 +17272,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.046,
-    "runs": 18,
-    "seconds": 1.446,
+    "runs": 20,
+    "seconds": 1.615,
     "skips": 0
   },
   "tests/test_turn_service_evaluation_points.py::test_set_message_expected_signals_on_a_real_evaluation_point": {
@@ -17243,10 +17283,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.052,
-    "runs": 18,
-    "seconds": 1.692,
+    "runs": 20,
+    "seconds": 1.823,
     "skips": 0
   },
   "tests/test_turn_service_evaluation_points.py::test_set_message_expected_signals_rejects_an_out_of_range_value": {
@@ -17254,10 +17294,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.048,
-    "runs": 18,
-    "seconds": 1.357,
+    "runs": 20,
+    "seconds": 1.489,
     "skips": 0
   },
   "tests/test_turn_service_evaluation_points.py::test_set_message_expected_signals_rejects_an_unknown_signal_name": {
@@ -17265,10 +17305,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.052,
-    "runs": 18,
-    "seconds": 1.369,
+    "runs": 20,
+    "seconds": 1.488,
     "skips": 0
   },
   "tests/test_turn_service_evaluation_points.py::test_set_message_expected_state_on_a_real_evaluation_point": {
@@ -17276,10 +17316,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.058,
-    "runs": 18,
-    "seconds": 1.398,
+    "runs": 20,
+    "seconds": 1.528,
     "skips": 0
   },
   "tests/test_turn_service_evaluation_points.py::test_set_message_expected_state_rejects_a_non_evaluation_point_message": {
@@ -17287,10 +17327,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.054,
-    "runs": 18,
-    "seconds": 1.347,
+    "runs": 20,
+    "seconds": 1.473,
     "skips": 0
   },
   "tests/test_turn_service_evaluation_points.py::test_set_message_expected_state_rejects_an_unknown_state": {
@@ -17298,10 +17338,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.048,
-    "runs": 18,
-    "seconds": 1.224,
+    "runs": 20,
+    "seconds": 1.351,
     "skips": 0
   },
   "tests/test_turn_service_evaluation_points.py::test_transition_from_optimistic_guess_links_the_causing_user_message": {
@@ -17309,10 +17349,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.051,
-    "runs": 18,
-    "seconds": 1.372,
+    "runs": 20,
+    "seconds": 1.509,
     "skips": 0
   },
   "tests/test_turn_service_evaluation_points.py::test_user_message_autotracking_makes_a_single_ai_call_when_the_optimistic_guess_is_right": {
@@ -17320,10 +17360,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.044,
-    "runs": 18,
-    "seconds": 1.184,
+    "runs": 20,
+    "seconds": 1.303,
     "skips": 0
   },
   "tests/test_turn_service_manual_action_env.py::test_a_manually_fired_actions_env_is_persisted": {
@@ -17331,10 +17371,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.049,
-    "runs": 14,
-    "seconds": 0.994,
+    "runs": 15,
+    "seconds": 1.039,
     "skips": 0
   },
   "tests/test_turn_service_manual_action_env.py::test_an_action_with_no_env_field_never_touches_env": {
@@ -17342,10 +17382,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.045,
-    "runs": 14,
-    "seconds": 0.973,
+    "runs": 15,
+    "seconds": 1.015,
     "skips": 0
   },
   "tests/test_turn_service_manual_action_env.py::test_an_unexported_env_key_never_reaches_the_prompt": {
@@ -17353,10 +17393,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.051,
-    "runs": 14,
-    "seconds": 0.934,
+    "runs": 15,
+    "seconds": 0.981,
     "skips": 0
   },
   "tests/test_turn_service_manual_action_env.py::test_env_update_happens_before_the_transitions_own_prompt_is_built": {
@@ -17364,10 +17404,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.044,
-    "runs": 14,
-    "seconds": 0.952,
+    "runs": 15,
+    "seconds": 0.995,
     "skips": 0
   },
   "tests/test_turn_service_manual_action_env.py::test_manual_actions_env_can_self_reference_a_previously_stored_value": {
@@ -17375,10 +17415,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.034,
-    "runs": 14,
-    "seconds": 0.724,
+    "runs": 15,
+    "seconds": 0.755,
     "skips": 0
   },
   "tests/test_turn_service_orphan_env_cleanup.py::test_a_new_live_sessions_bootstrap_drops_a_key_its_own_revision_no_longer_declares": {
@@ -17386,10 +17426,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.063,
-    "runs": 14,
-    "seconds": 1.378,
+    "runs": 16,
+    "seconds": 1.518,
     "skips": 0
   },
   "tests/test_turn_service_orphan_env_cleanup.py::test_no_cleanup_write_when_nothing_is_orphaned": {
@@ -17397,10 +17437,20 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.063,
-    "runs": 14,
-    "seconds": 1.228,
+    "runs": 16,
+    "seconds": 1.351,
+    "skips": 0
+  },
+  "tests/test_turn_service_orphan_env_cleanup.py::test_the_cleanup_only_writes_once_however_often_it_is_opened": {
+    "failures": 0,
+    "first_run": "2026-09-13T09:07:20+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-13T09:08:23+00:00",
+    "runs": 2,
+    "seconds": 0.214,
     "skips": 0
   },
   "tests/test_turn_service_orphan_env_cleanup.py::test_the_cleanup_only_writes_once_not_on_every_later_open": {
@@ -17419,10 +17469,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.027,
-    "runs": 14,
-    "seconds": 0.544,
+    "runs": 15,
+    "seconds": 0.571,
     "skips": 0
   },
   "tests/test_turn_service_prepare_user_initiated_turn.py::test_still_applies_declared_env_defaults": {
@@ -17430,10 +17480,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.036,
-    "runs": 14,
-    "seconds": 0.679,
+    "runs": 15,
+    "seconds": 0.711,
     "skips": 0
   },
   "tests/test_turn_service_prepare_user_initiated_turn.py::test_still_generates_the_wrap_up_message_for_a_chat_blocked_state": {
@@ -17441,10 +17491,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.043,
-    "runs": 14,
-    "seconds": 0.768,
+    "runs": 15,
+    "seconds": 0.815,
     "skips": 0
   },
   "tests/test_turn_service_project_health.py::test_a_healthy_session_on_an_available_project_is_unaffected": {
@@ -17452,10 +17502,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.026,
-    "runs": 16,
-    "seconds": 0.637,
+    "runs": 17,
+    "seconds": 0.663,
     "skips": 0
   },
   "tests/test_turn_service_project_health.py::test_apply_manual_action_rejects_on_a_now_paused_project": {
@@ -17463,10 +17513,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.028,
-    "runs": 16,
-    "seconds": 0.584,
+    "runs": 17,
+    "seconds": 0.611,
     "skips": 0
   },
   "tests/test_turn_service_project_health.py::test_get_state_for_session_reports_an_unsupported_pinned_revision": {
@@ -17474,10 +17524,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.027,
-    "runs": 16,
-    "seconds": 0.644,
+    "runs": 17,
+    "seconds": 0.672,
     "skips": 0
   },
   "tests/test_turn_service_project_health.py::test_process_turn_rejects_a_turn_on_a_now_paused_project": {
@@ -17485,10 +17535,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.027,
-    "runs": 16,
-    "seconds": 0.628,
+    "runs": 17,
+    "seconds": 0.652,
     "skips": 0
   },
   "tests/test_turn_service_sessions.py::test_delete_session_raises_for_someone_elses_session": {
@@ -17496,10 +17546,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.025,
-    "runs": 16,
-    "seconds": 0.544,
+    "runs": 17,
+    "seconds": 0.567,
     "skips": 0
   },
   "tests/test_turn_service_sessions.py::test_delete_session_raises_for_unknown_session": {
@@ -17507,10 +17557,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.019,
-    "runs": 16,
-    "seconds": 0.383,
+    "runs": 17,
+    "seconds": 0.401,
     "skips": 0
   },
   "tests/test_turn_service_sessions.py::test_get_messages_raises_for_a_deleted_session": {
@@ -17518,10 +17568,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-13T08:00:31+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.023,
-    "runs": 16,
-    "seconds": 0.553,
+    "runs": 17,
+    "seconds": 0.577,
     "skips": 0
   },
   "tests/test_turn_service_sessions.py::test_get_messages_raises_for_someone_elses_session": {
@@ -17529,10 +17579,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-13T08:00:31+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.025,
-    "runs": 16,
-    "seconds": 0.533,
+    "runs": 17,
+    "seconds": 0.556,
     "skips": 0
   },
   "tests/test_turn_service_sessions.py::test_get_messages_raises_for_unknown_session": {
@@ -17540,10 +17590,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": "2026-09-13T08:00:48+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.019,
-    "runs": 17,
-    "seconds": 0.596,
+    "runs": 18,
+    "seconds": 0.617,
     "skips": 0
   },
   "tests/test_turn_service_user_initiated_turn.py::test_a_chat_blocked_state_reports_the_wrap_up_the_turn_itself_never_will": {
@@ -17551,10 +17601,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.069,
-    "runs": 16,
-    "seconds": 1.422,
+    "runs": 17,
+    "seconds": 1.477,
     "skips": 0
   },
   "tests/test_turn_service_user_initiated_turn.py::test_an_ordinary_state_prepares_nothing_at_all": {
@@ -17562,10 +17612,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.043,
-    "runs": 16,
-    "seconds": 0.971,
+    "runs": 17,
+    "seconds": 1.014,
     "skips": 0
   },
   "tests/test_turn_service_user_initiated_turn.py::test_the_prepared_message_was_written_before_the_turn_s_own": {
@@ -17573,10 +17623,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.063,
-    "runs": 16,
-    "seconds": 1.317,
+    "runs": 17,
+    "seconds": 1.37,
     "skips": 0
   },
   "tests/test_turn_service_user_initiated_turn.py::test_the_turn_alone_reports_only_half_of_it": {
@@ -17584,10 +17634,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.058,
-    "runs": 16,
-    "seconds": 1.413,
+    "runs": 17,
+    "seconds": 1.47,
     "skips": 0
   },
   "tests/test_turn_strategy_compute_explicitly.py::test_v2_generate_reply_also_reports_audio_and_memory_under_their_own_keys": {
@@ -17650,10 +17700,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.017,
-    "runs": 14,
-    "seconds": 0.451,
+    "runs": 15,
+    "seconds": 0.468,
     "skips": 0
   },
   "tests/test_user_facts.py::test_reflects_role_and_active_project_changes": {
@@ -17726,10 +17776,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.236,
-    "runs": 17,
-    "seconds": 4.78,
+    "runs": 18,
+    "seconds": 5.013,
     "skips": 0
   },
   "tests/test_wakeup_service.py::test_publishing_state_changed_wakes_up_every_observer_that_has_a_session": {
@@ -17737,10 +17787,10 @@
     "first_run": "2026-09-11T18:47:32+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-13T08:49:47+00:00",
+    "last_run": "2026-09-13T09:08:23+00:00",
     "last_seconds": 0.165,
-    "runs": 17,
-    "seconds": 3.458,
+    "runs": 18,
+    "seconds": 3.606,
     "skips": 0
   },
   "tests/test_wakeup_service.py::test_reevaluating_fires_the_self_loop_only_once_the_observed_state_actually_matches": {

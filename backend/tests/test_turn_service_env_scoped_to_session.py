@@ -97,7 +97,7 @@ async def test_opening_another_projects_session_writes_that_projects_env_not_the
     project_service, turn_service = two_projects
     # The active project's own session, bootstrapped the normal way.
     active_session = await turn_service.get_current_session_if_any_or_create_new(None)
-    await turn_service.open_if_needed(active_session["id"])
+    await turn_service.open_conversation(active_session["id"])
     assert _env(db, ACTIVE_PROJECT).action_set() == {"active_key": "active-default"}
 
     # A session of the *other* project (still ACTIVE_PROJECT active) —
@@ -105,20 +105,20 @@ async def test_opening_another_projects_session_writes_that_projects_env_not_the
     other_session_id = turn_service._session_manager.create_session(
         get_session_type_strategy("live"), project_service, USERNAME, OTHER_PROJECT
     )["id"]
-    await turn_service.open_if_needed(other_session_id)
+    await turn_service.open_conversation(other_session_id)
 
     assert _env(db, OTHER_PROJECT).action_set() == {"other_key": "other-default"}
     assert _env(db, ACTIVE_PROJECT).action_set() == {"active_key": "active-default"}
 
 
-async def test_reopening_another_projects_session_is_a_no_op_once_its_defaults_are_set(db, two_projects):
+async def test_another_projects_defaults_are_written_once_however_often_it_is_opened(db, two_projects):
     project_service, turn_service = two_projects
     other_session_id = turn_service._session_manager.create_session(
         get_session_type_strategy("live"), project_service, USERNAME, OTHER_PROJECT
     )["id"]
 
     for _ in range(3):
-        await turn_service.open_if_needed(other_session_id)
+        await turn_service.open_conversation(other_session_id)
 
     assert _env(db, OTHER_PROJECT).action_set() == {"other_key": "other-default"}
     assert db.get_action_env(ACTIVE_PROJECT, USERNAME) == {}
@@ -138,7 +138,7 @@ async def test_a_supervisor_opening_someone_elses_session_touches_that_users_env
     )["id"]
 
     # Default fixture identity is "user" with role supervisor. Only the
-    # bootstrap half of open_if_needed: the opening-message half is a
+    # bootstrap half of open_conversation: the opening-message half is a
     # real turn, which a supervisor rightly can't run on alice's session.
     assert WebSession().user == USERNAME
     await turn_service._ensure_project_bootstrap(alice_session_id)

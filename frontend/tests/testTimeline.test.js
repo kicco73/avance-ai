@@ -359,7 +359,7 @@ describe('buildTimeline', () => {
   // Regression test: reported against "Aprendr català" — the init
   // transition ("" -> welcome) is linked to the welcome state's own
   // *opening* bubble (it's the effect of entering that state, not its
-  // cause — see open_if_needed's own docstring), so it shares that
+  // cause — see TurnService.open_conversation), so it shares that
   // message's effective timestamp. The general "message reads first"
   // tie-break is right for an ordinary transition (whose linked message
   // *caused* it) but backwards here.

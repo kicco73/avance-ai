@@ -455,7 +455,7 @@ class TurnService(object):
 		"""HumanOperatorChatView.vue's own state read: every action is
 		manually triggerable while an operator is attached — nothing
 		auto-fires from a customer's own message any more (see
-		_should_generate_opening_message) — regardless of this session's
+		_state_speaks_unprompted) — regardless of this session's
 		own, unrelated is_auto_tracking_enabled flag (a test/dev-mode
 		toggle that never applies to a live session anyway). The
 		customer's own get_state_for_session is untouched: this is a
@@ -734,23 +734,20 @@ class TurnService(object):
 
 		return automaton, state
 
-	async def open_if_needed(self, session_id: int, on_metadata: OnMetadata | None = None) -> dict | None:
-		"""What the automaton has to say before anybody says anything, if
-		this state has anything to open with and nothing has been said yet.
-		Returns the turn it ran, so a caller that is reporting an exchange
-		can report this one too.
+	async def open_conversation(self, session_id: int, on_metadata: OnMetadata | None = None) -> dict | None:
+		"""What the automaton has to say before anybody says anything,
+		said as an ordinary turn. Returns it, so a caller that is
+		reporting an exchange can report this one too.
 
-		Asking and doing are one step, under a lock of their own: two
-		connections entering the same conversation in the same instant
-		each ask for it, and without the lock both find nothing said yet
-		and the session begins by saying the same thing twice. The lock
-		is not the turn's own (the turn takes that one itself, further
-		down): this one only guards the decision."""
-		async with self._session_locks.get(f"open/{session_id}"):
-			automaton, state = await self._ensure_project_bootstrap(session_id)
-			if automaton is None:
-				return None
-			return await self._generate_opening_message_if_needed(session_id, automaton, state, on_metadata)
+		Asked for, never worked out here: whoever asks has just read the
+		transcript and found nothing in it (see webchat/conversation_opener.py),
+		and a conversation that has already spoken never reaches this.
+		None for an imported session, which has no automaton to speak
+		for it."""
+		automaton, _ = await self._ensure_project_bootstrap(session_id)
+		for _ in filter(None, [automaton is None]):
+			return None
+		return await self.process_turn(session_id, on_metadata=on_metadata)
 
 	async def prepare_user_initiated_turn(self, session_id: int) -> list[dict]:
 		"""The project bootstrap a user-initiated turn needs, plus the
@@ -768,10 +765,12 @@ class TurnService(object):
 			return []
 		if not (state.final or not state.chat_enabled):
 			return []
-		result = await self._generate_opening_message_if_needed(session_id, automaton, state)
-		return list(result["reply"]) if result is not None else []
+		if not self._state_speaks_unprompted(session_id, state):
+			return []
+		result = await self.process_turn(session_id)
+		return list(result["reply"])
 
-	def _should_generate_opening_message(self, session_id: int, state: State) -> bool:
+	def _state_speaks_unprompted(self, session_id: int, state: State) -> bool:
 		# A session with an operator (see TaskNamespaceFactory.
 		# get_human_operator) never auto-generates anything — every
 		# message either side sees while in human mode is one a person
@@ -783,21 +782,10 @@ class TurnService(object):
 		gate_since = self._db.get_last_transition_timestamp_for_session(session_id) if chat_blocked else content_since
 		return not self._db.has_messages_since(session_id, gate_since)
 
-	async def _generate_opening_message_if_needed(
-		self, session_id: int, automaton: Automaton, state: State, on_metadata: OnMetadata | None = None,
-	) -> dict | None:
-		if not self._should_generate_opening_message(session_id, state):
-			return None
-
-		return await self._generate_opening_message_body(session_id, on_metadata)
-
-	async def _generate_opening_message_body(self, session_id: int, on_metadata: OnMetadata | None = None) -> dict:
-		return await self.process_turn(session_id, on_metadata=on_metadata)
-
 	async def _messages_for_transition(
 		self, session_id: int, new_state: State, *, is_self_loop: bool, on_metadata: OnMetadata | None = None,
 	) -> tuple[list[dict], dict | None]:
-		should_open = not is_self_loop and self._should_generate_opening_message(session_id, new_state)
+		should_open = not is_self_loop and self._state_speaks_unprompted(session_id, new_state)
 		if not should_open:
 			return [], None
 		turn_result = await self._process_turn_body(session_id, on_metadata=on_metadata)

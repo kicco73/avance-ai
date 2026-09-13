@@ -98,7 +98,7 @@ async def test_a_later_keys_default_sees_an_earlier_keys_freshly_applied_value(d
     turn_service = _turn_service(db, _automaton({"a": "2", "b": "env.a + 1"}))
     session = await turn_service.get_current_session_if_any_or_create_new(None)
 
-    await turn_service.open_if_needed(session["id"])
+    await turn_service.open_conversation(session["id"])
 
     assert _env_for(db).action_set() == {"a": 2, "b": 3}
 
@@ -109,7 +109,7 @@ async def test_a_chain_of_three_resolves_in_declaration_order(db):
     )
     session = await turn_service.get_current_session_if_any_or_create_new(None)
 
-    await turn_service.open_if_needed(session["id"])
+    await turn_service.open_conversation(session["id"])
 
     assert _env_for(db).action_set() == {"first": 1, "second": 2, "third": 3}
 
@@ -119,7 +119,7 @@ async def test_a_key_that_already_has_a_value_is_never_recomputed(db):
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     _env_for(db, session["id"]).update_action_set({"a": 99})
 
-    await turn_service.open_if_needed(session["id"])
+    await turn_service.open_conversation(session["id"])
 
     assert _env_for(db).action_set() == {"a": 99}
 
@@ -132,6 +132,6 @@ async def test_a_key_present_only_in_memory_is_not_already_set_the_default_still
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     _env_for(db, session["id"]).update({"a": "stale note"})
 
-    await turn_service.open_if_needed(session["id"])
+    await turn_service.open_conversation(session["id"])
 
     assert _env_for(db).action_set() == {"a": 2}

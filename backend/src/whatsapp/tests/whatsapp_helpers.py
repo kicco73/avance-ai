@@ -179,11 +179,10 @@ class _FakeChatService:
         self.accepted_terms_for.append(project_name)
         self.session_payload = self.resolved_session_payload
 
-    async def open_if_needed(self, session_id, on_metadata=None):
-        """Opening is something a channel asks for, like the real one:
-        reading the transcript does not do it for anybody any more (see
-        TurnService.read_history)."""
-        if self.opening_message and not self.db.get_messages(session_id):
+    async def open_conversation(self, session_id, on_metadata=None):
+        """Speaks whenever it is asked to, like the real one: whether a
+        conversation needs opening is the caller's to know."""
+        if self.opening_message:
             self.db.add(session_id, "assistant", self.opening_message)
         return None
 

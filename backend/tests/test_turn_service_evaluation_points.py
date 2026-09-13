@@ -135,9 +135,9 @@ def turn_service_for(db):
     return make
 
 
-async def _bootstrap_session(turn_service: TurnService) -> int:
+async def _opened_session(turn_service: TurnService) -> int:
     session = await turn_service.get_current_session_if_any_or_create_new(None)
-    await turn_service.open_if_needed(session["id"])
+    await turn_service.open_conversation(session["id"])
     return session["id"]
 
 
@@ -148,7 +148,7 @@ async def test_transition_from_optimistic_guess_links_the_causing_user_message(d
     # wrong and a second, regenerated reply (against state "b") is used.
     ai_service = FakeSchemaAiService([{"signals": '{"foo": 1}'}, {"signals": '{"foo": 1}'}])
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
-    session_id = await _bootstrap_session(turn_service)
+    session_id = await _opened_session(turn_service)
     ai_service.call_count = 0  # bootstrap's own init-action opening message doesn't count
 
     result = await turn_service.process_turn(session_id, "hello")
@@ -171,7 +171,7 @@ async def test_user_message_autotracking_makes_a_single_ai_call_when_the_optimis
     # own context) is simply used as-is — no second, wasted call.
     ai_service = FakeSchemaAiService([{"signals": '{"foo": -1}'}])
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
-    session_id = await _bootstrap_session(turn_service)
+    session_id = await _opened_session(turn_service)
     ai_service.call_count = 0  # bootstrap's own init-action opening message doesn't count
 
     result = await turn_service.process_turn(session_id, "hello")
@@ -190,7 +190,7 @@ async def test_user_message_autotracking_makes_a_single_ai_call_when_the_optimis
 @pytest.mark.regression
 async def test_ai_message_evaluation_is_linked_to_the_assistant_message(db, turn_service_for):
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True))
-    session_id = await _bootstrap_session(turn_service)
+    session_id = await _opened_session(turn_service)
 
     result = await turn_service.process_turn(session_id, "hello")
 
@@ -205,7 +205,7 @@ async def test_ai_message_evaluation_is_linked_to_the_assistant_message(db, turn
 @pytest.mark.regression
 async def test_set_message_expected_state_on_a_real_evaluation_point(db, turn_service_for):
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True))
-    session_id = await _bootstrap_session(turn_service)
+    session_id = await _opened_session(turn_service)
     result = await turn_service.process_turn(session_id, "hello")
     message_id = result["assistant_message_id"]
 
@@ -219,7 +219,7 @@ async def test_set_message_expected_state_on_a_real_evaluation_point(db, turn_se
 @pytest.mark.regression
 async def test_set_message_expected_state_rejects_an_unknown_state(db, turn_service_for):
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True))
-    session_id = await _bootstrap_session(turn_service)
+    session_id = await _opened_session(turn_service)
     result = await turn_service.process_turn(session_id, "hello")
     message_id = result["assistant_message_id"]
 
@@ -234,7 +234,7 @@ async def test_set_message_expected_state_rejects_a_non_evaluation_point_message
     # reports no signals whatsoever.
     ai_service = FakeSchemaAiService([{}])
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True), ai_service=ai_service)
-    session_id = await _bootstrap_session(turn_service)
+    session_id = await _opened_session(turn_service)
     result = await turn_service.process_turn(session_id, "hello")
     message_id = result["assistant_message_id"]
     assert db.get_signal_row_by_message(message_id) is None
@@ -246,7 +246,7 @@ async def test_set_message_expected_state_rejects_a_non_evaluation_point_message
 @pytest.mark.regression
 async def test_set_message_expected_signals_on_a_real_evaluation_point(db, turn_service_for):
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True))
-    session_id = await _bootstrap_session(turn_service)
+    session_id = await _opened_session(turn_service)
     result = await turn_service.process_turn(session_id, "hello")
     message_id = result["assistant_message_id"]
 
@@ -262,7 +262,7 @@ async def test_set_message_expected_signals_on_a_real_evaluation_point(db, turn_
 @pytest.mark.regression
 async def test_set_message_expected_signals_rejects_an_unknown_signal_name(db, turn_service_for):
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True))
-    session_id = await _bootstrap_session(turn_service)
+    session_id = await _opened_session(turn_service)
     result = await turn_service.process_turn(session_id, "hello")
     message_id = result["assistant_message_id"]
 
@@ -273,7 +273,7 @@ async def test_set_message_expected_signals_rejects_an_unknown_signal_name(db, t
 @pytest.mark.regression
 async def test_set_message_expected_signals_rejects_an_out_of_range_value(db, turn_service_for):
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True))
-    session_id = await _bootstrap_session(turn_service)
+    session_id = await _opened_session(turn_service)
     result = await turn_service.process_turn(session_id, "hello")
     message_id = result["assistant_message_id"]
 
@@ -292,9 +292,7 @@ async def test_opening_message_never_evaluates_signals_in_before_mode(db, turn_s
     # for, and this turn must never ask for it in the first place.
     ai_service = FakeSchemaAiService([{"signals": '{"foo": 1}'}])
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
-    session_id = await _bootstrap_session(turn_service)
-
-    await turn_service.open_if_needed(session_id)
+    session_id = await _opened_session(turn_service)
 
     assert db.get_current_state(PROJECT_ID) == "a", "opening message must not have fired a transition"
     messages = turn_service.read_history(session_id)
@@ -323,7 +321,7 @@ async def test_message_linking_end_to_end_bootstrap_and_one_real_turn(db, turn_s
         {"memory": "stage: crisis"},  # regenerated reply — signals never re-requested
     ])
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
-    session_id = await _bootstrap_session(turn_service)
+    session_id = await _opened_session(turn_service)
 
     messages = turn_service.read_history(session_id)
     assert len(messages) == 1
@@ -357,7 +355,7 @@ async def test_process_turn_touches_the_session_with_the_plain_state_key_not_the
     # passing the full StatePayload dict instead of its "key" silently
     # stores a Python repr there instead of the state key.
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True))
-    session_id = await _bootstrap_session(turn_service)
+    session_id = await _opened_session(turn_service)
 
     result = await turn_service.process_turn(session_id, "hello")
 

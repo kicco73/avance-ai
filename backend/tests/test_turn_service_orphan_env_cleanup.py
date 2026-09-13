@@ -73,12 +73,12 @@ async def test_a_new_live_sessions_bootstrap_drops_a_key_its_own_revision_no_lon
         get_session_type_strategy("live"), project_service, USERNAME, PROJECT_ID
     )["id"]
 
-    await turn_service.open_if_needed(new_session_id)
+    await turn_service.open_conversation(new_session_id)
 
     assert turn_service.get_env(new_session_id)["action_set"] == {"keep_key": 2}
 
 
-async def test_the_cleanup_only_writes_once_not_on_every_later_open(db):
+async def test_the_cleanup_only_writes_once_however_often_it_is_opened(db):
     _publish(db, ["old_key", "keep_key"])
     _seed_older_session_with_action_env(db, {"old_key": 1, "keep_key": 2})
     _publish(db, ["keep_key"])
@@ -89,7 +89,7 @@ async def test_the_cleanup_only_writes_once_not_on_every_later_open(db):
     )["id"]
 
     for _ in range(3):
-        await turn_service.open_if_needed(new_session_id)
+        await turn_service.open_conversation(new_session_id)
 
     action_env_rows = Tracking.select().where(Tracking.action_env.is_null(False)).count()
     assert action_env_rows == 2
@@ -104,7 +104,7 @@ async def test_no_cleanup_write_when_nothing_is_orphaned(db):
         get_session_type_strategy("live"), project_service, USERNAME, PROJECT_ID
     )["id"]
 
-    await turn_service.open_if_needed(new_session_id)
+    await turn_service.open_conversation(new_session_id)
 
     action_env_rows = Tracking.select().where(Tracking.action_env.is_null(False)).count()
     assert action_env_rows == 1

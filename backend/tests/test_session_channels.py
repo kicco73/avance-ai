@@ -314,10 +314,10 @@ async def test_apply_manual_action_matrix(db, channel, state_name):
 
 # -- End to end: takeover in both directions --------------------------------
 
-async def test_takeover_whatsapp_to_web_via_new_session_then_open_if_needed(db):
+async def test_takeover_whatsapp_to_web_via_new_session_then_open_conversation(db):
     """WhatsApp starts a session; the web calls "New session" while it's
     still open, taking it over — the fresh web session is genuinely new,
-    so open_if_needed's own AI bootstrap fires for it."""
+    so open_conversation's own AI bootstrap fires for it."""
     turn_service = _turn_service(db)
     WebSession().channel = "whatsapp"
     whatsapp_session = await turn_service.acquire_exclusive_session()
@@ -331,7 +331,7 @@ async def test_takeover_whatsapp_to_web_via_new_session_then_open_if_needed(db):
     assert closed["closed_at"] is not None
     assert closed["close_reason"] == "channel-switch"
 
-    await turn_service.open_if_needed(web_payload["id"])
+    await turn_service.open_conversation(web_payload["id"])
     assert db.get_messages(web_payload["id"]) != []
 
 

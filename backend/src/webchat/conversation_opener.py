@@ -35,17 +35,25 @@ class ConversationOpener:
     def __init__(self, turn_service: TurnService, db) -> None:
         self._turn_service = turn_service
         self._db = db
-        self._openings: set[asyncio.Task] = set()
+        #: The conversations being opened right now, by session. Holding
+        #: the task is what keeps it alive; which sessions are in here is
+        #: the same fact read the other way.
+        self._openings: dict[int, asyncio.Task] = {}
 
     def register(self) -> None:
         bus.subscribe(SESSION_OPENED, self._opened)
 
     async def _opened(self, message: Message) -> None:
+        """Once per conversation, however many people enter it at once:
+        two tabs are announced the same empty transcript in the same
+        instant and each is told the conversation has just opened. The
+        second finds it already speaking — what it would ask for is the
+        message being written."""
+        for _ in filter(None, [message.session_id in self._openings]):
+            return
         user = self._db.get_user_by_id(message.username)
         role = user["role"] if user is not None else _LEAST_PRIVILEGED
-        task = asyncio.create_task(self._speaking(message, role))
-        self._openings.add(task)
-        task.add_done_callback(self._openings.discard)
+        self._openings[message.session_id] = asyncio.create_task(self._speaking(message, role))
 
     async def _speaking(self, message: Message, role: str) -> None:
         """Its own task, like an answer: the announcement is already on
@@ -58,14 +66,14 @@ class ConversationOpener:
             finally:
                 outbound.close()
                 await drain
+                self._openings.pop(message.session_id, None)
 
     async def _open(self, message: Message, outbound: Outbound) -> None:
         """What the state has to say before anybody says anything, said
         as an ordinary message — to whoever is reading there is no
-        difference between a greeting and an answer. A conversation
-        already under way is owed nothing and this is silent."""
+        difference between a greeting and an answer."""
         try:
-            result = await self._turn_service.open_if_needed(message.session_id, outbound.on_metadata)
+            result = await self._turn_service.open_conversation(message.session_id, outbound.on_metadata)
         except ServiceError as exc:
             outbound.failed(exc, [])
             return

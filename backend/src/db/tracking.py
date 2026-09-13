@@ -59,7 +59,8 @@ class TrackingMixin:
         """The one Tracking row (old_state "") recording when `project_id`'s
         automaton first entered its initial state — project-wide and at most
         one per project, since the automaton's current state is shared
-        across every user, not tracked per-user (see open_if_needed)."""
+        across every user, not tracked per-user (see TurnService.
+        _ensure_project_bootstrap)."""
         row = (
             Tracking
             .select()
