@@ -1,8 +1,6 @@
 <script setup>
-// The real chat window (ChatView.vue, the very component the live and
-// Run chats are), fed a sample conversation instead of a session, so
-// a project's index.css "skin" is previewed against the DOM it will
-// actually meet — updated in place per keystroke.
+// Renders a real chat instance (not a mock) fed a static fake conversation, so a
+// project's index.css "skin" can be previewed live, updated in place per keystroke.
 //
 // The CSS goes into chatSkin.js's own single shared skin <style> element
 // (it holds it while visible, see holdSkin) rather than a separate tag of
@@ -32,7 +30,7 @@ const props = defineProps({
   projectId: { type: String, required: true }
 })
 
-const sampleStore = createSampleChatStore({ stateKey: toRef(props, 'stateKey') })
+const sampleStore = createSampleChatStore({ stateKey: toRef(props, 'stateKey'), appId: toRef(props, 'projectId') })
 
 const rootEl = ref(null)
 const visible = ref(false)

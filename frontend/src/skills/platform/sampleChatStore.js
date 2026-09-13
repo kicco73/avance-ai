@@ -1,4 +1,5 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { getAppPreviewTranscript } from './api.js'
 
 export const SAMPLE_MESSAGES = [
   { id: 'sample-1', messageId: 'sample-1', role: 'assistant', content: 'Hi! How can I help you today?', timestamp: new Date().toISOString() },
@@ -13,13 +14,42 @@ const SAMPLE_BUTTONS = [
 
 const noop = () => {}
 
-export function createSampleChatStore({ stateKey = ref(''), messages = ref(SAMPLE_MESSAGES) } = {}) {
+export function createSampleChatStore({ stateKey = ref(''), appId = ref(null) } = {}) {
+  const messages = ref(SAMPLE_MESSAGES)
+  const historyLoaded = ref(true)
+
+  async function loadTranscript() {
+    const asked = appId.value
+    if (!asked) {
+      messages.value = SAMPLE_MESSAGES
+      return
+    }
+    historyLoaded.value = false
+    try {
+      const res = await getAppPreviewTranscript(asked)
+      // Stale-response guard, the same one loadSkin has (see
+      // chatSkin.js): picking another app while this one's transcript is
+      // in flight left the late answer winning, and this card showing a
+      // conversation that belongs to an app nobody had selected.
+      if (appId.value !== asked) return
+      messages.value = res.messages?.length
+        ? res.messages.map((m) => ({ id: m.id, messageId: m.id, role: m.role, content: m.content, timestamp: m.timestamp }))
+        : SAMPLE_MESSAGES
+    } catch {
+      if (appId.value === asked) messages.value = SAMPLE_MESSAGES
+    } finally {
+      if (appId.value === asked) historyLoaded.value = true
+    }
+  }
+
+  watch(appId, loadTranscript, { immediate: true })
+
   return {
     sample: true,
     state: computed(() => ({ key: stateKey.value, chat_enabled: false, reactions: [] })),
     buttons: ref(SAMPLE_BUTTONS),
     messages,
-    historyLoaded: ref(true),
+    historyLoaded,
     chatLoading: ref(false),
     chatStatus: ref(''),
     actionLoading: ref(false),
