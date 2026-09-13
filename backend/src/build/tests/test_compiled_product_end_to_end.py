@@ -28,7 +28,7 @@ from project.archive.packages import package_dir
 from build.build_service import module_name_for
 from build.compiled_automaton_loader import CompiledAutomatonLoader
 
-from conftest import chat_turn
+from conftest import chat_turn, enter_chat, session_of
 
 
 @pytest.fixture
@@ -41,10 +41,8 @@ def _discard_package(app, tmp_path, project_id: str) -> None:
     shutil.rmtree(package_dir(tmp_path / "apps", module_name_for(project_id), revision))
 
 
-def _state_of(client: TestClient, session_id: int) -> dict:
-    response = client.get(f"/api/core/sessions/{session_id}/state")
-    assert response.status_code == 200, response.text
-    return response.json()
+def _state_of(frames: list[dict]) -> dict:
+    return next(frame for frame in frames if frame["type"] == "session.info")["state"]
 
 
 def _served_automaton(app, project_id: str):
@@ -58,13 +56,14 @@ def test_a_project_serves_interpreted_until_it_is_built_and_compiled_after(
 ):
     _discard_package(app, tmp_path, hello_project)
     assert type(_served_automaton(app, hello_project)).__name__ == "Automaton"
-    session_id = client.get("/api/skills/webchat/sessions/current").json()["id"]
+    session_id = session_of(enter_chat(client, hello_project))
     before = chat_turn(client, session_id, "hello")
     assert before["reply"][0]["content"]
     # Where the conversation is now, asked rather than read off the turn:
     # a turn says so only when it *moved* (see docs/BUS.md's own
     # state.changed), and this one stays put.
-    assert _state_of(client, session_id)["key"] == "Hello"
+    before_state = _state_of(enter_chat(client, hello_project))
+    assert before_state["key"] == "Hello"
 
     response = client.post(f"/api/skills/build/projects/{hello_project}/local-module")
     assert response.status_code == 200, response.text
@@ -74,10 +73,10 @@ def test_a_project_serves_interpreted_until_it_is_built_and_compiled_after(
     )
 
     assert isinstance(_served_automaton(app, hello_project), CompiledAutomaton)
-    after_session_id = client.get("/api/skills/webchat/sessions/current").json()["id"]
+    after_session_id = session_of(enter_chat(client, hello_project))
     after = chat_turn(client, after_session_id, "hello")
     assert after["reply"][0]["content"] == before["reply"][0]["content"]
-    assert _state_of(client, after_session_id) == _state_of(client, session_id), (
+    assert _state_of(enter_chat(client, hello_project)) == before_state, (
         "the same turn, the same answer, from a package"
     )
 

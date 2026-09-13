@@ -84,3 +84,16 @@ def test_get_turn_history_combines_since_and_budget_in_one_pass_treating_an_unkn
     answered = db.save_message("assistant", "no-tokens-reply", free, timestamp=start + timedelta(minutes=1))
     db.mark_messages_answered([asked], answered)
     assert [r["content"] for r in db.get_turn_history(free, None, 8000)] == ["no-tokens", "no-tokens-reply"]
+
+
+def test_save_message_normalises_a_roles_case_and_refuses_any_role_that_is_neither_user_nor_assistant(db):
+    session_id = _make_session(db)
+
+    normalised = db.save_message(" Assistant ", "hi", session_id)
+    assert db.get_message(normalised)["role"] == "assistant"
+
+    for bad in ("model", "bot", "system", "other-user", ""):
+        with pytest.raises(ValueError):
+            db.save_message(bad, "hi", session_id)
+
+    assert [m["role"] for m in db.get_messages(session_id)] == ["assistant"]

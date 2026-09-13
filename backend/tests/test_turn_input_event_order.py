@@ -63,10 +63,10 @@ class _FakeProvider:
 
 
 def _is_terminal(kinds: list[str]) -> bool:
-    """The answer is the `output.text` published after `ui.buttons` — an
+    """The answer is the `output.text` published after `state.buttons` — an
     earlier one is a message the state owed before it could answer. An
     `output.error` replaces the answer and ends the exchange too."""
-    return kinds[-1] == "output.error" or (kinds[-1] == "output.text" and "ui.buttons" in kinds)
+    return kinds[-1] == "output.error" or (kinds[-1] == "output.text" and "state.buttons" in kinds)
 
 
 class _Recorder:
@@ -94,7 +94,7 @@ async def _streamed_events(turn_service: TurnService, db, text: str) -> list[tup
     recorder = _Recorder()
     for message_type in (
         "output.text_stream", "output.text", "output.speech", "output.tool", "output.reaction",
-        "state.changed", "ui.buttons", "output.error",
+        "state.changed", "state.buttons", "output.error",
     ):
         bus.subscribe(message_type, recorder.take)
     TurnInput(turn_service, db).register()
@@ -139,7 +139,7 @@ async def test_with_declared_sources_every_chunk_of_the_replayed_final_round_pre
     assert kinds[1:3] == ["tool(start)", "tool(result)"]
     chunk_kinds = kinds[3:-2]
     assert chunk_kinds and set(chunk_kinds) == {"output.text_stream"}
-    assert kinds[-2:] == ["ui.buttons", "output.text"]
+    assert kinds[-2:] == ["state.buttons", "output.text"]
     assert _streamed_text(events) == "Your flight is on time."
     # The whole message is its own publication now, not a field of the
     # terminal frame (see turn/input_listener.py's own said()).
@@ -157,7 +157,7 @@ async def test_without_sources_and_tracking_after_the_user_message_every_chunk_p
     assert kinds[0] == "writing"
     # Every piece first, then the whole message, then what can be done
     # next, then the terminal frame.
-    assert kinds[-2:] == ["ui.buttons", "output.text"]
+    assert kinds[-2:] == ["state.buttons", "output.text"]
     assert set(kinds[1:-2]) == {"output.text_stream"}
     assert _streamed_text(events) == "Your flight is on time."
 
@@ -173,6 +173,6 @@ async def test_with_declared_sources_but_no_tool_call_the_answer_streams_then_do
     assert kinds[0] == "writing"
     # Every piece first, then the whole message, then what can be done
     # next, then the terminal frame.
-    assert kinds[-2:] == ["ui.buttons", "output.text"]
+    assert kinds[-2:] == ["state.buttons", "output.text"]
     assert set(kinds[1:-2]) == {"output.text_stream"}
     assert _streamed_text(events) == "Your flight is on time."

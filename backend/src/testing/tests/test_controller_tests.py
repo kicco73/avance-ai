@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from conftest import parse_sse_result, chat_turn
+from conftest import parse_sse_result, chat_turn, enter_chat, session_of
 
 pytestmark = pytest.mark.contract
 
@@ -23,15 +23,15 @@ def _wait_for_terminal_status(client, project_name, run_id, timeout=5.0, interva
     return client.get(f"/api/skills/testing/projects/{project_name}/tests/{run_id}").json()
 
 
-def _make_labeled_session(client):
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    chat_turn(client, session['id'], "hi")
-    client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})
-    return session["id"]
+def _make_labeled_session(client, project_id):
+    session_id = session_of(enter_chat(client, project_id))
+    chat_turn(client, session_id, "hi")
+    client.put(f"/api/skills/platform/sessions/{session_id}/labeled", json={"labeled": True})
+    return session_id
 
 
 def test_create_run_returns_immediately_pending(client, hello_project):
-    session_id = _make_labeled_session(client)
+    session_id = _make_labeled_session(client, hello_project)
 
     response = client.post(
         f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
@@ -52,7 +52,7 @@ def test_create_run_returns_immediately_pending(client, hello_project):
 
 
 def test_turn_by_turn_run_completes_and_produces_results(client, hello_project):
-    session_id = _make_labeled_session(client)
+    session_id = _make_labeled_session(client, hello_project)
 
     run = client.post(
         f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
@@ -68,7 +68,7 @@ def test_turn_by_turn_run_completes_and_produces_results(client, hello_project):
 
 
 def test_batch_run_completes_and_tracks_batch_segments(client, hello_project):
-    session_id = _make_labeled_session(client)
+    session_id = _make_labeled_session(client, hello_project)
 
     run = client.post(
         f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "batch"},
@@ -82,10 +82,10 @@ def test_batch_run_completes_and_tracks_batch_segments(client, hello_project):
 
 
 def test_whole_project_run_scopes_to_labeled_sessions_only(client, hello_project):
-    _make_labeled_session(client)
+    _make_labeled_session(client, hello_project)
     # An unlabeled session must never be pulled into a whole-project run.
-    unlabeled = client.get("/api/skills/webchat/sessions/current").json()
-    chat_turn(client, unlabeled['id'], "hi")
+    unlabeled_id = session_of(enter_chat(client, hello_project))
+    chat_turn(client, unlabeled_id, "hi")
     run = client.post(
         f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": None, "strategy": "turn_by_turn"},
     ).json()
@@ -104,7 +104,7 @@ def test_get_run_404_for_unknown_id(client, hello_project):
 
 
 def test_list_runs_defaults_to_whole_project_scope(client, hello_project):
-    session_id = _make_labeled_session(client)
+    session_id = _make_labeled_session(client, hello_project)
     session_run = client.post(
         f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
     ).json()
@@ -124,7 +124,7 @@ def test_list_runs_defaults_to_whole_project_scope(client, hello_project):
 
 
 def test_create_run_rejects_unknown_strategy(client, hello_project):
-    session_id = _make_labeled_session(client)
+    session_id = _make_labeled_session(client, hello_project)
 
     response = client.post(
         f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "nonsense"},
@@ -134,7 +134,7 @@ def test_create_run_rejects_unknown_strategy(client, hello_project):
 
 
 def test_sessions_aggregation_pools_both_live_and_imported_sessions(client, hello_project):
-    live_id = _make_labeled_session(client)
+    live_id = _make_labeled_session(client, hello_project)
     resp = client.post(
         f"/api/skills/platform/projects/{hello_project}/sessions/import",
         files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))],
@@ -171,7 +171,7 @@ def test_sessions_aggregation_pools_both_live_and_imported_sessions(client, hell
 
 
 def test_delete_tests_forces_a_fresh_run_instead_of_a_cache_hit(client, hello_project):
-    session_id = _make_labeled_session(client)
+    session_id = _make_labeled_session(client, hello_project)
     first = client.post(
         f"/api/skills/testing/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
     ).json()

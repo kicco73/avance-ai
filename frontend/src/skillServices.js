@@ -1,5 +1,5 @@
 // What the conversation on screen can reach (see backend docs/BUS.md's
-// own ui.services), and whoever wants to know.
+// own session.info), and whoever wants to know.
 //
 // Deliberately imports nothing: the chat store publishes here and the
 // skills listen here, and both of those already import each other's

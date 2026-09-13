@@ -118,7 +118,7 @@ def test_reset_project_deletes_every_users_sessions_and_messages_while_reset_for
     theirs = _make_session(db, username="other-user", start=datetime(2026, 1, 1, 11, 0, 0))
     elsewhere = _make_session(db, project_name="proj-b")
     db.save_message("user", "hello", mine)
-    db.save_message("other-user", "hi", theirs)
+    db.save_message("user", "hi", theirs)
 
     db.reset_project_for_user("user", "proj", type="live")
     assert db.get_chat_session(mine) is None

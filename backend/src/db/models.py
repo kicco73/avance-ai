@@ -166,15 +166,9 @@ class Message(BaseModel):
     # issues exactly such a raw ALTER TABLE/INSERT when adding this column
     # to an existing database); every reader treats None as 0.
     cache_read_tokens = IntegerField(null=True)
-    # On a user message: the assistant message whose turn consumed it.
-    # A turn answers every user message still unanswered when it opens
-    # (see TurnService's own coalescing), so this is what makes "which
-    # messages is the next turn about?" a fact in the database rather than
-    # a queue in memory — a restart loses nothing, and a message that
-    # arrived while the previous turn was generating is still correctly
-    # unanswered even though its id precedes that reply's. NULL on every
-    # assistant message, and nullable like every other column added after
-    # the fact (see cache_read_tokens above).
+    # On a user message: the reply that answered it (see PROJECT_SPECS.md
+    # §0.1). NULL on every assistant message, and nullable like every other
+    # column added after the fact (see cache_read_tokens above).
     answered_by = IntegerField(null=True)
     session = ForeignKeyField(CoreSession, null=False, backref='messages', on_delete='CASCADE')
 

@@ -172,7 +172,7 @@ async def test_get_messages_surfaces_the_persistent_tool_call_record_on_reload(t
     }
     file_db.record_tool_calls(session_id, [tool_call_entry], message_id=assistant_message_id)
 
-    messages = await turn_service.get_messages(session_id)
+    messages = turn_service.read_history(session_id)
 
     reloaded = next(m for m in messages if m["id"] == assistant_message_id)
     assert reloaded["tool_calls"] == [tool_call_entry]
@@ -185,7 +185,7 @@ async def test_get_messages_omits_tool_calls_for_a_message_with_none(turn_servic
     session_id = await _bootstrap_session(turn_service)
     plain_message_id = file_db.save_message("assistant", "no tools here", session_id)
 
-    messages = await turn_service.get_messages(session_id)
+    messages = turn_service.read_history(session_id)
 
     reloaded = next(m for m in messages if m["id"] == plain_message_id)
     assert "tool_calls" not in reloaded

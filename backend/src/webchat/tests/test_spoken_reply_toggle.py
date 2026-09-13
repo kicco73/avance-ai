@@ -46,7 +46,7 @@ def _wanted(session_id) -> bool:
 async def test_only_a_session_with_the_toggle_on_wants_a_spoken_reply(turn_service_for):
     turn_service = turn_service_for(one_state_automaton(with_sources=False, autotracking_on_ai_message=False), _NoProvider())
     session = await turn_service.get_current_session_if_any_or_create_new(None)
-    WebchatService(turn_service, None, None).register()
+    WebchatService(turn_service, None, None, None).register()
 
     assert _wanted(session["id"]) is False
 
@@ -61,6 +61,6 @@ async def test_a_turn_that_names_no_session_is_never_asked_about_one(turn_servic
     """A contributor that read the toggle for `None` would ask the
     ownership check for session None and take the turn down with it."""
     turn_service = turn_service_for(one_state_automaton(with_sources=False, autotracking_on_ai_message=False), _NoProvider())
-    WebchatService(turn_service, None, None).register()
+    WebchatService(turn_service, None, None, None).register()
 
     assert _wanted(None) is False

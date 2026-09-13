@@ -78,7 +78,7 @@ async def _frames_of(turn_service, db, text: str) -> list[Message]:
 
     for message_type in ("output.text",):
         bus.subscribe(message_type, take)
-    for message_type in ("ui.buttons", "output.error"):
+    for message_type in ("state.buttons", "output.error"):
         bus.subscribe(message_type, take_terminal)
     TurnInput(turn_service, db).register()
 

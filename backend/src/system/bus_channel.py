@@ -10,7 +10,10 @@ from fastapi import WebSocket, WebSocketDisconnect
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from system import bus
 
-from system.bus import CLIENT_INJECTABLE, UI_HUMAN_TAKEOVER, UI_NOTIFICATION, UI_SYSTEM_WARNING, UI_PROGRESS, Message
+from system.bus import (
+    CLIENT_INJECTABLE, SESSION_EXIT, SESSION_TAKEN_OVER, UI_NOTIFICATION, UI_SYSTEM_WARNING,
+    UI_PROGRESS, Message,
+)
 from auth.roles import role_satisfies
 from system.web_session import WebSession
 
@@ -50,7 +53,7 @@ HUMAN_REPLY_TIMEOUT_SECONDS = 300.0
 # `unsubscribe`, and only what it registered for is ever sent to it (see
 # WsConnection.wants/push_event). A type outside this tuple is refused —
 # registering for one would otherwise be a way to read an internal type.
-WEB_FORWARDED = (UI_NOTIFICATION, UI_HUMAN_TAKEOVER, UI_SYSTEM_WARNING, UI_PROGRESS)
+WEB_FORWARDED = (UI_NOTIFICATION, SESSION_TAKEN_OVER, UI_SYSTEM_WARNING, UI_PROGRESS)
 
 # This socket's own frame for "a turn is waiting on a person to answer
 # it". Not a Bus type: nothing publishes it and it never leaves the Bus,
@@ -59,7 +62,7 @@ HUMAN_PROMPT = "human_prompt"
 
 # What a frame says about the delivery rather than about the message: it
 # travels in the envelope and never in the body.
-_ENVELOPE = ("type", "session_id")
+_ENVELOPE = ("type", "session_id", "project_id")
 
 # What a client may register for: what may leave the Bus, plus this
 # socket's own frames. Registering is how a connection says what it is —
@@ -101,6 +104,13 @@ class WsConnection(object):
         # and a bus delivers to whoever registered, not to whoever is
         # merely connected.
         self._subscriptions: set[str] = set()
+        # Which conversations this socket is showing. Filled when it is
+        # told which one it entered (see BusChannel.watch_session) and
+        # emptied by a `session.exit` frame. Nothing a server decides on
+        # its own — a session closed from elsewhere, an operator taking
+        # one over — carries a connection to answer to, so this is how
+        # those reach anybody at all.
+        self._watching: set[int] = set()
 
     def subscribe(self, event_types: list[str]) -> None:
         self._subscriptions.update(event_types)
@@ -110,6 +120,15 @@ class WsConnection(object):
 
     def wants(self, event_type: str) -> bool:
         return event_type in self._subscriptions
+
+    def watch(self, session_id: int) -> None:
+        self._watching.add(session_id)
+
+    def unwatch(self, session_id: int) -> None:
+        self._watching.discard(session_id)
+
+    def watches(self, session_id: int) -> bool:
+        return session_id in self._watching
 
     @property
     def closed(self) -> bool:
@@ -305,6 +324,9 @@ class BusChannel(object):
             self._deliver_pending_prompts(connection, registered)
         elif frame_type == "unsubscribe":
             connection.unsubscribe(self._registrable(frame.get("events")))
+        elif frame_type == SESSION_EXIT:
+            for session_id in filter(None, [frame.get("session_id")]):
+                connection.unwatch(session_id)
         elif frame_type == "human_reply":
             self._resolve_human_reply_for_session(connection, frame.get("session_id"), str(frame.get("text", "")))
         elif frame_type == "human_typing":
@@ -396,6 +418,7 @@ class BusChannel(object):
             body={key: value for key, value in frame.items() if key not in _ENVELOPE},
             username=WebSession().user,
             session_id=frame.get("session_id"),
+            project_id=frame.get("project_id"),
             channel=self._channel,
             origin_id=connection.id,
         )
@@ -427,6 +450,31 @@ class BusChannel(object):
             for connection in connections
         )
 
+    def watch_session(self, connection_id: str, session_id: int) -> None:
+        """That connection is showing that conversation, from now until
+        it says otherwise. Told by whoever answered its `session.enter`
+        (see webchat_service), because the socket never learns which
+        session a request resolved to."""
+        for connection in self._every_connection():
+            for _ in filter(connection_id.__eq__, [connection.id]):
+                connection.watch(session_id)
+
+    def send_to_watchers(self, session_id: int, payload: dict) -> int:
+        """One frame to every connection showing that conversation, and
+        the count of them. For what nobody asked for: a session closed
+        from somewhere else, an operator taking one over. Answering a
+        request goes to the connection that made it instead (see
+        send_to_connection)."""
+        watchers = [c for c in self._every_connection() if c.watches(session_id)]
+        for connection in watchers:
+            connection.send(payload)
+        return len(watchers)
+
+    def _every_connection(self):
+        for connections in self._connections.values():
+            for connection in connections:
+                yield connection
+
     def send_to_connection(self, connection_id: str, payload: dict) -> bool:
         """Writes one frame to one open connection, by the id an inbound
         message carried in `origin_id`. False when that connection is
@@ -446,7 +494,10 @@ class BusChannel(object):
         anyone was connected, let alone subscribed (see
         bus.UI_NOTIFICATION)."""
         for username in filter(None, [message.username]):
-            await self.push_event(username, message.type, {"type": message.type, **(message.body or {})})
+            frame = {"type": message.type, **(message.body or {})}
+            for session_id in filter(None, [message.session_id]):
+                frame["session_id"] = session_id
+            await self.push_event(username, message.type, frame)
 
     async def push_event(self, username: str, event_type: str, payload: dict) -> bool:
         """One Bus event, to `username`'s connections that registered for

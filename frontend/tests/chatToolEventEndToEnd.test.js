@@ -1,26 +1,29 @@
-// End-to-end: a live turn's own frames on the chat websocket — one 'tool'
-// frame on phase "start" (with status_text and the structured fields), one
-// on phase "result", three chunks, done — driven through chatClient.js's
-// REAL frame dispatch (only api.js's createChatSocket is faked), all the
-// way up into the chat store and MessageBubble-facing message shape.
-// Proves the whole pipe end to end: while the tool call is in flight the
-// bubble shows status_text, the "result" phase clears it once
-// TOOL_STATUS_MIN_MS is up (even past "done"), chunks accumulate, and once
-// the turn is done the persisted tool_calls record (fetched via
-// getMessages, same as a reload) renders through toolTraceLine.
+// End to end: a live exchange's own frames on the one websocket — one
+// `output.tool` on phase "start" (with status_text and the structured
+// fields), one on phase "result", the pieces of the message, then the
+// message itself — driven through busChannel.js's REAL frame dispatch
+// (only api.js's createChatSocket is faked), all the way up into the chat
+// store and the MessageBubble-facing message shape. Proves the whole pipe:
+// while the tool call is in flight the bubble shows status_text, the
+// "result" phase clears it once TOOL_STATUS_MIN_MS is up (even past the
+// answer), the pieces accumulate, and once the exchange is over the
+// persisted tool_calls record (read from the history, same as a reload)
+// renders through toolTraceLine.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { toolTraceLine } from '../src/toolTraceLine.js'
 import { TOOL_STATUS_MIN_MS } from '../src/toolStatusHold.js'
-import { installFakeChatSocket, turnIdOf } from './fakeChatSocket.js'
+import { installFakeChatSocket } from './fakeChatSocket.js'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
-  postAction: vi.fn(),
   getSessions: vi.fn(),
   getAiModels: vi.fn(),
-  getMessages: vi.fn(),
-  getSessionState: vi.fn(),
+  getHistory: vi.fn(),
+  getActuators: vi.fn(),
+  putActuators: vi.fn(),
+  postTruncateSession: vi.fn(),
+  deleteSession: vi.fn(),
+  projectFileContentUrl: vi.fn(() => '/skin.css'),
   createChatSocket: vi.fn(),
 }))
 vi.mock('../src/errorStore.js', () => ({ setApiError: vi.fn(), clearApiError: vi.fn() }))
@@ -40,56 +43,56 @@ const PERSISTED_RECORD = {
   result: 'city\nParis\n', label: 'Flight records', rows: 1, error: false, duration_ms: 12
 }
 
-describe('a live turn shows the tool status then the persisted trace, end to end', () => {
+describe('a live exchange shows the tool status then the persisted trace, end to end', () => {
   let chatStore
-  let chatClient
+  let busChannel
   let api
   let sockets
 
   beforeEach(async () => {
     vi.resetModules()
     chatStore = await import('../src/chatStore.js')
-    chatClient = await import('../src/chatClient.js')
+    ;({ busChannel } = await import('../src/busChannel.js'))
     api = await import('../src/api.js')
-    await installApiBackedLiveChannel(api)
     sockets = installFakeChatSocket(api)
-    chatClient.connect()
+    busChannel.connect()
     sockets[0].open()
   })
 
   afterEach(() => {
-    chatClient.disconnect()
+    busChannel.disconnect()
     vi.clearAllMocks()
   })
 
-  it('streams status_text, clears it, accumulates chunks, then shows the persisted trace', async () => {
+  it('publishes status_text, clears it, accumulates the pieces, then shows the persisted trace', async () => {
     chatStore.currentSessionId.value = 1
-    api.getMessages.mockResolvedValue([
+    api.getHistory.mockResolvedValue([
       { id: 51, role: 'assistant', content: 'Your flight is on time.', timestamp: 't', tool_calls: [PERSISTED_RECORD] }
     ])
 
-    const sendPromise = chatStore.handleSend('where is my flight?')
-    await vi.waitFor(() => expect(sockets[0].sent.some((f) => f.type === 'input.text')).toBe(true))
-    const turnId = turnIdOf(sockets[0])
+    await chatStore.handleSend('where is my flight?')
     const socket = sockets[0]
+    expect(socket.sent.some((f) => f.type === 'input.text')).toBe(true)
 
-    socket.emit({ type: 'output.tool', stream_id: turnId, ...TOOL_START })
+    socket.emit({ type: 'output.text_stream', session_id: 1, text: '' })
+    socket.emit({ type: 'output.tool', session_id: 1, ...TOOL_START })
     await vi.waitFor(() => {
       const msg = chatStore.messages.value.find((m) => m.role === 'assistant')
       expect(msg?.statusText).toBe(TOOL_START.status_text)
     })
 
-    socket.emit({ type: 'output.tool', stream_id: turnId, ...TOOL_RESULT })
-    for (const content of ['Your ', 'flight ', 'is on time.']) {
-      socket.emit({ type: 'output.text_stream', stream_id: turnId, text: content })
+    socket.emit({ type: 'output.tool', session_id: 1, ...TOOL_RESULT })
+    for (const text of ['Your ', 'flight ', 'is on time.']) {
+      socket.emit({ type: 'output.text_stream', session_id: 1, text })
     }
-    socket.emit({ type: 'ui.buttons', stream_id: turnId, actions: [] })
-    socket.emit({ type: 'output.text', stream_id: turnId, message_id: 51, text: 'Your flight is on time.' })
-
-    await sendPromise
+    socket.emit({ type: 'state.buttons', session_id: 1, actions: [] })
+    socket.emit({
+      type: 'output.text', session_id: 1, assistant_message_id: 51,
+      text: 'Your flight is on time.', timestamp: 't',
+    })
 
     const finished = chatStore.messages.value.find((m) => m.messageId === 51)
-    // The status line outlives "done" by design — see toolStatusHold.js.
+    // The status line outlives the answer by design — see toolStatusHold.js.
     expect(finished.statusText).toBe(TOOL_START.status_text)
     expect(finished.content).toBe('Your flight is on time.')
 

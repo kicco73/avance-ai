@@ -1,6 +1,6 @@
 <script setup>
 defineProps({
-  // What `ui.buttons` said — already filtered server-side (TurnService's
+  // What `state.buttons` said — already filtered server-side (TurnService's
   // own buttons_for): untriggerable actions, plus every action
   // while a test session's auto-tracking is off.
   actions: {

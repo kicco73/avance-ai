@@ -248,6 +248,35 @@ class TurnService(object):
 		# either resolved this type's active session or created one.
 		return self._session_response(session, current=True)
 
+	def session_named(self, session_id: int) -> dict:
+		"""That very conversation, for whoever was handed its id rather
+		than a project: an operator paged into one, a person picking a
+		past one out of the list."""
+		session = self._ownership.require_own_session(session_id)
+		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
+		return {
+			**self._session_payload(session, current=True),
+			"state": automaton.get_state_payload(state),
+		}
+
+	async def enter_session(self, project_id: str, type: str) -> dict:
+		"""The conversation of that kind this person is having in that
+		project, made if there is none. The project is named by whoever
+		is showing the chat: reading the active project here is what let
+		a preview of one app open the chat of another."""
+		is_paused, paused_reason = self._project_service.get_project_availability(project_id)
+		if is_paused:
+			return {"blocked": "paused", "detail": paused_reason or ""}
+		return await self._get_current_session_if_any_or_create_new_of_type(
+			get_session_type_strategy(type), project_id, None,
+		)
+
+	async def create_session_of(self, project_id: str, type: str) -> dict:
+		is_paused, paused_reason = self._project_service.get_project_availability(project_id)
+		if is_paused:
+			return {"blocked": "paused", "detail": paused_reason or ""}
+		return await self._create_session_of_type(get_session_type_strategy(type), project_id)
+
 	async def get_current_session_if_any_or_create_new(self, session_id: int | None) -> dict:
 		project_id = self._active_project_id
 		is_paused, paused_reason = self._project_service.get_project_availability(project_id)
@@ -310,10 +339,10 @@ class TurnService(object):
 			except ValueError as exc:
 				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		automaton = self._project_service.get_automaton_for_session(session["id"])
-		payload = self._session_payload(session, current=True)
+		response = self._session_response(session, current=True)
 		if strategy.task_for_new_session(automaton) is not None:
 			self._schedule_task(automaton, automaton.init_action, session["id"], project_id)
-		return payload
+		return response
 
 	async def create_session(self) -> dict:
 		return await self._create_session_of_type(get_session_type_strategy('live'), self._active_project_id)
@@ -446,7 +475,7 @@ class TurnService(object):
 		There used to be a second one that opened the conversation first,
 		as a side effect of being asked for the history, and every caller
 		of it got a real turn it had not asked for. Once a browser began
-		saying `session.new` (see docs/BUS.md), that was two openings for
+		saying `session.enter` (see docs/BUS.md), that was two openings for
 		one conversation and a session that started by saying the same
 		thing twice. Opening a conversation is something a channel does on
 		purpose; reading it is a read."""
@@ -572,7 +601,7 @@ class TurnService(object):
 
 	def buttons_for(self, session_id: int, state_payload: dict) -> list[dict]:
 		"""What this state offers the person to press. Never folded into
-		the state payload: the choices are their own message (`ui.buttons`,
+		the state payload: the choices are their own message (`state.buttons`,
 		see docs/BUS.md), and a state that carried them too meant two
 		roads to the same buttons and a first paint that disagreed with
 		what was published."""
@@ -711,13 +740,12 @@ class TurnService(object):
 		Returns the turn it ran, so a caller that is reporting an exchange
 		can report this one too.
 
-		Asking and doing are one step, under a lock of their own. Two
-		callers ask at the very start of a conversation — the browser
-		says `session.new` and reads the transcript in the same breath,
-		and reading it opens the conversation too — and both found
-		nothing said yet, so the session began by saying the same thing
-		twice. The lock is not the turn's own (the turn takes that one
-		itself, further down): this one only guards the decision."""
+		Asking and doing are one step, under a lock of their own: two
+		connections entering the same conversation in the same instant
+		each ask for it, and without the lock both find nothing said yet
+		and the session begins by saying the same thing twice. The lock
+		is not the turn's own (the turn takes that one itself, further
+		down): this one only guards the decision."""
 		async with self._session_locks.get(f"open/{session_id}"):
 			automaton, state = await self._ensure_project_bootstrap(session_id)
 			if automaton is None:
@@ -923,10 +951,6 @@ class TurnService(object):
 		ai_service = self._ai_test_service if session["type"] == "test" else self._ai_service
 		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 		self._require_active_session(session_id, project_id, state.key)
-		# Exactly the messages this answer is for. Which ones those are was
-		# decided when they were accepted (see turn/input_listener.py): a
-		# message that arrived while this answer was being written belongs
-		# to the next one, not to this.
 		fragments = [m for m in (self._db.get_message(mid) for mid in user_message_ids or []) if m]
 		reply = await self._tracking_service._process(
 			session_id, [f["content"] for f in fragments], ai_service, on_metadata,

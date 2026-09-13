@@ -129,7 +129,7 @@ async def test_a_human_operators_reply_arrives_as_the_turns_own_done_frame(turn_
     # started writing and nothing is readable yet, which is what an empty
     # chunk says (see turn/input_listener.py's own on_metadata).
     assert [event for event, _ in events] == [
-        "output.text_stream", "output.text_stream", "ui.buttons", "output.text",
+        "output.text_stream", "output.text_stream", "state.buttons", "output.text",
     ]
     assert [body.get("text") for event, body in events[:2]] == ["", "sure, let me check"]
     assert [data["text"] for event, data in events if event == "output.text"] == ["sure, let me check"]
@@ -184,6 +184,6 @@ async def test_a_human_mode_session_never_auto_generates_an_opening_message(turn
     session = await turn_service.get_current_session_if_any_or_create_new(None)
     namespace_factory.set_human_operator(session["id"], OPERATOR)
 
-    messages = await turn_service.get_messages(session["id"])
+    messages = turn_service.read_history(session["id"])
 
     assert messages == []

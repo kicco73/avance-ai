@@ -6,36 +6,29 @@
 // handleCloseSession). Mounts the real ChatView.vue end to end, not just
 // the store refs (see chatStoreSessionIsolation.test.js for that).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { createApp, nextTick } from 'vue'
-import { resetFakeBus } from './fakeBus.js'
+import { busChannel, deliver, deliverEntered, resetFakeBus } from './fakeBus.js'
 
 vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }))
 vi.mock('../src/audio.js', () => ({ playMessageChime: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn() }))
 vi.mock('../src/api.js', () => ({
-  getCurrentSession: vi.fn(),
-  postCreateSession: vi.fn(),
-  postCloseSession: vi.fn(),
-  getCurrentTestSession: vi.fn(),
-  postCreateTestSession: vi.fn(),
-  getSessions: vi.fn(),
-  getTestSessions: vi.fn(),
+  getSessions: vi.fn().mockResolvedValue([]),
+  getHistory: vi.fn().mockResolvedValue([]),
+  getActuators: vi.fn(),
+  putActuators: vi.fn(),
   deleteSession: vi.fn(),
-  getMessages: vi.fn().mockResolvedValue([]),
-  getSessionState: vi.fn(),
-  postAction: vi.fn(),
-  getAutoTracking: vi.fn(),
-  putAutoTracking: vi.fn(),
   getAiModels: vi.fn(),
   postAiModelSelection: vi.fn(),
-  putMessageReaction: vi.fn(),
-  postResetTestSessions: vi.fn(),
   postTruncateSession: vi.fn(),
   getProjects: vi.fn().mockResolvedValue({ projects: [{ id: 'proj', ui_label: 'Proj' }], active: 'proj' }),
   projectFileContentUrl: vi.fn(() => '/skin.css')
 }))
+
+function sentOfType(type) {
+  return busChannel.send.mock.calls.map(([frame]) => frame).filter((frame) => frame.type === type)
+}
 
 function projectsPanelButtons(container) {
   return Array.from(container.querySelectorAll('.projects-panel button'))
@@ -45,11 +38,13 @@ function findButton(container, label) {
   return projectsPanelButtons(container).find((b) => b.textContent.trim() === label)
 }
 
-// Mounting ChatView is the heaviest thing this suite does, and vitest's
-// 5s default is measured against an idle machine. This file alone takes
-// about 8s; under the whole suite's parallel load it lost to a 10s ceiling,
-// so the limit is that observed ceiling plus 30%.
-vi.setConfig({ testTimeout: 13_000 })
+// Mounting ChatView is the heaviest thing this suite does, and the whole
+// component tree is transformed here, at import time, rather than inside
+// whichever test imports it first: that cost is 6.3s on its own and
+// 16.3s with the whole suite running in parallel, and vitest charged it
+// to that test's own 5s budget. A file's own imports are not timed, so
+// the import below is left with nothing but the re-evaluation.
+await import('../src/components/chat/ChatView.vue')
 
 describe('ChatView.vue: the applications menu carries New/Close session, with no separate Session menu', () => {
   let chatStore
@@ -61,7 +56,6 @@ describe('ChatView.vue: the applications menu carries New/Close session, with no
     vi.resetModules()
     chatStore = await import('../src/chatStore.js')
     api = await import('../src/api.js')
-    await installApiBackedLiveChannel(api)
     container = document.createElement('div')
     document.body.appendChild(container)
   })
@@ -72,11 +66,11 @@ describe('ChatView.vue: the applications menu carries New/Close session, with no
   })
 
   async function mountLiveChat() {
-    api.getCurrentSession.mockResolvedValue({ id: 1, current: true, state: { key: 'x', ui_label: 'X', actions: [] } })
     const ChatWindow = (await import('../src/components/chat/ChatView.vue')).default
     const app = createApp(ChatWindow, { hideSessionsPanel: false })
     app.mount(container)
-    await chatStore.loadMessages()
+    await chatStore.loadMessages('proj')
+    deliverEntered({ sessionId: 1, projectId: 'proj', state: { key: 'x', ui_label: 'X', actions: [] } })
     await vi.waitFor(() => expect(container.querySelector('.projects-btn')).not.toBeNull())
     await vi.waitFor(() => expect(container.querySelector('.projects-btn').disabled).toBe(false))
     return app
@@ -121,17 +115,16 @@ describe('ChatView.vue: the applications menu carries New/Close session, with no
     app.unmount()
   })
 
-  it('clicking "New session" confirms, then starts a new session', async () => {
+  it('clicking "New session" confirms, then asks for a new one', async () => {
     const app = await mountLiveChat()
     const dialogStore = await import('../src/dialogStore.js')
-    api.postCreateSession.mockResolvedValue({ id: 2, current: true })
-    api.getCurrentSession.mockResolvedValue({ id: 2, current: true, state: { key: 'x', ui_label: 'X', actions: [] } })
 
     container.querySelector('.projects-btn').click()
     await nextTick()
     findButton(container, 'New session').click()
-    await vi.waitFor(() => expect(api.postCreateSession).toHaveBeenCalled())
+    await vi.waitFor(() => expect(sentOfType('session.create')).toHaveLength(1))
 
+    expect(sentOfType('session.create')[0]).toMatchObject({ project_id: 'proj', session_type: 'live' })
     expect(dialogStore.confirmDialog).toHaveBeenCalled()
 
     app.unmount()
@@ -145,10 +138,13 @@ describe('ChatView.vue: the applications menu carries New/Close session, with no
     await nextTick()
     expect(findButton(container, 'Close session').disabled).toBe(false)
 
-    api.postCloseSession.mockResolvedValue({ id: 1, current: false })
     findButton(container, 'Close session').click()
-    await vi.waitFor(() => expect(api.postCloseSession).toHaveBeenCalledWith(1))
+    await vi.waitFor(() => expect(sentOfType('session.terminate')).toHaveLength(1))
+    expect(sentOfType('session.terminate')[0]).toMatchObject({ session_id: 1 })
     expect(dialogStore.confirmDialog).not.toHaveBeenCalled()
+
+    // Closed, said by the one place every closure passes through.
+    deliver({ type: 'session.ended', session_id: 1, reason: 'user' })
 
     await nextTick()
     container.querySelector('.projects-btn').click() // the panel closed itself on that click — reopen it

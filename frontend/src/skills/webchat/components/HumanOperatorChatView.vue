@@ -1,10 +1,11 @@
 <script setup>
-// Opened from a human_takeover notification's "Open" link (see
+// Opened from a session.taken_over notification's "Open" link (see
 // humanTakeoverStore.js, App.vue) — chat.switch_to_human(user_id)
 // handed this session to whoever is looking at this. A mirror of the
-// normal chat: same history read (getMessages), rendered inverted since
-// the operator is the one standing in for "assistant" here (MessageBubble's
-// own invert prop). Sending and typing both go out keyed by session_id,
+// normal chat: it enters the same conversation on the bus and is told
+// what was said and what it offers, rendered inverted since the operator
+// is the one standing in for "assistant" here (MessageBubble's own
+// invert prop). Sending and typing both go out keyed by session_id,
 // never a prompt_id the operator's own tab may never have seen (a fresh
 // human_prompt push is one-shot — a tab that opens after it already fired
 // would otherwise never know what to reply to) — see system/bus_channel.
@@ -12,7 +13,6 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import MessageBubble from '../../../components/chat/MessageBubble.vue'
 import ActionButtons from '../../../components/chat/ActionButtons.vue'
-import { getMessages, getOperatorState } from '../api.js'
 import { busChannel } from '../../../busChannel.js'
 import { getHumanPromptForSession, removeHumanPrompt } from '../../../humanPromptStore.js'
 import { listenForHumanPrompts } from '../../../humanPromptBus.js'
@@ -26,7 +26,7 @@ defineEmits(['close'])
 const messages = ref([])
 const draft = ref('')
 const loadFailed = ref(false)
-const state = ref(null)
+const buttons = ref([])
 const actionLoading = ref(false)
 let nextId = 0
 let typingSent = false
@@ -36,44 +36,42 @@ function pushMessage(role, content) {
 }
 
 let stopListeningForPrompts = null
+const unsubscribes = []
 
-onMounted(async () => {
+function mine(frame) {
+  return String(frame.session_id) === String(props.sessionId)
+}
+
+onMounted(() => {
   stopListeningForPrompts = listenForHumanPrompts()
-  try {
-    const [history, sessionState] = await Promise.all([
-      getMessages(props.sessionId),
-      getOperatorState(props.sessionId)
-    ])
-    messages.value = history.map((row) => ({ id: ++nextId, role: row.role, content: row.content, timestamp: row.timestamp }))
-    state.value = sessionState
-  } catch {
-    loadFailed.value = true // already surfaced via apiFetch
-  }
+  unsubscribes.push(busChannel.subscribe('session.messages', (frame) => {
+    if (!mine(frame)) return
+    messages.value = (frame.messages || []).map(
+      (row) => ({ id: ++nextId, role: row.role, content: row.content, timestamp: row.timestamp })
+    )
+  }))
+  unsubscribes.push(busChannel.subscribe('state.buttons', (frame) => {
+    if (!mine(frame)) return
+    buttons.value = frame.actions || []
+  }))
+  loadFailed.value = !busChannel.send({ type: 'session.enter', session_id: props.sessionId })
 })
 
 onUnmounted(() => {
   stopListeningForPrompts?.()
   stopListeningForPrompts = null
+  busChannel.send({ type: 'session.exit', session_id: props.sessionId })
+  for (const unsubscribe of unsubscribes.splice(0)) unsubscribe()
 })
 
 // A choice taken travels the way every other one does — `input.button`
-// on the socket (see backend docs/BUS.md). It used to be an HTTP POST of
-// its own, which stopped existing when the chat's buttons moved onto the
-// bus, and this was left calling a route nothing serves.
-async function handleAction(actionName) {
+// on the socket (see backend docs/BUS.md), and what the new state offers
+// comes back on `state.buttons` like it does for anybody else.
+function handleAction(actionName) {
   actionLoading.value = true
-  try {
-    busChannel.send({ type: 'input.button', session_id: props.sessionId, id: actionName })
-    // Not what the turn reports: that state is filtered by this session's
-    // own, unrelated is_auto_tracking_enabled flag (see TurnService.
-    // get_state_for_operator's own docstring) — re-read the operator's
-    // own "every action is manual" view instead.
-    state.value = await getOperatorState(props.sessionId)
-  } catch {
-    // already surfaced via apiFetch
-  } finally {
-    actionLoading.value = false
-  }
+  const taken = busChannel.send({ type: 'input.button', session_id: props.sessionId, id: actionName })
+  actionLoading.value = false
+  if (taken) buttons.value = []
 }
 
 // getHumanPromptForSession is a plain lookup (see humanPromptStore.js),
@@ -127,7 +125,7 @@ function submit() {
 
         <div class="chat-footer">
           <ActionButtons
-            :actions="state?.buttons || []"
+            :actions="buttons"
             :disabled="actionLoading"
             @action="handleAction"
           />

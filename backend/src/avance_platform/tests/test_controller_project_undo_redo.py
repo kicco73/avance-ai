@@ -9,7 +9,7 @@ import zipfile
 
 import pytest
 
-from conftest import parse_sse_result
+from conftest import enter_chat, parse_sse_result, session_of
 
 
 def _zip_of(files: dict[str, str]) -> bytes:
@@ -173,8 +173,8 @@ def test_undo_does_not_reset_or_reload_the_active_conversation(client):
     assert parse_sse_result(resp)["project_id"] == "proj2"
     resp = client.post("/api/skills/platform/projects/proj2/publish", json={})
     assert resp.status_code == 200, resp.text
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    action_resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "go"})
+    session_id = session_of(enter_chat(client, "proj2"))
+    action_resp = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go"})
     assert action_resp.status_code == 200, action_resp.text
     assert action_resp.json()["state"]["key"] == "b"
 
@@ -191,5 +191,5 @@ def test_undo_does_not_reset_or_reload_the_active_conversation(client):
 
     # The conversation is completely untouched by the undo preview.
     sessions = client.get("/api/core/projects/proj2/sessions").json()
-    assert [s["id"] for s in sessions] == [session["id"]]
+    assert [s["id"] for s in sessions] == [session_id]
     assert client.get("/api/core/state").json()["key"] == "b"

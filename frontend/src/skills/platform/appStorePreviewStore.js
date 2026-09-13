@@ -1,18 +1,13 @@
-import {
-  getCurrentPreviewSession, postCreatePreviewSession, deleteSession, deletePreviewSessionEnv,
-} from './api.js'
+import { deleteSession, deletePreviewSessionEnv } from './api.js'
 import { createChatStore } from '../../chatStoreFactory.js'
 
-let appId = null
 export function setPreviewApp(id) {
-  appId = id
+  appStorePreviewStore.setProject(id)
 }
 
 export const appStorePreviewStore = createChatStore({
-  kind: 'appStorePreview',
-  getCurrentSession: (sessionId) => getCurrentPreviewSession(sessionId, appId),
+  kind: 'preview',
   getSessionsList: () => Promise.resolve([]),
-  createSession: () => postCreatePreviewSession(appId),
   confirmNewSession: false,
   useAutoTracking: false,
   useActuatorsToggle: false,
@@ -20,10 +15,10 @@ export const appStorePreviewStore = createChatStore({
 })
 
 export const {
-  state, currentSessionId, selectedSessionActive, projectPaused, projectPausedReason,
+  state, currentSessionId, selectedSessionActive, blockedReason, blockedDetail,
   messages, historyLoaded, chatLoading, chatStatus, actionLoading, draft,
   handleSend, beginVoiceMessage, handleResend, handleReact, handleAction, toggleAudio,
-  loadMessages, clearChatUi, handleNewSession,
+  loadMessages, clearChatUi, handleNewSession, setProject,
 } = appStorePreviewStore
 
 export async function stopPreviewSession() {

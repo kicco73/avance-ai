@@ -4,6 +4,8 @@ import sqlite3
 
 import pytest
 
+from conftest import enter_chat, session_of
+
 
 def _make_sqlite_bytes(tmp_path, name, ddl_statements):
     path = tmp_path / name
@@ -71,6 +73,5 @@ def test_switching_projects_right_after_a_restore_does_not_crash(client, hello_p
     response = client.post(f"/api/skills/platform/projects/{hello_project}/activate")
     assert response.status_code == 200
 
-    # The bootstrap call the frontend makes right after any switch.
-    response = client.get("/api/skills/webchat/sessions/current")
-    assert response.status_code == 200
+    # What the frontend does right after any switch: it enters the chat.
+    assert session_of(enter_chat(client, hello_project))

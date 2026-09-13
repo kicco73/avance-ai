@@ -6,10 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
-  postAction: vi.fn(),
   getSessions: vi.fn(),
   getAiModels: vi.fn(),
-  getMessages: vi.fn(),
+  getHistory: vi.fn(),
+  getActuators: vi.fn(),
+  putActuators: vi.fn(),
+  postTruncateSession: vi.fn(),
+  deleteSession: vi.fn(),
 }))
 vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))
 
@@ -63,7 +66,7 @@ describe('an empty output.text_stream is what shows the dots', () => {
   it('streams into that one bubble and finishes it, never opening a second', () => {
     deliver({ type: 'output.text_stream', session_id: 1, text: '' })
     deliver({ type: 'output.text_stream', session_id: 1, text: 'Wel' })
-    deliver({ type: 'ui.buttons', session_id: 1, actions: [] })
+    deliver({ type: 'state.buttons', session_id: 1, actions: [] })
     deliver({ type: 'output.text', session_id: 1, assistant_message_id: 4, text: 'Welcome.' })
 
     expect(assistantBubbles()).toHaveLength(1)
@@ -81,7 +84,7 @@ describe('an empty output.text_stream is what shows the dots', () => {
     await chatStore.handleSend('one')
     await chatStore.handleSend('two')
     deliver({ type: 'output.text_stream', session_id: 1, text: '' })
-    deliver({ type: 'ui.buttons', session_id: 1, actions: [] })
+    deliver({ type: 'state.buttons', session_id: 1, actions: [] })
     deliver({ type: 'output.text', session_id: 1, assistant_message_id: 9, text: 'Both noted.' })
 
     expect(chatStore.messages.value.map((m) => [m.role, m.content])).toEqual([
@@ -91,8 +94,10 @@ describe('an empty output.text_stream is what shows the dots', () => {
 })
 
 // What each control does with the answer is that control's own business
-// (and its own skill's tests) — what belongs here is that the answer
-// leaves the conversation and reaches whoever asked to hear it.
+// (and its own skill's tests) — what belongs here is that what a
+// conversation can reach leaves it and arrives at whoever asked to hear
+// it. It is said once, by the `session.info` that answers entering (see
+// backend docs/BUS.md).
 describe('what the conversation can reach', () => {
   let chatStore
   let deliver
@@ -107,17 +112,23 @@ describe('what the conversation can reach', () => {
     heard = []
     const { onServices } = await import('../src/skillServices.js')
     onServices((available) => heard.push(available))
-    chatStore.currentSessionId.value = 1
+    await chatStore.loadMessages('proj')
   })
 
   it('hands on what this session says it can reach', () => {
-    deliver({ type: 'ui.services', session_id: 1, services: { one: false, other: true } })
+    deliver({
+      type: 'session.info', session_id: 1, project_id: 'proj',
+      state: null, services: { one: false, other: true }, current: true,
+    })
 
     expect(heard).toEqual([{ one: false, other: true }])
   })
 
-  it('says nothing about a conversation that is not the one on screen', () => {
-    deliver({ type: 'ui.services', session_id: 2, services: { one: false } })
+  it('says nothing about a conversation that is not the one it asked for', () => {
+    deliver({
+      type: 'session.info', session_id: 2, project_id: 'another-project',
+      state: null, services: { one: false }, current: true,
+    })
 
     expect(heard).toEqual([])
   })

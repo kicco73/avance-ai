@@ -15,14 +15,15 @@ from fastapi import WebSocketDisconnect
 from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME
 from system import bus
-from system.bus import UI_BUTTONS, UI_NOTIFICATION, UI_PROGRESS
+from system.bus import STATE_BUTTONS, UI_NOTIFICATION, UI_PROGRESS
 from system.bus_channel import (
     HUMAN_PROMPT, SUPERSEDED_CLOSE_CODE, SWITCHED_TO_OTHER_CLIENT, HumanNotConnectedError, WsConnection,
     BusChannel,
 )
 from turn.input_listener import TurnInput
 from webchat.webchat_service import WebchatService
-from conftest import chat_socket, chat_turn_frames
+from conftest import chat_socket, chat_turn_frames, enter_chat, session_of
+from webchat.tests.webchat_helpers import end_chat
 from system.web_session import WebSession
 from turn_harness import one_state_automaton, turn_service_for  # noqa: F401 — a pytest fixture, used by name
 
@@ -563,7 +564,7 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     # addressed to a connection it holds (see turn/input_listener.py).
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
     TurnInput(turn_service, db).register()
-    WebchatService(turn_service, None, channel).register()
+    WebchatService(turn_service, None, channel, None).register()
     websocket = _ScriptedWebSocket(
         [
             json.dumps({"type": "input.text", "session_id": session["id"], "text": "I have a problem"}),
@@ -605,7 +606,7 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
     channel = BusChannel(_FakeAuthService())
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
     TurnInput(turn_service, db).register()
-    WebchatService(turn_service, None, channel).register()
+    WebchatService(turn_service, None, channel, None).register()
     websocket = _ScriptedWebSocket(
         [json.dumps({"type": "input.text", "session_id": session["id"], "text": "hello?"})],
     )
@@ -619,7 +620,7 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
     async def note_the_end(_message):
         finished.set()
 
-    bus.subscribe(UI_BUTTONS, note_the_end)
+    bus.subscribe(STATE_BUTTONS, note_the_end)
 
     loop_task = asyncio.create_task(channel.channel_loop(websocket))
     await _wait_for(provider.first_round_started.is_set)
@@ -639,9 +640,9 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
 
 @pytest.mark.regression
 def test_every_outgoing_frame_of_a_turn_carries_its_turn_id_and_chunks_precede_done(client, hello_project):
-    session = client.get("/api/skills/webchat/sessions/current").json()
+    session_id = session_of(enter_chat(client, hello_project))
 
-    frames = chat_turn_frames(client, session["id"], "hi", turn_id="abc-123")
+    frames = chat_turn_frames(client, session_id, "hi", turn_id="abc-123")
 
     kinds = [f["type"] for f in frames]
     assert frames[-1]["type"] == "output.text"
@@ -658,23 +659,23 @@ def test_every_outgoing_frame_of_a_turn_carries_its_turn_id_and_chunks_precede_d
 
 @pytest.mark.contract
 def test_a_turn_on_someone_elses_session_is_answered_with_an_error_frame(client, hello_project, app_db):
-    session = client.get("/api/skills/webchat/sessions/current").json()
+    session_id = session_of(enter_chat(client, hello_project))
 
     with chat_socket(client, username="intruder") as ws:
-        ws.send_json({"type": "input.text", "session_id": session["id"], "text": "hi"})
+        ws.send_json({"type": "input.text", "session_id": session_id, "text": "hi"})
         frame = ws.receive_json()
 
     assert frame["type"] == "output.error"
     assert frame["code"] == "session_not_found"
-    assert [m for m in app_db.get_messages(session["id"]) if m["role"] == "user"] == []
+    assert [m for m in app_db.get_messages(session_id) if m["role"] == "user"] == []
 
 
 @pytest.mark.contract
 def test_a_turn_on_a_closed_session_is_answered_with_session_closed(client, hello_project):
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    client.post(f"/api/core/sessions/{session['id']}/close")
+    session_id = session_of(enter_chat(client, hello_project))
+    end_chat(client, session_id)
 
-    final = chat_turn_frames(client, session["id"], "hi")[-1]
+    final = chat_turn_frames(client, session_id, "hi")[-1]
 
     assert final["type"] == "output.error"
     assert final["code"] == "session_closed"

@@ -14,7 +14,7 @@ export const stateListener = {
 
 // What the conversation on screen can actually reach — its own project's
 // answer, said when it opens (see backend docs/BUS.md's own
-// ui.services). This is the one that decides; the boot flag above only
+// session.info). This is the one that decides; the boot flag above only
 // says whether this build has a provider at all.
 onServices((available) => {
   configured.value = available.listen ?? true

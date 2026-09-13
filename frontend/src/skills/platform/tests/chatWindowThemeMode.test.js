@@ -2,34 +2,29 @@
 // chatStoreSkin.test.js) to check the theme-mode prop end to end, including
 // the async race a bare-refs test can't reach.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installApiBackedLiveChannel } from '../../../../tests/liveChatChannelStub.js'
 import { createApp, nextTick } from 'vue'
-import { resetFakeBus } from '../../../../tests/fakeBus.js'
+import { deliverEntered, resetFakeBus } from '../../../../tests/fakeBus.js'
 
 vi.mock('../../../busChannel.js', () => import('../../../../tests/fakeBus.js'))
 vi.mock('../../../taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../../../dialogStore.js', () => ({ confirmDialog: vi.fn() }))
 vi.mock('../../../audio.js', () => ({ playMessageChime: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn() }))
 vi.mock('../../../api.js', () => ({
-  getCurrentSession: vi.fn(),
-  postCreateSession: vi.fn(),
-  getCurrentTestSession: vi.fn(),
-  postCreateTestSession: vi.fn(),
-  getSessions: vi.fn(),
-  getTestSessions: vi.fn(),
+  getSessions: vi.fn().mockResolvedValue([]),
+  getTestSessions: vi.fn().mockResolvedValue([]),
   deleteSession: vi.fn(),
-  getMessages: vi.fn(),
-  getSessionState: vi.fn(),
-  postAction: vi.fn(),
+  getHistory: vi.fn().mockResolvedValue([]),
+  getActuators: vi.fn(),
+  putActuators: vi.fn(),
   getAutoTracking: vi.fn(),
   putAutoTracking: vi.fn(),
   getAiModels: vi.fn(),
   postAiModelSelection: vi.fn(),
-  putMessageReaction: vi.fn(),
   postResetTestSessions: vi.fn(),
   postTruncateSession: vi.fn(),
   getTestChatModels: vi.fn(),
   postTestChatModelSelection: vi.fn(),
+  getProjects: vi.fn().mockResolvedValue({ projects: [{ id: 'live-proj', ui_label: 'Live' }], active: 'live-proj' }),
   projectFileContentUrl: vi.fn((projectName, fileName, sessionId) => `/api/core/projects/${projectName}/files/${fileName}/content?session_id=${sessionId}`)
 }))
 
@@ -37,11 +32,13 @@ function currentSkinStyleTags() {
   return Array.from(document.head.querySelectorAll('style'))
 }
 
-// Mounting ChatView is the heaviest thing this suite does, and vitest's
-// 5s default is measured against an idle machine. This file alone takes
-// about 8s; under the whole suite's parallel load it lost to a 10s ceiling,
-// so the limit is that observed ceiling plus 30%.
-vi.setConfig({ testTimeout: 13_000 })
+// Mounting ChatView is the heaviest thing this suite does, and the whole
+// component tree is transformed here, at import time, rather than inside
+// whichever test imports it first: that cost is 6.3s on its own and
+// 16.3s with the whole suite running in parallel, and vitest charged it
+// to that test's own 5s budget. A file's own imports are not timed, so
+// the import below is left with nothing but the re-evaluation.
+await import('../../../components/chat/ChatView.vue')
 
 describe('ChatView.vue themeMode="manual" end to end (not just the store refs)', () => {
   let chatStore
@@ -79,14 +76,9 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
   })
 
   it('an always-mounted auto ChatWindow (App.vue) plus a manual one entering (RunChat) — Run mode opening over the live chat', async () => {
-    const api = await import('../../../api.js')
-    await installApiBackedLiveChannel(api)
     const chatSkin = await import('../../../chatSkin.js')
     const testChatStore = await import('../testChatStore.js')
     testChatStore.setTestProject('test-proj')
-    api.getCurrentSession.mockResolvedValue({ id: 1, project_id: 'live-proj', current: true, state: { key: 'live', ui_label: 'Live', actions: [] } })
-    api.getCurrentTestSession.mockResolvedValue({ id: 99, project_id: 'test-proj', current: true, state: { key: 'test', ui_label: 'Test', actions: [] } })
-    api.getMessages.mockResolvedValue([])
 
     const ChatWindow = (await import('../../../components/chat/ChatView.vue')).default
 
@@ -94,7 +86,8 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
     document.body.appendChild(liveContainer)
     const liveApp = createApp(ChatWindow, { hideSessionsPanel: false })
     liveApp.mount(liveContainer)
-    await chatStore.loadMessages()
+    await chatStore.loadMessages('live-proj')
+    deliverEntered({ sessionId: 1, projectId: 'live-proj', state: { key: 'live', ui_label: 'Live', actions: [] } })
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
 
     // EditProjectView's setMode('run'): flips activeChatMode, mounts
@@ -107,6 +100,10 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
     testApp.mount(testContainer)
     await nextTick()
     await testChatStore.loadMessages()
+    deliverEntered({
+      sessionId: 99, projectId: 'test-proj', sessionType: 'test',
+      state: { key: 'test', ui_label: 'Test', actions: [] },
+    })
 
     await nextTick()
     expect(currentSkinStyleTags()).toHaveLength(0)

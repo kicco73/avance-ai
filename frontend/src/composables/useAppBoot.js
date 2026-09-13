@@ -6,9 +6,8 @@ import { requireLogin } from '../authStore.js'
 import { confirmDialog } from '../dialogStore.js'
 import { consumeInviteCode, peekInviteCode } from '../shareLink.js'
 import { loadSkillRoster } from '../skillRoster.js'
-import { liveChatChannels, messageListeners, modelSelectors, stateListeners } from '../skills/registry.js'
+import { messageListeners, modelSelectors, stateListeners } from '../skills/registry.js'
 import { observeMessages } from '../messageNotifier.js'
-import { installLiveChatChannel } from '../liveChatChannel.js'
 import { installModelSelector, modelSelector } from '../modelSelector.js'
 import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages } from '../chatStore.js'
 
@@ -92,7 +91,6 @@ export function useAppBoot(
       // which ones it has.
       await loadSkillRoster()
       observeMessages(messageListeners.value)
-      installLiveChatChannel(liveChatChannels.value)
       installModelSelector(modelSelectors.value)
       publishState(newState)
       return 'ready'
@@ -128,8 +126,8 @@ export function useAppBoot(
     // same apiFetch as everything else, so a stale message could otherwise
     // still be sitting in the shared store the moment the chat UI mounts.
     clearApiError()
-    // loadMessages() is what actually creates/resolves the live session
-    // (see chatStoreFactory.js's ensureSession) — only a plain user's chat
+    // loadMessages() is what enters the live conversation for this
+    // project (see chatStoreFactory.js) — only a plain user's chat
     // landing needs one at boot; an admin (Manage projects, permanently
     // mounted) or supervisor (Label sessions, their whole app) shouldn't
     // spin up a live session nobody's about to see. ChatWindow.vue only
@@ -139,7 +137,7 @@ export function useAppBoot(
     // chat via a share link (see resolveLandingView below) — same reasoning,
     // a live session is actually about to show for them too in that case.
     if (currentUserRole.value === 'user' || chatOpen.value) {
-      loadMessages()
+      loadMessages(landingProjectId.value)
     }
     modelSelector().load()
     // The /api/core/bus channel carries more than chat turns now

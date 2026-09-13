@@ -231,21 +231,37 @@ def _frame_deadline(seconds: float, frames: list[dict]):
         signal.signal(signal.SIGALRM, previous)
 
 
-def open_chat(client: TestClient, session_id: int) -> list[dict]:
+def enter_chat(client: TestClient, project_id: str, session_type: str = "live") -> list[dict]:
     """What a browser does the moment it shows a conversation: it says
-    `session.new`, and the automaton speaks first if this state has
-    anything to open with. The only thing that opens a conversation —
-    reading its history does not (see TurnService.read_history).
-    Returns the frames, ending with the choices the session offers, which
-    `session.new` always answers with."""
+    `session.enter`, and is told which conversation it is in — its state,
+    what it can reach, what was said, what it offers — and hears the
+    automaton speak first if this state has anything to open with.
+
+    The only way to get a session: nothing resolves or creates one over
+    HTTP any more, and reading a history opens nothing (see
+    TurnService.read_history). Returns the frames, ending with the
+    choices, which `session.enter` always answers with.
+
+    A test that needs the session's own id reads it off the `session.info`
+    frame: `session_of(enter_chat(...))`.
+    """
     frames = []
     with _frame_deadline(turn_frame_seconds(), frames):
         with chat_socket(client) as ws:
-            ws.send_json({"type": "session.new", "session_id": session_id})
+            ws.send_json({
+                "type": "session.enter", "project_id": project_id, "session_type": session_type,
+            })
             while True:
                 frames.append(ws.receive_json())
-                if frames[-1]["type"] == "ui.buttons":
+                if frames[-1]["type"] in ("state.buttons", "session.blocked"):
                     return frames
+
+
+def session_of(frames: list[dict]) -> int:
+    """The id of the conversation those frames are about — what a test
+    used to get from `GET /sessions/current`."""
+    info = next(frame for frame in frames if frame["type"] == "session.info")
+    return info["session_id"]
 
 
 def chat_turn_frames(client: TestClient, session_id: int, text: str, turn_id: str = "t1") -> list[dict]:
@@ -262,7 +278,7 @@ def chat_turn_frames(client: TestClient, session_id: int, text: str, turn_id: st
                 # choices; an earlier one is a message the state owed
                 # before it could answer.
                 kinds = [f["type"] for f in frames]
-                if kinds[-1] == "output.error" or (kinds[-1] == "output.text" and "ui.buttons" in kinds):
+                if kinds[-1] == "output.error" or (kinds[-1] == "output.text" and "state.buttons" in kinds):
                     return frames
 
 
@@ -275,7 +291,7 @@ def chat_turn(client: TestClient, session_id: int, text: str = "hi") -> dict:
     frames = chat_turn_frames(client, session_id, text)
     assert frames[-1]["type"] == "output.text", frames[-1]
     said = [frame for frame in frames if frame["type"] == "output.text"]
-    buttons = [frame for frame in frames if frame["type"] == "ui.buttons"]
+    buttons = [frame for frame in frames if frame["type"] == "state.buttons"]
     changed = [frame for frame in frames if frame["type"] == "state.changed"]
     return {
         **frames[-1],

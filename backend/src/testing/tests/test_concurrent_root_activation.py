@@ -7,7 +7,7 @@ import pytest
 
 from system.web_session import WebSession
 
-from conftest import chat_turn
+from conftest import chat_turn, enter_chat, session_of
 
 pytestmark = pytest.mark.contract
 
@@ -24,13 +24,13 @@ def _wait_until(predicate, timeout=8.0, interval=0.05):
 def _make_labeled_session_for(client, app_db, project_id, username):
     app_db.set_active_project_id(project_id, username)
     with WebSession().impersonate(username):
-        session = client.get("/api/skills/webchat/sessions/current").json()
-        turn = chat_turn(client, session['id'], "hi")
+        session_id = session_of(enter_chat(client, project_id))
+        turn = chat_turn(client, session_id, "hi")
         client.put(
             f"/api/skills/platform/messages/{turn['assistant_message_id']}/expected-state", json={"expected_state": "Hello"},
         )
-        client.put(f"/api/skills/platform/sessions/{session['id']}/labeled", json={"labeled": True})
-    return session["id"]
+        client.put(f"/api/skills/platform/sessions/{session_id}/labeled", json={"labeled": True})
+    return session_id
 
 
 def test_root_play_fires_every_branch_concurrently_without_failing(client, app_db, hello_project):

@@ -3,8 +3,8 @@
 // Reading the roster is the deployment describing itself, and the core
 // does that through /api/core/settings/services. *Choosing* is an
 // operation somebody performs from a panel, so it arrives from whoever
-// contributed one — the same shape as liveChatChannel.js, and a leaf for
-// the same reason: a low core module must not import the registry.
+// contributed one — a leaf, because a low core module must not import
+// the registry.
 //
 // The null object is a build with no panel: nothing to switch, and the
 // live chat simply runs on whatever its configuration named. Screens ask

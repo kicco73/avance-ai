@@ -10,7 +10,7 @@ import zipfile
 
 import pytest
 
-from conftest import chat_turn
+from conftest import chat_turn, enter_chat, session_of
 from conftest import parse_sse_result
 
 pytestmark = pytest.mark.contract
@@ -59,13 +59,8 @@ def _setup_project(client, *, autotracking_on_ai_message: bool) -> int:
     assert parse_sse_result(response)["project_id"] == "proj"
     assert client.post("/api/skills/platform/projects/proj/activate").status_code == 200
     assert client.post("/api/skills/platform/projects/proj/publish", json={}).status_code == 200
-    # A live session must exist and already be opened first — otherwise a
-    # later GET .../messages for an imported session id would bootstrap
-    # the project's live conversation (keyed by project, not session_id).
-    session_resp = client.post("/api/skills/webchat/sessions")
-    assert session_resp.status_code == 200, session_resp.text
-    session_id = session_resp.json()["id"]
-    assert client.get(f"/api/skills/webchat/sessions/{session_id}/messages").status_code == 200
+    session_id = session_of(enter_chat(client, "proj"))
+    assert client.get(f"/api/core/sessions/{session_id}/history").status_code == 200
     return session_id
 
 
@@ -75,7 +70,7 @@ def _import_and_get_messages(client) -> tuple[int, dict]:
     )
     assert response.status_code == 200, response.text
     session_id = parse_sse_result(response)["last_session_id"]
-    messages = client.get(f"/api/skills/webchat/sessions/{session_id}/messages").json()
+    messages = client.get(f"/api/core/sessions/{session_id}/history").json()
     by_role = {m["role"]: m for m in messages}
     assert set(by_role) == {"user", "assistant"}
     return session_id, by_role
@@ -119,7 +114,9 @@ def test_a_native_sessions_message_is_unaffected_by_the_imported_fallback(client
     turn's user message on a live session must still 409; only the
     session's literal first message gets the existing treatment."""
     native_session_id = _setup_project(client, autotracking_on_ai_message=False)
-    user_message_id = chat_turn(client, native_session_id, "hi")["user_message_id"]
+    chat_turn(client, native_session_id, "hi")
+    history = client.get(f"/api/core/sessions/{native_session_id}/history").json()
+    user_message_id = [m for m in history if m["role"] == "user"][-1]["id"]
 
     resp = client.put(
         f"/api/skills/platform/messages/{user_message_id}/expected-state", json={"expected_state": "a"}

@@ -43,6 +43,39 @@ because in a full build every package is present.
 
 `frontend/tests/skillBoundaries.test.js` is the twin on the other side.
 
+## What HTTP answers, and what it does not
+
+**One conversation is on the bus. Many sessions are administered over HTTP.**
+
+Everything about the conversation you are in — which session it is, what was said
+in it, where its automaton stands, what it offers, whether it is blocked, whether
+it has ended — is a message on `/api/core/bus`, and `BUS.md` is the vocabulary.
+Webchat has no HTTP surface left at all: `webchat_controller.py` is gone, and with
+it `sessions/current`, `POST sessions`, `messages` and `operator-state`. So are
+`state`, `close`, `audio` and `messages/{id}/reaction` from
+`turn/session_controller.py`.
+
+What stayed is the administration of sessions nobody is having:
+
+```text
+GET    /api/core/sessions/{id}/history      someone else's transcript, read by the
+                                            editor, the labelling screen, benchmark
+GET    /api/core/sessions/{id}/signals      the inspector
+GET|PUT /api/core/sessions/{id}/actuators   the inspector
+POST   /api/core/sessions/{id}/actions      the inspector moves the automaton
+POST   /api/core/sessions/{id}/truncate     the Run panel's "restart from here",
+                                            which keeps a prefix that closing and
+                                            recreating would lose
+DELETE /api/core/sessions/{id}
+```
+
+plus the per-project listings in `avance_platform`.
+
+Which side something belongs on is decided by the envelope, not by taste. A message
+about one conversation has a `session_id`, or a `project_id` when the session does
+not exist yet, and the bus delivers it to whoever is watching that session. A
+listing across many sessions has neither, and a route is the honest shape for it.
+
 ## Decisions taken
 
 - **Two endpoints were deleted rather than renamed.** `GET /api/build/skills` and
@@ -58,9 +91,9 @@ because in a full build every package is present.
   republishes onto the bus what a client sends. `ui.notification` was one of the four
   payloads, not the channel. It is `system/bus_channel.py` and `/api/core/bus`.
 - **Verbs became resources** where the path described an action rather than a thing:
-  `sessions/current`, `actions`, `invitations/{code}`, `auth/terms/acceptance`,
-  `legal-terms/status`, `legal-terms/acceptance`; `POST` on the lifecycle commands
-  (pause, resume, activate), `PUT` on the toggles (autotracking, audio, actuators).
+  `actions`, `invitations/{code}`, `auth/terms/acceptance`, `legal-terms/status`,
+  `legal-terms/acceptance`; `POST` on the lifecycle commands (pause, resume,
+  activate), `PUT` on the toggles (autotracking, actuators).
 
 ## Decisions *not* taken, and why
 

@@ -12,7 +12,7 @@ import time
 
 import pytest
 
-from conftest import chat_turn
+from conftest import chat_turn, enter_chat, session_of
 
 from jobs.job_queue import JobQueue
 from testing.testing_service import AllSignalsAggregationJob
@@ -31,8 +31,7 @@ def _wait_until(predicate, timeout=5.0, interval=0.02):
 
 
 def _make_completed_run(client, hello_project):
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    session_id = session["id"]
+    session_id = session_of(enter_chat(client, hello_project))
     chat_turn(client, session_id, "hi")
     client.put(f"/api/skills/platform/sessions/{session_id}/labeled", json={"labeled": True})
 

@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from conftest import parse_sse_result
+from conftest import enter_chat, parse_sse_result, session_of
 from system.web_session import WebSession
 
 pytestmark = pytest.mark.contract
@@ -31,7 +31,7 @@ def _import_json(client, project, sessions: list[dict], filename="sessions.json"
 
 
 def _messages(client, session_id):
-    return client.get(f"/api/skills/webchat/sessions/{session_id}/messages").json()
+    return client.get(f"/api/core/sessions/{session_id}/history").json()
 
 
 def _export(client, project) -> list[dict]:
@@ -46,7 +46,7 @@ def test_export_covers_every_session_of_the_project_native_and_imported_alike_wi
     chat) and imported alike, not just the imported ones."""
     assert _export(client, hello_project) == []
 
-    native_session = client.get("/api/skills/webchat/sessions/current").json()
+    native_session_id = session_of(enter_chat(client, hello_project))
     session_id = _import_transcript(client, hello_project)
     user_message_id = _messages(client, session_id)[0]["id"]
     client.put(f"/api/skills/platform/messages/{user_message_id}/expected-state", json={"expected_state": "Hello"})
@@ -57,7 +57,11 @@ def test_export_covers_every_session_of_the_project_native_and_imported_alike_wi
 
     exported = _export(client, hello_project)
     assert len(exported) == 2
-    assert native_session["start_state"] in {e["start_state"] for e in exported}
+    native_row = next(
+        row for row in client.get(f"/api/core/projects/{hello_project}/sessions").json()
+        if row["id"] == native_session_id
+    )
+    assert native_row["start_state"] in {e["start_state"] for e in exported}
 
     [imported] = [e for e in exported if e["name"] == "My export"]
     assert imported["comment"] == "session-wide note"
@@ -214,3 +218,35 @@ def test_a_malformed_message_is_rejected_naming_the_missing_field(client, hello_
     assert result["results"] == [{"file": "bad", "ok": False, "error": result["results"][0]["error"]}]
     assert "text" in result["results"][0]["error"]
     assert result["last_session_id"] is None
+
+
+@pytest.mark.regression
+def test_a_message_role_that_is_neither_user_nor_assistant_is_rejected_and_leaves_no_half_imported_session_behind(
+    client, hello_project,
+):
+    result = _import_json(client, hello_project, [{
+        "name": "swapped",
+        "username": "User 1",
+        "messages": [
+            {"role": "user", "text": "hi"},
+            {"role": "model", "text": "an assistant turn a foreign export labelled its own way"},
+        ],
+    }])
+
+    assert result["results"][0]["ok"] is False
+    assert "model" in result["results"][0]["error"]
+
+    sessions = client.get(f"/api/core/projects/{hello_project}/sessions?include_imported=true").json()
+    assert [s for s in sessions if s["title"] == "swapped"] == []
+
+
+@pytest.mark.contract
+def test_an_exports_own_role_casing_still_imports_as_the_role_it_names(client, hello_project):
+    assert _import_json(client, hello_project, [{
+        "name": "Capitalised", "username": "User 1",
+        "messages": [{"role": "User", "text": "hi"}, {"role": "Assistant", "text": "hello"}],
+    }])["results"][0]["ok"] is True
+
+    WebSession().user = "User 1"
+    [exported] = _export(client, hello_project)
+    assert [m["role"] for m in exported["messages"]] == ["user", "assistant"]

@@ -7,41 +7,53 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import chat_turn, open_chat
+from conftest import chat_socket, chat_turn, enter_chat, session_of, turn_frame_seconds, _frame_deadline
 
 
 def _metrics(client, project_id, query: str = "") -> dict:
     return {m["name"]: m["value"] for m in client.get(f"/api/core/projects/{project_id}/metrics{query}").json()}
 
 
-def _first_message_of_a_second_session(client) -> tuple[int, int]:
-    first = client.get("/api/skills/webchat/sessions/current").json()
-    open_chat(client, first["id"])
-    second = client.post("/api/skills/webchat/sessions").json()
-    # Said because the window said `session.new`, not because this asked
-    # for the history: reading opens nothing (see TurnService.read_history).
-    open_chat(client, second["id"])
-    messages = client.get(f"/api/skills/webchat/sessions/{second['id']}/messages").json()
+def _create_chat(client, project_id: str) -> list[dict]:
+    frames = []
+    with _frame_deadline(turn_frame_seconds(), frames):
+        with chat_socket(client) as ws:
+            ws.send_json({"type": "session.create", "project_id": project_id, "session_type": "live"})
+            while True:
+                frames.append(ws.receive_json())
+                if frames[-1]["type"] in ("state.buttons", "session.blocked"):
+                    return frames
+
+
+def _first_message_of_a_second_session(client, project_id) -> tuple[int, int]:
+    enter_chat(client, project_id)
+    second_id = session_of(_create_chat(client, project_id))
+    messages = client.get(f"/api/core/sessions/{second_id}/history").json()
     assert messages
-    return second["id"], messages[0]["id"]
+    return second_id, messages[0]["id"]
 
 
 @pytest.mark.contract
 def test_get_session_signals_returns_the_full_event_log_and_404s_for_an_unknown_session(client, hello_project):
-    session = client.get("/api/skills/webchat/sessions/current").json()
+    session_id = session_of(enter_chat(client, hello_project))
 
-    response = client.get(f"/api/core/sessions/{session['id']}/signals")
+    response = client.get(f"/api/core/sessions/{session_id}/signals")
     assert response.status_code == 200
-    assert response.json() == []  # "Hello world" declares no signals/triggers
+    log = response.json()
+    # Entering opened the conversation, so its own "" -> start_state
+    # transition is in the log. Nothing else: "Hello world" declares no
+    # signals/triggers.
+    assert [(row["old_state"], row["new_state"]) for row in log] == [("", "Hello")]
+    assert log[0]["values"] is None
 
     assert client.get("/api/core/sessions/999999/signals").status_code == 404
 
 
 @pytest.mark.contract
 def test_get_metrics_is_the_live_history_unless_pinned_to_a_message_keeping_its_shape_and_404ing_an_unknown_one(client, hello_project):
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    first_message_id = chat_turn(client, session['id'], "first")["assistant_message_id"]
-    chat_turn(client, session['id'], "second")
+    session_id = session_of(enter_chat(client, hello_project))
+    first_message_id = chat_turn(client, session_id, "first")["assistant_message_id"]
+    chat_turn(client, session_id, "second")
 
     live = _metrics(client, hello_project)
     assert live["engagement"] > 0.0
@@ -65,9 +77,9 @@ def test_get_metrics_is_the_live_history_unless_pinned_to_a_message_keeping_its_
 def test_get_messages_response_shape_has_no_annotation_fields(client, hello_project):
     """Annotation-related fields and the evaluation-point link live on
     Tracking (see get_session_signals), not on the message row."""
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    chat_turn(client, session['id'], "hi")
-    rows = client.get(f"/api/skills/webchat/sessions/{session['id']}/messages").json()
+    session_id = session_of(enter_chat(client, hello_project))
+    chat_turn(client, session_id, "hi")
+    rows = client.get(f"/api/core/sessions/{session_id}/history").json()
 
     assert rows
     for row in rows:
@@ -78,8 +90,8 @@ def test_get_messages_response_shape_has_no_annotation_fields(client, hello_proj
 
 @pytest.mark.contract
 def test_put_expected_state_and_signals_are_409_for_a_non_evaluation_point_message_and_404_for_an_unknown_one(client, hello_project):
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    message_id = chat_turn(client, session['id'], "hi")["assistant_message_id"]
+    session_id = session_of(enter_chat(client, hello_project))
+    message_id = chat_turn(client, session_id, "hi")["assistant_message_id"]
 
     assert client.put(f"/api/skills/platform/messages/{message_id}/expected-state", json={"expected_state": "start"}).status_code == 409
     assert client.put(f"/api/skills/platform/messages/{message_id}/expected-signals", json={"expected_values": {"foo": 50}}).status_code == 409
@@ -106,8 +118,8 @@ def test_get_test_metrics_lists_the_whole_catalog_optionally_scoped_to_a_session
     for metric in body:
         assert set(metric) == {"name", "ui_label", "ui_description", "value", "sample_count"}
 
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    assert client.get(f"/api/skills/testing/projects/{hello_project}/tests/metrics?session_id={session['id']}").status_code == 200
+    session_id = session_of(enter_chat(client, hello_project))
+    assert client.get(f"/api/skills/testing/projects/{hello_project}/tests/metrics?session_id={session_id}").status_code == 200
     assert client.get(f"/api/skills/testing/projects/{hello_project}/tests/metrics?session_id=999999").status_code == 404
 
 
@@ -115,9 +127,9 @@ def test_get_test_metrics_lists_the_whole_catalog_optionally_scoped_to_a_session
 def test_get_test_metrics_reflects_annotations_and_deleting_them_clears_only_the_annotations(client, hello_project, app_db):
     """"Hello world" declares no triggers, so there's no real chat-turn
     path to a linked Tracking row — written directly via app_db."""
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    message_id = chat_turn(client, session['id'], "hi")["assistant_message_id"]
-    signal_row_id = app_db.save_signal_snapshot({"foo": 80}, session["id"], message_id=message_id)
+    session_id = session_of(enter_chat(client, hello_project))
+    message_id = chat_turn(client, session_id, "hi")["assistant_message_id"]
+    signal_row_id = app_db.save_signal_snapshot({"foo": 80}, session_id, message_id=message_id)
 
     before = {m["name"]: m for m in client.get(f"/api/skills/testing/projects/{hello_project}/tests/metrics").json()}
     assert before["state_accuracy"]["sample_count"] == 0
@@ -129,7 +141,7 @@ def test_get_test_metrics_reflects_annotations_and_deleting_them_clears_only_the
     assert after["state_accuracy"]["sample_count"] == 1
     assert after["state_accuracy"]["value"] == 100.0
 
-    response = client.delete(f"/api/skills/platform/sessions/{session['id']}/annotations")
+    response = client.delete(f"/api/skills/platform/sessions/{session_id}/annotations")
     assert response.status_code == 200
     assert response.json() == {"success": True}
     row = app_db.get_signal_row_by_message(message_id)
@@ -145,7 +157,7 @@ def test_annotating_a_later_sessions_own_start_materializes_a_signals_row_that_c
     """Only the first session ever opened for a project gets a real
     "" -> start_state Tracking row — a later session has nothing real to
     annotate against until an expert actually tries."""
-    session_id, first_message_id = _first_message_of_a_second_session(client)
+    session_id, first_message_id = _first_message_of_a_second_session(client, hello_project)
     assert client.get(f"/api/core/sessions/{session_id}/signals").json() == []
 
     response = client.put(f"/api/skills/platform/messages/{first_message_id}/expected-state", json={"expected_state": "Hello"})
@@ -169,19 +181,19 @@ def test_annotating_the_first_sessions_own_start_links_the_unlinked_init_row_to_
     """The automaton's first ("" -> start_state) transition fires before
     any message exists, so it starts unlinked — a domain expert can
     still annotate it via the same lazy-link path a later session uses."""
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    messages = client.get(f"/api/skills/webchat/sessions/{session['id']}/messages").json()
+    session_id = session_of(enter_chat(client, hello_project))
+    messages = client.get(f"/api/core/sessions/{session_id}/history").json()
     assert messages
     first_message_id = messages[0]["id"]
 
-    signals = client.get(f"/api/core/sessions/{session['id']}/signals").json()
+    signals = client.get(f"/api/core/sessions/{session_id}/signals").json()
     init_row = next(row for row in signals if row["old_state"] == "")
     assert init_row["message_id"] is None
 
     response = client.put(f"/api/skills/platform/messages/{first_message_id}/expected-state", json={"expected_state": "Hello"})
 
     assert response.status_code == 200
-    signals = client.get(f"/api/core/sessions/{session['id']}/signals").json()
+    signals = client.get(f"/api/core/sessions/{session_id}/signals").json()
     init_row = next(row for row in signals if row["old_state"] == "")
     assert init_row["message_id"] == first_message_id
     assert init_row["expected_state"] == "Hello"

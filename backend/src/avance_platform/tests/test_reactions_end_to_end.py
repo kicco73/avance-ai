@@ -1,14 +1,17 @@
 """End-to-end verification that a project's `reactions:` vocabulary is
-read off index.yml and reaches every HTTP surface the frontend actually
-consumes: GET /api/core/state, a real chat turn's own state payload, the
-message list (for a persisted bot-message reaction), and the PUT endpoint
-that sets a user's own reaction on a bot message.
+read off index.yml and reaches everything the frontend actually consumes:
+GET /api/core/state, the state a conversation is entered in, the transcript
+(for a persisted bot-message reaction), and `input.reaction`, which sets
+a person's own reaction on a bot message.
 """
 from __future__ import annotations
 
 import pytest
 
-from conftest import parse_sse_result, chat_turn
+from conftest import (
+    _frame_deadline, chat_socket, chat_turn, enter_chat, parse_sse_result, session_of,
+    turn_frame_seconds,
+)
 
 pytestmark = pytest.mark.contract
 
@@ -36,6 +39,21 @@ states:
     contextual-prompt: there
     reactions-enabled: false
 """
+
+
+def _react(client, session_id: int, message_id: int, reaction: str | None) -> list[dict]:
+    frames = []
+    with _frame_deadline(turn_frame_seconds(), frames):
+        with chat_socket(client) as ws:
+            ws.send_json({
+                "type": "input.reaction", "session_id": session_id,
+                "assistant_message_id": message_id, "reaction": reaction,
+            })
+            ws.send_json({"type": "session.recall", "session_id": session_id})
+            while True:
+                frames.append(ws.receive_json())
+                if frames[-1]["type"] == "session.messages":
+                    return frames[-1]["messages"]
 
 
 @pytest.fixture
@@ -66,48 +84,36 @@ def test_get_state_carries_the_reactions_vocabulary(client, reactions_project):
         assert set(reaction) == {"key", "ui_label"}
 
 
-def test_chat_turn_response_state_carries_reactions_too(client, reactions_project):
-    session = client.get("/api/skills/webchat/sessions/current").json()
+def test_entering_a_conversation_carries_reactions_too(client, reactions_project):
+    frames = enter_chat(client, reactions_project)
 
-    turn = chat_turn(client, session['id'], "hi")
+    info = next(frame for frame in frames if frame["type"] == "session.info")
 
-    assert turn["state"]["reactions"] == [
+    assert info["state"]["reactions"] == [
         {"key": "supportive", "ui_label": "🙏"},
         {"key": "encouraging", "ui_label": "💪"},
     ]
 
 
-def test_message_list_and_reaction_endpoint_round_trip(client, reactions_project):
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    turn = chat_turn(client, session['id'], "hi")
+def test_transcript_and_input_reaction_round_trip(client, reactions_project):
+    session_id = session_of(enter_chat(client, reactions_project))
+    turn = chat_turn(client, session_id, "hi")
     assistant_id = turn["assistant_message_id"]
 
     # Freshly generated — no reaction set yet, but the field must already
     # be present (null), not missing, so the frontend's `message.reaction`
     # read never silently falls back to undefined.
-    rows = client.get(f"/api/skills/webchat/sessions/{session['id']}/messages").json()
+    rows = client.get(f"/api/core/sessions/{session_id}/history").json()
     assistant_row = next(r for r in rows if r["id"] == assistant_id)
     assert assistant_row["reaction"] is None
 
-    response = client.put(
-        f"/api/core/messages/{assistant_id}/reaction", json={"reaction": "supportive"}
-    )
-    assert response.status_code == 200, response.text
-    assert response.json()["reaction"] == "supportive"
-
-    rows = client.get(f"/api/skills/webchat/sessions/{session['id']}/messages").json()
+    rows = _react(client, session_id, assistant_id, "supportive")
     assistant_row = next(r for r in rows if r["id"] == assistant_id)
     assert assistant_row["reaction"] == "supportive"
 
     # Clearing (reaction: null) removes it again.
-    response = client.put(f"/api/core/messages/{assistant_id}/reaction", json={"reaction": None})
-    assert response.status_code == 200
-    assert response.json()["reaction"] is None
-
-
-def test_reaction_on_someone_elses_message_is_404(client, reactions_project):
-    response = client.put("/api/core/messages/999999/reaction", json={"reaction": "supportive"})
-    assert response.status_code == 404
+    rows = _react(client, session_id, assistant_id, None)
+    assert next(r for r in rows if r["id"] == assistant_id)["reaction"] is None
 
 
 NO_REACTIONS_PROJECT_YAML = """
@@ -159,13 +165,12 @@ def test_a_states_reactions_enabled_has_no_effect_without_a_declared_reactions_s
 
     fake_ai_service.generate_stream_with_metadata = generate_stream_with_metadata_and_reaction
 
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    turn = chat_turn(client, session['id'], "hi")
-    user_message_id = turn["user_message_id"]
+    session_id = session_of(enter_chat(client, no_reactions_project))
+    turn = chat_turn(client, session_id, "hi")
 
     assert turn["user_message_reaction"] is None
-    rows = client.get(f"/api/skills/webchat/sessions/{session['id']}/messages").json()
-    user_row = next(r for r in rows if r["id"] == user_message_id)
+    rows = client.get(f"/api/core/sessions/{session_id}/history").json()
+    user_row = [r for r in rows if r["role"] == "user"][-1]
     assert user_row["reaction"] is None
 
 
@@ -181,8 +186,8 @@ def test_bots_own_reaction_is_captured_and_persisted_on_the_users_message(client
 
     fake_ai_service.generate_stream_with_metadata = generate_stream_with_metadata_and_reaction
 
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    turn = chat_turn(client, session['id'], "hi")
+    session_id = session_of(enter_chat(client, reactions_project))
+    turn = chat_turn(client, session_id, "hi")
     user_message_id = turn["user_message_id"]
     assert user_message_id is not None
 
@@ -191,7 +196,7 @@ def test_bots_own_reaction_is_captured_and_persisted_on_the_users_message(client
     # without waiting on a full messages refetch to notice the DB write.
     assert turn["user_message_reaction"] == "supportive"
 
-    rows = client.get(f"/api/skills/webchat/sessions/{session['id']}/messages").json()
+    rows = client.get(f"/api/core/sessions/{session_id}/history").json()
     user_row = next(r for r in rows if r["id"] == user_message_id)
     assistant_row = next(r for r in rows if r["id"] == turn["assistant_message_id"])
 

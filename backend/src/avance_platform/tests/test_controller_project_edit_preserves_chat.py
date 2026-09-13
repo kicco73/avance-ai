@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import parse_sse_result
+from conftest import enter_chat, parse_sse_result, session_of
 
 pytestmark = pytest.mark.regression
 
@@ -26,22 +26,22 @@ TWO_STATE_YML = (
 )
 
 
-def _upload_and_reach_b(client):
+def _upload_and_reach_b(client) -> int:
     resp = client.post("/api/skills/platform/projects/upload", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
     resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert resp.status_code == 200, resp.text
 
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    action_resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "go"})
+    session_id = session_of(enter_chat(client, project_id))
+    action_resp = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go"})
     assert action_resp.status_code == 200, action_resp.text
     assert action_resp.json()["state"]["key"] == "b"
-    return session
+    return session_id
 
 
 def test_editing_a_file_without_touching_the_current_state_keeps_the_conversation(client):
-    session = _upload_and_reach_b(client)
+    session_id = _upload_and_reach_b(client)
 
     # Adds an unrelated state "c" — "b" (the one the conversation is
     # actually in) is untouched.
@@ -50,7 +50,7 @@ def test_editing_a_file_without_touching_the_current_state_keeps_the_conversatio
     assert resp.status_code == 200, resp.text
 
     sessions = client.get("/api/core/projects/proj/sessions").json()
-    assert [s["id"] for s in sessions] == [session["id"]]
+    assert [s["id"] for s in sessions] == [session_id]
     assert client.get("/api/core/state").json()["key"] == "b"
 
 
@@ -97,7 +97,7 @@ def test_editing_an_unrelated_project_does_not_touch_the_active_ones_conversatio
     """_finalize_project_update only reconciles when `project_name` is the
     *active* one — editing some other project's file must never wipe the
     conversation that's actually running right now."""
-    session = _upload_and_reach_b(client)
+    session_id = _upload_and_reach_b(client)
 
     other_yml = "project:\n  id: other\ninit-action:\n  target: x\nstates:\n  x:\n    contextual-prompt: hi\n"
     resp = client.post("/api/skills/platform/projects/upload", content=other_yml.encode(), headers={"Content-Type": "application/x-yaml"})
@@ -113,5 +113,5 @@ def test_editing_an_unrelated_project_does_not_touch_the_active_ones_conversatio
     assert resp.status_code == 200, resp.text
 
     sessions = client.get("/api/core/projects/proj/sessions").json()
-    assert [s["id"] for s in sessions] == [session["id"]]
+    assert [s["id"] for s in sessions] == [session_id]
     assert client.get("/api/core/state").json()["key"] == "b"

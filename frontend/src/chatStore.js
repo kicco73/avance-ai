@@ -1,5 +1,4 @@
 import { getSessions } from './api.js'
-import { liveChatChannel } from './liveChatChannel.js'
 import { createChatStore } from './chatStoreFactory.js'
 
 export {
@@ -14,20 +13,18 @@ export { applyAspect, invalidateSkin, setSkinCss } from './chatSkin.js'
 // createChatStore() instance.
 export const liveStore = createChatStore({
   kind: 'live',
-  getCurrentSession: (sessionId) => liveChatChannel().getCurrentSession(sessionId),
   getSessionsList: (includeImported, projectId) => getSessions(projectId, includeImported),
-  createSession: () => liveChatChannel().createSession(),
-  getMessages: (sessionId) => liveChatChannel().getMessages(sessionId),
   confirmNewSession: true,
   useAutoTracking: false,
   subscribeToNotifications: true,
 })
 
 export const {
-  state, currentSessionId, selectedSessionActive, projectPaused, projectPausedReason,
+  state, currentSessionId, selectedSessionActive, blockedReason, blockedDetail,
   sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
   messages, historyLoaded, chatLoading, chatStatus, actionLoading,
   autoTrackingEnabled, autoTrackingLoading, draft, turnCount,
+  setProject,
   handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
   selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking,
   toggleAudio, handleSend, beginVoiceMessage, handleResend, handleReact, handleAction,

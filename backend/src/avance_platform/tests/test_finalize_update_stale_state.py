@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from conftest import parse_sse_result
+from conftest import enter_chat, parse_sse_result, session_of
 from system.web_session import WebSession
 
 pytestmark = pytest.mark.regression
@@ -32,10 +32,10 @@ def _upload_and_reach_b(client):
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
 
-    session = client.get("/api/skills/webchat/sessions/current").json()
-    action_resp = client.post(f"/api/skills/webchat/sessions/{session['id']}/actions", json={"action_name": "go"})
+    session_id = session_of(enter_chat(client, project_id))
+    action_resp = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go"})
     assert action_resp.status_code == 200, action_resp.text
-    return project_id, session["id"]
+    return project_id, session_id
 
 
 def test_editing_the_current_users_stale_state_never_touches_another_users_live_session(client, app_db):
@@ -43,16 +43,16 @@ def test_editing_the_current_users_stale_state_never_touches_another_users_live_
 
     app_db.set_active_project_id(project_id, "bob")
     with WebSession().impersonate("bob"):
-        bob_session = client.get("/api/skills/webchat/sessions/current").json()
-        bob_action_resp = client.post(f"/api/skills/webchat/sessions/{bob_session['id']}/actions", json={"action_name": "go"})
+        bob_session_id = session_of(enter_chat(client, project_id))
+        bob_action_resp = client.post(f"/api/core/sessions/{bob_session_id}/actions", json={"action_name": "go"})
         assert bob_action_resp.status_code == 200, bob_action_resp.text
 
     resp = client.put("/api/skills/platform/projects/proj/files/index.yml", content=YML_WITHOUT_B.encode())
     assert resp.status_code == 200, resp.text
 
     assert app_db.get_chat_session(my_session_id) is None
-    assert app_db.get_chat_session(bob_session["id"]) is not None
-    assert app_db.get_chat_session(bob_session["id"])["end_state"] == "b"
+    assert app_db.get_chat_session(bob_session_id) is not None
+    assert app_db.get_chat_session(bob_session_id)["end_state"] == "b"
 
 
 def test_editing_the_current_users_stale_state_never_touches_an_imported_session(client, app_db):
@@ -74,7 +74,7 @@ def test_editing_the_current_users_stale_state_never_touches_an_imported_session
 def test_editing_a_stale_state_deletes_the_current_users_own_test_session(client, app_db):
     project_id, _ = _upload_and_reach_b(client)
     test_session = client.post(f"/api/skills/platform/projects/{project_id}/test-sessions").json()
-    action_resp = client.post(f"/api/skills/webchat/sessions/{test_session['id']}/actions", json={"action_name": "go"})
+    action_resp = client.post(f"/api/core/sessions/{test_session['id']}/actions", json={"action_name": "go"})
     assert action_resp.status_code == 200, action_resp.text
 
     resp = client.put("/api/skills/platform/projects/proj/files/index.yml", content=YML_WITHOUT_B.encode())

@@ -9,7 +9,6 @@
 // createChatStore() instances, so this asserts they can carry totally
 // different content *at the same time*, with no clearing/reset needed at all.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { installApiBackedLiveChannel } from '../../../../tests/liveChatChannelStub.js'
 import { createApp, h } from 'vue'
 import { resetFakeBus } from '../../../../tests/fakeBus.js'
 
@@ -18,33 +17,31 @@ vi.mock('../../../taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../../../dialogStore.js', () => ({ confirmDialog: vi.fn() }))
 vi.mock('../../../audio.js', () => ({ playMessageChime: vi.fn(), playReactionChime: vi.fn(), unlockAudioPlayback: vi.fn() }))
 vi.mock('../../../api.js', () => ({
-  getCurrentSession: vi.fn(),
-  postCreateSession: vi.fn(),
-  getCurrentTestSession: vi.fn(),
-  postCreateTestSession: vi.fn(),
   getSessions: vi.fn(),
   getTestSessions: vi.fn(),
   deleteSession: vi.fn(),
-  getMessages: vi.fn(),
-  getSessionState: vi.fn(),
-  postAction: vi.fn(),
+  getHistory: vi.fn(),
+  getActuators: vi.fn(),
+  putActuators: vi.fn(),
   getAutoTracking: vi.fn(),
   putAutoTracking: vi.fn(),
   getAiModels: vi.fn(),
   postAiModelSelection: vi.fn(),
-  putMessageReaction: vi.fn(),
   postResetTestSessions: vi.fn(),
   postTruncateSession: vi.fn(),
   getTestChatModels: vi.fn(),
   postTestChatModelSelection: vi.fn(),
+  getProjects: vi.fn().mockResolvedValue({ projects: [], active: null }),
   projectFileContentUrl: vi.fn((p, f, s) => `/api/core/projects/${p}/files/${f}/content?session_id=${s}`)
 }))
 
-// Mounting ChatView is the heaviest thing this suite does, and vitest's
-// 5s default is measured against an idle machine. This file alone takes
-// about 8s; under the whole suite's parallel load it lost to a 10s ceiling,
-// so the limit is that observed ceiling plus 30%.
-vi.setConfig({ testTimeout: 13_000 })
+// Mounting ChatView is the heaviest thing this suite does, and the whole
+// component tree is transformed here, at import time, rather than inside
+// whichever test imports it first: that cost is 6.3s on its own and
+// 16.3s with the whole suite running in parallel, and vitest charged it
+// to that test's own 5s budget. A file's own imports are not timed, so
+// the import below is left with nothing but the re-evaluation.
+await import('../../../components/chat/ChatView.vue')
 
 describe('the live chat and the "Run" test chat are genuinely independent stores', () => {
   beforeEach(resetFakeBus)

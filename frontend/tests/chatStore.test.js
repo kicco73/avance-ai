@@ -1,83 +1,50 @@
-// An action's own "task" script never rides in a turn's or a manual
-// action's response any more: the backend runs it as a task and pushes
-// its output over the websocket as a "notification" frame, which
-// notificationBus.js runs exactly once, globally. These tests pin both
-// halves: a store never runs a script off a response (even a stale one
-// that still carries the old key), and the bus runs whatever frame
-// arrives, whether or not it also carries a state for some project.
-// taskActions.js itself (script → taskLocals binding) has its own
-// dedicated tests — see taskActions.test.js.
+// An action's own "task" script never rides in anything a chat asked
+// for: the backend runs it as a task and publishes its output as a
+// `ui.notification`, which notificationBus.js runs exactly once,
+// globally, whichever chat stores happen to exist. taskActions.js itself
+// (script → taskLocals binding) has its own dedicated tests — see
+// taskActions.test.js.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installApiBackedLiveChannel } from './liveChatChannelStub.js'
 import { buildTimeline } from '../src/testTimeline.js'
-import { TOOL_STATUS_MIN_MS } from '../src/toolStatusHold.js'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
-  postAction: vi.fn(),
   getSessions: vi.fn(),
   getAiModels: vi.fn(),
-  getMessages: vi.fn()
+  getHistory: vi.fn(),
+  getActuators: vi.fn(),
+  putActuators: vi.fn(),
+  postTruncateSession: vi.fn(),
+  deleteSession: vi.fn(),
 }))
-vi.mock('../src/busChannel.js', () => ({ busChannel: { subscribe: vi.fn(() => () => {}) } }))
-
-describe('handleAction (manual test action) never runs an task script off the response', () => {
-  let chatStore
-  let taskActions
-  let api
-
-  beforeEach(async () => {
-    vi.resetModules()
-    chatStore = await import('../src/chatStore.js')
-    taskActions = await import('../src/taskActions.js')
-    api = await import('../src/api.js')
-    await installApiBackedLiveChannel(api)
-  })
-
-  afterEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('applies the state and runs nothing, even off a stale response still carrying "task"', async () => {
-    api.postAction.mockResolvedValue({
-      reply: [],
-      state: { key: 'b', ui_label: 'B', actions: [] },
-      'task': 'celebrate()',
-      session_id: 1
-    })
-
-    await chatStore.handleAction('go-loud')
-
-    expect(taskActions.runTaskScript).not.toHaveBeenCalled()
-    expect(chatStore.state.value.key).toBe('b')
-  })
-})
 
 describe('the notification bus runs a pushed task script once, globally', () => {
   let taskActions
   let busChannel
-  let bus
 
   beforeEach(async () => {
     vi.resetModules()
+    vi.doMock('../src/busChannel.js', () => ({ busChannel: { subscribe: vi.fn(() => () => {}), onConnectionState: vi.fn(() => () => {}), send: vi.fn(() => true), connectionState: 'open' } }))
     taskActions = await import('../src/taskActions.js')
     ;({ busChannel } = await import('../src/busChannel.js'))
-    bus = await import('../src/notificationBus.js')
+    await import('../src/notificationBus.js')
   })
 
   afterEach(() => {
+    vi.doUnmock('../src/busChannel.js')
     vi.clearAllMocks()
   })
 
+  // What the channel handed the bus: it subscribes the first time
+  // anyone subscribes to it.
   function pushedFrame() {
-    // What the channel handed the bus: it subscribes the first time
-    // anyone subscribes to it.
-    expect(busChannel.subscribe).toHaveBeenCalledTimes(1)
-    expect(busChannel.subscribe.mock.calls[0][0]).toBe('ui.notification')
-    return busChannel.subscribe.mock.calls[0][1]
+    const call = busChannel.subscribe.mock.calls.find(([type]) => type === 'ui.notification')
+    expect(call).toBeTruthy()
+    return call[1]
   }
 
-  it('runs the script of a frame carrying only "task" (an ActionTask that ran server-side)', () => {
+  it('runs the script of a frame carrying only "task" (an ActionTask that ran server-side)', async () => {
+    const bus = await import('../src/notificationBus.js')
     const seen = []
     bus.subscribeToStateNotifications((frame) => seen.push(frame))
 
@@ -88,7 +55,8 @@ describe('the notification bus runs a pushed task script once, globally', () => 
     expect(seen).toEqual([])  // no state: nothing for the stores
   })
 
-  it('runs the script once however many stores subscribed, and hands the state to each', () => {
+  it('runs the script once however many stores subscribed, and hands the state to each', async () => {
+    const bus = await import('../src/notificationBus.js')
     const a = []
     const b = []
     bus.subscribeToStateNotifications((frame) => a.push(frame))
@@ -104,213 +72,121 @@ describe('the notification bus runs a pushed task script once, globally', () => 
   it('a live chat store applies a pushed state only when it is about its own project', async () => {
     const chatStore = await import('../src/chatStore.js')
     chatStore.currentProjectId.value = 'proj'
+    const push = pushedFrame()
 
-    pushedFrame()({ project_name: 'other', state: { key: 'x', actions: [] } })
+    push({ project_name: 'other', state: { key: 'x', actions: [] } })
     expect(chatStore.state.value?.key).not.toBe('x')
 
-    pushedFrame()({ project_name: 'proj', state: { key: 'x', actions: [] } })
+    push({ project_name: 'proj', state: { key: 'x', actions: [] } })
     expect(chatStore.state.value.key).toBe('x')
   })
 })
 
-describe('submitMessage correlates ids directly, never through result.reply', () => {
+describe('the person\'s own message is stamped by what the system says about it', () => {
   let chatStore
-  let chatClient
+  let deliver
 
   beforeEach(async () => {
     vi.resetModules()
+    vi.doMock('../src/busChannel.js', () => import('./fakeBus.js'))
+    const bus = await import('./fakeBus.js')
+    bus.resetFakeBus()
+    deliver = bus.deliver
     chatStore = await import('../src/chatStore.js')
-    chatClient = await import('../src/chatClient.js')
+    chatStore.currentSessionId.value = 1
   })
 
   afterEach(() => {
+    vi.doUnmock('../src/busChannel.js')
     vi.clearAllMocks()
   })
 
   it('stamps the local user bubble with the backend-assigned user_message_id', async () => {
-    chatClient.sendMessage.mockResolvedValue({
-      reply: [],
-      user_message_id: 42,
-      assistant_message_id: 5,
-      state: { key: 'a', ui_label: 'A', actions: [] },
-      'task': null,
-      session_id: 1
-    })
-
     await chatStore.handleSend('hello')
+
+    deliver({ type: 'output.reaction', session_id: 1, user_message_id: 42, reaction: null })
 
     const userMessage = chatStore.messages.value.find((m) => m.role === 'user')
     expect(userMessage.messageId).toBe(42)
   })
 
-  it('applies the bot-supplied reaction to the local user bubble live, via a replaced object (not a direct mutation)', async () => {
-    // Regression: an earlier version mutated the raw `message` object this
-    // closure holds directly (message.reaction = ...) instead of replacing
+  it('applies the reaction live, via a replaced object (not a direct mutation)', async () => {
+    // Regression: an earlier version mutated the raw `message` object the
+    // store holds directly (message.reaction = ...) instead of replacing
     // its slot in messages.value — that bypasses Vue's reactive proxy
     // entirely, so the bubble never re-rendered until something else (e.g.
     // a full reload) rebuilt messages.value from scratch.
-    chatClient.sendMessage.mockResolvedValue({
-      reply: [],
-      user_message_id: 42,
-      user_message_reaction: 'listening',
-      assistant_message_id: 5,
-      state: { key: 'a', ui_label: 'A', actions: [] },
-      'task': null,
-      session_id: 1
-    })
-
     await chatStore.handleSend('hello')
+    const before = chatStore.messages.value.find((m) => m.role === 'user')
+
+    deliver({ type: 'output.reaction', session_id: 1, user_message_id: 42, reaction: 'listening' })
 
     const userMessage = chatStore.messages.value.find((m) => m.role === 'user')
     expect(userMessage.reaction).toBe('listening')
+    expect(userMessage).not.toBe(before)
   })
 
-  it('sets statusText on the streaming bubble on a tool_call event, and clears it on tool_result once the minimum display time is up', async () => {
-    vi.useFakeTimers()
-    try {
-      const api = await import('../src/api.js')
-      api.getMessages.mockResolvedValue([])
-      let duringCall = null
-      chatClient.sendMessage.mockImplementation(async (text, sessionId, { onStatus }) => {
-        onStatus('Searching Flights…')
-        duringCall = chatStore.messages.value.find((m) => m.role === 'assistant')?.statusText
-        vi.advanceTimersByTime(TOOL_STATUS_MIN_MS)
-        onStatus('')
-        return {
-          reply: [], user_message_id: 42, assistant_message_id: 5,
-          state: { key: 'a', ui_label: 'A', actions: [] }, 'task': null, session_id: 1
-        }
-      })
-
-      await chatStore.handleSend('hello')
-
-      expect(duringCall).toBe('Searching Flights…')
-      expect(chatStore.messages.value.find((m) => m.role === 'assistant')?.statusText).toBe('')
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('clears any stale reaction on the local user bubble when this turn carries none', async () => {
-    chatClient.sendMessage.mockResolvedValue({
-      reply: [],
-      user_message_id: 42,
-      assistant_message_id: 5,
-      state: { key: 'a', ui_label: 'A', actions: [] },
-      'task': null,
-      session_id: 1
-    })
-
+  it('says nothing about a message in a conversation that is not on screen', async () => {
     await chatStore.handleSend('hello')
+
+    deliver({ type: 'output.reaction', session_id: 2, user_message_id: 42, reaction: 'listening' })
 
     const userMessage = chatStore.messages.value.find((m) => m.role === 'user')
-    expect(userMessage.reaction).toBe(null)
-  })
-
-  it('stamps the streaming bubble with the backend-assigned assistant_message_id', async () => {
-    // Regression test: chat_service.py's process_turn never populates
-    // "reply" with message objects (OutVariables.messages stays [], see
-    // backend tests/test_chat_service_evaluation_points.py) — the
-    // streaming bubble must be correlated directly via
-    // assistant_message_id, not by matching into result.reply (which is
-    // always empty for a real turn, so that path never actually ran and
-    // the bubble's own messageId stayed null forever — losing the
-    // Inspector's message-keyed lookups and the timeline's own transition
-    // positioning for every single turn).
-    chatClient.sendMessage.mockResolvedValue({
-      reply: [],
-      user_message_id: 42,
-      assistant_message_id: 11,
-      state: { key: 'a', ui_label: 'A', actions: [] },
-      'task': null,
-      session_id: 1
-    })
-
-    await chatStore.handleSend('hello')
-
-    const assistantMessages = chatStore.messages.value.filter((m) => m.role === 'assistant')
-    expect(assistantMessages).toHaveLength(1)
-    expect(assistantMessages[0].messageId).toBe(11)
-  })
-
-  it('drops the empty streaming placeholder when no live reply was generated this turn', async () => {
-    // A pre-turn transition can move to a state that doesn't chat at all
-    // (see TurnProcessor.process's own early exit) — assistant_message_id
-    // is null then, nothing was ever streamed into the placeholder.
-    chatClient.sendMessage.mockResolvedValue({
-      reply: [],
-      user_message_id: 42,
-      assistant_message_id: null,
-      state: { key: 'a', ui_label: 'A', actions: [] },
-      'task': null,
-      session_id: 1
-    })
-
-    await chatStore.handleSend('hello')
-
-    const assistantMessages = chatStore.messages.value.filter((m) => m.role === 'assistant')
-    expect(assistantMessages).toHaveLength(0)
+    expect(userMessage.messageId).toBeUndefined()
+    expect(userMessage.reaction).toBeUndefined()
   })
 })
 
-describe('submitMessage keeps every turn correctly ordered against real buildTimeline', () => {
+describe('every exchange stays correctly ordered against real buildTimeline', () => {
   let chatStore
-  let chatClient
+  let deliver
 
   beforeEach(async () => {
     vi.resetModules()
     vi.useFakeTimers()
+    vi.doMock('../src/busChannel.js', () => import('./fakeBus.js'))
+    const bus = await import('./fakeBus.js')
+    bus.resetFakeBus()
+    deliver = bus.deliver
     chatStore = await import('../src/chatStore.js')
-    chatClient = await import('../src/chatClient.js')
+    chatStore.currentSessionId.value = 1
   })
 
   afterEach(() => {
+    vi.doUnmock('../src/busChannel.js')
     vi.useRealTimers()
     vi.clearAllMocks()
   })
 
-  it('positions a second turn\'s own transition after its own user message, not after the assistant reply', async () => {
+  it('positions a second exchange\'s own transition after its own user message, not after the assistant reply', async () => {
     // Regression test: the streaming assistant bubble's own local
-    // `timestamp` used to be stamped once at placeholder-creation time
-    // (submitMessage's own push, essentially the same instant as the
-    // triggering user message) and never updated afterward. A second
-    // turn sent while that stale timestamp was still fresh could then
-    // collide with (or trail only slightly behind) the next user
-    // message's own timestamp — and buildTimeline's own tie-break (a
-    // message always sorts before a same-effective-moment transition)
-    // then pushed the transition past bubbles it should have preceded.
-    // Reproduced directly against a live "before" mode session
-    // (autotracking_on_ai_message=False): the first transition rendered
-    // fine, the second landed after the assistant's reply instead of
-    // right after the user's own message.
-    chatClient.sendMessage.mockImplementationOnce(async () => {
-      vi.advanceTimersByTime(2000) // the AI reply genuinely takes real time
-      return {
-        reply: [],
-        user_message_id: 3,
-        assistant_message_id: 4,
-        state: { key: 'Contemplation', ui_label: 'Contemplation', actions: [] },
-        state_changed: true,
-        'task': null,
-        session_id: 1
-      }
-    })
+    // `timestamp` used to be stamped at the same instant as the user
+    // message that triggered it. A second message sent while that stale
+    // timestamp was still fresh could then collide with (or trail only
+    // slightly behind) the next user message's own timestamp — and
+    // buildTimeline's own tie-break (a message always sorts before a
+    // same-effective-moment transition) then pushed the transition past
+    // bubbles it should have preceded. Reproduced directly against a live
+    // "before" mode session (autotracking_on_ai_message=False): the first
+    // transition rendered fine, the second landed after the assistant's
+    // reply instead of right after the user's own message. The bubble is
+    // now opened — and timestamped — when the system says it has started
+    // writing, which is genuinely later.
     await chatStore.handleSend('turn 1')
+    deliver({ type: 'output.reaction', session_id: 1, user_message_id: 3, reaction: null })
+    vi.advanceTimersByTime(2000) // the AI reply genuinely takes real time
+    deliver({ type: 'output.text_stream', session_id: 1, text: '' })
+    deliver({ type: 'state.buttons', session_id: 1, actions: [] })
+    deliver({ type: 'output.text', session_id: 1, assistant_message_id: 4, text: 'Reply one.' })
+
     vi.advanceTimersByTime(20000) // the user takes real time to type turn 2
 
-    chatClient.sendMessage.mockImplementationOnce(async () => {
-      vi.advanceTimersByTime(2000)
-      return {
-        reply: [],
-        user_message_id: 5,
-        assistant_message_id: 6,
-        state: { key: 'Preparation', ui_label: 'Preparation', actions: [] },
-        state_changed: true,
-        'task': null,
-        session_id: 1
-      }
-    })
     await chatStore.handleSend('turn 2')
+    deliver({ type: 'output.reaction', session_id: 1, user_message_id: 5, reaction: null })
+    vi.advanceTimersByTime(2000)
+    deliver({ type: 'output.text_stream', session_id: 1, text: '' })
+    deliver({ type: 'state.buttons', session_id: 1, actions: [] })
+    deliver({ type: 'output.text', session_id: 1, assistant_message_id: 6, text: 'Reply two.' })
 
     // EditProjectView.vue's own rawLiveMessages mapping, reproduced here
     // so this exercises the real chatStore state against the real

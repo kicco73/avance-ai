@@ -6,28 +6,26 @@
 // tag actually land, does toggling applyAspect back on actually resume
 // loading, is there ever more than one tag at once.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installApiBackedLiveChannel } from '../../../../tests/liveChatChannelStub.js'
 import { nextTick } from 'vue'
 
 vi.mock('../../../busChannel.js', () => import('../../../../tests/fakeBus.js'))
 vi.mock('../../../taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../../../dialogStore.js', () => ({ confirmDialog: vi.fn() }))
 vi.mock('../../../api.js', () => ({
-  getCurrentSession: vi.fn(),
-  postCreateSession: vi.fn(),
-  getCurrentTestSession: vi.fn(),
-  postCreateTestSession: vi.fn(),
   getSessions: vi.fn(),
   getTestSessions: vi.fn(),
   deleteSession: vi.fn(),
-  getMessages: vi.fn(),
-  postAction: vi.fn(),
+  getHistory: vi.fn(),
+  getActuators: vi.fn(),
+  putActuators: vi.fn(),
   getAutoTracking: vi.fn(),
   putAutoTracking: vi.fn(),
   getAiModels: vi.fn(),
   postAiModelSelection: vi.fn(),
   postResetTestSessions: vi.fn(),
   postTruncateSession: vi.fn(),
+  getTestChatModels: vi.fn(),
+  postTestChatModelSelection: vi.fn(),
   projectFileContentUrl: vi.fn((projectName, fileName, sessionId) => `/api/core/projects/${projectName}/files/${fileName}/content?session_id=${sessionId}`)
 }))
 
@@ -179,22 +177,22 @@ describe('chatSkin.js only ever applies the currently active store — live vs t
   })
 })
 
-describe('the real Test-mode bootstrap sequence (loadMessages -> ensureSession) actually reaches loadSkin', () => {
+describe('the real Test-mode bootstrap sequence (loadMessages -> session.info) actually reaches loadSkin', () => {
   let testChatStore
   let chatSkin
-  let api
+  let deliverEntered
   let fetchMock
 
   beforeEach(async () => {
     vi.resetModules()
     document.head.innerHTML = ''
+    const bus = await import('../../../../tests/fakeBus.js')
+    bus.resetFakeBus()
+    deliverEntered = bus.deliverEntered
     testChatStore = await import('../testChatStore.js')
     testChatStore.setTestProject('ttm_prototype_2')
     chatSkin = await import('../../../chatSkin.js')
     chatSkin.activeChatMode.value = 'test'
-    api = await import('../../../api.js')
-    await installApiBackedLiveChannel(api)
-    api.getMessages.mockResolvedValue([])
     fetchMock = vi.fn().mockResolvedValue({ ok: true, text: async () => '.chat-window-shell { color: teal; }' })
     global.fetch = fetchMock
   })
@@ -205,23 +203,14 @@ describe('the real Test-mode bootstrap sequence (loadMessages -> ensureSession) 
   })
 
   it('entering Test mode (loadMessages called on the test store) fetches and applies the skin, using the exact real session payload shape', async () => {
-    // The exact payload the real backend returned for this bug report.
-    api.getCurrentTestSession.mockResolvedValue({
-      id: 2,
-      project_id: 'ttm_prototype_2',
-      source: 'test',
-      title: null,
-      datetime_start: '2026-08-21T11:12:46.022813+00:00',
-      datetime_end: '2026-08-21T11:21:41.034645+00:00',
-      start_state: 'Precontemplation',
-      end_state: 'Precontemplation',
-      open: true,
-      current: true,
-      has_annotations: false,
-      comment: null
-    })
-
     await testChatStore.loadMessages()
+    // The exact frame the real backend answers with for this bug report.
+    deliverEntered({
+      sessionId: 2,
+      projectId: 'ttm_prototype_2',
+      sessionType: 'test',
+      state: { key: 'Precontemplation', ui_label: 'Precontemplation', actions: [] },
+    })
 
     expect(testChatStore.currentProjectId.value).toBe('ttm_prototype_2')
     expect(testChatStore.currentSessionId.value).toBe(2)

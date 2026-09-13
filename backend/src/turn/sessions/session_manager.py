@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from turn.sessions.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
+from system import bus
+from system.bus import SESSION_ENDED, Message
 from db import Db
 from system.logging_factory import LoggerFactory
 from project.archive.layout import CACHE_DIR
@@ -13,6 +17,21 @@ if TYPE_CHECKING:
     from project.project_service import ProjectService
 
 logger = LoggerFactory.get_logger(__name__)
+
+_announcements: "set[asyncio.Task]" = set()
+
+
+def _publish(message: Message) -> None:
+    """Closing a session is synchronous and is called from both worlds:
+    a request already inside the loop, and a job that is not."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(bus.publish(message))
+        return
+    task = loop.create_task(bus.publish(message))
+    _announcements.add(task)
+    task.add_done_callback(_announcements.discard)
 
 # Default open window, in minutes, when the caller doesn't supply one —
 # matches config.yml's turn-service.max-session-duration-in-minutes
@@ -158,6 +177,10 @@ class SessionManager(object):
         )
         result = self._db.get_chat_session(session["id"])
         assert result is not None
+        _publish(Message(
+            type=SESSION_ENDED, username=session["username"], session_id=session["id"],
+            project_id=session["project_id"], body={"reason": reason},
+        ))
         if self._session_report_scheduler is not None:
             self._session_report_scheduler.schedule(result)
         return result

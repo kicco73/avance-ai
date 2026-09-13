@@ -1,7 +1,7 @@
 """Regression coverage for the dedicated draft-session entry points: only
 POST /api/skills/platform/projects/{project_id}/test-sessions and GET .../current may
-create a session against an unpublished revision — every other entry
-point requires a published one, unconditionally.
+create a session against an unpublished revision — entering a live
+conversation requires a published one, unconditionally.
 """
 from __future__ import annotations
 
@@ -9,7 +9,10 @@ import contextvars
 
 import pytest
 
-from conftest import parse_sse_result, chat_turn
+from conftest import (
+    _frame_deadline, chat_socket, chat_turn, enter_chat, parse_sse_result, session_of,
+    turn_frame_seconds,
+)
 from system.web_session import WebSession
 
 pytestmark = pytest.mark.regression
@@ -22,6 +25,17 @@ states:
     ui-label: A
     contextual-prompt: hi
 """
+
+
+def _enter_frames(client, project_id: str, kind: str = "live", type: str = "session.enter") -> list[dict]:
+    frames = []
+    with _frame_deadline(turn_frame_seconds(), frames):
+        with chat_socket(client) as ws:
+            ws.send_json({"type": type, "project_id": project_id, "session_type": kind})
+            while True:
+                frames.append(ws.receive_json())
+                if frames[-1]["type"] in ("state.buttons", "session.blocked", "output.error"):
+                    return frames
 
 
 def _upload_and_activate(client, project_id: str, yaml_text: str) -> str:
@@ -51,19 +65,19 @@ def _setup_unpublished_project(app_db, project_id: str, yaml_text: str) -> None:
 def test_regular_session_bootstrap_fails_for_an_unpublished_project(client, app_db):
     _setup_unpublished_project(app_db, "draft_only_1", UNPUBLISHED_PROJECT)
 
-    response = client.get("/api/skills/webchat/sessions/current")
+    refusal = _enter_frames(client, "draft_only_1")[-1]
 
-    assert response.status_code == 409
-    assert "never been published" in response.json()["error"]["message"]
+    assert refusal["type"] == "output.error"
+    assert "never been published" in refusal["message"]
 
 
 def test_regular_session_creation_fails_for_an_unpublished_project(client, app_db):
     _setup_unpublished_project(app_db, "draft_only_2", UNPUBLISHED_PROJECT)
 
-    response = client.post("/api/skills/webchat/sessions")
+    refusal = _enter_frames(client, "draft_only_2", type="session.create")[-1]
 
-    assert response.status_code == 409
-    assert "never been published" in response.json()["error"]["message"]
+    assert refusal["type"] == "output.error"
+    assert "never been published" in refusal["message"]
 
 
 def test_test_session_bootstrap_succeeds_for_an_unpublished_project(client, app_db):
@@ -111,16 +125,6 @@ def test_post_test_session_succeeds_for_an_unpublished_project(client, app_db):
     assert body["project_id"] == "draft_only_4"
 
 
-def test_allow_draft_query_param_no_longer_has_any_effect(client, app_db):
-    """A caller cannot opt into a draft session from the shared endpoint
-    via a query param — the choice is solely which endpoint is called."""
-    _setup_unpublished_project(app_db, "draft_only_5", UNPUBLISHED_PROJECT)
-
-    response = client.get("/api/skills/webchat/sessions/current?allow_draft=true")
-
-    assert response.status_code == 409
-
-
 def _publish(client, project_id: str) -> None:
     response = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
@@ -139,23 +143,25 @@ def test_a_test_session_never_appears_in_the_regular_sessions_list(client):
 def test_a_native_session_never_appears_in_the_test_sessions_list(client):
     _upload_and_activate(client, "isolation_2", UNPUBLISHED_PROJECT)
     _publish(client, "isolation_2")
-    native_session = client.get("/api/skills/webchat/sessions/current").json()
+    native_session_id = session_of(enter_chat(client, "isolation_2"))
 
     body = client.get("/api/skills/platform/projects/isolation_2/test-sessions").json()
 
-    assert native_session["id"] not in [s["id"] for s in body]
+    assert native_session_id not in [s["id"] for s in body]
 
 
 def test_regular_bootstrap_and_test_bootstrap_never_resolve_to_the_same_session(client):
     _upload_and_activate(client, "isolation_3", UNPUBLISHED_PROJECT)
     _publish(client, "isolation_3")
 
-    native_session = client.get("/api/skills/webchat/sessions/current").json()
+    native = next(
+        frame for frame in enter_chat(client, "isolation_3") if frame["type"] == "session.info"
+    )
     test_session = client.get("/api/skills/platform/projects/isolation_3/test-sessions/current").json()
 
-    assert native_session["id"] != test_session["id"]
+    assert native["session_id"] != test_session["id"]
     # Each is "current" only within its own pool.
-    assert native_session["current"] is True
+    assert native["current"] is True
     assert test_session["current"] is True
 
 
@@ -206,14 +212,14 @@ def test_a_turn_against_a_test_session_sees_a_draft_edit_made_after_it_was_creat
     test_session = client.post("/api/skills/platform/projects/test_session_sees_live_draft/test-sessions").json()
     # Bootstraps the session's opening turn so the project has a real
     # current_state before the draft edit below.
-    assert client.get(f"/api/skills/webchat/sessions/{test_session['id']}/messages").status_code == 200
+    assert session_of(enter_chat(client, "test_session_sees_live_draft", "test")) == test_session["id"]
 
     # Edits the draft after the test session above already exists.
     new_action = client.post(
         "/api/skills/platform/projects/test_session_sees_live_draft/states/a/actions"
     ).json()
 
-    response = client.post(f"/api/skills/webchat/sessions/{test_session['id']}/actions", json={"action_name": new_action["name"]})
+    response = client.post(f"/api/core/sessions/{test_session['id']}/actions", json={"action_name": new_action["name"]})
 
     assert response.status_code == 200
 

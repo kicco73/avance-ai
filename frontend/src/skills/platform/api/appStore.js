@@ -27,15 +27,6 @@ export function getAppSessionSummaries(appId) {
   return apiFetch(`${API_URL}/skills/platform/app-store/apps/${encodeURIComponent(appId)}/session-summaries`)
 }
 
-export function postCreatePreviewSession(appId) {
-  return apiFetch(`${API_URL}/skills/platform/app-store/apps/${encodeURIComponent(appId)}/preview-sessions`, { method: 'POST' })
-}
-
-export function getCurrentPreviewSession(sessionId, appId) {
-  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
-  return apiFetch(`${API_URL}/skills/platform/app-store/apps/${encodeURIComponent(appId)}/preview-sessions/current${query}`)
-}
-
 export function deletePreviewSessionEnv(sessionId) {
   return apiFetch(`${API_URL}/skills/platform/app-store/preview-sessions/${encodeURIComponent(sessionId)}/env`, { method: 'DELETE' })
 }

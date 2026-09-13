@@ -20,48 +20,19 @@ export function deleteSession(sessionId) {
   return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
 }
 
-export function postCloseSession(sessionId) {
-  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/close`, { method: 'POST' })
-}
-
-// A session's history as it already is. Nothing here opens a
-// conversation — that is `session.new`'s job and nobody else's (see
-// backend docs/BUS.md), so a session nobody has started yet reads as
-// empty rather than running its opening turn under whoever looked.
+// A session named outright — one picked out of the sessions panel, or
+// one being annotated. A read and nothing else: what a conversation is
+// showing right now arrives on `session.messages` because the chat
+// entered it (see backend docs/BUS.md), so a session nobody has started
+// yet reads as empty rather than running its opening turn under whoever
+// looked.
 export function getHistory(sessionId) {
   return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/history`)
-}
-
-export function getSessionState(sessionId) {
-  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/state`)
 }
 
 export function createChatSocket() {
   return new WebSocket(WS_URL)
 }
-
-// Firing an action on a session that has no channel of its own — the
-// editor's Test chat, the app store's preview. A live session refuses
-// this route: the write asks who is speaking and this caller cannot say
-// (see turn/session_controller.py, and postChatWindowAction for the one
-// that can).
-export function postSessionAction(actionName, sessionId) {
-  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/actions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action_name: actionName })
-  })
-}
-
-export function putSessionAudio(sessionId, enabled) {
-  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/audio`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled })
-  })
-}
-
-
 
 export function getActuators(sessionId) {
   return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/actuators`)
@@ -83,16 +54,5 @@ export function postTruncateSession(sessionId, timestamp) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ timestamp })
-  })
-}
-
-// Sets (reaction given) or clears (null) the user's own reaction to a bot
-// message — a key out of the active project's own `reactions` dict (see
-// chatStore.js's state.reactions).
-export function putMessageReaction(messageId, reaction) {
-  return apiFetch(`${API_URL}/core/messages/${encodeURIComponent(messageId)}/reaction`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ reaction })
   })
 }

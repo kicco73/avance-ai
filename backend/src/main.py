@@ -38,7 +38,7 @@ from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
 
-__version__ = "2.0.0-alpha.3"  # also in package.json, Dockerfile, and CHANGELOG.md
+__version__ = "2.0.0-alpha.4"  # also in package.json, Dockerfile, and CHANGELOG.md
 
 logger = LoggerFactory.get_logger(__name__)
 

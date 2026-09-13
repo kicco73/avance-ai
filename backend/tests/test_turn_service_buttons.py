@@ -2,7 +2,7 @@
 see automaton.pressable_actions) — a live session always excludes
 triggered actions, a test session only while its own auto-tracking
 toggle is on. Never part of the state payload: the choices are their own
-message (`ui.buttons`, see docs/BUS.md).
+message (`state.buttons`, see docs/BUS.md).
 """
 from __future__ import annotations
 

@@ -37,7 +37,7 @@ def turn_service(db):
 
 async def test_get_messages_raises_for_unknown_session(turn_service):
     with pytest.raises(TurnServiceError):
-        await turn_service.get_messages(999999)
+        turn_service.read_history(999999)
 
 
 async def test_get_messages_raises_for_a_deleted_session(turn_service, db):
@@ -58,7 +58,7 @@ async def test_get_messages_raises_for_a_deleted_session(turn_service, db):
     db.delete_chat_session(session_id)
 
     with pytest.raises(TurnServiceError):
-        await turn_service.get_messages(session_id)
+        turn_service.read_history(session_id)
 
 
 async def test_get_messages_raises_for_someone_elses_session(turn_service, db):
@@ -78,7 +78,7 @@ async def test_get_messages_raises_for_someone_elses_session(turn_service, db):
     )
 
     with pytest.raises(TurnServiceError):
-        await turn_service.get_messages(session_id)
+        turn_service.read_history(session_id)
 
 
 def test_delete_session_raises_for_unknown_session(turn_service):

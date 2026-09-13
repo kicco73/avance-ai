@@ -14,8 +14,8 @@ files it references by name (§6).
 **The WebSocket is the one and only transport for chat, and every future
 chat feature is built on it.** There is no HTTP or SSE fallback, and no
 alternative endpoint: a user message travels as an `input.text` frame on
-the single `/api/core/bus` connection a page holds, and that turn's
-own `output.text_stream`, `output.tool`, `turn.ended` and `output.error` frames
+the single `/api/core/bus` connection a page holds, and the reply's
+own `output.text_stream`, `output.tool`, `output.text` and `output.error` frames
 come back on the same socket, each carrying the `stream_id` the client
 minted — the only correlation there is. Everything else (manual actions,
 session bootstrap, history, project management) stays plain HTTP.
@@ -31,39 +31,59 @@ there, in reading order, before any processing starts. Parallel HTTP
 requests could never guarantee that, which is why the chat moved onto the
 socket.
 
-## 0.1 What a turn is
+## 0.1 One request, one reply
 
-A **turn** is one reply, and it answers **every** user message that has
-arrived and not yet been answered — not one message each. People write
-the way they speak ("hi" / "I have a problem" / "with flight VY3003", in
-three sends), and the input stays open while the model is answering, so
-several messages routinely pile up.
+**There is no turn.** A person writes whenever they want, and every request
+is owed a reply. What varies is how many requests one reply covers. People
+write the way they speak ("hi" / "I have a problem" / "with flight VY3003",
+in three sends), and the input stays open while the model is answering, so
+several requests routinely pile up.
 
-Those messages are the turn's **fragments**. They reach the model as a
-**single user message of several text blocks** — never concatenated into
-one string, never as separate conversation turns: Anthropic gets several
-`text` blocks in one message, OpenAI several `text` content parts, Gemini
-several `Part`s in one `Content`. A turn with a single fragment sends a
-plain string exactly as before.
+`input.text` is the request. It is accepted the moment it arrives, in
+arrival order — that is what fixes the order of the conversation, and it is
+the one thing that may not wait. Answering is not: while a reply is being
+written, the requests that arrive are kept, and the next reply is written
+for all of them at once. The coalescer is `turn/input_listener.py`
+(`TurnInput._requests`, one `_Requests` per session), and it is **in
+memory**: what is still waiting when the process dies dies with it.
+
+Only **consecutive** `input.text` requests merge. Anything else — a choice
+taken (`input.button`), a conversation opened — is a single thing done,
+answered on its own and never merged with a text. Three messages sent in a
+breath while a reply is being written are two exchanges, not three.
+
+Merged requests reach the model as a **single user message of several text
+blocks** — never concatenated into one string, never as several user
+messages: Anthropic gets several `text` blocks in one message, OpenAI
+several `text` content parts, Gemini several `Part`s in one `Content`. A
+reply covering one request sends a plain string.
 
 Consequences worth stating plainly:
 
-- **Signals and triggers are evaluated once per turn**, over the whole
-  turn, never once per fragment.
-- **Everything that binds to "the user's message" binds to the last
-  fragment** — the one that closes the turn: the Tracking row, the bot's
-  reaction, the turn's input tokens.
-- **A message that arrives while a turn is generating never joins that
-  turn.** It waits and opens the next one. Its own request gets a reply of
-  its own only if no other turn answered it first; when one did, that
-  request ends with no reply (`assistant_message_id: null`), because the
-  answer has already been delivered.
-- **There is no waiting window and no in-memory queue.** A turn starts as
-  soon as it can, and which messages are still unanswered is a fact in the
-  database (see `Message.answered_by`), so a restart loses nothing.
-- **The history budget cuts whole turns.** A group of fragments the budget
-  can only fit part of is dropped entirely, rather than shown to the model
-  as a turn missing its own opening.
+- **Signals and triggers are evaluated once per reply**, over the whole
+  batch, never once per request.
+- **Everything that binds to "the user's message" binds to the last request
+  of the batch** — the most recent thing the person is looking at: the
+  Tracking row, the bot's reaction, the input tokens. The reply's own frames
+  are addressed the way that request was, too.
+- **Which requests a reply covered is recorded after the fact.** Each one
+  gets `Message.answered_by` set to the reply that answered it
+  (`Db.mark_messages_answered`), and that — not adjacency, not stored ids —
+  is what `Db.get_turn_history` groups on when it rebuilds the conversation
+  for the model. Ids alone no longer say it: a request accepted while the
+  previous reply was being written is stored before that reply.
+- **Unanswered is a temporary state.** `answered_by` is NULL from the moment
+  a request is accepted until the reply covering it is written, and no
+  longer: every request is owed a reply. A NULL group sorts last
+  (`_turn_key`), which is what puts the requests being answered right now at
+  the end of the conversation the model reads.
+- **The history budget cuts whole groups.** A group it can only fit part of
+  is dropped entirely, rather than shown to the model as an exchange missing
+  its own opening.
+
+Elsewhere in this document, **"turn" is shorthand for one reply**
+("evaluated each turn", "this turn's own system prompt"). It names no unit
+of its own.
 
 ## 1. Top-level fields
 

@@ -3,11 +3,9 @@ triggers over every core metric.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from conftest import parse_sse_result
+from conftest import enter_chat, parse_sse_result
 
 from conftest import SAMPLES_DIR
 
@@ -30,11 +28,11 @@ def _metric_values(client, project_id: str) -> dict[str, float]:
 
 @pytest.mark.contract
 def test_the_sample_loads_and_starts_at_lobby(client):
-    _upload_and_activate(client)
+    project_id = _upload_and_activate(client)
 
-    session = client.get("/api/skills/webchat/sessions/current").json()
+    info = next(frame for frame in enter_chat(client, project_id) if frame["type"] == "session.info")
 
-    assert session["start_state"] == "lobby"
+    assert info["state"]["key"] == "lobby"
 
 
 @pytest.mark.contract
@@ -43,7 +41,7 @@ def test_metric_values_never_include_a_non_session_scoped_metric(client):
     only context a chat turn's trigger evaluation runs in — so neither
     metric appears here."""
     project_id = _upload_and_activate(client)
-    client.get("/api/skills/webchat/sessions/current")
+    enter_chat(client, project_id)
 
     values = _metric_values(client, project_id)
 

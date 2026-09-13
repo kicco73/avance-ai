@@ -6,18 +6,6 @@ const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 // draft revision rather than the published one, plus the dev-mode switch
 // that freezes automatic transitions.
 
-// EditProjectView's embedded "Test" chat — the one place a session can
-// exist against an unpublished revision. Which revision applies is
-// decided by which endpoint is called, never by a caller-supplied flag.
-export function getCurrentTestSession(sessionId, projectId) {
-  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
-  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/test-sessions/current${query}`)
-}
-
-export function postCreateTestSession(projectId) {
-  return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/test-sessions`, { method: 'POST' })
-}
-
 // EditProjectView's embedded "Test" chat's own Sessions panel — a
 // separate list from getSessions: a "Test" session never appears there,
 // and a real one never appears here.

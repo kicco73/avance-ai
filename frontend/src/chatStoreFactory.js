@@ -1,8 +1,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import {
-  getSessionState, getActuators, putActuators,
-  putSessionAudio,
-  postTruncateSession, deleteSession, postCloseSession, putMessageReaction,
+  getActuators, putActuators,
+  getHistory, postTruncateSession, deleteSession,
 } from './api.js'
 import { busChannel } from './busChannel.js'
 import { publishServices } from './skillServices.js'
@@ -59,16 +58,10 @@ export function setTotalTokenBudgetPerSession(value) {
 // One independent chat conversation's worth of state — the live chat and
 // EditProjectView's embedded "Run" test chat each get their own instance,
 // never sharing a session id/messages/automaton state with the other.
-// `kind` ('live'|'test') only ever drives chatSkin.js's routing, nothing
-// about session resolution itself.
+// `kind` ('live'|'test'|'preview') is both what this conversation is on
+// the bus and how chatSkin.js routes a skin to it.
 export function createChatStore({
-  kind, getCurrentSession, getSessionsList, createSession, resetSession = null,
-  // A chat with no history to read: the app store's preview starts empty
-  // every time and has everything it shows said to it (see
-  // appStorePreviewStore.js). It used to leave this out entirely and have
-  // the read throw, which the loader swallowed — the same shape, only
-  // said out loud.
-  getMessages = () => Promise.resolve([]),
+  kind, getSessionsList, resetSession = null,
   getAutoTracking = null, putAutoTracking = null,
   confirmNewSession = true, useAutoTracking = false, useActuatorsToggle = false,
   subscribeToNotifications = false,
@@ -80,8 +73,11 @@ export function createChatStore({
   // watchedSessions.js).
   watch(currentSessionId, (now, before) => watchSession(now, before))
   const selectedSessionActive = ref(false)
-  const projectPaused = ref(false)
-  const projectPausedReason = ref('')
+  // Why there is no conversation to be had, as `session.blocked` said it:
+  // null | 'paused' | 'terms' | 'no_project' | 'no_channel', and whatever
+  // the reason carries with it.
+  const blockedReason = ref(null)
+  const blockedDetail = ref('')
   const sessions = ref([])
   const sessionsLoading = ref(false)
   const sessionsPanelOpen = ref(false)
@@ -101,8 +97,8 @@ export function createChatStore({
   const actuatorsLoading = ref(false)
   const draft = ref('')
   // What the conversation offers to press, said by the system and by
-  // nothing else: it arrives on `ui.buttons` and lives nowhere near the
-  // state payload (see backend docs/BUS.md).
+  // nothing else: it arrives on `state.buttons` and lives nowhere near
+  // the state payload (see backend docs/BUS.md).
   const buttons = ref([])
   const turnCount = ref(0)
   let nextMessageId = 0
@@ -134,29 +130,83 @@ export function createChatStore({
     state.value = newState
   }
 
-  new ChatReconnectSync({ currentSessionId, messages, state, toStoreMessage, abandonOpenReplies }).register()
+  new ChatReconnectSync({
+    abandonOpenReplies() { abandonOpenReplies() },
+    reenter() { enterSession('session.enter') },
+  }).register()
 
-  // The buttons are the system's to say and this store's to show: applied
-  // the moment 'ui.buttons' arrives, on top of whichever state is held,
-  // The choices the conversation offers now: shown the moment they
-  // arrive, never held until an exchange ends.
-  // What this conversation can reach — its own project's answer, said
-  // when it opens. The skills that put a control on screen read it from
-  // here instead of from a switch read once at boot for whichever
-  // project the person happened to have active.
-  busChannel.subscribe('ui.services', (frame) => {
-    if (frame.session_id !== currentSessionId.value) return
+  // Whether the answer to entering is this store's to take. A
+  // `session.info` names the session it is about, which this store does
+  // not know yet, and the project, which it does — so the store that
+  // asked about that project takes it, and everything after that is
+  // addressed by session.
+  let awaitingSession = false
+
+  function answersUs(frame) {
+    if (frame.session_id != null && frame.session_id === currentSessionId.value) return true
+    return awaitingSession && (frame.project_id == null || frame.project_id === currentProjectId.value)
+  }
+
+  // Which conversation this is, and everything that describes it —
+  // where it stands, what it can reach, whether it speaks. The skills
+  // that put a control on screen read `services` from here instead of
+  // from a switch read once at boot for whichever project the person
+  // happened to have active.
+  busChannel.subscribe('session.info', (frame) => {
+    if (!answersUs(frame)) return
+    awaitingSession = false
+    blockedReason.value = null
+    blockedDetail.value = ''
+    currentSessionId.value = frame.session_id
+    currentProjectId.value = frame.project_id ?? currentProjectId.value
+    selectedSessionActive.value = frame.current ?? true
+    state.value = frame.state
+    audioEnabled.value = !!frame.audio
     publishServices(frame.services || {})
+    if (useAutoTracking) loadAutoTracking()
+    if (useActuatorsToggle) loadActuators()
+    if (sessionsPanelOpen.value) loadSessions()
   })
 
-  busChannel.subscribe('ui.buttons', (frame) => {
+  // What was said, in answer to entering or to recalling — the whole
+  // list either way.
+  busChannel.subscribe('session.messages', (frame) => {
+    if (frame.session_id !== currentSessionId.value) return
+    messages.value = (frame.messages || []).map(toStoreMessage)
+    settleHistory()
+  })
+
+  // There is no conversation to be had. Which screen that is belongs to
+  // whoever shows the chat (see ChatView.vue, LiveChatWindow.vue).
+  busChannel.subscribe('session.blocked', (frame) => {
+    if (!answersUs(frame)) return
+    awaitingSession = false
+    currentSessionId.value = null
+    state.value = null
+    messages.value = []
+    buttons.value = []
+    blockedReason.value = frame.reason || 'no_project'
+    blockedDetail.value = frame.detail || ''
+    settleHistory()
+  })
+
+  // Closed, by the person or by the server.
+  busChannel.subscribe('session.ended', (frame) => {
+    if (frame.session_id !== currentSessionId.value) return
+    selectedSessionActive.value = false
+    if (sessionsPanelOpen.value) loadSessions()
+  })
+
+  // The choices the conversation offers now: shown the moment they
+  // arrive, never held until an exchange ends.
+  busChannel.subscribe('state.buttons', (frame) => {
     if (frame.session_id !== currentSessionId.value) return
     buttons.value = frame.actions || []
   })
 
   // The system has started writing something. The only thing that opens a
   // bubble for it — an answer to what was just asked, what a conversation
-  // opens with (see backend docs/BUS.md's own session.new), what a state
+  // opens with (see backend docs/BUS.md's own session.enter), what a state
   // says on its own: to whoever is reading there is no difference, so
   // there is one case here and not one per reason. The frame that started
   // it arrived before there was anything watching, so it is handed over
@@ -190,7 +240,7 @@ export function createChatStore({
 
   // Where the conversation is now, said only when it moved. The choices
   // go with the state that offered them: they are gone until the system
-  // says what this state offers (the `ui.buttons` that follows).
+  // says what this state offers (the `state.buttons` that follows).
   busChannel.subscribe('state.changed', (frame) => {
     if (frame.session_id !== currentSessionId.value) return
     buttons.value = []
@@ -201,7 +251,7 @@ export function createChatStore({
   // message, carrying its id.
   busChannel.subscribe('output.reaction', (frame) => {
     if (frame.session_id !== currentSessionId.value) return
-    const idx = messages.value.findIndex((m) => m.role === 'user' && m.messageId == null)
+    const idx = messages.value.findLastIndex((m) => m.role === 'user' && m.messageId == null)
     if (idx !== -1) {
       messages.value[idx] = {
         ...messages.value[idx], messageId: frame.user_message_id, reaction: frame.reaction
@@ -257,56 +307,39 @@ export function createChatStore({
     }
   }
 
-  async function ensureSession() {
-    projectPaused.value = false
-    const session = await getCurrentSession(currentSessionId.value)
-    if (session.paused) {
-      projectPaused.value = true
-      projectPausedReason.value = session.paused_reason || ''
-      return null
-    }
-    if (session.legal_terms_pending) return null
-    currentSessionId.value = session.id
-    selectedSessionActive.value = session.current
-    currentProjectId.value = session.project_id
-    state.value = session.state
-    if (useAutoTracking) await loadAutoTracking()
-    if (useActuatorsToggle) await loadActuators()
-    await syncAudioPreference()
-    return session.id
+  async function settleHistory() {
+    await nextTick()
+    historyLoaded.value = true
   }
 
-  // The conversation is open: whether it has something to say first is
-  // the automaton's business, and what comes back is an ordinary message
-  // (see backend docs/BUS.md's own session.new).
-  //
-  // Said only once what is already on screen is on screen. Announcing it
-  // first raced the history being read: the opening message arrived on
-  // the socket and the reply to the read — taken before it was written —
-  // replaced the whole list, bubble included. Whoever reads no history at
-  // all never saw this, which is why the app store's preview always
-  // worked and the live chat did not.
-  function announceSession(sessionId) {
-    busChannel.send({ type: 'session.new', session_id: sessionId })
+  // Which project this store is showing a conversation of. Entering
+  // names it, because the session is what entering asks for.
+  function setProject(projectId) {
+    currentProjectId.value = projectId
   }
 
-  async function loadMessages() {
-    try {
-      const sessionId = await ensureSession()
-      if (sessionId == null) return // paused
-      const history = await getMessages(sessionId)
-      messages.value = history.map(toStoreMessage)
-      announceSession(sessionId)
-      // The sessions panel (if open) was still showing the previous
-      // project's list — refresh it so switching projects doesn't look
-      // like it wiped the sessions.
-      if (sessionsPanelOpen.value) await loadSessions()
-    } catch {
-      // already surfaced via apiFetch
-    } finally {
-      await nextTick()
-      historyLoaded.value = true
+  // `session.enter` (give me the active one, or make one) and
+  // `session.create` (a new one regardless) differ only in the word:
+  // both name the project and the kind of conversation, and both are
+  // answered by `session.info`.
+  function enterSession(type) {
+    if (currentProjectId.value == null) return
+    blockedReason.value = null
+    blockedDetail.value = ''
+    awaitingSession = true
+    busChannel.send({ type, project_id: currentProjectId.value, session_type: kind })
+  }
+
+  async function loadMessages(projectId = currentProjectId.value) {
+    currentProjectId.value = projectId
+    historyLoaded.value = false
+    if (projectId == null) {
+      blockedReason.value = 'no_project'
+      blockedDetail.value = ''
+      await settleHistory()
+      return
     }
+    enterSession('session.enter')
   }
 
   async function loadSessions(includeImported = false, projectId = null) {
@@ -338,10 +371,9 @@ export function createChatStore({
     }
   }
 
-  // Switches the chat view to a specific past/present session, read
-  // directly (never through ensureSession, which would land on the
-  // "current" session instead of the one picked). `active` is never
-  // recomputed.
+  // Switches the chat view to a specific past/present session. Entering
+  // by session_id lands on the one picked, not on the project's current
+  // one, and answers with everything the view needs.
   async function selectSession(session) {
     if (session.id === currentSessionId.value) return
     currentSessionId.value = session.id
@@ -349,17 +381,7 @@ export function createChatStore({
     syncAudioPreference()
     messages.value = []
     historyLoaded.value = false
-    try {
-      const [history, sessionState] = await Promise.all([getMessages(session.id), getSessionState(session.id)])
-      messages.value = history.map(toStoreMessage)
-      announceSession(session.id)
-      state.value = sessionState
-    } catch {
-      // already surfaced via apiFetch
-    } finally {
-      await nextTick()
-      historyLoaded.value = true
-    }
+    busChannel.send({ type: 'session.enter', session_id: session.id, session_type: kind })
   }
 
   // Re-fetches the current session's message history from scratch, in
@@ -368,7 +390,7 @@ export function createChatStore({
   async function reloadMessages() {
     if (currentSessionId.value == null) return
     try {
-      messages.value = (await getMessages(currentSessionId.value)).map(toStoreMessage)
+      messages.value = (await getHistory(currentSessionId.value)).map(toStoreMessage)
     } catch {
       // already surfaced via apiFetch
     }
@@ -419,11 +441,10 @@ export function createChatStore({
       const res = await putAutoTracking(currentSessionId.value, !autoTrackingEnabled.value)
       autoTrackingEnabled.value = res.enabled
       // The toggle just flipped which actions count as pressable (see
-      // TurnService.buttons_for), so what the state offers has to be
-      // said again — it is the system's to say, and it says it on
-      // `session.new`.
-      state.value = await getSessionState(currentSessionId.value)
-      busChannel.send({ type: 'session.new', session_id: currentSessionId.value })
+      // TurnService.buttons_for), so where the conversation stands and
+      // what it offers have to be said again — which is what entering
+      // it again asks for.
+      enterSession('session.enter')
     } catch {
       // already surfaced via apiFetch
     } finally {
@@ -443,13 +464,11 @@ export function createChatStore({
     }
   }
 
-  async function syncAudioPreference() {
+  function syncAudioPreference() {
     if (currentSessionId.value == null) return
-    try {
-      await putSessionAudio(currentSessionId.value, audioEnabled.value)
-    } catch {
-      // A preference the next turn re-sends; never worth an error toast.
-    }
+    busChannel.send({
+      type: 'session.speak', session_id: currentSessionId.value, enabled: audioEnabled.value,
+    })
   }
 
   function toggleAudio() {
@@ -647,7 +666,7 @@ export function createChatStore({
     // paths agree instead of the trace only appearing after a reload.
     function loadToolTrace(backendId) {
       if (!exchange.hadToolCall || backendId == null) return
-      getMessages(turnSessionId).then((history) => {
+      getHistory(turnSessionId).then((history) => {
         if (!mine()) return
         const persisted = history.find((m) => m.id === backendId)
         if (!persisted?.tool_calls) return
@@ -702,16 +721,16 @@ export function createChatStore({
   // position, so both ChatWindow.vue's own default timeline and
   // ChatTimeline.vue's message+transition one (RunChat.vue/LabelProjectView.vue)
   // can call this the same way despite indexing messages differently.
-  async function handleReact(messageId, reaction) {
+  function handleReact(messageId, reaction) {
     const message = messages.value.find((m) => m.messageId === messageId)
     if (!message || message.role !== 'assistant') return
-    try {
-      await putMessageReaction(messageId, reaction)
-      message.reaction = reaction
-      if (reaction) playReactionChime()
-    } catch {
-      // already surfaced via apiFetch
-    }
+    const sent = busChannel.send({
+      type: 'input.reaction', session_id: currentSessionId.value,
+      assistant_message_id: messageId, reaction,
+    })
+    if (!sent) return
+    message.reaction = reaction
+    if (reaction) playReactionChime()
   }
 
   // A choice taken. It travels the same road as what a person types
@@ -722,7 +741,7 @@ export function createChatStore({
     clearApiError()
     // Off while it is being said, gone once it has been: a choice can be
     // taken once, and what can be done next is the system's to say (the
-    // `ui.buttons` that follows). If it never left — no socket — they
+    // `state.buttons` that follows). If it never left — no socket — they
     // come back on, because nothing was taken.
     actionLoading.value = true
     const taken = busChannel.send({
@@ -734,10 +753,13 @@ export function createChatStore({
 
   function clearChatUi() {
     messages.value = []
+    buttons.value = []
     clearApiError()
     chatStatus.value = ''
     autoTrackingEnabled.value = true
     actuatorsEnabled.value = false
+    blockedReason.value = null
+    blockedDetail.value = ''
     // A project switch is exactly when "the current session" should be re-resolved.
     currentSessionId.value = null
     currentProjectId.value = null
@@ -753,7 +775,12 @@ export function createChatStore({
       danger: true
     })
     if (!ok) return
+    const projectId = currentProjectId.value
     clearChatUi()
+    // The same conversation's project, which a reset never changes —
+    // clearChatUi forgets it because a project *switch* is the other
+    // caller.
+    setProject(projectId)
     try {
       // A reset re-enters the automaton through init-action, same as a
       // session's very first transition — its task arrives over the
@@ -781,46 +808,32 @@ export function createChatStore({
       })
       if (!ok) return
     }
-    try {
-      const session = await createSession()
-      if (session.legal_terms_pending) {
-        setApiError('This project’s terms have changed. Please reload the page to continue.')
-        return
-      }
-      currentSessionId.value = session.id
-      selectedSessionActive.value = session.current
-      clearApiError()
-      messages.value = []
-      // A brand new session enters init_action.target through init_action
-      // itself; its task arrives over the websocket like any other.
-      await loadMessages()
-      // Opened unconditionally so the new session is visible right away,
-      // regardless of whether the panel was already open.
-      sessionsPanelOpen.value = true
-      await loadSessions()
-      bumpTurn()
-    } catch {
-      // already surfaced via apiFetch
-    }
+    clearApiError()
+    messages.value = []
+    buttons.value = []
+    historyLoaded.value = false
+    // Opened unconditionally so the new session is visible right away,
+    // regardless of whether the panel was already open — the list is
+    // refreshed by the `session.info` that answers this.
+    sessionsPanelOpen.value = true
+    // A brand new session enters init_action.target through init_action
+    // itself; its task arrives over the websocket like any other.
+    enterSession('session.create')
+    bumpTurn()
   }
 
-  async function handleCloseSession() {
+  function handleCloseSession() {
     if (currentSessionId.value == null) return
-    try {
-      const session = await postCloseSession(currentSessionId.value)
-      selectedSessionActive.value = session.current
-      if (sessionsPanelOpen.value) await loadSessions()
-    } catch {
-      // already surfaced via apiFetch
-    }
+    busChannel.send({ type: 'session.terminate', session_id: currentSessionId.value })
   }
 
   return {
     abandonOpenReplies,
-    state, currentSessionId, selectedSessionActive, projectPaused, projectPausedReason,
+    state, currentSessionId, selectedSessionActive, blockedReason, blockedDetail,
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
     messages, historyLoaded, chatLoading, chatStatus, actionLoading, buttons,
     autoTrackingEnabled, autoTrackingLoading, actuatorsEnabled, actuatorsLoading, draft, turnCount,
+    setProject,
     handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
     selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking, toggleActuators,
     toggleAudio, handleSend, beginVoiceMessage, handleResend, handleReact, handleAction,

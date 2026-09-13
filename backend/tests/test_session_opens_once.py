@@ -1,10 +1,9 @@
 """A conversation opens once, however many people ask it to.
 
-Two callers ask at the very start: the browser says `session.new`, and in
-the same breath reads the transcript — and reading it opens the
-conversation too (see TurnService.get_messages). Both found nothing said
-yet and both generated, so a live chat began by saying the same thing
-twice.
+Two tabs showing the same conversation enter it in the same instant, and
+each `session.opened` asks for what the state has to say (see
+webchat/conversation_opener.py). Both find nothing said yet, so without
+the lock the chat begins by saying the same thing twice.
 """
 from __future__ import annotations
 

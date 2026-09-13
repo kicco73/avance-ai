@@ -99,7 +99,7 @@ export function useProjectAdminActions() {
     try {
       await activateProject(projectId)
       await refreshStateAndProjects()
-      await loadMessages()
+      await loadMessages(projectId)
     } catch {
       // already surfaced via apiFetch
     }

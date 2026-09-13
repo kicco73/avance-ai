@@ -7,14 +7,11 @@ import { createChatSocket } from './api.js'
 // themselves by session in chatExchange.js, notifications fan out in
 // notificationBus.js, and both are ordinary subscribers here.
 //
-// The WebSocket is the ONE and ONLY transport for chat, in both
-// directions, and every future chat feature is built on this channel:
-// there is no HTTP/SSE fallback and no alternative endpoint. A user
-// message travels as a `turn` frame on this single socket, which is what
-// fixes the order of the conversation — parallel POSTs never could (see
-// backend system/bus_channel.py, and PROJECT_SPECS.md's own
-// "Chat transport" section). Everything else — manual actions, session
-// bootstrap, history — stays plain HTTP.
+// The WebSocket is the ONE and ONLY transport for a conversation, in
+// both directions: entering one, what was said in it, what a person
+// types, what comes back. There is no HTTP fallback and no alternative
+// endpoint — HTTP administers many sessions and never carries one (see
+// backend system/bus_channel.py and docs/BUS.md).
 
 const PING_INTERVAL_MS = 25000
 const PONG_TIMEOUT_MS = 10000
@@ -45,7 +42,7 @@ export const SUPERSEDED_CLOSE_CODE = 4410
 // and to nobody else.
 export const SERVER_EVENTS = [
   'ui.notification',
-  'ui.human_takeover',
+  'session.taken_over',
   'ui.system_warning',
   'ui.progress',
   'human_prompt'

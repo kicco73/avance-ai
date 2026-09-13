@@ -1,26 +1,26 @@
-// Regression: submitMessage used to never reconcile the streaming bubble
-// against the turn's own persisted assistant message — done.reply was
-// always empty, so a chunk dropped mid-stream (a reload replacing
-// `messages` mid-turn, or any other gap) left the bubble permanently
-// short. Now that the backend populates done.reply with the persisted
-// {id, content, audio_text, timestamp} row (see
-// TrackingProcessor._build_turn_response), submitMessage uses it to
-// replace (never concatenate) the bubble's content/audioText/timestamp,
-// re-creates the bubble if it was removed from `messages` in the
-// meantime, and never drops it once a chunk has landed even if the
-// stream itself later errors.
+// Regression: the streaming bubble used never to be reconciled against
+// the message that was actually persisted, so a piece dropped mid-stream
+// (a reload replacing `messages` mid-turn, or any other gap) left it
+// permanently short. The whole message — `output.text`, the one that
+// ends the exchange (see backend docs/BUS.md) — now replaces (never
+// concatenates) the bubble's content/audioText/timestamp, re-creates the
+// bubble if it was removed from `messages` in the meantime, and never
+// drops it once a piece has landed even if the exchange later fails.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
-  postAction: vi.fn(),
   getSessions: vi.fn(),
   getAiModels: vi.fn(),
-  getMessages: vi.fn(),
+  getHistory: vi.fn(),
+  getActuators: vi.fn(),
+  putActuators: vi.fn(),
+  postTruncateSession: vi.fn(),
+  deleteSession: vi.fn(),
 }))
 vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))
 
-describe('submitMessage reconciles the streaming bubble against done.reply', () => {
+describe('the answer reconciles the streaming bubble it was being written into', () => {
   let chatStore
   let deliver
 
@@ -43,7 +43,7 @@ describe('submitMessage reconciles the streaming bubble against done.reply', () 
     await chatStore.handleSend('hi')
     deliver({ type: 'output.text_stream', session_id: 1, text: 'Hel' })
     deliver({ type: 'output.speech', session_id: 1, text: 'audio-77' })
-    deliver({ type: 'ui.buttons', session_id: 1, actions: [] })
+    deliver({ type: 'state.buttons', session_id: 1, actions: [] })
     deliver({
       type: 'output.text', session_id: 1, assistant_message_id: 77,
       text: 'Hello, full answer.', timestamp: '2026-01-01T00:00:00Z',
@@ -56,13 +56,13 @@ describe('submitMessage reconciles the streaming bubble against done.reply', () 
     expect(assistant.messageId).toBe(77)
   })
 
-  it('re-creates the bubble from done.reply if it was removed from `messages` mid-turn', async () => {
+  it('re-creates the bubble from the answer if it was removed from `messages` mid-turn', async () => {
     chatStore.currentSessionId.value = 1
     await chatStore.handleSend('hi again')
     // A reload (or anything else) wipes the in-flight placeholder out of
     // `messages` before the answer lands.
     chatStore.messages.value = chatStore.messages.value.filter((m) => m.role !== 'assistant')
-    deliver({ type: 'ui.buttons', session_id: 1, actions: [] })
+    deliver({ type: 'state.buttons', session_id: 1, actions: [] })
     deliver({
       type: 'output.text', session_id: 1, assistant_message_id: 88,
       text: 'Recreated reply.', timestamp: '2026-01-01T00:00:01Z',

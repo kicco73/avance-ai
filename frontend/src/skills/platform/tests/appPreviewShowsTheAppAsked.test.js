@@ -11,6 +11,13 @@ import { resetFakeBus } from '../../../../tests/fakeBus.js'
 vi.mock('../api.js', () => ({ getAppPreviewTranscript: vi.fn() }))
 vi.mock('../../../busChannel.js', () => import('../../../../tests/fakeBus.js'))
 
+// The card's whole component tree is transformed here, at import time,
+// rather than in the hook below: that cost is 5.9s on its own and 16.2s
+// with the whole suite running in parallel, and vitest charged it to the
+// hook's own 10s budget. A file's own imports are not timed, so the
+// import in the hook is left with nothing but the re-evaluation.
+await import('../components/appStore/AppStoreFrozenPreview.vue')
+
 describe('an app card', () => {
   let container
   let api

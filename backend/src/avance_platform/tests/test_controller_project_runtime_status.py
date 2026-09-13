@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import pytest
 
+from conftest import enter_chat
+
 pytestmark = pytest.mark.contract
 
 
@@ -49,9 +51,8 @@ def test_pause_and_resume_both_404_for_an_unknown_project(client):
 def test_a_manually_paused_project_blocks_chat_the_same_as_an_automatic_pause(client, hello_project):
     client.post(f"/api/skills/platform/projects/{hello_project}/pause")
 
-    response = client.get("/api/skills/webchat/sessions/current")
+    blocked = enter_chat(client, hello_project)[-1]
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["paused"] is True
-    assert body["paused_reason"] == "Manually paused."
+    assert blocked["type"] == "session.blocked"
+    assert blocked["reason"] == "paused"
+    assert blocked["detail"] == "Manually paused."
