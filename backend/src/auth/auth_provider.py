@@ -11,16 +11,10 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class AuthenticatedUser:
-    # The provider's own opaque, stable id for this account (Google: the
-    # "sub" claim) — never the free-string username the rest of the
-    # codebase already uses (see db/users.py's own note on that).
     provider_user_id: str
     email: str
     name: str
     picture_url: str | None
-    # None means "verified identity, no User row yet" — see AuthService's
-    # own verify_token/complete_registration for the Terms-of-Service gate
-    # this backs.
     role: str | None = "user"
 
 

@@ -3,16 +3,8 @@ import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { renderMarkdown } from '../../../markdown.js'
 import { liveModelStore } from '../aiModelStore.js'
 
-// `modelStore` bundles the model list/selection state + its own select()
-// — chatStoreFactory.js's liveModelStore (default, ai_live_service) or
-// testChatStore.js's testChatModelStore (ai_test_service). The component
-// itself never knows which context it's in — same object shape either
-// way, just a different one passed in.
 const props = defineProps({
   modelStore: { type: Object, default: () => liveModelStore },
-  // Off for Manage services' own AI tab, whose Model card already shows
-  // the current model's full detail inline — the "?" popup would just be
-  // a redundant, disconnected copy of the same info.
   showInfo: { type: Boolean, default: true }
 })
 
@@ -30,20 +22,12 @@ const aiModelCurrentIndex = computed(() => props.modelStore.currentIndex.value)
 const aiModelSelectionLoading = computed(() => props.modelStore.selectionLoading.value)
 const autoLabel = computed(() => props.modelStore.autoLabel ?? 'Auto')
 
-// Reads modelStore's own reactive state, kept in sync by whoever loads/
-// updates it (a chat turn/action response for the live store, an
-// explicit selection for the test store) — this component never fetches
-// on its own.
 const currentModel = computed(() => aiModels.value[aiModelCurrentIndex.value] ?? null)
 const currentLabel = computed(() => currentModel.value?.ui_label ?? 'Model')
 const buttonLabel = computed(() => (aiModelAuto.value ? `${autoLabel.value}: ${currentLabel.value}` : currentLabel.value))
 
 const infoOpen = ref(false)
 
-// The panel is teleported to <body> so it can't be clipped by an
-// ancestor's `overflow: hidden`, then positioned/clamped here against the
-// viewport. Opens downward from the button, or upward if there isn't
-// enough room below.
 async function positionPanel() {
   await nextTick()
   const btn = btnEl.value
@@ -73,9 +57,6 @@ function close() {
   open.value = false
 }
 
-// Called with either `null` (auto) or an aiModels[] index —
-// modelStore.select relays the choice to the backend and refreshes the
-// shared state from its response.
 async function select(index) {
   if (aiModelSelectionLoading.value) return
   if (index === (aiModelAuto.value ? null : aiModelCurrentIndex.value)) {
@@ -237,20 +218,11 @@ onBeforeUnmount(() => {
 </style>
 
 <style>
-/* Unscoped: the panel lives under <body> via Teleport, outside this
-   component's normal DOM subtree, so a scoped [data-v-xxx] attribute
-   selector would never match it. */
 .model-info-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  /* Extends past the viewport's own bottom edge on standalone iOS,
-     where WebKit bug #301108 leaves a gap there otherwise — see
-     index.html's own viewport meta comment and
-     useVisualViewport.js's installViewportOvershoot(). 0px, a no-op,
-     everywhere else (a plain browser tab, non-iOS, or once Apple fixes
-     the bug). */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
   background: rgba(0, 0, 0, 0.35);
   z-index: 1001;

@@ -91,7 +91,6 @@ def test_undo_reverses_a_rename_and_redo_reapplies_it_leaving_the_old_names_own_
     assert "behaviour/notes.md" in files
     assert "behaviour/memo.md" not in files
 
-    # The pre-rename stack is still there under the old name.
     assert client.get(f"/api/skills/platform/projects/{hello_project}/files/behaviour/notes.md").json()["can_undo"] is True
     content_undo = client.post(f"/api/skills/platform/projects/{hello_project}/files/behaviour/notes.md/undo", content="v2")
     assert content_undo.status_code == 200, content_undo.text

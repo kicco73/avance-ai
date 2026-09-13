@@ -16,9 +16,6 @@ from testing.replay_messages import next_assistant_message_id
 
 
 class TestSignalSource(Protocol):
-    # Real AI calls made so far — TestReplayJob watches this to know when
-    # one of its own "steps" (one real AI call, not one turn replayed) is
-    # done, since a batch call can silently cover several turns at once.
     calls_made: int
 
     async def get_turn_data(self, message_id: int, current_state: str) -> tuple[dict, dict, dict]:
@@ -63,9 +60,6 @@ class TestProcessor(object):
         self._metrics = metrics
         self._signal_source = signal_source
         self._sink = sink
-        # Fetched once by the caller (TestReplayJob._prepare_session) and
-        # shared with the signal source, rather than each independently
-        # re-querying this same session's full message list.
         self._messages = messages
         self._current_state: str | None = None
         self._ordered_ids: list[int] = []
@@ -113,15 +107,6 @@ class TestProcessor(object):
             origin='trigger',
             output_values=output_values,
         )
-
-        # This turn's own `output` values, copied onto the real env keys
-        # they name — mirrors TrackingProcessor.process's own
-        # output_for_env step (live): state.output is what makes this
-        # automatic, unlike an action's own `env:`, which stays opt-in.
-        # After the transition above, which already saw output_values
-        # transiently through the scope's own merge (see
-        # EvaluationScopeBuilder.build) — this is what makes them durable,
-        # visible to a later turn's own env-input rendering.
         output_for_env = {name: value for name, value in output_values.items() if name in state.output}
         if output_for_env:
             self._env.update_action_set(output_for_env, origin="output")

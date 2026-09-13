@@ -77,9 +77,6 @@ def test_file_endpoints_still_work_on_a_broken_project(client, app, app_db):
     fixed = f"project:\n  id: broken\n{VALID_YML}"
     saved = client.put("/api/skills/platform/projects/broken/files/index.yml", content=fixed.encode())
     assert saved.status_code == 200, saved.text
-
-    # The fix just saved builds again — the automaton-derived endpoints
-    # must recover without any further action.
     recovered = client.get("/api/skills/platform/projects/broken/project")
     assert recovered.status_code == 200, recovered.text
 
@@ -92,9 +89,6 @@ def test_a_session_pinned_to_an_old_now_broken_revision_is_flagged_unsupported(c
     session_id = session_of(enter_chat(client, "flaky"))
     sessions = client.get("/api/core/projects/flaky/sessions").json()
     assert next(s for s in sessions if s["id"] == session_id)["project_revision"] == 0
-
-    # A second, still-valid revision gets published — the session above
-    # keeps running against revision 0, exactly as before.
     updated_yml = f"project:\n  id: flaky\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi again\n"
     saved = client.put("/api/skills/platform/projects/flaky/files/index.yml", content=updated_yml.encode())
     assert saved.status_code == 200, saved.text
@@ -102,7 +96,6 @@ def test_a_session_pinned_to_an_old_now_broken_revision_is_flagged_unsupported(c
     assert published.status_code == 200, published.text
     assert published.json()["published_revision"] == 1
 
-    # Now revision 0 alone breaks — the currently published one (1) is untouched.
     rewrite_archive_content("flaky", "index.yml", 0, BROKEN_YML.encode("utf-8"))
     app.state.project_service.automaton_loader.invalidate_cache("flaky")
 

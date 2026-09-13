@@ -38,8 +38,6 @@ states:
 
 
 def _automaton_and_sources(db, project_id: str, task: str, services: dict[str, str] | None):
-    # None: the project never mentions a service at all, which is how
-    # every project that has not thought about one is written.
     declared = "" if not services else "\n  services:" + "".join(
         f"\n    {key}: {level}" for key, level in services.items()
     )

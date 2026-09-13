@@ -1,10 +1,3 @@
-// A reply can cover several messages sent in a breath, and everything
-// that binds to "the user's message" binds to the LAST of them — the
-// reaction included (see backend/src/docs/PROJECT_SPECS.md §0.1, and
-// turn/outbound.py's own reacted(), which puts that last id on the frame).
-// The store used to stamp it on the first bubble still waiting for an id,
-// so the badge landed on the wrong message and the real last one never
-// learned its own id.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../../taskActions.js', () => ({ runTaskScript: vi.fn() }))

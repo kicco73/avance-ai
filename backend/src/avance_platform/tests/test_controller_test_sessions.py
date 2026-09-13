@@ -159,7 +159,6 @@ def test_regular_bootstrap_and_test_bootstrap_never_resolve_to_the_same_session(
     test_session = _info(enter_chat(client, "isolation_3", "test"))
 
     assert native["session_id"] != test_session["session_id"]
-    # Each is "current" only within its own pool.
     assert native["current"] is True
     assert test_session["current"] is True
 
@@ -210,7 +209,6 @@ def test_a_turn_against_a_test_session_sees_a_draft_edit_made_after_it_was_creat
     _publish(client, "test_session_sees_live_draft")
     test_session_id = session_of(enter_chat(client, "test_session_sees_live_draft", "test"))
 
-    # Edits the draft after the test session above already exists.
     new_action = client.post(
         "/api/skills/platform/projects/test_session_sees_live_draft/states/a/actions"
     ).json()

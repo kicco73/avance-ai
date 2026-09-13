@@ -72,24 +72,6 @@ states:
     ui-label: B
     contextual-prompt: there
 """
-
-# task.send_mail's own fake-mode report embeds `to` verbatim (see
-# FakeTaskNamespace._notify) — used throughout as the observable stand-in
-# for the old actuator.notify(user.name, ...) pattern, now that
-# celebrate/notify moved to chat (see this file's own module docstring).
-#
-# task.defer's own fake variant is a genuine no-op (never persists the
-# inner task at all — always was, even before this rename, see
-# FakeTaskNamespace.defer) — the defer-mechanics tests below must run
-# live for defer() itself to actually schedule anything. Live mode's
-# own task.whatsapp is the one task-only call safe to run for real
-# there: `whatsapp-service` is never configured in these tests, so it
-# short-circuits to `False` with no real network attempt, unlike
-# send_mail (would raise: no mail-service is configured/subscribed in
-# these tests). Its own return
-# carries no observable content though, so these tests prove the
-# frozen-scope restore via the hibernated payload's own snapshot data
-# directly, not via rendered wire text.
 DEFER_LINE = "task.defer(lambda: task.whatsapp('34600000001', 'high' if signal.distress > 50 else 'low'), datetime.datetime(2030, 1, 1))"
 
 
@@ -120,7 +102,6 @@ def _stop_services():
 
 @pytest.fixture
 def file_db(tmp_path) -> Db:
-    # File-backed: the scheduler/queue threads open their own connections.
     instance = Db(f"sqlite:///{tmp_path / 'task.db'}")
     instance.get_or_create_user("test", "sub-user", "user", "Ada", None)
     return instance
@@ -161,9 +142,6 @@ def _fire_go(
     observable here now."""
     automaton = project_service.get_automaton(PROJECT, db.get_project_published_revision(PROJECT))
     context = FixedProjectContext(automaton=automaton, project_id=PROJECT)
-    # Same branch production code takes (see PersistedEnv's own docstring
-    # and tracking.actuators.action_task.ScopeHydrator): no real session
-    # means a plain, in-memory Env(), never PersistedEnv(None).
     env = PersistedEnv(db, context, session_id=session_id) if session_id is not None else Env()
     task_namespace = factory.fake(project_id=PROJECT) if fake else factory.live(project_id=PROJECT)
     builder = EvaluationScopeBuilder(
@@ -178,11 +156,9 @@ def _due_now(key: str) -> None:
     TaskRow.update(run_at=datetime.utcnow() - timedelta(seconds=1)).where(TaskRow.key == key).execute()
 
 
-# --- PersistedEnv requires a real session_id --------------------------------
-
 def test_persisted_env_cannot_be_constructed_without_a_session_id(db):
     with pytest.raises(TypeError):
-        PersistedEnv(db, FixedProjectContext(project_id=PROJECT))  # session_id omitted
+        PersistedEnv(db, FixedProjectContext(project_id=PROJECT))
 
 
 def test_build_scope_with_no_session_never_constructs_a_persisted_env(file_db):
@@ -204,10 +180,8 @@ def test_build_scope_with_no_session_never_constructs_a_persisted_env(file_db):
         "namespace_kind": TASK_NAMESPACE_LIVE,
     }
 
-    hydrator.build_scope(USERNAME, payload)  # must not raise
+    hydrator.build_scope(USERNAME, payload)
 
-
-# --- immediate task ------------------------------------------------------
 
 def test_a_task_is_hibernated_as_a_task_due_now_not_run_inline(file_db):
     _, project_service, factory = _process(file_db)
@@ -217,7 +191,7 @@ def test_a_task_is_hibernated_as_a_task_due_now_not_run_inline(file_db):
 
     (row,) = file_db.list_tasks()
     assert row["type"] == ActionTask.TYPE
-    assert row["status"] == "pending"  # the service is not started: nothing ran inline
+    assert row["status"] == "pending"
     assert row["username"] == USERNAME and row["project_id"] == PROJECT
     assert row["run_at"] <= datetime.now(row["run_at"].tzinfo)
     assert row["ui_label"] == "Reminders · A → go: task.send_mail(user.name, 'welcome')"
@@ -262,7 +236,7 @@ def test_task_prompt_runs_inside_the_task_with_the_firing_sessions_history(file_
     assert _wait_until(lambda: notified.for_user(USERNAME)), file_db.list_tasks()
     (message,) = notified.for_user(USERNAME)
     assert "send_mail(to='Fake AI reply.')" in message.body["task"]
-    assert file_db.get_messages(session_id) == []  # read-only, as before
+    assert file_db.get_messages(session_id) == []
 
 
 def test_a_fake_task_namespaces_task_still_runs_as_a_task_and_reports(file_db):
@@ -295,21 +269,15 @@ def test_a_task_survives_a_restart_and_runs_against_an_equivalent_environment(fi
     _publish(file_db, project_service, _yml("task.send_mail(user.name, 'high' if signal.distress > 50 else 'low')"))
     _fire_go(file_db, factory, project_service, {"distress": 70})
     (row,) = file_db.list_tasks()
-    # The process that accepted it is gone (never started claiming);
-    # meanwhile the user is renamed.
     User.update(name="Grace").where(User.id == USERNAME).execute()
     notified = RecordedMessages(UI_NOTIFICATION)
 
     _process(file_db, start=True)
 
     assert _wait_until(lambda: file_db.get_task(row["key"])["status"] == "done"), file_db.get_task(row["key"])
-    # user.name is the frozen "Ada", never the live-renamed "Grace" —
-    # exactly what the in-turn evaluation would have seen.
     (message,) = notified.for_user(USERNAME)
     assert "send_mail(to='Ada')" in message.body["task"]
 
-
-# --- deferred ----------------------------------------------------------------
 
 def test_a_deferred_lambda_is_the_same_task_with_a_later_when_and_no_session(file_db):
     _, project_service, factory = _process(file_db, start=True)
@@ -319,7 +287,6 @@ def test_a_deferred_lambda_is_the_same_task_with_a_later_when_and_no_session(fil
 
     _fire_go(file_db, factory, project_service, {"distress": 70}, session_id=session_id, fake=False)
 
-    # The outer task runs now and, running, hibernates the inner one.
     assert _wait_until(lambda: len(file_db.list_tasks()) == 2 and all(r["status"] in ("done", "pending") for r in file_db.list_tasks()))
     outer = next(r for r in file_db.list_tasks() if r["payload"]["session_id"] == session_id)
     inner = next(r for r in file_db.list_tasks() if r["key"] != outer["key"])
@@ -340,12 +307,6 @@ def test_a_deferred_call_runs_after_a_restart_against_the_frozen_scope(file_db):
     _fire_go(file_db, factory, project_service, {"distress": 70}, fake=False)
     assert _wait_until(lambda: len(file_db.list_tasks()) == 2)
     inner = next(r for r in file_db.list_tasks() if r["status"] == "pending")
-    # The frozen scope this inner task restores from is what actually
-    # matters (proven directly here) — the live-mode call it runs
-    # (task.whatsapp, safely no-op with no whatsapp-service configured)
-    # has no wire-observable content of its own any more, unlike the
-    # old actuator.notify(...) pattern (see this file's own module
-    # docstring on why).
     assert inner["payload"]["snapshot"]["signal"] == {"distress": 70}
     assert inner["payload"]["snapshot"]["user"]["name"] == "Ada"
     User.update(name="Grace").where(User.id == USERNAME).execute()
@@ -416,8 +377,5 @@ def test_a_task_never_sees_a_session(file_db):
     notified = RecordedMessages(UI_NOTIFICATION)
 
     _process(file_db, start=True)
-
-    # render_task_script logs and skips a failing statement, same as
-    # the in-turn evaluation always did: the task settles done with nothing to push.
     assert _wait_until(lambda: file_db.get_task(row["key"])["status"] == "done"), file_db.get_task(row["key"])
     assert notified.messages == []

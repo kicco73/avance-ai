@@ -22,4 +22,4 @@ def test_persisted_env_raises_on_a_none_session_id(db):
 
 
 def test_persisted_env_accepts_a_real_session_id(db):
-    PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), 1)  # must not raise
+    PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), 1)

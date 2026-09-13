@@ -13,10 +13,6 @@ class CssValidator:
 
     _URL_PATTERN = re.compile(r"url\(\s*(['\"]?)([^'\")]+)\1\s*\)", re.IGNORECASE)
     _ABSOLUTE_URL_PATTERN = re.compile(r"^(https?:)?//|^data:", re.IGNORECASE)
-
-    # @media/@supports are the only at-rules a chat-widget skin plausibly
-    # nests rules inside; @font-face/@page/@import etc. take a declaration
-    # list or no block at all, which parse_rule_list would misread as rules.
     _NESTED_RULE_AT_RULES = frozenset({"media", "supports"})
 
     @classmethod

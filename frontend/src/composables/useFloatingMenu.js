@@ -1,9 +1,5 @@
 import { nextTick, onBeforeUnmount, ref } from 'vue'
 
-// A menu panel anchored to its own trigger button, positioned via
-// getBoundingClientRect so it can escape an `overflow: hidden` ancestor
-// (the click-to-toggle sibling of useFloatingTooltip.js's hover variant) —
-// closed by an outside click, a page scroll, or a viewport resize.
 export function useFloatingMenu() {
   const open = ref(false)
   const triggerRef = ref(null)

@@ -14,7 +14,6 @@ VALID_NEW_SESSION_STRATEGIES = {"resume", "restart"}
 
 
 def load_yaml(text: str):
-    # A fresh YAML per call: a shared instance is not thread-safe across concurrent load() calls.
     return YAML(typ='rt').load(text)
 
 
@@ -28,10 +27,6 @@ class ProjectMetadata:
     autotracking_on_ai_message: bool
     services: ProjectServices
     service_warnings: tuple[str, ...]
-    # "resume" (default): a brand-new live session resumes wherever this
-    # user's own live automaton state already is. "restart": it enters
-    # cold instead, same as a test/preview session — see
-    # SessionTypeStrategy._init_action_start (session_type_strategy.py).
     new_session_strategy: str
 
     @classmethod

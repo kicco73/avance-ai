@@ -1,10 +1,4 @@
 <script setup>
-// Settings > Manage services: read-only view of .config.yml's own
-// service sections (see backend AppConfig.public_services_snapshot),
-// one tab per section — plus the Database tab's own backup/restore and
-// wipe-all-live-sessions actions (moved here from the Settings menu and
-// Manage projects respectively), and the live chat model picker (moved
-// here from Manage projects' own header).
 import { computed, onMounted, ref, watch } from 'vue'
 import AppHeader from '../AppHeader.vue'
 import DocInfoButton from '../DocInfoButton.vue'
@@ -21,24 +15,12 @@ import { servicesTabs, servicesTabActions } from '../../skills/registry.js'
 import { fieldLabel } from '../skillkit/serviceFields.js'
 
 defineProps({
-  // ProfileMenu.vue's own avatar/name — App.vue already fetched this once
-  // during boot, passed straight through so this view can show the same
-  // topbar avatar every other full-screen view does.
   profile: { type: Object, default: null }
 })
 
-// download-backup/restore-backup/wipe-live-sessions are a plain
-// pass-through — App.vue owns the actual fetch + confirmation logic for
-// backup restore, same as it always has; this view confirms the wipe
-// itself, same as Manage projects' own per-project wipe used to.
 const emit = defineEmits(['close', 'home', 'profile', 'logout'])
 
 
-// Fallbacks only: every section the backend sends carries its own
-// 'ui-label'/'ui-description' (see AppConfig.public_services_snapshot and
-// each skill's own UI_LABEL), and `tabs` below prefers those — what shows
-// here is what the Build view shows for the same service. Scheduler has no
-// config section of its own, so its text stays local.
 const CORE_TABS = [
   { id: 'ai', label: 'AI' },
   { id: 'chat', label: 'Chat' },
@@ -63,16 +45,8 @@ const activeTab = ref(CORE_TABS[0].id)
 const services = ref(null)
 const loading = ref(true)
 
-// Today's spend + trailing-24h per-minute history per ai-service provider
-// (see db/ai_usage.py) — loaded once alongside `services` below, same as
-// every other Manage services tab: no live refresh while the panel
-// stays open, just whatever was true when it was last (re)opened.
 const aiUsage = ref({ today: {}, today_cache_read: {}, history: [], cache_read_ratio: {} })
 
-// Settings > Manage services > Scheduler — the segmented control's own
-// selected status (default 'pending', its first option) plus the sort
-// flag, each refetching just that one status's rows from the backend
-// rather than the whole table (see loadTasks below).
 const TASK_STATUSES = ['pending', 'dispatched', 'done', 'failed', 'canceled']
 const taskStatus = ref(TASK_STATUSES[0])
 const taskOrder = ref('asc')
@@ -93,32 +67,23 @@ async function load() {
   try {
     services.value = await getServicesConfig()
   } catch {
-    // already surfaced via apiFetch
   } finally {
     loading.value = false
   }
 }
 
-// Independent of load() above: a failure here shouldn't blank out the
-// whole tab, just leave the consumption bars/chart empty.
 async function loadAiUsage() {
   try {
     aiUsage.value = await getAiUsage()
   } catch {
-    // already surfaced via apiFetch
   }
 }
 
-// Independent of load() above, same reasoning as loadAiUsage: a failure
-// here shouldn't blank out the whole tab, just leave the task list empty.
-// Scoped to taskStatus alone (never "all statuses at once") so switching
-// the segmented control never pulls more than one status's worth of rows.
 async function loadTasks() {
   tasksLoading.value = true
   try {
     tasks.value = (await getScheduledTasks(taskStatus.value, taskOrder.value)).tasks
   } catch {
-    // already surfaced via apiFetch
   } finally {
     tasksLoading.value = false
   }
@@ -133,19 +98,9 @@ onMounted(() => {
   loadTasks()
 })
 
-// Any path that ends in one specific provider pinned (auto=false) loses
-// the same thing: no more automatic fallback if that provider fails or
-// runs out of tokens. Shared verbatim by selectModelWithConfirm's own
-// index!=null branch and toggleAutoLive's disable path below, so a
-// manual provider switch and an explicit "turn cascading off" read as
-// the same warning rather than two different-sounding ones.
 const NO_FALLBACK_WARNING =
   'If the current provider fails or runs out of tokens, live chat will no longer automatically fall back to the next one and the service will stay broken. Continue?'
 
-// Shared by both the Auto-live checkbox (index null) and each provider's
-// own play button (its own index) below — same no-op guard ModelMenu.vue's
-// own select() used to run before ever reaching this, now needed here
-// directly since neither caller goes through that component anymore.
 async function selectModelWithConfirm(index) {
   if (modelSelector().selectionLoading.value) return
   const alreadySelected = index === (modelSelector().auto.value ? null : modelSelector().currentIndex.value)
@@ -166,12 +121,6 @@ async function selectModelWithConfirm(index) {
   await modelSelector().select(index)
 }
 
-// The Auto-live checkbox's own click handler — turning it on is just
-// selectModelWithConfirm(null) (its own "Switch to Auto?" confirm above),
-// but turning it off shows the same NO_FALLBACK_WARNING a manual provider
-// switch does — same real consequence either way. Whichever provider
-// auto-live cascading was actually using stays exactly where it is — this
-// only pins it explicitly, it never re-picks.
 async function toggleAutoLive() {
   if (modelSelector().selectionLoading.value) return
   if (!modelSelector().auto.value) {
@@ -188,13 +137,6 @@ async function toggleAutoLive() {
   await modelSelector().select(modelSelector().currentIndex.value)
 }
 
-// The AI tab only ever shows/selects live providers — a test-only entry
-// belongs to ai_test_service's own cascade, never this view. This is
-// also what keeps modelSelector()'s own currentIndex/select() (indices
-// into ai_live_service's already-live-filtered provider list — see
-// AiService.for_live) aligned with this list's own index: both only
-// ever count live providers, in the same order, so a plain loop index
-// works directly, with no separate index-mapping step needed.
 const liveProviders = computed(() => {
   if (!services.value) return []
   return services.value.ai.providers.filter(isProviderLive)
@@ -204,10 +146,6 @@ function isProviderLive(provider) {
   return !Array.isArray(provider.modes) || provider.modes.includes('live')
 }
 
-// Whichever provider is actually serving right now, auto-picked by the
-// cascade or manually pinned either way — same "which one is really in
-// effect" ModelMenu.vue's own checkmark used to show next to "Auto
-// (currentLabel)" when cascading was on.
 function isProviderActive(index) {
   return modelSelector().currentIndex.value === index
 }
@@ -545,9 +483,6 @@ function providerStatusTitle(index) {
   accent-color: #4a6fa5;
 }
 
-/* Unlike the other (read-only) checkbox-fields, this one is a real
-   action — clicking it selects Auto-live cascading, same as picking
-   "Auto" used to in the old ModelMenu.vue dropdown. */
 .services-checkbox-field-active {
   cursor: pointer;
 }
@@ -556,9 +491,6 @@ function providerStatusTitle(index) {
   cursor: pointer;
 }
 
-/* The play/pause status button sits outside ServicesProviderCard.vue's
-   own card, same layout as ManageProjectsView.vue's own project-card +
-   status-btn row, not embedded inside the card. */
 .services-provider-row {
   display: flex;
   align-items: flex-start;

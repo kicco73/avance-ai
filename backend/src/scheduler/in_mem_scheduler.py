@@ -63,5 +63,5 @@ class InMemScheduler(Scheduler):
 
             try:
                 self.__queue.submit(job)
-            except Exception as exc:  # never let one bad job kill the scheduler thread
+            except Exception as exc:
                 logger.exception(f"InMemScheduler could not dispatch {job.key}: {exc}")

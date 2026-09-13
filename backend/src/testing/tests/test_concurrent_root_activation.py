@@ -38,11 +38,6 @@ def test_root_play_fires_every_branch_concurrently_without_failing(client, app_d
     _make_labeled_session_for(client, app_db, hello_project, "bob")
 
     results = {}
-
-    # A real concurrent request arrives with its own valid Session context
-    # (set by AuthMiddleware); a bare threading.Thread here would not
-    # inherit the calling thread's contextvars at all, so each thread
-    # establishes its own — same username this test is already running as.
     username = WebSession().user
 
     def launch(name, path):

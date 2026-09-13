@@ -22,12 +22,6 @@ const formattedMedian = computed(() => (typeof props.median === 'number' ? `Medi
 
 const trackEl = ref(null)
 
-// The median marker sits inside the track's own bounding box, so entering
-// it never fires the track's mouseleave (mouseenter/mouseleave don't
-// bubble) — without this, both tooltips would stack. Hide the track's
-// while the marker's own is up, and hand it back when the pointer returns
-// to the track (the track's mouseleave still fires normally once the
-// pointer actually exits the whole bar).
 function onMedianEnter(event) {
   hideTooltip()
   showMedianTooltip(event.currentTarget)

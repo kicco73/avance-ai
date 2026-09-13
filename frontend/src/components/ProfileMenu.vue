@@ -1,13 +1,6 @@
 <script setup>
-// Topbar avatar menu: same dropdown pattern as SettingsMenu.vue (toggle,
-// click-outside-to-close), but the trigger is a circular photo instead
-// of an icon, and its two items are Profile/Logout instead of the admin
-// actions SettingsMenu.vue owns.
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
-// App.vue already fetches this once, up front during boot (it needs the
-// role before it can even decide which landing view to show) — this just
-// renders whatever it's handed rather than fetching its own copy.
 const props = defineProps({
   profile: { type: Object, default: null }
 })
@@ -24,13 +17,6 @@ const initial = computed(() => {
   return source ? source.charAt(0).toUpperCase() : '?'
 })
 
-// A Google avatar URL can 404/time out at load time even when
-// picture_url itself is a perfectly valid string (an expired token
-// behind it, a transient network blip, an ad blocker) — without this,
-// that shows as a permanently broken image icon with no fallback ever
-// kicking in, since showAvatarImg below only checks the string exists.
-// Reset whenever the URL itself changes, so a later successful profile
-// reload gets a fresh attempt instead of staying stuck on the old failure.
 const imageFailed = ref(false)
 watch(() => props.profile?.picture_url, () => {
   imageFailed.value = false

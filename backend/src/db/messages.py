@@ -11,10 +11,6 @@ from .models import Message
 from .utils import _utc_iso
 
 logger = LoggerFactory.get_logger(__name__)
-
-# Distinguishes "caller didn't pass timestamp" (default=datetime.utcnow
-# applies) from "caller explicitly wants NULL" — None can't be the
-# sentinel since it's the explicit value being distinguished for.
 _TIMESTAMP_UNSET = object()
 
 _ROLES = ("user", "assistant")
@@ -107,9 +103,6 @@ class MessageMixin:
         }
 
     def get_messages(self, session_id: int, last_n: int | None=None, since: datetime | None=None) -> list[dict]:
-        # id, not timestamp: always present (never null, unlike an
-        # imported message's) and already the correct order for any
-        # session, native or imported.
         query = Message.select().where(Message.session == session_id).order_by(Message.id.desc())
         if since is not None:
             query = query.where(Message.timestamp > since)
@@ -163,7 +156,6 @@ class MessageMixin:
 
     def _turn_history_rows(self, session_id: int, since: datetime | None, token_budget: int | None) -> list[dict]:
         # FIXME: COALESCE is load-bearing — SUM() over an all-NULL window
-        # is NULL, never <= token_budget, which would empty the result.
         if token_budget is None:
             query = Message.select().where(Message.session == session_id)
             if since is not None:

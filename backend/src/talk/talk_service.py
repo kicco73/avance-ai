@@ -27,7 +27,7 @@ class TalkService(TalkProvider):
 
     _PROVIDER_CLASSES = {
         "gemini": GeminiTalkProvider,
-        "piper": PiperTalkProvider,  # local, no `key` needed
+        "piper": PiperTalkProvider,
     }
 
     def __init__(self, provider: TalkProvider) -> None:

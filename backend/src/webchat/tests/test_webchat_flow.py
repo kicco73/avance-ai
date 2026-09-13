@@ -14,12 +14,6 @@ REACHES_INTO = {
     "_PROVIDER_CLASSES": "the talk skill's provider registry, how a fake voice is installed",
     "_connections": "nothing tells a connection its own id, and input.audio is not CLIENT_INJECTABLE",
 }
-
-# This one module is a flow across three skills: what a browser says
-# reaches a turn, and what the turn says back is spoken on talk's own
-# route. Speaking is the real thing here, so the module collects only
-# where that package is (see docs/TESTS.md); decoding speech is not —
-# this channel only ever meets it as `input.text` coming back.
 StreamingTalkProvider = pytest.importorskip("talk.talk_provider").StreamingTalkProvider
 TalkService = pytest.importorskip("talk.talk_service").TalkService
 

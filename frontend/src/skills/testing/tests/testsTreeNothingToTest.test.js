@@ -1,6 +1,3 @@
-// Launching a test suite with nothing to analyse must not be possible:
-// every aggregation (states, signals, users, the whole suite) runs over
-// the annotated sessions, so with none of those there is no run to make.
 import { afterEach, describe, expect, it } from 'vitest'
 import { createApp } from 'vue'
 

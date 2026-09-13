@@ -1,6 +1,3 @@
-// Mounts the REAL ChatView.vue (not just chatStore.js's bare refs, unlike
-// chatStoreSkin.test.js) to check the theme-mode prop end to end, including
-// the async race a bare-refs test can't reach.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import { deliverEntered, resetFakeBus } from '../../../../tests/fakeBus.js'
@@ -32,12 +29,6 @@ function currentSkinStyleTags() {
   return Array.from(document.head.querySelectorAll('style'))
 }
 
-// Mounting ChatView is the heaviest thing this suite does, and the whole
-// component tree is transformed here, at import time, rather than inside
-// whichever test imports it first: that cost is 6.3s on its own and
-// 16.3s with the whole suite running in parallel, and vitest charged it
-// to that test's own 5s budget. A file's own imports are not timed, so
-// the import below is left with nothing but the re-evaluation.
 await import('../../../components/chat/ChatView.vue')
 
 describe('ChatView.vue themeMode="manual" end to end (not just the store refs)', () => {
@@ -90,9 +81,6 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
     deliverEntered({ sessionId: 1, projectId: 'live-proj', state: { key: 'live', ui_label: 'Live', actions: [] } })
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
 
-    // EditProjectView's setMode('run'): flips activeChatMode, mounts
-    // RunChat -> ChatWindow(manual, :store="testStore"), then calls
-    // ensureDraftChatSession().
     chatSkin.activeChatMode.value = 'test'
     const testContainer = document.createElement('div')
     document.body.appendChild(testContainer)
@@ -118,11 +106,11 @@ describe('ChatView.vue themeMode="manual" end to end (not just the store refs)',
 
     chatStore.currentProjectId.value = 'proj'
     chatStore.currentSessionId.value = 1
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1)) // the fetch is now in flight
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
 
-    chatStore.applyAspect.value = false // Test mode entered mid-fetch
+    chatStore.applyAspect.value = false
 
-    resolveFetch({ ok: true, text: async () => 'body { color: red; }' }) // the stale response lands
+    resolveFetch({ ok: true, text: async () => 'body { color: red; }' })
     await new Promise((r) => setTimeout(r, 0))
     await new Promise((r) => setTimeout(r, 0))
 

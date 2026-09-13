@@ -1,10 +1,4 @@
 <script setup>
-// A .txt/.md attachment's editor pane — "Preview"/"Edit" segmented toggle,
-// same shape as IndexCssEditorPanel.vue. Preview renders the live buffer
-// through the same renderMarkdown() the chat bubbles use; Edit is a plain
-// CodeEditor (its own markdown() language mode kicks in off content_type —
-// see CodeEditor.vue). Remounted per file (:key="fileName" in
-// ProjectDesignPanel.vue), unlike index.yml/index.css's own fixed-name panels.
 import { computed, ref } from 'vue'
 import CodeEditor from '../../../../CodeEditor.vue'
 import DocInfoButton from '../../../../../../components/DocInfoButton.vue'
@@ -13,10 +7,6 @@ import { renderMarkdown } from '../../../../../../markdown.js'
 const props = defineProps({
   projectId: { type: String, required: true },
   fileName: { type: String, required: true },
-  // 'edit' for a file a create/upload/new-legal flow just opened (see
-  // ProjectDesignPanel.vue) — read once at mount, same as fileName
-  // itself: this component remounts fresh per file (:key="fileName"),
-  // so there's no later file switch for a reactive prop to catch.
   initialSegment: { type: String, default: 'preview' }
 })
 

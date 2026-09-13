@@ -19,8 +19,6 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url)
 }
 
-// askPublishConsent's "the user backed out" — distinct from the null
-// that means "no remap needed", which is a perfectly good publish.
 const CANCELLED = Symbol('publish cancelled')
 
 export function useProjectAdminActions() {
@@ -47,7 +45,6 @@ export function useProjectAdminActions() {
       await postNewProject()
       await refreshStateAndProjects()
     } catch {
-      // already surfaced via apiFetch
     }
   }
 
@@ -80,7 +77,6 @@ export function useProjectAdminActions() {
     try {
       await refreshStateAndProjects()
     } catch {
-      // already surfaced via apiFetch
     }
   }
 
@@ -90,7 +86,6 @@ export function useProjectAdminActions() {
       await activateProject(projectId)
       await refreshStateAndProjects()
     } catch {
-      // already surfaced via apiFetch
     }
   }
 
@@ -101,7 +96,6 @@ export function useProjectAdminActions() {
       await refreshStateAndProjects()
       await loadMessages(projectId)
     } catch {
-      // already surfaced via apiFetch
     }
   }
 
@@ -109,7 +103,6 @@ export function useProjectAdminActions() {
     try {
       downloadBlob(await downloadProject(projectId), `${projectId}.zip`)
     } catch {
-      // already surfaced via apiFetch
     }
   }
 
@@ -119,14 +112,9 @@ export function useProjectAdminActions() {
       await deleteProject(projectId)
       await refreshStateAndProjects()
     } catch {
-      // already surfaced via apiFetch
     }
   }
 
-  // Manage projects' one Publish button: the draft becomes the published
-  // revision. A backend that can compile turns it into a package as part
-  // of answering (see bus.POINT_PROJECT_PUBLISHED) and says so in `built`;
-  // one that cannot publishes and stops there.
   async function handlePublishProject(projectId) {
     const remapTo = await askPublishConsent(projectId)
     if (remapTo === CANCELLED) return
@@ -140,8 +128,6 @@ export function useProjectAdminActions() {
     await infoDialog({ title: 'Publish', body: publishReport(published) })
   }
 
-  // The chosen remap target, null when none is needed, or CANCELLED when
-  // the user backed out of either question.
   async function askPublishConsent(projectId) {
     let preview
     try {
@@ -152,8 +138,6 @@ export function useProjectAdminActions() {
     if (preview.needs_remap) {
       return await customDialog({ component: PublishRemapDialog, props: { prompt: preview } }) ?? CANCELLED
     }
-    // Only ask when it's actually consequential — a live conversation
-    // still running on the currently published revision.
     if (!preview.has_active_sessions) return null
     const ok = await confirmDialog({
       title: 'Publish',

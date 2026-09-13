@@ -39,7 +39,7 @@ from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
 
-__version__ = "2.0.0"  # also in package.json, Dockerfile, and CHANGELOG.md
+__version__ = "2.0.0"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -73,18 +73,8 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        # --- STARTUP ---
         logger.info(f"Booting avance headless server v{__version__}.")
-
-        # Built before AiService.for_live/for_test below, so both cascades
-        # can be given it directly — Manage services' own daily token
-        # usage (see AiService.generate_stream_with_metadata's on_metadata
-        # tap and db/ai_usage.py) is written straight through it, the same
-        # `db` every other service here depends on.
         db = Db(config.database_url, migration_strategy=config.database_migration_strategy)
-
-        # Process-wide, and so configured here rather than handed to each
-        # of the readers that share it (see tracking.project_files).
         configure_project_file_cache(config.project_file_cache_bytes)
 
         migrate_env_rows(db)
@@ -97,36 +87,10 @@ def create_app() -> FastAPI:
         )
 
         progress_broadcaster = Broadcaster(ai_test_service, batch_window_seconds=DEFAULT_BATCH_WINDOW_SECONDS)
-        # Started last (see the end of this block): until then its Task
-        # table only gains rows, nothing is claimed.
         scheduler_service = SchedulerService(max_concurrent=config.jobs_shared_max_concurrent, broadcaster=progress_broadcaster, db=db)
-
-        # Whatever is installed, started with the configuration file as it
-        # was read: nothing here names a skill, and a build that leaves a
-        # package out simply has one fewer (see skills.py).
         skills.start_all(config.raw, config.path)
-
-        # Bridged onto app.state for the same reason auth_service is below:
-        # AuthMiddleware was already registered before this existed, and
-        # needs it for its own per-request UserProject ownership check.
         app.state.db = db
-
-        # Built before ProjectService, which injects it into ProjectManager.
-        # Also built before AuthService below — AuthService.complete_registration
-        # delegates every invite rule (exists/not expired/under its
-        # max-shares budget) to ProjectService (see project/invites.py's
-        # InviteManager), so it needs this constructed first.
         session_manager = SessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
-
-        # XXX Compiled automaton requirement - do not touch.
-        # XXX The one place the loader is settled, and the only reason
-        # this block changed shape: the alternatives live in packages a
-        # build may not contain, so main.py cannot name any of them. It
-        # builds the one loader that always works and offers the choice;
-        # whoever knows better has already replaced it by the time this
-        # returns, and `settled` decides what a backend nobody replaced
-        # it in is (see bus.POINT_AUTOMATON_LOADER and
-        # project/archive/loader_choice.py).
         automaton_loader = bus.collect(POINT_AUTOMATON_LOADER, AutomatonLoaderChoice(
             db=db,
             session_manager=session_manager,
@@ -140,30 +104,12 @@ def create_app() -> FastAPI:
             ai_live_service, project_locks=project_locks, 
             invite_valid_days=config.invite_valid_days, invite_max_shares=config.invite_max_shares,
         )
-
-        # After ProjectService (a hibernated task.defer is rebuilt
-        # against a project revision through it) and before the SchedulerService
-        # is started: this registers the task type the scheduler hydrates.
         namespace_factory = TaskNamespaceFactory(db, scheduler_service, project_service, ai_live_service)
-
-        # Built once here (not a global singleton — see auth/auth_service.py's
-        # own module docstring), passed explicitly to whatever needs it.
-        # Also bridged onto app.state: AuthMiddleware was already
-        # registered (add_middleware, below) before this existed.
         auth_service = AuthService(db, config.auth_providers, config.auth_token_ttl_in_hours, project_service)
         app.state.auth_service = auth_service
-
-        # A leaf service (see metrics/metric_service.py's own module
-        # docstring) — never depends on TurnService/TrackingService, so
-        # it's built first and handed to whoever needs it, never the
-        # other way around.
         metric_service = MetricService(
             db, project_service, max_session_duration_in_minutes=config.max_session_duration_in_minutes,
         )
-        
-        # Instantiated once here, not built by TurnService itself (see
-        # tracking/tracking_service.py's own module docstring). Both this and
-        # TurnService depend on ai_service/metric_service directly, never each other.
         tracking_service = TrackingService(
             db, project_service, metric_service, namespace_factory,
             input_token_budget_per_turn=config.input_token_budget_per_turn,
@@ -173,29 +119,9 @@ def create_app() -> FastAPI:
             db, ai_live_service, ai_test_service, project_service, session_manager,
             tracking_service, metric_service, scheduler_service, namespace_factory, project_locks,
         )
-
-        # A channel posts what a person said; this is what answers it.
-        # Core, not a skill: a build with no chat window still runs turns
-        # for WhatsApp, and neither channel knows the other exists (see
-        # turn/input_listener.py).
         TurnInput(turn_service, db).register()
-
-        # A flush runs on a job-worker thread, and a listener that ends
-        # up writing to a socket needs this loop rather than that one.
         progress_broadcaster.bind_loop()
-
-        # One shared connection per identity, and not the chat's: the
-        # whole SPA reads it (see system/__init__.py). It subscribes to
-        # the Bus's ui.* messages in its own constructor, and publishes
-        # what a client sends without knowing who — if anyone — answers.
         bus_channel = BusChannel(auth_service)
-
-        # The composed core, offered to whoever asks for it. Everything a
-        # skill could need exists by now; nothing is handed to anyone,
-        # and a skill that is not in this build asks for nothing (see
-        # bus.POINT_CORE_SERVICES, system/skills.py). Contributed here
-        # rather than earlier so the registry is complete at the moment
-        # it is built, not only by the time somebody reads it.
         bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({
             "db": db,
             "auth_service": auth_service,
@@ -210,27 +136,9 @@ def create_app() -> FastAPI:
             "services_config": config.public_services_snapshot(),
             "version": __version__,
         }))
-
-        # Availability cascade (see ProjectService.recompute_availability/
-        # register_availability_cascade) — same "subscribe once, react
-        # forever" shape as WakeupService below.
         project_service.register_availability_cascade()
-
-        # Admin-facing side effect of a published revision going broken/
-        # healthy again (see project/health_notifications.py) — registered
-        # before the boot-time sweep below, so a project already broken
-        # when this process starts is logged/warned/pushed exactly once.
         ProjectHealthNotifications(db, scheduler_service).register()
-
-        # Every project's own build health (published/draft) is unknown
-        # to this fresh process until checked — a framework change since
-        # the last boot may have broken one silently; this is what turns
-        # that into a paused project plus a single admin notification
-        # instead of a 500 on whichever endpoint happens to touch it first.
         project_service.recompute_all_availability()
-
-        # Cross-project wake-up (see tracking/wakeup_service.py) —
-        # subscribes once for the process lifetime.
         WakeupService(
             db, project_service, scheduler_service, namespace_factory, tracking_service=tracking_service,
             ai_service=ai_live_service,
@@ -240,16 +148,12 @@ def create_app() -> FastAPI:
             turn_service, project_service, bus_channel=bus_channel,
         )
         app.include_router(controller.router)
-
-        # Last: everything a due task may reach (the websocket adapter
-        # above all) now exists, and every task type is registered.
         scheduler_service.start()
 
         logger.info("Boot completed - server ready.")
 
         yield
 
-        # --- SHUTDOWN / CLEANUP ---
         logger.info("Shutting down - cleaning up resources...")
         
         await skills.stop_all()
@@ -262,11 +166,6 @@ def create_app() -> FastAPI:
                     close_fn()
 
     app = FastAPI(title="Avance State Engine", lifespan=lifespan)
-
-    # Registered before CORSMiddleware so CORS ends up the outer layer
-    # (Starlette wraps middleware in the reverse of add_middleware() call
-    # order) — an early 401 from AuthMiddleware still needs CORS headers
-    # attached on its way back out, or the frontend can't even read it.
     app.add_middleware(AuthMiddleware)
 
     app.add_middleware(

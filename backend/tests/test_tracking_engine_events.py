@@ -111,7 +111,6 @@ def test_apply_transition_publishes_state_changed_only_for_a_real_transition_car
     engine.apply_transition(real_automaton, real_state, real_action, {}, session_id=1, origin='trigger', username=USERNAME, project_id=PROJECT_ID)
     assert received == [StateChanged(username=USERNAME, project_id=PROJECT_ID, from_state="a", to_state="b")]
 
-    # A self-loop is still saved (see apply_transition's own docstring) but never published.
     loop_automaton, loop_state, loop_action = _automaton(action_target="a")
     loop_engine, loop_sink, _ = _engine()
     loop_engine.apply_transition(loop_automaton, loop_state, loop_action, {}, session_id=1, origin='trigger', username=USERNAME, project_id=PROJECT_ID)
@@ -144,9 +143,9 @@ def test_apply_action_env_publishes_env_changed_per_written_key_only_when_an_ide
     assert all(e.username == USERNAME and e.project_id == PROJECT_ID for e in received)
 
     anonymous_engine, _sink, anonymous_env = _engine()
-    anonymous_engine.apply_action_env(automaton, action, {}, state.key)  # no username/project_id
+    anonymous_engine.apply_action_env(automaton, action, {}, state.key)
 
-    assert anonymous_env.updates == [{"counter": 1, "flag": True}]  # still applied locally
+    assert anonymous_env.updates == [{"counter": 1, "flag": True}]
     assert len(received) == 2
 
 

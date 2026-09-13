@@ -1,8 +1,3 @@
-// BuildProjectView.vue's Target step: a backend copy is a job of several
-// steps ending in the built backend's own test run, so the panel draws
-// the step table the job broadcasts instead of a spinner. Every progress
-// chunk carries that table as a JSON string on `result` (see
-// build/build_job.py); only the last one arrives already parsed.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, nextTick } from 'vue'
 
@@ -44,8 +39,6 @@ describe('BuildProjectView.vue build progress', () => {
     container.remove()
   })
 
-  // No @vue/test-utils here, and <script setup> exposes nothing — so the
-  // panel is driven the way an operator drives it: Next, then Build.
   async function build() {
     const BuildProjectView = (await import('../components/BuildProjectView.vue')).default
     app = createApp(BuildProjectView, { projectId: 'proj' })
@@ -72,7 +65,6 @@ describe('BuildProjectView.vue build progress', () => {
     expect(rows.length).toBe(3)
     expect(rows[2].textContent).toContain("Running the build's tests")
     expect(rows[2].className).toContain('build-progress-step-done')
-    // The build's own test run is reported, not just that the build ended.
     expect(container.textContent).toContain('12 passed in 3.4s')
   })
 

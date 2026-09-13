@@ -44,7 +44,7 @@ def project_service(db) -> ProjectService:
         {"index.yml": INDEX_YML.encode("utf-8"), "legal/terms.md": TERMS_MD},
         {"index.yml": "text/yaml", "legal/terms.md": "text/markdown"},
     )
-    db.publish_project(PROJECT_ID)  # published_revision = 0
+    db.publish_project(PROJECT_ID)
     return ProjectService(db, AutomatonLoader(db), SessionManager(db))
 
 
@@ -68,10 +68,6 @@ def _turn_service_for(db, project_service: ProjectService) -> TurnService:
 
 
 def test_accept_legal_terms_resolves_pending_even_with_a_diverged_draft(db, project_service):
-    # An unrelated draft edit forks every Archive row (including
-    # legal/terms.md) to revision 1, identical content but a new row id —
-    # exactly what happened to "TTM prototype" in production
-    # (revision=1, published_revision=0, 5 draft edits).
     db.save_project_files(
         PROJECT_ID, {"index.yml": INDEX_YML.encode("utf-8")}, {"index.yml": "text/yaml"}
     )
@@ -91,7 +87,7 @@ def test_accept_legal_terms_still_asks_again_if_the_published_terms_later_change
     db.save_project_files(
         PROJECT_ID, {"legal/terms.md": b"# Terms\n\nNew content.\n"}, {"legal/terms.md": "text/markdown"}
     )
-    db.publish_project(PROJECT_ID)  # published_revision advances to the new terms
+    db.publish_project(PROJECT_ID)
 
     assert project_service.legal_terms_pending(USERNAME, PROJECT_ID) is True
 
@@ -113,8 +109,6 @@ async def test_an_already_open_session_is_never_blocked_by_terms_published_since
         PROJECT_ID, {"legal/terms.md": b"# Terms\n\nChanged mid-conversation.\n"}, {"legal/terms.md": "text/markdown"}
     )
     db.publish_project(PROJECT_ID)
-    # Sanity: a brand new session would indeed be gated by this — the
-    # already-open one below just isn't.
     assert project_service.legal_terms_pending(USERNAME, PROJECT_ID) is True
 
     second = await turn_service.enter_session(PROJECT_ID, 'live')

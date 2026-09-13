@@ -6,10 +6,6 @@ from collections.abc import Callable
 from typing import Any, ClassVar
 
 from jobs.job import CancelableJob
-
-# What a PersistedScheduler hears back once a task has settled (see
-# Task.run_next_step): the task, its terminal status ('done'|'failed')
-# and, on failure, the error text.
 SettlementListener = Callable[["Task", str, "str | None"], None]
 
 
@@ -33,7 +29,6 @@ class Task(CancelableJob):
     queue (jobs/job_queue.py is closed to changes), so the scheduler
     learns of done/failed without the queue knowing about persistence."""
 
-    #: Registry key selecting the hydrator for rows of this kind.
     TYPE: ClassVar[str]
 
     @classmethod
@@ -88,7 +83,6 @@ class Task(CancelableJob):
             self._settle("failed", str(exc))
             raise
         if self.is_failed():
-            # Retries (TryAgainError) exhausted: Job._fail'd without raising.
             self._settle("failed", self.error())
         elif self.is_done():
             self._settle("done")

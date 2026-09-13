@@ -101,11 +101,11 @@ def _corrupt_in_place(db, project_id: str, revision: int) -> None:
 
 def test_a_real_save_on_a_previously_broken_draft_revision_clears_the_stale_failure(db, project_service):
     project_id = "wip_fix"
-    _upload(db, project_service, project_id)  # never published: draft stays at revision 0 in place
+    _upload(db, project_service, project_id)
     revision = db.get_project_revision(project_id)
     _corrupt_in_place(db, project_id, revision)
     automaton_loader = project_service.automaton_loader
-    automaton_loader.invalidate_cache(project_id)  # simulates a fresh process never having cached the old, valid build
+    automaton_loader.invalidate_cache(project_id)
 
     with pytest.raises(Exception):
         automaton_loader.load(project_id)
@@ -122,11 +122,6 @@ def test_revert_to_published_clears_a_broken_drafts_stale_failure(db, project_se
     _upload(db, project_service, project_id)
     PlatformService(project_service).publish_project(project_id)
     published_revision = db.get_project_published_revision(project_id)
-
-    # A raw draft edit, bypassing every real save path's own validation —
-    # exactly what a user mid-edit (who then gives up) looks like. Forks
-    # off the published revision first (same as any real edit after a
-    # publish), so the corruption lands on a brand new draft revision.
     db.save_project_files(project_id, {"index.yml": BROKEN_YML.encode("utf-8")}, {"index.yml": "text/yaml"})
     draft_revision = db.get_project_revision(project_id)
     assert draft_revision != published_revision
@@ -147,28 +142,18 @@ def test_reuploading_a_project_clears_its_previously_broken_published_revisions_
     published_revision = db.get_project_published_revision(project_id)
     automaton_loader = project_service.automaton_loader
     automaton_loader.invalidate_cache(project_id)
-
-    # The published revision breaks under a framework upgrade — discovered
-    # on the next cache miss, same scenario test_project_health.py's own
-    # _corrupt_published_revision covers for recompute_availability; here
-    # the fix is a real re-upload (import), not just a recompute.
     _corrupt_in_place(db, project_id, published_revision)
     with pytest.raises(Exception):
         automaton_loader.load_at_revision(project_id, published_revision)
 
-    _upload(db, project_service, project_id, VALID_YML + "\n")  # a fresh, valid revision on top
+    _upload(db, project_service, project_id, VALID_YML + "\n")
 
     new_published_revision = db.get_project_published_revision(project_id)
     assert new_published_revision > published_revision
     healed = automaton_loader.load(project_id)
     assert healed.project_id == project_id
-    # The old, still-broken revision's own cached failure is irrelevant
-    # now (no session/draft/publish points at it any more) — what matters
-    # is that the *current* one builds, with nothing left over blocking it.
     assert automaton_loader.load_at_revision(project_id, new_published_revision).project_id == project_id
 
-
-# --- finalize_update's own old_family: a family-only rename ---------------
 
 
 def _set_dep_family(db, project_service: ProjectService, family: str) -> None:
@@ -191,29 +176,19 @@ def _set_dep_family(db, project_service: ProjectService, family: str) -> None:
 
 def test_a_family_only_edit_via_put_project_file_clears_a_dependents_stale_failure(db, project_service):
     _upload(db, project_service, "dep", DEP_YML.format(family="fam1"))
-    _upload(db, project_service, "watcher_family", WATCHER_YML)  # succeeds: same family, resolves automaton.dep
+    _upload(db, project_service, "watcher_family", WATCHER_YML)
     automaton_loader = project_service.automaton_loader
-
-    # dep's family changes (raw, bypassing validation — see _set_dep_family)
-    # to something watcher_family doesn't share, and watcher_family's own
-    # cache is forced to notice: a fresh build now genuinely fails, since
-    # automaton.dep no longer resolves under fam1's own known_projects_env_keys.
     _set_dep_family(db, project_service, "fam2")
     automaton_loader.invalidate_cache("watcher_family")
     with pytest.raises(Exception):
         automaton_loader.load("watcher_family")
-
-    # The real fix: an ordinary put_project_file edit that changes dep's
-    # family back — project.id itself never moves, so this is exactly the
-    # case finalize_update's id-rename branch structurally can't catch;
-    # only its own old_family comparison can.
     asyncio.run(project_service.put_project_file(
         "dep", "index.yml", DEP_YML.format(family="fam1"), "text/yaml",
     ))
 
     healed = automaton_loader.load("watcher_family")
     assert healed.project_id == "watcher_family"
-    assert db.get_project_availability("watcher_family") == (False, None)  # available again, no manual recompute call
+    assert db.get_project_availability("watcher_family") == (False, None)
 
 
 def test_a_family_only_reupload_clears_a_dependents_stale_failure(db, project_service):
@@ -225,10 +200,6 @@ def test_a_family_only_reupload_clears_a_dependents_stale_failure(db, project_se
     automaton_loader.invalidate_cache("watcher_family")
     with pytest.raises(Exception):
         automaton_loader.load("watcher_family")
-
-    # The real fix this time: a re-upload (import) of the same id, family
-    # restored — put_project's own old_family capture (read before
-    # _persist_uploaded_project touches anything) is what's under test.
     _upload(db, project_service, "dep", DEP_YML.format(family="fam1") + "\n")
 
     healed = automaton_loader.load("watcher_family")

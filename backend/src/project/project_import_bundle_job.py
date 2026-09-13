@@ -43,9 +43,6 @@ class ProjectImportBundleJob(CancelableJob):
             [('session', session) for session in self._sessions]
             + [('test', entry) for entry in self._test_entries]
         )
-        # A plain upload with no bundled sessions/test results still
-        # needs one step to reach is_done() — Job.progress() divides by
-        # total_steps, which must never be 0.
         return max(len(self._pending), 1), ()
 
     @property

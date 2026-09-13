@@ -1,6 +1,3 @@
-// The dots, from the frame the backend really puts on the socket to the
-// flag the bubble reads: the real busChannel, the real store, only the
-// WebSocket itself faked.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installFakeChatSocket } from './fakeChatSocket.js'
 

@@ -9,7 +9,6 @@ from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 
-# WhatsApp's own hard limit for one text message body.
 WA_TEXT_LIMIT = 4096
 
 

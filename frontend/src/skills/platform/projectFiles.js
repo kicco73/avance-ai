@@ -7,6 +7,5 @@ export async function refreshProjectFiles(projectId) {
   try {
     projectFiles.value = (await getProjectFiles(projectId)).files
   } catch {
-    // already surfaced via apiFetch
   }
 }

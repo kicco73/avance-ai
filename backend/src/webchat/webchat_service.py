@@ -38,10 +38,6 @@ from .bus_human_relay import BusHumanRelay
 logger = LoggerFactory.get_logger(__name__)
 
 CHANNEL = __package__
-
-#: What a turn produces, and what this forwards. Not CLIENT_INJECTABLE's
-#: mirror image: that is what a browser may put *on* the Bus, and this is
-#: what comes back.
 TURN_FORWARDED = (
     OUTPUT_TEXT_STREAM, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TOOL, OUTPUT_REACTION,
     STATE_BUTTONS, STATE_CHANGED, OUTPUT_ERROR,

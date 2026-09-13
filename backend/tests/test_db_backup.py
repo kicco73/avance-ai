@@ -45,7 +45,6 @@ def test_restore_backup_rejects_non_sqlite_content(file_db):
     with pytest.raises(ValueError):
         file_db.restore_backup(b"not a sqlite file")
 
-    # Rejected content must never have touched the working file.
     assert file_db.export_backup().startswith(b"SQLite format 3\x00")
 
 
@@ -56,7 +55,6 @@ def test_restore_backup_rejects_a_completely_unrelated_schema(file_db, tmp_path)
     with pytest.raises(ValueError, match="schema"):
         file_db.restore_backup(wrong)
 
-    # Rejected content must never have touched the working file.
     assert file_db.export_backup().startswith(b"SQLite format 3\x00")
 
 
@@ -117,7 +115,7 @@ def test_restore_backup_accepts_a_schema_matching_backup(file_db):
     """The normal case: a real export from a Db with the identical schema
     must pass the integrity check and actually restore."""
     backup = file_db.export_backup()
-    file_db.restore_backup(backup)  # must not raise
+    file_db.restore_backup(backup)
     assert file_db.export_backup().startswith(b"SQLite format 3\x00")
 
 
@@ -138,7 +136,7 @@ def test_restore_backup_preserves_the_working_files_permissions(file_db):
     """A restore must preserve the working file's permissions rather than
     whatever mode the process umask gives a freshly written temp file."""
     path = file_db.backup_file_path()
-    os.chmod(path, 0o600)  # deliberately not whatever the umask would produce
+    os.chmod(path, 0o600)
     backup = file_db.export_backup()
 
     file_db.restore_backup(backup)
@@ -181,7 +179,6 @@ def test_restore_backup_replaces_data_and_reconnects(file_db):
     )
     backup = file_db.export_backup()
 
-    # Mutate the working db after the backup snapshot was taken.
     file_db.create_chat_session(
         username="user",
         project_id="proj2",
@@ -194,9 +191,6 @@ def test_restore_backup_replaces_data_and_reconnects(file_db):
     assert file_db.get_latest_chat_session("user", "proj2") is not None
 
     file_db.restore_backup(backup)
-
-    # Back to the pre-mutation snapshot: the kept session is there, the
-    # one created afterward is gone.
     assert file_db.get_chat_session(kept_id) is not None
     assert file_db.get_latest_chat_session("user", "proj2") is None
 

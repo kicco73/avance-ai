@@ -9,9 +9,6 @@ import AppStoreView from './components/appStore/AppStoreView.vue'
 
 export const key = 'platform'
 
-// The screen a role lands on. A build without this directory contributes
-// none, and App.vue falls back for every role to the one screen the core
-// answers by itself: the chat window. That is what a delivered product is.
 export const roleHomes = [
   { role: 'admin', component: AdminHome },
   { role: 'supervisor', component: LabelProjectView },
@@ -25,11 +22,6 @@ export const pushedViews = [
   { view: 'appStore', component: AppStoreView },
 ]
 
-// The deployment operations, offered inside Settings' own Data tab.
 export const servicesTabActions = [{ id: 'platform-server-ops', tab: 'database', component: ServerOpsActions }]
 
-// Which model answers the live chat, and the one screen that can change
-// it. Reading the roster is the core's; choosing is an operation, so a
-// build without this panel gets the null object and offers no choice
-// (see ../../modelSelector.js).
 export const modelSelectors = [liveModelStore]

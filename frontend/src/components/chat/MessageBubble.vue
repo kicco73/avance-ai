@@ -6,16 +6,8 @@ import { csvToMarkdownTable } from '../../toolResultTable.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 import MessageReactionButton from './MessageReactionButton.vue'
 
-// How long a press on an assistant bubble must hold before the reaction
-// picker opens — kept in sync with .bubble-bulging's own transition
-// duration below, so the "inflate" finishes right as the picker appears.
 const LONG_PRESS_MS = 450
 
-// A press that drifts more than this before LONG_PRESS_MS elapses reads
-// as a scroll/pan, not a hold — cancels the timer instead of opening the
-// picker (touch-action stays pan-y, see .bubble-assistant below, so the
-// browser's own vertical scroll runs concurrently with this timer; this
-// threshold is what keeps a drifting scroll from also firing a reaction).
 const LONG_PRESS_MOVE_CANCEL_PX = 10
 
 const BARE_DATA_IMAGE_RE = /(?<!\]\()(data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=]+)/g
@@ -24,8 +16,6 @@ function autoWrapBareImages(text) {
   return text.replace(BARE_DATA_IMAGE_RE, '![]($1)')
 }
 
-// Chat-specific: wraps bare pasted image data URIs as markdown images
-// before handing off to the shared renderer (see ../markdown.js).
 function renderMarkdown(text) {
   if (!text) return ''
   return renderMarkdownBase(autoWrapBareImages(text))
@@ -35,23 +25,9 @@ const props = defineProps({
   message: { type: Object, required: true },
   spokenTextEnabled: { type: Boolean, default: false },
   showTimestamp: { type: Boolean, default: false },
-  // Whether this message's evaluation has an expert-annotated
-  // expected_values; shows a small signal-annotation marker.
   signalsAnnotated: { type: Boolean, default: false },
-  // Whether this belongs to an imported session — there's no real
-  // avance-computed value to compare an annotation against, so the
-  // marker reads as a neutral "labelled" tick instead of amber "!".
   imported: { type: Boolean, default: false },
-  // {key, ui_label}[] — the active project's whole reaction vocabulary
-  // (see chatStore.js's state.reactions). Empty disables long-press-to-react
-  // entirely (see onBubblePointerDown's own guard below).
   reactions: { type: Array, default: () => [] },
-  // HumanOperatorChatView.vue's own bubbles only: swaps which side a
-  // 'user'/'assistant' message renders on, so the customer's messages
-  // read as "incoming" and the operator's own replies as "outgoing" —
-  // purely which column a bubble sits in (see alignRole below), never
-  // message.role itself, so reactions/awaiting-reply/spoken-text stay
-  // exactly as every other caller (default false) already sees them.
   invert: { type: Boolean, default: false }
 })
 
@@ -66,17 +42,12 @@ function reactionLabelFor(key) {
   return props.reactions.find((r) => r.key === key)?.ui_label ?? key
 }
 
-// Long-press-to-react on an assistant bubble — replaces a dedicated
-// trigger button entirely (see MessageReactionButton.vue's own docstring).
 const bubbleRef = ref(null)
 const reactionButtonRef = ref(null)
 const longPressActive = ref(false)
 let longPressTimer = null
 let pressStartX = 0
 let pressStartY = 0
-// Set the instant the long-press fires and cleared on the next click —
-// suppresses the ghost click that follows the closing touchend so a link
-// under the finger doesn't also navigate (see onBubbleClickCapture).
 let justOpenedReaction = false
 
 function clearLongPressTimer() {
@@ -99,9 +70,6 @@ function onBubblePointerDown(event) {
   }, LONG_PRESS_MS)
 }
 
-// A finger drifting toward a scroll shouldn't also open the picker —
-// cancels the pending long-press once the move exceeds the threshold,
-// leaving the browser's own touch-action: pan-y scroll to keep running.
 function onBubblePointerMove(event) {
   if (longPressTimer == null) return
   const dx = event.clientX - pressStartX
@@ -109,16 +77,11 @@ function onBubblePointerMove(event) {
   if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_CANCEL_PX) onBubblePointerEnd()
 }
 
-// Shared by pointerup/pointercancel/pointerleave — any of them ends the
-// press early, same "didn't hold long enough" outcome either way.
 function onBubblePointerEnd() {
   longPressActive.value = false
   clearLongPressTimer()
 }
 
-// Capture-phase so it runs before a link's own click handler (navigation)
-// fires — swallows exactly the one click that immediately follows the
-// picker opening, then gets out of the way.
 function onBubbleClickCapture(event) {
   if (!justOpenedReaction) return
   justOpenedReaction = false
@@ -128,35 +91,19 @@ function onBubbleClickCapture(event) {
 
 onBeforeUnmount(clearLongPressTimer)
 
-// Driven by an explicit 'typing' frame (see chatStoreFactory.js's own
-// submitMessage), never inferred from empty content: a human-answered
-// message stays legitimately empty for however long the operator takes
-// to even start replying, and must show nothing at all until they
-// actually do (see chat/ws_turn.py's own "typing" key).
 const isAwaitingReply = computed(() => props.message.role === 'assistant' && props.message.awaitingReply === true)
 
-// A row waiting for its own words, whichever side is producing them: a
-// reply being written, or what a person said on its way back as text
-// (see chatStoreFactory.js's own beginVoiceMessage). To whoever is
-// reading there is no difference, so it is one thing here too.
 const isAwaitingText = computed(() => isAwaitingReply.value || props.message.transcribing === true)
 
-// True from the moment a turn's own placeholder is created until its
-// first real signal (a 'typing' frame, or real content) arrives — see
-// chatStoreFactory.js's own submitMessage. The placeholder must occupy
-// its slot in messages.value immediately for a coalesced turn's own
-// ordering to hold, but nothing renders it on screen until then.
 const isPending = computed(() => props.message.role === 'assistant' && props.message.pending === true)
 
 function getMessageText(msg) {
-  // Prefer spoken text (audioText) over the normal streamed content when enabled and available.
   if (props.spokenTextEnabled && msg.role === 'assistant' && msg.audioText) {
     return msg.audioText
   }
   return msg.content || ''
 }
 
-// Deliberately terse: HH:MM only, no date or seconds.
 function formatTimestamp(iso) {
   if (!iso) return ''
   const date = new Date(iso)
@@ -164,7 +111,6 @@ function formatTimestamp(iso) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-// The "Signal labelled" tooltip on the (!) badge.
 const {
   triggerRef: annotationIconRef,
   visible: annotationTooltipVisible,
@@ -226,14 +172,6 @@ const {
           </span>
           <span v-else key="content" v-html="renderMarkdown(getMessageText(message))" />
         </Transition>
-        <!-- A tool call mid-stream (text already arrived, more still to
-             come) leaves no trace above once isAwaitingReply flips false —
-             this is that same status line, just appended below the partial
-             text instead of replacing the typing dots. Cleared by the tool's
-             own result, no sooner than TOOL_STATUS_MIN_MS after it was shown
-             (see toolStatusHold.js) — it may outlive "done" by a moment and
-             fade out over the finished text; the at-rest render (a reload's
-             toStoreMessage never sets statusText at all) is unaffected. -->
         <Transition name="tool-status-fade">
           <span
             v-if="!isAwaitingReply && message.role === 'assistant' && message.statusText"
@@ -243,11 +181,6 @@ const {
             {{ message.statusText }}
           </span>
         </Transition>
-        <!-- Permanent, compact trace of this message's own tool call(s)
-             (see ChatService.get_messages' own tool_calls_by_message) —
-             the transient "Searching …" line (tool-status-text above)
-             clears once the call resolves; this replaces it for good,
-             expandable to the raw arguments/result on click. -->
         <div v-if="message.role === 'assistant' && message.toolCalls?.length" class="tool-call-trace">
           <details v-for="(call, idx) in message.toolCalls" :key="idx" class="tool-call-entry">
             <summary>{{ toolTraceLine(call) }}</summary>
@@ -281,8 +214,6 @@ const {
           </span>
         </Teleport>
 
-        <!-- WhatsApp-style: a small badge hanging off the bubble's own
-             bottom-right corner, not a separate control beside it. -->
         <Transition name="reaction-badge-pop">
           <span
             v-if="message.role === 'user' && message.reaction"
@@ -313,9 +244,6 @@ const {
   max-width: 70%;
 }
 
-/* Narrow phones can't spare 30% of the screen to whitespace — bubbles
-   grow to near-full-width, same convention WhatsApp/iMessage use, with
-   role still read from color/alignment rather than empty space. */
 @media (max-width: 640px) {
   .message-row {
     max-width: 88%;
@@ -350,8 +278,6 @@ const {
   font-size: 0.65rem;
   color: #999;
   padding: 0 0.2rem;
-  /* A sibling of .bubble, not a descendant — .bubble's own
-     user-select: none (see below) never covered it. */
   user-select: none;
   -webkit-user-select: none;
 }
@@ -363,31 +289,20 @@ const {
   border-radius: 12px;
   line-height: 1.5;
   overflow-wrap: anywhere;
-  /* Matches LONG_PRESS_MS above, so the bulge finishes growing right as
-     the reaction picker opens. */
   transition: transform 0.45s ease;
   user-select: none;
   -webkit-user-select: none;
-  /* iOS's own long-press callout (copy/share/lookup menu) is a separate
-     mechanism from text selection — user-select: none alone doesn't
-     suppress it, and it's exactly the kind of thing that competes with
-     the long-press-to-react gesture below. */
   -webkit-touch-callout: none;
 }
 
-/* Visual feedback while holding down an assistant bubble, building up to
-   the reaction picker opening (see onBubblePointerDown). */
 .bubble-bulging {
   transform: scale(1.035);
 }
 
-/* Hints this bubble is press-and-hold interactive — only when there's
-   actually a reaction vocabulary to react with. */
 .bubble-reactable {
   cursor: pointer;
 }
 
-/* Amber = "pay attention, this differs from the live default". */
 .bubble-annotation-icon {
   position: absolute;
   top: -0.4rem;
@@ -406,14 +321,11 @@ const {
   cursor: help;
 }
 
-/* An imported session has no avance ground truth to be "wrong" against —
-   a green tick ("labelled") instead of the amber "!" above. */
 .bubble-annotation-icon-labelled {
   background: #2e7d32;
   color: white;
 }
 
-/* Teleported to <body>, position: fixed — see useFloatingTooltip.js. */
 .bubble-annotation-tooltip-floating {
   position: fixed;
   width: max-content;
@@ -440,13 +352,6 @@ const {
   background: #eee;
   color: #222;
   border-bottom-left-radius: 2px;
-  /* pan-y (not none): keeps the container's vertical scroll working
-     under a held finger — onBubblePointerMove cancels the pending
-     long-press once a drag reads as a scroll rather than a hold, so the
-     two gestures don't fight over the same touch. Horizontal panning
-     stays constrained by this same ancestor rule (see the pre/table
-     overflow-x containers below, reachable by mouse/trackpad drag and
-     pinch-zoom, if not by a touch drag). */
   touch-action: pan-y;
 }
 
@@ -514,9 +419,6 @@ const {
   transition: opacity 0.25s ease;
 }
 
-/* The bubble the reply is about to be written into, on its way in: it is
-   the first thing that appears after you send, so it arrives rather than
-   snapping into place. Same 0.25s as the fade above. */
 .bubble-arriving {
   animation: bubble-arriving-fade-in 0.25s ease;
 }
@@ -593,9 +495,6 @@ const {
   background: #a02020;
 }
 
-/* WhatsApp-style: MessageReactionButton's own picker hangs off the
-   bubble's bottom-right corner — .bubble is already position: relative,
-   so this just needs its own absolute offset. */
 .reaction-badge-slot {
   position: absolute;
   bottom: -0.5rem;
@@ -603,9 +502,6 @@ const {
   z-index: 2;
 }
 
-/* The bot's own reaction to a user message — read-only, icon only, no
-   circle/background. Opposite corner from .reaction-badge-slot above, so
-   the two never visually collide when both are on screen at once. */
 .reaction-badge {
   position: absolute;
   bottom: -0.3rem;
@@ -616,8 +512,6 @@ const {
   line-height: 1;
 }
 
-/* Fade + bump on arrival — a brief overshoot past full size, then settle,
-   rather than a plain fade. Only on enter: a cleared reaction just vanishes. */
 .reaction-badge-pop-enter-active {
   animation: reaction-badge-bump 0.4s ease-out;
 }
@@ -716,9 +610,6 @@ const {
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* Wraps every table (see markdown.js's table_open/table_close rules) —
-   scrolls wide tables horizontally instead of squeezing columns until
-   words split. */
 .bubble :deep(.md-table-wrap) {
   overflow-x: auto;
   margin: 0.75rem 0;
@@ -749,9 +640,6 @@ const {
 .bubble :deep(img) {
   max-width: 100%;
   border-radius: 6px;
-  /* Safari's native drag-to-copy/share on an image is its own gesture,
-     separate from user-select/-webkit-touch-callout above — same
-     long-press-to-react conflict, just image-specific. */
   -webkit-user-drag: none;
 }
 

@@ -24,9 +24,6 @@ const SMOOTHING_WINDOW = 3
 const STATE_CHANGE_COLOR = '#9e9e9e'
 const LINE_HIT_TOLERANCE_PX = 5
 const POINT_HIT_TOLERANCE_PX = 20
-// A line whose timestamp is the domain's own min/max lands exactly on
-// the axis border and blends into it — nudged inward so it stays
-// visually distinct from the axis rather than looking absent.
 const LINE_EDGE_INSET_PX = 2
 const TOOLTIP_MAX_WIDTH = 220
 const TOOLTIP_MARGIN = 12
@@ -100,10 +97,6 @@ function tooltipPositionStyle(event) {
     : { left: `${event.clientX + TOOLTIP_MARGIN}px`, top: `${event.clientY + TOOLTIP_MARGIN}px` }
 }
 
-// Chart.js's own tooltip can't put a color swatch on its title line (only
-// body/label rows support labelColor) — replaced outright by this same
-// floating tooltip the dashed lines already use, so every hover state
-// (line or point) shares one look.
 function findNearestPoint(event) {
   if (!chart) return null
   const [match] = chart.getElementsAtEventForMode(event, 'nearest', { intersect: false }, false)
@@ -175,10 +168,6 @@ function buildDatasets(entries) {
       data: points.map((point, i) => ({ x: point.x, y: smoothedY[i] })),
       borderColor: PALETTE[index % PALETTE.length],
       backgroundColor: PALETTE[index % PALETTE.length],
-      // 'monotone', not a `tension` value: a plain cubic bezier can
-      // overshoot past a sharp, isolated spike and loop back on itself
-      // (visibly crossing the line) — monotone interpolation stays
-      // smooth without ever overshooting a point's own value.
       cubicInterpolationMode: 'monotone',
       pointRadius: 2.5,
       fill: false,
@@ -186,9 +175,6 @@ function buildDatasets(entries) {
   })
 }
 
-// The axis always starts at 0, but its ceiling tracks the data instead
-// of always reserving headroom up to 100 — 10% slack above the highest
-// point, capped at 100.
 function computeYMax(datasets) {
   const values = datasets.flatMap((dataset) => dataset.data.map((point) => point.y))
   return values.length ? Math.min(Math.ceil(Math.max(...values) * 1.1), 100) : 100
@@ -205,9 +191,6 @@ function renderChart() {
   const datasets = buildDatasets(history.value)
   const yMax = computeYMax(datasets)
   if (chart) {
-    // A fresh load (new user/project, or the same one's data changed) —
-    // an old zoom window pinned to different timestamps would otherwise
-    // carry over onto data it no longer matches.
     chart.resetZoom('none')
     isZoomed.value = false
     chart.data.datasets = datasets
@@ -230,12 +213,7 @@ function renderChart() {
       interaction: { mode: 'nearest', intersect: false },
       plugins: {
         legend: { display: false },
-        // Replaced by our own floating tooltip (onCanvasMouseMove) — the
-        // color swatch it needs on the title line isn't something
-        // Chart.js's own tooltip callbacks can do.
         tooltip: { enabled: false },
-        // x-only: panning/zooming the y-axis would misrepresent the
-        // fixed 0-100% scale every value on this chart is measured against.
         zoom: {
           pan: { enabled: true, mode: 'x', onPanComplete: refreshZoomedState },
           zoom: {
@@ -363,8 +341,6 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-/* Teleported to <body>, positioned in viewport coordinates — fixed, not
-   absolute, since a narrow settings panel would otherwise clip it. */
 .trend-line-tooltip-floating {
   position: fixed;
   width: max-content;

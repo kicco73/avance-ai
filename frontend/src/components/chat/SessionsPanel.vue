@@ -4,42 +4,19 @@ import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 import DocInfoButton from '../DocInfoButton.vue'
 import { channelLabels } from '../../skills/registry.js'
 
-// The sessions list content (header + rows), shared by every chat surface
-// that lets a user pick a past/present session. Layout (the sliding wrap,
-// its width, the drag divider) stays each parent's own concern — this
-// component is just the list itself.
 const props = defineProps({
   sessions: { type: Array, required: true },
   loading: { type: Boolean, default: false },
   currentSessionId: { type: [Number, String], default: null },
-  // Which session (if any) a delete request is in flight for — disables
-  // just that row's own delete button. Ignored when allowDelete is false.
   deletingSessionId: { type: [Number, String], default: null },
   allowCreate: { type: Boolean, default: true },
-  // True when there's no project to start a session against (e.g. no
-  // active project) — the button stays visible but inert, same pattern
-  // as ProjectsMenu.vue's own grayed-out state.
   createDisabled: { type: Boolean, default: false },
   allowDelete: { type: Boolean, default: true },
-  // When true, only an imported session is ever deletable, never a
-  // native one.
   deleteImportedOnly: { type: Boolean, default: false },
-  // Whether transcript import is offered — meaningful only for
-  // review/labeling, not for a live chat.
   allowImport: { type: Boolean, default: false },
-  // An imported session can never become the live conversation's active
-  // session, so selecting one must be a no-op rather than handing
-  // currentSessionId a session nothing downstream treats as live.
   restrictSelectionToNative: { type: Boolean, default: false },
-  // The parent owns the actual width/layout collapse; this only owns its
-  // own header toggle button and hiding its content while collapsed.
   collapsed: { type: Boolean, default: false },
-  // True when the parent renders its own close control elsewhere (e.g.
-  // ChatWindow.vue's, next to its ProjectsMenu row) instead of this
-  // component's own header toggle button.
   hideCollapseToggle: { type: Boolean, default: false },
-  // A footer button to download every session of this project as one
-  // .json file.
   allowDownloadAll: { type: Boolean, default: false },
   downloadingAll: { type: Boolean, default: false }
 })
@@ -53,11 +30,8 @@ function triggerImport() {
 }
 
 function onImportFileChosen(event) {
-  // Emitted as one array rather than one 'import' per file so the parent
-  // can refresh the session list once after the whole batch settles.
   const files = Array.from(event.target.files ?? [])
   if (files.length) emit('import', files)
-  // Reset so choosing the exact same file(s) again still fires 'change'.
   event.target.value = ''
 }
 
@@ -81,8 +55,6 @@ function selectSession(session) {
   emit('select', session)
 }
 
-// The "has expert annotations" tag icon's tooltip — one shared instance
-// for the whole list, since only one row can be hovered at a time.
 const {
   visible: annotationTooltipVisible,
   style: annotationTooltipStyle,
@@ -403,8 +375,6 @@ const {
   color: #666;
 }
 
-/* Shown wherever this list is used — accurate info about the session,
-   not something specific to reviewing it. */
 .session-annotation-icon {
   flex-shrink: 0;
   font-size: 0.8rem;
@@ -412,7 +382,6 @@ const {
   cursor: help;
 }
 
-/* Teleported to <body>, position: fixed — see useFloatingTooltip.js. */
 .session-annotation-tooltip-floating {
   position: fixed;
   width: max-content;

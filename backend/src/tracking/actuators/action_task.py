@@ -68,11 +68,6 @@ if TYPE_CHECKING:
     from tracking.actuators.factory import TaskNamespaceFactory
 
 logger = LoggerFactory.get_logger(__name__)
-
-# Top-level scope entries stored verbatim. Anything else at the top
-# level that is a bare JSON scalar (a core metric merged by
-# MetricService.merge_if_referenced, a name assigned by an earlier
-# task statement) is frozen too, under "extra".
 _FROZEN_NAMESPACES = ("signal", "env", "user")
 _SCALARS = (int, float, str, bool, type(None))
 
@@ -91,8 +86,6 @@ class ActionTask(Task):
         super().__init__(key=key, username=username)
         self._payload = payload
         self._hydrator = hydrator
-
-    # --- construction ----------------------------------------------------
 
     @classmethod
     def now(
@@ -140,8 +133,6 @@ class ActionTask(Task):
                 "state_label": state.ui_label if state is not None else scope.state_key,
             },
         }
-        # Fail here, in the request, if anything in the scope is not JSON
-        # — never at run time, possibly days later.
         json.dumps(payload)
         return cls(f"{cls.TYPE}:{uuid.uuid4()}", username, payload, hydrator)
 
@@ -153,8 +144,6 @@ class ActionTask(Task):
             if name not in TriggerExpressionAnalyzer.RESERVED_NAMESPACES and isinstance(value, _SCALARS)
         }
         return frozen
-
-    # --- Task ------------------------------------------------------------
 
     @property
     def payload(self) -> dict[str, Any]:
@@ -204,9 +193,6 @@ class ActionTask(Task):
     async def _run_next_step(self) -> None:
         task = self._hydrator.run(self.username, self._payload)
         if task:
-            # Whoever this person has open, if anyone: a deferred task
-            # does not know, and must not have to hold a socket to find
-            # out (see bus.UI_NOTIFICATION).
             await bus.publish(Message(type=UI_NOTIFICATION, body={"task": task}, username=self.username))
 
 
@@ -238,9 +224,6 @@ class ScopeHydrator(object):
     def build_scope(self, username: str, payload: dict[str, Any]) -> EvaluationScope:
         """Must be called under WebSession().impersonate(username): every
         live proxy below reads WebSession().user lazily."""
-        # Imported here, not at module level: tracking.evaluation_scope ->
-        # this package -> these modules -> project_service -> tracking_engine
-        # -> tracking.evaluation_scope would otherwise close a circular import.
         from metrics.metric_service import MetricService
         from tracking.automaton_namespace import AutomatonNamespace
         from tracking.env import Env
@@ -264,12 +247,6 @@ class ScopeHydrator(object):
             task_namespace = task_namespace.with_session(firing_session_id)
             chat_namespace = chat_namespace.with_session(firing_session_id)
         firing_session = self._db.get_chat_session(firing_session_id) if firing_session_id is not None else None
-        # No real session to persist through (e.g. reset_test_sessions' own
-        # project-wide reset, scheduled with session_id=None) — the same
-        # ephemeral, in-memory fallback TurnService._schedule_task
-        # already uses for this exact case, never a live PersistedEnv:
-        # that would read/write the *live* persisted env instead, and
-        # crash on its first write (Tracking.session is a real FK).
         env = env_for_session(self._db, firing_session) if firing_session is not None else Env()
         builder = EvaluationScopeBuilder(
             env, MetricService(self._db, context),
@@ -279,8 +256,6 @@ class ScopeHydrator(object):
         )
         snapshot = payload["snapshot"]
         scope = builder.build(automaton, payload["state_key"], snapshot.get("signal") or {})
-        # The frozen part wins over whatever the live proxies would say
-        # now — exactly what the in-turn evaluation would have seen.
         for name in _FROZEN_NAMESPACES:
             scope[name] = snapshot.get(name, {})
         scope.update(snapshot.get("extra", {}))
@@ -289,10 +264,4 @@ class ScopeHydrator(object):
     def run(self, username: str, payload: dict[str, Any]) -> str | None:
         with WebSession().impersonate(username):
             scope = self.build_scope(username, payload)
-            # XXX Compiled automaton requirement - do not touch.
-            # XXX Dispatched on the automaton the scope carries
-            # (EvaluationScope.automaton, preserved across for_task), not
-            # on the Automaton class: scope.state_key/scope.action_name
-            # let a compiled automaton resolve this task without
-            # re-parsing `script`.
             return scope.automaton.render_task_script(payload["script"], scope)

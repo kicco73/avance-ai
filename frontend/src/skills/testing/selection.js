@@ -2,11 +2,6 @@ import { computed, ref, watch } from 'vue'
 import { getHistory, getProjectSignals, getSessionSignals, getUsers } from '../../api.js'
 import { sessions } from '../../chatStore.js'
 
-// Test mode's own selection ('root' | 'sessions-branch' | 'states-branch' |
-// `session:<id>` | `state:<key>` | `user:<name>` | `signal:<name>` | null),
-// resolved against the project's session catalog, users and signals for the
-// Inspector's read-only Info/User tabs. One selection per running app: the
-// panel that writes it and the tabs that read it are the same screen.
 function createSelection() {
   let projectId = null
   let workspace = null
@@ -46,7 +41,6 @@ function createSelection() {
     try {
       usersList.value = (await getUsers()).users
     } catch {
-      // already surfaced via apiFetch
     }
   }
   const autoSelectedUsername = computed(() => idAfter('user:') ?? autoSelectedSession.value?.username ?? null)
@@ -68,7 +62,6 @@ function createSelection() {
     try {
       signalsList.value = (await getProjectSignals(projectId, null, null)).signals
     } catch {
-      // already surfaced via apiFetch
     }
   }
   const autoSelectedSignalName = computed(() => idAfter('signal:'))
@@ -91,8 +84,6 @@ function createSelection() {
     return userMessages.reduce((sum, m) => sum + (m.tokens ?? 0), 0)
   })
 
-  // An imported session never ran against the automaton: its first/last
-  // annotated expected_state stands in for start_state/end_state.
   const autoSessionIsImported = computed(() => autoSelectedSession.value?.type === 'imported')
   const autoSessionAnnotatedStates = computed(() => autoSessionSignals.value.map((row) => row.expected_state).filter(Boolean))
   const autoSessionStartStateKey = computed(() => (

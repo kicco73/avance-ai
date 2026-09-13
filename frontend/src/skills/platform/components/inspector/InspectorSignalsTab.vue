@@ -12,19 +12,9 @@ const props = defineProps({
   editableFiles: { type: Array, default: null },
   annotatable: { type: Boolean, default: false },
   expectedValues: { type: Object, default: () => ({}) },
-  // The state whose outgoing actions `relevant` is scoped to — the
-  // currently selected/highlighted state, or the state a selected action
-  // fires from. null means every state's triggers combined.
   stateKey: { type: String, default: null },
-  // 'signal:<name>' when that signal was just created via "+ Add signal",
-  // null otherwise.
   recentlyAddedKey: { type: String, default: null },
-  // Whether the session being annotated was imported — an imported
-  // session's "expected value set" overlay reads as a neutral "labelled"
-  // green instead of the usual magenta.
   imported: { type: Boolean, default: false },
-  // Pins signal definitions to the exact project revision the session
-  // under review ran against, rather than the current draft.
   sessionId: { type: [Number, String], default: null },
   signalColors: { type: Object, default: null }
 })
@@ -36,7 +26,6 @@ function badgeStyle(name) {
 
 const emit = defineEmits(['jump-to-definition', 'select-attachment', 'update-expected-signals', 'set-field', 'add-signal', 'delete'])
 
-// No confirmation dialog — an undo exists for exactly this.
 function handleDeleteSignal(signalName) {
   emit('delete', signalName)
 }
@@ -46,9 +35,6 @@ const signals = ref([])
 const { recentlyChanged: recentlyChangedSignals, markChanged: markSignalsChanged } = useSignalChangeFlash()
 const draggingExpectedValues = ref({})
 
-// Name of the signal whose block is expanded into an editable form — at
-// most one at a time. Reset whenever that signal disappears from a
-// fresh load (deleted, or renamed under a new name).
 const expandedSignalName = ref(null)
 const editUiLabel = ref('')
 const editUiDescription = ref('')
@@ -60,9 +46,6 @@ function resetEditBuffers(entry) {
   editDefinition.value = entry?.signal.definition ?? ''
 }
 
-// Plain element ref, not Vue's v-for ref array — only one row renders an
-// editable label input at a time (the expanded one), so a single
-// variable is enough.
 let labelInputEl = null
 function setLabelInputRef(el) {
   labelInputEl = el
@@ -77,9 +60,6 @@ function isRecentlyAdded(name) {
   return props.recentlyAddedKey === `signal:${name}`
 }
 
-// A newly added signal has no trigger referencing it yet, so it's never
-// "relevant" — turn off showOnlyRelevant or it would vanish from the
-// list the instant it's created.
 watch(() => props.recentlyAddedKey, async (key) => {
   if (!key?.startsWith('signal:')) return
   const name = key.slice('signal:'.length)
@@ -113,14 +93,8 @@ function commitSignalField(field, currentValue, originalValue) {
   emit('set-field', expandedSignalName.value, field, currentValue)
 }
 
-// "Relevant" is computed server-side, from the same expression parsing
-// the automaton itself uses — not re-derived here via a client-side
-// regex, which would be easy to get subtly wrong.
 const showOnlyRelevant = ref(true)
 
-// While editing, a null stateKey means nothing is selected, not "every
-// state's triggers combined" (that fallback only applies outside an
-// edit session) — so the relevant-filter is bypassed entirely here.
 const displayedSignals = computed(() => {
   if (!showOnlyRelevant.value) return signals.value
   if (props.editableFiles && props.stateKey == null) return signals.value
@@ -164,9 +138,6 @@ async function loadSignals() {
   try {
     signals.value = (await getProjectSignals(props.projectId, props.stateKey, props.sessionId)).signals
   } catch {} finally { signalsLoading.value = false }
-  // A rename or delete removes the signal expandedSignalName was
-  // pointing at — collapse rather than show a stale form for a name no
-  // longer in the freshly-loaded list.
   if (expandedSignalName.value && !signals.value.some((s) => s.signal.name === expandedSignalName.value)) {
     expandedSignalName.value = null
   }
@@ -174,17 +145,12 @@ async function loadSignals() {
 
 function selectAttachment(fileName) { emit('select-attachment', fileName) }
 
-// Always reloads regardless of `active` — signal values feed the chat
-// timeline too, which is visible whether or not this tab is open.
 async function refresh() {
   await loadSignals()
 }
 
 defineExpose({ loadSignals, refresh })
 
-// A graph click or a live state change updates which state's triggers
-// `relevant` should reflect — refetch rather than filter locally, since
-// the server decides relevance, not this component.
 watch(() => props.stateKey, loadSignals)
 
 onMounted(loadSignals)
@@ -266,9 +232,6 @@ onMounted(loadSignals)
             <span v-if="entry.signal.ui_description" class="inspector-signal-ui_description">{{ entry.signal.ui_description }}</span>
           </div>
         </Transition>
-        <!-- The current-value bar is a live-conversation concept — never
-             shown in an editable context, regardless of whether this
-             block is expanded or collapsed. -->
         <template v-if="!editableFiles">
           <div class="inspector-signal-bar-track">
             <div v-if="hasSignalValue(signalValues[entry.signal.name])" class="inspector-signal-bar-fill" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(entry.signal.name) }" :style="{ width: signalValues[entry.signal.name].value + '%' }"></div>
@@ -304,13 +267,9 @@ onMounted(loadSignals)
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
 .inspector-detail-badge-signal { background: #6a4c93; }
 .inspector-signal-name { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; }
-/* Hover/focus-reveal look, consistent with editable label inputs
-   elsewhere in the Inspector. */
 .inspector-signal-label-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
 .inspector-signal-label-input:hover, .inspector-signal-label-input:focus { border-color: #ccc; background: white; }
 .inspector-signal-form-label { display: flex; align-items: center; gap: 0.35rem; margin: 20px 0 0.15rem; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
-/* Marks a field the AI itself reads, as opposed to a purely
-   human-facing one like Description. */
 .inspector-ai-field-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; }
 .inspector-signal-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.78rem; line-height: 1.54; padding: 0.35rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
 .inspector-signal-ui_description { display: block; margin-top: 0.3rem; font-size: 0.78rem; color: #666; line-height: 1.4; }
@@ -319,8 +278,6 @@ onMounted(loadSignals)
 .inspector-signal-bar-na { width: 100%; background: repeating-linear-gradient(45deg, #ccc, #ccc 6px, #ddd 6px, #ddd 12px); }
 .inspector-signal-expected-fill { position: absolute; inset: 0; height: 100%; border-radius: 999px; background: rgba(153, 153, 153, 0.3); pointer-events: none; transition: width 0.1s ease; }
 .inspector-signal-expected-fill-set { background: rgba(173, 20, 87, 0.3); }
-/* An imported session has no computed value to be "wrong" against —
-   green "labelled" instead of the usual magenta "set". */
 .inspector-signal-expected-fill-labelled { background: rgba(46, 125, 50, 0.3); }
 .inspector-signal-slider { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; -webkit-appearance: none; appearance: none; background: transparent; }
 .inspector-signal-slider::-webkit-slider-runnable-track { background: transparent; height: 100%; }

@@ -61,7 +61,6 @@ def test_state_test_ignores_an_unlabeled_sessions_leftover_annotation(client, he
 
 
 def test_state_test_with_no_touching_sessions_still_completes(client, hello_project):
-    # An empty aggregation must still complete cleanly, not hang or fail.
     response = client.post(
         f"/api/skills/testing/projects/{hello_project}/runs/states/Hello", json={"strategy": "turn_by_turn"},
     )

@@ -143,9 +143,6 @@ class ProjectManager:
         revision = self._db.get_project_revision(project_id)
         automaton.set_storage_location(revision)
         self._automaton_loader.set_cached(project_id, revision, automaton)
-        # Every project save comes through here, and a draft revision is
-        # rewritten in place — so a file cached under (project, revision,
-        # path) can now hold the bytes of the version just replaced.
         PROJECT_FILE_CACHE.forget_project(project_id)
         observed_project_ids = self._availability.filter_resolvable_project_ids(ProjectAvailability.automaton_project_refs(automaton))
         self._db.set_project_observers(project_id, observed_project_ids)

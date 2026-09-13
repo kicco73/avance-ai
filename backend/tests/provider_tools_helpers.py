@@ -73,8 +73,6 @@ async def drain(stream) -> str:
     return out
 
 
-# --- Anthropic -------------------------------------------------------------
-
 class AnthropicUsage:
     def __init__(
         self, input_tokens: int = 2, output_tokens: int = 1,
@@ -193,8 +191,6 @@ class AnthropicHarness:
         assert message["role"] == "user"
         return message["content"][0]["content"]
 
-
-# --- OpenAI-compatible -----------------------------------------------------
 
 class OpenAIPromptTokensDetails:
     def __init__(self, cached_tokens: int | None = None) -> None:
@@ -330,8 +326,6 @@ class OpenAIHarness:
         assert message["role"] == "tool"
         return message["content"]
 
-
-# --- Gemini ----------------------------------------------------------------
 
 class GeminiUsage:
     def __init__(

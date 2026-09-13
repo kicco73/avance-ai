@@ -30,10 +30,6 @@ from starlette.routing import Match
 from auth.auth_service import SESSION_COOKIE_NAME
 from auth.roles import role_satisfies
 from system.web_session import WebSession
-
-# FastAPI's own default doc routes (main.py never disables them) — they
-# never go through a controller's get/post decorators, so they can never
-# carry __required_role__ and must stay allowlisted here instead.
 ALLOWED_PATHS = frozenset({"/docs", "/redoc", "/openapi.json"})
 
 
@@ -55,13 +51,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         if not role_satisfies(identity.role, required_role):
             return self._forbidden_response()
-
-        # A plain 'user' only ever owns whichever projects they have a
-        # UserProject row for (see ProjectService.resolve_invite_link) —
-        # checked once here, for every {project_id}-scoped route at
-        # once, rather than in each controller method individually.
-        # supervisor/admin routes are untouched: identity.role is never
-        # 'user' there.
         project_id = path_params.get("project_id")
         if not role_satisfies(identity.role, 'supervisor') and project_id is not None:
             db = request.app.state.db
@@ -88,13 +77,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     @classmethod
     def _flatten_routes(cls, routes):
-        # FastAPI may wrap an included APIRouter's routes behind a private
-        # `_IncludedRouter` proxy (no `.endpoint`/no direct `.matches()`
-        # semantics of its own) rather than exposing them flat on
-        # request.app.routes — recurse through `.original_router.routes`
-        # (present on that proxy, absent on a plain Route) until only
-        # actual matchable routes are left, so this keeps working whether
-        # or not the installed Starlette/FastAPI wraps routes this way.
         for candidate_route in routes:
             original_router = getattr(candidate_route, "original_router", None)
             if original_router is not None:

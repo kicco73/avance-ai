@@ -25,7 +25,6 @@ class TestDataBuilder:
 
         sessions_rows = calculator._load_sessions()
         session_ids = [int(row['id']) for row in sessions_rows]
-        # Loaded once, reused both for expected_state and for expected_values below.
         signal_rows_by_session = {session_id: db.get_signals(session_id) for session_id in session_ids}
 
         messages = calculator._load_messages(session_ids, signal_rows_by_session)

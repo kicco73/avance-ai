@@ -196,10 +196,6 @@ class Db(
         actual = self._migrator.actual_schema(path)
         if not actual:
             return
-        # A pre-merge database (Project still has its own project_id
-        # column) needs this one-off migration — checked independently of
-        # the generic diff below, since column-set equality alone can't
-        # tell "already merged" apart from "never had a Project table at all".
         needs_legacy_identity_migration = 'project_id' in actual.get('Project', set())
         expected = self._migrator.expected_schema()
         if not needs_legacy_identity_migration and not self._migrator.schema_differs(actual, expected, path):

@@ -24,12 +24,7 @@ from tracking.sources import SourceNamespace
 from tracking.user_facts import UserFacts
 
 if TYPE_CHECKING:
-    # Import guarded: automaton_namespace -> project_service ->
-    # tracking_engine -> this module would close a circular import if
-    # done eagerly. Only needed for the annotation below, never at runtime.
     from tracking.automaton_namespace import AutomatonNamespace
-    # Import guarded for the same reason: ai.ai_service is a heavy,
-    # unrelated dependency graph — only needed for the annotation below.
     from ai import AiService
 
 
@@ -50,20 +45,10 @@ class EvaluationScopeBuilder(object):
         self._metrics = metrics
         self._session = session
         self._user = user
-        # Only for SourceNamespace (a declared source's own driver reads
-        # straight from storage — see tracking.sources.avance_archive) —
-        # every other namespace above wraps its own db access already.
         self._db = db
-        # Optional — a test replay omits it, so its scope has no
-        # "automaton" namespace: an automaton.* reference there fails to
-        # resolve rather than doing real cross-project work during a replay.
         self._automaton_namespace = automaton_namespace
         self._task_namespace = task_namespace if task_namespace is not None else FakeTaskNamespace()
         self._chat_namespace = chat_namespace if chat_namespace is not None else FakeChatNamespace()
-        # Optional — task.prompt() only actually runs a generation
-        # call once this is given; every caller with no real AiService
-        # (test replay, the live what-if preview) omits it, so task.prompt()
-        # there just returns "" rather than doing real work.
         self._ai_service = ai_service
 
     def build(
@@ -94,13 +79,7 @@ class EvaluationScopeBuilder(object):
         session (a wake-up re-evaluation, a test replay), where a source
         driver just reads its canonical archive directly instead."""
         signal_values = SignalEvaluator().validate(automaton, raw_signal_values)
-        # The same Env this scope's own `env` namespace snapshots below —
-        # what a source driver would read and (for a readwrite key) write.
         source_namespace = SourceNamespace(self._db, automaton, session_id, env=self._env)
-        # The attachment namespace reads the same project files, but never
-        # through a session cache copy: attachment.read is a whole-file
-        # read validated at build time, not a repeated query like a
-        # source's own select_rows_*.
         project_files = project_files_for(self._db, automaton)
         state = automaton.states.get(state_key)
         output_for_env = {
@@ -115,7 +94,6 @@ class EvaluationScopeBuilder(object):
             "attachment": AttachmentNamespace(project_files, automaton),
             "metric": self._metrics.for_turn(),
             # FIXME: simpleeval rejects a raw module ("modules are not allowed") — ModuleWrapper is its
-            # sanctioned opt-in; don't replace this with the bare `datetime` module.
             "datetime": ModuleWrapper(datetime, allowed_attrs={"datetime", "timedelta", "timezone"}),
         }
         if self._automaton_namespace is not None:
@@ -123,18 +101,6 @@ class EvaluationScopeBuilder(object):
         scope["chat"] = self._chat_namespace
         task_namespace = self._task_namespace.with_services(automaton.services)
         if self._ai_service is not None:
-            # task.prompt()'s own tool catalog — this task's own
-            # state's ai-may-read-sources/ai-must-read-sources/
-            # ai-may-write-sources, resolved through the same
-            # SourceNamespace (and so the same per-session read cache and
-            # Env) `scope["source"]` above already uses. None wherever the
-            # state itself declares none, or isn't found (a stale automaton
-            # snapshot, never a real config error — AutomatonBuilder
-            # already validated every name against sources: at build
-            # time). Never forced here — a task.prompt() call is a
-            # single isolated request, not part of a state's own
-            # multi-round chat turn, so "first turn in this state" has no
-            # meaning for it.
             tool_set = (
                 source_namespace.tool_set(
                     state.ai_may_read_sources, state.ai_must_read_sources, state.ai_may_write_sources,

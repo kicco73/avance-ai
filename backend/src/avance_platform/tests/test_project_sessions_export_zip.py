@@ -72,7 +72,6 @@ def test_sessions_json_never_appears_among_the_projects_own_files(client, hello_
     file_list = client.get(f"/api/skills/platform/projects/{hello_project}/files").json()["files"]
 
     assert "sessions.json" not in file_list
-    # Explicitly not persisted as a real archive either.
     assert client.get(f"/api/skills/platform/projects/{hello_project}/files/sessions.json").status_code == 404
 
 
@@ -165,7 +164,6 @@ def test_upload_rejects_the_whole_project_when_sessions_json_is_not_valid_json(c
     })
     assert resp.status_code == 400
     assert "sessions.json" in resp.json()["error"]["message"]
-    # Nothing was persisted at all — not even index.yml.
     assert client.get("/api/skills/platform/projects/proj/files/index.yml").status_code == 404
 
 
@@ -180,7 +178,7 @@ def test_upload_rejects_the_whole_project_when_sessions_json_is_not_a_list(clien
 
 def test_a_malformed_individual_session_is_skipped_others_still_import(client):
     sessions_payload = [
-        {"messages": [{"role": "user"}]},  # missing required 'text' — malformed
+        {"messages": [{"role": "user"}]},
         {"name": "Good one", "username": "User 1", "messages": [{"role": "user", "text": "hi"}]},
     ]
     resp = _upload_zip(client, {

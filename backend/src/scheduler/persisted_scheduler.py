@@ -64,8 +64,6 @@ class PersistedScheduler(Scheduler):
         self._db = db
         self._hydrators: dict[str, Hydrator] = {}
         self._poll_interval = poll_interval_seconds
-        # How long a claimed row may stay unsettled before it is presumed
-        # orphaned. Longer than any task honestly takes to run.
         self._lease = timedelta(seconds=lease_seconds)
         self._wakeup = threading.Condition(threading.Lock())
         self._thread: threading.Thread | None = None
@@ -100,8 +98,6 @@ class PersistedScheduler(Scheduler):
         if self._thread is not None:
             self._thread.join(timeout=5.0)
 
-    # --- Scheduler -------------------------------------------------------
-
     def submit(self, job: DependentJob, *, timestamp: datetime | None = None) -> None:
         self._validate(job)
         when = self._as_utc(timestamp) or datetime.now(timezone.utc)
@@ -114,8 +110,6 @@ class PersistedScheduler(Scheduler):
     def cancel(self, job: CancelableJob) -> None:
         if self._db.cancel_task(job.key):
             return
-        # No longer pending: already handed to the queue (or settled, in
-        # which case this is a harmless no-op there too).
         self._queue.cancel(job)
 
     def reschedule(self, job: DependentJob, *, timestamp: datetime | None = None) -> None:
@@ -146,15 +140,11 @@ class PersistedScheduler(Scheduler):
         if job.TYPE not in self._hydrators:
             raise ValueError(f"Task {job.key} is of type '{job.TYPE}' but no hydrator is registered for it.")
 
-    # --- reads -------------------------------------------------------------
-
     def list_tasks(self, *, status: str | None = None, order: str = 'asc') -> list[dict[str, Any]]:
         """Settings > Manage services > Scheduler's own table — a
         snapshot of the Task table, one status at a time (see
         db.tasks.TaskMixin.list_tasks)."""
         return self._db.list_tasks(status=status, order=order)
-
-    # --- the loop --------------------------------------------------------
 
     def _recover_stale_claims(self) -> None:
         requeued = self._db.requeue_stale_dispatched_tasks(datetime.now(timezone.utc) - self._lease)
@@ -169,7 +159,7 @@ class PersistedScheduler(Scheduler):
             try:
                 self._recover_stale_claims()
                 row = self._db.claim_due_task(datetime.now(timezone.utc))
-            except Exception as exc:  # the database being briefly unavailable must not kill the loop
+            except Exception as exc:
                 logger.exception("PersistedScheduler could not read the Task table: %s", exc)
                 row = None
                 due = None

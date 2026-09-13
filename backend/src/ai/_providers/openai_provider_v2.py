@@ -43,19 +43,8 @@ def _merged_content(existing, parts: list[dict]):
         return f"{existing}\n\n{parts[0]['text']}"
     existing_parts = existing if isinstance(existing, list) else [{"type": "text", "text": existing}]
     return [*existing_parts, *parts]
-
-# Fallback when tiktoken has no encoding for this model name (e.g. a
-# llama.cpp/local model) — the closest OpenAI encoding still gives a
-# reasonable estimate rather than an exact count.
 DEFAULT_ENCODING_NAME = "cl100k_base"
-# ~4 chars/token is the commonly cited English-text approximation — used
-# only if tiktoken's own encoding files can't be loaded at all (e.g. an
-# air-gapped llama.cpp deployment with no outbound network access).
 CHARS_PER_TOKEN_ESTIMATE = 4
-# The SDK's own default is 600s of read timeout and 2 silent retries. The
-# cascade (ai/_providers/cascading_llm_provider.py) is the one retry policy here, and
-# 30s of silence between streamed chunks is already a dead upstream — no
-# leg of this timeout exceeds that, matching every other provider's own cap.
 REQUEST_TIMEOUT = httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=30.0)
 SDK_MAX_RETRIES = 0
 
@@ -76,8 +65,6 @@ class OpenAICompatibleProvider(LLMProvider):
         )
         self._model_name: str = config.model or "default-model"
         self._max_output_tokens: int = config.max_output_tokens
-        # Lazily resolved by get_input_tokens() — sentinel False means
-        # "already tried, no encoding available" (see _get_encoding).
         self._encoding: tiktoken.Encoding | None | bool = None
 
     def _get_encoding(self) -> tiktoken.Encoding | None:
@@ -142,8 +129,6 @@ class OpenAICompatibleProvider(LLMProvider):
                 assistant_text = message.get("content")
                 messages.append({
                     "role": "assistant",
-                    # A dict is another provider's own replay payload (see
-                    # gemini_provider_v2._REPLAY_PARTS_KEY), not text.
                     "content": None if isinstance(assistant_text, dict) else assistant_text,
                     "tool_calls": [
                         {
@@ -159,20 +144,11 @@ class OpenAICompatibleProvider(LLMProvider):
                 continue
 
             content = message.get("content")
-            # The fragments of a coalesced turn travel as content parts of
-            # one message; anything else is still one flat text.
             parts = (
                 [{"type": "text", "text": fragment} for fragment in content]
                 if is_text_fragments(content)
                 else [{"type": "text", "text": content_to_text(content, "OpenAICompatible")}]
             )
-            # OpenAI-compatible chat templates (llama.cpp, LM Studio) assume
-            # strict user/assistant alternation; consecutive same-role turns
-            # (e.g. an AI-initiated opening message followed by attachment
-            # priming) desync the template's role assignment instead of
-            # erroring, so merge them rather than send them as separate
-            # turns — never across a tool/tool_calls message, which always
-            # stays standalone (see the `continue`s above).
             if messages and messages[-1]["role"] == role:
                 messages[-1]["content"] = _merged_content(messages[-1]["content"], parts)
             else:
@@ -201,11 +177,6 @@ class OpenAICompatibleProvider(LLMProvider):
         tool_round: int = 1,
         required_tools: Optional[List[ToolSpec]] = None,
     ) -> AsyncIterator[str]:
-        # No native cache-breakpoint concept here (unlike Anthropic) — the
-        # stable/volatile split still matters for this provider's own
-        # implicit prefix caching, which only ever hits a byte-identical
-        # prefix: `stable` first, unconditionally, so the single system
-        # message stays that identical prefix turn after turn.
         messages: List[Dict[str, Any]] = [{"role": "system", "content": SystemPrompt.coerce(system_prompt).full_text()}]
         messages.extend(self.__build_messages(history))
 
@@ -220,10 +191,6 @@ class OpenAICompatibleProvider(LLMProvider):
                 },
             }
         if required_tools:
-            # Forced round: restricted to *only* required_tools (never the
-            # full catalog) — OpenAI's own tool_choice "required" forces a
-            # call among whatever `tools` carries, so restricting the
-            # candidate set means restricting `tools` itself for this one call.
             extra_kwargs["tools"] = self._build_tools(required_tools)
             extra_kwargs["tool_choice"] = "required"
         else:
@@ -236,13 +203,7 @@ class OpenAICompatibleProvider(LLMProvider):
         output_tokens = 0
         cache_read_tokens = 0
         finish_reason: Optional[str] = None
-        # Accumulated across chunks, keyed by the delta's own `index` (a
-        # single response can request several tool calls in parallel,
-        # each streamed as its own id/name once, then its `arguments`
-        # dribbled in as a partial JSON string over further chunks).
         tool_call_chunks: Dict[int, Dict[str, Any]] = {}
-        # Whatever text (if any) accompanied a tool-requesting response —
-        # the provider-neutral assistant_content to replay in history.
         accumulated_text = ""
         try:
             stream = await self._client.chat.completions.create(
@@ -280,9 +241,6 @@ class OpenAICompatibleProvider(LLMProvider):
                                 entry["arguments"] += tool_call_delta.function.arguments
             self._add_tokens(total_tokens)
             if on_metadata is not None:
-                # cache_read_tokens is already folded into prompt_tokens
-                # (input_tokens above) — OpenAI has no separate cache-write
-                # accounting, so cache_creation_tokens is always 0 here.
                 on_metadata("cache_read_tokens", cache_read_tokens)
                 on_metadata("cache_creation_tokens", 0)
                 on_metadata("input_tokens", input_tokens)
@@ -310,11 +268,6 @@ class OpenAICompatibleProvider(LLMProvider):
                 f"API error ({exc.status_code}): {exc}"
             ) from exc
         except APIConnectionError as exc:
-            # Not an HTTP-level failure at all — the request never reached a
-            # server (e.g. connection refused because no local llama.cpp/LM
-            # Studio instance is running on this base_url). Retrying won't
-            # fix that mid-call, so this cascades immediately rather than
-            # burning MAX_RETRIES backoff attempts against a closed port.
             raise AIServiceProviderPermanentError(f"Connection error: {exc}") from exc
         except Exception as exc:
             raise AIServiceError(f"Unexpected error: {exc}") from exc

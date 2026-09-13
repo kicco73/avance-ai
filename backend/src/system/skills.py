@@ -101,8 +101,6 @@ def discover(source_root: Path | None = None) -> list[Skill]:
     under the source root, in alphabetical order. A package whose skill
     module fails to import is logged and skipped: one broken skill must
     not stop the others."""
-    # src/, not this package: this module lives in system/, and what
-    # it walks is the tree of packages beside system/.
     root = source_root or Path(__file__).resolve().parent.parent
     found = []
     for entry in sorted(pkgutil.iter_modules([str(root)])):

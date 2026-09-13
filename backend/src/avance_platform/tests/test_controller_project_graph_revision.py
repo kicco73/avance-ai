@@ -78,13 +78,6 @@ def test_a_test_session_always_tracks_the_live_draft(client):
 
     assert response.status_code == 200, response.text
     assert _state_keys(response) == {"a", "b", "c"}
-
-
-# A signal definition describes what the engine tracks, so reading one is
-# the core's (see project/project_controller.py); an env key is declared
-# and edited in the editor, and reading it stayed with it. Same pinning
-# rule either way, which is what this checks — hence the prefix travelling
-# with the route.
 @pytest.mark.parametrize(("prefix", "route", "declaration", "payload_key", "name_of"), [
     ("core", "signals", 'signals:\n  mood:\n    definition: "1"\n', "signals", lambda row: row["signal"]["name"]),
     ("skills/platform", "env-keys", "env:\n  greeting:\n    value: \"'hi'\"\n", "env_keys", lambda row: row["env_key"]["name"]),

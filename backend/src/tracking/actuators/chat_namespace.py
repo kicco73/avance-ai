@@ -31,15 +31,7 @@ class ChatNamespace(ABC):
     an action's own `on-exit:` script (see IdentifierRegistry.for_on_exit)."""
 
     def __init__(self, factory: "TaskNamespaceFactory | None" = None) -> None:
-        # The factory that built this namespace — where switch_to_human/
-        # switch_to_ai actually record the operator (see
-        # TaskNamespaceFactory.set_human_operator/clear_human_operator),
-        # and where push_notification reaches whatever the person has open.
         self._factory = factory
-        # Bound fresh per on-exit evaluation via with_session — never
-        # set any other way. None for a namespace built without a firing
-        # session (e.g. a project-wide test reset) — switch_to_human/
-        # switch_to_ai/push_notification are then no-ops.
         self._session_id: int | None = None
 
     def with_session(self, session_id: int) -> "ChatNamespace":

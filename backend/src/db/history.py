@@ -56,9 +56,6 @@ class HistoryMixin:
 
     def save_project_file(self, user_id: str, project_id: str, archive_name: str, content: bytes, content_type: str) -> None:
         self.ensure_project(project_id)
-        # Resolve the fork before touching EditHistory at all —
-        # _ensure_draft_revision wipes every user's EditHistory rows on a
-        # fork, which would otherwise erase the undo entry pushed below.
         self._ensure_draft_revision(project_id)
         previous = self.get_archive(project_id, archive_name)
         if previous is not None:
@@ -79,7 +76,7 @@ class HistoryMixin:
         old_name's own basename) get an ordinary content-undo entry each,
         exactly as save_project_file would push for any other edit of theirs."""
         self.ensure_project(project_id)
-        self._ensure_draft_revision(project_id)  # fork (and wipe EditHistory) before touching history below
+        self._ensure_draft_revision(project_id)
         updated_files = updated_files or {}
         for archive_name in updated_files:
             previous = self.get_archive(project_id, archive_name)

@@ -4,14 +4,8 @@ import { clearEnv, deleteEnvValue, getEnv, getOutput, putEnvValue } from '../../
 import { confirmDialog } from '../../../../dialogStore.js'
 
 const props = defineProps({
-  // Whose env this tab shows/edits — every call below is scoped to it.
-  // null (no session resolved yet) just shows the empty state.
   sessionId: { type: [Number, String], default: null },
-  // When set, shows a historical point-in-time snapshot instead of live env.
   untilMessageId: { type: [Number, String], default: null },
-  // Edits only ever apply going forward from "now", so this is true only
-  // when untilMessageId is null (live) or pinned to the latest message
-  // (still effectively "now").
   editable: { type: Boolean, default: true }
 })
 
@@ -20,9 +14,6 @@ const memory = ref({})
 const actionSet = ref({})
 const isLive = computed(() => props.editable)
 
-// Output is a single turn's own transient snapshot (see Tracking.output),
-// unlike env which is cumulative — so it's keyed off the exact selected
-// chat line (untilMessageId), never merged with the env fetch above.
 const outputLoading = ref(false)
 const output = ref({})
 const outputEntries = computed(() => Object.entries(output.value))
@@ -36,16 +27,11 @@ async function loadOutput() {
   try {
     output.value = (await getOutput(props.sessionId, props.untilMessageId ?? undefined)).output
   } catch {
-    // already surfaced via apiFetch
   } finally {
     outputLoading.value = false
   }
 }
 
-// Memory entries are the model's own free-form notes — editable; env
-// (action-set) entries are the automaton's declared keys, written by an
-// action's own env:, by a state's own output, or by the model's `update`
-// tool — read-only here.
 const memoryEntries = computed(() => Object.entries(memory.value))
 const envEntries = computed(() => Object.entries(actionSet.value))
 
@@ -64,7 +50,6 @@ async function loadEnv() {
   try {
     applyResult(await getEnv(props.sessionId, props.untilMessageId ?? undefined))
   } catch {
-    // already surfaced via apiFetch
   } finally {
     envLoading.value = false
   }
@@ -72,9 +57,6 @@ async function loadEnv() {
 
 const editingKey = ref(null)
 const editingValue = ref('')
-// Function-ref instead of ref="editInputRef": inside the v-for below, a
-// plain ref string would make Vue collect it into an array even though
-// only one row ever renders the input at a time.
 let editInputEl = null
 function setEditInputRef(el) {
   editInputEl = el
@@ -98,11 +80,10 @@ async function commitEditing() {
   if (key === null) return
   editingKey.value = null
   const value = editingValue.value
-  if (value === memory.value[key]) return // unchanged — skip the round trip
+  if (value === memory.value[key]) return
   try {
     applyResult(await putEnvValue(props.sessionId, key, value))
   } catch {
-    // already surfaced via apiFetch
   }
 }
 
@@ -110,7 +91,6 @@ async function removeKey(key) {
   try {
     applyResult(await deleteEnvValue(props.sessionId, key))
   } catch {
-    // already surfaced via apiFetch
   }
 }
 
@@ -125,12 +105,9 @@ async function clearAll() {
   try {
     applyResult(await clearEnv(props.sessionId))
   } catch {
-    // already surfaced via apiFetch
   }
 }
 
-// Always reloads regardless of whether this tab is active — cheap, and
-// values can change while this tab isn't the one showing.
 async function refresh() {
   await Promise.all([loadEnv(), loadOutput()])
 }

@@ -143,8 +143,6 @@ async def test_a_built_backend_copy_is_a_whole_backend_around_one_project(tmp_pa
         assert not (built / dev_only).exists()
     assert not (built / "src" / "docs").exists()
     assert not (built / "src" / "webchat" / "docs").exists()
-    # The tests travel with the code they test — that is what the build's
-    # own last step runs (see build/backend_copy.py).
     assert (built / "tests" / "test_wiring_contract.py").is_file()
     assert (built / "conftest.py").is_file()
     assert (built / "pytest.ini").is_file()
@@ -211,8 +209,6 @@ def test_a_skill_left_out_of_a_build_is_a_directory_that_is_not_copied():
 
     assert (source / "listen" / "skill.py").is_file()
     assert "listen" in without_listen
-    # Only that one directory: excluding a skill must not take anything
-    # else with it.
     assert without_listen - kept == {"listen"}
 
 
@@ -271,11 +267,6 @@ mail-service:
   username: fake-username
   password: fake-password
 """
-
-# What main.py titles the app it serves when create_app() raised. Importing
-# main succeeds either way — that is the whole point of the fallback, and
-# the reason "import main works" proved nothing about whether the backend
-# actually starts.
 FALLBACK_TITLE_MARK = "misconfigured"
 
 

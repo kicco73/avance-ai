@@ -3,21 +3,15 @@ import { errorMessage } from '../errorStore.js'
 import ErrorBanner from './ErrorBanner.vue'
 import logoUrl from '../assets/avance-logo.png'
 
-// 'connecting'/'failed': full-page overlay before the topbar renders.
-// 'no-project'/'paused': topbar is showing, this fills the content area
-// below it (see `embedded`) instead of covering the whole viewport.
 defineProps({
   variant: {
     type: String,
-    default: 'connecting' // 'connecting' | 'failed' | 'no-project' | 'paused'
+    default: 'connecting'
   },
-  // 'paused' only — human-readable reason shown under the headline message.
   reason: {
     type: String,
     default: ''
   },
-  // Fills its parent flex container instead of covering the viewport —
-  // set whenever the topbar must stay visible/interactive alongside it.
   embedded: {
     type: Boolean,
     default: false
@@ -38,9 +32,6 @@ const emit = defineEmits(['retry'])
       </template>
 
       <template v-else-if="variant === 'failed'">
-        <!-- A boot-ping timeout never reaches apiFetch's setApiError, so
-             errorMessage can be empty even after every retry is exhausted —
-             this fallback covers that case. -->
         <ErrorBanner v-if="errorMessage" />
         <p v-else class="splash-error">Unable to reach the backend — check that it's running.</p>
         <button class="splash-retry" @click="emit('retry')">Retry</button>
@@ -65,12 +56,6 @@ const emit = defineEmits(['retry'])
   top: 0;
   left: 0;
   right: 0;
-  /* Extends past the viewport's own bottom edge on standalone iOS,
-     where WebKit bug #301108 leaves a gap there otherwise — see
-     index.html's own viewport meta comment and
-     useVisualViewport.js's installViewportOvershoot(). 0px, a no-op,
-     everywhere else (a plain browser tab, non-iOS, or once Apple fixes
-     the bug). */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
   display: flex;
   align-items: center;
@@ -82,10 +67,6 @@ const emit = defineEmits(['retry'])
   box-sizing: border-box;
 }
 
-/* Embedded: fills whatever flex slot it's given, alongside the
-   still-visible topbar, instead of covering the whole viewport — stays
-   white, blending into the chat area it sits in rather than the app's
-   own base gradient. */
 .splash-embedded {
   position: static;
   inset: auto;
@@ -122,8 +103,6 @@ const emit = defineEmits(['retry'])
   }
 }
 
-/* Embedded doesn't get the floating card treatment — it already sits
-   inside its own flush white area (see .splash-embedded above). */
 .splash-embedded .splash-content {
   width: auto;
   padding: 1.5rem;

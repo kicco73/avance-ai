@@ -20,9 +20,6 @@ class WhatsAppServiceConfig:
     invite_prefix: str
     graph_version: str
     mark_read: bool
-    # When the bot answers with a voice note instead of text (needs
-    # talk-service): "never", "when-spoken-to" (only in reply to a voice
-    # note — the default), "always" (every reply that has an [audio] text).
     voice_replies: str
 
 
@@ -33,9 +30,6 @@ def parse(raw: dict, path: Path) -> WhatsAppServiceConfig | None:
     verify_token = require_str(section, SECTION, "verify-token", path)
     app_secret = require_str(section, SECTION, "app-secret", path)
     access_token = require_str(section, SECTION, "access-token", path)
-
-    # YAML reads an unquoted 1223547060851510 as an int: accept both
-    # (going through require_str first would reject the int).
     phone_number_id = section.get("phone-number-id")
     if isinstance(phone_number_id, int) and not isinstance(phone_number_id, bool):
         phone_number_id = str(phone_number_id)

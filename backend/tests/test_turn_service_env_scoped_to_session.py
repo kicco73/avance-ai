@@ -79,10 +79,6 @@ def _turn_service(db, project_service: ProjectService) -> TurnService:
 
 
 def _env(db, project_id: str, username: str = USERNAME) -> PersistedEnv:
-    # Read-only in every test here (assertions read action_set()/memory()
-    # straight off project+user; the real writes under test go through
-    # TurnService's own, properly session-scoped PersistedEnv) — session_id
-    # is now required (PersistedEnv(None) raises), so any real id will do.
     return PersistedEnv(db, FixedProjectContext(project_id=project_id), session_id=0, username=username)
 
 
@@ -96,13 +92,9 @@ def two_projects(db) -> TurnService:
 
 async def test_opening_another_projects_session_writes_that_projects_env_not_the_active_ones(db, two_projects):
     turn_service = two_projects
-    # The active project's own session, bootstrapped the normal way.
     active_session = await turn_service.enter_session(ACTIVE_PROJECT, 'live')
     await turn_service.open_conversation(active_session["id"])
     assert _env(db, ACTIVE_PROJECT).action_set() == {"active_key": "active-default"}
-
-    # A session of the *other* project (still ACTIVE_PROJECT active) —
-    # what the Sessions panel or WhatsApp does.
     other_session_id = (await turn_service.enter_session(OTHER_PROJECT, 'live'))["id"]
     await turn_service.open_conversation(other_session_id)
 
@@ -119,7 +111,6 @@ async def test_another_projects_defaults_are_written_once_however_often_it_is_op
 
     assert _env(db, OTHER_PROJECT).action_set() == {"other_key": "other-default"}
     assert db.get_action_env(ACTIVE_PROJECT, USERNAME) == {}
-    # One write, on the first open — never one per open.
     action_env_rows = Tracking.select().where(
         (Tracking.session == other_session_id) & Tracking.action_env.is_null(False)
     ).count()
@@ -132,10 +123,6 @@ async def test_a_supervisor_opening_someone_elses_session_touches_that_users_env
     db.set_active_project_id(ACTIVE_PROJECT, "alice")
     with WebSession().impersonate("alice"):
         alice_session_id = (await turn_service.enter_session(ACTIVE_PROJECT, 'live'))["id"]
-
-    # Default fixture identity is "user" with role supervisor. Only the
-    # bootstrap half of open_conversation: the opening-message half is a
-    # real turn, which a supervisor rightly can't run on alice's session.
     assert WebSession().user == USERNAME
     assert await turn_service.prepare_user_initiated_turn(alice_session_id) == []
 

@@ -1,8 +1,3 @@
-// The input no longer closes while the model is answering: anything the
-// user sends meanwhile is answered by the next turn, together with
-// whatever else is waiting (see the backend's own coalescing). The only
-// things that still close it are an unusable session and a chat socket
-// that is not connected.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from 'vue'
 
@@ -25,12 +20,6 @@ vi.mock('../src/api.js', () => ({
   projectFileContentUrl: vi.fn(() => '/skin.css'),
 }))
 
-// Mounting ChatView is the heaviest thing this suite does, and the whole
-// component tree is transformed here, at import time, rather than inside
-// whichever test imports it first: that cost is 6.3s on its own and
-// 16.3s with the whole suite running in parallel, and vitest charged it
-// to that test's own 5s budget. A file's own imports are not timed, so
-// the import below is left with nothing but the re-evaluation.
 await import('../src/components/chat/ChatView.vue')
 
 describe('ChatView keeps the input open while a reply is being generated', () => {

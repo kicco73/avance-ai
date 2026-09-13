@@ -111,11 +111,6 @@ class SchemaMigrator:
             conn.close()
 
     def schema_differs(self, actual: dict[str, set[str]], expected: dict[str, set[str]], path: str) -> bool:
-        # Column names matching isn't enough: a prior migration may have
-        # already added a table's missing columns without ever revisiting
-        # an existing column's own constraint (e.g. NOT NULL -> nullable),
-        # or a field's own index=True without ever revisiting a table that
-        # already had every expected column.
         if actual != expected or bool(self._tables_needing_constraint_rebuild(actual, expected, path)):
             return True
         expected_idx = self.expected_indexes()
@@ -127,11 +122,6 @@ class SchemaMigrator:
         implements it, same as add_column/drop_column below) — not raw SQL."""
         migrator = SqliteMigrator(self._database)
         migrate(migrator.rename_column(table, old_name, new_name))
-
-    # (table, old column, new column) — every place a project's old `name`
-    # string was stored elsewhere, cascaded before Project.name itself is
-    # renamed away. User.active_project_id's own column name never
-    # changes (already right) — only its stored *value* needs the cascade.
     _PROJECT_NAME_COLUMNS: tuple[tuple[str, str, str], ...] = (
         ('CoreSession', 'project_name', 'project_id'),
         ('Archive', 'project_name', 'project_id'),
@@ -183,14 +173,6 @@ class SchemaMigrator:
                             f'UPDATE "{table}" SET "{old_column}" = ? WHERE "{old_column}" = ?', (new_id, old_name),
                         )
                 self.rename_column('Project', 'name', 'id')
-                # project_id was declared unique=True pre-merge — SQLite
-                # refuses a plain ALTER TABLE DROP COLUMN on a column a
-                # UNIQUE constraint still covers (inline column-level
-                # UNIQUE has no separately-droppable index to remove
-                # first), so this needs the same rename-rebuild-copy-drop
-                # dance _rebuild_table already does for a NOT NULL change:
-                # a fresh Project table in the model's own expected shape
-                # naturally has no project_id column to copy into.
                 project_model = {m._meta.table_name: m for m in self._models}['Project']
                 post_rename_columns = (actual['Project'] - {'name'}) | {'id'}
                 self._rebuild_table('Project', project_model, post_rename_columns)
@@ -199,11 +181,6 @@ class SchemaMigrator:
                         self.rename_column(table, old_column, new_column)
         finally:
             self._database.execute_sql('PRAGMA foreign_keys = ON')
-
-    # Plain same-table column renames (old name -> new name, no value
-    # transformation needed) — applied before the generic add/drop-column
-    # diff below, so a rename never reads as "drop old, add empty new"
-    # and loses the column's existing values.
     _COLUMN_RENAMES: tuple[tuple[str, str, str], ...] = (
         ('CoreSession', 'summary', 'ai_summary'),
     )
@@ -268,10 +245,6 @@ class SchemaMigrator:
             self._backfill_answered_by(actual)
             self._backfill_channel(actual)
             self._database.create_tables(new_models, safe=True)
-            # Tables just (re)created above already got every index for
-            # free from create_tables()/_rebuild_table's own create_tables
-            # call — only an existing, non-rebuilt table can still be
-            # missing an index a field newly declares.
             self._sync_indexes((actual.keys() & expected.keys()) - rebuild_tables, path)
         finally:
             self._database.execute_sql('PRAGMA foreign_keys = ON')
@@ -357,11 +330,6 @@ class SchemaMigrator:
                     kind = 'UNIQUE INDEX' if unique else 'INDEX'
                     name = f"{table.lower()}_{'_'.join(columns)}"
                     column_list = ', '.join(f'"{c}"' for c in columns)
-                    # Not IF NOT EXISTS: this exact name may already be
-                    # occupied by a stale index some other (columns, unique)
-                    # pair above spared, coincidentally matching a different
-                    # wanted entry — a silent no-op here would leave this
-                    # one permanently missing.
                     self._database.execute_sql(f'DROP INDEX IF EXISTS "{name}"')
                     self._database.execute_sql(f'CREATE {kind} "{name}" ON "{table}" ({column_list})')
         finally:
@@ -369,12 +337,8 @@ class SchemaMigrator:
 
     def _rebuild_table(self, table: str, model, actual_columns: set[str]) -> None:
         # FIXME: legacy_alter_table=ON — a plain rename must never let
-        # SQLite rewrite another table's REFERENCES "{table}" to the
-        # temporary name.
         fields = list(model._meta.sorted_fields)
         shared_columns = sorted(f.column_name for f in fields if f.column_name in actual_columns)
-        # New NOT NULL columns get no SQL-level DEFAULT from peewee, so the
-        # rebuild's INSERT must supply the field's Python-side default itself.
         new_required_fields = sorted(
             (f for f in fields if f.column_name not in actual_columns and not f.null),
             key=lambda f: f.column_name,
@@ -385,10 +349,6 @@ class SchemaMigrator:
             self._database.execute_sql(f'ALTER TABLE "{table}" RENAME TO "{tmp_name}"')
         finally:
             self._database.execute_sql('PRAGMA legacy_alter_table = OFF')
-        # The rename carries the old table's own named indexes along under
-        # their original names (SQLite index names are database-global) —
-        # left in place, they'd collide with the fresh table's own indexes
-        # of the same name below.
         self._drop_named_indexes(tmp_name)
         self._database.create_tables([model], safe=False)
         insert_columns = shared_columns + [f.column_name for f in new_required_fields]

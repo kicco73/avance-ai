@@ -30,11 +30,6 @@ if TYPE_CHECKING:
     from ai import AiService
 
 logger = LoggerFactory.get_logger(__name__)
-
-# Both AI-edit prompts below share this placeholder for the format spec's
-# own text, substituted with .replace() rather than str.format() — the
-# spec/CSS bodies are full of literal `{`/`}` characters that would
-# otherwise have to be escaped throughout.
 _SPEC_PLACEHOLDER = "%%SPEC%%"
 
 INDEX_YML_AI_EDIT_SYSTEM_PROMPT = """\
@@ -117,11 +112,6 @@ specification's own §8 checklist, and fix anything that would fail it.
 Reply with nothing but the CSS itself, inside a single ```css code fence \
 — no explanation before or after it.\
 """
-
-# Pulls the body out of a fenced code block (```css, ```yaml, or bare
-# ```) — models reliably wrap their output in one despite the system
-# prompt asking for "nothing but the CSS/YAML", so this is the normal
-# path, not a fallback.
 _CODE_FENCE_RE = re.compile(r"```[a-zA-Z0-9_+-]*\s*\n(.*?)```", re.DOTALL)
 
 
@@ -134,8 +124,6 @@ class ProjectEditor:
         self._automaton_loader = automaton_loader
         self._inspector = inspector
         self._manager = manager
-        # Optional: only needed for generate_index_yml_ai_edit — every
-        # other method here works without it.
         self._ai_service = ai_service
 
     def _resolve_file_name(self, project_id: str, file_name: str, revision: int | None = None) -> str:
@@ -154,8 +142,6 @@ class ProjectEditor:
         user = WebSession().user
         file_type = ProjectFileTypes.of(file_name)
         media_type = file_type.media_type
-        # None for binary content — raw bytes aren't JSON-serializable; the
-        # explorer renders those via the raw GET .../content route instead.
         is_text = file_type.text
         return {
             "content": content.decode("utf-8") if is_text else None,
@@ -267,7 +253,7 @@ class ProjectEditor:
         if content is None:
             raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_id}'.")
         content_type = self._db.get_archive_content_type(project_id, file_name, revision=revision)
-        assert content_type is not None  # same Archive row get_archive already found content for
+        assert content_type is not None
         return content, content_type
 
     async def put_project_file(
@@ -304,8 +290,6 @@ class ProjectEditor:
             update_value: str | bytes = text_content
             to_save: bytes = text_content.encode("utf-8")
         else:
-            # Only a text extension ever hands this a `str`; an image
-            # upload is always real bytes off the request body.
             assert isinstance(content, bytes)
             expected_content_type = file_type.content_type
             if content_type_header != expected_content_type:
@@ -318,11 +302,6 @@ class ProjectEditor:
             content_type = expected_content_type
             update_value = content
             to_save = content
-
-        # Read before prepare_update/save touch anything — the only way to
-        # later tell a family-only edit (project.id unchanged) apart from
-        # any other save, so finalize_update knows to re-run the dependents
-        # rescan (see its own old_family parameter).
         old_family = self._automaton_loader.declared_family(project_id)
         try:
             new_automaton, to_persist = self._manager.prepare_update(project_id, {file_name: update_value})
@@ -360,11 +339,6 @@ class ProjectEditor:
 
         old_basename = Path(old_name).name
         new_basename = new_name.strip()
-        # A plain file name only — never a path. Rejected outright rather
-        # than silently taking Path(new_name).name: this is the one place
-        # the category (aspect/behaviour) a rename keeps fixed could
-        # otherwise look changeable to a caller who just typed a folder
-        # prefix, matching how upload/_check_editable_file_name reject one too.
         if not new_basename or "/" in new_basename or "\\" in new_basename or new_basename in (".", ".."):
             raise ValueError(f"Invalid file name: '{new_name}' — expected a plain file name, not a path.")
         try:
@@ -570,8 +544,6 @@ class ProjectEditor:
         await self._edit_index_yml(project_id, lambda editor: editor.delete_source(source_name))
         if archive_name in self._db.list_archives(project_id):
             self._db.delete_archive(project_id, archive_name)
-            # The archive goes after the index.yml edit that funnels
-            # through finalize_update, so its own invalidation is here.
             PROJECT_FILE_CACHE.forget_project(project_id)
 
     async def reorder_actions(

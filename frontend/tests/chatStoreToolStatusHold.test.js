@@ -1,8 +1,3 @@
-// The tool status line ("Searching …") must stay readable even when the
-// tool answers in a few milliseconds: the store keeps it for at least
-// TOOL_STATUS_MIN_MS from the moment it was shown (see toolStatusHold.js),
-// and the answer itself never cuts it short. A result that arrives after
-// the minimum clears it at once.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TOOL_STATUS_MIN_MS } from '../src/toolStatusHold.js'
 

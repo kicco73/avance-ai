@@ -14,10 +14,6 @@ from metrics.metric_service import MetricService
 from system.web_session import WebSession
 from tracking.fixed_project_context import FixedProjectContext
 from turn_harness import PROJECT_ID, turn_service_for  # noqa: F401 — a pytest fixture, used by name
-
-# Each test verifies one fact about metric-in-trigger evaluation:
-# fires/doesn't fire, never leaks into the persisted Tracking row,
-# computation is skipped when unreferenced.
 pytestmark = pytest.mark.regression
 
 
@@ -35,8 +31,6 @@ def _automaton_with_trigger(trigger_expr: str, target: str = "b") -> Automaton:
         init_action=init_action,
         states=states,
         general_prompt="",
-        # A real declared signal — signal_values are coerced against
-        # exactly this list, dropping anything not declared here.
         signals=[Signal(name="mySignal", ui_label="My signal", definition="whatever")],
         general_attachments={},
         autotracking_on_ai_message=True,
@@ -61,9 +55,6 @@ class FakeSchemaAiService:
         return True
 
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema):
-        # Only when actually asked for — a schema-constrained provider can't
-        # emit a field outside the schema it was given, and a turn whose
-        # triggers reference no signal never requests one.
         if "signals" in schema:
             on_metadata("signals", self._signals_json)
         yield "Hi!"
@@ -99,9 +90,6 @@ async def test_a_metric_referencing_trigger_that_is_not_met_does_not_fire(turn_s
 
 
 async def test_metric_values_used_for_evaluation_are_never_persisted(turn_service_for):
-    # mySignal must appear in the trigger too, not just engagement — a
-    # signal no trigger references is dropped before persisting, same as
-    # a metric, so an engagement-only trigger would filter it out too.
     turn_service, session_id = await _talking_in(
         turn_service_for, _automaton_with_trigger("signal.mySignal >= 1 and engagement >= 1"), '{"mySignal": 42}',
     )
@@ -110,15 +98,10 @@ async def test_metric_values_used_for_evaluation_are_never_persisted(turn_servic
 
     persisted = [row for row in turn_service.get_session_signals(session_id) if row["values"]]
     assert len(persisted) == 1
-    # Only the real, model-reported signal is stored — "engagement" (or
-    # any metric) must never leak into the Tracking log.
     assert json.loads(persisted[0]["values"]) == {"mySignal": 42}
 
 
 def test_metric_values_are_merged_into_the_evaluation_names_only_when_a_trigger_references_one(db):
-    # The gate itself, where it lives: a full history load is what
-    # computing metrics costs, and a state whose triggers name none of
-    # them must not pay it.
     metrics = MetricService(db, FixedProjectContext(project_id=PROJECT_ID))
     names = {"mySignal": 42}
 

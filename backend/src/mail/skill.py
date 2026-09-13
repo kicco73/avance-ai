@@ -46,11 +46,6 @@ class MailSkill(Skill):
         self._mail_service().enqueue_mail(body["to"], body["subject"], body["body_md"])
 
     def _mail_service(self) -> MailService:
-        # Built on the first mail rather than at start: MailService needs
-        # the scheduler, which does not exist at boot. By the time
-        # anything publishes TOOL_SEND_MAIL the core is composed, so this is
-        # the whole difference between "needs a core object" and "takes
-        # one as a parameter" (see bus.POINT_CORE_SERVICES).
         for service in filter(None, [self._service]):
             return service
         for config in filter(None, [self._config]):

@@ -112,7 +112,7 @@ def test_delete_sessions_by_username_and_type_covers_every_project_but_only_that
     theirs = _create_session(db, published_project, username=other)
 
     db.delete_sessions_by_username_and_type("user", "preview")
-    db.delete_sessions_by_username_and_type("user", "preview")  # nothing left to delete
+    db.delete_sessions_by_username_and_type("user", "preview")
 
     assert db.get_chat_session(first) is None
     assert db.get_chat_session(second) is None

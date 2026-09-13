@@ -32,24 +32,7 @@ from ai.llm_provider import (
 )
 
 logger = LoggerFactory.get_logger(__name__)
-
-# google-genai sends no timeout at all unless told to (HttpOptions.timeout
-# defaults to None, passed straight through to httpx) — an upstream that
-# stops answering would otherwise hang a chat turn, or a JobQueue worker,
-# forever. Milliseconds, per HttpOptions; httpx applies it to connect and
-# to the longest silence between streamed chunks, not to the whole reply.
-# 30s, matching every other provider's own cap.
 REQUEST_TIMEOUT_MS: int = 30_000
-
-# response_schema (controlled JSON generation) and tools (function
-# calling) don't reliably combine on this provider — see
-# generate_stream_with_schema's own docstring for the "respond as a
-# tool" fallback this name identifies: a synthetic tool whose own
-# parameters are the schema's fields, forced whenever the model isn't
-# asking for a real one, standing in for a genuine structured response.
-# Key under which ToolCallsRequested.assistant_content carries this
-# provider's own model-turn Parts (functionCall + thought_signature) for
-# verbatim replay — opaque to AiService and to every other provider.
 _REPLAY_PARTS_KEY = "gemini_parts"
 _RESPOND_TOOL_NAME = "respond"
 
@@ -133,23 +116,8 @@ class GeminiProvider(LLMProvider):
 		self.__base_url: str | None = config.url
 		self.__model_name: str = config.model
 		self.__max_output_tokens: int = config.max_output_tokens
-		# genai.Client's async transport lazily binds internal
-		# asyncio.Lock/Event objects to whichever event loop first uses
-		# it. This provider is a single app-wide instance shared by both
-		# the main FastAPI loop's own long-lived loop and every one-shot
-		# loop PromptContext._run_sync spins up per source.prompt() call
-		# (a fresh asyncio.run() — and thus a fresh, never-reused loop —
-		# every time) — reusing one Client across those raises "... is
-		# bound to a different event loop". A client per loop avoids it;
-		# self.__clients_lock guards concurrent first-use from different
-		# threads. Without __prune_closed_loops below, every such one-shot
-		# loop would leave its own entry (and Client) behind forever once
-		# asyncio.run() closes it — this dict would grow without bound.
 		self.__clients: dict[asyncio.AbstractEventLoop, genai.Client] = {}
 		self.__clients_lock = threading.Lock()
-		# get_input_tokens() only ever uses the sync (non-.aio) surface,
-		# which isn't event-loop-bound the way the async transport above
-		# is — one plain client, built once, is enough.
 		self.__sync_client: genai.Client = self.__new_client()
 
 	def __new_client(self) -> genai.Client:
@@ -229,20 +197,8 @@ class GeminiProvider(LLMProvider):
 				content = message.get("content")
 				replay = content.get(_REPLAY_PARTS_KEY) if isinstance(content, dict) else None
 				if replay:
-					# This very provider asked for these calls: replay its
-					# own parts verbatim. Gemini stamps every functionCall
-					# part with an opaque `thought_signature` and refuses
-					# the next request (400 INVALID_ARGUMENT, "Function
-					# call is missing a thought_signature") unless that
-					# exact part — signature included — comes back in the
-					# model turn preceding the functionResponse; a part
-					# rebuilt from the neutral ToolCall has no signature.
-					# See https://ai.google.dev/gemini-api/docs/thought-signatures
 					contents.append(types.Content(role="model", parts=list(replay)))
 					continue
-				# Another provider asked for these calls (a cascade
-				# failover mid-loop): nothing of Gemini's to replay,
-				# rebuild the model turn from the neutral shape.
 				parts: list[types.Part] = []
 				if content and not isinstance(content, dict):
 					parts.append(types.Part.from_text(text=str(content)))
@@ -266,8 +222,6 @@ class GeminiProvider(LLMProvider):
 			gemini_role = "model" if role == "assistant" else "user"
 			content = message["content"]
 			if is_text_fragments(content):
-				# One user Content whose parts are this turn's fragments —
-				# several texts the model reads as a single message.
 				contents.append(types.Content(
 					role=gemini_role, parts=[types.Part.from_text(text=fragment) for fragment in content],
 				))
@@ -345,25 +299,9 @@ class GeminiProvider(LLMProvider):
 	) -> AsyncIterator[str]:
 		contents = self.__build_contents(history)
 		schema = schema or {}
-		# No native cache-breakpoint concept here (unlike Anthropic) — the
-		# stable/volatile split still matters for Gemini's own implicit
-		# prefix caching, which only ever hits a byte-identical prefix:
-		# `stable` first, unconditionally, so it stays that identical
-		# prefix turn after turn regardless of what follows it.
 		system_instruction = SystemPrompt.coerce(system_prompt).full_text()
 
 		if tools:
-			# response_schema (controlled JSON generation) and tools
-			# (function calling) don't reliably combine on this provider —
-			# never assume they do. Fold the structured answer itself into
-			# a synthetic "respond" tool instead (see _RESPOND_TOOL_NAME),
-			# forced via tool_config so every turn ends in *some* function
-			# call — a real one, or "respond" once nothing else is needed.
-			# A forced round (required_tools) restricts the *callable* set
-			# to just those tool names, deliberately excluding "respond" —
-			# unlike Anthropic/OpenAI, the full catalog still gets declared
-			# in `tools` below, since Gemini's own allowed_function_names
-			# is the restriction mechanism, not the tools list itself.
 			function_calling_config = types.FunctionCallingConfig(
 				mode=types.FunctionCallingConfigMode.ANY,
 				**({"allowed_function_names": [spec.name for spec in required_tools]} if required_tools else {}),
@@ -387,13 +325,7 @@ class GeminiProvider(LLMProvider):
 		output_tokens = 0
 		cache_read_tokens = 0
 		finish_reason: types.FinishReason | None = None
-		# Gemini delivers a function call as one complete part, never
-		# streamed argument-by-argument the way OpenAI's deltas are — so
-		# there's nothing to accumulate across chunks, just the latest one seen.
 		function_call: types.FunctionCall | None = None
-		# Every function-call part the model produced this round, kept as
-		# real Parts *with* their thought_signature, so the next request can
-		# replay the model turn byte-for-byte (see __build_contents).
 		replay_parts: list[types.Part] = []
 		with _handle_gemini_errors():
 			response_stream = await self.__client().aio.models.generate_content_stream(
@@ -421,13 +353,6 @@ class GeminiProvider(LLMProvider):
 						if part.function_call is not None:
 							function_call = part.function_call
 						replay_parts.append(_copy_model_part(part))
-					# `tools` being non-empty means a call was *possible*,
-					# never that this response actually made one — a model
-					# offered tools is free to just answer directly, and
-					# when it does that text must still reach the caller
-					# the same as the tools=[] path below, or a turn that
-					# never calls anything streams nothing and the final
-					# JSON parse below chokes on an empty string.
 					if function_call is not None:
 						continue
 				if not chunk.text:
@@ -435,9 +360,6 @@ class GeminiProvider(LLMProvider):
 				yield chunk.text
 		self._add_tokens(total_tokens)
 		if on_metadata is not None:
-			# cache_read_tokens is already folded into prompt_token_count
-			# (input_tokens above) — Gemini has no separate cache-write
-			# accounting, so cache_creation_tokens is always 0 here.
 			on_metadata("cache_read_tokens", cache_read_tokens)
 			on_metadata("cache_creation_tokens", 0)
 			on_metadata("input_tokens", input_tokens)
@@ -450,10 +372,6 @@ class GeminiProvider(LLMProvider):
 
 		if tools and function_call is not None:
 			if function_call.name == _RESPOND_TOOL_NAME:
-				# The model's own final structured answer, disguised as a
-				# tool call — yielded as the same JSON text a schema-based
-				# response would have produced, so AiService's own
-				# partial-JSON parser downstream needs no changes at all.
 				yield json.dumps(function_call.args or {})
 			else:
 				raise ToolCallsRequested(
@@ -461,10 +379,6 @@ class GeminiProvider(LLMProvider):
 						id=function_call.id or str(uuid.uuid4()), name=function_call.name or "",
 						arguments=dict(function_call.args or {}),
 					)],
-					# Not text: Gemini's own parts for this model turn,
-					# thought_signature included, for __build_contents to
-					# replay verbatim on the next round. Any other provider
-					# ignores this and rebuilds from `calls`.
 					assistant_content={_REPLAY_PARTS_KEY: _consolidate_model_parts(replay_parts)},
 				)
 

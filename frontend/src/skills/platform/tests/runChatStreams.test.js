@@ -1,8 +1,3 @@
-// The editor's Run chat is the same conversation as any other, shown
-// differently: it draws a timeline (messages plus transitions) instead of
-// a plain list. Whatever it draws it with, a reply has to arrive the same
-// way — the dots while it is being written, then the text as it is
-// written — and the in-flight bubble has to reach the timeline.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../../taskActions.js', () => ({ runTaskScript: vi.fn() }))
@@ -61,9 +56,6 @@ describe('the Run chat', () => {
     expect(assistantBubbles()[0]).toMatchObject({ content: 'Hola', awaitingReply: false })
   })
 
-  // Through the real chain the Run panel draws with, not buildTimeline
-  // called by hand: the timeline is a computed over the store's own
-  // messages, and a bubble that never reaches it is a bubble nobody sees.
   it('puts the bubble being written into the timeline, before it has an id', async () => {
     const { useLiveRunTimeline } = await import('../useLiveRunTimeline.js')
     const { ref } = await import('vue')

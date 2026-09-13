@@ -58,17 +58,11 @@ def _publish_project(db, project_service: ProjectService, project_name: str, ind
     """A real save, through _finalize_project_update, so the reverse
     index is actually refreshed, same as a real save (put_project/
     put_project_file) does."""
-    # Auto-declares `project: {id: <project_name>, family: test}` whenever
-    # project_name is a valid identifier — both "observed" and "watcher"
-    # share family "test" so automaton.observed references actually resolve.
     if project_name.isidentifier() and "project:" not in index_yml:
         index_yml = f"project:\n  id: {project_name}\n  family: test\n{index_yml}"
     db.ensure_project(project_name)
     db.save_project_files(project_name, {"index.yml": index_yml.encode("utf-8")}, {"index.yml": "text/yaml"})
     db.publish_project(project_name)
-    # _finalize_project_update calls get_active_project_id(), which
-    # raises when nothing is active yet — this bare helper has no
-    # activation flow of its own to make that true.
     db.set_active_project_id(project_name, USERNAME)
     automaton = AutomatonBuilder().build({"index.yml": index_yml})
 
@@ -121,7 +115,7 @@ def test_the_reverse_index_records_the_reference_and_is_cleared_once_it_is_remov
     assert db.get_observers("observed") == ["watcher"]
     assert db.get_observed_projects("watcher") == ["observed"]
 
-    _publish_project(db, project_service, "watcher", OBSERVED_YML)  # no longer references automaton.observed at all
+    _publish_project(db, project_service, "watcher", OBSERVED_YML)
 
     assert db.get_observers("observed") == []
 
@@ -141,7 +135,7 @@ def test_reevaluating_fires_the_self_loop_only_once_the_observed_state_actually_
     after = db.get_signals(quiet_session["id"])
     assert len(after) == before + 1
     assert after[-1]["old_state"] == "x"
-    assert after[-1]["new_state"] == "x"  # self-loop — the state itself never changes
+    assert after[-1]["new_state"] == "x"
     assert after[-1]["origin"] == "system"
 
 
@@ -161,13 +155,8 @@ class TestWakeupNotification:
 
         (message,) = notified.for_user(USERNAME)
         assert message.body["project_name"] == "watcher"
-        assert message.body["state"]["key"] == "x"  # self-loop — the state itself never changes
-        # The fired action's task is a task of its own (see
-        # tracking/actuators/action_task.py), never part of this message.
+        assert message.body["state"]["key"] == "x"
         assert "task" not in message.body
-        # The fired action has a trigger and no tracking_service was wired
-        # in (defaults to "always auto-tracked") — left out of the choices
-        # the same way a live session's own would be.
         assert message.body["buttons"] == []
 
     def test_the_choices_include_the_triggered_action_when_auto_tracking_is_disabled(self, db, project_service):
@@ -194,15 +183,11 @@ class TestWakeupNotification:
         _wake(db, project_service)
         assert db.get_signals(unconnected_session["id"])[-1]["new_state"] == "x"
 
-        # Nobody subscribed at all.
         _wake(db, project_service)
         assert db.get_signals(unconnected_session["id"])[-1]["new_state"] == "x"
 
 
 def test_publishing_state_changed_wakes_up_every_observer_that_has_a_session(app_db):
-    # File-backed, not the plain `db` fixture — JobQueue runs `work` on a
-    # separate thread, and a second thread opening its own connection to a
-    # ":memory:" database would get a distinct, empty one.
     db = app_db
     project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     watcher_session = _both_projects(db, project_service)
@@ -224,11 +209,10 @@ def test_publishing_state_changed_wakes_up_every_observer_that_has_a_session(app
 
 
 def test_a_user_with_no_session_in_the_observer_project_is_never_woken(app_db):
-    db = app_db  # see the JobQueue test above for why
+    db = app_db
     project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     _publish_project(db, project_service, "observed", OBSERVED_YML)
     _publish_project(db, project_service, "watcher", WATCHER_YML)
-    # No chat session created in "watcher" at all for this user.
     db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
 
     service = WakeupService(db, project_service, make_test_scheduler_service(db), _namespace_factory(db))
@@ -236,8 +220,4 @@ def test_a_user_with_no_session_in_the_observer_project_is_never_woken(app_db):
 
     publish(StateChanged(username=USERNAME, project_id="observed", from_state="a", to_state="b"))
     time.sleep(0.1)
-
-    # The real assertion is that this doesn't raise/log an exception;
-    # get_observers still resolves "watcher", but the "has a session"
-    # guard skips it.
     assert db.get_observers("observed") == ["watcher"]

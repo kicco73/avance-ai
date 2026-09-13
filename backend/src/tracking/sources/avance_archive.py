@@ -71,10 +71,6 @@ class AvanceArchiveSource(SourceDriver):
         super().__init__(context, name, archive_path)
         self._automaton = context.automaton
         self._archive_path = archive_path
-        # Where this project's files come from, chosen once by whoever
-        # built the context (see tracking.project_files) — the database at
-        # a pinned revision through this session's own cache copy, or the
-        # package's own data/ for an automaton that carries its files.
         self._files = context.files
 
     def _read_text(self) -> str:

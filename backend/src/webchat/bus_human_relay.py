@@ -49,8 +49,4 @@ class BusHumanRelay:
         await self._bus_channel.wait_for_typing(self._prompt_id)
 
     async def recorded_audio(self, text: str) -> AsyncIterator[bytes] | None:
-        # No original-recording store for this relay yet — a spoken human
-        # reply always falls back to whatever the session's own TalkService
-        # would say (see AiTalker.talk(), used as a fallback where this
-        # relay is wired in), never silently to text.
         return None

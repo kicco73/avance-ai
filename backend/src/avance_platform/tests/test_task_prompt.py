@@ -114,17 +114,8 @@ def test_task_prompt_fires_through_the_real_app_end_to_end(client, app):
     project_id = parse_sse_result(resp)["project_id"]
     client.post(f"/api/core/projects/{project_id}/activate")
     client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
-
-    # A test/draft session, deliberately — "Run actuators" defaults off
-    # there (see TaskNamespaceFactory.for_session), which is what makes
-    # task.send_mail's own report observable at all: a live session
-    # would really try to dial the (dummy, unreachable) SMTP config
-    # instead (see test_action_task.py's own module docstring).
     session_id = session_of(create_chat(client, project_id, "test"))
     chat_action(client, session_id, "go")
-
-    # The model call runs in the task, off the request; its
-    # result reaches the browser as a notification frame.
     published = run_pending_tasks(app)
     message = "send_mail(to='Fake AI reply.') — Run actuators is off, no email was sent."
     assert [(m.type, m.body) for m in published] == [

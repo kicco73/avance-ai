@@ -15,7 +15,6 @@ function pickRevert() {
 </script>
 
 <template>
-  <!-- useProjectRevision's outside-click handler keys on .revision-menu -->
   <div class="revision-menu">
     <button
       type="button"

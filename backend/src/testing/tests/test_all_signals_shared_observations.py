@@ -141,8 +141,6 @@ def test_all_signals_aggregation_coalesces_concurrent_observation_building(monke
     builds = _count_builds(monkeypatch, build_delay=0.2)
 
     testing_service = client.app.state.testing_service
-    # Concurrency is fixed once, in testing/skill.py — there is no public
-    # way to ask for a wider queue.
     monkeypatch.setattr(
         testing_service, "_job_queue",
         JobQueue(max_concurrent=4, broadcaster=client.app.state.progress_broadcaster),

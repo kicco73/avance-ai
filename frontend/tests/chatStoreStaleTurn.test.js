@@ -1,10 +1,3 @@
-// Regression: a reply must stay pinned to the session it is being
-// written in, never to whatever chat happens to be on screen by the time
-// it finishes. The model can be slow enough that the user switches to a
-// completely different chat while a message is still being written —
-// without this, that stale reply (and its own state) would silently leak
-// into what is now displayed. See chatStoreFactory.js's own turnSessionId
-// in watchReply.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))
@@ -39,8 +32,6 @@ describe('a reply stays pinned to the session it is written in, even if the user
     vi.clearAllMocks()
   })
 
-  // The user switches away to a completely different chat, which answers
-  // with everything about itself (see backend docs/BUS.md's session.enter).
   async function switchToB() {
     await chatStore.selectSession({ id: 2, current: true })
     deliverEntered({
@@ -62,7 +53,6 @@ describe('a reply stays pinned to the session it is written in, even if the user
     expect(chatStore.currentSessionId.value).toBe(2)
     const beforeReply = chatStore.messages.value.map((m) => m.content)
 
-    // Session A's slow reply is finally finished.
     deliver({ type: 'state.buttons', session_id: 1, actions: [] })
     deliver({
       type: 'output.text', session_id: 1, assistant_message_id: 51,

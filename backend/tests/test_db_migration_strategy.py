@@ -215,11 +215,6 @@ def test_boot_reindexes_a_database_whose_indexes_are_out_of_sync(tmp_path):
     ])
     _desync_index(db_path, "userproject_invite_id", "UserProject", "user_id")
     assert _query(db_path, "PRAGMA integrity_check") != [("ok",)]
-
-    # REINDEX (below) rebuilds an index's content to match its current
-    # on-disk definition, but here the definition itself was rewritten to
-    # cover the wrong column — content-only repair can't fix that, so this
-    # also needs 'upgrade' to recreate userproject_invite_id for real.
     db = Db(_url(db_path), migration_strategy="upgrade")
 
     assert _query(db_path, "PRAGMA integrity_check") == [("ok",)]
@@ -227,9 +222,6 @@ def test_boot_reindexes_a_database_whose_indexes_are_out_of_sync(tmp_path):
     assert _query(db_path, "SELECT sql FROM sqlite_master WHERE name = 'userproject_invite_id'") == [
         ('CREATE INDEX "userproject_invite_id" ON "UserProject" ("invite_id")',)
     ]
-    # Two backups are taken (repair, then migration) but _timestamped_backup_path
-    # is only second-granular, so back-to-back calls within the same second
-    # collide onto one file — assert at least one exists rather than an exact count.
     assert len(_backups(tmp_path, "test")) >= 1
     db.erase_user_data("enrico@example.com")
     assert _query(db_path, "SELECT user_id FROM UserProject") == []
@@ -321,17 +313,13 @@ def test_upgrade_relaxes_a_not_null_constraint_and_preserves_data(tmp_path):
 
 
 def test_upgrade_relaxes_a_constraint_even_when_every_column_already_matches(tmp_path):
-    # Simulates a database an earlier version of this migration code already
-    # brought up to date column-wise (e.g. whatsapp_phone_number added) but
-    # never revisited email's own NOT NULL — column names alone say nothing
-    # has changed, so the schema-differs check must look at constraints too.
     db_path = tmp_path / "test.db"
     Db(_url(db_path))
     _run_sql(db_path, _rebuild_user_with_email_not_null(db_path, with_whatsapp=True))
     assert "whatsapp_phone_number" in _columns(db_path, "User")
 
     with pytest.raises(ValueError, match="migration-strategy"):
-        Db(_url(db_path))  # 'stop' must still refuse — constraint-only drift is real drift
+        Db(_url(db_path))
 
     Db(_url(db_path), migration_strategy="upgrade")
 
@@ -341,13 +329,6 @@ def test_upgrade_relaxes_a_constraint_even_when_every_column_already_matches(tmp
 
 
 def test_upgrade_rebuild_does_not_collide_with_the_tables_own_pre_existing_indexes(tmp_path):
-    # Reproduces a real deployment history: an earlier migration already
-    # added whatsapp_phone_number via plain add_column (which leaves every
-    # other index on the table untouched), so User keeps its real named
-    # indexes right up to the point a later migration needs to rebuild it
-    # for email's constraint. Renaming the table carries those indexes
-    # along under their original names; recreating the table must not
-    # collide with them.
     db_path = tmp_path / "test.db"
     Db(_url(db_path))
     _run_sql(db_path, [
@@ -396,9 +377,6 @@ def test_upgrade_rebuilds_a_table_needing_both_a_constraint_change_and_a_new_not
 
     notnull = _notnull(db_path, "CoreSession")
     assert notnull["labeling_revision"] is True
-    # channel is nullable — a test, preview or imported session has none
-    # — so the live rows that predate the column are backfilled
-    # explicitly instead (see SchemaMigrator._backfill_channel).
     assert notnull["channel"] is False
     assert _query(db_path, "SELECT id, username, project_id, labeling_revision, channel FROM CoreSession") == [
         (1, "enrico@example.com", "lluna", 0, "webchat"),
@@ -406,8 +384,6 @@ def test_upgrade_rebuilds_a_table_needing_both_a_constraint_change_and_a_new_not
     assert _query(db_path, "SELECT session_id, content FROM Message") == [(1, "hi")]
     assert _query(db_path, "PRAGMA foreign_key_check") == []
 
-
-# --- The project_name/project_id merge (SchemaMigrator.migrate_legacy_project_identity) ---
 
 PRE_MERGE_PROJECT_DDL = [
     "CREATE TABLE Project (name TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER, "

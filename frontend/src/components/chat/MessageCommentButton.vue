@@ -1,17 +1,10 @@
 <script setup>
-// Per-message expert comment: a free-text note that can be left on any
-// chat line. Unlike expected_state/expected_values, there is no
-// evaluation-point gating — every message gets the icon, always enabled.
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 const props = defineProps({
-  // null/'' = no comment yet (outline icon); a non-empty string = has
-  // one (filled icon) and pre-fills the popover's own textarea on open.
   comment: { type: String, default: null }
 })
 
-// 'save' carries the trimmed text, or null to clear — the parent owns
-// the actual API call, so this component has no idea one even exists.
 const emit = defineEmits(['save'])
 
 const open = ref(false)
@@ -21,8 +14,6 @@ const popoverRef = ref(null)
 const textareaRef = ref(null)
 const style = ref({})
 
-// Snapshots the trigger button's rect once, on open, for fixed
-// positioning of the popover.
 function position() {
   const el = buttonRef.value
   if (!el) return
@@ -37,8 +28,6 @@ function openPopover() {
   nextTick(() => textareaRef.value?.focus())
 }
 
-// Dismissible without saving — Escape, clicking away, or the Cancel
-// button all land here; only save() below ever emits anything.
 function closePopover() {
   open.value = false
 }
@@ -59,8 +48,6 @@ function onDocumentMousedown(event) {
   closePopover()
 }
 
-// Only listens while the popover is open, to avoid a document-level
-// listener per message bubble.
 watch(open, (isOpen) => {
   if (isOpen) document.addEventListener('mousedown', onDocumentMousedown)
   else document.removeEventListener('mousedown', onDocumentMousedown)
@@ -139,8 +126,6 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentMoused
   color: #333;
 }
 
-/* Has a saved comment already; blue rather than amber/green so it never
-   reads as a state/signal verdict. */
 .comment-btn-active {
   border-color: #4a6fa5;
   color: #4a6fa5;
@@ -151,7 +136,6 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentMoused
   background: #dceafd;
 }
 
-/* Teleported to <body>, position: fixed — see position() above. */
 .comment-popover {
   position: fixed;
   z-index: 1000;

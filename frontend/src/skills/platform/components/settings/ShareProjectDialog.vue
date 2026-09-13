@@ -1,19 +1,4 @@
 <script setup>
-// Manage projects' own "Share project" — generates a fresh invite (see
-// postCreateInvite, POST /api/skills/platform/projects/{project_id}/invites) every time this
-// dialog opens, then shows a QR code and copyable link for it: a Web tab
-// (see shareLink.js/useAppBoot.js for the landing half: ?invite=<code>,
-// resolved and activated once the scanning session is authenticated, or
-// gated at registration if it isn't one yet) and, when whatsapp-service
-// is configured, a WhatsApp tab pointing at the same invite code (see
-// WhatsAppService._handle_unlinked, the receiving half). Both tabs share
-// the same QR/link/copy layout (InviteQrCard.vue).
-//
-// Pure content only — no backdrop, card chrome, or close button of its
-// own: ManageProjectsView.vue opens this through dialogStore.js's
-// customDialog(), so DialogHost.vue supplies all of that (including the
-// × that closes it) the same way it does for confirm/prompt/choose/
-// info/about.
 import { computed, onMounted, ref } from 'vue'
 import QRCode from 'qrcode'
 import { shareChannels } from '../../../registry.js'
@@ -28,9 +13,6 @@ const props = defineProps({
 
 const loading = ref(true)
 const error = ref('')
-// The web link is this dialog's own; any other way of handing an invite
-// over is contributed by whoever owns that channel, and names the field
-// of the invite its link arrives in.
 const WEB_CHANNEL = { id: 'web', label: 'Web', hint: "Scan to open this project's live chat." }
 
 const channel = ref(WEB_CHANNEL.id)
@@ -103,7 +85,7 @@ const hint = computed(() => {
 
 .share-project-title {
   margin: 0 0 0.2rem;
-  padding-right: 1.6rem; /* clears DialogHost.vue's × close button, top-right */
+  padding-right: 1.6rem;
   font-size: 1.05rem;
   font-weight: 600;
   color: #333;

@@ -1,7 +1,4 @@
 <script setup>
-// Run mode's embedded live chat, full height (mode is 'edit'/'run'/'test', mutually
-// exclusive, so this never shares space with Design's split-view). Auto-tracking state
-// comes straight from chatStore.js's shared singleton rather than being prop-drilled.
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ChatView from '../../../../../../components/chat/ChatView.vue'
 import ChatTimeline from '../../../../../../components/chat/ChatTimeline.vue'
@@ -21,12 +18,6 @@ const {
   state, handleReact, turnCount
 } = testStore
 
-// Input tokens burnt so far in the live session — same source
-// (getHistory's own per-message `tokens`) and math as EditProjectView.
-// vue's own autoSessionInputTokens, just event-driven off this store's
-// currentSessionId/turnCount instead of a session picked in Test mode.
-// Naturally reads as zero the moment a new/switched session has no
-// messages of its own yet — no separate reset needed.
 const sessionTokensBurnt = ref(0)
 async function refreshSessionTokensBurnt() {
   const sessionId = currentSessionId.value
@@ -40,7 +31,6 @@ async function refreshSessionTokensBurnt() {
       .filter((m) => m.role === 'user')
       .reduce((sum, m) => sum + (m.tokens ?? 0), 0)
   } catch {
-    // already surfaced via apiFetch
   }
 }
 watch(currentSessionId, refreshSessionTokensBurnt, { immediate: true })
@@ -55,13 +45,9 @@ defineProps({
   timeline: { type: Array, required: true },
   signalsLog: { type: Array, default: () => [] },
   selected: { type: Object, default: null },
-  // Function-as-prop: the parent owns the underlying state, this component just renders.
   resolveStateLabel: { type: Function, required: true },
   resolveActionLabel: { type: Function, required: true },
   isStateGone: { type: Function, required: true },
-  // Whether the project has an index.css to apply — "Apply aspect" stays
-  // visible but disabled without one rather than disappearing, so the
-  // toolbar's layout doesn't shift as a project gains/loses its theme.
   hasTheme: { type: Boolean, default: false }
 })
 
@@ -95,19 +81,11 @@ async function onDeleteSession(session) {
   }
 }
 
-// Central toolbar's own "Clear" button — deletes the current session
-// outright and immediately opens a brand new one, no confirmation (test
-// sessions are cheap/disposable, same reasoning as handleNewSession's
-// own confirmNewSession: false for this store — see testChatStore.js).
-// Deleting the session already wipes its own (ephemeral) env with it —
-// no separate clearEnv() call needed, and none scoped to the just-deleted
-// session would even make sense anymore.
 async function onClearSession() {
   const sessionId = currentSessionId.value
   try {
     if (sessionId != null) await deleteSession(sessionId)
   } catch {
-    // already surfaced via apiFetch
   }
   await handleNewSession()
   await loadSessions()
@@ -258,8 +236,6 @@ onBeforeUnmount(() => {
 
 .edit-project-chat-panel { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .edit-project-chat-toolbar { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: #f5f5f7; border-bottom: 1px solid #ddd; flex-shrink: 0; }
-/* Pinned right regardless of whether the tokens bar renders beside it
-   (hidden when total-token-budget-per-session isn't configured). */
 .edit-project-chat-toolbar-toggles { display: flex; align-items: center; gap: 1rem; margin-left: auto; }
 
 .run-clear-session-btn { flex-shrink: 0; padding: 0.35rem 0.75rem; border: 1px solid #c62828; border-radius: 6px; background: white; color: #c62828; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
@@ -267,16 +243,10 @@ onBeforeUnmount(() => {
 
 .dev-mode-toggle { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: #666; cursor: pointer; user-select: none; }
 .dev-mode-toggle input { cursor: pointer; }
-/* Same amber used elsewhere for "this changes normal behavior, pay
-   attention" (see .inspector-detail-badge-current) — freezing
-   transitions is a deliberate, temporary override, not the default. */
 .dev-mode-toggle-active { color: #b06a00; font-weight: 600; }
 .dev-mode-toggle-disabled { opacity: 0.6; cursor: not-allowed; }
 .dev-mode-toggle-disabled input { cursor: not-allowed; }
 
-/* Same shape as ProjectTestPanel.vue's own .tests-panel-tokens-bar —
-   this one tracks the live session's own input tokens against
-   total-token-budget-per-session instead of a test-run budget. */
 .run-tokens-bar { display: flex; align-items: center; gap: 0.4rem; min-width: 160px; }
 .run-tokens-icon { flex-shrink: 0; display: flex; color: #4a6fa5; }
 .run-tokens-label { font-size: 0.8rem; color: #555; white-space: nowrap; }
@@ -288,8 +258,6 @@ onBeforeUnmount(() => {
 </style>
 
 <style>
-/* Unscoped: teleported to <body> (see ProjectTestPanel.vue's own tokens
-   bar tooltip), outside this component's normal DOM subtree. */
 .run-tokens-tooltip-floating {
   position: fixed;
   width: max-content;

@@ -3,9 +3,6 @@ from __future__ import annotations
 import pytest
 
 from conftest import chat_turn, enter_chat, new_project, session_of
-
-# retention/activity_consistency are scoped to {all_sessions_per_user,
-# all_sessions}, so they're excluded from the one_session context here.
 EXPECTED_METRIC_NAMES = {"engagement", "state_stability", "signal_stability"}
 
 
@@ -24,8 +21,6 @@ def test_metrics_endpoint_returns_every_core_metric_with_ui_metadata(client, hel
 
 @pytest.mark.regression
 def test_metrics_reflect_an_empty_conversation_at_baseline(client, hello_project):
-    # Bootstrapping alone creates a session, so only message-driven
-    # metrics like signal_stability stay at the floor.
     enter_chat(client, hello_project)
 
     body = client.get(f"/api/core/projects/{hello_project}/metrics").json()

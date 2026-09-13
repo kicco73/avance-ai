@@ -73,9 +73,6 @@ def _automaton(revision: int) -> Automaton:
 def test_a_triggerable_signals_attachments_are_included_and_deduplicated():
     automaton = _automaton(revision=1)
     state_a = automaton.states["a"]
-
-    # global, then state's own (a duplicate of the global one, dropped),
-    # then mood's — never other's, nothing in "a" can trigger it.
     assert _turn_attachment_paths(automaton, state_a, include_signal_attachments=True) == [
         "global.txt", "mood.txt",
     ]
@@ -151,10 +148,6 @@ async def test_the_detecting_call_carries_the_triggerable_signals_own_attachment
 
     detecting_blocks = ai_service.histories[0][0]["content"]
     assert [block["filename"] for block in detecting_blocks] == ["global.txt", "mood.txt"]
-
-    # The regeneration call (post-transition, state "b") never re-requests
-    # 'signals' (see test_regeneration_skips_signals.py) — its own turn
-    # attachments must not carry mood's file either.
     regeneration_blocks = ai_service.histories[1][0]["content"]
     assert [block["filename"] for block in regeneration_blocks] == ["global.txt"]
 

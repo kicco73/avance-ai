@@ -21,11 +21,6 @@ from schemas import AcceptTermsRequest, LoginRequest, SetWhatsAppPhoneNumberRequ
 from system.web_session import WebSession
 
 from controllers.base_controller import BaseController, get, post, put
-
-#: The Terms of Service the registration screen shows before there is an
-#: account to gate on. Here rather than in docs/, which no build copies:
-#: this is not reference material, it is what a visitor must read before
-#: they can sign up at all.
 TERMS_PATH = Path(__file__).resolve().parent / "terms.md"
 
 
@@ -81,18 +76,9 @@ class AuthController(BaseController):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail=str(exc)) from exc
         return {"success": True}
-
-    # role="pending": App.vue's own TermsView-vs-InviteRequiredView gate
-    # needs this before ever posting terms/acceptance, for an identity
-    # that has no User row yet — same reachability as that route and
-    # logout.
     @get("/api/core/auth/pending-status", role="pending")
     def get_pending_status(self):
         return {"invite_exempt": self.auth_service.is_invite_exempt(WebSession().user)}
-
-    # role="pending": logout must stay reachable by an identity that
-    # rejected the Terms screen and never got a User row at all — not
-    # just by fully registered ones.
     @post("/api/core/auth/logout", role="pending")
     def post_logout(self, response: Response):
         response.delete_cookie(key=SESSION_COOKIE_NAME)

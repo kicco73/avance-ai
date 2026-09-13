@@ -143,21 +143,15 @@ async def _opened_session(turn_service: TurnService) -> int:
 
 @pytest.mark.regression
 async def test_transition_from_optimistic_guess_links_the_causing_user_message(db, turn_service_for):
-    # "before" mode generates a reply once against the current state's
-    # context; here foo=1 satisfies "foo >= 0", so the guess turns out
-    # wrong and a second, regenerated reply (against state "b") is used.
     ai_service = FakeSchemaAiService([{"signals": '{"foo": 1}'}, {"signals": '{"foo": 1}'}])
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
     session_id = await _opened_session(turn_service)
-    ai_service.call_count = 0  # bootstrap's own init-action opening message doesn't count
+    ai_service.call_count = 0
 
     result = await turn_service.process_turn(session_id, "hello")
 
     assert ai_service.call_count == 2
     assert result["new_state"] == "b"
-    # The row lands on the user's message — the one whose optimistic
-    # evaluation decided the transition fired, before the reply was
-    # even regenerated.
     assert db.get_signal_row_by_message(result["assistant_message_id"]) is None
     linked = db.get_signal_row_by_message(result["user_message_id"])
     assert linked is not None
@@ -166,21 +160,15 @@ async def test_transition_from_optimistic_guess_links_the_causing_user_message(d
 
 @pytest.mark.regression
 async def test_user_message_autotracking_makes_a_single_ai_call_when_the_optimistic_guess_is_right(db, turn_service_for):
-    # The common case: foo=-1 never satisfies "foo >= 0", so no transition
-    # fires and the one reply already generated (with the current state's
-    # own context) is simply used as-is — no second, wasted call.
     ai_service = FakeSchemaAiService([{"signals": '{"foo": -1}'}])
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
     session_id = await _opened_session(turn_service)
-    ai_service.call_count = 0  # bootstrap's own init-action opening message doesn't count
+    ai_service.call_count = 0
 
     result = await turn_service.process_turn(session_id, "hello")
 
     assert ai_service.call_count == 1
     assert result["state_changed"] is False
-    # No transition fired, but the evaluation itself still leaves a real,
-    # queryable row, linked to the user's message whose content decided
-    # nothing should fire.
     row = db.get_signal_row_by_message(result["user_message_id"])
     assert row is not None
     assert row["old_state"] is None and row["new_state"] is None
@@ -199,7 +187,7 @@ async def test_ai_message_evaluation_is_linked_to_the_assistant_message(db, turn
 
     linked = db.get_signal_row_by_message(result["assistant_message_id"])
     assert linked is not None
-    assert linked["new_state"] == "b"  # the trigger fired: foo >= 0
+    assert linked["new_state"] == "b"
 
 
 @pytest.mark.regression
@@ -229,9 +217,6 @@ async def test_set_message_expected_state_rejects_an_unknown_state(db, turn_serv
 
 @pytest.mark.contract
 async def test_set_message_expected_state_rejects_a_non_evaluation_point_message(db, turn_service_for):
-    # A message only becomes an evaluation point when signals were
-    # reported for its turn at all, so this needs a turn where the model
-    # reports no signals whatsoever.
     ai_service = FakeSchemaAiService([{}])
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True), ai_service=ai_service)
     session_id = await _opened_session(turn_service)
@@ -252,7 +237,6 @@ async def test_set_message_expected_signals_on_a_real_evaluation_point(db, turn_
 
     updated = turn_service.set_message_expected_signals(message_id, {"foo": 75})
     assert updated["expected_values"] == '{"foo": 75}'
-    # The actually-observed values must stay untouched.
     assert updated["values"] is not None
 
     cleared = turn_service.set_message_expected_signals(message_id, None)
@@ -283,13 +267,6 @@ async def test_set_message_expected_signals_rejects_an_out_of_range_value(db, tu
 
 @pytest.mark.regression
 async def test_opening_message_never_evaluates_signals_in_before_mode(db, turn_service_for):
-    # In "before" mode, an AI-started turn (opening message, or a new
-    # state's own opening line) has no real user text — just the "..."
-    # placeholder — so there is nothing genuine to evaluate a trigger
-    # against yet. Even if the model's very first call reports signals
-    # that would satisfy the trigger, no transition may fire off it: a
-    # schema-constrained provider can't emit 'signals' it was never asked
-    # for, and this turn must never ask for it in the first place.
     ai_service = FakeSchemaAiService([{"signals": '{"foo": 1}'}])
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
     session_id = await _opened_session(turn_service)
@@ -316,9 +293,9 @@ async def test_message_linking_end_to_end_bootstrap_and_one_real_turn(db, turn_s
     row the regenerated reply reported.
     """
     ai_service = FakeSchemaAiService([
-        {"signals": '{"foo": -1}', "memory": "stage: opening"},  # opening message — signals not requested, dropped
-        {"signals": '{"foo": 1}', "memory": "stage: guessed"},  # optimistic guess — fires "foo >= 0"
-        {"memory": "stage: crisis"},  # regenerated reply — signals never re-requested
+        {"signals": '{"foo": -1}', "memory": "stage: opening"},
+        {"signals": '{"foo": 1}', "memory": "stage: guessed"},
+        {"memory": "stage: crisis"},
     ])
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
     session_id = await _opened_session(turn_service)
@@ -351,9 +328,6 @@ async def test_message_linking_end_to_end_bootstrap_and_one_real_turn(db, turn_s
 
 @pytest.mark.regression
 async def test_process_turn_touches_the_session_with_the_plain_state_key_not_the_payload(db, turn_service_for):
-    # Regression: touch_session's CoreSession.end_state is a CharField —
-    # passing the full StatePayload dict instead of its "key" silently
-    # stores a Python repr there instead of the state key.
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=True))
     session_id = await _opened_session(turn_service)
 

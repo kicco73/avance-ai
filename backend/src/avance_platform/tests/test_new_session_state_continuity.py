@@ -73,10 +73,6 @@ def test_new_live_session_resumes_the_users_current_state_not_init(client):
     created = _created(client, project_id)
     assert created["state"]["key"] == "b"
     assert "task" not in created
-
-    # A brand-new session has no Tracking rows of its own yet — entering
-    # it by its own id must still read "b" off the session's own persisted
-    # start_state, not fall back to init for lack of a transition to read.
     assert _reopened(client, created["session_id"])["state"]["key"] == "b"
 
 
@@ -115,7 +111,6 @@ def test_new_test_session_still_restarts_at_init_every_time(client, app_db):
     project_id = _upload_and_publish(client)
     first = _info_of(create_chat(client, project_id, "test"))
     assert first["state"]["key"] == "a"
-    # init-action's task fires as a task, never inside the frames.
     assert [t["payload"]["script"].strip() for t in app_db.list_tasks()] == ["task.send_mail(user.email, 'hi')"]
 
     assert chat_action(client, first["session_id"], "go")["state"]["key"] == "b"

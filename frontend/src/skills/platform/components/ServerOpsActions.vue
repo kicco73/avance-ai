@@ -1,10 +1,4 @@
 <script setup>
-// The operations an administrator performs on the deployment, offered
-// inside Settings' own Data tab. The tab itself is core — it describes
-// what this deployment has configured — and these change it, so they are
-// contributed rather than built in (see skills/registry.js's
-// servicesTabActions). A build without this panel shows the tab with
-// nothing to press.
 import { confirmDialog } from '../../../dialogStore.js'
 import ProgressSpinner from '../../../components/ProgressSpinner.vue'
 import { useServerOperations } from '../useServerOperations.js'
@@ -24,9 +18,6 @@ async function selectWipeAllLiveSessions() {
   await handleWipeAllLiveSessions()
 }
 
-// Only ever removes archive revisions that are already unreachable
-// (superseded drafts, never published, no session pinned to them) — safe
-// by construction, unlike the wipe above, so no danger styling.
 async function selectCleanUnusedRevisions() {
   const ok = await confirmDialog({
     title: 'Clean unused revisions',

@@ -103,8 +103,6 @@ describe('skill boundaries', () => {
   })
 
   it('keeps every skill test inside its own skill', () => {
-    // The registry is core, and a core test may mock it like any other
-    // core module; what a core test may never reach is a skill itself.
     const offenders = sourceFilesUnder(join(ROOT, 'tests'))
       .filter((path) => path !== THIS_FILE)
       .flatMap((path) => specifiersIn(path)
@@ -138,13 +136,6 @@ describe('skill boundaries', () => {
     expect(specifiersIn(REGISTRY).filter((specifier) => specifier.includes('/'))).toEqual(['../skillRoster.js'])
   })
 
-  // A skill renders with components/skillkit/ and with nothing else the
-  // core happens to own. The directories below are the authoring app's
-  // own screens: they go with the authoring skill when it is cut out, so a
-  // skill importing from one of them is a skill -> skill dependency that
-  // has not been recognised yet. That is exactly what happened to the
-  // benchmark, which mounted the editor's State tab with its writes
-  // switched off until both screens were built from the same cards.
   it('never reaches into a screen the authoring app owns', () => {
     const owned = ['components/inspector/', 'components/settings/', 'components/project/', 'components/appStore/']
     const offenders = []

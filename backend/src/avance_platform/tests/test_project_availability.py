@@ -68,7 +68,6 @@ def _publish_project(db, project_service: ProjectService, project_id: str, index
 
 
 def _chain(db, project_service) -> None:
-    # a -> b -> c (a observes b, b observes c)
     _publish_project(db, project_service, "c", VALID_YML)
     _publish_project(db, project_service, "b", _yml_observing("c"))
     _publish_project(db, project_service, "a", _yml_observing("b"))
@@ -91,10 +90,6 @@ def project_service(db) -> ProjectService:
 def test_a_valid_project_with_no_dependencies_is_available_while_one_whose_saved_content_fails_to_build_is_paused(db, project_service):
     _publish_project(db, project_service, "solo", VALID_YML)
     assert db.get_project_availability("solo") == (False, None)
-
-    # Bypasses ProjectService's own save-time validation on purpose, since
-    # every real save path already rejects a broken build outright —
-    # recompute_availability must still degrade gracefully rather than raising.
     db.ensure_project("broken")
     db.save_project_files("broken", {"index.yml": b"not: [valid, yaml: at all"}, {"index.yml": "text/yaml"})
     db.publish_project("broken")
@@ -131,10 +126,6 @@ def test_pausing_and_recovering_a_project_cascade_through_a_dependency_chain(db,
     a_paused, a_reason = db.get_project_availability("a")
     assert b_paused is True and "c" in b_reason
     assert a_paused is True and "b" in a_reason
-
-    # "c" itself gets fixed and re-saved — a real recompute (build
-    # succeeds, no paused dependency of its own) rather than a manual
-    # flip, closer to what a real recovery looks like.
     project_service.recompute_availability("c")
     publish(AvailabilityChanged(project_id="c", available=True))
 
@@ -144,9 +135,6 @@ def test_pausing_and_recovering_a_project_cascade_through_a_dependency_chain(db,
 
 
 def test_a_mutual_dependency_between_two_projects_converges_without_looping_forever(db, project_service):
-    # a observes b AND b observes a — a genuine cycle. This test's own
-    # completion (no RecursionError/hang) is half the assertion; the
-    # other half is that both ends up paused exactly once.
     _publish_project(db, project_service, "a", _yml_observing("b"))
     _publish_project(db, project_service, "b", _yml_observing("a"))
     project_service.register_availability_cascade()
@@ -158,9 +146,6 @@ def test_a_mutual_dependency_between_two_projects_converges_without_looping_fore
 
     assert db.get_project_availability("a")[0] is True
     assert db.get_project_availability("b")[0] is True
-    # "b"'s event cascades back to "a", whose recompute finds it's
-    # already paused (the "unchanged, don't republish" guard) — so
-    # exactly these two events fire, total, never a third or a loop.
     assert set(received) == {
         AvailabilityChanged(project_id="a", available=False),
         AvailabilityChanged(project_id="b", available=False),
@@ -204,8 +189,6 @@ def test_changing_a_projects_id_pauses_observers_of_the_stale_old_id(db, project
     assert is_paused is True
     assert "old_id" in reason
 
-
-# --- Manual pause/resume -----------------------------------------------
 
 
 def test_manual_pause_and_resume_are_the_only_transitions_between_running_and_manually_paused_and_survive_recomputes(db, project_service):
@@ -252,9 +235,6 @@ def test_manually_pausing_a_dependency_cascades_to_its_observer_and_resuming_it_
     is_paused, reason = db.get_project_availability("dependent")
     assert is_paused is True
     assert "dependency" in reason
-    # The dependent was never itself manually paused — resuming it isn't
-    # even a valid transition (it's 'paused', not 'manually_paused'), so
-    # only resuming "dependency" itself can bring it back.
     assert db.get_manually_paused("dependent") is False
 
     PlatformService(project_service).set_manually_running("dependency")

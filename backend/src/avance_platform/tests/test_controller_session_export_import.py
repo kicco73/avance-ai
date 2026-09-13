@@ -66,7 +66,7 @@ def test_export_covers_every_session_of_the_project_native_and_imported_alike_wi
     [imported] = [e for e in exported if e["name"] == "My export"]
     assert imported["comment"] == "session-wide note"
     assert imported["labeled"] is True
-    assert imported["timestamp"] is None  # an imported session never has one
+    assert imported["timestamp"] is None
     assert len(imported["messages"]) == 2
     first = imported["messages"][0]
     assert first["role"] == "user"
@@ -131,7 +131,7 @@ def test_a_native_looking_json_session_restores_its_timestamps_states_values_and
     assert exported["start_state"] == "Hello"
     assert exported["end_state"] == "Hello"
     assert exported["messages"][0]["tokens"] == 42
-    assert "tokens" not in exported["messages"][1]  # omitted when unknown
+    assert "tokens" not in exported["messages"][1]
     assert exported["messages"][1]["values"] == {"mood": 0.5}
     assert exported["messages"][1]["new_state"] == "Hello"
 
@@ -194,7 +194,7 @@ def test_a_mixed_batch_skips_only_the_malformed_sessions_without_aborting_the_re
         files=[
             ("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain")),
             ("files", ("more.json", json.dumps([
-                {"messages": [{"role": "user"}]},  # missing required 'text' — malformed
+                {"messages": [{"role": "user"}]},
                 {"name": "Good one", "username": "User 1", "messages": [{"role": "user", "text": "hi"}]},
             ]), "application/json")),
         ],

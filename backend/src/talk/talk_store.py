@@ -44,8 +44,6 @@ class LiveTalkGeneration(object):
             if self._done:
                 return
             self._new_data.clear()
-            # A chunk (or finish()) may have landed between the while
-            # above and clear() — recheck instead of awaiting forever.
             if i < len(self._chunks) or self._done:
                 continue
             await self._new_data.wait()
@@ -53,14 +51,8 @@ class LiveTalkGeneration(object):
 
 class TalkStore(object):
     def __init__(self) -> None:
-        # Kept alive for the process's whole lifetime (not a `with` block,
-        # which would delete it immediately) — cleans itself up on
-        # interpreter exit.
         self._tempdir = tempfile.TemporaryDirectory(prefix="avance-talk-")
         self._base_dir = Path(self._tempdir.name)
-        # In-flight generations, keyed by cache key — purely in-memory,
-        # separate from the on-disk cache below, and gone the moment
-        # generation finishes (see finish_live_generation).
         self._live: dict[str, LiveTalkGeneration] = {}
 
     def start_live_generation(self, key: str) -> LiveTalkGeneration:

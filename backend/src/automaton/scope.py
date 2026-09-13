@@ -26,12 +26,9 @@ class EvaluationScope(dict):
         super().__init__(names)
         self.automaton = automaton
         self.state_key = state_key
-        # Only set on the task view: the action whose task is being rendered.
         self.action_name = action_name
 
     def for_task(self, action_name: str | None = None) -> "EvaluationScope":
-        # Imported here: identifier_registry imports automaton.automaton,
-        # which imports this module — a top-level import would be circular.
         from automaton.identifier_registry import IdentifierRegistry
         names = IdentifierRegistry.excluding(self, IdentifierRegistry.TASK_SCOPE_EXCLUDES)
         return EvaluationScope(names, automaton=self.automaton, state_key=self.state_key, action_name=action_name)

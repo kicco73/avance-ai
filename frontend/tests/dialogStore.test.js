@@ -60,13 +60,11 @@ describe('dialogStore', () => {
     const first = confirmDialog({ title: 'First', body: '...' })
     const second = confirmDialog({ title: 'Second', body: '...' })
 
-    // The second request is queued, not shown or replacing the first.
     expect(activeDialog.value.title).toBe('First')
 
     resolveActiveDialog(true)
     await first
 
-    // Resolving the first immediately promotes the second.
     expect(activeDialog.value.title).toBe('Second')
 
     resolveActiveDialog(false)

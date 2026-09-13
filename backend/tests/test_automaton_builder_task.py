@@ -114,8 +114,6 @@ def test_build_rejects_a_chat_call_inside_task_since_chat_is_on_exit_only():
         _build(_go("        task: chat.celebrate()\n"))
 
 
-# --- task.defer: everything that must hold at build time -------------
-
 def _project_with_task(task_line: str) -> str:
     return f"""
 project:
@@ -150,9 +148,6 @@ states:
     "datetime.datetime.now() + datetime.timedelta(days=signal.mood)",
 ])
 def test_defer_accepts_a_when_of_datetime_shape(when):
-    # A bare, unquoted "lambda: ..." on one YAML line misparses (YAML
-    # reads that colon as its own mapping separator) — the block scalar
-    # form (or an explicitly quoted line) is required in a real index.yml.
     content = _project_with_task(f"task.defer(lambda: task.send_mail(user.email, 'hi'), {when})").replace(
         "env:\n", "signals:\n  mood:\n    definition: mood\nenv:\n"
     )

@@ -144,8 +144,6 @@ describe('useAppBoot', () => {
       expect(handleStateChange).toHaveBeenCalled()
       expect(clearApiError).toHaveBeenCalled()
       expect(loadMessages).toHaveBeenCalled()
-      // The model roster is loaded through whatever panel contributed a
-      // selector; with none installed the null object is asked and says no.
       expect(modelSelector().available).toBe(false)
     })
 
@@ -157,13 +155,11 @@ describe('useAppBoot', () => {
       expect(pushedView.value).toBeNull()
       expect(showProfile.value).toBe(false)
       expect(navDirection.value).toBe('forward')
-      expect(loadMessages).not.toHaveBeenCalled() // admin, not user
+      expect(loadMessages).not.toHaveBeenCalled()
       expect(s.bootStatus.value).toBe('ready')
     })
 
     it('resolves the active project as where this session landed, whatever screen the role gets', async () => {
-      // One ref, not one per role: the expression that resolves it was
-      // the same in all three branches (see useViewStack/useAppBoot).
       getProjects.mockResolvedValue({ active: 'proj-x', projects: [] })
 
       await bootAs('supervisor')
@@ -173,16 +169,11 @@ describe('useAppBoot', () => {
 
     it('a 403 sets needsTerms without booting, reporting invite exemption only when the pending-status check says so', async () => {
       const pending = await bootPending({ invite_exempt: true })
-      expect(pending.bootStatus.value).toBe('checking') // never touched
+      expect(pending.bootStatus.value).toBe('checking')
       expect(getMe).not.toHaveBeenCalled()
-      // Regression: an admin who erased their own data, then just logs
-      // back in normally (no ?invite= link, see shareLink.js) — App.vue's
-      // gate must still route them to TermsView, not InviteRequiredView's
-      // dead end. See AuthService.is_invite_exempt.
       expect(pending.inviteExempt.value).toBe(true)
 
       expect((await bootPending({ invite_exempt: false })).inviteExempt.value).toBe(false)
-      // Fails closed if the check itself fails.
       expect((await bootPending(new Error('boom'))).inviteExempt.value).toBe(false)
     })
 
@@ -222,17 +213,15 @@ describe('useAppBoot', () => {
       getMe.mockResolvedValue({ role: 'admin' })
       const s = mount()
 
-      s.startBootSequence() // 1st sequence: will fail once, then schedule a retry
+      s.startBootSequence()
       await vi.advanceTimersByTimeAsync(0)
       expect(s.bootStatus.value).toBe('waiting')
 
-      s.startBootSequence() // 2nd sequence supersedes it — bootStatus resets
+      s.startBootSequence()
       expect(s.bootStatus.value).toBe('checking')
       await vi.advanceTimersByTimeAsync(0)
       expect(s.bootStatus.value).toBe('ready')
 
-      // The superseded 1st sequence's own scheduled retry, if it still fired,
-      // must not have clobbered anything — advancing further stays 'ready'.
       await vi.advanceTimersByTimeAsync(800)
       expect(s.bootStatus.value).toBe('ready')
     })
@@ -259,10 +248,6 @@ describe('useAppBoot', () => {
 
       await bootAs('admin')
 
-      // "Pushed straight into chat" is chatOpen, a separate flag from
-      // pushedView (App.vue's own string enum for the *other* pushed
-      // views — 'edit'/'label'/'manageUsers'/'appStore' — 'chat' was
-      // never one of its values).
       expect(chatOpen.value).toBe(true)
       expect(landingProjectName.value).toBe('shared-project')
       expect(loadMessages).toHaveBeenCalled()
@@ -336,7 +321,6 @@ describe('useAppBoot', () => {
       await s.handleTermsAccept()
 
       expect(postAcceptTerms).toHaveBeenCalledWith('invite-id')
-      // Still there for the later landing resolution.
       expect(consumeInviteCode).not.toHaveBeenCalled()
     })
 

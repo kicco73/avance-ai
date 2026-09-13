@@ -1,9 +1,3 @@
-// A live conversation belongs to one channel at a time. The backend
-// narrows `current` on the way out for a conversation opened on another
-// channel (see backend webchat/webchat_service.py), so the chat learns it
-// cannot write from the frame it already reads — what it adds here is
-// only the wording: "no longer active" and "being had somewhere else" are
-// two different things to a person, and only one of them has a way back.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))
@@ -59,7 +53,6 @@ describe('a conversation being had on another channel', () => {
 
     bus.deliver({ type: 'session.ended', session_id: 7, reason: 'user' })
 
-    // Closed, not moved: there is nothing to continue somewhere else.
     expect(chatStore.selectedSessionActive.value).toBe(false)
     expect(chatStore.liveStore.conversationElsewhere.value).toBe(false)
   })
@@ -91,8 +84,6 @@ describe('a conversation being had on another channel', () => {
   })
 
   it('is never what a conversation with no channel at all looks like', async () => {
-    // test and preview sessions are nobody's channel — the editor's Run
-    // chat must not read as a conversation happening elsewhere.
     bus.deliverEntered({ sessionId: 7, projectId: 'proj', state: STATE, channel: null })
 
     expect(chatStore.liveStore.conversationElsewhere.value).toBe(false)

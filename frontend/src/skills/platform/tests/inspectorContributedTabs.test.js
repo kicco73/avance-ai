@@ -2,10 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, nextTick, ref } from 'vue'
 import Inspector from '../components/inspector/Inspector.vue'
 
-// The mechanism EditProjectView uses to render a tab it does not know
-// about: a dynamic slot name, the scoped registerTab it hands back, and a
-// component that must end up registered under that id so refresh/resize
-// reach it.
 const ContributedTab = defineComponent({
   props: { workspace: { type: Object, required: true } },
   setup(props, { expose }) {

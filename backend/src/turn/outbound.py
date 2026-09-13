@@ -22,13 +22,7 @@ from system.web_session import WebSession
 from turn.tool_status_text import tool_status_text
 
 logger = LoggerFactory.get_logger(__name__)
-
-#: What a sender with no user row gets: the bottom of the ladder in
-#: auth/roles.py, never nothing.
 _LEAST_PRIVILEGED = "pending"
-
-#: Ends the drain below. Not a Message: a sentinel a producer could
-#: never publish by accident.
 _DONE = object()
 
 
@@ -75,9 +69,6 @@ class Outbound(object):
             try:
                 await bus.publish(item)
             except Exception as exc:  # noqa: BLE001
-                # One frame nobody could take must not strand the rest:
-                # a turn that stops publishing mid-stream leaves whoever
-                # is listening waiting for an end that never comes.
                 logger.exception("Publishing %s failed: %s", item.type, exc)
 
     def said(self, messages: list[dict]) -> None:
@@ -95,8 +86,6 @@ class Outbound(object):
             self.put(OUTPUT_TEXT, {
                 "text": str(message.get("content") or ""),
                 "assistant_message_id": message.get("id"),
-                # The server's own time for this message, not the clock of
-                # whoever is showing it.
                 "timestamp": message.get("timestamp"),
             })
 
@@ -164,17 +153,8 @@ class Outbound(object):
         elif key == "chunk":
             self.put(OUTPUT_TEXT_STREAM, {"text": value})
         elif key == "typing":
-            # The reply has started being written and none of it is
-            # readable yet — an empty piece of it, sent once: right before
-            # real generation starts for the model (see TrackingProcessor.
-            # process), or when an operator's own human_typing frame
-            # arrives for a human-answered turn.
             self.put(OUTPUT_TEXT_STREAM, {"text": ""})
         elif key == "tool":
-            # One frame type for both phases — a reader tells them apart
-            # by phase. status_text is only ever meaningful on "start"
-            # (see tool_status_text); "result" carries the payload as it
-            # is.
             self.put(OUTPUT_TOOL, {**value, "status_text": tool_status_text(value)} if value["phase"] == "start" else value)
 
 

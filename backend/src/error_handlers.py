@@ -26,11 +26,6 @@ class ApiErrorHandlers:
         if code is not None:
             body["error"]["code"] = code
         if fields:
-            # Isolated key: never disturbs the flat message/detail/code
-            # shape every other error path already relies on. Only
-            # AutomatonBuildError populates this today (see
-            # AutomatonBuildError.fields — project_id/revision/file/line/
-            # section, whichever are actually known).
             body["error"]["fields"] = fields
         return body
 

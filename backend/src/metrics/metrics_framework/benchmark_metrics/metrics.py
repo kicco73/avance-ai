@@ -15,9 +15,6 @@ class Statistics(object):
     a single named signal's own accuracy outside the full calculator
     pipeline) should too, rather than re-deriving mean/median/distribution
     by hand."""
-
-    # Fixed-width buckets across the shared 0..100 scale — coarse enough
-    # to read as a shape at a glance, fine enough to show a bimodal split.
     DISTRIBUTION_BUCKET_COUNT = 10
 
     @classmethod
@@ -253,8 +250,6 @@ class BenchmarkAccuracyMetric(BenchmarkMetric):
 
 
 class BenchmarkStabilityMetric(BenchmarkMetric):
-    # Dispersion of the project's own error only means something across
-    # the whole cross-session benchmark, not one session alone.
     scope = frozenset({"all_sessions"})
 
     @property
@@ -270,8 +265,6 @@ class BenchmarkStabilityMetric(BenchmarkMetric):
         return "How consistent (low-dispersion) the project's behavior is relative to the benchmark, independent of its accuracy."
 
     def calculate(self, observations: tuple[BenchmarkObservation, ...]) -> BenchmarkMetricResult:
-        # Stability is calculated from error distributions. For normalized
-        # accuracy values, 0..100 is the complete observable error range.
         error_groups: dict[str, list[float]] = {
             "state_error": [100.0 - float(o.state_agreement) for o in observations if o.state_agreement is not None],
             "signal_error": [
@@ -294,8 +287,6 @@ class BenchmarkStabilityMetric(BenchmarkMetric):
 
 
 class BenchmarkConsistencyMetric(BenchmarkMetric):
-    # Systematic directional bias only means something across the whole
-    # cross-session benchmark, not one session alone.
     scope = frozenset({"all_sessions"})
 
     def __init__(self, configuration: BenchmarkConfiguration | None = None) -> None:
@@ -314,9 +305,6 @@ class BenchmarkConsistencyMetric(BenchmarkMetric):
         return "Absence of a systematic directional bias in signal values or transition timing — 100 means no consistent over/under-estimation."
 
     def calculate(self, observations: tuple[BenchmarkObservation, ...]) -> BenchmarkMetricResult:
-        # 100 means no systematic directional error. Signal bias is measured
-        # from signed actual-expected differences; timing bias from signed
-        # transition delays. All exposed scores are normalized to 0..100.
         signal_biases: dict[str, list[float]] = {}
         for observation in observations:
             for name, error in observation.signal_signed_errors.items():

@@ -12,7 +12,6 @@ from conftest import enter_chat, parse_sse_result, session_of
 
 pytestmark = pytest.mark.contract
 
-# A single, final, no-chat state (no outgoing actions).
 INDEX_YML = """
 project:
   id: proj
@@ -43,7 +42,6 @@ def test_reading_an_imported_sessions_messages_survives_a_final_live_state(clien
     assert client.post("/api/core/projects/proj/activate").status_code == 200
     assert client.post("/api/skills/platform/projects/proj/publish", json={}).status_code == 200
 
-    # Bootstraps the live conversation into its final, no-chat state.
     native_id = session_of(enter_chat(client, "proj"))
     assert client.get(f"/api/core/sessions/{native_id}/history").status_code == 200
 

@@ -73,11 +73,6 @@ class ProjectService(object):
     def get_automaton(self, project_id: str, revision: int) -> Automaton:
         return self.inspector.get_automaton(project_id, revision)
 
-    # XXX Compiled automaton requirement - do not touch.
-    # XXX BuildService has just replaced this revision's package on disk,
-    # and whatever is cached for it is the interpreted automaton it
-    # supersedes — the loader itself is not a collaborator BuildService has.
-
     def invalidate_automaton(self, project_id: str, revision: int) -> None:
         self.automaton_loader.invalidate(project_id, revision)
 
@@ -129,11 +124,6 @@ class ProjectService(object):
 
     def reset_test_sessions(self, project_id: str) -> None:
         self.manager.reset_test_sessions(project_id)
-
-    # -- ProjectEditor / ProjectManager: editing a project ---------------
-    # Restored: these are operations *on a project*, and they stay with
-    # the project. Only the design view calls them today, but that is a
-    # fact about today's callers, not about what they are.
 
     async def activate_project_idempotent(self, project_id: str) -> Automaton:
         return await self.manager.activate_project_idempotent(project_id)

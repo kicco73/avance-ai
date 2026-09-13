@@ -63,8 +63,6 @@ class Conversation(object):
         self._lock = asyncio.Lock()
         self._flushes: set[asyncio.Task] = set()
 
-    # --- what the person sent ------------------------------------------ #
-
     async def receive(self, incoming: IncomingMessage) -> None:
         async with self._lock:
             await incoming.routed(self)
@@ -88,8 +86,6 @@ class Conversation(object):
             note = InboundVoiceNote(self._client, incoming, self._envelope(session_id))
             for _ in filter(lambda heard: not heard, [await note.heard()]):
                 await self.notify(note.notice())
-
-    # --- which conversation this is ------------------------------------ #
 
     async def _resolved(self) -> int | None:
         self._stage = _ENTERING
@@ -120,8 +116,6 @@ class Conversation(object):
             project_id=self._project_id(),
             session_id=session_id, channel=CHANNEL, origin_id=self.id,
         )
-
-    # --- what came back ------------------------------------------------- #
 
     async def informed(self, body: dict, session_id: int | None) -> None:
         self._session_id = session_id
@@ -156,8 +150,6 @@ class Conversation(object):
 
     def spoken_reply(self, spoken) -> None:
         self._reply.spoken_reply(spoken)
-
-    # --- what goes out --------------------------------------------------- #
 
     async def notify(self, text: str) -> None:
         self._pending = None

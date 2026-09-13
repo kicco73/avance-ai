@@ -96,9 +96,6 @@ def test_history_is_scoped_per_user_and_per_project(db):
     _save(db, b"bob-v1", user="bob")
     _save(db, b"b-v0", user="alice", project="proj-b")
     _save(db, b"b-v1", user="alice", project="proj-b")
-
-    # bob's own undo stack on notes.txt is empty even though the file has
-    # history for alice, and his no-op leaves alice's trail untouched.
     assert db.has_undo("bob", "proj", "notes.txt") is False
     assert db.undo_project_file("bob", "proj", "notes.txt", b"whatever bob has open") is None
     assert db.has_undo("alice", "proj", "notes.txt") is True
@@ -136,15 +133,15 @@ def test_delete_unused_archive_revisions_removes_superseded_unpublished_drafts_a
     assert db.delete_unused_archive_revisions() == 0
 
     db.save_project_files("proj", {"index.yml": b"v1"}, {"index.yml": "text/yaml"})
-    db.publish_project("proj")  # revision 1 published — revision 0 is now unused
-    db.save_project_files("proj", {"index.yml": b"v2"}, {"index.yml": "text/yaml"})  # revision 2 (draft)
+    db.publish_project("proj")
+    db.save_project_files("proj", {"index.yml": b"v2"}, {"index.yml": "text/yaml"})
 
     db.save_project_files("proj-a", {"index.yml": b"a-v0"}, {"index.yml": "text/yaml"})
     db.publish_project("proj-a")
     db.save_project_files("proj-a", {"index.yml": b"a-v1"}, {"index.yml": "text/yaml"})
-    db.publish_project("proj-a")  # proj-a's revision 0 is now unused
+    db.publish_project("proj-a")
     db.save_project_files("proj-b", {"index.yml": b"b-v0"}, {"index.yml": "text/yaml"})
-    db.publish_project("proj-b")  # a single revision — nothing to clean
+    db.publish_project("proj-b")
 
     assert db.delete_unused_archive_revisions() == 2
     assert db.list_archives("proj", revision=0) == []
@@ -160,7 +157,7 @@ def test_delete_unused_archive_revisions_keeps_a_revision_pinned_by_a_session(db
     db.publish_project("proj")
     db.create_chat_session(username="user", project_id="proj", revision=0, start_state="a")
     db.save_project_files("proj", {"index.yml": b"v1"}, {"index.yml": "text/yaml"})
-    db.publish_project("proj")  # revision 0 is unpublished now, but still pinned by a session
+    db.publish_project("proj")
 
     assert db.delete_unused_archive_revisions() == 0
     assert db.list_archives("proj", revision=0) == ["index.yml"]

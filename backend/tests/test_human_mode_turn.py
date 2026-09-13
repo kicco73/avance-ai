@@ -93,9 +93,6 @@ def turn_service_for(tmp_path):
 
         def build_talker(username, session_id, session_type, project_id):
             calls["count"] += 1
-            # Only the first turn's own talker waits on delay_first — a
-            # second, concurrent turn must get its own independent reply
-            # without ever being blocked by the first one's own wait.
             is_first = calls["count"] == 1
             return _FakeHumanTalker(reply_text, delay=delay_first if is_first else None)
 
@@ -123,17 +120,11 @@ async def test_a_human_operators_reply_arrives_as_the_turns_own_done_frame(turn_
     namespace_factory.set_human_operator(session["id"], OPERATOR)
 
     events = await _run_turn(turn_service, turn_service_for.db, session["id"], "turn-1", "hello, is anyone there?")
-
-    # _FakeHumanTalker always yields an empty string first (standing in
-    # for HumanTalker's own typing-race first yield): the operator has
-    # started writing and nothing is readable yet, which is what an empty
-    # chunk says (see turn/input_listener.py's own on_metadata).
     assert [event for event, _ in events] == [
         "output.text_stream", "output.text_stream", "state.buttons", "output.text",
     ]
     assert [body.get("text") for event, body in events[:2]] == ["", "sure, let me check"]
     assert [data["text"] for event, data in events if event == "output.text"] == ["sure, let me check"]
-    # Nothing moved: no state.changed at all.
     assert "state.changed" not in [event for event, _ in events]
 
 
@@ -164,7 +155,6 @@ async def test_a_second_message_waits_for_the_operator_rather_than_being_answere
         "second message, sent before the first is answered",
     ))
     await asyncio.sleep(0)
-    # Accepted, in arrival order, while the operator is still writing.
     assert [m["content"] for m in turn_service_for.db.get_messages(session["id"]) if m["role"] == "user"] == [
         "first message", "second message, sent before the first is answered",
     ]

@@ -89,8 +89,6 @@ async def test_after_mode_orders_audio_text_signals_memory():
     assert _first_occurrence_order(events) == ["audio", "text", "signals", "memory"]
 
 
-# --- 'reaction' channel: excluded by default, inserted right after 'signals' ---
-
 def test_reaction_channel_excluded_by_default():
     prompt = Prompt.chain(None, None, None, TextPrompt(BASE_PROMPT), MemoryPrompt(_StubEnv()))
     assert "reaction" not in prompt.schema()

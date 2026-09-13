@@ -84,7 +84,6 @@ def test_a_self_loop_re_entering_the_state_forces_it_again(db):
     state = State(key="a", ui_label="A", final=False, contextual_prompt="hi", ai_must_read_sources=("flights",))
     _enter_state(db, session_id, "", "a", T0)
     _assistant_message(db, session_id, T0 + timedelta(seconds=1))
-    # A self-loop action lands back on "a" — old_state == new_state == "a".
     _enter_state(db, session_id, "a", "a", T0 + timedelta(seconds=2))
 
     assert _processor(db, session_id, state).force_required_tools_for(state) is True

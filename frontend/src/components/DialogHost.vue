@@ -1,11 +1,4 @@
 <script setup>
-// Single native <dialog> that renders whatever dialogStore.js's
-// activeDialog currently is — confirm/prompt/textarea/choose/info/about/
-// custom, mutually exclusive by construction (dialogStore.js only ever
-// hands this one request at a time). showModal()/close() are driven by the
-// watch below; everything about focus trapping, ESC handling, and
-// focus-return on close is the browser's own <dialog> behavior, not
-// reimplemented here.
 import { computed, nextTick, provide, ref, watch } from 'vue'
 import { activeDialog, resolveActiveDialog } from '../dialogStore.js'
 import { renderMarkdown } from '../markdown.js'
@@ -15,15 +8,10 @@ const CLOSE_ANIMATION_MS = 180
 
 const dialogEl = ref(null)
 const inputEl = ref(null)
-// Toggles the card's own enter/leave class — separate from the <dialog>
-// element's open/closed state so the close path can play the exit
-// transition *before* the native close() actually fires (see closeWith).
 const cardVisible = ref(false)
 
 const promptValue = ref('')
 
-// prompt and textarea share the same single-string value/validate
-// contract below — only how the field itself renders differs.
 const TEXT_INPUT_KINDS = ['prompt', 'textarea']
 
 const promptError = computed(() => {
@@ -32,9 +20,6 @@ const promptError = computed(() => {
   return dialog.validate(promptValue.value) || ''
 })
 
-// The value closeWith() is mid-way through resolving with — read by the
-// native 'close' listener once close() actually fires, since that event
-// carries no payload of its own.
 let pendingResult
 
 watch(activeDialog, async (dialog) => {
@@ -43,19 +28,11 @@ watch(activeDialog, async (dialog) => {
   await nextTick()
   dialogEl.value?.showModal()
   if (TEXT_INPUT_KINDS.includes(dialog.kind)) inputEl.value?.focus()
-  // Mounts in its "from" state first (opacity: 0 / scaled down, see
-  // .dialog-card below) — flipping the class on the next frame is what
-  // actually makes the enter transition play instead of starting already
-  // in its "to" state.
   requestAnimationFrame(() => { cardVisible.value = true })
 })
 
-// Every closing interaction (button, backdrop click, ESC) funnels through
-// here, so there's exactly one place that plays the exit transition and
-// then hands off to the native close() — which is what actually resolves
-// the promise (see onNativeClose) and restores focus to the opener.
 function closeWith(value) {
-  if (!cardVisible.value) return // already closing
+  if (!cardVisible.value) return
   pendingResult = value
   cardVisible.value = false
   setTimeout(() => dialogEl.value?.close(), CLOSE_ANIMATION_MS)
@@ -65,25 +42,13 @@ function onNativeClose() {
   resolveActiveDialog(pendingResult)
 }
 
-// A 'custom' dialog's own component has no dialog-actions row of its own
-// (see the template below) — its content is the only thing that could
-// ever offer a real "OK" button, so this is how it reaches the same
-// closeWith() every other kind's own button already uses, and how it
-// resolves customDialog()'s promise with whatever it was opened to ask
-// for (see PublishRemapDialog.vue's chosen state). Unused by every other
-// kind, which close through their own buttons directly.
 provide('closeDialog', (value = null) => closeWith(value))
 
-// ESC fires 'cancel' (cancelable) before the native close — prevented so
-// closeWith's own animated sequence runs instead of an instant vanish,
-// while still treating ESC as an ordinary cancel.
 function onCancel(event) {
   event.preventDefault()
   closeWith(cancelValueFor(activeDialog.value))
 }
 
-// A click that lands on the <dialog> element itself (not a descendant) is
-// a click on its ::backdrop — there's no other way to hit-test that area.
 function onBackdropClick(event) {
   if (event.target === dialogEl.value) closeWith(cancelValueFor(activeDialog.value))
 }
@@ -170,9 +135,6 @@ function chooseOption(id) {
         <p v-if="promptError" class="dialog-field-error">{{ promptError }}</p>
       </template>
 
-      <!-- about/custom have no buttons of their own — the × above is the
-           only way to close them. Same for info, unless its own caller
-           opted into a single labeled button via okLabel (e.g. "Bye!"). -->
       <div
         v-if="[...TEXT_INPUT_KINDS, 'confirm', 'choose'].includes(activeDialog.kind) || (activeDialog.kind === 'info' && activeDialog.okLabel)"
         class="dialog-actions"
@@ -211,26 +173,6 @@ function chooseOption(id) {
 </template>
 
 <style scoped>
-/* The dialog's own dim/scrim, painted here rather than on .app-dialog's
-   own ::backdrop (see that rule's own comment) for two reasons found
-   together: ::backdrop's opacity transition + @starting-style gives it
-   an animated-opacity compositing layer, which WebKit clips to the
-   (short, on standalone iOS) viewport regardless of any bottom
-   extension — same failure mode TermsView.vue's own root ran into (see
-   App.vue's .app-backdrop comment for the general rule); and custom
-   property inheritance into ::backdrop isn't reliable in the first
-   place, so var(--viewport-bottom-overshoot) could easily have resolved
-   the 0px fallback there regardless. This element is a real, ordinary
-   box instead — always mounted (so its own transition can actually run
-   both ways, in and out) and toggled by .app-dim-active. Its own
-   dissolve animates background-color rather than opacity, which never
-   promotes a compositing layer, so the bottom extension below actually
-   holds. Never give this element opacity or transform of its own. z-index
-   above .dialog-card but below nothing that matters — the <dialog> this
-   dims sits in the browser's own top layer regardless, always above.
-   pointer-events: none — click-through is deliberate; onBackdropClick
-   still needs the (now fully transparent) ::backdrop to catch the
-   click-outside-to-close hit-test, which this element doesn't touch. */
 .app-dim {
   position: fixed;
   top: 0;
@@ -247,10 +189,6 @@ function chooseOption(id) {
   background: rgba(0, 0, 0, 0.35);
 }
 
-/* Unscoped rules below target ::backdrop (a scoped [data-v-xxx] attribute
-   selector can't reach a pseudo-element) and the <dialog> element's own
-   default UA styling, which needs resetting before .dialog-card's own
-   padding/sizing applies. */
 .app-dialog {
   padding: 0;
   border: none;
@@ -305,7 +243,7 @@ function chooseOption(id) {
 
 .dialog-title {
   margin: 0 0 0.5rem;
-  padding-right: 1.6rem; /* clears the × close button, top-right */
+  padding-right: 1.6rem;
   font-size: 1.05rem;
   font-weight: 600;
   color: #333;
@@ -459,13 +397,6 @@ function chooseOption(id) {
 </style>
 
 <style>
-/* Genuinely unscoped — ::backdrop belongs to the top-layer <dialog>
-   renders into, never reachable by this component's own [data-v-xxx]
-   scoping regardless of which <style> block it's declared in. Kept
-   transparent, deliberately minimal: the actual dim/scrim is .app-dim
-   above now (see its own comment for why), so this is only ever a
-   hit-test surface for onBackdropClick's click-outside-to-close — no
-   visible fill, no transition, nothing animated here at all. */
 .app-dialog::backdrop {
   background: transparent;
 }

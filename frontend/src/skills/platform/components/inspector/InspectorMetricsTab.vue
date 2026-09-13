@@ -25,8 +25,6 @@ async function loadMetrics() {
   }
 }
 
-// Heavier to compute than Signals/Env, so this only reloads while the tab
-// is actually visible.
 async function refresh(active) {
   if (active) await loadMetrics()
 }

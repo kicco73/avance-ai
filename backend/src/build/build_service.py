@@ -27,13 +27,7 @@ if TYPE_CHECKING:
     from project.project_service import ProjectService
 
 logger = LoggerFactory.get_logger(__name__)
-
-# Kept for the CLI, which writes a package wherever it is told to. A
-# build from the panel goes to the configured apps directory instead.
 BUILD_DIR = Path(__file__).resolve().parent
-
-# Names this package already uses for something else, so a project whose
-# id sanitizes to one of them cannot quietly overwrite it.
 _RESERVED = frozenset({"compiler", "build_service", "data"})
 
 
@@ -102,13 +96,9 @@ class BuildService:
         staging = staging_dir(self._apps_dir, module_name, revision)
         final = package_dir(self._apps_dir, module_name, revision)
         self._apps_dir.mkdir(parents=True, exist_ok=True)
-        # Whatever a previous failed build left behind, gone before this
-        # one writes a single file into the same place.
         shutil.rmtree(staging, ignore_errors=True)
         try:
             built = compile_contents(ArchiveLayout.decode_text(archives), module_name, staging, revision)
-            # Proven where the loader cannot see it. A package that does
-            # not import is a failed build, never something to publish.
             try:
                 import_automaton(built, project_id, revision)
             except PackageError as exc:
@@ -117,9 +107,6 @@ class BuildService:
             built.rename(final)
         finally:
             shutil.rmtree(staging, ignore_errors=True)
-        # The entry cached for this revision, if any, is the interpreted
-        # automaton — the compiled one must take its place from the next
-        # load on.
         self._project_service.invalidate_automaton(project_id, revision)
         discarded = discard_other_revisions(self._apps_dir, module_name, revision)
         logger.info(

@@ -35,11 +35,6 @@ class TaskNamespaceFactory:
         self._db = db
         self._scheduler_service = scheduler_service
         self._enabled_test_sessions: set[int] = set()
-        # session_id -> the username chat.switch_to_human(user_id)
-        # last targeted for it (see chat_namespace.py) — cleared by
-        # switch_to_ai. Same "no restart survives this" caveat as
-        # _enabled_test_sessions above; read by TrackingService._process
-        # to decide who answers a session's next turn.
         self._human_operators: dict[int, str] = {}
         self._hydrator = ScopeHydrator(db, project_service, self, ai_service)
         scheduler_service.register_task_type(ActionTask.TYPE, self._hydrator.hydrate)
@@ -55,8 +50,6 @@ class TaskNamespaceFactory:
 
     def _dispatcher(self, project_id: str, namespace_kind: str) -> TaskDispatcher:
         return TaskDispatcher(self._scheduler_service, self._hydrator, project_id=project_id, namespace_kind=namespace_kind)
-
-    # --- task namespace ---------------------------------------------------
 
     def live(self, *, project_id: str) -> LiveTaskNamespace:
         """Bound to `project_id`: what its task tasks are hibernated under."""
@@ -82,8 +75,6 @@ class TaskNamespaceFactory:
             task_namespace = self.live(project_id=session["project_id"])
         return task_namespace.with_session(session_id)
 
-    # --- chat namespace -----------------------------------------------------
-
     def chat_live(self, *, project_id: str) -> LiveChatNamespace:
         return LiveChatNamespace(project_id, factory=self)
 
@@ -99,8 +90,6 @@ class TaskNamespaceFactory:
         else:
             chat_namespace = self.chat_live(project_id=session["project_id"])
         return chat_namespace.with_session(session_id)
-
-    # --- shared -------------------------------------------------------------
 
     def is_enabled_for_test_session(self, session_id: int) -> bool:
         return session_id in self._enabled_test_sessions

@@ -1,45 +1,12 @@
 import { createChatSocket } from './api.js'
 
-// The one websocket per user, both directions, and the only thing that
-// owns it: connection lifecycle (connect/reconnect/heartbeat) plus pure
-// routing of every inbound frame to whoever subscribed to its `type`.
-// It knows nothing about what any frame means — chat turns correlate
-// themselves by session in chatExchange.js, notifications fan out in
-// notificationBus.js, and both are ordinary subscribers here.
-//
-// The WebSocket is the ONE and ONLY transport for a conversation, in
-// both directions: entering one, what was said in it, what a person
-// types, what comes back. There is no HTTP fallback and no alternative
-// endpoint — HTTP administers many sessions and never carries one (see
-// backend system/bus_channel.py and docs/BUS.md).
-
 const PING_INTERVAL_MS = 25000
 const PONG_TIMEOUT_MS = 10000
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000]
 
-// Mirrors backend system/bus_channel.py's own pair: another client of
-// this same identity took the chat channel over, and this socket is the
-// one that lost it. The newest connection always wins there, so retrying
-// would only steal it back and start a tug-of-war between two tabs —
-// which is why this must NOT feed the reconnect loop below. The socket
-// settles into the distinct 'superseded' connectionState instead (see
-// _settleSuperseded), and the app blocks its chat on that.
-//
-// The frame is the event; the close code that follows it is the same
-// verdict, for the case where the frame never lands (a socket that dies
-// first). Both funnel into the one idempotent _settleSuperseded().
 export const SWITCHED_TO_OTHER_CLIENT = 'switched_to_other_client'
 export const SUPERSEDED_CLOSE_CODE = 4410
 
-// Mirrors backend system/bus_channel.py's own CLIENT_REGISTRABLE: what a
-// connection may ask to be sent. Subscribing to one of these tells the
-// server so — a connection is sent nothing it did not ask for — while
-// every other frame type (a turn's own output.text_stream/turn.*, pong) is this
-// channel's local routing only and never leaves as a registration.
-//
-// human_prompt is on the list because registering for it is what makes a
-// tab the one answering as a person: the server sends it to whoever asked
-// and to nobody else.
 export const SERVER_EVENTS = [
   'ui.notification',
   'session.taken_over',
@@ -52,16 +19,12 @@ class ChatChannel {
   constructor() {
     this._socket = null
     this._connectingPromise = null
-    // 'connecting' | 'open' | 'closed' | 'superseded' — what ChatView's own
-    // banner and blocking overlay read.
     this._connectionState = 'closed'
     this._wanted = false
     this._reconnectAttempt = 0
     this._reconnectTimer = null
     this._pingTimer = null
     this._pongTimer = null
-    // True once any connection has ever opened — what tells a later 'open'
-    // apart as a *re*connection (the store's cue to resynchronize).
     this._everConnected = false
     this._subscribers = new Map()
     this._connectionStateHandlers = new Set()
@@ -71,11 +34,6 @@ class ChatChannel {
     }
   }
 
-  // `handler(frame)` for every inbound frame of this `type`, as many
-  // subscribers per type as ask for it. Returns an unsubscribe function.
-  // For a SERVER_EVENTS type this is a real registration on the server
-  // too: the first local subscriber makes the socket ask for it, and the
-  // last one to go makes it drop it again.
   subscribe(type, handler) {
     let handlers = this._subscribers.get(type)
     if (handlers === undefined) {
@@ -91,10 +49,6 @@ class ChatChannel {
     }
   }
 
-  // The types anything is currently listening for, out of what the
-  // server can actually export — derived from the subscriber registry
-  // itself rather than tracked alongside it, so the two can never
-  // disagree about what this connection wants.
   _registeredEvents() {
     return SERVER_EVENTS.filter((type) => (this._subscribers.get(type)?.size ?? 0) > 0)
   }
@@ -104,17 +58,11 @@ class ChatChannel {
     this.send({ type: action, events: [type] })
   }
 
-  // Every registration, restated on a socket that just opened: the
-  // server keeps them per connection, so a reconnection starts deaf
-  // until this runs.
   _registerAll() {
     const events = this._registeredEvents()
     if (events.length) this.send({ type: 'subscribe', events })
   }
 
-  // `handler(state, { reconnected })` on every transition. Returns an
-  // unsubscribe function. A 'open' that follows an earlier open connection
-  // carries reconnected: true — the store's cue to resynchronize.
   onConnectionState(handler) {
     this._connectionStateHandlers.add(handler)
     return () => this._connectionStateHandlers.delete(handler)
@@ -128,8 +76,6 @@ class ChatChannel {
     return this._socket !== null && this._socket.readyState === 1
   }
 
-  // Puts one frame on the wire. False means there was no open socket to
-  // put it on; the caller decides what that means for its own frame.
   send(payload) {
     if (!this.isOpen) return false
     this._socket.send(JSON.stringify(payload))
@@ -143,8 +89,6 @@ class ChatChannel {
       document.addEventListener('visibilitychange', this._onVisibility)
     }
     this._connectSocket().catch(() => {
-      // The close handler has already scheduled the retry — reconnection is
-      // automatic and permanent; there is no latch that gives up for good.
     })
   }
 
@@ -173,10 +117,6 @@ class ChatChannel {
     for (const handler of this._connectionStateHandlers) handler(next, { reconnected })
   }
 
-  // This socket lost the channel to a newer client of the same identity.
-  // Terminal on purpose: reconnecting would take it back off whoever is
-  // using it now. Idempotent — the frame says it, and so does the close
-  // code that follows.
   _settleSuperseded() {
     this._wanted = false
     if (typeof window !== 'undefined') {
@@ -231,9 +171,6 @@ class ChatChannel {
     this._pingTimer = setInterval(() => {
       if (ws.readyState !== 1) return
       ws.send(JSON.stringify({ type: 'ping' }))
-      // A NAT or a load balancer that quietly dropped the connection leaves
-      // the socket looking open forever — an unanswered ping is what
-      // actually detects that, rather than waiting for TCP to notice.
       if (this._pongTimer === null) {
         this._pongTimer = setTimeout(() => {
           this._pongTimer = null
@@ -249,8 +186,6 @@ class ChatChannel {
     this._reconnectAttempt++
     this._reconnectTimer = setTimeout(() => {
       this._reconnectTimer = null
-      // A failed attempt rejects; its own close handler schedules the next
-      // one, so there is nothing to handle here beyond not throwing.
       this._connectSocket().catch(() => {})
     }, delay)
   }
@@ -290,19 +225,12 @@ class ChatChannel {
       ws.onmessage = (event) => this._dispatch(event)
 
       ws.onerror = () => {
-        // A failed handshake reports both error and close; the close branch
-        // is the one that schedules the retry, so this only has to not throw.
       }
 
       ws.onclose = (event) => {
         this._socket = null
         this._connectingPromise = null
         this._stopHeartbeat()
-        // A real CloseEvent always carries `code`; our own explicit
-        // ws.close() (see disconnect() above) fires onclose with no event
-        // at all — never itself the superseded case. The state check
-        // catches the ordinary sequence, where the frame already settled
-        // this and the close is just the socket following it out.
         if (event?.code === SUPERSEDED_CLOSE_CODE || this._connectionState === 'superseded') {
           this._settleSuperseded()
           if (!opened) reject(new Error('Another client took over this chat.'))

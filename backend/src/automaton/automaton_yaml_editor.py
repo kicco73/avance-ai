@@ -28,16 +28,9 @@ class AutomatonYamlEditor:
 
     def __init__(self, raw_text: str) -> None:
         self._yaml = YAML(typ='rt')
-        # Matches real projects' hand-authored style (a sequence's "- "
-        # sits 2 spaces past its parent key) — ruamel's default indent
-        # would otherwise reformat every action list on a no-op edit.
         self._yaml.indent(mapping=2, sequence=4, offset=2)
         self._yaml.default_flow_style = False
-        # Without this, round-trip mode re-quotes scalars in its own
-        # preferred style, so an untouched value could gain/lose quotes.
         self._yaml.preserve_quotes = True
-        # Ruamel's default 80-column width would silently line-wrap any
-        # long scalar it re-dumps, even one an edit never touched.
         self._yaml.width = 4096
         self.__raw = self._yaml.load(raw_text)
         self._source_lines = raw_text.splitlines()
@@ -83,9 +76,6 @@ class AutomatonYamlEditor:
             raw = mapping[name]
         except KeyError:
             raise ValueError(f"{noun} '{name}' not found.") from None
-        # A bare `key:` declaration (no nested fields at all) parses as
-        # None, not {} — normalized in place the first time it's touched
-        # so every other accessor below can treat it as a plain mapping.
         if raw is None:
             raw = mapping[name] = CommentedMap()
         return raw
@@ -190,9 +180,6 @@ class AutomatonYamlEditor:
             "ui_label": raw_signal.get("ui-label", signal_name),
             "ui_description": raw_signal["ui-description"].strip() if raw_signal.get("ui-description") else (definition or None),
             "definition": definition,
-            # This class never resolves attachment filenames into real
-            # MemoryArchive objects — that needs the project's file
-            # store, not available here — so always empty.
             "attachments": {},
             "error": None,
         }
@@ -304,9 +291,6 @@ class AutomatonYamlEditor:
 
     def set_action_field(self, state_name: str, action_name: str, field: str, value) -> ActionPayload:
         raw_action = self._find_action(state_name, action_name)
-        # Empty `trigger`/`env` removes the key rather than storing falsy —
-        # has_trigger would otherwise report True, and AutomatonBuilder
-        # treats a missing env the same as an empty one either way.
         if field in ("trigger", "env") and not value:
             raw_action.pop(field, None)
         else:
@@ -424,7 +408,7 @@ class AutomatonYamlEditor:
         """Moves the automaton's start state. There's no way to unset it
         from here, only to move it to a different state (see
         delete_state's InitActionTargetError for the "can't delete the current one" guard)."""
-        self._state(state_name)  # raises ValueError if unknown, same as every other set_*_field
+        self._state(state_name)
         init_action = self.__raw.setdefault("init-action", CommentedMap())
         init_action["target"] = state_name
         return self._state_payload(state_name)
@@ -497,9 +481,6 @@ class AutomatonYamlEditor:
 
         for containing_key, raw_state in states.items():
             raw_actions = raw_state.get("actions") or []
-            # A self-loop (target omitted) targets the action's own
-            # containing state, never the one just deleted — resolved
-            # per action, not assumed, before comparing.
             remaining = [a for a in raw_actions if a.get("target", containing_key) != state_name]
             if len(remaining) != len(raw_actions):
                 raw_state["actions"] = remaining
@@ -544,10 +525,6 @@ class AutomatonYamlEditor:
             raise ValueError(
                 f"Position {position} is out of range for state '{state_name}''s {len(actions)} action(s)."
             )
-
-        # Moves the existing node itself (pop + insert), never rebuilds
-        # it, so any comment/formatting already attached to that one
-        # action's own entry travels with it.
         node = actions.pop(current_index)
         actions.insert(position, node)
 

@@ -3,9 +3,6 @@ import { getSessions, getSessionSignals } from './api.js'
 import { buildTimeline, highlightedStateKeyFor, latestSignalValues, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../../testTimeline.js'
 import { testStore } from './testChatStore.js'
 
-// The "Run" tab's live conversation as a clickable message+transition
-// timeline, plus the point in time the Inspector reflects (`selected`:
-// null follows the live conversation, a value pins it to a bubble/edge).
 export function useLiveRunTimeline(projectId, mode, validStateKeys) {
   const { state: runState, messages, currentSessionId, draft, handleSend, handleTruncateFrom } = testStore
 
@@ -14,8 +11,6 @@ export function useLiveRunTimeline(projectId, mode, validStateKeys) {
   const selected = ref(null)
   const runChatRef = ref(null)
 
-  // The in-flight assistant placeholder has no messageId yet: `key` carries
-  // the store's own stable local id so ChatTimeline can key on it.
   const rawLiveMessages = computed(() =>
     messages.value.map((m) => ({ ...m, id: m.messageId ?? null, key: m.id, audio_text: m.audioText }))
   )
@@ -32,7 +27,6 @@ export function useLiveRunTimeline(projectId, mode, validStateKeys) {
     try {
       signalsLog.value = await getSessionSignals(currentSessionId.value)
     } catch {
-      // already surfaced via apiFetch
     }
   }
 
@@ -45,7 +39,6 @@ export function useLiveRunTimeline(projectId, mode, validStateKeys) {
       const allSessions = await getSessions(projectId)
       sessionStartState.value = allSessions.find((s) => s.id === currentSessionId.value)?.start_state ?? null
     } catch {
-      // already surfaced via apiFetch
     }
   }
 

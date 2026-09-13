@@ -120,8 +120,6 @@ def test_root_shows_running_via_the_broadcaster_even_though_it_never_persists(cl
     started = threading.Event()
     release = threading.Event()
     job = _BlockingCancelableJob("batch:root", started, release)
-    # _submit is the only door a job goes through, and observing a *live*
-    # 'running' broadcast needs one parked mid-run.
     client.app.state.testing_service._submit(job)
     assert started.wait(timeout=2.0)
 
@@ -145,9 +143,6 @@ def test_an_individual_state_job_reports_its_own_running_status_via_all_states(m
         started.set()
         release.wait(timeout=2.0)
         return await original_compute(self)
-
-    # _compute is _AggregationJob's own abstract extension hook, the
-    # designed place to park a state job mid-run.
     monkeypatch.setattr(StateAggregationJob, "_compute", blocking_compute)
 
     response = client.post(

@@ -180,19 +180,11 @@ def chat_socket(client: TestClient, username: str | None = None):
     app = client.app
     username = username or WebSession().user
     app.state.db.get_or_create_user("test", f"sub-{username}", username, username, None)
-    # A row another path created first (a FK-driven placeholder) may
-    # carry no email — verify_token resolves the identity off that column.
     User.update(email=username, role=WebSession().role).where(User.id == username).execute()
     identity = AuthenticatedUser(provider_user_id=f"sub-{username}", email=username, name=username, picture_url=None)
     token = app.state.auth_service._issue_token(identity, "test")
-    # A turn typed into the browser is answered by webchat and by nothing
-    # else (see webchat/skill.py): without that package the socket opens
-    # and no frame ever comes back.
     installed_skill("webchat")
     with client.websocket_connect("/api/core/bus", headers={"cookie": f"{SESSION_COOKIE_NAME}={token}"}) as ws:
-        # A browser is told nothing it did not register for (see
-        # BusChannel._exportable) — this helper stands in for one,
-        # so it registers for everything the socket may export.
         ws.send_json({"type": "subscribe", "events": list(WEB_FORWARDED)})
         yield ws
 
@@ -285,9 +277,6 @@ def chat_turn_frames(client: TestClient, session_id: int, text: str, turn_id: st
             while True:
                 frame = ws.receive_json()
                 frames.append(frame)
-                # The answer is the `output.text` published after the
-                # choices; an earlier one is a message the state owed
-                # before it could answer.
                 kinds = [f["type"] for f in frames]
                 if kinds[-1] == "output.error" or (kinds[-1] == "output.text" and "state.buttons" in kinds):
                     return frames
@@ -417,10 +406,6 @@ def _reset_project_file_cache():
 def _default_session_user():
     WebSession().user = "user"
     WebSession().role = "supervisor"
-    # WebSession().channel has no per-request middleware in these fixtures
-    # (see app()'s own docstring) and WebSession().impersonate never resets
-    # it, so a test that sets it (WhatsApp-channel tests) would otherwise
-    # leak "whatsapp" into whichever test runs next in this worker.
     WebSession().channel = "webchat"
 
 
@@ -461,9 +446,6 @@ class FakeAiService:
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, list[dict]]] = []
-        # The reply's own [audio] text, announced mid-generation the way a
-        # schema provider announces it. None is a provider that never
-        # speaks — what a test wanting a spoken reply sets.
         self.audio_text: str | None = None
 
     def get_models_info(self) -> dict:
@@ -482,8 +464,6 @@ class FakeAiService:
         return 4096
 
     def get_input_tokens(self, prompt: str) -> int:
-        # Deterministic word-count stand-in — good enough to exercise
-        # callers without a real provider's count-tokens call.
         return len(prompt.split())
 
     async def generate(self, system_prompt: str, history: list[dict], on_retry=None) -> str:
@@ -498,16 +478,9 @@ class FakeAiService:
 
     async def generate_stream(self, system_prompt: str, history: list[dict], on_retry=None):
         self.calls.append((system_prompt, history))
-        # Must be an actual async generator, not just a coroutine, since
-        # callers consume it with `async for`.
         yield "Fake AI reply."
 
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
-        # What TurnProtocolUsingSchema actually calls — this fake reports
-        # no metadata of its own beyond audio_text (no test here cares
-        # about signals/env extraction; see FakeSchemaAiService in
-        # test_turn_service_evaluation_points.py for that), just the same
-        # plain reply text generate_stream above always returned.
         self.calls.append((system_prompt, history))
         for text in filter(None, [self.audio_text]):
             on_metadata("audio", text)
@@ -631,18 +604,11 @@ def app(
         app_db, fake_ai_service, fake_ai_service, project_service, session_manager,
         tracking_service, metric_service, scheduler_service, namespace_factory,
     )
-    # No real providers: this app fixture never goes through AuthMiddleware
-    # (that's only wired in main.py's create_app(), not here) or exercises
-    # /api/skills/platform/auth/*, so nothing needs a real Google client id to resolve.
     auth_service = AuthService(app_db, [], token_ttl_in_hours=24 * 7, project_service=project_service)
 
     fastapi_app = FastAPI(title="Avance State Engine (test)")
     ApiErrorHandlers.register(fastapi_app)
-    # One shared connection per identity, as in main.py — the skills that
-    # answer a turn collect it from the registry below.
     bus_channel = BusChannel(auth_service)
-    # A channel posts what a person said; this is what answers it. Core,
-    # as in main.py — a build with no chat window still runs turns.
     TurnInput(turn_service, app_db).register()
     bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({
         "db": app_db,
@@ -654,8 +620,6 @@ def app(
         "ai_test_service": fake_ai_service,
         "progress_broadcaster": progress_broadcaster,
         "bus_channel": bus_channel,
-        # Never backend/apps: a test that builds must not write into the
-        # developer's own working tree.
         "apps_dir": tmp_path / "apps",
         "services_config": services_config,
         "version": "test-version",
@@ -665,14 +629,8 @@ def app(
         turn_service, project_service, bus_channel=bus_channel,
     )
     fastapi_app.include_router(controller.router)
-    # Every service the composed system ended up with, under the name it
-    # is registered by — including the ones a skill built for itself and
-    # offered back (see testing/skill.py). Collected after the router is
-    # assembled, which is when a skill's own _install has run.
     for name, service in bus.collect(POINT_CORE_SERVICES, {}).items():
         setattr(fastapi_app.state, name, service)
-    # The scheduler is never started here — most tests only ever assert on
-    # the Task rows a task leaves behind. run_pending_tasks starts it.
     fastapi_app.state.namespace_factory = namespace_factory
     return fastapi_app
 
@@ -817,9 +775,6 @@ def _git_renamed_test_files() -> dict[str, str]:
         if not last_commit:
             return {}
         diff = subprocess.run(
-            # tests/ and src/*/tests/: a skill's tests live inside its own
-            # package (see src/docs/TESTS.md), so renames there have to be
-            # followed too or every one of them leaves dead stats behind.
             ["git", "diff", "--relative", "--name-status", "-M", "--diff-filter=R", last_commit, "--", "tests/", "src/"],
             cwd=repo_dir, capture_output=True, text=True, timeout=5,
         ).stdout

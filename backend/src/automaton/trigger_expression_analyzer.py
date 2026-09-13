@@ -11,19 +11,9 @@ class TriggerExpressionAnalyzer:
     """Everything a trigger/`env:` expression's own text can be statically
     analyzed for, without evaluating it: which identifiers/namespaces it
     references, and whether an ordering comparison mixes incompatible types."""
-
-    # Reserved namespaces a trigger/env expression resolves against. `automaton`
-    # has no entry in _NAMESPACE_PATHS below since automaton.<project>.state/
-    # env.<key> is a dynamic, per-project chain static-tuple matching can't
-    # express — same reason `source.<name>.<method>` is never matched through
-    # here either (see source_refs, matched directly instead).
     RESERVED_NAMESPACES = (
         "signal", "env", "session", "user", "source", "task", "chat", "attachment", "metric", "automaton", "datetime",
     )
-
-    # Dotted sub-namespaces nested one level under a reserved namespace above —
-    # each entry matches as a *whole* path, so `session.metric.<attr>` and plain
-    # `session.<attr>` resolve to different namespaces.
     NESTED_NAMESPACES = (("session", "metric"), ("datetime", "timezone"))
 
     _NAMESPACE_PATHS: tuple[tuple[str, ...], ...] = tuple((ns,) for ns in RESERVED_NAMESPACES) + NESTED_NAMESPACES
@@ -245,16 +235,9 @@ class TriggerExpressionAnalyzer:
         if chain is None or len(chain) != 2 or chain[0] != namespace:
             return None
         return chain[1]
-
-    # Every identifier whose runtime *type* is fixed by its own contract, well
-    # enough to check statically. `env.*` is absent: it's a free-form store any
-    # expression can set to anything, so its type is treated as unknown.
     _KIND_NUMBER = "number"
     _KIND_STRING = "string"
     _KIND_BOOL = "bool"
-    # A kind counts as "number-like" for ordering purposes: Python itself
-    # treats bool as an int subtype (`True >= 0.5` is legal), so mixing the
-    # two is never actually a runtime error.
     _NUMERIC_KINDS = (_KIND_NUMBER, _KIND_BOOL)
 
     _FIXED_IDENTIFIER_KIND: dict[tuple[str, ...], dict[str, str]] = {
@@ -264,10 +247,6 @@ class TriggerExpressionAnalyzer:
             "number_of_user_sessions": _KIND_NUMBER,
             "state_duration_in_minutes": _KIND_NUMBER,
         },
-        # Every User field (db/models.py) is a plain string once
-        # resolved (see db.users.UserMixin.get_user_facts's own
-        # _utc_iso formatting for created_at/last_login) — none of
-        # user.* is ever a number.
         ("user",): {
             "provider": _KIND_STRING,
             "provider_user_id": _KIND_STRING,
@@ -279,14 +258,7 @@ class TriggerExpressionAnalyzer:
             "active_project": _KIND_STRING,
             "role": _KIND_STRING,
         },
-        # `source.<name>.*` is absent here for the same reason
-        # `automaton.<project>.*` is: it's a dynamic, per-project chain
-        # this static path -> kind lookup can't express (see source_refs
-        # above) — its own kind is always unknown to this analyzer.
     }
-    # Every identifier under these namespaces is always a number, no per-name
-    # exceptions to look up — signals by contract, metrics because
-    # BaseMetric.result always clamps into [0, 100] as a float.
     _ALWAYS_NUMERIC_NAMESPACES = (("signal",), ("session", "metric"), ("metric",))
 
     _ORDERING_OPS: dict[type, str] = {ast.Lt: "<", ast.LtE: "<=", ast.Gt: ">", ast.GtE: ">="}
@@ -346,8 +318,6 @@ class TriggerExpressionAnalyzer:
                 )
         return violations
 
-    # --- task.defer(lambda: ..., when) --------------------------------
-
     _KIND_DATETIME = "datetime"
     _KIND_TIMEDELTA = "timedelta"
 
@@ -403,7 +373,7 @@ class TriggerExpressionAnalyzer:
             if not isinstance(node, ast.Call) or cls._dotted_chain(node.func) != ("task", "defer"):
                 continue
             if len(node.args) != 2 or node.keywords:
-                continue  # arity is reported by the builder's own check
+                continue
             act, when = node.args
             if not isinstance(act, ast.Lambda):
                 violations.append(
@@ -425,8 +395,6 @@ class TriggerExpressionAnalyzer:
                                 f"'{ast.unparse(argument)}'"
                             )
         return violations
-
-    # --- attachment.read(name) ---------------------------------------------
 
     @classmethod
     def attachment_read_violations(cls, expression: str) -> list[str]:

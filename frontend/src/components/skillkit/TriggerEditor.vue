@@ -1,7 +1,4 @@
 <script setup>
-// CodeMirror-backed editor for a single trigger/env `value` expression,
-// two-way bound via defineModel with no persistence of its own. Adds
-// autocomplete and per-namespace syntax coloring on top of plain CodeMirror.
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { EditorState } from '@codemirror/state'
 import {
@@ -30,16 +27,7 @@ import { NAMESPACE_COLORS, REFERENCE_PATTERN_SOURCE, completeIdentifiers as comp
 const model = defineModel({ type: String, default: '' })
 const props = defineProps({
   excludeNamespaces: { type: Array, default: () => [] },
-  // Taller CodeMirror content area — for a caller editing a real
-  // multi-line script (e.g. ScriptEditDialog.vue) rather than the usual
-  // one-line trigger/env expression.
   large: { type: Boolean, default: false },
-  // Where completion/hover tooltips mount — defaults to <body>, which
-  // works for every plain (non-modal) usage. A caller embedding this
-  // inside a native <dialog> (see ScriptEditDialog.vue) MUST override it to
-  // an element inside that same dialog: showModal() promotes the dialog
-  // to the browser's own top layer, so a body-parented tooltip renders
-  // behind it regardless of z-index — invisible, not just occluded.
   tooltipParent: { type: Object, default: null }
 })
 const emit = defineEmits(['blur'])
@@ -48,16 +36,10 @@ const loading = ref(true)
 const editorHost = ref(null)
 let view = null
 
-// Reads identifierRegistry.value fresh on every call rather than a local
-// snapshot, so an identifier added elsewhere while this editor is open is
-// visible on the very next keystroke.
 function completeIdentifiers(context) {
   return completeIdentifiersFor(context, excludingNamespaces(identifierRegistry.value, props.excludeNamespaces))
 }
 
-// Matches a namespace reference (e.g. "signal.mood") — group 1 is the
-// namespace path, used to look up its color. A fresh RegExp per mount:
-// the /g flag makes a shared instance carry lastIndex across instances.
 const namespaceMatcher = new MatchDecorator({
   regexp: new RegExp(REFERENCE_PATTERN_SOURCE, 'g'),
   decoration: (match) => {
@@ -79,11 +61,6 @@ const namespaceHighlighter = ViewPlugin.fromClass(
   { decorations: (instance) => instance.decorations }
 )
 
-// Same as CodeMirror's basicSetup, minus gutter pieces (lineNumbers etc.)
-// — a one-line trigger/env expression needs no line-number column, and
-// dropping just lineNumbers would still leave an empty gutter strip.
-// `large` (a real multi-line script, e.g. ScriptEditDialog.vue) adds
-// lineNumbers back in createEditor() below instead.
 const editorSetup = [
   highlightSpecialChars(),
   history(),
@@ -117,24 +94,10 @@ function createEditor() {
     extensions: [
       editorSetup,
       props.large ? lineNumbers() : [],
-      // Tab inserts indentation instead of moving focus away — only for
-      // a real multi-line script (large), and added as its own, later
-      // keymap extension rather than folded into editorSetup's own, so
-      // it stays lower-priority than completionKeymap etc. above (Tab
-      // still accepts an open completion first) and never reaches the
-      // single-line trigger/env editors, where Tab-to-next-field is
-      // the better default.
       props.large ? keymap.of([indentWithTab]) : [],
       EditorView.lineWrapping,
       autocompletion({ override: [completeIdentifiers] }),
       namespaceHighlighter,
-      // Without this, the completion tooltip's container defaults to the
-      // editor's own DOM (see @codemirror/view's TooltipViewManager),
-      // which .trigger-editor-host clips via overflow: hidden — the
-      // dropdown was getting cut off instead of floating over the rest
-      // of the Inspector. Escaping to <body> (the default — see
-      // tooltipParent below) needs the standalone .cm-tooltip z-index
-      // rule below to still land above the panel.
       tooltips({ parent: props.tooltipParent ?? document.body }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) model.value = update.state.doc.toString()
@@ -149,16 +112,11 @@ function setEditorDoc(newContent) {
   view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: newContent } })
 }
 
-// Handles a model change this editor's own updateListener didn't cause —
-// e.g. the caller switching this still-open editor to a different
-// expression without remounting it.
 watch(model, (newValue) => {
   if (view && newValue !== view.state.doc.toString()) setEditorDoc(newValue)
 })
 
 onMounted(async () => {
-  // identifierRegistry is populated elsewhere; completion sources read it
-  // live at call time, so this component never needs its own fetch.
   loading.value = false
   await nextTick()
   createEditor()
@@ -193,14 +151,6 @@ onBeforeUnmount(() => {
 </style>
 
 <style>
-/* Unscoped: tooltips({ parent: document.body }) above (see
-   createEditor) renders every completion tooltip — the list and this
-   "info" side-panel alike — straight onto <body>, outside this
-   component's DOM subtree, so a scoped style's data-v-* selector would
-   never match it. z-index bumped past the Inspector panel/cards
-   (highest existing value in this app short of a real modal is 1000)
-   now that it's a body-level sibling instead of clipped inside
-   .trigger-editor-host. */
 .cm-tooltip {
   z-index: 1500;
 }

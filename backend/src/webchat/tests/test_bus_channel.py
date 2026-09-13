@@ -734,9 +734,6 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     db = turn_service_for.db
     session = await turn_service.enter_session(PROJECT_ID, 'live')
     channel = BusChannel(_FakeAuthService())
-    # Two objects now, and the split is the point: core runs the turn and
-    # publishes what it produces, the chat window forwards what is
-    # addressed to a connection it holds (see turn/input_listener.py).
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
     TurnInput(turn_service, db).register()
     WebchatService(turn_service, channel, None).register()
@@ -750,9 +747,6 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
 
     loop_task = asyncio.create_task(channel.channel_loop(websocket))
     await _wait_for(lambda: len([m for m in db.get_messages(session["id"]) if m["role"] == "user"]) == 2)
-
-    # Both are persisted while the first turn is still inside the provider:
-    # nothing of the first reply exists yet.
     assert provider.first_round_started.is_set()
     assert [m["role"] for m in db.get_messages(session["id"])] == ["user", "user"]
     provider.release.set()
@@ -761,10 +755,6 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     persisted = db.get_messages(session["id"])
     assert [m["role"] for m in persisted] == ["user", "user", "assistant", "assistant"]
     assert [m["content"] for m in persisted if m["role"] == "user"] == ["I have a problem", "with flight VY3003"]
-
-    # Two answers, one per exchange: the first message was already being
-    # answered when the second arrived, so the second got its own (see
-    # turn/input_listener.py's own coalescing).
     own = _frames_of(websocket.sent, session["id"])
     assert own[0] == {**own[0], "type": "output.text_stream", "text": ""}, own
     assert [f["type"] for f in own if f["type"] == "output.text"] and own[-1]["type"] == "output.text", own
@@ -785,11 +775,6 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
     websocket = _ScriptedWebSocket(
         [json.dumps({"type": "input.text", "session_id": session["id"], "text": "hello?"})],
     )
-
-    # The turn is core's task now, not this service's, so there is
-    # nothing here to await: the terminal frame it publishes is what says
-    # it finished — and it publishes it whether or not anyone is left to
-    # forward it, which is the whole point of this test.
     finished = asyncio.Event()
 
     async def note_the_end(_message):
@@ -799,17 +784,12 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
 
     loop_task = asyncio.create_task(channel.channel_loop(websocket))
     await _wait_for(provider.first_round_started.is_set)
-    # The browser goes away mid-generation.
     websocket.disconnect_now.set()
     await asyncio.wait_for(loop_task, 5)
     provider.release.set()
     await asyncio.wait_for(finished.wait(), 5)
 
     assert [m["role"] for m in db.get_messages(session["id"])] == ["user", "assistant"]
-    # The only frame queued before the browser actually left is the empty
-    # chunk process() always sends first (see tracking_processor.py) —
-    # nothing from the reply itself made it, since generation was still
-    # gated behind provider.release at the moment of disconnect.
     assert [(f["type"], f["text"]) for f in websocket.sent] == [("output.text_stream", "")]
 
 
@@ -821,14 +801,11 @@ def test_every_outgoing_frame_of_a_turn_carries_its_turn_id_and_chunks_precede_d
 
     kinds = [f["type"] for f in frames]
     assert frames[-1]["type"] == "output.text"
-    # The empty chunk always precedes generation (see tracking_processor.py's
-    # own process()), then the pieces, then every whole message.
     assert (frames[0]["type"], frames[0]["text"]) == ("output.text_stream", "")
     chunks = [f for f in frames if f["type"] == "output.text_stream" and f["text"]]
     whole = [f for f in frames if f["type"] == "output.text"]
     assert chunks and whole
     assert kinds.index("output.text") > max(i for i, kind in enumerate(kinds) if kind == "output.text_stream")
-    # The last whole message is the answer, and the pieces were pieces of it.
     assert whole[-1]["text"] == "".join(f["text"] for f in chunks)
 
 

@@ -35,9 +35,6 @@ FLIGHTS = "codice_volo,data_partenza,datetime_partenza_reale\nVY3003,2026-08-16,
 def _seed(db, files: dict[str, bytes], content_types: dict[str, str]) -> int:
     db.ensure_project(PROJECT_ID)
     db.save_project_files(PROJECT_ID, files, content_types)
-    # A draft revision is rewritten in place, so seeding twice in one test
-    # leaves the same (project, revision, path) holding new bytes — what
-    # ProjectManager.finalize_update forgets for a real save.
     PROJECT_FILE_CACHE.forget_project(PROJECT_ID)
     return db.get_project_revision(PROJECT_ID)
 
@@ -84,10 +81,6 @@ def test_select_rows_containing_raises_for_an_unknown_or_binary_archive(db):
 
 
 def test_select_rows_containing_returns_the_header_plus_every_case_insensitive_match_or_the_empty_string_or_every_row(db):
-    # "" means "not found," full stop — the header only ever appears
-    # alongside at least one matching row (see SourceDriver.
-    # select_rows_containing's own docstring), so
-    # `select_rows_containing(...) != ''` is a real existence check.
     driver, _ = _seeded_driver(db, "cities.csv", CSV)
 
     assert driver.select_rows_containing("paris") == "city,country\nParis,France\nparis,Texas\n"
@@ -97,11 +90,6 @@ def test_select_rows_containing_returns_the_header_plus_every_case_insensitive_m
 
 
 def test_select_rows_containing_result_beyond_the_char_limit_is_refused_with_the_header_still_attached(db):
-    # One header row plus enough matching rows to blow well past
-    # MAX_SOURCE_RESULT_CHARS — every source.*/tool result is bounded
-    # the same way, regardless of caller (see SourceDriver._bounded). The
-    # header rides along on the refusal so the model still knows the
-    # field names to narrow its next query by.
     rows = "\n".join(f"paris-row-{i}" for i in range(MAX_SOURCE_RESULT_CHARS))
     driver, _ = _seeded_driver(db, "big.csv", f"header\n{rows}\n")
 
@@ -116,10 +104,6 @@ def test_select_rows_containing_ands_several_values_together_while_one_value_ret
 
 
 def test_create_delete_and_read_do_not_exist_and_update_is_unsupported_on_the_archive_driver(db):
-    # create/delete/read are gone entirely, from SourceDriver itself.
-    # update is part of the uniform interface (an avance:env source
-    # implements it) but this driver opts out — the base class's own
-    # "not supported" default, never a silent no-op.
     driver, _ = _seeded_driver(db, "notes.txt", "hello", content_type="text/plain")
 
     assert not hasattr(driver, "create")
@@ -152,7 +136,6 @@ def test_select_rows_where_compares_numbers_iso_dates_and_text_returning_whole_r
     assert driver.select_rows_where("data_partenza", ">=", "2026-08-16").count("VY3003") == 2
     assert driver.select_rows_where("data_partenza", "<", "2026-08-16") == ""
     assert driver.select_rows_where("codice_volo", "!=", "VY3003") == ""
-    # A datetime cell still compares against a plain ISO date.
     assert driver.select_rows_where("datetime_partenza_reale", "<", "2026-08-17") == (
         "codice_volo,data_partenza,datetime_partenza_reale\nVY3003,2026-08-16,2026-08-16 07:12\n"
     )
@@ -173,9 +156,6 @@ def test_select_rows_where_reports_an_unknown_column_or_operator_as_text_never_a
 
 
 def test_select_rows_where_ands_additional_strings_with_the_column_condition(db):
-    # A column condition combined with the same AND'd substring filter as
-    # select_rows_containing — narrows a range/comparison query that would
-    # otherwise return too many rows.
     driver, _ = _seeded_driver(
         db, "flights.csv",
         "codice_volo,data_partenza,city\nVY3003,2026-08-16,Barcelona\nVY4000,2026-08-16,Rome\nVY3003,2026-08-10,Barcelona\n",
@@ -184,14 +164,11 @@ def test_select_rows_where_ands_additional_strings_with_the_column_condition(db)
     assert driver.select_rows_where("data_partenza", "=", "2026-08-16", "Barcelona") == (
         "codice_volo,data_partenza,city\nVY3003,2026-08-16,Barcelona\n"
     )
-    # Several extra strings are AND'd together, same as select_rows_containing.
     assert driver.select_rows_where("data_partenza", "=", "2026-08-16", "Barcelona", "VY3003") == (
         "codice_volo,data_partenza,city\nVY3003,2026-08-16,Barcelona\n"
     )
     assert driver.select_rows_where("data_partenza", "=", "2026-08-16", "Tokyo") == ""
-    # The column condition is still applied — a matching string alone isn't enough.
     assert driver.select_rows_where("data_partenza", "=", "2026-08-10", "Rome") == ""
-    # No extra strings behaves exactly like before.
     assert driver.select_rows_where("data_partenza", "=", "2026-08-16") == (
         "codice_volo,data_partenza,city\nVY3003,2026-08-16,Barcelona\nVY4000,2026-08-16,Rome\n"
     )
@@ -221,9 +198,7 @@ def test_select_rows_in_range_ands_additional_strings_with_the_range_condition(d
         "codice_volo,data_partenza,city\nVY3003,2026-08-16,Barcelona\n"
     )
     assert driver.select_rows_in_range("data_partenza", "2026-08-15", "2026-08-20", "Tokyo") == ""
-    # The range condition is still applied — a matching string alone isn't enough.
     assert driver.select_rows_in_range("data_partenza", "2026-08-15", "2026-08-20", "Barcelona", "2026-08-10") == ""
-    # No extra strings behaves exactly like before.
     assert driver.select_rows_in_range("data_partenza", "2026-08-15", "2026-08-20") == (
         "codice_volo,data_partenza,city\nVY3003,2026-08-16,Barcelona\nVY4000,2026-08-16,Rome\n"
     )
@@ -275,12 +250,8 @@ class TestPerSessionReadCache:
 
         assert _driver(automaton, db, "notes.txt", session_id=42).select_rows_containing("original") == "note\noriginal\n"
         assert db.get_archive(PROJECT_ID, "cache/sessions/42/notes.txt", revision=revision) == b"note\noriginal\n"
-
-        # The project gets edited/republished underneath the still-open
-        # session — the canonical archive now reads differently, but this
-        # session's own cached copy keeps seeing exactly what it first read.
         db.save_project_files(PROJECT_ID, {"notes.txt": b"note\nedited\n"}, {"notes.txt": "text/plain"})
-        PROJECT_FILE_CACHE.forget_project(PROJECT_ID)  # what a real save does through finalize_update
+        PROJECT_FILE_CACHE.forget_project(PROJECT_ID)
         assert _driver(automaton, db, "notes.txt", session_id=42).select_rows_containing("original") == "note\noriginal\n"
         assert _driver(automaton, db, "notes.txt", session_id=None).select_rows_containing("edited") == "note\nedited\n"
 

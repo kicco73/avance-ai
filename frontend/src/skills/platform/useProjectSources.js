@@ -5,26 +5,10 @@ function sourceNameHint(fileName) {
   return fileName.replace(/\.[^./]+$/, '')
 }
 
-// The design tree's "Sources" branch (see FileExplorer.vue) and the
-// Inspector "Info" tab's own Source card: the declared-sources list, which
-// one (if any) is currently selected, and add/edit/delete. Every mutating
-// call routes through `guardedAction` (useProjectFiles.js's own
-// unsaved-changes guard) for the same reason state/signal/env-key edits do
-// (useIndexYmlEditing.js) — a source lives in the very same index.yml a
-// dirty raw-text buffer could otherwise clobber.
 export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) {
   const sourcesLoading = ref(true)
   const sources = ref([])
-  // Name of the design-tree Source node currently selected — mutually
-  // exclusive with currentFileName's own selection (see EditProjectView.vue's
-  // selectSource/selectFile wiring): never both truthy at once.
   const currentSourceName = ref(null)
-  // True while the "Sources" branch header itself is the selection — no
-  // individual source chosen yet (see FileExplorer.vue's own header
-  // click). Distinct from currentSourceName being merely null/falsy, so
-  // ProjectDesignPanel.vue's file-view conditions and InspectorStateTab.vue's
-  // isBehaviorContext can tell "nothing to do with Sources" apart from
-  // "Sources itself, no pick made" without a false-negative on either.
   const sourcesRootSelected = ref(false)
   const deletingSource = ref(null)
 
@@ -37,7 +21,6 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
     try {
       sources.value = (await getProjectSources(projectId)).sources
     } catch {
-      // already surfaced via apiFetch
     } finally {
       sourcesLoading.value = false
     }
@@ -62,7 +45,6 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
         currentSourceName.value = source.name
         flashRecentlyAdded(`source:${source.name}`)
       } catch {
-        // already surfaced via apiFetch
       }
     })
   }
@@ -77,7 +59,6 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
         currentSourceName.value = source.name
         flashRecentlyAdded(`source:${source.name}`)
       } catch {
-        // already surfaced via apiFetch
       }
     })
   }
@@ -89,11 +70,8 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
       try {
         const source = await putSourceField(projectId, name, field, value)
         await loadSources()
-        // Only a 'name' edit can rename the source — follow it, the same
-        // way handleSetEnvKeyField re-jumps to an env key's own new name.
         currentSourceName.value = source.name
       } catch {
-        // already surfaced via apiFetch
       }
     })
   }
@@ -109,7 +87,6 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
           sourcesRootSelected.value = true
         }
       } catch {
-        // already surfaced via apiFetch
       } finally {
         deletingSource.value = null
       }

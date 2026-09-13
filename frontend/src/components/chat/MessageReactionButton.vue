@@ -1,24 +1,11 @@
 <script setup>
-// Per-message user reaction: a pick-one from the active project's own
-// `reactions` vocabulary, attached to a bot message. No trigger of its
-// own — MessageBubble.vue opens the picker via the exposed open()/close()
-// below, off a long-press on the whole bubble, and passes the element to
-// position it against. Modeled on MessageCommentButton.vue's own popover
-// mechanics otherwise (teleport to body, click-away to close).
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 const props = defineProps({
-  // {key, ui_label}[] — the active project's whole reaction vocabulary,
-  // always the same list regardless of which state this message came from.
   reactions: { type: Array, default: () => [] },
-  // null/'' = no reaction yet; a key matching one of `reactions` = the
-  // currently chosen one, highlighted in the picker and shown as the
-  // read-only display below.
   reaction: { type: String, default: null }
 })
 
-// 'save' carries the chosen key, or null to clear — the parent owns the
-// actual API call, so this component has no idea one even exists.
 const emit = defineEmits(['save'])
 
 const open = ref(false)
@@ -41,9 +28,6 @@ async function openPopover(anchorEl) {
     : roomAbove
       ? rect.top - popoverRect.height - 6
       : Math.max(6, window.innerHeight - popoverRect.height - 6)
-  // Anchored at the bubble's own left edge, this can run past the right
-  // edge on a narrow phone where the bubble itself sits close to it —
-  // clamps back to stay fully on-screen either way.
   const left = Math.min(rect.left, window.innerWidth - popoverRect.width - 6)
   style.value = { top: `${top}px`, left: `${Math.max(6, left)}px` }
 }
@@ -52,28 +36,16 @@ function closePopover() {
   open.value = false
 }
 
-// Picking the already-active reaction again clears it — a plain toggle,
-// since there's no separate "remove" control in a one-tap picker.
 function pick(key) {
   emit('save', key === props.reaction ? null : key)
   closePopover()
 }
 
-// pointerdown (not mousedown): iOS doesn't reliably synthesize mousedown
-// for a tap outside an interactive element, so click-away could silently
-// fail to close the picker there.
 function onDocumentPointerdown(event) {
   if (popoverRef.value?.contains(event.target)) return
   closePopover()
 }
 
-// The popover is teleported to <body> at a fixed pixel position computed
-// once on open — it doesn't track the transcript's own scroll, so it'd
-// hang in place over whatever message scrolled into its spot. Closing on
-// scroll is simpler than re-anchoring on every frame and matches what
-// most chat apps do for this kind of popover. Capture phase: scroll
-// events don't bubble, but a capturing listener on document still sees
-// them on the way down to the actual scrolling element (.messages).
 function onAncestorScroll() {
   closePopover()
 }
@@ -131,9 +103,6 @@ defineExpose({ open: openPopover, close: closePopover })
 </template>
 
 <style scoped>
-/* Sits inside MessageBubble.vue's own .reaction-badge-slot (absolutely
-   positioned off the bubble's bottom-right corner) — same transparent,
-   no-chrome treatment as its read-only counterpart on a user bubble. */
 .reaction-display {
   display: flex;
   align-items: center;
@@ -143,9 +112,6 @@ defineExpose({ open: openPopover, close: closePopover })
   background: transparent;
 }
 
-/* Fade + bump on arrival — same animation as MessageBubble.vue's own
-   .reaction-badge-pop, copied here since Vue's scoped styles never cross
-   component files. Only on enter: a cleared reaction just vanishes. */
 .reaction-badge-pop-enter-active {
   animation: reaction-badge-bump 0.4s ease-out;
 }
@@ -165,7 +131,6 @@ defineExpose({ open: openPopover, close: closePopover })
   }
 }
 
-/* Teleported to <body>, position: fixed — see openPopover() above. */
 .reaction-popover {
   position: fixed;
   z-index: 1000;

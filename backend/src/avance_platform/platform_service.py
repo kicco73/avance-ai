@@ -34,13 +34,7 @@ if TYPE_CHECKING:
 class PlatformService(object):
 
     def __init__(self, project_service: "ProjectService") -> None:
-        # The project service itself, not its parts. Some of these
-        # methods also ask a question *about the project* — which
-        # revision is published, what its automaton is — and those are
-        # asked of it rather than reimplemented here.
         self.project_service = project_service
-        # Set by install(); a service that was built only to answer
-        # questions (as the tests build it) never has any.
         self.controllers: list = []
 
     def install(self, core: dict, controllers: list) -> None:
@@ -64,10 +58,6 @@ class PlatformService(object):
             for controller in (
                 EditProjectController,
                 InspectorController,
-                # Labelling only: the benchmark half of that screen left
-                # with the package that runs it (see
-                # testing/testing_controller.py), so a build without
-                # benchmarking still annotates sessions.
                 LabelProjectController,
                 ServerAdminController,
                 SettingsController,
@@ -76,15 +66,6 @@ class PlatformService(object):
             )
         ]
         controllers.extend(self.controllers)
-
-    # The collaborators are read through, never copied. Copying them in
-    # __init__ made this a snapshot: replacing project_service.ai_service
-    # or .web_crawler afterwards (which is exactly what the web-import
-    # tests do, and what any substitution at runtime would do) left this
-    # facade holding the originals, so a job built here used the real
-    # crawler while the caller believed it had installed a fake. Two
-    # facades over *one* set of collaborators was the whole point; these
-    # properties are what make that true rather than true-at-construction.
 
     @property
     def db(self):

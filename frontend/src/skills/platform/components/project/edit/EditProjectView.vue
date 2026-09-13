@@ -1,6 +1,4 @@
 <script setup>
-// Composes the three mode panels (Design/Run/Test) and owns only what's
-// cross-cutting: mode switch, header/publish controls, the Inspector.
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import ProjectDesignPanel from './design/ProjectDesignPanel.vue'
 import RunChat from './run/RunChat.vue'
@@ -37,8 +35,6 @@ import { totalTokenBudgetPerSession } from '../../../../../chatStore.js'
 import { activeChatMode } from '../../../../../chatSkin.js'
 import { setTestProject, testStore, testChatModelStore, loadTestChatModels } from '../../../testChatStore.js'
 
-// `runSessions` is the "Run" tab's own draft session pool, unrelated to
-// chatStore's project-wide `sessions` catalog used by useTestModeSelection.
 const {
   currentSessionId, turnCount, chatLoading, loadMessages, loadSessions,
   sessions: runSessions, refreshSessionsQuietly,
@@ -67,9 +63,6 @@ const {
   handleFileRenamedByHistory, handleFileSaved,
 } = useProjectFiles(props.projectId, emit)
 
-// Which chat a mode shows is the editor's own business, not something a
-// contributed mode gets asked about: the Run tab drives the draft chat,
-// everything else leaves the live one alone.
 const LIVE_CHAT = 'live'
 const DESIGN_MODE = { id: 'edit', label: 'Design' }
 const RUN_MODE = { id: 'run', label: 'Run', chatMode: 'test' }
@@ -85,7 +78,6 @@ const inspectorRef = ref(null)
 const { width: inspectorWidth, startDrag: startInspectorDrag } = useResizablePanel(360, {
   min: 240, max: 560, invert: true, onResize: () => inspectorRef.value?.resize()
 })
-// {kind, data} | null — shared by the Graph and the Inspector's Info tab.
 const selectedGraphElement = ref(null)
 
 const recentlyAddedKey = ref(null)
@@ -242,14 +234,6 @@ const workspace = reactive({
   jumpToAttachment: handleJumpToAttachment,
 })
 
-// The graph reload above rebuilds graphNodes/graphEdges from scratch, but
-// InspectorGraph.vue never re-emits 'select' for a design-mode selection
-// (only for `highlightedStateKey`, which Run/Test mode drives — see its
-// own syncSelectionToSelection). Left alone, selectedGraphElement.value
-// keeps pointing at the pre-reload node/edge object, so anything watching
-// selectedGraphElement.data (e.g. InspectorStateIOTab's input/output)
-// never sees the edit that was just made. Re-resolve it here off the
-// freshly-loaded graph, by the same key, so it becomes a genuinely new object.
 function resyncSelectedGraphElement() {
   const el = selectedGraphElement.value
   if (!el) return
@@ -348,10 +332,6 @@ function handleJumpToAttachment(fileName) {
 
 const { confirmLeaveIfNeeded } = useLeaveConfirmation(activeEditorIsDirty, 'Discard unsaved changes to this file?')
 
-// Unpublished changes are not asked about — leaving with a draft ahead of
-// the published revision is the normal way to work here, and publishing it
-// is Manage projects' own button. The only question left is the open
-// editor's own unsaved buffer (see useLeaveConfirmation).
 async function leaveEditProject(onLeave) {
   if (!(await confirmLeaveIfNeeded())) return
   onLeave()
@@ -375,7 +355,6 @@ function handleWindowResize() {
   inspectorRef.value?.resize()
 }
 
-// A completed turn: follow the newest message again, refresh what a turn can change.
 watch(turnCount, () => {
   selected.value = null
   refreshSignalsLog()
@@ -420,10 +399,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleWindowResize)
 })
 
-// A build warning says where it was found (see BuildCursor.warn) — the
-// same road a build error already takes, so it lands on the line rather
-// than leaving the author to hunt for it. One with no line is still
-// worth reading and goes nowhere.
 async function showWarning(warning) {
   if (warning.line == null) return
   modeId.value = DESIGN_MODE.id
@@ -675,8 +650,6 @@ async function handleSetSessionComment(sessionId, comment) {
 </template>
 
 <style scoped>
-/* Same amber palette as ErrorBanner.vue's -warning variant, kept inline
-   since build_warnings are a standing property of the draft. */
 .build-warnings-banner {
   padding: 0.5rem 1rem;
   background: #fff4e0;
@@ -697,9 +670,6 @@ async function handleSetSessionComment(sessionId, comment) {
   text-align: left;
 }
 
-/* Only the ones that know where they came from invite a click — a
-   warning with no line is still worth reading, just not worth pointing
-   at (see BuildCursor.warn). */
 .build-warnings-banner-line-locatable {
   cursor: pointer;
   text-decoration: underline;
@@ -773,7 +743,6 @@ async function handleSetSessionComment(sessionId, comment) {
   min-height: 0;
 }
 
-/* Narrow screens: the inspector takes over the whole overlay. */
 .inspector-panel {
   position: fixed;
   top: 0;

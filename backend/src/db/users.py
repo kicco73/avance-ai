@@ -115,9 +115,6 @@ class UserMixin:
             SystemWarning.update(user_id=target_id).where(SystemWarning.user_id == absorbed_id).execute()
             EditHistory.update(user_id=target_id).where(EditHistory.user_id == absorbed_id).execute()
             Invite.update(created_by=target_id).where(Invite.created_by == absorbed_id).execute()
-            # UserProject's PK is (user, project) — reassigning would
-            # collide wherever target already has its own row for that
-            # project, so those are dropped instead of overwriting it.
             target_projects = {
                 row.project_id for row in UserProject.select(UserProject.project).where(UserProject.user == target_id)
             }

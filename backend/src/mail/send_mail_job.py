@@ -32,9 +32,6 @@ class SendMailJob(CancelableJob):
         return None
 
     async def _run_next_step(self) -> None:
-        # Caught here rather than left to propagate: Job.run_next_step()
-        # (do-not-touch) only preserves str(exc) on failure, and send_mail
-        # needs the real exception object to chain into MailError.
         try:
             await aiosmtplib.send(
                 self._message,

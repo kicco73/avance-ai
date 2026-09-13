@@ -14,12 +14,6 @@ const props = defineProps({
   totalTokenBudgetPerSession: { type: Number, default: null }
 })
 
-// The card renders a session; saving one is the screen's business, the
-// same way every other card here reports a field and lets its owner
-// write it. Keeping the two writes inside meant importing platform's own
-// routes into a card that a read-only screen also mounts — the import
-// was the coupling, not the behaviour, since `editable` already returned
-// before either call could run.
 const emit = defineEmits(['set-title', 'set-comment', 'delete'])
 
 const expanded = ref(false)

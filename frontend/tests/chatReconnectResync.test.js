@@ -1,11 +1,3 @@
-// A socket that drops mid-exchange takes with it every frame that was
-// still coming, but not the exchange: the backend finishes and persists
-// it regardless (see backend system/bus_channel.py). A fresh socket also
-// knows nothing about which conversation this store is showing, and both
-// are answered by the same sentence — enter the conversation again. What
-// comes back is the whole of it, so whatever was half-written on screen
-// is replaced by what actually landed rather than reconciled by hand
-// (see chatReconnectSync.js).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installFakeChatSocket } from './fakeChatSocket.js'
 
@@ -31,9 +23,6 @@ describe('an exchange interrupted by a dropped socket', () => {
   let api
   let sockets
 
-  // What the server answers `session.enter` with, in its own order (see
-  // backend docs/BUS.md) — put on the wire, since this file drives the
-  // real channel rather than a fake bus.
   function enter(socket, messages) {
     socket.emit({
       type: 'session.info', session_id: 1, project_id: 'proj', state: STATE,
@@ -86,8 +75,6 @@ describe('an exchange interrupted by a dropped socket', () => {
     const rendered = chatStore.messages.value.map((m) => [m.role, m.content])
     expect(rendered).toEqual([['user', 'where is my flight?'], ['assistant', 'On time.']])
     expect(chatStore.messages.value.every((m) => !m.failed)).toBe(true)
-    // The half-written bubble was given up on with the socket, so nothing
-    // is left waiting on frames that will never come.
     expect(chatStore.chatLoading.value).toBe(false)
   })
 

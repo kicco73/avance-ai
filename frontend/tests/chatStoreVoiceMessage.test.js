@@ -1,7 +1,3 @@
-// A voice message occupies a row while something else turns it into
-// words. When the words arrive the row has to *change* — not merely hold
-// the right value: the text was written onto the raw object the closure
-// captured, so the value was there and nothing on screen ever redrew.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, watch } from 'vue'
 

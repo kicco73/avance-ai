@@ -38,8 +38,6 @@ class TestAutoLiveLLMProviderGetTotalTokens:
         assert cascade.get_total_tokens() == 15
 
     async def test_counts_a_provider_the_cascade_already_advanced_past(self):
-        # A cascade that failed over from "a" to "b" must still count
-        # whatever "a" already burned before the fallback kicked in.
         cascade = AutoLiveLLMProvider([("a", _FakeProvider(10)), ("b", _FakeProvider(5))])
 
         with pytest.raises(AIServiceProviderRateLimitedError):

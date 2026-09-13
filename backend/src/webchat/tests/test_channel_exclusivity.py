@@ -79,9 +79,6 @@ async def test_a_conversation_open_on_another_channel_reaches_the_browser_as_not
 
     (frame,) = connections.to_connection
     assert frame["current"] is False
-    # The channel itself travels on unchanged: the browser says *why* the
-    # conversation cannot be written to, and that is the only thing it
-    # reads the name for.
     assert frame["channel"] == "whatsapp"
 
 

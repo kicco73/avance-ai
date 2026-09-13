@@ -1,8 +1,3 @@
-// Keeps a bubble's tool status line ("Searching Flights…") on screen for
-// at least TOOL_STATUS_MIN_MS once shown, however fast the tool's own
-// result arrives — the backend never delays anything; the minimum is a
-// display concern and lives here only. `bubble` is whichever object owns
-// the status line and exposes setStatusText(text).
 export const TOOL_STATUS_MIN_MS = 1500
 
 export class ToolStatusHold {

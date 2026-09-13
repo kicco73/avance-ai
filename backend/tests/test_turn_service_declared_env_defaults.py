@@ -85,8 +85,6 @@ def _turn_service(db, automaton: Automaton) -> TurnService:
 
 
 def _env_for(db, session_id: int = 0) -> PersistedEnv:
-    # session_id is now required (PersistedEnv(None) raises) — every
-    # no-arg call below is read-only, so a placeholder id is fine.
     return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
 
 
@@ -125,9 +123,6 @@ async def test_a_key_that_already_has_a_value_is_never_recomputed(db):
 
 
 async def test_a_key_present_only_in_memory_is_not_already_set_the_default_still_applies(db):
-    # memory() and action_set() are different stores with different
-    # owners (see Env's own docstring) — a same-named memory note must
-    # never count as "already set" for the automaton's own env default.
     turn_service = _turn_service(db, _automaton({"a": "2"}))
     session = await turn_service.enter_session(PROJECT_ID, 'live')
     _env_for(db, session["id"]).update({"a": "stale note"})

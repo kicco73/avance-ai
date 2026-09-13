@@ -41,8 +41,6 @@ class BenchmarkCalculator(object):
         self._project_id = project_id
         self._session_id = session_id
         self._configuration = configuration or BenchmarkConfiguration()
-        # None here tells _build_observations to load from `db` normally;
-        # from_data below sets this instead.
         self._data: BenchmarkData | None = None
         self._metrics = self._select_metrics(metrics)
 
@@ -101,9 +99,6 @@ class BenchmarkCalculator(object):
             return BenchmarkObservationBuilder(self._configuration).build(self._data)
         sessions = self._load_sessions()
         session_ids = [int(row["id"]) for row in sessions]
-        # Tracking rows loaded once per session and reused for both frames
-        # (expected_state lives on the Tracking row, not the message) —
-        # refetching per frame would double the db calls for the same rows.
         signal_rows_by_session = {session_id: self._db.get_signals(session_id) for session_id in session_ids}
         messages = self._load_messages(session_ids, signal_rows_by_session)
         signals = self._load_signals(session_ids, signal_rows_by_session)
@@ -118,10 +113,6 @@ class BenchmarkCalculator(object):
         return BenchmarkObservationBuilder(self._configuration).build(data)
 
     def _load_sessions(self) -> list[dict[str, object]]:
-        # type=None: benchmark metrics compare expert annotations against
-        # replayed behaviour regardless of a session's origin — list_chat_sessions'
-        # own default (type='live') would silently drop every imported session,
-        # which is exactly where annotations usually live.
         username = self._username if self._session_id is None else None
         sessions = self._db.list_chat_sessions(username, self._project_id, type=None)
         if self._session_id is None:

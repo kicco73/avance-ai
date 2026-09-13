@@ -253,7 +253,6 @@ Maintenance
         failures = stats.get("failures", 0)
         seconds = duration_of(stats)
         
-        # 'first_run' is assumed present, falling back to 'last_run' or min
         first_run_str = stats.get("first_run") or stats.get("last_run") or ""
         first_run_dt = parse_iso_datetime(first_run_str)
         
@@ -285,13 +284,6 @@ Maintenance
         print(f"{plural(len(tests), 'test')}, {total_suite_duration:.1f} s ({total_suite_duration / 60:.2f} min)")
         print(f"candidates above {args.min_duration:g} s: {plural(len(eligible), 'test')}, {eligible_duration:.1f} s ({eligible_duration / 60:.2f} min)")
         return
-
-    # Ranking of the candidates for DELETION:
-    # 1. failures (ascending -> the ones that never failed first)
-    # 2. first_run timestamp (descending -> RECENT ones first, preserving the old ones)
-    # 3. runs (descending -> the ones that ran most often first)
-    # 4. seconds (descending -> the longest first)
-    # 5. size (descending -> the ones whose code costs most tokens to read first)
     tests.sort(key=lambda x: (
         x["failures"],
         -x["first_run"].timestamp(),
@@ -303,12 +295,10 @@ Maintenance
     total_tests = len(tests)
     tests = [t for t in tests if t["seconds"] >= args.min_duration and not excluded(t)]
     
-    # 1. The percentage limit
     limit_by_percentage = total_tests
     if args.percentage is not None:
         limit_by_percentage = int(round(total_tests * (args.percentage / 100.0)))
         
-    # 2. The max-duration limit
     by_cost = sorted(tests, key=lambda x: (x["failures"], -x["seconds"], -x["size"]))
     limit_by_duration = total_tests
     if args.max_duration is not None:
@@ -333,7 +323,6 @@ Maintenance
                     file=sys.stderr,
                 )
             
-    # Whichever comes first
     if limit_by_duration < limit_by_percentage:
         to_delete = by_cost[:limit_by_duration]
     else:

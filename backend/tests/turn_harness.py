@@ -115,15 +115,9 @@ def turn_service_for(tmp_path):
             session_manager=SessionManager(db), tracking_service=tracking_service,
             metric_service=metric_service, scheduler_service=scheduler_service, namespace_factory=namespace_factory,
         )
-
-    # The very database those services write to — what a test asserts the
-    # persisted order of messages against.
     make.db = db
     return make
 
-
-#: Every type a turn publishes, and what a test collects to see what one
-#: did — see turn/input_listener.py.
 TURN_FRAMES = (
     "output.text_stream", "output.text", "output.speech", "output.tool", "output.reaction",
     "state.changed", "state.buttons", "output.error",
@@ -147,9 +141,6 @@ async def drive_turn(turn_service, db, session_id: int, _unused: str, text: str)
     from system.bus import INPUT_TEXT, Message
     from system.web_session import WebSession
     from turn.input_listener import TurnInput
-
-    # The listener looks the sender's role up rather than taking it off
-    # the wire (see Session.for_sender), so the sender has to exist.
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
 
     collected: list = []

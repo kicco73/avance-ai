@@ -4,9 +4,6 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 const props = defineProps({
   user: { type: Object, default: null },
   large: { type: Boolean, default: false },
-  // Only ManageUsersView.vue passes true (its own current user is an
-  // admin) — the other two Inspector "Info" tabs this card also renders
-  // in stay read-only.
   canEditRole: { type: Boolean, default: false }
 })
 
@@ -23,7 +20,6 @@ function formatDate(iso) {
   return iso ? new Date(iso).toLocaleString() : '—'
 }
 
-// Role badge menu — same toggle/click-outside pattern as SettingsMenu.vue.
 const roleMenuOpen = ref(false)
 const roleMenuRootEl = ref(null)
 

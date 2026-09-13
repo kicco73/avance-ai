@@ -27,8 +27,6 @@ def _conflict(code: str, message: str = "Session is not active.") -> ServiceErro
     return ServiceError(message, status_code=HTTPStatus.CONFLICT, code=code)
 
 
-# --- a message becomes a turn ---------------------------------------------- #
-
 async def test_a_typed_message_enters_the_conversation_and_its_reply_comes_back_as_text(env: Env):
     await env.arrives(_payload(text="hola"))
 
@@ -74,8 +72,6 @@ async def test_two_messages_one_after_the_other_each_get_their_own_answer(env: E
     ]
     assert env.api.bodies == [REPLY_TEXT, "*Hola* — has dicho: con el vuelo VY3003"]
 
-
-# --- which conversation ---------------------------------------------------- #
 
 async def test_a_session_open_on_another_channel_is_taken_over_before_the_turn(env: Env):
     env.turns.session = {"id": SESSION_ID, "channel": "webchat", "project_id": PROJECT}
@@ -129,8 +125,6 @@ async def test_a_paused_project_is_a_refusal_not_a_turn(env: Env):
     assert env.api.sent == [(LINKED_NUMBER, notices.PAUSED)]
 
 
-# --- who is writing -------------------------------------------------------- #
-
 async def test_an_unlinked_number_an_unregistered_account_and_an_unreadable_message_each_get_a_notice():
     env = Env()
     await env.arrives(_payload(sender=UNKNOWN_NUMBER, mtype="audio"))
@@ -183,8 +177,6 @@ async def test_an_unexpected_failure_gets_an_apology_not_silence(env: Env):
     assert UNKNOWN_NUMBER not in env.db.users
 
 
-# --- legal terms ------------------------------------------------------------ #
-
 async def test_pending_terms_send_the_content_with_an_accept_button_instead_of_a_turn(env: Env):
     env.turns.session = {"legal_terms_pending": True, "project_id": PROJECT}
     env.turns.terms_content = "## Terms\n\nBe nice."
@@ -209,8 +201,6 @@ async def test_accepting_the_terms_confirms_and_leaves_the_next_word_to_the_pers
     assert env.api.bodies == [notices.TERMS_ACCEPTED]
     assert [call for call in env.turns.calls if call[0] in ("turn", "action")] == []
 
-
-# --- the choices a state offers --------------------------------------------- #
 
 async def test_the_choices_ride_on_the_reply_as_buttons_or_as_a_list(env: Env):
     env.turns.buttons = [_action("go", "Go"), _action("stay", "Stay")]
@@ -252,8 +242,6 @@ async def test_the_choices_offered_while_entering_are_never_sent_on_their_own(en
     assert env.api.interactive[0][2] == REPLY_TEXT
 
 
-# --- a choice taken ---------------------------------------------------------- #
-
 async def test_a_tapped_button_applies_the_action_and_the_new_choices_ride_on_its_message(env: Env):
     env.turns.buttons = [_action("stay", "Stay")]
     env.turns.action_reply_message = "You picked go."
@@ -287,8 +275,6 @@ async def test_a_transition_with_nothing_to_say_still_leaves_the_conversation_wi
     assert env.api.sent == []
     assert env.api.interactive == [("button", LINKED_NUMBER, notices.OPTIONS_PROMPT, [("go", "Go")])]
 
-
-# --- what went wrong --------------------------------------------------------- #
 
 @pytest.mark.parametrize(("code", "text"), [
     ("session_channel_mismatch", notices.SESSION_TAKEN_OVER),
@@ -335,8 +321,6 @@ async def test_a_choice_taken_while_a_reply_is_being_written_is_asked_to_wait(en
     assert env.api.sent == [(LINKED_NUMBER, notices.BUSY)]
     assert env.api.interactive == []
 
-
-# --- messages this channel carries for somebody else -------------------------- #
 
 async def test_task_whatsapp_sends_to_a_linked_number_and_refuses_an_unknown_one(env: Env):
     assert await env.service.send_message(f"+{LINKED_NUMBER}", "**Hola**", PROJECT) is True

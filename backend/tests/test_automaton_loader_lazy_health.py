@@ -48,11 +48,11 @@ def test_invalidate_lets_a_fixed_revision_build_again(db):
     _overwrite(db, PROJECT_ID, revision, f"project:\n  id: {PROJECT_ID}\n{VALID_YML}")
 
     with pytest.raises(AutomatonBuildError):
-        loader.load_at_revision(PROJECT_ID, revision)  # still the cached failure
+        loader.load_at_revision(PROJECT_ID, revision)
 
     loader.invalidate(PROJECT_ID, revision)
 
-    automaton = loader.load_at_revision(PROJECT_ID, revision)  # fresh build, now succeeds
+    automaton = loader.load_at_revision(PROJECT_ID, revision)
     assert automaton.project_id == PROJECT_ID
 
 
@@ -60,13 +60,13 @@ def test_invalidate_also_drops_a_cached_success(db):
     _publish(db, PROJECT_ID, VALID_YML)
     loader = AutomatonLoader(db)
     revision = db.get_project_published_revision(PROJECT_ID)
-    loader.load_at_revision(PROJECT_ID, revision)  # populates the success cache
+    loader.load_at_revision(PROJECT_ID, revision)
 
     _overwrite(db, PROJECT_ID, revision, BROKEN_YML)
     loader.invalidate(PROJECT_ID, revision)
 
     with pytest.raises(AutomatonBuildError):
-        loader.load_at_revision(PROJECT_ID, revision)  # a fresh build, not the stale cached success
+        loader.load_at_revision(PROJECT_ID, revision)
 
 
 def test_a_broken_published_revision_publishes_the_event(db):
@@ -85,7 +85,7 @@ def test_a_broken_published_revision_publishes_the_event(db):
 def test_an_old_superseded_revision_publishes_no_event(db):
     _publish(db, PROJECT_ID, VALID_YML)
     old_revision = db.get_project_published_revision(PROJECT_ID)
-    _publish(db, PROJECT_ID, VALID_YML_2)  # forks + publishes a new revision on top
+    _publish(db, PROJECT_ID, VALID_YML_2)
     assert db.get_project_published_revision(PROJECT_ID) != old_revision
 
     _overwrite(db, PROJECT_ID, old_revision, BROKEN_YML)

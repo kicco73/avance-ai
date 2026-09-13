@@ -13,10 +13,6 @@ from system.logging_factory import LoggerFactory
 from .layout import ArchiveLayout
 
 if TYPE_CHECKING:
-    # Type-only: SessionManager doesn't import this module, so a real
-    # top-level import would be safe too, but every other cross-package
-    # dependency here already sits behind TYPE_CHECKING/local imports —
-    # kept consistent rather than the one exception.
     from turn.sessions.session_manager import SessionManager
 
 logger = LoggerFactory.get_logger(__name__)
@@ -25,32 +21,9 @@ logger = LoggerFactory.get_logger(__name__)
 class AutomatonLoader(object):
     def __init__(self, db: Db, session_manager: "SessionManager | None" = None) -> None:
         self._db = db
-        # Only for force-closing a session still open on a stored revision
-        # that no longer builds (see load_at_revision) — None is fine for
-        # any caller with no session to worry about, it just means that
-        # cleanup never runs.
         self._session_manager = session_manager
-        # (project_id, revision) -> Automaton. Revision-keyed so a caller
-        # pinned to one specific revision and a caller wanting "whatever's
-        # current" can share the cache without cross-serving.
         self._automaton_cache: dict[tuple[str, int], Automaton] = {}
-        # Same (project_id, revision) keying as _automaton_cache above, and
-        # for the same reason: a session pinned to an old revision can
-        # populate this via set_cached too (through load_at_revision), and
-        # that stale revision's family/env-keys must never answer for
-        # "whatever's current" — the only thing known_projects_env_keys
-        # scans other projects for. (declared_id, family, env_key_names).
         self._declared_meta_cache: dict[tuple[str, int], tuple[str | None, str | None, frozenset[str]]] = {}
-        # (project_id, revision) -> the AutomatonBuildError it last raised.
-        # A revision that doesn't build is just as cacheable as one that
-        # does: load_at_revision consults this first and re-raises without
-        # rebuilding, and without re-running _handle_broken_revision's own
-        # log/close-sessions/event side effects — those fire exactly once
-        # per (project_id, revision), the first time it's discovered
-        # broken, until something actually invalidates this entry (see
-        # invalidate/invalidate_cache below). Doubles as what
-        # _broken_revisions used to be for (never re-run the close sweep
-        # for the same one twice) — a key present here already means that ran.
         self.__build_failures: dict[tuple[str, int], AutomatonBuildError] = {}
 
     @staticmethod
@@ -158,8 +131,6 @@ class AutomatonLoader(object):
         self._declared_meta_cache[(project_id, revision)] = (
             automaton.project_id, automaton.family, frozenset(env_key.name for env_key in automaton.env_keys)
         )
-        # A fresh success supersedes any stale failure cached for this
-        # exact key (e.g. a save that fixes what a previous one broke).
         self.__build_failures.pop((project_id, revision), None)
 
     def load_at_revision(self, project_id: str, revision: int) -> Automaton:
@@ -184,20 +155,10 @@ class AutomatonLoader(object):
         decoded = ArchiveLayout.decode_text(archives)
         _, family, _ = AutomatonBuilder.read_declared_env_keys(decoded['index.yml'])
         try:
-            # legacy_project_id: a revision stored before `project.id`
-            # became mandatory (see AutomatonBuilder._build_project_metadata)
-            # still has sessions pinned to it — its identity is this row's.
             automaton = AutomatonBuilder().build(
                 decoded, self.known_projects_env_keys(project_id, family), legacy_project_id=project_id,
             )
         except AutomatonBuildError as exc:
-            # Names *which* stored revision no longer builds under the
-            # current AutomatonBuilder rules — this surfaces on whichever
-            # endpoint happens to touch a session pinned to it, far from
-            # any index.yml the caller is looking at. Kept in `detail`,
-            # not `message` — the builder's own message (and its line/
-            # section) stay exactly as it raised them, for a caller that
-            # cares about the structured fields rather than this summary.
             exc.project_id = exc.project_id or project_id
             exc.revision = revision
             exc.detail = f"Project '{project_id}', stored revision {revision}: index.yml no longer builds — {exc}"

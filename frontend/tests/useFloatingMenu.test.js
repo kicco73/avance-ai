@@ -2,8 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createApp } from 'vue'
 import { useFloatingMenu } from '../src/composables/useFloatingMenu.js'
 
-// onBeforeUnmount needs an active component instance, so the composable is
-// exercised inside a bare setup() rather than called directly.
 function mountComposable(setup) {
   let result
   const container = document.createElement('div')
@@ -94,8 +92,6 @@ describe('useFloatingMenu', () => {
     unmountNow()
     click(document.body)
 
-    // open itself is meaningless post-unmount; this only proves the
-    // document-level listener was actually removed, not left leaking.
     expect(open.value).toBe(true)
   })
 })

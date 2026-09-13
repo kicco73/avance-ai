@@ -54,16 +54,7 @@ from project.archive.layout import CACHE_DIR
 if TYPE_CHECKING:
     from automaton.model import Automaton
     from db import Db
-
-# How DbProjectFiles.cache_key names a file, and so what
-# ProjectFileCache.forget_project has to drop. Only the stored-project
-# side has anything to invalidate — a package's data/ never changes
-# under a running process.
 DB_CACHE_KEY_PREFIX = "db:"
-
-# Mirrors AppConfig's own default (config.py, turn-service.
-# project-file-cache-bytes) — for a process that never calls
-# configure_project_file_cache: a test, a CLI script.
 DEFAULT_PROJECT_FILE_CACHE_BYTES = 8 * 1024 * 1024
 
 
@@ -117,8 +108,6 @@ class PackageProjectFiles(ProjectFiles):
 
     def read(self, path: str) -> tuple[bytes, str] | None:
         candidate = (self._directory / path).resolve()
-        # A declared path never escapes the package; a malformed one is
-        # simply not found rather than reaching outside it.
         if not candidate.is_file() or self._directory not in candidate.parents:
             return None
         return candidate.read_bytes(), media_type_for(path)
@@ -160,7 +149,7 @@ class DbProjectFiles(ProjectFiles):
         if media_type is None:
             return None
         content = self._db.get_archive(self._project_id(), path, revision=self._revision())
-        assert content is not None  # the same Archive row get_archive_content_type just found
+        assert content is not None
         return content, media_type
 
     def _project_id(self) -> str:
@@ -226,9 +215,6 @@ class ProjectFileCache:
             self._entries.move_to_end(key)
             return found
         loaded = load()
-        # A file that isn't there is not cached: it is not a value, and a
-        # project gaining the file it was missing must not have to wait
-        # for an eviction to be seen.
         if loaded is None:
             return None
         self._store(key, loaded)

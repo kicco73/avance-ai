@@ -1,14 +1,7 @@
 <script setup>
-// Single click: emit('click') — retry, resending as-is.
-// Double click: emit('double-click') — prefill for editing instead.
-// The browser fires click, click, dblclick, so each click is delayed
-// briefly and cancelled by a following dblclick, to avoid double-firing.
 const CLICK_DELAY_MS = 250
 
 defineProps({
-  // True once the state this bubble's conversation was in has since been
-  // renamed/removed from the project — restarting here would have
-  // nowhere valid to land, so the gesture is disabled outright.
   disabled: { type: Boolean, default: false }
 })
 

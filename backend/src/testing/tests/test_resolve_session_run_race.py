@@ -101,9 +101,6 @@ def test_the_next_click_after_an_aborted_run_gets_a_fresh_one(client, app_db, he
     session_id = _make_labeled_session(client, app_db, hello_project, "alice")
     testing_service = client.app.state.testing_service
     WebSession().user = "user"
-
-    # No public route leaves a run aborted before it has results: POST
-    # /tests submits its job, which then completes in the same breath.
     job = PooledAggregationJob(testing_service, hello_project, 'sessions', None, 'turn_by_turn', [session_id])
     dead_run_id, dead_job = job._resolve_or_construct_session_run(session_id)
     assert dead_job is not None

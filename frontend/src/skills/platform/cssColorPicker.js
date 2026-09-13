@@ -1,10 +1,3 @@
-// CodeMirror 6 extension: an inline clickable swatch next to every color
-// token (hex/rgb/rgba/hsl/hsla) in a CSS buffer. Clicking one opens the
-// browser's native color picker (an <input type="color"> IS the swatch —
-// no custom dialog needed); picking a color replaces that exact token with
-// the browser's own hex output. Only hex round-trips its original width —
-// rgb()/hsl() input always comes back out as 6-digit hex, since that's the
-// only format the input element itself can hold (no alpha channel either).
 import { Decoration, EditorView, MatchDecorator, ViewPlugin, WidgetType } from '@codemirror/view'
 
 const COLOR_PATTERN = /#(?:[0-9a-fA-F]{3,4}){1,2}\b|\b(?:rgb|rgba|hsl|hsla)\([^)]*\)/g
@@ -42,8 +35,6 @@ function parseRgbComponent(raw) {
   return raw.endsWith('%') ? parseFloat(raw) * 2.55 : parseFloat(raw)
 }
 
-// Normalizes any token COLOR_PATTERN can match into a 6-digit hex string —
-// the only shape <input type="color"> accepts as its value.
 export function colorTokenToHex(token) {
   if (token[0] === '#') {
     let hex = token.slice(1)
@@ -82,8 +73,6 @@ class ColorSwatchWidget extends WidgetType {
     } catch {
       input.value = '#000000'
     }
-    // mousedown, not click — CodeMirror's own selection handling would
-    // otherwise steal focus before the native picker gets to open.
     input.addEventListener('mousedown', (event) => event.stopPropagation())
     input.addEventListener('input', () => {
       view.dispatch({ changes: { from: this.from, to: this.to, insert: input.value } })

@@ -31,9 +31,6 @@ class TestMetricsProvider:
         self._username = username
         self._project_id = project_id
         self._session_id = session_id
-        # Set once per turn by advance_to; no default bound so a caller
-        # that forgets to call it first fails loudly (AttributeError)
-        # rather than silently falling back to "no bound at all".
 
     def advance_to(self, message_id: int, real_timestamp: datetime | None) -> None:
         self._message_id = message_id

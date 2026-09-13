@@ -20,7 +20,6 @@ class Fake:
     def __repr__(self): return f"<{self._name}>"
 
 def scopes_for(automaton):
-    # _TaskEval pretende un EvaluationScope, non un dict.
     users = {f: "x@y.z" if f == "email" else 1 for f in IdentifierRegistry.USER}
     envs = {k.name: "" for k in automaton.env_keys}
     base = dict(source=Fake("source"), chat=Fake("chat"), task=Fake("task"),

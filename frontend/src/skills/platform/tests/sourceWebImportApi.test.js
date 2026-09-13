@@ -1,7 +1,3 @@
-// The Source card's "AI Web Import" button talks to the backend the same
-// way the project upload does: one POST whose own response streams the
-// job's SSE progress chunks. Only fetch is stubbed, so a module-level
-// mistake in projectEditor.js throws here instead of being swallowed.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 let postSourceWebImport

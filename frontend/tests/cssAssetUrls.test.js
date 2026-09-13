@@ -1,18 +1,5 @@
-// Regression coverage for a real bug: index.css's own url(...) references
-// must resolve to an *absolute* API URL, not a same-origin-relative one.
-// The backend used to rewrite them itself into a bare "/api/..." path,
-// which only happened to work in production (nginx proxies frontend and
-// API onto one origin there) — in dev, frontend (:5173) and backend
-// (:8000) are different origins with no proxy between them, so every
-// background-image etc. silently 404'd while the CSS text itself (fetched
-// through the real, absolute VITE_API_URL) loaded fine. Resolution moved
-// entirely client-side (see cssAssetUrls.js's own docstring) — this
-// verifies it actually produces an absolute, cross-origin-correct URL.
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
-// Pinned here, not read off the running environment: the module-level
-// API_URL every api/*.js file derives from VITE_API_URL is resolved at
-// import time, so the stub must land before the dynamic import below.
 let resolveCssAssetUrls
 
 beforeAll(async () => {

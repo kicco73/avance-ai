@@ -12,34 +12,13 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 		self.out = OutVariables("", [], None, self.user.state, None)
 		if not self._evaluate_signals_for(self.user.state):
 			if self.user.has_ai_started_conversation:
-				# The opening turn — has_ai_started_conversation True means
-				# there is no real user message yet, so a trigger with
-				# nothing behind it but env./metric./source.* must not fire
-				# off the automaton's own AI-generated opener alone; it
-				# waits for the first real turn, same as a signal-backed
-				# trigger already does. Still marked resolved immediately
-				# (skipping the real evaluate_triggered_action call, not
-				# just the request) so the reply keeps streaming live,
-				# chunk by chunk, exactly as the non-opening branch below does.
 				self.metadata.signals = {}
 				self.out.signals_resolved = True
 			else:
-				# Nothing signal-backed to ask the model for this turn — the
-				# state's own triggers are still evaluated, right now, against
-				# the empty signals set (a metric.*/env.*/source.* trigger fires
-				# exactly as it always did; a signal-backed one short-circuits
-				# to false): the gate switches off the request, never the
-				# evaluation. The outcome is known before the first chunk, so
-				# there's nothing to buffer text for either way.
 				self._resolve_signals({})
 
 		buffered_text_before_signals_resolved = ""
 		if self.user.state == self.out.state:
-			# Optimistic guess: generate the real reply first, using the
-			# *current* state's own context — the common case (no
-			# transition) needed exactly this one call anyway. Skipped
-			# outright when the upfront evaluation above already moved the
-			# automaton: that reply would only ever be discarded below.
 			async for chunk in self.generate_reply(self.user.state, self.on_receiving_metadata):
 				if not self.out.signals_resolved:
 					buffered_text_before_signals_resolved += chunk
@@ -50,18 +29,6 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 					self.metadata.on_metadata('chunk', chunk)
 
 		if not self.out.reply and buffered_text_before_signals_resolved and self.user.state == self.out.state:
-			# Safety net — covers two cases, not just the one this used to
-			# guard against (the model never producing a 'signals' tag at
-			# all): in "after" tracking order (signals evaluated on the
-			# model's own reply — see TrackingProcessor.build_turn_prompt),
-			# 'signals' is schema-ordered *after* 'text', so it only ever
-			# resolves once every 'text' chunk has already been produced —
-			# there is no chunk left afterwards for the per-iteration check
-			# above to ever observe signals_resolved having flipped True,
-			# so the buffered reply above sits unflushed even though
-			# signals did resolve. Gated on `not self.out.reply` so a
-			# normal "before"-order turn (already flushed live, chunk by
-			# chunk, above) is never double-applied here.
 			self.out.reply = buffered_text_before_signals_resolved
 			self.metadata.on_metadata('chunk', buffered_text_before_signals_resolved)
 
@@ -69,32 +36,13 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 		self.moved_before_reply = transitioned
 
 		if transitioned:
-			# Wrong guess — the async method moved the automaton.
-			# We need to regenerate the answer
 
 			self.out.reply = ""
-
-			# Must run before the regenerated prompt below (the action's
-			# env: writes feed it), and not again via apply_transition
-			# further down — see record_transition. The action's task
-			# is scheduled as a task from here, once.
-			#
-			# Note: with signal-tracking-on-ai-message false (the case that
-			# actually reaches this branch), any source `update` tool
-			# call the optimistic reply above already made is a real,
-			# persisted write the instant it happened — it's never rolled
-			# back just because that reply itself gets discarded here for a
-			# transition. The regeneration below, running in the new state,
-			# sees it as the current value like any other action_set write.
 			self._tracking_engine.apply_action_env(
 				self.user.automaton, self.out.action, self.metadata.signals, self.user.state.key,
 				username=WebSession().user, project_id=self.user.project_id, session_id=self.user.session_id,
 				output_values=self.metadata.output,
 			)
-
-			# Signals are already known from the first call — asking again
-			# would be wasted and must not trigger a second trigger
-			# evaluation, so this regeneration only ever requests audio/text/memory.
 			base_prompt, chat_history, env_block = self._build_base_prompt_and_history(self.out.state)
 			prompt = self.build_regeneration_prompt(self.out.state, base_prompt)
 			async for chunk in self.assistant_talker.chat(
@@ -107,9 +55,6 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 				self.metadata.on_metadata('chunk', chunk)
 
 		if self._records_evaluation():
-			# The trigger is decided from the user's message, so this row
-			# links to it directly — except an opening turn, whose
-			# message_id only points at a placeholder that gets deleted, which would silently orphan an early link.
 			has_real_user_message = not self.user.has_ai_started_conversation
 			if transitioned:
 				self.out.tracking_id = self._tracking_engine.record_transition(

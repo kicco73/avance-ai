@@ -22,8 +22,6 @@ export function useStateTabTokens(projectId, stateKey) {
   }
 
   watch(stateKey, refreshStateTabTokens, { immediate: true })
-  // An edit can change what a state's turn costs without changing which
-  // state is selected, so the key alone is not enough to watch.
   onBeforeUnmount(onProjectChanged((changedProjectId) => {
     if (changedProjectId === projectId) return refreshStateTabTokens()
   }))

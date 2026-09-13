@@ -98,10 +98,6 @@ class PayloadsMixin(object):
             "final": state.final,
             "chat_enabled": state.chat_enabled,
             "reactions": [self.get_reaction_option_payload(r) for r in self.reactions],
-            # XXX Compiled automaton requirement - do not touch.
-            # XXX self, not the Automaton class: this now lives in a mixin,
-            # XXX which a compiled automaton composes without ever being an
-            # XXX Automaton — a hardcoded class name would not resolve.
             "actions": [self.get_action_payload(a) for a in state.actions],
             "ai_may_read_sources": list(state.ai_may_read_sources),
             "ai_must_read_sources": list(state.ai_must_read_sources),

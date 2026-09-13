@@ -1,21 +1,4 @@
 <script setup>
-// InspectorDetailCard.vue's own Trigger/On exit/Task badges all open this
-// same dialog, just switched to a different starting tab — one CodeMirror
-// editor per field, each with its own namespace exclusions, replacing the
-// three separate surfaces (an always-inline TriggerEditor plus two
-// standalone OnEnterDialog.vue/OnExitDialog.vue dialogs) that used to
-// carry them. `showTrigger` is false for the init-action, which has no
-// trigger of its own to edit.
-//
-// Save commits every tab whose buffer differs from what was last saved,
-// each through its own awaited onCommit(field, value) call (InspectorDetailCard.vue's
-// own saveField prop — a real awaited write, never the fire-and-forget
-// set-field emit every other field here uses) so a malformed script
-// leaves that field's own local edit in place and keeps the dialog open
-// instead of closing over an edit that never saved (the error itself
-// surfaces the usual way, via the global ErrorBanner). Clear only ever
-// touches the active tab's own local text — no commit, no close — so the
-// user can still back out of it by switching tabs or closing without saving.
 import { computed, inject, ref } from 'vue'
 import TriggerEditor from './TriggerEditor.vue'
 
@@ -44,11 +27,6 @@ const startTab = tabs.value.some((t) => t.key === props.initialTab) ? props.init
 const activeTabKey = ref(startTab)
 const activeTab = computed(() => tabs.value.find((t) => t.key === activeTabKey.value))
 
-// Own root element, handed to TriggerEditor as its tooltipParent — this
-// component is rendered inside DialogHost.vue's native <dialog>
-// (showModal(), the browser's own top layer), so completion/hover
-// tooltips must mount somewhere inside that same dialog, not <body>
-// (TriggerEditor's own default), or they'd render invisibly behind it.
 const rootEl = ref(null)
 
 const closeDialog = inject('closeDialog')
@@ -78,23 +56,10 @@ async function confirmAndClose() {
   }
 }
 
-// Local only — clears the active tab's own text, nothing else: no
-// commit, no close. The user still has to press Save (or close without
-// saving) afterward, same as clearing it by hand and hitting Save would do.
 function clearActive() {
   values.value[activeTabKey.value] = ''
 }
 
-// Ctrl+S or Option/Alt+S saves — bound on the dialog's own root (not
-// TriggerEditor, which is a generic, reusable editor with no "save"
-// concept of its own) so it fires the same way whether focus is inside
-// the CodeMirror editor or elsewhere in the dialog: a plain keydown
-// listener catches it either way since nothing in TriggerEditor's own
-// keymap binds this key, so the browser event just bubbles up here
-// unclaimed. preventDefault stops the browser's own native "Save Page"
-// first. `code`, not `key`: Option turns 's' into 'ß' on a Mac keyboard
-// (key reports the character it would type, code the physical key), so
-// `key` alone would silently never match Option+S there.
 function handleKeydown(event) {
   if (event.code !== 'KeyS' || !(event.ctrlKey || event.altKey)) return
   event.preventDefault()

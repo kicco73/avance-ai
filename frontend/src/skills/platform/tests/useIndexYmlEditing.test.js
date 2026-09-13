@@ -39,8 +39,6 @@ describe('useIndexYmlEditing', () => {
     })
     flashRecentlyAdded = vi.fn()
     jumpToDefinition = vi.fn()
-    // Simulates a never-dirty editor: guardedAction just runs immediately,
-    // matching useProjectFiles.js's own (separately tested) not-dirty branch.
     const guardedAction = (label, run) => run()
     s = useIndexYmlEditing(
       'proj', guardedAction, indexYmlEditorRef, jumpToDefinition, selectedGraphElement, selectedStateKey, flashRecentlyAdded
@@ -112,10 +110,6 @@ describe('useIndexYmlEditing', () => {
       expect(selectedGraphElement.value).toEqual(actionEl)
     })
 
-    // ScriptEditDialog.vue's own OK button awaits exactly this return value
-    // (through EditProjectView.vue's handleSetSelectedElementField) to
-    // decide whether to close — it must never resolve true for a write
-    // that never actually landed, and never throw.
     it('resolves true once the write succeeds and false when it is rejected', async () => {
       putActionField.mockResolvedValue({})
       await expect(s.handleSetActionField('greeting', 'go', 'task', "task.send_mail(user.email, 'hi')")).resolves.toBe(true)

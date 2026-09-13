@@ -1,10 +1,4 @@
 <script setup>
-// The live chat's own full-viewport window — App.vue's one instance,
-// shown either as a plain user's whole app or an admin's pushed 'chat'.
-// Fixed/full-viewport so it can sit inside .app-body's shared perspective
-// and participate in the admin push/pop flip transition; ChatView itself
-// carries no opinion about that at all, since RunChat.vue's embedded Test
-// chat uses the exact same ChatView as a normal contained flex item.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ChatView from './ChatView.vue'
 import TermsView from '../TermsView.vue'
@@ -15,26 +9,14 @@ import { onLiveSkinApplied } from '../../chatSkin.js'
 import { setCanvasColor, restoreCanvasColor } from '../../canvasColor.js'
 
 const props = defineProps({
-  // null for a plain user whose account has no project to land on at all
-  // (see useAppBoot.js's own resolveLandingView — this is what
-  // getActiveProjectId resolves to when the system has zero projects).
-  // Real, always non-null for the admin's own pushed 'chat' instance,
-  // which only ever opens from an explicit row click.
   projectId: { type: String, default: null },
   hideSessionsPanel: { type: Boolean, default: false },
-  // Passed straight through to ChatView.vue's own header — see its props
-  // for what each one drives (the back-to-Manage-projects button /
-  // ProfileMenu.vue's avatar).
   role: { type: String, default: null },
   profile: { type: Object, default: null }
 })
 
 defineEmits(['project-select', 'project-download', 'manage-projects', 'home', 'profile', 'logout'])
 
-// Whether this project's terms are still owed is the conversation's own
-// answer: entering it is refused with `session.blocked`, reason 'terms'
-// (see chatStoreFactory.js). The text of those terms is not on the bus
-// — TermsView asks for it here when it is the screen being shown.
 const termsPending = computed(() => blockedReason.value === 'terms')
 
 async function fetchProjectTerms() {
@@ -53,18 +35,6 @@ async function acceptTerms() {
 
 watch(() => props.projectId, (projectId) => loadMessages(projectId), { immediate: true })
 
-// Canvas-color sync (see canvasColor.js's own comment for why this
-// exists at all): keeps <html>'s background-color matching .chat-footer's
-// own, so the iOS strip WebKit paints with that color under the home
-// indicator reads as a continuation of the skinned footer instead of a
-// mismatched gap. Re-run on: mount, a live skin (re)applying (see
-// chatSkin.js's onLiveSkinApplied), .chat-footer's own background-color
-// transition finishing (not every intermediate frame — see
-// onFooterTransitionEnd), and any DOM change inside this window
-// (childList catches .chat-footer appearing once terms resolve;
-// attributes/data-state catches an automaton state change, since a
-// project's skin can key its footer color off .chat-window-shell's own
-// [data-state]).
 const rootEl = ref(null)
 let previousCanvasColor = ''
 let observedFooterEl = null
@@ -84,10 +54,6 @@ function syncCanvasColor() {
     observedFooterEl = footerEl
   }
   const color = getComputedStyle(footerEl).backgroundColor
-  // A skin that never sets .chat-footer's own background computes as
-  // transparent — #ffffff is what the footer actually shows by default
-  // in that case (see ChatView.vue's own .chat-footer, which sets no
-  // background of its own either).
   setCanvasColor(color === 'rgba(0, 0, 0, 0)' ? '#ffffff' : color)
 }
 
@@ -144,24 +110,7 @@ onBeforeUnmount(() => {
   top: 0;
   left: 0;
   right: 0;
-  /* Extends past the viewport's own bottom edge on standalone iOS,
-     where WebKit bug #301108 leaves a gap there otherwise — see
-     index.html's own viewport meta comment and
-     useVisualViewport.js's installViewportOvershoot(). 0px, a no-op,
-     everywhere else (a plain browser tab, non-iOS, or once Apple fixes
-     the bug). */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
-  /* Side edges only — a device rendering edge-to-edge (see index.html's
-     viewport-fit=cover) would otherwise clip content under a landscape
-     notch/rounded corner. box-sizing so the padding shrinks the box
-     instead of sitting outside it. Top and bottom aren't reserved here:
-     SplashScreen/TermsView are their own position: fixed, centered
-     overlays that never touch that edge anyway, and ChatView's
-     .chat-header/.chat-footer reserve it themselves instead (see their
-     own comments) — those are the elements a project's skin actually
-     paints, so reserving the notch there lets a dark skin's own
-     background extend behind it instead of showing this white fallback
-     through a color-mismatched gap. */
   box-sizing: border-box;
   padding-left: var(--safe-area-left);
   padding-right: var(--safe-area-right);
@@ -170,18 +119,6 @@ onBeforeUnmount(() => {
   min-height: 0;
   min-width: 0;
   background: white;
-  /* Both properties inherit, so this one declaration covers every
-     descendant by default — header, message bubbles/timestamps, footer
-     buttons, sessions panel — instead of chasing individual elements one
-     at a time (see MessageBubble.vue's own .bubble/.bubble-timestamp,
-     added piecemeal before this and still correct, just now redundant).
-     ChatInput.vue's own <input> is unaffected: a form control's own
-     value text stays independently selectable/editable for typing,
-     cursor placement, and copy/paste regardless of an ancestor's
-     user-select — only the surrounding, non-editable UI is what this
-     actually reaches. -webkit-touch-callout: none suppresses iOS's own
-     long-press callout (copy/share/lookup) the same way, since it's a
-     separate mechanism user-select alone doesn't cover. */
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;

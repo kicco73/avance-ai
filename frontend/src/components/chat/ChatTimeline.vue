@@ -1,7 +1,4 @@
 <script setup>
-// Chronological, clickable message+transition list. Each timeline entry
-// is { kind: 'message', message } or { kind: 'transition', transition,
-// annotationStatus } — this component has no notion of mode of its own.
 import { nextTick, ref, watch } from 'vue'
 import MessageBubble from './MessageBubble.vue'
 import { messageHasAnnotatedSignals } from '../../testTimeline.js'
@@ -10,28 +7,11 @@ const props = defineProps({
   timeline: { type: Array, required: true },
   signalsLog: { type: Array, default: () => [] },
   selected: { type: Object, default: null },
-  // Forwarded to MessageBubble.vue; this component has no opinion of its
-  // own on whether spoken text should show.
   spokenTextEnabled: { type: Boolean, default: false },
-  // Whether the session was imported rather than played live — there's
-  // no avance-computed state to compare an annotation against, so both
-  // the transition badge and the signal marker read as a neutral
-  // "labelled" tick instead of a correct/incorrect verdict.
   imported: { type: Boolean, default: false },
-  // (stateKey) => displayLabel. A transition's old_state/new_state is
-  // always the automaton's internal state key, never its human-facing
-  // label — optional, since the two usually read the same.
   resolveStateLabel: { type: Function, default: null },
-  // (stateKey, actionName) => displayLabel. Gates whether the self-loop
-  // action badge renders at all (unlike resolveStateLabel, which always
-  // renders something).
   resolveActionLabel: { type: Function, default: null },
-  // Whether a `timeline` prop change should snap the view to the bottom.
-  // Turn off when a change can mean an annotation/comment mid-review
-  // rather than a new message, so users aren't scrolled away mid-edit.
   autoScroll: { type: Boolean, default: true },
-  // Forwarded to MessageBubble.vue, same as spokenTextEnabled — this
-  // component has no opinion of its own on what's available to react with.
   reactions: { type: Array, default: () => [] }
 })
 
@@ -39,8 +19,6 @@ function stateLabel(stateKey) {
   return props.resolveStateLabel ? props.resolveStateLabel(stateKey) : stateKey
 }
 
-// Only meaningful for a self-loop: the state badge alone doesn't change,
-// so this is the only hint of what action actually fired.
 function actionLabel(transition) {
   return props.resolveActionLabel ? props.resolveActionLabel(transition.old_state, transition.action) : null
 }
@@ -49,9 +27,6 @@ const emit = defineEmits(['select-message', 'select-transition', 'react'])
 
 const rootEl = ref(null)
 
-// This root is the actual scroll region, not whatever wraps it — a
-// parent-driven auto-scroll would silently no-op if the parent overflows
-// instead. timeline is always a fresh array, so a shallow watch suffices.
 function scrollToBottom() {
   nextTick(() => {
     if (rootEl.value) rootEl.value.scrollTop = rootEl.value.scrollHeight
@@ -72,8 +47,6 @@ function isTransitionSelected(transition) {
   return props.selected?.kind === 'transition' && props.selected.transition.id === transition.id
 }
 
-// A fired action that left the state unchanged still happened and is
-// worth showing, just visually de-emphasized since nothing moved.
 function isSelfLoop(transition) {
   return transition.old_state === transition.new_state
 }
@@ -162,8 +135,6 @@ function isSelfLoop(transition) {
   cursor: pointer;
 }
 
-/* display:contents so an empty slot contributes no box/spacing of its
-   own — whatever the slot renders is responsible for its own margin. */
 .timeline-message-actions {
   display: contents;
 }
@@ -203,13 +174,10 @@ function isSelfLoop(transition) {
   background: #f0dcb0;
 }
 
-/* De-emphasized rather than hidden — the state genuinely didn't move. */
 .timeline-transition-row-self-loop {
   opacity: 0.5;
 }
 
-/* Whether the expert-annotated expected_state agrees with what actually
-   happened — lets a reviewer spot a mismatch at a glance. */
 .timeline-transition-row-correct {
   background: #e8f5e9;
 }
@@ -234,9 +202,6 @@ function isSelfLoop(transition) {
   background: #f5c6c2;
 }
 
-/* An imported session has nothing genuine to compare an annotation
-   against — same green as -correct, but its own class keeps "labelled"
-   distinct from "verified correct" in the markup. */
 .timeline-transition-row-labelled {
   background: #e8f5e9;
 }
@@ -264,8 +229,6 @@ function isSelfLoop(transition) {
   font-weight: 600;
 }
 
-/* A self-loop's fired-action label, shown only where the state badge
-   right after it can't say anything useful on its own. */
 .timeline-transition-action-badge {
   display: inline-block;
   padding: 0.15rem 0.7rem;

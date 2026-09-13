@@ -1,7 +1,4 @@
 <script setup>
-// "(?)" button that opens a dialog rendering one of the backend's fixed
-// reference docs, reused across views instead of duplicating content in
-// the frontend bundle. Fetched lazily, once, on first open.
 import { ref } from 'vue'
 import { getDoc } from '../api.js'
 import { renderMarkdown } from '../markdown.js'
@@ -25,7 +22,6 @@ async function show() {
     content.value = result.content
     loaded.value = true
   } catch {
-    // already surfaced via apiFetch
   } finally {
     loading.value = false
   }
@@ -72,20 +68,11 @@ async function show() {
 </style>
 
 <style>
-/* Unscoped: the dialog lives under <body> via Teleport, outside this
-   component's normal DOM subtree, so a scoped [data-v-xxx] attribute
-   selector would never match it. */
 .doc-info-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  /* Extends past the viewport's own bottom edge on standalone iOS,
-     where WebKit bug #301108 leaves a gap there otherwise — see
-     index.html's own viewport meta comment and
-     useVisualViewport.js's installViewportOvershoot(). 0px, a no-op,
-     everywhere else (a plain browser tab, non-iOS, or once Apple fixes
-     the bug). */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
   background: rgba(0, 0, 0, 0.35);
   z-index: 1001;

@@ -34,10 +34,6 @@ states:
   b:
     contextual-prompt: "bye"
 """
-
-# Two states, each with a trigger referencing a *different* signal — the
-# minimum shape needed to prove state_key actually changes which signal
-# comes back `relevant`, not just whether the endpoint accepts the param.
 TWO_STATE_PROJECT = """
 init-action:
   target: a

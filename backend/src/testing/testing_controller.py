@@ -75,11 +75,6 @@ class TestingController(BaseController):
         return self.testing_service.create_run(
             username, project_id, req.session_id, req.strategy,
         )
-
-    # Named get_test_record, not get_test: inspect.getmembers walks routes
-    # alphabetically (see base_controller.py's own docstring), and "get_test"
-    # would sort before — and so shadow — the literal get_test_metrics
-    # route above.
     @get("/api/skills/testing/projects/{project_id}/tests/{test_id}", role="supervisor")
     def get_test_record(self, project_id: str, test_id: int):
         """One Test, its domain data merged with its Job's

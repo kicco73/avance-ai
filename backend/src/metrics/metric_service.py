@@ -22,16 +22,7 @@ from metrics.metrics_framework import metric_names as _metric_names
 from system.web_session import WebSession
 
 if TYPE_CHECKING:
-    # Deferred: project.project_service -> tracking.tracking_engine ->
-    # tracking.evaluation_scope -> MetricService from this very module —
-    # a real top-level import here would be circular. Safe as a type-only
-    # import since `from __future__ import annotations` (above) never
-    # evaluates it at runtime.
     from project.project_service import ProjectService
-
-# Metrics scoped to "all_sessions_per_user" but not "one_session" — the
-# `metric` namespace's own membership. Excluding "one_session" matters:
-# without it, session-scoped metrics like Engagement would match too.
 def user_scoped_metrics() -> list[MetricCalculator]:
     return [
         metric for metric in AnalyticsCalculator.default_metrics()
@@ -56,10 +47,6 @@ def values_dict(pairs: list[tuple[MetricCalculator, MetricResult]]) -> dict[str,
     same as before and for the same reason as a signal never estimated
     (`None > 3` raises, and a failed trigger is False), but now by
     comparing a value rather than by failing to resolve a name."""
-    # XXX Compiled automaton requirement - do not touch.
-    # XXX Absence is what generated Python cannot reproduce without
-    # XXX imitating simpleeval's own name resolution; a name that is
-    # XXX always there, sometimes None, behaves identically in both.
     return {metric.name: result.value for metric, result in pairs}
 
 
@@ -68,11 +55,6 @@ class MetricService(object):
         self,
         db: Db,
         project_service: "ProjectService",
-        # Same source of truth as SessionManager's own open-session
-        # window default — reused rather than duplicated, and never taken
-        # from a live SessionManager instance (no other reason to depend on chat/).
-        # A static value, unlike project_service/Session — known once at
-        # boot from config.py, never needs to be "read fresh".
         max_session_duration_in_minutes: float = DEFAULT_OPEN_WINDOW_MINUTES,
     ) -> None:
         self._db = db
@@ -153,11 +135,6 @@ class MetricService(object):
             max_session_duration_in_minutes=self._max_session_duration_in_minutes
         )
         resolved_project_id = project_id or self._project_service.get_active_project_id()
-        # This is the frontend's own metric *catalog* (name -> ui_label/
-        # ui_description) — every metric belongs in it regardless of
-        # session_id, unlike a real run's own results, which stay scoped
-        # to whatever's meaningful for that run (see BenchmarkCalculator's
-        # own default "one_session" filtering).
         unfiltered_metrics = BenchmarkCalculator(
             self._db, WebSession().user, resolved_project_id, configuration=configuration, session_id=session_id,
         ).default_metrics()

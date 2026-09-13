@@ -33,10 +33,10 @@ def test_a_created_invite_round_trips_by_code_which_is_unique_and_cascades_with_
 
     assert db.get_invite_by_code("NOSUCH") is None
 
-    with pytest.raises(Exception):  # peewee.IntegrityError — a unique constraint violation
+    with pytest.raises(Exception):
         _invite(db, "AB12CD", project)
 
-    db.delete_archives(project)  # deletes the Project row itself too
+    db.delete_archives(project)
     assert db.get_invite_by_code("AB12CD") is None
 
 

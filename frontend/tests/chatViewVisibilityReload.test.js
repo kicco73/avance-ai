@@ -1,9 +1,3 @@
-// Regression: ChatView.vue's onVisibilityChange used to call
-// reloadMessages() unconditionally on returning to the tab — including
-// while a reply was being written, replacing `messages` out from under
-// the bubble it was being written into. It now skips the reload while
-// chatLoading is true, and the exchange finishes that bubble itself (see
-// chatStoreFactory.js's watchReply).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from 'vue'
 
@@ -24,12 +18,6 @@ vi.mock('../src/api.js', () => ({
   projectFileContentUrl: vi.fn(() => '/skin.css')
 }))
 
-// Mounting ChatView is the heaviest thing this suite does, and the whole
-// component tree is transformed here, at import time, rather than inside
-// whichever test imports it first: that cost is 6.3s on its own and
-// 16.3s with the whole suite running in parallel, and vitest charged it
-// to that test's own 5s budget. A file's own imports are not timed, so
-// the import below is left with nothing but the re-evaluation.
 await import('../src/components/chat/ChatView.vue')
 
 describe('ChatView.vue never reloads messages mid-turn on visibilitychange', () => {
@@ -65,9 +53,6 @@ describe('ChatView.vue never reloads messages mid-turn on visibilitychange', () 
     api.getHistory.mockClear()
 
     await chatStore.handleSend('hi')
-    // The reply has started being written — which is what chatLoading
-    // means now: not "a message was sent", but "something is arriving"
-    // (see chatStoreFactory.js's watchReply).
     deliver({ type: 'output.text_stream', session_id: 1, text: '' })
     expect(chatStore.chatLoading.value).toBe(true)
 

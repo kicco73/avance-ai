@@ -36,219 +36,52 @@ from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 
-# Inbound: what a person sent, in the form it arrived or was converted to.
 INPUT_AUDIO = "input.audio"
 INPUT_TEXT = "input.text"
-
-# Outbound: what is being said back, in increasing concreteness — the
-# written reply, the text meant to be spoken, the audio itself.
 OUTPUT_TEXT = "output.text"
-# One piece of a message being written, as it is written. An empty one
-# means the writing has started and nothing is readable yet — which is
-# what an interface shows as typing dots, and the only honest moment to
-# show them: a message accepted is not a reply being composed, and a turn
-# can still be refused in between.
 OUTPUT_TEXT_STREAM = "output.text_stream"
 OUTPUT_SPEECH = "output.speech"
 OUTPUT_AUDIO_STREAM = "output.audio_stream"
-
-# One tool call, in both its phases — what the conversation is doing
-# while nothing readable is being written.
 OUTPUT_TOOL = "output.tool"
-
-# The choices a person is being offered right now. They belong to the
-# state the conversation is in, not to whatever produced the last
-# message, which is why they travel on their own — and why the scope is
-# the state and not the interface showing them.
 STATE_BUTTONS = "state.buttons"
-
-# One of those choices, taken. A person acting in a conversation, like
-# saying something — and on the same road, so the two cannot overtake
-# each other.
 INPUT_BUTTON = "input.button"
-
-# The person's own reaction to a message somebody else wrote. The
-# model's own reaction to theirs is OUTPUT_REACTION: two facts about two
-# different messages, never one field of the other.
 INPUT_REACTION = "input.reaction"
-
-# --- One conversation --------------------------------------------------
-#
-# Requests are verbs and announcements are nouns; the first segment is
-# the scope, never the direction. Everything here is addressed by
-# session_id except the two that cannot be: entering a conversation and
-# creating one name the project instead, because the session is what
-# they are asking for.
-
-# I am showing a conversation of this kind for this project: give me the
-# active one, or make one if there is none. It also says this connection
-# is now watching that session, which is how anything the server decides
-# on its own can reach it.
 SESSION_ENTER = "session.enter"
 
-# Make a new one regardless, closing whatever was active.
 SESSION_CREATE = "session.create"
-
-# I have stopped watching. Not symmetry: without it a connection that
-# navigated away keeps being told about a conversation it no longer
-# shows, and an operator has no way to say they left. Handled by the
-# socket itself and never published: who is watching what is the
-# socket's own bookkeeping, and no listener has anything to do about it.
 SESSION_EXIT = "session.exit"
-
-# Which conversation this is, and everything that describes it: where it
-# stands, what it can reach, whether it speaks. Announced on entering and
-# on creating, never asked for on its own.
 SESSION_INFO = "session.info"
-
-# Bring back what was said before this point — paging backwards. What is
-# on screen when a conversation opens arrives without asking (see
-# SESSION_MESSAGES).
 SESSION_RECALL = "session.recall"
 
-# What was said, in answer to entering or recalling.
 SESSION_MESSAGES = "session.messages"
-
-# Somebody is now in this conversation and has been told what it is. What
-# a state has to say before anybody says anything is said in answer to
-# this, by whoever runs turns — so entering announces, and opening is a
-# reaction to the announcement rather than a kind of request that the
-# queue of requests has to recognise. Published after the whole
-# announcement, never before: what frames a conversation reaches the
-# person ahead of anything the conversation says.
 SESSION_OPENED = "session.opened"
 
-# The person closes the conversation.
 SESSION_TERMINATE = "session.terminate"
-
-# It has been closed, by whoever decided — often the server itself
-# (another channel taking over, a revision that stopped building). Named
-# apart from the request on purpose: one letter between a verb and a fact
-# is an invitation to get it wrong.
 SESSION_ENDED = "session.ended"
-
-# There is no conversation to be had, and why: the project is paused, its
-# terms have not been accepted, there is no project at all, or nothing in
-# this build answers for chat. A refusal, not a failure — whoever shows a
-# chat shows a different screen for each.
 SESSION_BLOCKED = "session.blocked"
-
-# Speak, or stop speaking, in this conversation: whether the model is
-# asked for the spoken version of its reply. Its own message because it
-# changes mid-conversation, and because a turn nobody asked for — an
-# opening message — has no request to carry it.
 SESSION_SPEAK = "session.speak"
-
-# This conversation has been handed to a person. Named for the session
-# because that is what it is about, but delivered to that identity's
-# connections rather than to whoever is watching the session: the point
-# of it is to reach an operator who is not in the conversation yet.
 SESSION_TAKEN_OVER = "session.taken_over"
-
-# Something one identity's interfaces may want to show — a task's own
-# snippet, a state that moved while nobody was looking. Not content and
-# not a fact about a turn: a nudge, addressed to whoever that person has
-# open. Whether anything is listening is not the producer's business.
 UI_NOTIFICATION = "ui.notification"
-
-# An administrator-facing warning about the installation itself — a
-# published revision that stopped building, and whatever joins it later.
-# Its own type because an interface may well show a nudge and not this:
-# it is addressed to a role, not to a person doing something.
 UI_SYSTEM_WARNING = "ui.system_warning"
-
-# How far along a job is, as the broadcaster batches it. Every JobQueue
-# reports through that one broadcaster, so this is not the benchmark's
-# alone however much the benchmark screen is what watches it. Published
-# rather than pushed so the broadcaster — which is core — holds no
-# reference to whatever interface happens to be watching (see
-# broadcaster.Broadcaster).
 UI_PROGRESS = "ui.progress"
-
-# Somebody reacted to a message — the model to what the person just
-# said. A fact about that message, not about the answer to it.
 OUTPUT_REACTION = "output.reaction"
-
-# The conversation moved: which state it is in now, and what moved it.
-# Published when it changes, because that is when it is news — a reader
-# keeps the last one it was told.
 STATE_CHANGED = "state.changed"
-
-# What went wrong, when something did: `code` is what happened, and
-# whoever is speaking to the person writes the sentence. It ends an
-# exchange in place of the answer.
 OUTPUT_ERROR = "output.error"
 
 TOOL_SEND_MAIL = "tool.send_mail"
-
-# Named places the core assembles something and anything may add to it.
-# Not messages: nothing is delivered and nobody is notified — someone
-# asks, synchronously, and whoever registered fills in its part. Mostly
-# that someone is the core, because the things a skill has to reach are
-# all built before or outside any turn: the boot-time router, a
-# request's own response, a read of the configuration. POINT_CORE_
-# SERVICES runs the other way and is the reason this says "someone"
-# rather than "the core".
 POINT_API_STATE = "api.state"
 POINT_CONFIG_SERVICES = "config.services"
 POINT_HTTP_CONTROLLERS = "http.controllers"
-
-# The composed core, offered to whoever asks for it. A skill starts at
-# boot, long before db/TurnService/SchedulerService exist, so it cannot
-# be handed them as arguments — which is why every skill's start() was
-# growing a parameter for each core object any one of them happened to
-# need. Instead the core contributes itself here once it is composed,
-# and a skill collects it from inside work that runs later: a
-# POINT_HTTP_CONTROLLERS contributor, or the first message it handles.
-# Nothing declares a dependency and nothing orders anything — the only
-# rule is that a collect must not run before main.py has contributed,
-# which is what "later" means here.
 POINT_CORE_SERVICES = "core.services"
-
-# Which loader answers "give me this project's automaton". The core
-# builds the Db/Archive-backed one and offers the choice here; a package
-# that knows better replaces it (see project/archive/loader_choice.py).
-# A point rather than a branch in main.py because the alternatives live
-# in packages a build may not contain at all: the platform's
-# compiled-or-interpreted loader, and a product's single-package one.
 POINT_AUTOMATON_LOADER = "automaton.loader"
-
-# A revision has just been published, and whoever can turn one into a
-# package may say what it produced. The publisher never asks whether a
-# compiler is installed: it collects, and a build without one collects
-# nothing — which is the same answer as a compile that failed.
 POINT_PROJECT_PUBLISHED = "project.published"
-
-# Whether a turn should also ask the model for a spoken version of its
-# reply. Core owns the prompt fragment that asks (tracking/prompt.py's
-# AudioPrompt) and cannot own the answer: a spoken reply is worth asking
-# for only if something can speak it, and what speaks is a skill. A point
-# rather than a flag threaded from main.py because the two halves of the
-# old gate — is the service configured, did this project narrow it —
-# meant core knowing the name of a package a build may not contain (see
-# tracking/spoken_reply.py).
 POINT_SPOKEN_REPLY = "turn.spoken_reply"
-
-# What each optional service says it can do for one conversation (see
-# tracking/session_services.py). Nobody registered means nothing offers
-# anything, which is what a build without those packages should conclude.
 POINT_SESSION_SERVICES = "session.services"
-
-# What a client connected over a socket is allowed to put on the Bus.
-# The wire uses these very names — a frame is not translated into
-# something else on the way in — so without this list the socket would
-# be an open injection point: a browser could publish an internal type
-# and find listeners for it. A client speaks as a person, and a person
-# says things.
 CLIENT_INJECTABLE = frozenset({
     INPUT_TEXT, INPUT_BUTTON, INPUT_REACTION,
     SESSION_ENTER, SESSION_CREATE, SESSION_RECALL,
     SESSION_TERMINATE, SESSION_SPEAK,
 })
-
-# How deep a chain of conversions may go before something is looping: a
-# handler that publishes the type it consumes would otherwise recur
-# forever, and the first one to do it will not do it on purpose.
 MAX_CONVERSIONS = 4
 
 
@@ -264,14 +97,8 @@ class Message:
     project_id: str | None = None
     session_id: int | None = None
     channel: str | None = None
-    #: The channel's own id for the message a person actually sent —
-    #: unchanged across conversions, so a log line ties them together.
     origin_id: str | None = None
-    #: The type this message was converted from, if it was: what tells a
-    #: consumer that a text arrived as speech (see WhatsApp's own spoken
-    #: replies), without the producer having to say so separately.
     converted_from: str | None = None
-    #: Media type of `body` where that is not implied by `type`.
     mime: str | None = None
     conversions: int = 0
 
@@ -285,8 +112,6 @@ class Message:
 
 
 Listener = Callable[[Message], Awaitable[None]]
-#: A contribution point's handler: it is handed the thing being
-#: assembled and adds to it. Synchronous, because every point is.
 Contributor = Callable[[Any], None]
 
 _listeners: dict[str, tuple[Listener, ...]] = {}

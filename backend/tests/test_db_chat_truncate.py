@@ -71,7 +71,7 @@ def test_truncating_never_deletes_the_projects_own_init_transition_row(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
     init_row = _signal_at(db, session_id, datetime(2026, 1, 1, 10, 0, 0), old_state="", new_state="start")
 
-    db.truncate_session(session_id, datetime(2026, 1, 1, 9, 0, 0))  # before everything
+    db.truncate_session(session_id, datetime(2026, 1, 1, 9, 0, 0))
 
     assert {row["id"] for row in db.get_signals(session_id)} == {init_row}
 
@@ -83,6 +83,6 @@ def test_latest_message_or_signal_timestamp_is_the_max_across_both_and_none_once
 
     assert db.latest_message_or_signal_timestamp(session_id) == datetime(2026, 1, 1, 10, 30, 0)
 
-    db.truncate_session(session_id, datetime(2026, 1, 1, 9, 0, 0))  # everything
+    db.truncate_session(session_id, datetime(2026, 1, 1, 9, 0, 0))
 
     assert db.latest_message_or_signal_timestamp(session_id) is None

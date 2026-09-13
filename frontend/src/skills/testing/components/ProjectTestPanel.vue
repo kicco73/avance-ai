@@ -1,8 +1,4 @@
 <script setup>
-// "Test" mode's content, shown when EditProjectView.vue's `testOpen` is set.
-// Two columns: TestsTree on the left (Sessions/States), a node's results on
-// the right. Owns all data fetching/launching/polling — TestsTree itself
-// (alongside TestNodeButton, both in this same test/ folder) stays purely presentational.
 import { computed, onMounted, ref } from 'vue'
 import TestsTree from './TestsTree.vue'
 import SignalAccuracyDistributionChart from './SignalAccuracyDistributionChart.vue'
@@ -24,12 +20,8 @@ const props = defineProps({
   }
 })
 
-// Lets EditProjectView.vue mirror this panel's own selection into the
-// Inspector's read-only Info tab — this stays the single source of truth
-// for selectedNodeId, the parent just gets told when it changes.
 const emit = defineEmits(['select'])
 
-// Applies to whichever node gets activated next — one shared control, not a per-node choice.
 const strategy = ref('batch_lite')
 const strategyLabels = { batch_lite: 'Batch-lite', batch: 'Batch', turn_by_turn: 'Turn-by-turn' }
 
@@ -52,11 +44,6 @@ const statesLoading = ref(false)
 const projectSignals = ref([])
 const signalsLoading = ref(false)
 
-// name -> {ui_label, ui_description} for the fixed core-benchmark-metric
-// registry (state_accuracy, signal_accuracy, ...) — every result row's own
-// `name` below is one of these, resolved for display instead of the raw
-// identifier. Loaded once; this registry is static per backend build, not
-// per-project data.
 const metricDefinitions = ref({})
 
 async function loadMetricDefinitions() {
@@ -64,7 +51,6 @@ async function loadMetricDefinitions() {
     const metrics = await getTestMetrics(props.projectId)
     metricDefinitions.value = Object.fromEntries(metrics.map((m) => [m.name, m]))
   } catch {
-    // already surfaced via apiFetch
   }
 }
 
@@ -104,7 +90,6 @@ onMounted(() => {
   getProjectStates(props.projectId).then((states) => {
     projectStates.value = states
   }).catch(() => {
-    // already surfaced via apiFetch
   }).finally(() => {
     statesLoading.value = false
   })
@@ -112,7 +97,6 @@ onMounted(() => {
   getProjectSignals(props.projectId).then(({ signals }) => {
     projectSignals.value = signals.map((entry) => entry.signal)
   }).catch(() => {
-    // already surfaced via apiFetch
   }).finally(() => {
     signalsLoading.value = false
   })
@@ -671,8 +655,6 @@ onMounted(() => {
 </style>
 
 <style>
-/* Unscoped: teleported to <body> (see InspectorDetailCard.vue's own
-   tokens bar tooltip), outside this component's normal DOM subtree. */
 .tests-panel-tokens-tooltip-floating {
   position: fixed;
   width: max-content;

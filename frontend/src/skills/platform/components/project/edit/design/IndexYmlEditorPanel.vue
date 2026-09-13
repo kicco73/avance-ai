@@ -1,12 +1,4 @@
 <script setup>
-// index.yml's dedicated editor pane — a "graph"/"code" segmented toggle over
-// InspectorGraph and CodeEditor. Both segments stay mounted at once (v-show,
-// not v-if): Undo/Redo act on index.yml as a whole regardless of which
-// segment is showing, so CodeEditor's undo/redo state must stay live throughout.
-//
-// Owns no persistence of its own: EditProjectView.vue holds the unsaved-
-// changes guard and decides whether a reorder click may proceed, then calls
-// the endpoint and tells this view to refresh (see reload()/refresh()).
 import { computed, ref } from 'vue'
 import InspectorGraph from '../../../inspector/InspectorGraph.vue'
 import CodeEditor from '../../../../CodeEditor.vue'
@@ -16,17 +8,11 @@ import { aiEditIndexYml } from '../../../../api.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },
-  // Behavior branch attachment basenames — the code segment's
-  // `attachments:` autocomplete offers these (see CodeEditor.vue).
   attachmentFiles: { type: Array, default: () => [] },
   highlightedStateKey: { type: String, default: null },
   autoJumpOnHighlightChange: { type: Boolean, default: false },
   firedActionEdge: { type: Object, default: null },
-  // Forwarded to InspectorGraph so a selection made elsewhere (e.g. clicking
-  // a row in the Inspector's Actions tab) shows up highlighted here too, not
-  // just a selection made by tapping the graph itself.
   selectedElement: { type: Object, default: null },
-  // Forwarded to CodeEditor — see its own currentRevision prop.
   currentRevision: { type: Number, default: null }
 })
 
@@ -44,9 +30,6 @@ async function refresh(active) {
   await graphRef.value?.refresh(active)
 }
 
-// Re-fetches index.yml's text into the (possibly not currently visible)
-// code buffer, for after an Add…/reorder changed it out from under
-// whatever the editor was showing.
 async function reloadCode() {
   await codeEditorRef.value?.reload()
 }
@@ -55,17 +38,11 @@ const reload = reloadCode
 function stateElementFor(stateKey) { return graphRef.value?.stateElementFor(stateKey) ?? null }
 function actionsForState(stateKey) { return graphRef.value?.actionsForState(stateKey) ?? [] }
 
-// Only jumps if "code" is already the visible segment — never switches
-// segments itself, since Graph/Code is the user's own choice to make.
 function jumpToLine(lineIndex) {
   if (segment.value !== 'code') return
   codeEditorRef.value?.jumpToLine(lineIndex)
 }
 
-// CodeEditor's own 'build-error' — unlike jumpToLine above, this one DOES
-// switch to the Code segment: it's a direct, immediate consequence of the
-// user's own Save click on this exact buffer, not an unrelated background
-// event, so there's no "Graph/Code is the user's own choice" concern here.
 const pendingBuildErrorLine = ref(null)
 
 function applyBuildErrorLine(lineIndex) {
@@ -90,27 +67,15 @@ function onCodeLoaded() {
   applyBuildErrorLine(lineIndex)
 }
 
-// The raw YAML text and its dirty flag, for EditProjectView.vue's unsaved-
-// changes guard and jump-to-definition line-finding.
 const content = computed(() => codeEditorRef.value?.content ?? '')
 const isDirty = computed(() => codeEditorRef.value?.isDirty ?? false)
 const saving = computed(() => codeEditorRef.value?.saving ?? false)
 
-// Delegated to the always-mounted CodeEditor instance — EditProjectView.vue's
-// unsaved-changes dialog calls save()/discard() regardless of which editor
-// kind is actually active.
 function save() { return codeEditorRef.value?.save() }
 function discard() { return codeEditorRef.value?.discard() }
 function undo() { return codeEditorRef.value?.undo() }
 function redo() { return codeEditorRef.value?.redo() }
 
-// The toolbar's AI button: prompts for a free-form problem/change
-// description, sends it (with the project's current index.yml and the
-// format spec) to the backend's AiService, drops the rewritten content
-// into the code buffer and saves it — Graph/Code stays whatever the user
-// had selected (see jumpToLine's docstring above). CodeEditor stays
-// mounted regardless of which segment is showing, so setContent/save
-// work even when the graph segment is the one currently visible.
 async function aiEdit() {
   const instruction = await textareaDialog({
     title: 'AI-assisted edit',
@@ -124,7 +89,6 @@ async function aiEdit() {
     codeEditorRef.value?.setContent(result.content)
     await codeEditorRef.value?.save()
   } catch {
-    // already surfaced via apiFetch's shared error store
   } finally {
     aiEditing.value = false
   }

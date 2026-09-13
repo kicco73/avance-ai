@@ -19,11 +19,6 @@ SCHEMA_ORDER_PROMPT = """"
 Respond with the structured JSON object described by the response
 schema, filling in its fields in this order:
 """
-
-# The batch formats' own end-of-output marker — bracketed and lowercase
-# specifically so it can never collide with a real turn header ("<N>:",
-# always just digits) or a real "key=value" line (always contains "="):
-# "[eof]" is neither.
 BATCH_END_MARKER = "[eof]"
 
 
@@ -321,14 +316,6 @@ class SignalsPrompt(Prompt):
 	def decode(self, raw: str) -> dict[str, float]:
 		"""Single-turn format only: a JSON object, e.g. '{"mood": 50.2}'."""
 		return _decode_json_object(raw, "raw signal")
-
-
-# A single live turn or turn-by-turn replay uses SignalsPrompt's own plain
-# EMBED_SIGNAL_TAG_PROMPT instead, since it has no turn-numbering concept at
-# all to get wrong. Keeping the two totally separate (rather than one prompt
-# trying to describe both shapes) is deliberate — the shared version proved
-# unstable across single-turn calls (extra rows, wrong turn numbers, missing
-# turn-number prefix).
 EMBED_SIGNAL_BATCH_TAG_PROMPT = """
 Definition of signals metadata:
 	- a small CSV table, as plain text (not a JSON object).
@@ -407,20 +394,9 @@ Always fill in the 'memory' field of your structured response:
 	- Only include a note's name when you are actually reporting something new or
 	  changed — omit the ones that haven't changed.
 """
-
-# The data header, as opposed to EMBED_MEMORY_TAG_INSTRUCTIONS above: the
-# only part of this channel's own prompt slice that changes turn to turn
-# (the memory content actually is per-turn) — see MemoryPrompt.volatile,
-# the only thing that tells the two apart (into Prompt.to_system_prompt's
-# own stable/volatile halves).
 EMBED_MEMORY_TAG_HEADER = """
 Current memory:
 """
-
-# Preserved for any caller that still wants the whole thing in one piece
-# (e.g. Prompt.render_text's own generic definition+content join, used by
-# every other channel) — always these two concatenated, never reworded on
-# its own.
 EMBED_MEMORY_TAG_PROMPT = EMBED_MEMORY_TAG_INSTRUCTIONS + EMBED_MEMORY_TAG_HEADER
 
 
@@ -503,10 +479,6 @@ class MemoryBatchPrompt(Prompt):
 	)
 
 	def __init__(self, expected_turns: int) -> None:
-		# Never given real content — the batch flow embeds the starting
-		# memory directly into base_prompt as literal text (see
-		# BatchSignalSource.prepare_batch), unlike MemoryPrompt's live
-		# "Current memory:" trailer.
 		super().__init__("")
 		self.expected_turns = expected_turns
 
@@ -555,10 +527,6 @@ class OutputBatchPrompt(Prompt):
 	)
 
 	def __init__(self, expected_turns: int) -> None:
-		# Same convention as MemoryBatchPrompt — the field definitions
-		# text (build_output_definition_for_names) is folded into
-		# base_prompt directly (see BatchSignalSource.prepare_batch), not
-		# carried as this instance's own content.
 		super().__init__("")
 		self.expected_turns = expected_turns
 

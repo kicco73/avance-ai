@@ -1,7 +1,4 @@
 <script setup>
-// Card for whatever's selected in the Graph (a state or an action) —
-// purely a function of `selectedElement` props, never internal state, so
-// a parent can drive it without this component needing cytoscape awareness.
 import { computed, ref, watch } from 'vue'
 import { vAutosize } from './textareaAutosize.js'
 import CardMenu from './CardMenu.vue'
@@ -13,45 +10,18 @@ import { useTokensBar } from '../../composables/useTokensBar.js'
 import { identifierRegistry } from '../../identifierRegistry.js'
 
 const props = defineProps({
-  selectedElement: { type: Object, default: null }, // { kind: 'state' | 'action', data } | null
+  selectedElement: { type: Object, default: null },
   editableFiles: { type: Array, default: null },
   firedActionEdge: { type: Object, default: null },
   highlightedStateKey: { type: String, default: null },
-  // Whether clicking the card body (not the × or an attachment button)
-  // emits 'select' — on for a card that can represent an element other
-  // than the current shared selection, so clicking it promotes it.
   selectable: { type: Boolean, default: false },
-  // The × close button — off for a row inside an actions list, where
-  // every action is always shown and × would be ambiguous with delete.
   closable: { type: Boolean, default: true },
-  // Turns the read-only body into an editable form (see set-field below)
-  // — only passed by callers inside an active edit session; elsewhere the
-  // card stays read-only.
   editable: { type: Boolean, default: false },
-  // Estimated input-token cost of a state's own turn prompt (see
-  // EditProjectView.vue's own stateTabTokens) — null while unknown/
-  // loading, or for an action card, which has none. Kept as its own prop
-  // rather than folded into selectedElement.data, which round-trips back
-  // out unmodified through the 'select' emit below.
   stateTokens: { type: Number, default: null },
-  // Every state's {key, uiLabel} — options for the action form's target
-  // <select>. Unused for a state card.
   availableStates: { type: Array, default: () => [] },
-  // Whether the form is open — a v-model (update:open) the parent owns
-  // rather than local state, since a list of these cards needs an
-  // accordion (only one open at a time), which only a shared parent can enforce.
   open: { type: Boolean, default: false },
-  // Matched against elementIdentity below to play a one-shot yellow-fade
-  // highlight when this card is the state/action a "+ Add" click just created.
   recentlyAddedKey: { type: String, default: null },
-  // A plain label ("START"/"END", ...) shown in the same badge slot as
-  // "Current" — for a caller that already knows which state a card
-  // stands for, rather than deriving it from highlightedStateKey. State only.
   roleBadge: { type: String, default: null },
-  // ScriptEditDialog.vue's own Save button needs to await a real save
-  // result (see openScriptDialog below) — every other field here
-  // commits fire-and-forget through the set-field emit instead, which
-  // can't report back whether its write actually landed.
   saveField: { type: Function, default: null }
 })
 
@@ -59,25 +29,17 @@ const emit = defineEmits(['select-attachment', 'jump-to-attachment', 'close', 's
 
 const showEditForm = computed(() => props.editable && props.open)
 
-// stateTokens' own bar — see useTokensBar.js. The exact number stays
-// available on hover via the floating tooltip below.
 const TOKENS_BAR_MAX = 1000
 const { width: tokensBarWidth, level: tokensBarLevel } = useTokensBar(computed(() => props.stateTokens), TOKENS_BAR_MAX)
 const {
   visible: tokensTooltipVisible, style: tokensTooltipStyle, show: showTokensTooltip, hide: hideTokensTooltip
 } = useFloatingTooltip()
 
-// A click anywhere on the card background toggles open/closed and (when
-// selectable) reselects. Safe because every actual form control inside
-// already carries its own @click.stop, so only whitespace reaches here.
 function handleCardClick() {
   if (props.editable) emit('update:open', !props.open)
   if (props.selectable) emit('select')
 }
 
-// Local editable buffers, separate from selectedElement's props so
-// typing doesn't fight a parent re-render. Reset on identity change only
-// — the prop's own reference changes after every refetch this triggers.
 const editUiLabel = ref('')
 const editUiDescription = ref('')
 const editContextualPrompt = ref('')
@@ -101,9 +63,6 @@ function resetEditBuffers() {
 }
 
 watch(elementIdentity, resetEditBuffers, { immediate: true })
-// Also reset on every fresh open, so reopening always starts from
-// whatever's actually current rather than a stale buffer left over from
-// before it closed.
 watch(() => props.open, (isOpen) => { if (isOpen) resetEditBuffers() })
 
 function commitTextField(field, currentValue, originalValue) {
@@ -127,18 +86,6 @@ function commitTarget() {
   commitTextField('target', editTarget.value, props.selectedElement?.data.target ?? '')
 }
 
-// Trigger/On exit/Task badges (action cards only) all open the same
-// ScriptEditDialog, just starting on a different tab — one dialog
-// replacing what used to be an always-inline TriggerEditor plus two
-// separate on-enter/on-exit dialogs. onCommit goes through saveField (a
-// real awaited call), not commitTextField/set-field (fire-and-forget) —
-// the dialog's own Save button needs the actual save result to know
-// whether to keep a field's edit or roll it back. Wire keys are
-// "on-exit"/"task" (kebab-case/lowercase, not camelCase) — written
-// straight into the YAML under those literal keys on the backend, same
-// convention every other field here follows ('ui-label',
-// 'history-cutoff', ...). showTrigger is false for the init-action,
-// which has no trigger of its own to edit.
 function openScriptDialog(tab) {
   customDialog({
     component: ScriptEditDialog,
@@ -154,20 +101,10 @@ function openScriptDialog(tab) {
   })
 }
 
-// history-cutoff/chat-enabled: a plain instant toggle, not a typed field — no
-// local buffer/blur dance needed.
 function commitBoolField(field, value) {
   emit('set-field', field, value)
 }
 
-// ai-may-read-sources / ai-must-read-sources — every declared source
-// name is a 3-state read toggle (off -> may -> must -> off), same idiom
-// as the boolean badges above; identifierRegistry.value.source is already
-// the live-refreshed source of truth ModelMenu/TriggerEditor's own
-// autocomplete uses, so no separate fetch is needed here. A source whose
-// driver implements `update` (registry key "source.<name>" lists it —
-// no registered driver supports one today) additionally gets a separate write toggle
-// (ai-may-write-sources): reading and writing are independent grants.
 const availableSourceNames = computed(() => Object.keys(identifierRegistry.value.source ?? {}))
 function sourceSupportsWrite(name) {
   return 'update' in (identifierRegistry.value[`source.${name}`] ?? {})
@@ -210,7 +147,6 @@ const deleteDisabledReason = computed(() => {
     : "The init-action can't be deleted."
 })
 
-// No confirmation dialog — an undo exists for exactly this.
 function handleDelete() {
   emit('delete')
 }
@@ -219,9 +155,6 @@ const envEntries = computed(() => Object.entries(props.selectedElement?.data.env
 
 function attachmentLabel(index) { return String.fromCharCode(97 + index) }
 
-// source/target are real state keys, not labels — cytoscape requires
-// them as-is for its own edge ids. Resolved against availableStates for
-// display; falls back to the raw key only for the synthetic pseudo-start id.
 function stateLabelFor(key) {
   return props.availableStates.find((s) => s.key === key)?.uiLabel ?? key
 }
@@ -241,27 +174,16 @@ const isSelectedStateCurrent = computed(() => {
 const hasSelectedElementBadges = computed(() => {
   if (!props.selectedElement) return false
   if (props.selectedElement.kind === 'state') {
-    // History cutoff/No chat are always-shown clickable badges once the
-    // form is open, so there's always something to show then. Closed,
-    // this card falls back to the same read-only badge set as non-editable.
     if (showEditForm.value) return true
     const d = props.selectedElement.data
     return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || !d.chatEnabled || d.historyCutoff ||
       (d.reactionsEnabled && d.hasReactions) || (d.aiMayQuerySources?.length > 0) || (d.aiMustQuerySources?.length > 0)
   }
-  // "Trigger"/"On exit"/"Task" are always-shown clickable badges once the
-  // form is open — same reasoning, and same layout position (first in
-  // this row), as No chat/History cutoff above. Closed, same read-only
-  // set as non-editable, plus whichever badge whenever the action has
-  // that script.
   if (showEditForm.value) return true
   const d = props.selectedElement.data
   return isSelectedActionFired.value || !d.hasTrigger || d.isInitEdge || !!d.trigger || !!d.task || !!d.onExit
 })
 
-// Only reachable while the edit form's attachment list is showing. A
-// state's form jumps to where the attachment is declared in index.yml;
-// an action's form opens the attachment file directly.
 function selectAttachment(fileName) {
   if (props.selectedElement?.kind === 'state') emit('jump-to-attachment', fileName)
   else emit('select-attachment', fileName)
@@ -524,9 +446,6 @@ function selectAttachment(fileName) {
           </div>
         </Transition>
       </template>
-      <!-- Attachments are an editing concern only — never shown in a
-           read-only display, and only while the edit form is actually
-           open (showEditForm) does the attachment list do anything useful. -->
       <div v-if="showEditForm && selectedElement.data.attachments?.length" class="inspector-attachments">
         <button
           v-for="(fileName, idx) in selectedElement.data.attachments"
@@ -551,9 +470,6 @@ function selectAttachment(fileName) {
 .inspector-detail-card-flash { animation: inspector-detail-card-flash 1.5s ease-out; }
 .inspector-detail-card-selectable { cursor: pointer; }
 .inspector-detail-card-selectable:hover { border-color: #c9d6e8; background: #f0f4fa; }
-/* The 45%/overflow:hidden cap above is for read-only/list-row usages,
-   where several cards share the panel. An editable card is always alone
-   in its own scrollable tab, so it should grow with its content instead. */
 .inspector-detail-card-editable { max-height: none; overflow: visible; }
 .inspector-detail-card-editable .inspector-detail-body { overflow: visible; }
 .inspector-detail-header { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem 0.6rem; border-bottom: 1px solid #eee; flex-shrink: 0; }
@@ -572,18 +488,9 @@ function selectAttachment(fileName) {
 .inspector-detail-badge-toggle { cursor: pointer; }
 .inspector-detail-badge-toggle-off { background: #ccc; color: #555; }
 .inspector-detail-badge-toggle-on { background: #4a6fa5; }
-/* ai-must-read-sources — a forced read, visually distinct from the
-   plain "on" (ai-may-read-sources) toggle color above. */
 .inspector-detail-badge-toggle-required { background: #c2410c; }
-/* ai-may-write-sources — a write grant, its own color again: reading and
-   writing the same source are independent toggles. */
 .inspector-detail-badge-toggle-write { background: #6d28d9; }
 .inspector-detail-badge-toggle-locked { cursor: not-allowed; opacity: 0.5; }
-/* Same look and feel as the toggle family above (border-radius/padding/
-   cursor/grey-when-off all come from -badge/-toggle/-toggle-off) — only
-   its own active-state color differs, so this is the one declaration
-   left to override, and only together with -toggle-on (compound
-   selector, so it wins regardless of source order). */
 .inspector-detail-badge-trigger-btn { appearance: none; border: none; margin: 0; font-family: inherit; cursor: pointer; }
 .inspector-detail-badge-trigger-btn:disabled { cursor: not-allowed; opacity: 0.6; }
 .inspector-detail-badge-trigger.inspector-detail-badge-toggle-on { background: #4b8bbe; }
@@ -597,8 +504,6 @@ function selectAttachment(fileName) {
 .inspector-detail-title-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
 .inspector-detail-title-input:hover, .inspector-detail-title-input:focus { border-color: #ccc; background: white; }
 .inspector-detail-form-label { display: flex; align-items: center; gap: 0.35rem; margin: 20px 0 0.2rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
-/* Marks a field the AI itself reads, as opposed to a purely
-   human-facing one like Description. */
 .inspector-ai-field-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; }
 .inspector-detail-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.8rem; line-height: 1.54; padding: 0.4rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
 .inspector-detail-target-select { display: inline-block; width: auto; max-width: 100%; font: inherit; font-weight: 700; font-size: inherit; color: #333; padding: 0.05rem 0.2rem; border-radius: 4px; border: 1px solid transparent; background: transparent; cursor: pointer; }
@@ -626,9 +531,6 @@ function selectAttachment(fileName) {
 </style>
 
 <style>
-/* Unscoped: teleported to <body> (see the tokens bar's tooltip above),
-   outside this component's normal DOM subtree — same reasoning as
-   ModelMenu.vue's own unscoped Teleport styles. */
 .inspector-detail-tokens-tooltip-floating {
   position: fixed;
   width: max-content;

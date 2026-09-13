@@ -61,7 +61,6 @@ async def _run():
     live_metadata: dict[str, object] = {}
 
     def on_metadata(key: str, value) -> None:
-        # Called sync, fire-and-forget — never awaited by a provider.
         live_metadata[key] = value
 
     async for chunk in protocol.generate_reply(prompt, _history(), on_metadata):
@@ -71,17 +70,11 @@ async def _run():
 
 
 def _assert_extracted_metadata(reply, live_metadata) -> None:
-    # The schema protocol never embeds [audio]/[signals]/[memory] markup in
-    # the visible text to begin with.
     assert reply.strip()
     for marker in ("[audio]", "[/audio]", "[signals]", "[/signals]", "[memory]", "[/memory]"):
         assert marker not in reply
 
     assert isinstance(live_metadata.get("audio"), str) and live_metadata["audio"]
-
-    # "signals" arrives through on_metadata already decoded (see
-    # SignalsPrompt.decode, invoked centrally by TurnProtocolUsingSchema.
-    # generate_reply) — a dict, never the raw JSON string the model itself wrote.
     assert isinstance(live_metadata.get("signals"), dict)
     assert "mood" in live_metadata["signals"]
 

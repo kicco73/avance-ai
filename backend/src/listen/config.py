@@ -25,11 +25,8 @@ _DRIVERS = ("faster-whisper",)
 class ListenServiceConfig:
     driver: str
     model: str
-    # Optional: unused by faster-whisper, kept for a future remote provider.
     key: str | None
-    # Optional: skips faster-whisper's autodetect when given (e.g. "ca").
     language: str | None
-    # Optional: falls back to `driver`.
     ui_label: str
     ui_description: str | None = None
 

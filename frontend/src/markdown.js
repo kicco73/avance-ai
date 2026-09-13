@@ -8,9 +8,6 @@ const md = new MarkdownIt({
   html: false
 })
 
-// Links open outside the app rather than navigating the current page —
-// in a home-screen standalone webapp there's no address bar/back button,
-// so an in-place navigation stranded the user with no way back.
 const defaultLinkOpen =
   md.renderer.rules.link_open ||
   ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options))
@@ -21,8 +18,6 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   return defaultLinkOpen(tokens, idx, options, env, self)
 }
 
-// Wraps every rendered table in a horizontally scrollable container so
-// wide tables scroll instead of squeezing columns into word-splitting.
 md.renderer.rules.table_open = () => '<div class="md-table-wrap"><table>'
 md.renderer.rules.table_close = () => '</table></div>'
 

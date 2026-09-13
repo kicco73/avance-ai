@@ -54,7 +54,6 @@ describe('useProjectRevision', () => {
     expect(upToDate.canRevert.value).toBe(false)
     upToDate.unmount?.()
 
-    // canRevert requires a draft ahead AND a real prior publication.
     const ahead = await mountAt(3, 2)
     expect(ahead.canRevert.value).toBe(true)
 
@@ -88,7 +87,6 @@ describe('useProjectRevision', () => {
       expect(s.reverting.value).toBe(false)
     })
 
-    // refreshAfterProjectEdit already covers index.yml itself.
     it('leaves index.yml to its own refresh', async () => {
       confirmDialog.mockResolvedValue(true)
       const s = await mountAt(3, 2, { fileName: 'index.yml' })

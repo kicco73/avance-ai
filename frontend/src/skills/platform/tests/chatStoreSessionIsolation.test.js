@@ -1,9 +1,3 @@
-// Regression coverage for chatStoreFactory.js's createChatStore: the live
-// chat (chatStore.js) and EditProjectView.vue's own embedded "Run" test
-// chat (testChatStore.js) are two independent instances, each always
-// asking for its own kind of conversation, for its own project, and
-// listing its own pool of sessions — never a shared flag deciding which
-// one a single store instance happens to be routed to right now.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../../busChannel.js', () => import('../../../../tests/fakeBus.js'))
@@ -86,7 +80,6 @@ describe('the live store and the test store each ask for their own conversation'
     bus.deliverEntered({ sessionId: 1, projectId: 'live-project', state: STATE })
 
     expect(chatStore.currentSessionId.value).toBe(1)
-    // The test store was never asked about, and took nothing.
     expect(testChatStore.currentSessionId.value).toBeNull()
   })
 
@@ -100,8 +93,6 @@ describe('the live store and the test store each ask for their own conversation'
     expect(sentOfType('session.create')).toEqual([
       { type: 'session.create', project_id: 'live-project', session_type: 'live' },
     ])
-    // init-action's own task arrives as a notification, never off anything
-    // the chat asked for.
     expect(taskActions.runTaskScript).not.toHaveBeenCalled()
 
     dialogStore.confirmDialog.mockClear()
@@ -122,7 +113,6 @@ describe('the live store and the test store each ask for their own conversation'
     await testChatStore.handleReset()
 
     expect(api.postResetTestSessions).toHaveBeenCalledWith('my-project')
-    // Its task arrives as a notification too.
     expect(taskActions.runTaskScript).not.toHaveBeenCalled()
     expect(testChatStore.state.value).toEqual({ key: 'a', ui_label: 'A', actions: [] })
   })
@@ -139,10 +129,8 @@ describe('the live store and the test store each ask for their own conversation'
     expect(dialogStore.confirmDialog).not.toHaveBeenCalled()
     expect(sentOfType('session.terminate')).toEqual([{ type: 'session.terminate', session_id: 7 }])
 
-    // Closed — said by the one place every closure passes through.
     bus.deliver({ type: 'session.ended', session_id: 7, reason: 'user' })
     expect(chatStore.selectedSessionActive.value).toBe(false)
-    // And the test chat, which was never in that conversation, is untouched.
     expect(testChatStore.selectedSessionActive.value).toBe(true)
   })
 })

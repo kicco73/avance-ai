@@ -10,9 +10,6 @@ import pandas as pd
 @dataclass(frozen=True)
 class MetricResult(object):
     name: str
-    # None when this metric has no meaningful value in the current
-    # context, e.g. no real elapsed time to normalize against — treated
-    # like a signal that was never estimated.
     value: float | None
     components: dict[str, float] = field(default_factory=dict)
     calculated_at: datetime | None = None

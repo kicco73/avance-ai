@@ -1,10 +1,4 @@
 <script setup>
-// Schema-editing tab for the project-level `env:` section: create, rename,
-// or delete a declared env key, editing its ui-description, default
-// `value` — a Python expression, edited via TriggerEditor.vue like a
-// trigger — and its `ai-definition`: the text the model reads about this
-// variable, whenever some state actually lists it in its own input/output
-// (see InspectorStateIOTab.vue).
 import { computed, nextTick, ref, watch, onMounted } from 'vue'
 import { getProjectEnvKeys } from '../../api.js'
 import { vAutosize } from '../../../../components/skillkit/textareaAutosize.js'
@@ -14,8 +8,6 @@ import { handleEnterNext } from '../../../../components/skillkit/enterToNextFiel
 
 const props = defineProps({
   projectId: { type: String, required: true },
-  // 'env-key:<name>' for the entry a "+ Add env key" click just created;
-  // null otherwise.
   recentlyAddedKey: { type: String, default: null }
 })
 
@@ -28,9 +20,6 @@ function handleDeleteEnvKey(name) {
 const envKeysLoading = ref(true)
 const envKeys = ref([])
 
-// Expanded env-key block, at most one at a time. Reset when the key it
-// points at disappears from a fresh load (deleted, or renamed under a new
-// name).
 const expandedName = ref(null)
 const editName = ref('')
 const editUiDescription = ref('')
@@ -44,9 +33,6 @@ function resetEditBuffers(entry) {
   editAiDefinition.value = entry?.env_key.ai_definition ?? ''
 }
 
-// Function-ref instead of ref=: a v-for's ref string would collect one
-// entry per row even though only the expanded row renders an editable
-// name input.
 let nameInputEl = null
 function setNameInputRef(el) {
   nameInputEl = el
@@ -217,11 +203,9 @@ onMounted(loadEnvKeys)
 .inspector-signal-label-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; }
 .inspector-signal-label-input:hover, .inspector-signal-label-input:focus { border-color: #ccc; background: white; }
 .inspector-signal-form-label { display: flex; align-items: center; gap: 0.35rem; margin: 20px 0 0.15rem; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
-/* Marks a field evaluated server-side as a Python expression (simpleeval). */
 .inspector-py-field-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 1.1rem; height: 0.85rem; border-radius: 3px; background: #4b8bbe; color: white; font-size: 0.55rem; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -0.02em; }
 .inspector-signal-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.78rem; line-height: 1.54; padding: 0.35rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
 .inspector-signal-ui_description { display: block; margin-top: 0.3rem; font-size: 0.78rem; color: #666; line-height: 1.4; }
-/* Marks a field the AI itself reads, as opposed to a purely human-facing one like Description. */
 .inspector-ai-field-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; margin-top: 0.15rem; }
 .inspector-signal-ai_definition { display: flex; align-items: flex-start; gap: 0.35rem; margin-top: 0.3rem; font-size: 0.78rem; color: #555; line-height: 1.4; }
 .inspector-detail-code { display: block; margin-top: 0.3rem; font-size: 0.78rem; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; color: #444; word-break: break-word; white-space: pre-wrap; }

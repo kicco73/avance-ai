@@ -93,7 +93,6 @@ def test_undo_and_redo_preview_without_saving_and_a_fresh_edit_clears_redo(clien
     assert body["content"] == MINIMAL_YML
     assert body["can_undo"] is False
     assert body["can_redo"] is True
-    # Undo never touches Archive — GET still reflects the last real save.
     assert _index(client)["content"] == V1_YML
 
     response = _redo(client, MINIMAL_YML)
@@ -168,10 +167,6 @@ def test_undo_does_not_reset_or_reload_the_active_conversation(client):
     assert resp.status_code == 200, resp.text
     session_id = session_of(enter_chat(client, "proj2"))
     assert chat_action(client, session_id, "go")["state"]["key"] == "b"
-
-    # A real edit that leaves "b" untouched (adds unrelated state "c"),
-    # so the conversation survives this Save and undo has something to
-    # preview.
     yml_v2 = TWO_STATE_YML + "  c:\n    contextual-prompt: extra\n"
     resp = client.put("/api/skills/platform/projects/proj2/files/index.yml", content=yml_v2.encode())
     assert resp.status_code == 200, resp.text
@@ -180,7 +175,6 @@ def test_undo_does_not_reset_or_reload_the_active_conversation(client):
     undo_resp = client.post("/api/skills/platform/projects/proj2/files/index.yml/undo", content=yml_v2.encode())
     assert undo_resp.status_code == 200, undo_resp.text
 
-    # The conversation is completely untouched by the undo preview.
     sessions = client.get("/api/core/projects/proj2/sessions").json()
     assert [s["id"] for s in sessions] == [session_id]
     assert client.get("/api/core/state").json()["key"] == "b"

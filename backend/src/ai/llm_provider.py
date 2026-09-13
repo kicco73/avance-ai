@@ -11,10 +11,6 @@ from system.logging_factory import LoggerFactory
 from system.try_again_error import TryAgainError
 
 logger = LoggerFactory.get_logger(__name__)
-
-# Called synchronously, fire-and-forget — never awaited by a provider.
-# Each metadata key ("audio", "signals", "env", ...) fires at most once
-# per turn; callers needing to await something schedule their own task.
 MetadataCallback = Callable[[str, Any], None]
 
 
@@ -61,24 +57,10 @@ class AIServiceConfig:
 	model: str
 	key: str
 	url: str | None
-	# Optional: falls back to `driver` (see AppConfig._parse_ai_services).
 	ui_label: str
 	ui_description: str | None = None
 	max_output_tokens: int = 1024
-	# Advisory ceiling for Manage services' own consumption bar (see
-	# AiService.generate_stream_with_metadata's on_metadata tap and
-	# db/ai_usage.py) — display-only, like total_token_budget_per_session;
-	# nothing here throttles or blocks a call that goes over it.
 	token_budget_per_day: int = 1_000_000
-	# Which cascade(s) this entry participates in (see AiService.for_live/
-	# for_test, which each filter on this independently) — some
-	# combination of "live"/"test", or empty to sit in neither. Defaults
-	# to both when `modes` is absent from config.yml entirely (see
-	# AppConfig._parse_ai_services); an explicit empty list is different
-	# from that default — it deliberately excludes the entry from both.
-	# "no-auto" is a third, separate tag applied alongside "live"/"test"
-	# (never on its own) — see AiService.for_live/for_test's own
-	# auto_config_indices for what it actually does.
 	modes: tuple[str, ...] = ("live", "test")
 
 
@@ -147,11 +129,6 @@ class ToolCallsRequested(Exception):
 	def __init__(self, calls: list[ToolCall], assistant_content: Any) -> None:
 		super().__init__(f"tool calls requested: {[c.name for c in calls]}")
 		self.calls = calls
-		# The provider-neutral assistant message to replay in history —
-		# whatever text (if any) the model produced alongside asking for
-		# these calls; see the neutral {"role": "assistant", "tool_calls":
-		# ..., "content": ...} message shape each provider must translate
-		# to/from its own format.
 		self.assistant_content = assistant_content
 
 

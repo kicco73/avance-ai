@@ -25,31 +25,18 @@ import { activeChatSkin, holdSkin } from './chatSkin.js'
 
 const hasSharedInvite = !!peekInviteCode()
 
-// The project this session landed on (see useAppBoot). Whatever screen
-// the role gets, it is about this one until the user picks another.
 const landingProjectId = ref(null)
 const currentUserProfile = ref(null)
 const currentUserRole = ref(null)
 const chatWindowRef = ref(null)
 const dialogOpen = computed(() => !!activeDialog.value)
-// Every overlay renders through one <component :is>, whichever side it
-// came from: the ones the core still holds, and whatever the registry
-// collected. They all take the same context, which is the evidence that
-// the context belongs to the core rather than to any of them.
 const CORE_OVERLAYS = [
-  // The Settings screen assembles servicesTabs from the registry, which
-  // is the core's job with a contribution — so it is the one overlay a
-  // build always has (see components/services/ServicesView.vue).
   { view: 'services', component: ServicesView },
 ]
 const overlayView = computed(
   () => [...CORE_OVERLAYS, ...pushedViews.value].find((entry) => entry.view === pushedView.value) ?? null
 )
 
-// Kept whole as well as destructured: a contributed view gets the stack
-// itself — an object with named methods — rather than a handful of the
-// refs and functions inside it, which is how it would end up with twenty
-// props.
 const viewStack = useViewStack(currentUserRole)
 const {
   pushedView, pushedViewContext, chatOpen, homePreviewRole, showProfile, navDirection, slideTransitionName,
@@ -58,8 +45,6 @@ const {
 
 const { onChatBeforeEnter, onChatEnter, onChatBeforeLeave, onChatLeave } = useChatFlipTransition(navDirection)
 
-// "About Avance..." reads the running version off /api/core/settings —
-// the server, not the project being authored (see useServerAdminActions).
 const { handleShowAbout } = useServerAdminActions()
 
 const {
@@ -71,18 +56,11 @@ const {
   pushedView, chatOpen, showProfile, navDirection
 )
 
-// "Take me to the conversation for this project" — the one navigation a
-// contributed home asks the shell for, since the chat window is the
-// shell's. Whoever emits it has already done whatever its own screen
-// needed first. The conversation names its own project when it is
-// entered (see chatStoreFactory.js), so nothing has to be made active
-// first for the chat to be the right one.
 function openChatOn(projectId) {
   landingProjectId.value = projectId
   pushView('chat')
 }
 
-// "This screen is about a different project now."
 function selectLandingProject(projectId) {
   landingProjectId.value = projectId
 }
@@ -96,31 +74,17 @@ watch(
   }
 )
 
-// A renamed project keeps the editor open on its new id.
 function renameOpenProject(projectId) {
   pushedViewContext.value = { ...pushedViewContext.value, projectId }
 }
 
-// A human_takeover toast's own "Open" link (see humanTakeoverStore.js) —
-// requestedOperatorSession is the one thing that store hands upward,
-// since only App.vue holds pushView/the view stack.
 watch(requestedOperatorSession, (request) => {
   if (!request) return
-  // chatOpen and pushedView are independent refs (see useViewStack.js) —
-  // every existing pushView(x !== 'chat') caller only ever runs from a
-  // screen where chatOpen is already false, so this never mattered before.
-  // A takeover toast can fire from anywhere, including from inside the
-  // admin's own already-open live chat — without this, both would render
-  // at once.
   chatOpen.value = false
   pushView('operatorChat', { sessionId: request.sessionId })
   clearRequestedOperatorSession()
 })
 
-// Over the home, not instead of it: the chat is the next step of the
-// stack, and leaving it comes back to the step below — which is the home
-// you opened it from (see the template, where the home lives inside the
-// flipping face).
 function openChatFromPreview(projectId) {
   return openChatOn(projectId)
 }
@@ -132,9 +96,6 @@ function openStoreFromPreview() {
 
 const profileMenuListeners = { home: goHome, profile: openProfile, logout: handleLogout }
 
-// Everything an overlay may emit, in one place. `close` and the profile
-// menu are the generic half — the rest belong to the screens themselves
-// and go with them when they move into their own skill.
 const overlayListeners = {
   ...profileMenuListeners,
   close: popPushedView,
@@ -146,14 +107,8 @@ const overlayListeners = {
   'open-chat': openChatOn,
 }
 
-// What a contributed home may ask the shell for. Everything else it owns
-// itself — which is the difference between this and the dozen listeners
-// App.vue used to hold on the project table's behalf.
 const roleHomeListeners = {
   ...profileMenuListeners,
-  // Only this file can answer it: the running version comes from
-  // /api/core/settings, which is the server's own business and not a
-  // home screen's (see useServerAdminActions).
   about: handleShowAbout,
   'open-chat': openChatOn,
   open: openChatOn,
@@ -163,9 +118,6 @@ const roleHomeListeners = {
 
 const roleHome = computed(() => roleHomes.value.find((entry) => entry.role === currentUserRole.value) ?? null)
 
-// "Show me what this role sees" — the same contributed homes, rendered
-// read-only-ish from an admin's own screen. The core knows the roles it
-// has, never which screen answers for one.
 const previewedHome = computed(() => roleHomes.value.find((entry) => entry.role === homePreviewRole.value) ?? null)
 
 const homePreviewListeners = {
@@ -189,8 +141,6 @@ const flipBaseClass = computed(() => ({
   'view-flip-base-back': navDirection.value === 'back'
 }))
 
-// touch-action alone was observed not to stop pinch-zoom on plain backdrops;
-// a 2+-finger touchmove is the pinch gesture itself.
 function preventMultiTouchZoom(event) {
   if (event.touches.length > 1) event.preventDefault()
 }
@@ -233,9 +183,6 @@ onBeforeUnmount(() => {
     </Teleport>
 
     <div class="app-body" :class="{ 'app-body-flip-space': currentUserRole === 'admin' || currentUserRole === 'customer' }">
-      <!-- A role nobody contributed a home for lands here too: in a build
-           without the skill that owns that screen, the product still works,
-           it simply has no shop front and no editor in front of it. -->
       <LiveChatWindow
         v-if="currentUserRole === 'user' || !roleHome"
         ref="chatWindowRef"
@@ -272,13 +219,6 @@ onBeforeUnmount(() => {
             />
           </Transition>
 
-          <!-- The home, when it is being shown: inside the flipping face,
-               not above it. It is one step of the same stack — Manage
-               projects, then the home, then the chat — so it slides in
-               over the screen below it and the chat flips over *it*.
-               Painted above the flip base instead, it had to be closed
-               for the chat to be seen at all, and coming back out of the
-               chat landed two steps down, on Manage projects. -->
           <Transition :name="slideTransitionName">
             <LiveChatWindow
               v-if="homePreviewRole === 'user'"
@@ -329,9 +269,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* Full-viewport surfaces extend their bottom by --viewport-bottom-overshoot
-   (see useVisualViewport.js) and must never get transform/filter on their
-   root, or WebKit clips them to the short standalone-iOS viewport. */
 .app-backdrop {
   position: fixed;
   top: 0;
@@ -346,10 +283,8 @@ onBeforeUnmount(() => {
 .app {
   display: flex;
   flex-direction: column;
-  /* 100vh, not 100dvh: iOS standalone webapps leave a gap with dvh. */
   height: 100vh;
   font-family: system-ui, -apple-system, sans-serif;
-  /* none (not scale(1)/blur(0)) so position:fixed descendants keep the real viewport. */
   transform: none;
   filter: none;
   transition: transform 0.2s ease-in-out, filter 0.2s ease-in-out;

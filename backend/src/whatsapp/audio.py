@@ -103,13 +103,12 @@ class Mp3Encoder(object):
         return self._sink_buffer.getvalue()
 
     def _open(self, sample_rate: int) -> None:
-        import av  # local: only the voice path needs it, and only when configured
+        import av
 
         self._sample_rate = sample_rate
         self._sink = av.open(self._sink_buffer, "w", format="mp3")
         self._stream = self._sink.add_stream("libmp3lame", rate=MP3_SAMPLE_RATE, layout="mono")
         self._stream.bit_rate = MP3_BIT_RATE
-        # libmp3lame takes planar samples only: s16p, not s16.
         self._resampler = av.AudioResampler(format="s16p", layout="mono", rate=MP3_SAMPLE_RATE)
 
     def _encode(self, pcm: bytes) -> None:

@@ -103,9 +103,7 @@ def test_max_jobs_per_minute_forces_a_wait_until_the_next_window(fake_time):
 
     assert _wait_until(lambda: all(job.is_done() for job in jobs))
     assert len(log) == 3
-    # First two jobs consume the per-minute budget immediately...
     assert log[1] - log[0] < 1
-    # ...the third must wait for the next 60-second window to open.
     assert log[2] - log[0] >= 60
 
 
@@ -117,21 +115,11 @@ def test_max_jobs_per_minute_is_a_true_sliding_window_across_the_boundary(fake_t
         max_jobs_per_minute=2,
         min_job_interval_ms=0,
     )
-
-    # Run the first two jobs right at the tail end of the queue's first
-    # 60-second window...
     fake_time.sleep(59.99)
     tail_jobs = [_TimestampedJob(f"tail-{i}", log, fake_time) for i in range(2)]
     for job in tail_jobs:
         job_queue.submit(job)
     assert _wait_until(lambda: all(job.is_done() for job in tail_jobs))
-
-    # ...then nudge the clock just past that window boundary and submit one
-    # more. A fixed window resets its count exactly here and would let this
-    # job through immediately, producing 3 jobs inside a ~20ms span even
-    # though the limit is 2 per minute. A true sliding window must still
-    # count the first two as "within the last 60 seconds" and make this one
-    # wait out the rest of that window.
     fake_time.sleep(0.02)
     late_job = _TimestampedJob("late", log, fake_time)
     job_queue.submit(late_job)
@@ -166,10 +154,6 @@ def test_non_background_jobs_bypass_the_throttle(fake_time):
     assert _wait_until(lambda: all(job.is_done() for job in interactive_jobs))
 
     assert len(log) == 6
-    # Every non-background job ran right after the throttled background
-    # one, none of them waiting out max_jobs_per_minute=1 or the 100s
-    # min_job_interval_ms — both of which would otherwise force each of
-    # the 5 interactive jobs onto its own new 60s+ window.
     assert log[-1] - log[0] < 1
 
 
@@ -251,17 +235,11 @@ def test_broadcasts_paused_while_asleep_then_running_once_released(monkeypatch):
     job_queue.submit(first)
     assert _wait_until(lambda: first.is_done())
     assert "paused" not in broadcaster.statuses_for("first")
-
-    # The per-minute budget (1) is already spent — this one must now
-    # wait inside _throttle(), giving us a real, observable pause window.
     second = _NoOpJob("second")
     job_queue.submit(second)
 
     assert blocking_time.entered_sleep.wait(timeout=3.0)
     assert _wait_until(lambda: "paused" in broadcaster.statuses_for("second"))
-    # Not yet "running" — the whole point of fixing _dequeue_and_notify's
-    # ordering was that "running" must never precede the pause it's
-    # waiting out.
     assert "running" not in broadcaster.statuses_for("second")
 
     blocking_time.release()

@@ -16,7 +16,6 @@ from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
 
-# Retry/backoff policy before giving up on a transiently unavailable provider.
 MAX_RETRIES = 5
 BASE_DELAY_SECONDS = 1.0
 
@@ -42,9 +41,6 @@ class ProviderRateLimitedError(ProviderError):
     """Rate limit/quota (e.g. HTTP 429) — never retried, cascades immediately."""
     message = "The service rate limit was exceeded."
     status_code = HTTPStatus.TOO_MANY_REQUESTS
-
-# Awaited before each backoff sleep with (attempt, max_attempts, remaining
-# seconds) — e.g. to push a "retrying" status to a client. Optional.
 OnRetry = Callable[[int, int, float], Awaitable[None]]
 
 Provider = TypeVar("Provider")
@@ -119,7 +115,6 @@ class ProviderCascade(Generic[Provider]):
                 last_error = exc
                 self.advance()
         if last_error is None:
-            # Defensive: should not happen, but satisfy type checkers.
             raise 
         raise last_error or RuntimeError(f"{self._kind} cascade failed without exception")
 

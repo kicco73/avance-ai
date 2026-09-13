@@ -1,13 +1,9 @@
 <script setup>
-// Detail card for one scheduled Task row (db/tasks.py) — same badge/
-// title/open-closed convention as ServicesProviderCard.vue's own
-// read-only provider card, with a "Task" badge and a status flag
-// instead of a provider's mode/language flags.
 import { computed, ref } from 'vue'
 import { renderMarkdown } from '../../markdown.js'
 
 const props = defineProps({
-  task: { type: Object, required: true } // {id, key, type, username, project_id, run_at, ui_label, ui_description, status, error, created_at, dispatched_at, settled_at}
+  task: { type: Object, required: true }
 })
 
 const open = ref(false)
@@ -20,10 +16,6 @@ function formatDate(value) {
   return value ? new Date(value).toLocaleString() : null
 }
 
-// Everything but ui_label/ui_description (title/description above) and
-// status (its own flag badge) — dates formatted for display, blank
-// fields (dispatched/settled/error, unset until the task gets there)
-// dropped rather than shown empty.
 const fields = computed(() => {
   const entries = [
     ['Run at', formatDate(props.task.run_at)],
@@ -86,25 +78,16 @@ const fields = computed(() => {
 .crossfade-enter-active, .crossfade-leave-active { transition: opacity 0.15s ease; }
 .crossfade-enter-from, .crossfade-leave-to { opacity: 0; }
 
-/* Status flag colors — pending/dispatched/done/failed/canceled, same
-   pill shape as .inspector-detail-badge above. */
 .task-status-pending { background: #888; }
 .task-status-dispatched { background: #4a6fa5; }
 .task-status-done { background: #2e7d32; }
 .task-status-failed { background: #c62828; }
 .task-status-canceled { background: #999; }
 
-/* Closed state: plain "label: value" text — same idiom as
-   InspectorDetailCard.vue's own .inspector-detail-field, not the styled
-   inputs below (those are for the open state only). */
 .services-provider-field { margin: 0 0 0.4rem; line-height: 1.4; }
 .services-provider-field:last-child { margin-bottom: 0; }
 .services-provider-field strong { color: #555; margin-right: 0.3rem; }
 
-/* Open state: the same field-as-disabled-input look every other Manage
-   services tab uses (see ServicesView.vue's own identically-named rules
-   — duplicated here since scoped styles don't cross component
-   boundaries). */
 .services-field { display: flex; flex-direction: column; gap: 0.25rem; margin: 0 0 0.75rem; max-width: 420px; }
 .services-field:last-child { margin-bottom: 0; }
 .services-field-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }

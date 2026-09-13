@@ -36,10 +36,6 @@ REACHES_INTO = {
 }
 
 pytestmark = pytest.mark.contract
-
-#: The smallest .config.yml that gives this server a TTS provider (see
-#: talk/config.py, and config.py's own _get_optional_providers: a section
-#: without `enabled` is off however many providers it lists).
 _CONFIGURED = {
     "talk-service": {
         "enabled": True,

@@ -1,16 +1,3 @@
-// CodeMirror completion source for index.yml's own structure — suggests
-// known field names (`name`, `trigger`, `attachments`, ...) while the
-// cursor sits on a new/partial key, based on which schema node the key's
-// indentation-derived ancestors place it in (root, a state, an action list
-// item, a signal, or init-action). Registered as YAML language data (see
-// CodeEditor.vue), alongside yamlAttachmentCompletion.js's file-name
-// completion — the two cover different things (field names vs. attachment
-// values) and can run side by side.
-//
-// Field lists mirror backend/src/docs/PROJECT_SPECS.md (§2 top-level, §2.1
-// project, §4 signals, §5 states, §6 actions, §8 init-action). `nested:
-// true` marks fields whose value is itself a mapping/list, so the
-// inserted text omits the trailing space a scalar field gets.
 const TOP_LEVEL_FIELDS = [
   { name: 'avance-version' },
   { name: 'init-action', nested: true },
@@ -74,19 +61,11 @@ const LIST_ITEM_LINE_PATTERN = /^(\s*)-\s*(.*)$/
 const NEW_KEY_PATTERN = /^(\s*)([A-Za-z0-9_-]*)$/
 const NEW_LIST_ITEM_PATTERN = /^(\s*)-\s*([A-Za-z0-9_-]*)$/
 
-// Resolves "what schema node contains this position" from indentation
-// alone (no AST/parser — same heuristic style as
-// yamlAttachmentCompletion.js's isInsideAttachmentsBlock, generalized to
-// build a full ancestor chain instead of checking a single parent key).
 class YamlStructurePathResolver {
   constructor(doc) {
     this.doc = doc
   }
 
-  // Walks upward from `lineNumber`, collecting enclosing mapping keys and
-  // list items whose indentation strictly encloses `indent`. Returns the
-  // ancestor chain, innermost first — e.g. for a line inside an action
-  // entry: [{ type: 'list-item', indent: 6 }, { type: 'key', key: 'actions', indent: 4 }, ...].
   ancestorPath(lineNumber, indent) {
     const path = []
     let ceiling = indent
@@ -118,8 +97,6 @@ class YamlStructurePathResolver {
   }
 }
 
-// Fields for a new `key:` on its own line, given the ancestor chain for
-// that line's own indentation.
 function fieldsForMappingContext(path) {
   const top = path[0]
   if (!top) return TOP_LEVEL_FIELDS
@@ -135,9 +112,6 @@ function fieldsForMappingContext(path) {
   return null
 }
 
-// Fields for a fresh `- ` list item, given the ancestor chain resolved at
-// the dash's own indentation (i.e. the chain describes the list itself,
-// not an item within it).
 function fieldsForListItemContext(path) {
   return path[0]?.key === 'actions' ? ACTION_FIELDS : null
 }

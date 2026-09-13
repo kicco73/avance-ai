@@ -44,18 +44,11 @@ class TurnInput(object):
         self._turn_service = turn_service
         self._db = db
         self._turns: set[asyncio.Task] = set()
-        #: session -> the requests accepted for it and not yet answered.
         self._requests: dict[int, _Requests] = {}
 
     def register(self) -> None:
         bus.subscribe(INPUT_TEXT, self._requested)
-        # A button taken is a request too, and goes into the same queue:
-        # it must not move the conversation in the middle of an answer.
         bus.subscribe(INPUT_BUTTON, self._requested)
-        # Entering a conversation names a project, not a session, so it
-        # never goes near the queue, which is keyed by session. It
-        # answers, and says so; what a conversation opens with is a
-        # reaction to that.
         bus.subscribe(SESSION_ENTER, self._entering)
         bus.subscribe(SESSION_CREATE, self._entering)
         bus.subscribe(SESSION_RECALL, self._recalled)
@@ -88,9 +81,6 @@ class TurnInput(object):
             announcement.recalled(said)
             announcement.offered(self._turn_service.buttons_for(session["id"], session["state"]))
             await announcement.flush()
-        # Only a conversation with nothing in it has just been opened.
-        # The transcript is already in hand, and it is the whole answer:
-        # anyone hearing this is told a fact, not asked to work one out.
         for _ in filter(None, [not said]):
             await bus.publish(replace(entered, type=SESSION_OPENED, body={}))
 
@@ -157,9 +147,6 @@ class TurnInput(object):
             if requests.answering:
                 return
             requests.answering = True
-            # Not awaited: an answer is written for as long as the model
-            # takes, and bus.publish awaits each listener in order —
-            # awaiting here would hold up whoever published the request.
             task = asyncio.create_task(self._answer(message.session_id, requests))
             self._turns.add(task)
             task.add_done_callback(self._turns.discard)
@@ -172,8 +159,6 @@ class TurnInput(object):
             outbound.failed(ServiceError("Session not found.", status_code=404, code="session_not_found"), [])
             return None
         for _ in filter(INPUT_BUTTON.__eq__, [message.type]):
-            # Nothing to persist: a choice taken is recorded by the
-            # automaton itself.
             return _Accepted(message)
         text = str((message.body or {}).get("text") or "").strip()
         prepared: list[dict] = []
@@ -183,8 +168,6 @@ class TurnInput(object):
             prepared = await self._turn_service.prepare_user_initiated_turn(message.session_id)
             message_id = self._turn_service.accept_user_message(message.session_id, text)
         except ServiceError as exc:
-            # Whatever the state owed was written before the refusal and
-            # is owed either way.
             outbound.failed(exc, prepared)
             return None
         return _Accepted(message, message_id, prepared)
@@ -193,8 +176,6 @@ class TurnInput(object):
         try:
             while requests.waiting:
                 batch, accepted, prepared = requests.take()
-                # Addressed the way the last request of the batch was: it
-                # is the most recent thing the person is looking at.
                 await self._run(batch[-1], accepted, prepared)
         finally:
             requests.answering = False
@@ -217,15 +198,6 @@ class TurnInput(object):
             result = await self._turn_service.process_turn(
                 session_id, text, on_metadata=outbound.on_metadata, user_message_ids=accepted,
             )
-            # Everything the answer needs to be read goes out before the
-            # answer itself: what the state owed first, the reaction to
-            # what was asked, where the conversation is now, what can be
-            # done next. The answer is last, and it is what says the
-            # exchange is over (see docs/BUS.md).
-            # What the state had prepared to say is said only if the
-            # conversation is still in it: when the automaton moves before
-            # the answer is written, that message belongs to the state
-            # just left and never reaches the person.
             for _ in filter(None, [not result.get("moved_before_reply")]):
                 outbound.said(prepared)
             outbound.ran(result)

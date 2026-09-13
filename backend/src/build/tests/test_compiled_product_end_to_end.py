@@ -59,9 +59,6 @@ def test_a_project_serves_interpreted_until_it_is_built_and_compiled_after(
     session_id = session_of(enter_chat(client, hello_project))
     before = chat_turn(client, session_id, "hello")
     assert before["reply"][0]["content"]
-    # Where the conversation is now, asked rather than read off the turn:
-    # a turn says so only when it *moved* (see docs/BUS.md's own
-    # state.changed), and this one stays put.
     before_state = _state_of(enter_chat(client, hello_project))
     assert before_state["key"] == "Hello"
 

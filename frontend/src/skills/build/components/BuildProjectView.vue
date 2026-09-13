@@ -1,9 +1,4 @@
 <script setup>
-// The "Build" button's own wizard (see ProjectBuildButton.vue). The
-// Compile step is a placeholder — compiling a project's published revision
-// into a local module happens on the backend, as the second half of
-// publishing (see build/skill.py's own POINT_PROJECT_PUBLISHED
-// contribution), not through this wizard.
 import { computed, onMounted, ref } from 'vue'
 import AppHeader from '../../../components/AppHeader.vue'
 import ProfileMenu from '../../../components/ProfileMenu.vue'
@@ -21,7 +16,6 @@ const STEPS = [
   { id: 'target', label: 'Target' }
 ]
 
-// One mark per step status the job reports (see build/build_job.py).
 const STEP_MARKS = {
   pending: '○',
   running: '◐',
@@ -33,10 +27,6 @@ const currentStep = ref(0)
 const building = ref(false)
 const buildResult = ref(null)
 const buildError = ref('')
-// What the build is doing right now, as the job reports it: one entry
-// per step, each with its own status. Comes back on every progress chunk
-// (see build/build_job.py's own `result`), so the panel shows where a
-// build got to rather than that it is still going.
 const buildSteps = ref([])
 const buildPercentage = ref(0)
 
@@ -44,36 +34,17 @@ const testReport = computed(() => buildResult.value?.tests ?? null)
 
 function onBuildProgress(message) {
   buildPercentage.value = message.percentage ?? 0
-  // The job's own report travels as a JSON string on every chunk; only
-  // the last one is parsed for us (see readSseResult).
   try {
     const report = typeof message.result === 'string' ? JSON.parse(message.result) : message.result
     if (report?.steps) buildSteps.value = report.steps
   } catch {
-    // A chunk without a readable report changes nothing about what is
-    // already on screen.
   }
 }
 
-// What this backend has installed, as the server reads it off its own
-// source tree — never a list kept here. A skill switched off is a
-// directory the build does not copy, so what is off is what is absent.
 const skills = ref([])
 const included = ref({})
-// The packages this project actually uses — what it declared as
-// `required` plus what its own automaton calls into, worked out on the
-// server: ticked and not untickable, since a build without one produces
-// a server that fails where the automaton expects the call to work.
 const required = ref([])
-// The ones it declared `disabled` (project.services — see
-// PROJECT_SPECS.md §1.2): left out by default and marked as refused,
-// though an operator may still include them — a disabled service simply
-// goes unused, it does not have to be absent.
 const disabled = ref([])
-// The few it declared disabled while still calling into them. Not a
-// refusal to build: the call bounces at run time exactly as it would in
-// a build without the package, which is worth saying here rather than
-// leaving to a log.
 const contradicted = ref([])
 const skillsError = ref('')
 
@@ -99,9 +70,6 @@ onMounted(async () => {
     required.value = mandatory
     disabled.value = refused ?? []
     contradicted.value = conflicting ?? []
-    // Off unless the project actually uses it: the smallest build that
-    // still runs this project is the starting point, and anything else
-    // is something the operator asks for on purpose.
     included.value = Object.fromEntries(installed.map(s => [s.package, mandatory.includes(s.package)]))
   } catch (err) {
     skillsError.value = err.message || 'Could not read the installed skills.'

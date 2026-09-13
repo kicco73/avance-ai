@@ -1,22 +1,8 @@
 <script setup>
-// Play/pause-style status button — originally ManageProjectsView.vue's
-// own per-project run/pause row button, extracted so a caller elsewhere
-// (see ServicesView.vue's own AI-provider selection button) can reuse the
-// identical look instead of a second copy. Purely presentational: the
-// caller decides what `status`/`disabled` mean and what a click does.
 const props = defineProps({
-  // 'running' -> pause icon if disabled=false (pulsing green, click
-  // actually pauses it), a plain pulsing dot if disabled=true (pulsing
-  // green, "this is the active one" but there's nothing to click — see
-  // ServicesView.vue's own AI-provider row, where the active provider
-  // can't be paused from here at all).
-  // 'paused' -> solid square (external/automatic, amber).
-  // 'manually_paused' -> play icon (gray-blue, "click to activate").
   status: { type: String, required: true },
   disabled: { type: Boolean, default: false },
   title: { type: String, default: '' },
-  // Smaller footprint for a context tighter than ManageProjectsView's own
-  // table row (e.g. one row per Manage services provider card).
   compact: { type: Boolean, default: false }
 })
 

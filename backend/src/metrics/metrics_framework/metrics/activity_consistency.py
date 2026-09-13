@@ -10,9 +10,6 @@ class ActivityConsistencyMetric(BaseMetric):
     """Regularity of user activity across calendar days: lower variation
     in per-day message counts scores higher. Needs at least two active
     days, otherwise the score is zero for lack of evidence."""
-
-    # Regularity across calendar days is meaningless within a single
-    # session — needs the user's own broader activity history.
     scope = frozenset({"all_sessions_per_user", "all_sessions"})
 
     @property

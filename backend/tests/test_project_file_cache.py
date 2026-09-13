@@ -74,8 +74,8 @@ def test_the_bound_is_bytes_and_the_least_recently_read_file_goes_first():
 
     files.read("a")
     files.read("b")
-    files.read("a")     # 'a' is now the most recently used, 'b' the least
-    files.read("c")     # 30 bytes wanted, 25 allowed -> 'b' evicted
+    files.read("a")
+    files.read("c")
 
     assert inner.reads == ["a", "b", "c"]
     files.read("a")
@@ -162,9 +162,6 @@ def test_both_real_readers_are_composed_behind_the_cache_and_the_third_is_not(tm
     packaged_automaton = _automaton("p")
     packaged_automaton.archives_dir = tmp_path
     assert isinstance(project_files_for(None, packaged_automaton), CachedProjectFiles)
-
-    # Nothing to read, and so nothing to cache: an automaton built in
-    # memory by a test has neither a revision nor files of its own.
     nothing = project_files_for(db, _automaton("p"))
     assert not isinstance(nothing, CachedProjectFiles)
     assert nothing.read("a.txt") is None

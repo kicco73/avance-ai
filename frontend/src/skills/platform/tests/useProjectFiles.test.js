@@ -122,11 +122,6 @@ describe('useProjectFiles', () => {
       expect(chooseDialog).not.toHaveBeenCalled()
     })
 
-    // guardedAction/runGuardedAction are deliberately fire-and-forget (see
-    // selectFile's own lack of `async`) — a bare `await selectFile(...)`
-    // only guarantees chooseDialog's own promise settled, not whatever
-    // runs after a second `await` inside its branches. vi.waitFor polls
-    // instead of assuming a fixed number of microtask ticks.
     it('when dirty, Save and Discard both switch while a failed save or a cancel stays put', async () => {
       const saved = mount()
       saved.currentFileName.value = 'index.yml'
@@ -185,7 +180,7 @@ describe('useProjectFiles', () => {
 
     it('routes a text file to behaviour/ and an image to aspect/ as binary, then reloads, selects it and resets the input', async () => {
       const s = mount()
-      s.currentFileName.value = 'index.yml' // clean, so selectFile switches immediately
+      s.currentFileName.value = 'index.yml'
       getProjectFiles.mockResolvedValue({ files: ['index.yml', 'behaviour/notes.md'] })
 
       const textEvent = uploadEvent([fakeFile('notes.md')])
@@ -194,7 +189,6 @@ describe('useProjectFiles', () => {
       expect(putProjectFile).toHaveBeenCalledWith('proj', 'behaviour/notes.md', 'hello')
       expect(s.currentFileName.value).toBe('behaviour/notes.md')
       expect(clearApiError).toHaveBeenCalled()
-      // Reset so re-selecting the same file re-fires change.
       expect(textEvent.target.value).toBe('')
 
       const image = fakeFile('logo.png')

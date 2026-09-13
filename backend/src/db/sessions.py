@@ -35,19 +35,12 @@ class SessionMixin:
         """`revision` arrives already resolved by the caller (see
         turn.sessions.session_type_strategy.SessionTypeStrategy.revision_for) —
         published for a 'live' session, draft for a 'test' one."""
-        # None is not "unknown": a test, preview or imported session has
-        # no channel at all, and the caller that opened it never had one
-        # to give (see SessionTypeStrategy.caller_channel).
         if channel is not None and channel not in CHANNELS:
             raise ValueError(f"Unknown channel '{channel}' — expected one of {CHANNELS}.")
         if Project.get_or_none(Project.id == project_id) is None:
             raise ValueError(f"Project '{project_id}' does not exist.")
         if title is None:
             title = f"{type.capitalize()} session {self.count_chat_sessions(username, type) + 1}"
-        # `username` may be a real registered account's email or an
-        # imported transcript's synthetic identity (see
-        # next_test_user_username below) — user stays null for the
-        # latter, since there's no User row to point at.
         user = User.get_or_none(User.id == username)
         session = CoreSession.create(
             username=username, user=user, project=project_id, type=type, title=title,

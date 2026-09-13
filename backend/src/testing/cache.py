@@ -30,17 +30,9 @@ class TestCache:
         )
         if run is None:
             return None
-        # A row with no results and no still-running job is a dead/failed/
-        # aborted attempt — treat it as a cache miss so the play button can
-        # retry it, rather than returning the same stale status forever.
-        # self._live_jobs directly, not live_job_for(), which takes the
-        # same non-reentrant lock the caller already holds via locked().
         job = self._live_jobs.get(run['id'])
         dead = job is None or job.is_failed() or (isinstance(job, CancelableJob) and job.is_aborted())
         if run['results'] is None and dead:
-            # Drop the stale reference now — otherwise it (and, after a
-            # retry, its now-deleted DB row's id) stays pinned in memory
-            # for the lifetime of the process.
             self._live_jobs.pop(run['id'], None)
             return None
         return run
@@ -57,7 +49,6 @@ class TestCache:
 
     def track(self, run_id: int, job: Job) -> None:
         # FIXME: caller must hold locked(), same critical section as
-        # create() — otherwise live_job_for can see the row before the job.
         self._live_jobs[run_id] = job
 
     def live_job_for(self, run_id: int) -> Job | None:

@@ -93,8 +93,6 @@ class Broadcaster:
         self._main_loop: asyncio.AbstractEventLoop | None = None
         self._scheduler = None
 
-    # --- publishing what was delivered ------------------------------------
-
     def bind_loop(self) -> None:
         """Called from main.py's async lifespan, so this is always the
         main uvicorn loop. A flush runs on a job-worker thread with its
@@ -105,8 +103,6 @@ class Broadcaster:
         running loop at all; a broadcaster that was never bound simply
         does not publish, which is what a test with no interface wants."""
         self._main_loop = asyncio.get_running_loop()
-
-    # --- connections -------------------------------------------------------
 
     def connect(self, username: str) -> asyncio.Queue:
         connection: asyncio.Queue = asyncio.Queue()
@@ -122,14 +118,9 @@ class Broadcaster:
                 connections.pop(connection, None)
                 if not connections:
                     del self._connections[username]
-            # Nothing left to deliver to: drop what was waiting for its
-            # window and cancel the window itself, rather than waking a
-            # job up to discover there is no one there.
             if not self._deliverable(username):
                 self._pending.pop(username, None)
                 self._cancel_scheduled(username)
-
-    # --- pushing -----------------------------------------------------------
 
     def push(self, username: str, message: dict) -> None:
         key = message.get("key")
@@ -187,8 +178,6 @@ class Broadcaster:
     def _deliverable(self, username: str) -> bool:
         return bool(self._connections.get(username)) or bool(self._listeners())
 
-    # --- the batching window, as a scheduled job ---------------------------
-
     def _schedule_flush(self, username: str) -> None:
         from datetime import datetime, timedelta, timezone
 
@@ -221,8 +210,6 @@ class Broadcaster:
             for username in list(self._scheduled):
                 self._cancel_scheduled(username)
             self._pending.clear()
-
-    # --- what was last said about each job ---------------------------------
 
     def last_status(self, key: str) -> dict | None:
         with self._lock:

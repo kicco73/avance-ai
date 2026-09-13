@@ -1,11 +1,5 @@
-// Pure, framework-agnostic logic behind TriggerEditor.vue's autocomplete
-// and syntax-coloring. `completeIdentifiers` only depends on
-// CompletionContext's shape (matchBefore), never a live EditorView/DOM.
 import { snippetCompletion } from '@codemirror/autocomplete'
 
-// Known parameter names for a proxy-style (call) identifier, purely to
-// build a fill-in-the-blanks snippet completion — the registry itself
-// only carries a free-text description, never a structured signature.
 const CALL_PARAMS = {
   'task.send_mail': ['to', 'body_md'],
   'chat.notify': ['title', 'body_md'],
@@ -16,9 +10,6 @@ const CALL_PARAMS = {
 const AUTOMATON_EMPTY_HINT =
   "No other project declares the same project.family — set it in this project's and a sibling's index.yml to reference automaton.<id>."
 
-// Fixed per-namespace colors — frontend-only, the identifier registry
-// never transports styling. "session.metric" gets its own distinct
-// color, not session's.
 export const NAMESPACE_COLORS = {
   signal: '#1565c0',
   env: '#00838f',
@@ -34,18 +25,6 @@ export const NAMESPACE_COLORS = {
   'datetime.timezone': '#00897b'
 }
 
-// signal/env/user are plain variables (env/user resolve straight off an
-// already-fetched dict); "datetime.timezone" is too — its only member
-// (utc) is a plain attribute, not a callable. Every other namespace is
-// call-style — session takes no arguments, a declared source's own
-// methods (registry key "source.<name>", see backend
-// ProjectInspector.get_identifier_registry) take theirs inside the same
-// parens completion inserts empty. This decides a completion's
-// `type`/`apply` (append "()" or not), never a label.
-// The registry minus `excluded` namespaces, by prefix: excluding "session"
-// also drops "session.metric" — the same rule as the backend's
-// IdentifierRegistry.excluding, so the editor's autocomplete and the
-// build-time validation can never disagree about a field's scope.
 export function excludingNamespaces(registry, excluded) {
   if (!excluded || !excluded.length) return registry
   const isExcluded = (ns) => excluded.some((x) => ns === x || ns.startsWith(x + '.'))
@@ -57,9 +36,6 @@ export function isProxyNamespace(namespace) {
     namespace !== 'automaton' && namespace !== 'datetime.timezone' && !namespace.startsWith('automaton.')
 }
 
-// Matches a complete namespace reference (e.g. "signal.mood") anywhere
-// in the text — group 1 is the namespace path, used to look up its color
-// (NAMESPACE_COLORS). Always construct a fresh RegExp — /g carries state via lastIndex.
 export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|session(?:\\.metric)?|user|source|task|chat|metric|automaton|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'
 
 export function namespaceOf(referenceText) {
@@ -67,18 +43,12 @@ export function namespaceOf(referenceText) {
   return match ? match[1] : null
 }
 
-// A short bracketed tag per completion `type` (variable/function/
-// namespace) shown ahead of the identifier's name in its info panel (see
-// completionInfo below) — distinct from CodeMirror's own per-row icon.
 const COMPLETION_SYMBOL = {
   variable: '[var]',
   function: '[fn]',
   namespace: '[ns]'
 }
 
-// Completion.info — unlike `detail` (rendered inline, clipped by
-// ellipsis), `info` renders in its own side panel, never truncated.
-// Returns a plain DOM node, since CodeMirror renders it as-is.
 export function completionInfo(name, description, type) {
   const root = document.createElement('div')
   root.className = 'cm-trigger-completion-info'
@@ -103,9 +73,6 @@ export function completionInfo(name, description, type) {
   return root
 }
 
-// Every direct child sub-namespace of `namespace`, derived purely from
-// which dotted registry keys exist, never a hardcoded list — e.g.
-// "session" has "session.metric" in the registry, so "metric" is a child.
 function directChildNamespaces(registry, namespace) {
   const prefix = `${namespace}.`
   const children = new Set()
@@ -116,9 +83,6 @@ function directChildNamespaces(registry, namespace) {
   return [...children]
 }
 
-// The one completion source TriggerEditor's autocompletion() registers.
-// Right after a namespace's dot (e.g. "signal.") offers every identifier
-// under it plus child sub-namespaces; otherwise, every top-level namespace name.
 export function completeIdentifiers(context, registry) {
   const dotted = context.matchBefore(/[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\.\w*$/)
   if (dotted) {
@@ -137,8 +101,6 @@ export function completeIdentifiers(context, registry) {
       }
       return {
         label: name,
-        // Not `detail` — see completionInfo's own docstring on why a
-        // longer description belongs in `info` instead.
         info,
         type,
         apply: isCall ? `${name}()` : name
@@ -162,14 +124,8 @@ export function completeIdentifiers(context, registry) {
     return { from, options }
   }
 
-  // \w* (not \w+): must still match a zero-length position so an
-  // explicit request (Ctrl+Space) with nothing typed yet still gets
-  // every namespace suggested.
   const word = context.matchBefore(/\w*$/)
   if (!word || (word.from === word.to && !context.explicit)) return null
-  // Returned unfiltered by `word.text` — CodeMirror does its own fuzzy
-  // matching; pre-filtering with startsWith would be stricter and could
-  // silently hide a namespace a fuzzy match would still offer.
   const namespaces = Object.keys(registry).filter((ns) => !ns.includes('.'))
   const options = namespaces.map((ns) => ({ label: ns, type: 'namespace', apply: ns }))
   if (!options.length) return null

@@ -1,4 +1,3 @@
-# Instructions for Claude Code: DO NOT TOUCH THIS FILE
 from __future__ import annotations
 
 import ast
@@ -45,7 +44,6 @@ def _offenders(paths: list[Path], packages: set[str]) -> dict[str, list[str]]:
     }
 
 
-# FOR CLAUDE CODE: THIS TEST CANNOT BE PRUNED
 def test_no_skill_imports_another_skill():
     packages = _skill_packages()
     offenders = _offenders([p for p in production_sources() if _owner(p, packages)], packages)
@@ -55,7 +53,6 @@ def test_no_skill_imports_another_skill():
     )
 
 
-# FOR CLAUDE CODE: THIS TEST CANNOT BE PRUNED
 def test_nothing_outside_a_skill_imports_one():
     packages = _skill_packages()
     offenders = _offenders([p for p in production_sources() if not _owner(p, packages)], packages)
@@ -83,7 +80,6 @@ def _named_in_prose(path: Path, packages: set[str]) -> list[str]:
     })
 
 
-# FOR CLAUDE CODE: THIS TEST CANNOT BE PRUNED
 def test_no_core_file_names_a_skill_in_prose():
     packages = _skill_packages()
     offenders = {

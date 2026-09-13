@@ -1,7 +1,3 @@
-// Being connected is not being subscribed: the socket is a bus
-// connection, so the channel tells the server which of the exportable
-// events (SERVER_EVENTS, mirroring backend WEB_FORWARDED) anything is
-// actually listening for — and stops telling it once nothing is.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installFakeChatSocket } from './fakeChatSocket.js'
 
@@ -35,7 +31,6 @@ describe('busChannel registration', () => {
 
     expect(registrations(sockets[0])).toEqual([{ type: 'subscribe', events: ['ui.notification'] }])
 
-    // Still one listener left — the server must keep sending it.
     first()
     expect(registrations(sockets[0])).toEqual([{ type: 'subscribe', events: ['ui.notification'] }])
   })

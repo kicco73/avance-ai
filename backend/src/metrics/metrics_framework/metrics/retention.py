@@ -12,7 +12,6 @@ class RetentionMetric(BaseMetric):
     gaps that end with another session inside the retention horizon.
     With fewer than two sessions the score is zero — retention can't be observed yet."""
 
-    # Meaningless within a single session — needs session history to observe a gap.
     scope = frozenset({"all_sessions_per_user", "all_sessions"})
 
     def __init__(self, horizon_days: float = 14.0) -> None:

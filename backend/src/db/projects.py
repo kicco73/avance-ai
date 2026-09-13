@@ -123,9 +123,6 @@ class ProjectMixin:
                     revision=new_revision, hash=archive.hash_id,
                 )
             Project.update(revision=new_revision).where(Project.id == project_id).execute()
-            # Every user's Undo/Redo stack just went stale — it
-            # referenced content belonging to the revision just frozen,
-            # not the new draft.
             EditHistory.delete().where(EditHistory.project_id == project_id).execute()
             return new_revision
 
@@ -363,9 +360,6 @@ class ProjectMixin:
                 (Project.id == project_id)
                 & (Project.published_revision.is_null() | (Project.published_revision != Project.revision))
             ).execute()
-            # Both run unconditionally, and for every user, not just
-            # whoever pressed Publish: no stale Test session and no
-            # pre-publish undo trail survives a no-op double-fired publish.
             EditHistory.delete().where(EditHistory.project_id == project_id).execute()
             self.delete_draft_test_sessions(project_id)
 

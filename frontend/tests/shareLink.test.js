@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// shareLink.js reads window.location.search once, at module import time
-// (see its own comment) — vi.resetModules() + a dynamic import() per test
-// is what gets a fresh top-level evaluation against whatever URL that
-// test set up first, same technique any module-scope-state module needs.
 describe('shareLink', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -30,7 +26,7 @@ describe('shareLink', () => {
     const { consumeInviteCode } = await import('../src/shareLink.js')
 
     expect(consumeInviteCode()).toBeNull()
-    expect(window.location.search).toBe('?foo=bar') // left untouched
+    expect(window.location.search).toBe('?foo=bar')
   })
 
   it('buildInviteUrl encodes the code into a link at the current origin/pathname', async () => {
@@ -46,8 +42,8 @@ describe('shareLink', () => {
       const { peekInviteCode, consumeInviteCode } = await import('../src/shareLink.js')
 
       expect(peekInviteCode()).toBe('Ab3dE9')
-      expect(peekInviteCode()).toBe('Ab3dE9') // still there
-      expect(consumeInviteCode()).toBe('Ab3dE9') // now actually spent
+      expect(peekInviteCode()).toBe('Ab3dE9')
+      expect(consumeInviteCode()).toBe('Ab3dE9')
       expect(peekInviteCode()).toBeNull()
     })
 

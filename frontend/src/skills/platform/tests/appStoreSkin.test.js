@@ -1,10 +1,3 @@
-// The one shared skin <style> element has one owner at a time (see
-// chatSkin.js's holdSkin): the app-store panel showing an app's own skin
-// takes it while it is on screen, and the chat underneath has it the rest
-// of the time. Selecting another app in the store destroys the panel that
-// was showing the previous one, and that panel's exit used to re-run the
-// skin decision — over the panel that had already taken over, so the
-// store showed the skin of an app nobody had selected.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../../busChannel.js', () => import('../../../../tests/fakeBus.js'))

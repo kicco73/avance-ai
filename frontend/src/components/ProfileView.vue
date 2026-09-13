@@ -22,11 +22,6 @@ const initial = computed(() => {
   return source ? source.charAt(0).toUpperCase() : '?'
 })
 
-// Same reasoning as ProfileMenu.vue's own imageFailed — picture_url being
-// a valid string doesn't mean the image behind it actually loads (an
-// expired Google URL, a transient blip, an ad blocker); without this a
-// failed load shows as a permanently broken image icon instead of ever
-// falling back to the initial-letter avatar.
 const imageFailed = ref(false)
 watch(() => profile.value?.picture_url, () => {
   imageFailed.value = false
@@ -44,7 +39,6 @@ async function load() {
   try {
     profile.value = await getMe()
   } catch {
-    // already surfaced via apiFetch
   } finally {
     loading.value = false
   }
@@ -52,10 +46,6 @@ async function load() {
 
 onMounted(load)
 
-// Deletes the account and everything tied to it server-side (see
-// Db.erase_user_data), then reports success and logs out — the erase
-// endpoint already clears the session cookie itself, so this only needs
-// to flip the frontend's own state back to the login wall.
 async function eraseAllData() {
   const ok = await confirmDialog({
     title: 'Deleting your account',
@@ -70,7 +60,7 @@ async function eraseAllData() {
     await postEraseData()
   } catch {
     erasing.value = false
-    return // already surfaced via apiFetch
+    return
   }
 
   await infoDialog({
@@ -135,20 +125,7 @@ async function eraseAllData() {
   top: 0;
   left: 0;
   right: 0;
-  /* Extends past the viewport's own bottom edge on standalone iOS,
-     where WebKit bug #301108 leaves a gap there otherwise — see
-     index.html's own viewport meta comment and
-     useVisualViewport.js's installViewportOvershoot(). 0px, a no-op,
-     everywhere else (a plain browser tab, non-iOS, or once Apple fixes
-     the bug). */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
-  /* Side edges only — same split as ManageProjectsView.vue's own
-     .manage-projects-overlay (see its comment): top/bottom are reserved
-     by .profile-view-header/.profile-view-body instead, the elements
-     whose background actually needs to extend behind the notch/home
-     indicator rather than showing this fallback color through a gap.
-     box-sizing so the padding shrinks the box instead of sitting outside
-     it. */
   box-sizing: border-box;
   padding-left: var(--safe-area-left);
   padding-right: var(--safe-area-right);
@@ -261,9 +238,6 @@ async function eraseAllData() {
 </style>
 
 <style>
-/* Unscoped, like AppHeader.vue's own control classes: a profile card may
-   hold fields contributed by whoever owns that part of an account, and
-   they render in their own scope, out of reach of a scoped selector. */
 .profile-card-field {
   display: flex;
   flex-direction: column;

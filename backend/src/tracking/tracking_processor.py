@@ -73,40 +73,16 @@ def _turn_attachment_paths(automaton: Automaton, state: State, include_signal_at
 @dataclass
 class Metadata:
 	on_metadata: MetadataCallback
-	# The reply's own `memory` field, parsed — the model's free-form notes
-	# delta (see Env.update). The automaton's env is never reported here:
-	# the model writes it only through a source's `update` tool,
-	# mid-generation.
 	memory: dict[str, str]
 	signals: dict[str, float]
-	# The reply's own `output` field — one value per name in the state's own
-	# `output` (see automaton.State.output), available to trigger evaluation
-	# and action.env expressions this same turn, then copied onto the real
-	# env keys they name once the turn completes (see process()).
 	output: dict[str, Any] = field(default_factory=dict)
 	audio: str | None = None
 	chunk: str | None = None
-	# The bot's own reaction to the user's message this turn — unlike
-	# audio/memory/signals, this ends up persisted on the *user's* message
-	# (see process() below), not the assistant's own new one.
 	reaction: str | None = None
 	input_tokens: int | None = None
 	output_tokens: int | None = None
-	# Of input_tokens, how many were served from cache — summed across
-	# rounds exactly like input_tokens itself (see on_receiving_metadata),
-	# never a separate total (see Message.cache_read_tokens's own docstring).
 	cache_read_tokens: int | None = None
-	# One {name, arguments, result, label, rows, error, duration_ms} entry
-	# per tool call this turn's own AI generation made (see AiService's own
-	# tool-call loop and on_receiving_metadata's own 'tool' branch below),
-	# in the order they ran — empty for a turn with neither
-	# ai-may-query-sources nor ai-must-query-sources declared, or one that
-	# never actually called any.
 	tool_calls: list[dict] = field(default_factory=list)
-	# {action name: translated button label} for this turn's own resulting
-	# state — only ever non-empty when a TranslatePrompt was actually
-	# composed into that turn's own prompt (see
-	# TrackingProcessor._button_labels_to_translate), empty otherwise.
 	button_translations: dict[str, str] = field(default_factory=dict)
 
 @dataclass(frozen=True, slots=True)
@@ -115,12 +91,7 @@ class UserVariables:
 	state: State
 	project_id: str
 	session_id: int
-	# Set by _open_turn to the fragment that closes this turn (or to the
-	# placeholder of an AI-initiated one) — None beforehand.
 	message_id: int | None = None
-	# True when this turn has no real user text (an opening message) — the
-	# AI is initiating, not replying. Literally `not fragments`, computed
-	# once in _open_turn.
 	has_ai_started_conversation: bool = False
 
 @dataclass
@@ -130,15 +101,7 @@ class OutVariables:
 	tracking_id: int | None
 	state: State
 	action: Action | None
-	# True once tracking_id's row already carries the message id of
-	# whichever message actually caused it — process() must not then
-	# overwrite that link with the assistant's own message id.
 	tracking_linked_to_message: bool = False
-	# True once this turn's trigger evaluation has run and the state won't
-	# change again — on the model's own reported signals, or on the empty
-	# signals set when nothing signal-backed was requested (see
-	# TrackingProcessor._resolve_signals). Gates whether buffered reply
-	# text is safe to stream.
 	signals_resolved: bool = False
 
 class TrackingProcessor(object):
@@ -156,20 +119,12 @@ class TrackingProcessor(object):
 			  assistant_talker: "BaseTalker | None" = None,
 		):
 		self.ai_service = ai_service
-		# Who actually answers this turn — the model by default; a caller
-		# that already built one (TrackingService, when the session is
-		# toggled to HumanTalker for testing — see TrackingService.
-		# set_human_talker_factory) passes it in instead.
 		self.assistant_talker = assistant_talker if assistant_talker is not None else AiTalker(ai_service=ai_service)
 
 		self.env = env
 		self.db = db
 		self.user = user_variables
 		self.auto_tracking_enabled = auto_tracking_enabled
-		# True when the automaton moved *before* this turn's own answer was
-		# written (see TrackingProcessorAfterUserMessage): what a state had
-		# prepared to say belongs to the state the conversation has just
-		# left, and is not said.
 		self.moved_before_reply = False
 		self.input_token_budget_per_turn = input_token_budget_per_turn
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder, auto_tracking_enabled)
@@ -223,11 +178,6 @@ class TrackingProcessor(object):
 		self._open_turn(fragments, user_message_ids)
 
 		self.metadata = Metadata(on_metadata or (lambda key, value: None), {}, {})
-
-		# Always sent before generation actually starts — the frontend's
-		# own typing-dots signal (see chat/ws_turn.py's own "typing" key,
-		# MessageBubble.vue's awaitingReply), never inferred from an
-		# empty message any more.
 		self.metadata.on_metadata("typing", None)
 		self.out = await self._get_ai_reply()
 
@@ -238,15 +188,7 @@ class TrackingProcessor(object):
 			"assistant", self.out.reply, self.user.session_id,
 			audio_text=self.metadata.audio, tokens=self.metadata.output_tokens,
 		)
-		# Linked to the assistant's own message right away — this turn's
-		# reply is what actually reported these memory values, unlike
-		# self.out.tracking_id, which may already be linked to an earlier message.
 		self.env.update(self.metadata.memory, message_id=assistant_id, declared_keys=self.user.automaton.declared_env_key_names())
-
-		# This turn's own `output` values, copied onto the real env keys
-		# they name — the state's own `output` declaration is what makes
-		# this automatic (see automaton.State.output), unlike an action's
-		# own `env:`, which stays opt-in.
 		output_for_env = {
 			name: value for name, value in self.metadata.output.items() if name in self.user.state.output
 		}
@@ -254,27 +196,16 @@ class TrackingProcessor(object):
 			self.env.update_action_set(output_for_env, origin="output")
 			for key, value in output_for_env.items():
 				publish(EnvChanged(username=WebSession().user, project_id=self.user.project_id, key=key, value=value))
-
-		# Every fragment this turn took is answered by the reply just saved
-		# — what keeps the next turn from picking any of them up again.
 		self.db.mark_messages_answered(self._fragment_ids, assistant_id)
 
 		if self.metadata.tool_calls:
 			self.db.record_tool_calls(self.user.session_id, self.metadata.tool_calls, message_id=assistant_id)
-		# Binds any source `update` tool call this turn made to the
-		# assistant's own message, same reasoning as record_tool_calls
-		# above — a no-op when nothing wrote through that tool this turn.
 		self.db.link_tool_env_writes_to_message(self.user.session_id, assistant_id, since=self._turn_started_at)
 
 		if self.out.tracking_id is not None and not self.out.tracking_linked_to_message:
 			self.db.link_signal_to_message(self.out.tracking_id, assistant_id)
 
 		user_message_id = self.user.message_id
-
-		# The bot's reaction is *to* the user's own message this turn, so it
-		# lands there, not on the assistant's new one — a turn nobody
-		# started has none, same guard build_turn_response's own
-		# user_message_id uses.
 		if self.metadata.reaction and user_message_id is not None:
 			self.db.set_message_reaction(user_message_id, self.metadata.reaction)
 
@@ -384,10 +315,6 @@ class TrackingProcessor(object):
 		budget = self.input_token_budget_per_turn
 		if budget is None:
 			return None
-		# Every channel's own fixed definition + SCHEMA_ORDER_PROMPT are
-		# real prompt bytes the model actually sees, on top of base_prompt/
-		# signal_definition/reaction_definition — omitted here, the
-		# estimate used to under-count every request by that much.
 		schema_overhead = prompt.schema_overhead_text() if prompt is not None else ""
 		estimate = estimate_turn_request(
 			base_prompt, signal_definition, reaction_definition, self.env, turn_attachments,
@@ -476,14 +403,6 @@ class TrackingProcessor(object):
 		history = priming_messages + self._strip_timestamps(
 			self.db.get_turn_history(self.user.session_id, since, token_budget)
 		)
-		# A turn nobody started still has to look like a turn to whoever
-		# answers it: a provider refuses a conversation that ends on the
-		# model's own words ("Requests ending with a model turn are not
-		# supported"). This stands in for the message that was never said
-		# — in what is sent, and only there. It used to be a row in the
-		# database, which anyone reading the transcript could see (see
-		# _open_turn); the same stand-in is what estimate_state_prompt
-		# has always used for a history nobody had.
 		return history + [{"role": "user", "content": "..."}] * self.user.has_ai_started_conversation
 
 	def build_turn_prompt(
@@ -512,13 +431,6 @@ class TrackingProcessor(object):
 		audio = AudioPrompt() if talk_enabled else None
 		text = TextPrompt(base_prompt)
 		memory = MemoryPrompt(self.env)
-
-		# 'before' -> output, signals, reaction, audio, text, memory; 'after' ->
-		# audio, text, output, signals, reaction, memory — output always first
-		# to guarantee its values are available when signals arrive and triggers
-		# are evaluated. The rest of the ordering is exactly what a turn has
-		# always used, now expressed as Prompt.chain's own left-to-right
-		# composition order (any of signals/reaction/audio/output may be None).
 		if has_to_evaluate_signals_before_ai_reply:
 			prompt = Prompt.chain(output, signals, reaction, audio, text, memory)
 		else:
@@ -583,23 +495,12 @@ class TrackingProcessor(object):
 		if state.fixed_message:
 			logger.warning("Translating fixed_message for state '%s'.", state.key)
 			return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), None, None, None, []
-
-		# which action fires from here.
-		# Pinned to THIS turn's own already-resolved automaton (never
-		# whatever project happens to be "active" right now, which need
-		# not be the same one this session actually belongs to).
 		output_definition = build_output_definition_for_names(automaton, state.output)
 		signals = Signals(FixedProjectContext(automaton), self.db)
 		signal_names = automaton.triggerable_signal_names(state.key)
 		signal_definition = signals.get_definition(signal_names)
-		# Unlike signal_definition, never filtered down to a subset — the
-		# bot's own reaction access is all-or-nothing per state (see
-		# State.reactions_enabled), never a partial vocabulary.
 		reaction_definition = self._build_reaction_definition(automaton) if automaton.reactions_enabled_for(state) else None
 		base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"
-		# The automaton carries the paths, not the files: this turn's own
-		# attachments are read here, once, through the same reader every
-		# other project-file read goes through (see tracking.attachments).
 		return (
 			base_prompt, output_definition, signal_definition, reaction_definition,
 			load_attachments(
@@ -627,24 +528,11 @@ class TrackingProcessor(object):
 
 	def _build_turn_response(self, user_message_id: int | None, assistant_message_id: int | None) -> dict:
 		action = self.out.action
-		# The turn's own persisted assistant message, same shape
-		# apply_manual_action's own "reply" already sends (see
-		# TurnService._messages_for_transition) — lets a live SSE/WS turn's
-		# frontend reconcile its streaming bubble against the persisted
-		# row on `done`, instead of trusting the stream to have delivered
-		# every chunk. Empty exactly when there's no such message
-		# (assistant_message_id is always set by process()'s own
-		# save_message call today, but this stays defensive against a
-		# future caller that doesn't).
 		reply = [self.db.get_message(assistant_message_id)] if assistant_message_id is not None else []
 		return {
 			"reply": reply,
 			"user_message_id": user_message_id,
 			"assistant_message_id": assistant_message_id,
-			# The bot's own reaction to the user's message this turn (see
-			# process()'s own persistence above) — carried here too so the
-			# frontend can apply it live, without waiting for a full
-			# messages refetch to notice the DB write.
 			"user_message_reaction": self.metadata.reaction if user_message_id is not None else None,
 			"state": self._current_state_payload(self.user.automaton, self.out.state, self.metadata.button_translations),
 			"state_changed": action is not None,
@@ -716,16 +604,8 @@ def estimate_state_prompt(
 		)
 		base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"
 		turn_attachments = load_attachments(files, _turn_attachment_paths(automaton, state, True))
-
-	# memory empty — this is a static, no-live-session estimate with no
-	# real model-reported notes to seed it with; action_set carries the
-	# automaton's own declared env keys, at their YAML-declared defaults,
-	# for EnvPromptBlock.for_state below.
 	env = Env(action_set={key.name: key.value for key in automaton.env_keys})
 	has_to_evaluate_signals_before_ai_reply = not automaton.autotracking_on_ai_message
-	# Output and signals always included, unlike the live build_turn_prompt — matches
-	# today's implicit evaluate_signals=True default for this
-	# no-live-session estimate. Output comes first to match live ordering.
 	output_prompt = OutputPrompt(output_definition) if state.output else None
 	signals_prompt = SignalsPrompt(signal_definition)
 	reaction_prompt = ReactionPrompt(reaction_definition) if automaton.reactions_enabled_for(state) else None
@@ -736,12 +616,6 @@ def estimate_state_prompt(
 		prompt = Prompt.chain(output_prompt, signals_prompt, reaction_prompt, audio_prompt, text_prompt, memory_prompt)
 	else:
 		prompt = Prompt.chain(audio_prompt, text_prompt, output_prompt, signals_prompt, reaction_prompt, memory_prompt)
-
-	# Worst-case assumption for this state's translatable-buttons size
-	# contribution: auto_tracking_enabled=False, the branch that counts
-	# every action with a ui_button rather than just the untriggered
-	# ones — matches what a test/manual session already shows regardless
-	# of trigger (see automaton.pressable_actions).
 	originals = TrackingProcessor._button_labels_to_translate(state, auto_tracking_enabled=False)
 	if originals:
 		prompt = prompt.compose(TranslatePrompt(originals))

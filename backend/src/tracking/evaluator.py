@@ -10,9 +10,6 @@ from automaton.automaton import Automaton
 class SignalEvaluator(object):
     @staticmethod
     def _validate_one(raw_value: object) -> int | float | None:
-        # Signals are unconstrained numbers, int or float: no fixed range
-        # (a signal's own `definition` prompt is free to ask for e.g.
-        # 0-100, but the software itself doesn't enforce it).
         if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
             return None
         return raw_value

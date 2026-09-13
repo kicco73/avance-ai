@@ -9,11 +9,6 @@ from system import bus
 from ai import AIServiceConfig
 from system.bus import POINT_CONFIG_SERVICES
 from system.config_services import ui_section
-
-# Default home for compiled packages: backend/apps, beside src/ rather
-# than inside it — a built package is generated data, not source, and it
-# is imported by path, so it must never be importable by accident. In a
-# real deployment this is set to something like /var/lib/avance/apps.
 DEFAULT_APPS_DIR = Path(__file__).resolve().parent.parent / "apps"
 
 
@@ -44,20 +39,13 @@ class BuildServiceConfig:
     repo_url: str | None
     username: str | None
     token: str | None
-    # Where compiled packages are written and read from — the one
-    # setting shared by BuildService (which writes them) and
-    # CompiledAutomatonLoader (which reads them). Never on sys.path: a
-    # package there is imported by file path.
     apps_dir: Path
 
 
 @dataclass(frozen=True)
 class AuthProviderConfig:
     driver: str
-    # Mandatory here — Google always requires a client ID; revisit whether
-    # this should become optional if a future provider doesn't need one.
     key: str
-    # Optional: falls back to `driver` (see AppConfig._parse_auth_providers).
     ui_label: str
     ui_description: str | None = None
 
@@ -210,9 +198,6 @@ class AppConfig:
 
     @classmethod
     def _parse_auth_providers(cls, raw: dict, path: Path) -> list[AuthProviderConfig]:
-        # Always required (unlike talk-service/listen-service, which are
-        # opt-in via _get_optional_providers): authentication isn't an
-        # optional feature once the login wall exists.
         entries = cls._get_providers(raw, "auth-service", path)
 
         providers = []
@@ -240,14 +225,6 @@ class AppConfig:
         )
 
     _AI_SERVICE_MODES = ("live", "test")
-    # A modifier, not a cascade of its own — applied alongside "live"
-    # and/or "test" (e.g. modes: [live, no-auto]) to keep an entry in that
-    # mode's own manual selection list (AiService.get_models_info's
-    # "models") while excluding it from that mode's *auto* cascade (see
-    # AiService.for_live/for_test's own auto_config_indices). Never
-    # required to have an entry of its own the way "live"/"test" are (see
-    # _parse_ai_services' own coverage loop below) — it's an opt-out tag,
-    # not a bucket every config must fill.
     _AI_SERVICE_NO_AUTO_MODE = "no-auto"
     _AI_SERVICE_VALID_MODES = _AI_SERVICE_MODES + (_AI_SERVICE_NO_AUTO_MODE,)
 
@@ -268,14 +245,11 @@ class AppConfig:
                 f"{path}: 'ai-service.providers[{i}].modes' contains invalid entr{'y' if len(invalid) == 1 else 'ies'} "
                 f"{invalid} — must be 'live', 'test', and/or 'no-auto'."
             )
-        return tuple(dict.fromkeys(modes))  # de-duplicated, order preserved
+        return tuple(dict.fromkeys(modes))
 
     @classmethod
     def _parse_ai_services(cls, raw: dict, path: Path) -> list[AIServiceConfig]:
         entries = cls._get_providers(raw, "ai-service", path)
-        # One cap for every provider in the cascade — the ceiling a single
-        # generate_stream_with_schema call is allowed to reach before the
-        # provider itself reports truncation (see AIServiceProviderOutputTruncatedError).
         max_output_tokens = cls._get_optional_positive_int(
             raw, "ai-service", "max-output-tokens", path, default=4096
         )
@@ -298,22 +272,10 @@ class AppConfig:
                 max_output_tokens=max_output_tokens, modes=modes,
                 token_budget_per_day=token_budget_per_day,
             ))
-        # AiService.for_live/for_test each filter this same list down to
-        # only the entries whose own modes include that one (see
-        # AIServiceConfig.modes) — every entry opting out of a mode (or
-        # every entry sharing the same non-default modes) could otherwise
-        # leave one of the two cascades silently empty, a startup-time
-        # misconfiguration worth catching here rather than as a confusing
-        # runtime failure the first time that mode is actually used.
         for mode in cls._AI_SERVICE_MODES:
             matching = [service for service in services if mode in service.modes]
             if not matching:
                 raise ConfigError(f"{path}: 'ai-service.providers' has no entry left for mode {mode!r}.")
-            # Same idea, one layer down: "no-auto" excludes an entry from
-            # that mode's own *auto* cascade specifically (still present
-            # in its manual selection list) — if every surviving entry
-            # opts out, the auto cascade itself would be empty even though
-            # the mode "has" providers.
             if all(cls._AI_SERVICE_NO_AUTO_MODE in service.modes for service in matching):
                 raise ConfigError(
                     f"{path}: 'ai-service.providers' has no entry left for mode {mode!r} that isn't "
@@ -334,48 +296,24 @@ class AppConfig:
         self.database_migration_strategy = self._get_optional_choice(
             raw, "database", "migration-strategy", path, default="stop", choices=("stop", "upgrade", "drop")
         )
-        # The single source of truth for how long a chat session stays
-        # "open" (see turn/sessions/session_manager.py's SessionManager) — never
-        # hardcoded elsewhere.
         self.max_session_duration_in_minutes = self._get_optional_positive_float(
             raw, "turn-service", "max-session-duration-in-minutes", path, default=60.0
         )
         # FIXME: 16000 mirrored in TrackingService/TrackingProcessor's own
-        # constructor defaults — keep in sync.
         self.input_token_budget_per_turn = self._get_optional_positive_int(
             raw, "turn-service", "input-token-budget-per-turn", path, default=16000
         )
         # FIXME: 200000 mirrored in TrackingService's own constructor
-        # default — keep in sync. Display-only (see SessionDetailCard.vue's
-        # tokens bar): the max reference the bar is drawn against, nothing
-        # in the backend trims history against it.
         self.total_token_budget_per_session = self._get_optional_positive_int(
             raw, "turn-service", "total-token-budget-per-session", path, default=200000
         )
-        # How much of the projects' own files (a state's attachments, an
-        # `avance:` source's CSV, whatever attachment.read reads) is kept
-        # in memory across turns — see tracking.project_files.
-        # ProjectFileCache. Bounded in bytes, not in files: it holds
-        # whatever a turn actually reads, and one project's CSV is not
-        # the size of another's footer note. Lives here because it is a
-        # per-turn budget like the two above, and because turn-service is
-        # a section a compiled product still has.
         # FIXME: the default is mirrored in tracking/project_files.py's
-        # own DEFAULT_PROJECT_FILE_CACHE_BYTES — keep in sync.
         self.project_file_cache_bytes = self._get_optional_positive_int(
             raw, "turn-service", "project-file-cache-bytes", path, default=8 * 1024 * 1024
         )
-
-        # Two separate worker pools (see jobs/job_queue.py's JobQueue and
-        # jobs/throttled_job_queue.py's ThrottledJobQueue) — optional, and
-        # so is the whole `scheduler-service` section.
         self.jobs_shared_max_concurrent = self._get_optional_positive_int(
             raw, "scheduler-service", "shared-max-concurrent", path, default=2
         )
-        # "Share project" invite links (see project/invites.py's own
-        # InviteManager) — how long a freshly generated code stays
-        # redeemable, and how many new registrations it can carry before
-        # AuthService.complete_registration starts refusing it.
         self.invite_valid_days = self._get_optional_positive_int(
             raw, "project-service", "invite-valid-days", path, default=7
         )
@@ -383,9 +321,6 @@ class AppConfig:
             raw, "project-service", "invite-max-shares", path, default=3
         )
         self.ai_services = self._parse_ai_services(raw, path)
-
-        # Not provider-specific — needed regardless of which auth provider
-        # actually authenticated the user.
         self.auth_token_ttl_in_hours = self._get_optional_positive_int(
             raw, "auth-service", "token-ttl-in-hours", path, default=24 * 7
         )
@@ -435,8 +370,6 @@ class AppConfig:
             }),
             "build": self._public_build_service_fields(),
         }
-        # Whatever else is running adds its own section: a service the
-        # core does not know about still shows up in Manage services.
         return bus.collect(POINT_CONFIG_SERVICES, snapshot)
 
     def _public_build_service_fields(self) -> dict:

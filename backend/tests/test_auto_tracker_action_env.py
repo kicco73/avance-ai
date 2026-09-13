@@ -12,9 +12,6 @@ from system.web_session import WebSession
 from tracking.env import PersistedEnv
 from tracking.fixed_project_context import FixedProjectContext
 from turn_harness import PROJECT_ID, turn_service_for  # noqa: F401 — a pytest fixture, used by name
-
-# Each test verifies one fact about action-level env: persisted on fire,
-# untouched otherwise, self-referencing, scoped to this turn's signals.
 pytestmark = pytest.mark.regression
 
 
@@ -88,8 +85,6 @@ async def test_a_fired_actions_env_is_persisted(turn_service_for):
 
     assert result["state_changed"] is True
     env = turn_service.get_env(session_id)
-    # Lands in the action-set store, never the model's own memory() one.
-    # Accept bool or string since either is a valid evaluated representation.
     assert env["action_set"].get("reset_counter") in (True, "True")
     assert env["memory"] == {}
 
@@ -110,16 +105,13 @@ async def test_an_env_expression_can_self_reference_the_previous_stored_value(tu
         turn_service_for,
         _automaton_with_env("signal.mySignal >= 1", {"number_of_steps": "env.number_of_steps + 1"}, target="a"),
     )
-    # Seeded directly in the action-set store as a real int, since that's
-    # what simpleeval produces (unlike a model-reported string value) —
-    # and nothing above PersistedEnv writes that store.
     PersistedEnv(
         turn_service_for.db, FixedProjectContext(project_id=PROJECT_ID), session_id,
     ).update_action_set({"number_of_steps": 3})
 
     result = await turn_service.process_turn(session_id, "hello")
 
-    assert result["state_changed"] is True  # a self-loop (target == "a") still counts as fired
+    assert result["state_changed"] is True
     assert turn_service.get_env(session_id)["action_set"]["number_of_steps"] == 4
 
 

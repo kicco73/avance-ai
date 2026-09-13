@@ -1,7 +1,3 @@
-// Every control in the input row is switched off when the chat is:
-// ChatInput hands each contributed button the same `disabled` it gets,
-// and a button that ignored it stayed clickable on a closed session
-// (Quit in a preview chat left audio and spoken-text lit up).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from 'vue'
 
@@ -18,8 +14,6 @@ describe('the input row', () => {
 
   afterEach(async () => {
     container.remove()
-    // Whatever a test said this conversation could reach, the next one
-    // starts from a build that has everything.
     const { publishServices } = await import('../src/skillServices.js')
     publishServices(Object.fromEntries(chatInputControls.value.map((control) => [control.id.split('-')[0], true])))
   })
@@ -45,8 +39,6 @@ describe('the input row', () => {
   })
 
   it('draws every one of them in a sample row, whatever any conversation can reach', async () => {
-    // Told the way the app tells them — no control is named here, which
-    // is the point: this file is about the row, not about who fills it.
     const { publishServices } = await import('../src/skillServices.js')
     publishServices(Object.fromEntries(chatInputControls.value.map((c) => [c.id.split('-')[0], false])))
 
@@ -103,12 +95,6 @@ describe('the input row', () => {
   })
 })
 
-// A fresh page has the audio off — on a phone as anywhere else, where a
-// reply that started talking by itself would be both a surprise and,
-// outside a gesture, blocked by the browser (see audio.js's own
-// unlockAudioPlayback). Nothing restores it from anywhere: it is off
-// until this person switches it on, and switching it on is what tells
-// the session (see chatStoreFactory.js's own syncAudioPreference).
 describe('a fresh page', () => {
   it('has the audio and the spoken text switched off', async () => {
     vi.resetModules()

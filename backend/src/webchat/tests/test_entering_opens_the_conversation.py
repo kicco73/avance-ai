@@ -67,8 +67,6 @@ def test_entering_it_again_greets_nobody_twice(client, hello_project):
 
     said = next(frame for frame in frames if frame["type"] == "session.messages")
     assert [message["content"] for message in said["messages"]] == [opened[-1]["text"]]
-    # The only answer written after entering again is the one to what was
-    # typed: an opening would have arrived before it.
     answers = [frame for frame in frames if frame["type"] == "output.text"]
     assert len(answers) == 1, [frame["type"] for frame in frames]
 

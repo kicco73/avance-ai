@@ -150,10 +150,6 @@ def test_an_open_session_is_reused_with_its_end_state_refreshed_never_trusting_t
     assert second["id"] == first["id"]
     assert second["start_state"] == "start"
     assert second["end_state"] == "next"
-
-    # A caller passing a session_id that isn't the real current one (stale
-    # cache, another tab already rotated it, ...) must still resolve to the
-    # actual current session — never trusted for the decision itself.
     assert _resolve_or_create(manager, project_service, "user", "proj", 999999, "next")["id"] == first["id"]
 
     other_project = _resolve_or_create(manager, project_service, "user", "proj-a", None, "start")

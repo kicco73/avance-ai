@@ -8,10 +8,6 @@ export {
 } from './chatStoreFactory.js'
 export { applyAspect, invalidateSkin } from './chatSkin.js'
 
-// The app's one live chat — App.vue's own always-mounted widget. Never
-// shares a session/messages/state with EditProjectView's embedded "Run"
-// test chat (see testChatStore.js) — each is its own independent
-// createChatStore() instance.
 export const liveStore = createChatStore({
   kind: 'live',
   channel: liveChatChannel,

@@ -1,10 +1,4 @@
 <script setup>
-// Manage services > AI's own per-minute token-spend trend (trailing 24h)
-// — one line per provider/model, same chart shell (canvas/zoom/floating
-// tooltip) as ManageUsersView's own MetricsTrendsChart.vue and
-// TimelineChart.vue, just fed `history` as a prop instead of fetching it
-// itself: there's no per-user/per-project selection to re-fetch on here,
-// ServicesView.vue already loaded the whole snapshot once on mount.
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Chart, LineController, LineElement, PointElement, LinearScale, TimeScale, Tooltip } from 'chart.js'
 import zoomPlugin from 'chartjs-plugin-zoom'
@@ -13,8 +7,8 @@ import 'chartjs-adapter-date-fns'
 Chart.register(LineController, LineElement, PointElement, LinearScale, TimeScale, Tooltip, zoomPlugin)
 
 const props = defineProps({
-  history: { type: Array, default: () => [] }, // [{timestamp, values: {providerLabel: tokens}}, ...]
-  providerLabels: { type: Object, default: () => ({}) } // providerLabel -> display label (ui-label)
+  history: { type: Array, default: () => [] },
+  providerLabels: { type: Object, default: () => ({}) }
 })
 
 const PALETTE = [
@@ -59,9 +53,6 @@ function tooltipPositionStyle(event) {
     : { left: `${event.clientX + TOOLTIP_MARGIN}px`, top: `${event.clientY + TOOLTIP_MARGIN}px` }
 }
 
-// Chart.js's own tooltip can't put a color swatch on its title line (only
-// body/label rows support labelColor) — replaced by this same floating
-// tooltip TimelineChart/MetricsTrendsChart already use.
 function findNearestPoint(event) {
   if (!chart) return null
   const [match] = chart.getElementsAtEventForMode(event, 'nearest', { intersect: false }, false)
@@ -109,8 +100,6 @@ function buildDatasets(entries) {
   }))
 }
 
-// Unlike Metrics' own 0-100% scale, token counts have no fixed ceiling —
-// 10% slack above the highest minute any provider actually hit.
 function computeYMax(datasets) {
   const values = datasets.flatMap((dataset) => dataset.data.map((point) => point.y))
   return values.length ? Math.ceil(Math.max(...values) * 1.1) : 10
@@ -239,8 +228,6 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-/* Teleported to <body>, positioned in viewport coordinates — fixed, not
-   absolute, since a narrow settings panel would otherwise clip it. */
 .trend-line-tooltip-floating {
   position: fixed;
   width: max-content;

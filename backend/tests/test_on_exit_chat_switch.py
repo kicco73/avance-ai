@@ -149,5 +149,4 @@ def test_a_mixed_on_exit_script_writes_env_and_pushes_a_chat_notification_synchr
 
     assert db.get_action_env(PROJECT, USERNAME).get("counter") == 1
     assert [m.body for m in notified.for_user(USERNAME)] == [{"task": 'celebrate()\nnotify("Nice!", "Done.")'}]
-    # Never hibernated as a Task: on-exit's own chat.* never goes through ActionTask.
     assert db.list_tasks() == []

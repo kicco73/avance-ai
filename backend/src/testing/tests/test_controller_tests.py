@@ -43,11 +43,6 @@ def test_create_run_returns_immediately_pending(client, hello_project):
     assert run["session_id"] == session_id
     assert run["strategy"] == "turn_by_turn"
     assert run["results"] is None
-
-    # Drain the job before the test ends — this fixture's Db gets torn
-    # down and the next test's rebinds the shared peewee `database`
-    # Proxy to a different one; a straggler JobQueue worker thread still
-    # running past that point would execute against the wrong database.
     _wait_for_terminal_status(client, hello_project, run["id"])
 
 
@@ -62,8 +57,6 @@ def test_turn_by_turn_run_completes_and_produces_results(client, hello_project):
 
     assert finished["status"] == "completed", finished
     assert finished["results"] is not None
-    # session_id given -> only the "one_session"-scoped metrics (see
-    # BenchmarkCalculator.default_metrics/from_data) — 6, not the full 8.
     assert len(finished["results"]) == 6
 
 
@@ -83,7 +76,6 @@ def test_batch_run_completes_and_tracks_batch_segments(client, hello_project):
 
 def test_whole_project_run_scopes_to_labeled_sessions_only(client, hello_project):
     _make_labeled_session(client, hello_project)
-    # An unlabeled session must never be pulled into a whole-project run.
     unlabeled_id = session_of(enter_chat(client, hello_project))
     chat_turn(client, unlabeled_id, "hi")
     run = client.post(
@@ -93,8 +85,6 @@ def test_whole_project_run_scopes_to_labeled_sessions_only(client, hello_project
     assert run["session_id"] is None
     finished = _wait_for_terminal_status(client, hello_project, run["id"])
     assert finished["status"] == "completed", finished
-    # session_id is None -> the full, unfiltered metric set (8) — see
-    # BenchmarkCalculator.default_metrics/from_data.
     assert len(finished["results"]) == 8
 
 
@@ -115,10 +105,6 @@ def test_list_runs_defaults_to_whole_project_scope(client, hello_project):
     runs = client.get(f"/api/skills/testing/projects/{hello_project}/tests").json()
 
     assert [r["id"] for r in runs] == [project_run["id"]]
-
-    # Drain both jobs — see test_create_run_returns_immediately_pending's
-    # own comment on why a straggler background thread must never outlive
-    # this test's own Db fixture.
     _wait_for_terminal_status(client, hello_project, session_run["id"])
     _wait_for_terminal_status(client, hello_project, project_run["id"])
 

@@ -79,8 +79,6 @@ class WhatsAppService(object):
         self._voice_notes.cancel()
         await self._client.close()
 
-    # --- what Meta POSTs ------------------------------------------------- #
-
     async def receive(self, incoming: IncomingMessage) -> None:
         try:
             await self._marked_read(incoming)
@@ -115,8 +113,6 @@ class WhatsAppService(object):
             await self._client.send_text(sender, notices.TECHNICAL_PROBLEM)
         except httpx.HTTPError as exc:
             logger.warning(f"WhatsApp: could not even apologize to {sender}: {exc}")
-
-    # --- what the Bus says back ------------------------------------------ #
 
     async def _informed(self, message: Message) -> None:
         for conversation in self._mine(message):
@@ -157,8 +153,6 @@ class WhatsAppService(object):
 
     def _watching(self, session_id: int | None) -> list[Conversation]:
         return [c for c in self._conversations.values() if c.watching(session_id)]
-
-    # --- what nobody asked for ------------------------------------------- #
 
     async def _unsolicited(self, message: Message) -> None:
         for addressed in filter(_addressed_here, [message]):

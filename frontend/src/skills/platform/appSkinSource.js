@@ -1,10 +1,6 @@
 import { appStoreFileContentUrl } from './api.js'
 import { resolveCssAssetUrls } from '../../cssAssetUrls.js'
 
-// An app's skin as the store shows it: index.css read at the published
-// revision, through the app-store's own endpoint — what somebody
-// browsing apps is entitled to see, whether or not any session of that
-// app is open yet.
 export class AppSkinSource {
   constructor(appIdRef) {
     this._appIdRef = appIdRef

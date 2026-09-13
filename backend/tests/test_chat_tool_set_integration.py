@@ -43,11 +43,6 @@ class FakeToolAwareAiService:
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
         if self._tool_call is not None and tool_set is not None and self.call_count == 0:
             name, arguments = self._tool_call
-            # Real AiService emits both phases unconditionally, not gated
-            # by schema (see its own tool-call loop), composed entirely by
-            # ToolSet.tool_event — TrackingProcessor's own on_metadata
-            # handler is what persists the "result" phase to
-            # Tracking.tool_calls.
             on_metadata("tool", tool_set.tool_event(name, arguments, "start", round=1))
             result = await tool_set.call(name, arguments)
             self.tool_results.append(result)
@@ -63,10 +58,6 @@ class FakeToolAwareAiService:
 
 @pytest.fixture
 def file_db(tmp_path) -> Db:
-    # File-backed, not :memory: — a state's own ai-may-read-sources
-    # call the driver via ToolSet.call's own asyncio.to_thread, and a second thread's
-    # connection to ":memory:" would see a distinct, empty database
-    # instead of shared state (see test_tool_set.py's own file_db).
     return Db(f"sqlite:///{tmp_path / 'chat_tool_set.db'}")
 
 
@@ -93,10 +84,6 @@ def turn_service_for(file_db):
     file_db.publish_project(PROJECT_ID)
 
     def make(automaton: Automaton, *, ai_service) -> TurnService:
-        # AvanceArchiveSource needs to know where to actually read from
-        # (see Automaton.set_storage_location) — a hand-built Automaton
-        # in a test has no revision until told, unlike one AutomatonLoader
-        # would have already resolved off a real publish.
         automaton.set_storage_location(file_db.get_project_revision(PROJECT_ID))
         project_service = FakeProjectService(automaton)
         metric_service = MetricService(file_db, project_service)
@@ -126,10 +113,6 @@ async def test_a_real_chat_turn_resolves_a_tool_call_against_the_state_s_own_dec
     session_id = await _bootstrap_session(turn_service)
 
     result = await turn_service.process_turn(session_id, "where's my flight to Paris?")
-
-    # The turn's own persisted assistant message (see
-    # TrackingProcessor._build_turn_response) — "Hi!" is
-    # FakeToolAwareAiService.generate_stream_with_metadata's own chunk.
     assert [m["content"] for m in result["reply"]] == ["Hi!"]
     assert ai_service.tool_results == ["city,country\nParis,France\n"]
 
@@ -192,10 +175,6 @@ async def test_get_messages_omits_tool_calls_for_a_message_with_none(turn_servic
 
 
 def test_build_tool_set_is_none_for_a_state_with_neither_field(file_db):
-    # The init state ("") declares none of the three fields — build_tool_set must return
-    # None for it, so a fake that only answers once tool_set is real
-    # (like the one the end-to-end test above uses) never gets called at
-    # all for a state without one.
     from tracking.env import Env
     from tracking.tracking_processor import TrackingProcessor, UserVariables
 

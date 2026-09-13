@@ -1,9 +1,3 @@
-// An action's own "task" script never rides in anything a chat asked
-// for: the backend runs it as a task and publishes its output as a
-// `ui.notification`, which notificationBus.js runs exactly once,
-// globally, whichever chat stores happen to exist. taskActions.js itself
-// (script → taskLocals binding) has its own dedicated tests — see
-// taskActions.test.js.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildTimeline } from '../src/testTimeline.js'
 
@@ -35,8 +29,6 @@ describe('the notification bus runs a pushed task script once, globally', () => 
     vi.clearAllMocks()
   })
 
-  // What the channel handed the bus: it subscribes the first time
-  // anyone subscribes to it.
   function pushedFrame() {
     const call = busChannel.subscribe.mock.calls.find(([type]) => type === 'ui.notification')
     expect(call).toBeTruthy()
@@ -52,7 +44,7 @@ describe('the notification bus runs a pushed task script once, globally', () => 
 
     expect(taskActions.runTaskScript).toHaveBeenCalledTimes(1)
     expect(taskActions.runTaskScript).toHaveBeenCalledWith("notify('Nice!', 'You reached **state B**.')")
-    expect(seen).toEqual([])  // no state: nothing for the stores
+    expect(seen).toEqual([])
   })
 
   it('runs the script once however many stores subscribed, and hands the state to each', async () => {
@@ -111,11 +103,6 @@ describe('the person\'s own message is stamped by what the system says about it'
   })
 
   it('applies the reaction live, via a replaced object (not a direct mutation)', async () => {
-    // Regression: an earlier version mutated the raw `message` object the
-    // store holds directly (message.reaction = ...) instead of replacing
-    // its slot in messages.value — that bypasses Vue's reactive proxy
-    // entirely, so the bubble never re-rendered until something else (e.g.
-    // a full reload) rebuilt messages.value from scratch.
     await chatStore.handleSend('hello')
     const before = chatStore.messages.value.find((m) => m.role === 'user')
 
@@ -159,27 +146,14 @@ describe('every exchange stays correctly ordered against real buildTimeline', ()
   })
 
   it('positions a second exchange\'s own transition after its own user message, not after the assistant reply', async () => {
-    // Regression test: the streaming assistant bubble's own local
-    // `timestamp` used to be stamped at the same instant as the user
-    // message that triggered it. A second message sent while that stale
-    // timestamp was still fresh could then collide with (or trail only
-    // slightly behind) the next user message's own timestamp — and
-    // buildTimeline's own tie-break (a message always sorts before a
-    // same-effective-moment transition) then pushed the transition past
-    // bubbles it should have preceded. Reproduced directly against a live
-    // "before" mode session (autotracking_on_ai_message=False): the first
-    // transition rendered fine, the second landed after the assistant's
-    // reply instead of right after the user's own message. The bubble is
-    // now opened — and timestamped — when the system says it has started
-    // writing, which is genuinely later.
     await chatStore.handleSend('turn 1')
     deliver({ type: 'output.reaction', session_id: 1, user_message_id: 3, reaction: null })
-    vi.advanceTimersByTime(2000) // the AI reply genuinely takes real time
+    vi.advanceTimersByTime(2000)
     deliver({ type: 'output.text_stream', session_id: 1, text: '' })
     deliver({ type: 'state.buttons', session_id: 1, actions: [] })
     deliver({ type: 'output.text', session_id: 1, assistant_message_id: 4, text: 'Reply one.' })
 
-    vi.advanceTimersByTime(20000) // the user takes real time to type turn 2
+    vi.advanceTimersByTime(20000)
 
     await chatStore.handleSend('turn 2')
     deliver({ type: 'output.reaction', session_id: 1, user_message_id: 5, reaction: null })
@@ -188,9 +162,6 @@ describe('every exchange stays correctly ordered against real buildTimeline', ()
     deliver({ type: 'state.buttons', session_id: 1, actions: [] })
     deliver({ type: 'output.text', session_id: 1, assistant_message_id: 6, text: 'Reply two.' })
 
-    // EditProjectView.vue's own rawLiveMessages mapping, reproduced here
-    // so this exercises the real chatStore state against the real
-    // buildTimeline, the same combination the live bug surfaced through.
     const rawLiveMessages = chatStore.messages.value.map((m) => ({
       id: m.messageId ?? null,
       timestamp: m.timestamp,

@@ -41,7 +41,7 @@ class _FakeApi(BaseHTTPRequestHandler):
 
     protocol_version = "HTTP/1.1"
 
-    def log_message(self, *args):  # silence
+    def log_message(self, *args):
         pass
 
     def do_POST(self):
@@ -175,10 +175,6 @@ def test_anthropic_keeps_one_client_per_loop_and_prunes_closed_ones(fake_api_url
     provider = _anthropic(fake_api_url)
     for _ in range(5):
         asyncio.run(_one_call(provider))
-    # Every one of those loops is closed by now; the next new loop's
-    # first use sweeps them, so the dict never grows without bound.
-    # Private read on purpose: the pruning has no other observable
-    # consequence — an unpruned dict leaks silently and forever.
     asyncio.run(_one_call(provider))
     assert len(provider._async_clients) == 1
 

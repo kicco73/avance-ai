@@ -79,7 +79,7 @@ def test_unlinked_signals_rows_never_produce_an_observation(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
     db.save_message("user", "hi", session_id)
     signal_row_id = db.save_transition("", "init", "a", session_id, transition_log_level="INFO")
-    db.set_signal_expected_state(signal_row_id, "a")  # would-be annotation, but unlinked
+    db.set_signal_expected_state(signal_row_id, "a")
 
     observations = BenchmarkCalculator(db, "user", "proj").observations()
 

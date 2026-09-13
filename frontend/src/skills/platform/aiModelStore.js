@@ -1,10 +1,6 @@
 import { ref } from 'vue'
 import { getAiModels, postAiModelSelection } from './api.js'
 
-// Which AI model the live chat runs on — app-wide, not per chat session:
-// one selection for the whole page, shared by every chat store (see
-// testChatStore.js for the "Test" chat's own equivalent over
-// ai_test_service).
 export const aiModels = ref([])
 export const aiModelAuto = ref(true)
 export const aiModelCurrentIndex = ref(0)
@@ -20,7 +16,6 @@ export async function loadAiModels() {
   try {
     applyAiModelInfo(await getAiModels())
   } catch {
-    // already surfaced via apiFetch
   }
 }
 
@@ -29,20 +24,12 @@ export async function selectAiModel(index) {
   try {
     applyAiModelInfo(await postAiModelSelection(index))
   } catch {
-    // already surfaced via apiFetch
   } finally {
     aiModelSelectionLoading.value = false
   }
 }
 
-// Bundles the live-chat model state + its own select() into one object —
-// ModelMenu.vue's default `modelStore` prop. testChatStore.js's
-// testChatModelStore exposes the same shape for ai_test_service, so the
-// component itself never needs to know which context it's in.
 export const liveModelStore = {
-  // What the core asks before offering the choice at all (see
-  // modelSelector.js's null object): a build with no panel has no one to
-  // change the model, and says so rather than showing a dead control.
   available: true,
   models: aiModels,
   auto: aiModelAuto,

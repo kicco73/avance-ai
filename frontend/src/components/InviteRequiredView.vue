@@ -1,18 +1,4 @@
 <script setup>
-// Shown instead of TermsView.vue for a session that authenticated but
-// has no User row yet (see App.vue's own pingBackend — a 403 off GET
-// /api/core/state) AND arrived with no "share project" invite link (see
-// shareLink.js's peekInviteCode — App.vue picks between this and
-// TermsView based on it). Self-registration is invite-only now
-// (AuthService.complete_registration refuses an invite code that
-// doesn't clear its exists/not-expired/under-max-shares check), so a
-// plain Google sign-in with no invite has nothing to accept here — just
-// a way back out.
-//
-// Deliberately its own component rather than a mode/flag on TermsView:
-// this isn't a consent screen (nothing to Accept), and TermsView is
-// still reused as-is by LiveChatWindow.vue for an unrelated concept
-// (a project's own legal/terms.md) that this gate must never affect.
 import logoUrl from '../assets/avance-logo.png'
 
 const emit = defineEmits(['logout'])
@@ -38,8 +24,6 @@ const emit = defineEmits(['logout'])
   top: 0;
   left: 0;
   right: 0;
-  /* Same standalone-iOS bottom-overshoot convention as every other
-     full-viewport screen — see App.vue's .app-backdrop comment for why. */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
   display: flex;
   align-items: center;

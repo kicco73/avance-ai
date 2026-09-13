@@ -241,15 +241,9 @@ async def test_messages_arriving_while_a_turn_generates_are_answered_together_by
     provider.release.set()
     await _wait_for(lambda: len([m for m in db.get_messages(session_id) if m["role"] == "assistant"]) == 2)
 
-    # A was alone when its answer opened, so it is a plain string as always.
     assert _last_user_content(provider.histories[0]) == "A"
-    # B and C reach the model as ONE user message of two blocks.
     assert _last_user_content(provider.histories[1]) == ["B", "C"]
     assert len(provider.histories) == 2
-
-    # Stored in arrival order, which interleaves: B and C were written
-    # while the answer to A was still being generated. Which answer each
-    # one belongs to is recorded separately (see Message.answered_by).
     persisted = db.get_messages(session_id)
     assert [m["role"] for m in persisted] == ["user", "user", "user", "assistant", "assistant"]
     assert [m["content"] for m in persisted if m["role"] == "user"] == ["A", "B", "C"]
@@ -275,11 +269,6 @@ async def test_the_coalesced_turn_binds_to_its_last_fragment(turn_service_for):
     await _wait_for(lambda: len([m for m in db.get_messages(session_id) if m["role"] == "user"]) == 3)
     provider.release.set()
     await _wait_for(lambda: len([m for m in db.get_messages(session_id) if m["role"] == "assistant"]) == 2)
-
-    # B and C were answered by the same message, the second one: the
-    # exchange closed on the last of them.
-    # B and C were answered together, by the second answer: the exchange
-    # closed on the last of them.
     reloaded = [entry["content"] for entry in db.get_turn_history(session_id, None, None)]
     assert reloaded == ["A", "answer 1", ["B", "C"], "answer 2"]
 
@@ -323,7 +312,6 @@ async def test_the_history_budget_drops_a_half_cut_group_whole(turn_service_for)
     db.mark_messages_answered([first, second], reply)
     later = db.save_message("user", "later", session_id, tokens=10)
 
-    # Room for the reply, "later", and only ONE of the two fragments.
     history = db.get_turn_history(session_id, None, 30)
 
     assert [entry["content"] for entry in history] == ["answered", "later"]

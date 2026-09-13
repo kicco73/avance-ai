@@ -24,7 +24,6 @@ pytestmark = pytest.mark.regression
 
 PROJECT_ID = "legacy_proj"
 
-# What an index.yml looked like before `project:` existed at all.
 PRE_PROJECT_SECTION_YML = """
 avance-version: "1.7.0"
 init-action:
@@ -35,7 +34,6 @@ states:
     contextual-prompt: hi
 """
 
-# A `project:` section that predates the `id` field.
 PRE_PROJECT_ID_YML = """
 project:
   ui-label: Old label
@@ -121,7 +119,7 @@ def test_a_stored_revision_that_no_longer_builds_names_itself(db):
     assert exc.project_id == PROJECT_ID
     assert exc.revision == broken
     assert f"Project '{PROJECT_ID}', stored revision {broken}" in exc.detail
-    assert "Project" not in str(exc)  # the builder's own message, untouched
+    assert "Project" not in str(exc)
 
 
 def _open_session_on(db, revision: int) -> int:

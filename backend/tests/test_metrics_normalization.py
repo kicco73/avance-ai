@@ -21,9 +21,6 @@ def test_linear_maps_low_high_onto_0_100_clamping_outside_it_and_degenerating_in
     assert Normalizer.linear(10, 0, 10) == 100.0
     assert Normalizer.linear(-5, 0, 10) == 0.0
     assert Normalizer.linear(15, 0, 10) == 100.0
-
-    # high <= low can't be interpolated — treated as a hard threshold at
-    # `high`: below it scores 0, at or above it scores 100.
     assert Normalizer.linear(5, 10, 10) == 0.0
     assert Normalizer.linear(10, 10, 10) == 100.0
     assert Normalizer.linear(15, 10, 10) == 100.0

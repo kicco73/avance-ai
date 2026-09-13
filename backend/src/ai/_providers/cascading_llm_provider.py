@@ -58,9 +58,6 @@ class AutoLiveLLMProvider(LLMProvider):
     @property
     def current_index(self) -> int:
         return self._cascade.current_index
-
-    # Which leaf the cascade would call right now; a pure read that
-    # never advances or otherwise mutates the cascade's position.
     @property
     def current_provider(self) -> LLMProvider:
         return self._cascade.current

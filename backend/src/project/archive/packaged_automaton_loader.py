@@ -46,9 +46,6 @@ class PackagedAutomatonLoader(object):
     def __init__(self, apps_dir: Path) -> None:
         directory = sole_package(apps_dir)
         self._revision = declared_revision(directory)
-        # The package declares which project it is; nothing outside it
-        # gets to disagree, which is why import_automaton is given the
-        # package's own name rather than a configured one.
         self._automaton: Automaton = import_automaton(directory, directory.name, self._revision)
         self._project_id = self._automaton.project_id
         logger.info(

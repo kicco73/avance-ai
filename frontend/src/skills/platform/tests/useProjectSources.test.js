@@ -23,8 +23,6 @@ describe('useProjectSources', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     flashRecentlyAdded = vi.fn()
-    // Simulates a never-dirty editor: guardedAction just runs immediately,
-    // matching useIndexYmlEditing.test.js's own identical stand-in.
     guardedAction = vi.fn((label, run) => run())
     getProjectSources.mockResolvedValue(sourceList(PINO))
     s = useProjectSources('proj', guardedAction, flashRecentlyAdded)
@@ -55,10 +53,6 @@ describe('useProjectSources', () => {
     s.handleAddSource()
 
     expect(guardedAction).toHaveBeenCalledWith('add a new source', expect.any(Function))
-    // handleAddSource is fire-and-forget (matches useIndexYmlEditing.js's
-    // own handleAddState) — its own extra `await loadSources()` hop means
-    // waiting on a fixed number of microtask ticks would be fragile, so
-    // this polls instead.
     await vi.waitFor(() => expect(s.currentSourceName.value).toBe('behaviour'))
     expect(postAddSource).toHaveBeenCalledWith('proj')
     expect(flashRecentlyAdded).toHaveBeenCalledWith('source:behaviour')

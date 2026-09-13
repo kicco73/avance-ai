@@ -70,10 +70,6 @@ class TestingService:
         return job
 
     def _track(self, job: CancelableJob) -> CancelableJob:
-        # For a job that's one of several dependencies job_queue.submit()
-        # will recurse into on its own (never separately submitted here) —
-        # still needs a _jobs_by_key entry, otherwise get_jobs_status() has
-        # no way to ever see it as anything but idle while it runs.
         self._jobs_by_key[job.key] = job
         return job
 
@@ -126,9 +122,6 @@ class TestingService:
         run_ids = self._db.delete_tests(project_id)
         self._cache.untrack_many(run_ids)
         self._db.delete_test_aggregate_results(project_id)
-        # Otherwise an already-completed job's last broadcast (or its
-        # object, for _sessions_job()'s own reuse check) lingers forever —
-        # reporting stale 'completed' status for data just deleted above.
         self._jobs_by_key.clear()
         self._status_broadcaster.clear()
 
@@ -166,8 +159,6 @@ class TestingService:
     def _resolve_scope(self, username: str | None, project_id: str, session_id: int | None) -> list[int]:
         if session_id is not None:
             return [session_id]
-        # type=None: a whole-project run must cover every labeled session,
-        # not just 'live' ones — same reasoning as BenchmarkCalculator._load_sessions.
         sessions = self._db.list_chat_sessions(username, project_id, type=None)
         return [int(row['id']) for row in sessions if row['labeled']]
 

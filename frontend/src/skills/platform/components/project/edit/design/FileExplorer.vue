@@ -9,8 +9,6 @@ const props = defineProps({
   uploading: { type: Boolean, default: false },
   creatingFile: { type: Boolean, default: false },
   explorerWidth: { type: Number, required: true },
-  // Declared sources (see useProjectSources.js) — getProjectSources' own
-  // [{ source: { name, ui_label, ... } }, ...] shape.
   sources: { type: Array, default: () => [] },
   sourcesLoading: { type: Boolean, default: true },
   currentSourceName: { type: String, default: null },
@@ -29,7 +27,6 @@ function triggerUpload() {
   fileInputRef.value?.click()
 }
 
-// "+" menu — same toggle/click-outside pattern as SettingsMenu.vue.
 const newFileMenuOpen = ref(false)
 const newFileMenuRootEl = ref(null)
 
@@ -83,9 +80,6 @@ const behaviorAttachments = computed(() => props.files.filter((name) => name.sta
 const hasIndexCss = computed(() => props.files.includes('index.css'))
 const showThemeBranch = computed(() => hasIndexCss.value || themeAssets.value.length > 0)
 const hasLegalTerms = computed(() => props.files.includes(LEGAL_TERMS_FILE_NAME))
-// A Sources section only appears once a source is actually declared — "+
-// Add source" creates the first one, which is what makes the branch show
-// up at all (see EditProjectView.vue's own handleAddSource).
 const declaredSources = computed(() => props.sources.map((entry) => entry.source))
 const showSourcesBranch = computed(() => declaredSources.value.length > 0)
 
@@ -97,23 +91,16 @@ function sourceArchiveName(name) {
   return `sources/${name}.csv`
 }
 
-// Every branch starts closed on entry — the watch below reopens
-// whichever one holds a file a jump-to-definition/attachment click opens.
 const expanded = ref({ behavior: false, theme: false, sources: false })
 function toggleBranch(key) {
   expanded.value[key] = !expanded.value[key]
 }
 
-// Clicking "Sources" selects that branch's own root context (see
-// EditProjectView.vue's selectSourcesRootNode) — same as Behavior/Aspect's
-// header button — and expands the branch to show it.
 function selectSourcesRoot() {
   expanded.value.sources = true
   emit('select-sources-root')
 }
 
-// Reveals whichever branch holds the file a jump-to-definition or attachment
-// click just opened, even if that branch is currently collapsed.
 watch(
   () => props.currentFileName,
   (name) => {
@@ -310,8 +297,6 @@ watch(
 .file-explorer-children { list-style: none; margin: 0; padding: 0 0 0 1.2rem; overflow: hidden; min-height: 0; }
 .file-explorer-empty { padding: 0.3rem 0.5rem; font-size: 0.78rem; color: #999; font-style: italic; }
 .file-explorer-row { display: flex; align-items: center; gap: 0.2rem; }
-/* Same "read by the AI" sparkle as MdEditorPanel.vue/InspectorDetailCard.vue
-   — a Behavior attachment is exactly that: content the AI reads. */
 .file-explorer-ai-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; margin-left: 0.3rem; }
 .file-explorer-modified-dot { flex-shrink: 0; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #f5a623; margin: 0 0.5rem 0 0.1rem; }
 .file-explorer-item { flex: 1; min-width: 0; display: block; text-align: left; padding: 0.4rem 0.5rem; border: none; border-radius: 6px; background: none; cursor: pointer; font-size: 0.85rem; color: #333; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

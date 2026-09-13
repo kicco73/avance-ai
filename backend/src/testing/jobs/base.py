@@ -43,11 +43,6 @@ class _AggregationJob(CancelableJob):
         self._result_value: dict | list[dict] | None = None
 
     def _prepare(self) -> tuple[int, tuple[CancelableJob, ...]]:
-        # Checked here, before any dependency is even resolved — not just
-        # in _run_next_step() — so an already-cached node needs no
-        # dependencies at all: none of its underlying sessions' (possibly
-        # expensive, real-AI-call) TestReplayJobs get constructed or
-        # re-run just to re-derive an answer this node already has cached.
         cached = self._cached()
         if cached is not None:
             self._result_value = cached
@@ -76,28 +71,18 @@ class _AggregationJob(CancelableJob):
         return run_ids, tuple(dependencies)
 
     def _resolve_or_construct_session_run(self, session_id: int) -> tuple[int, CancelableJob | None]:
-        # Whole method under the cache lock — otherwise two concurrent
-        # callers can both see "nothing running yet", both fall through to
-        # _construct_run, and the loser gets back job=None (since the row
-        # already exists by the time it gets there) instead of the winner's
-        # live job, silently dropping the dependency on an in-flight run.
         with self._service._cache.locked():
             candidates = [
                 run for run in self._service.list_runs(self._project_id, session_id) if run['strategy'] == self._strategy
             ]
             candidate = candidates[0] if candidates and not candidates[0]['stale'] else None
             if candidate is not None:
-                # 'running' — some other branch of the same root click already
-                # claimed this exact session — must still be depended on here
-                # too, not silently treated as "nothing to wait for" just
-                # because a (still in-flight) row already exists.
                 if candidate['status'] == 'running':
                     live_job = self._service._cache.live_job_for(candidate['id'])
                     assert live_job is not None
                     return candidate['id'], live_job
                 if candidate['status'] == 'completed':
                     return candidate['id'], None
-                # 'failed' or 'aborted' — a dead attempt; fall through to retry below.
             session = self._service._db.get_chat_session(session_id)
             assert session is not None
             run, job = self._service._construct_run(session['username'], self._project_id, session_id, self._strategy)
@@ -178,9 +163,6 @@ class _AggregationJob(CancelableJob):
         raise NotImplementedError
 
     async def _run_next_step(self) -> None:
-        # _prepare() already resolved this from cache when possible (see
-        # above) — self._result_value is only still None here when it
-        # genuinely had to wait on real dependencies.
         if self._result_value is not None:
             return
         result = await self._compute()

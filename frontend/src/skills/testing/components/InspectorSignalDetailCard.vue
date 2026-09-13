@@ -1,7 +1,5 @@
 <script setup>
 defineProps({
-  // { name, ui_label, ui_description, definition } | null — see
-  // EditProjectView.vue's autoSelectedSignal.
   signal: { type: Object, default: null }
 })
 </script>

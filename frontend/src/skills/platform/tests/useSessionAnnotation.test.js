@@ -25,8 +25,6 @@ import { refreshSessionsQuietly } from '../../../chatStore.js'
 import { confirmDialog } from '../../../dialogStore.js'
 import { useSessionAnnotation } from '../useSessionAnnotation.js'
 
-// onBeforeUnmount/watch need an active component instance to be reactive
-// in the way the real component relies on.
 function mountComposable(setup) {
   let result
   const container = document.createElement('div')
@@ -177,14 +175,11 @@ describe('useSessionAnnotation', () => {
     await s.onSaveComment(1, 'a note')
 
     expect(putMessageComment).toHaveBeenCalledWith(1, 'a note')
-    expect(getSessionSignals).toHaveBeenCalledTimes(2) // initial load + reload
+    expect(getSessionSignals).toHaveBeenCalledTimes(2)
     expect(inspectorRef.value.refresh).not.toHaveBeenCalled()
   })
 
   it('reloadSignalsLog re-points a selected transition at its fresh copy by message_id, or clears it if gone', async () => {
-    // message_id: 2 (not the first message) so buildTimeline's synthetic
-    // session-start entry — tied to the *first* message's id — never
-    // collides with this transition's own message_id.
     getSessionSignals.mockResolvedValueOnce([signalsRow({ message_id: 2, action: 'old' })])
     const s = await loaded()
     s.selectTransition(s.signalsLog.value[0])
@@ -193,7 +188,7 @@ describe('useSessionAnnotation', () => {
     await s.reloadSignalsLog()
     expect(s.selected.value.transition.action).toBe('new')
 
-    getSessionSignals.mockResolvedValueOnce([]) // the transition disappeared entirely
+    getSessionSignals.mockResolvedValueOnce([])
     await s.reloadSignalsLog()
     expect(s.selected.value).toBeNull()
   })
@@ -204,7 +199,7 @@ describe('useSessionAnnotation', () => {
     expect(confirmDialog).not.toHaveBeenCalled()
     noSession.unmount?.()
 
-    const unannotated = await loaded() // signalsRow() has no annotations
+    const unannotated = await loaded()
     expect(unannotated.hasAnyAnnotations.value).toBe(false)
     await unannotated.onUnlabelAll()
     expect(confirmDialog).not.toHaveBeenCalled()

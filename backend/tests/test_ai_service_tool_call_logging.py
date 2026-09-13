@@ -105,8 +105,6 @@ async def test_the_end_of_turn_summary_reports_rounds_and_summed_input_tokens(ca
     summary_lines = [r.getMessage() for r in caplog.records if "turn done" in r.getMessage()]
     assert len(summary_lines) == 1
     assert "rounds=2" in summary_lines[0]
-    # Round 1 reported input_tokens=10, round 2 reported input_tokens=20 (self._round * 10).
     assert "total_input_tokens=30" in summary_lines[0]
-    # Neither round reported cache tokens here — summed to 0, not omitted.
     assert "cache_read_tokens=0" in summary_lines[0]
     assert "cache_creation_tokens=0" in summary_lines[0]

@@ -140,15 +140,10 @@ class TestGetProjectFileContent:
         assert second.status_code == 304
 
     def test_a_live_session_stays_pinned_to_its_own_published_revision(self, client):
-        # A two-state project with a real action: firing it establishes a
-        # current_state reliably, unlike hello_project's single-state one.
         _publish_two_state_project_with_red_css(client)
 
         session_id = session_of(enter_chat(client, "proj"))
         chat_action(client, session_id, "go")
-
-        # A later edit + publish moves the draft/published revision ahead —
-        # the already-created session must keep seeing revision 1.
         _put_css(client, "proj", b"body { color: blue; }")
         client.post("/api/skills/platform/projects/proj/publish", json={})
 
@@ -163,9 +158,6 @@ class TestGetProjectFileContent:
 
         test_session_id = session_of(create_chat(client, "proj", "test"))
         chat_action(client, test_session_id, "go")
-
-        # Edited *after* the Test session was already open — a 'test'
-        # session must still see this, unlike a live/native one.
         _put_css(client, "proj", b"body { color: green; }")
 
         response = client.get(f"/api/core/projects/proj/files/index.css/content?session_id={test_session_id}")

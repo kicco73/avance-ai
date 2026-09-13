@@ -20,9 +20,6 @@ class ProjectInspector:
     def __init__(self, db: Db, automaton_loader: AutomatonLoader, ai_service: "AiService | None" = None) -> None:
         self._db = db
         self._automaton_loader = automaton_loader
-        # Optional: only needed for get_project_graph's per-state input-
-        # token estimate — every other method here works without it, so
-        # tests that don't care about that estimate can omit it.
         self._ai_service = ai_service
 
     def _resolve_state(
@@ -64,9 +61,6 @@ class ProjectInspector:
         if current is None:
             return {"pending": False, "content": None}
         accepted_id = self._db.get_accepted_terms_archive_id(username, project_id)
-        # Every publish forks every Archive row (new id, same bytes), so
-        # comparing ids alone would ask users to re-accept unchanged terms —
-        # pending means the *text* changed since acceptance.
         pending = accepted_id != current.id and (
             accepted_id is None or self._db.get_archive_content_by_id(accepted_id) != current.content
         )
@@ -149,8 +143,6 @@ class ProjectInspector:
         automaton, state = self.get_automaton_and_state_for_session(session_id)
         action = automaton.move(state.key, action_name)
         new_state = automaton.get_state(action.target)
-        # Always saved, self-loop or not: a self-loop just never counts
-        # toward history_cutoff.
         self._db.save_transition(
             state.key,
             action_name,
@@ -159,10 +151,8 @@ class ProjectInspector:
             transition_log_level=new_state.transition_log_level,
             origin='manual',
         )
-        # This path writes save_transition directly rather than going through
-        # TrackingEngine.apply_transition, so it must publish explicitly.
         session = self._db.get_chat_session(session_id)
-        assert session is not None  # already resolved by get_automaton_and_state_for_session above
+        assert session is not None
         TrackingEngine.notify_transition(session["username"], session["project_id"], state.key, new_state.key)
         return automaton.get_state_payload(new_state), action, state.key
 
@@ -200,8 +190,6 @@ class ProjectInspector:
             {
                 "signal": Automaton.get_signal_payload(signal),
                 "relevant": signal.name in relevant_names,
-                # Not part of SignalPayload itself — filenames only, never
-                # full content.
                 "attachments": list(signal.attachments),
             }
             for signal in automaton.signals
@@ -286,13 +274,8 @@ class ProjectInspector:
         if state_key not in automaton.states:
             raise ValueError(f"Project '{project_id}' has no state '{state_key}'.")
         state = automaton.get_state(state_key)
-        # Deferred: tracking.tracking_processor imports tracking.definitions,
-        # which imports project.project_service, which imports this very
-        # module — a top-level import here would be circular.
         from tracking.project_files import project_files_for
         from tracking.tracking_processor import estimate_state_prompt
-        # The estimate counts what a real turn would send, attachments
-        # included — so it reads them the same way a turn does.
         prompt = estimate_state_prompt(
             automaton, state, project_files_for(self._db, automaton),
         )
@@ -313,8 +296,6 @@ class ProjectInspector:
                 "reactions_enabled": state.reactions_enabled,
                 "transition_log_level": state.transition_log_level,
                 "attachments": list(state.attachments),
-                # Not part of StatePayload — a state's system-prompt text
-                # never reaches a live chat client, only this Inspect panel.
                 "contextual_prompt": state.contextual_prompt,
             }
             for state in real_states
@@ -323,9 +304,6 @@ class ProjectInspector:
             {
                 "action": Automaton.get_action_payload(action),
                 "source": state.key,
-                # None of these three belong in ActionPayload — each is
-                # internal transition logic that never reaches a live
-                # chat client, this Inspect panel's own concern only.
                 "trigger": action.trigger,
                 "ui_description": action.ui_description,
                 "env": action.env or {},
@@ -335,12 +313,7 @@ class ProjectInspector:
         ]
         return {
             "nodes": nodes, "edges": edges, "autotracking_on_ai_message": automaton.autotracking_on_ai_message,
-            # The exact revision this graph was actually built from — lets
-            # the "Rev. X" badge stay accurate without a second fetch.
             "revision": revision,
-            # The builder's own non-fatal warnings for this exact build —
-            # never anything new computed here (see AutomatonBuilder._warn),
-            # shown under the design view's own error banner, in yellow.
             "build_warnings": automaton.build_warnings,
         }
 

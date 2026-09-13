@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// The real roster is a ref, and the registry's computeds depend on it —
-// a plain object here would never invalidate them.
 const installed = vi.hoisted(() => ({ keys: null }))
 vi.mock('../src/skillRoster.js', async () => {
   const { ref } = await import('vue')

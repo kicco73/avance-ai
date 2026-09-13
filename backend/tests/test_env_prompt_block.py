@@ -47,7 +47,6 @@ def test_a_state_declaring_input_gets_a_block_carrying_only_those_keys():
     assert block.text() == f"{ENV_BLOCK_HEADER}\nflight: VY3003\ncustomer_email: "
     assert "secret" not in block.text() and "note" not in block.text()
 
-    # Every state with the same `input` sees the same block.
     assert EnvPromptBlock.for_state(env, automaton, STATE_B) is not None
 
 
@@ -72,7 +71,6 @@ def test_a_value_beyond_the_cap_is_cut_with_a_pointer_at_the_column_reads_while_
 
 def test_the_turn_size_estimate_counts_memory_and_the_blocks_own_lines_separately_and_nothing_at_all_without_a_block():
     env = Env(memory={"goal": "quit"}, action_set={"flight": "VY3003", "_flight_record": "x" * 5000})
-    # memory_as_text renders memory only, never the env.
     assert env.memory_as_text() == "goal: quit"
 
     block = EnvPromptBlock.for_state(env, _automaton(STATE_A), STATE_A)

@@ -86,8 +86,6 @@ class _Recorder:
 
 async def _streamed_events(turn_service: TurnService, db, text: str) -> list[tuple[str, dict]]:
     bus._reset_for_tests()
-    # The listener looks the sender's role up rather than taking it off
-    # the wire (see Session.for_sender), so the sender has to exist.
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
     session = await turn_service.enter_session(PROJECT_ID, 'live')
 
@@ -133,16 +131,12 @@ async def test_with_declared_sources_every_chunk_of_the_replayed_final_round_pre
     events = await _streamed_events(turn_service, turn_service_for.db, "where's my flight?")
 
     kinds = _kinds(events)
-    # The empty chunk always precedes generation (see tracking_processor.py's
-    # own process()), before even the first tool call.
     assert kinds[0] == "writing"
     assert kinds[1:3] == ["tool(start)", "tool(result)"]
     chunk_kinds = kinds[3:-2]
     assert chunk_kinds and set(chunk_kinds) == {"output.text_stream"}
     assert kinds[-2:] == ["state.buttons", "output.text"]
     assert _streamed_text(events) == "Your flight is on time."
-    # The whole message is its own publication now, not a field of the
-    # terminal frame (see turn/input_listener.py's own said()).
     assert [data["text"] for event, data in events if event == "output.text"] == ["Your flight is on time."]
 
 
@@ -155,8 +149,6 @@ async def test_without_sources_and_tracking_after_the_user_message_every_chunk_p
 
     kinds = _kinds(events)
     assert kinds[0] == "writing"
-    # Every piece first, then the whole message, then what can be done
-    # next, then the terminal frame.
     assert kinds[-2:] == ["state.buttons", "output.text"]
     assert set(kinds[1:-2]) == {"output.text_stream"}
     assert _streamed_text(events) == "Your flight is on time."
@@ -171,8 +163,6 @@ async def test_with_declared_sources_but_no_tool_call_the_answer_streams_then_do
 
     kinds = _kinds(events)
     assert kinds[0] == "writing"
-    # Every piece first, then the whole message, then what can be done
-    # next, then the terminal frame.
     assert kinds[-2:] == ["state.buttons", "output.text"]
     assert set(kinds[1:-2]) == {"output.text_stream"}
     assert _streamed_text(events) == "Your flight is on time."

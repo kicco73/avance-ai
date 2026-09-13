@@ -5,8 +5,6 @@ defineProps({
   prompt: { type: Object, required: true }
 })
 
-// Resolves customDialog()'s own promise with the chosen state — or with
-// null through the shared × / ESC / backdrop, which is the cancel.
 const closeDialog = inject('closeDialog')
 
 const choice = ref('')
@@ -31,7 +29,7 @@ const choice = ref('')
 <style scoped>
 .remap-title {
   margin: 0 0 0.6rem;
-  padding-right: 1.6rem; /* clears DialogHost's own × close button */
+  padding-right: 1.6rem;
   font-size: 1.05rem;
   font-weight: 600;
   color: #333;

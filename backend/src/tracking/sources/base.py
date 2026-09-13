@@ -23,12 +23,6 @@ if TYPE_CHECKING:
     from db import Db
     from tracking.env import Env
     from tracking.project_files import ProjectFiles
-
-# A driver's own raw result can be arbitrarily large (a multi-megabyte
-# archive); nothing downstream — a trigger expression, an env: write, a
-# tool result fed back to the model — should ever see more than this
-# many characters of it. Not in config: a structural limit, not a
-# per-deployment tuning knob.
 MAX_SOURCE_RESULT_CHARS = 8_000
 
 
@@ -59,17 +53,7 @@ class SourceContext:
 
 
 class SourceDriver:
-    # Every method name this driver actually implements meaningfully —
-    # what AutomatonBuilder validates a `source.<name>.<method>(...)`
-    # reference against (see trigger_expression_analyzer.source_refs),
-    # and what ToolSet exposes to the model for a source a state lists.
     SUPPORTED_METHODS: frozenset[str] = frozenset()
-
-    # {method: description} for exactly those same methods — backs the
-    # design view's own autocomplete (see project.inspector.
-    # ProjectInspector.get_identifier_registry), same role
-    # IdentifierRegistry's own fixed namespace dicts play elsewhere, and
-    # the generic half of each tool's own description (see ToolSet).
     METHOD_DESCRIPTIONS: dict[str, str] = {}
 
     def __init__(self, context: SourceContext, name: str, path: str) -> None:

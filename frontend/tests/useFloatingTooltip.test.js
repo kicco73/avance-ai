@@ -29,15 +29,6 @@ describe('useFloatingTooltip', () => {
     expect(style.value.right).toMatch(/px$/)
   })
 
-  // Regression test: `@mouseenter="show"` (a bare method reference, the
-  // single-trigger usage pattern this composable's own docstring
-  // documents) makes Vue pass the native DOM Event as show()'s sole
-  // argument — not an element. Before this session's fix, `target ??
-  // triggerRef.value` treated that truthy Event as the element itself and
-  // called `event.getBoundingClientRect()`, which doesn't exist and threw
-  // silently inside the handler — so the tooltip never actually appeared,
-  // for every caller using the documented bare-reference pattern (see
-  // InspectorGraphTab.vue's (?) icon, MessageBubble.vue's (!) badge).
   it('falls back to triggerRef when given a non-Element (e.g. a native Event, from a bare @mouseenter="show" binding)', () => {
     const { visible, style, show, triggerRef } = useFloatingTooltip()
     const el = document.createElement('span')

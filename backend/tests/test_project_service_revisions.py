@@ -66,8 +66,8 @@ def project_service(db) -> ProjectService:
 
 def test_load_at_revision_caches_by_project_and_revision(db, project_service):
     _save(db, _index_yml("a"))
-    db.publish_project(PROJECT_ID)  # revision 0
-    _save(db, _index_yml("b"))  # forks to revision 1
+    db.publish_project(PROJECT_ID)
+    _save(db, _index_yml("b"))
     loader = project_service.automaton_loader
 
     rev0 = loader.load_at_revision(PROJECT_ID, 0)
@@ -75,9 +75,6 @@ def test_load_at_revision_caches_by_project_and_revision(db, project_service):
 
     assert set(rev0.states) == {"", "a"}
     assert set(rev1.states) == {"", "b"}
-    # Cached under distinct keys — a second call for the same revision
-    # returns the exact same object, never silently re-resolving from the
-    # other one.
     assert loader.load_at_revision(PROJECT_ID, 0) is rev0
     assert loader.load_at_revision(PROJECT_ID, 1) is rev1
 
@@ -87,13 +84,12 @@ def test_the_active_automaton_needs_a_publication_and_then_ignores_the_draft_whi
 
     with pytest.raises(ValueError, match="never been published"):
         project_service.get_active_automaton_and_state()
-    # A draft-typed read works even before any publication.
     draft_automaton, draft_state = project_service.get_automaton_and_state(PROJECT_ID, type='test')
     assert set(draft_automaton.states) == {"", "a"}
     assert draft_state.key == "a"
 
-    db.publish_project(PROJECT_ID)  # published_revision = 0
-    _save(db, _index_yml("b"))  # draft moves to revision 1
+    db.publish_project(PROJECT_ID)
+    _save(db, _index_yml("b"))
 
     automaton, state = project_service.get_active_automaton_and_state()
     assert set(automaton.states) == {"", "a"}
@@ -106,25 +102,19 @@ def test_a_session_always_resolves_against_its_own_pinned_revision_live_or_draft
         project_service.get_automaton_and_state_for_session(999999)
 
     _save(db, _index_yml("a"))
-    db.publish_project(PROJECT_ID)  # revision 0
+    db.publish_project(PROJECT_ID)
     old_session_id = _session(db, db.get_project_published_revision(PROJECT_ID), "a")
     draft_session_id = _session(db, db.get_project_revision(PROJECT_ID), "a", type="test")
     draft_automaton, draft_state = project_service.get_automaton_and_state_for_session(draft_session_id)
     assert set(draft_automaton.states) == {"", "a"}
     assert draft_state.key == "a"
-
-    # A later edit + publish moves published_revision ahead — the old
-    # session must keep seeing exactly what it was created against.
     _save(db, _index_yml("b"))
-    db.publish_project(PROJECT_ID)  # revision 1
+    db.publish_project(PROJECT_ID)
     new_session_id = _session(db, db.get_project_published_revision(PROJECT_ID), "b")
 
     automaton, state = project_service.get_automaton_and_state_for_session(old_session_id)
     assert set(automaton.states) == {"", "a"}
     assert state.key == "a"
-
-    # A brand new session, created after the second publish, sees the new
-    # revision instead — proving the difference is genuinely per-session.
     new_automaton, new_state = project_service.get_automaton_and_state_for_session(new_session_id)
     assert set(new_automaton.states) == {"", "b"}
     assert new_state.key == "b"

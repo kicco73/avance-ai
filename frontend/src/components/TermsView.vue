@@ -1,33 +1,12 @@
 <script setup>
-// Full-viewport gate shown between a successful login and the app itself,
-// for a session that authenticated but has no User row yet (see
-// App.vue's own pingBackend — a 403 off GET /api/core/state is the signal).
-// Same visual register as LoginView.vue. Accept creates the row
-// (postAcceptTerms) and lets App.vue resume booting; Reject logs out
-// with no row ever created — no trace of the attempt.
-//
-// Also reused as-is by LiveChatWindow.vue whenever a project's own
-// legal/terms.md is pending acceptance for the active user — showReject=
-// false there since there's nothing to decline, just an Accept to dismiss it.
 import { onMounted, ref, watch } from 'vue'
 import { getTerms } from '../api.js'
 import { renderMarkdown } from '../markdown.js'
 import logoUrl from '../assets/avance-logo.png'
 
 const props = defineProps({
-  // False for LiveChatWindow.vue's own reuse of this component (a
-  // project's legal/terms.md pending acceptance — not a consent gate the
-  // user can decline) — the platform-level TermsView caller below leaves
-  // this at its default, since that one's Reject really does log the
-  // session out with no User row ever created.
   showReject: { type: Boolean, default: true },
-  // Defaults to the platform-wide GET /api/terms; LiveChatWindow.vue passes
-  // its own fetcher instead, reading the project's own legal/terms.md.
   fetchTerms: { type: Function, default: getTerms },
-  // A failed Accept's own reason (see useAppBoot.js's termsError) —
-  // e.g. an invite code that turned out expired/maxed-out between page
-  // load and clicking Accept. Empty/unset for LiveChatWindow.vue's own
-  // reuse, which has no equivalent failure mode of its own.
   submitError: { type: String, default: '' }
 })
 
@@ -51,11 +30,6 @@ onMounted(async () => {
 const CLOSE_ANIMATION_MS = 300
 const closing = ref(false)
 
-// accept() plays the closing animation optimistically, before App.vue's
-// own async handleTermsAccept has actually resolved — a rejected invite
-// code (submitError going from empty to set, same instance still
-// mounted since needsTerms never flipped) needs to bring the panel back
-// into view rather than leaving it faded out with no way to retry.
 watch(() => props.submitError, (err) => {
   if (err) closing.value = false
 })
@@ -98,12 +72,6 @@ function reject() {
   top: 0;
   left: 0;
   right: 0;
-  /* Extends past the viewport's own bottom edge on standalone iOS,
-     where WebKit bug #301108 leaves a gap there otherwise — see
-     index.html's own viewport meta comment and
-     useVisualViewport.js's installViewportOvershoot(). 0px, a no-op,
-     everywhere else (a plain browser tab, non-iOS, or once Apple fixes
-     the bug). */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
   display: flex;
   align-items: center;
@@ -111,22 +79,10 @@ function reject() {
   background: var(--app-base-gradient);
   font-family: system-ui, -apple-system, sans-serif;
   z-index: 1000;
-  /* Same shared --safe-area-* custom properties (see html, body in
-     App.vue) as ChatView.vue's own .chat-header/.chat-footer — adds to
-     this screen's own 2rem base padding instead of eating into it, so
-     the panel clears the notch/home indicator on every edge instead of
-     trusting inset:0 alone to stop short of them. */
   padding-top: calc(2rem + var(--safe-area-top));
   padding-right: calc(2rem + var(--safe-area-right));
   padding-bottom: calc(2rem + var(--safe-area-bottom));
   padding-left: calc(2rem + var(--safe-area-left));
-  /* No transform/filter/animated opacity on this root, ever — any of
-     those give a fixed element its own compositing layer, which WebKit
-     clips to the (on standalone iOS, short) viewport regardless of this
-     element's own bottom extending past it — the overshoot above would
-     stop actually reaching the physical edge. See SplashScreen.vue's own
-     .splash for the same constraint; the enter/closing animation lives
-     on .terms-panel below instead, same as .splash-content there. */
 }
 
 .terms-panel {
@@ -266,7 +222,6 @@ function reject() {
   background: #f5f5f5;
 }
 
-/* Default action, per the product spec: Accept is the primary button. */
 .terms-btn-accept {
   border: 1px solid #4a6fa5;
   background: #4a6fa5;

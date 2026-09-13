@@ -40,9 +40,6 @@ REPO_ROOT = BACKEND_DIR.parent
 BUILDS_DIR = REPO_ROOT / "builds"
 
 _TEST_TIMEOUT_SECONDS = 1800.0
-# The one thing a build's own test run must not do: build a backend and
-# run its tests, which would do it again. The tests that do it say so
-# (see pytest.ini), and this is where they are left out.
 _RECURSIVE_MARKER = "spawns_a_build"
 _TEST_OUTPUT_TAIL_LINES = 40
 
@@ -137,8 +134,6 @@ class BackendCopy:
         is dropped until `publish` has put this one in place."""
         shutil.rmtree(self.staging, ignore_errors=True)
 
-    # --- the steps --------------------------------------------------------
-
     def copy_backend(self) -> None:
         BUILDS_DIR.mkdir(parents=True, exist_ok=True)
         self.discard()
@@ -191,11 +186,6 @@ class BackendCopy:
         _prune_database_to_project(dest, self.project_id)
 
     def publish(self) -> None:
-        # One directory per project, not one per build: the revision just
-        # written stays, every other build of the same project goes. Same
-        # rule the apps directory already follows, and for the same
-        # reason — a backend copy is the whole tree, so two of them are
-        # two of everything.
         shutil.rmtree(self.final, ignore_errors=True)
         self.staging.rename(self.final)
         discarded = discard_other_revisions(BUILDS_DIR, self.module_name, self.revision)

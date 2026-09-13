@@ -23,23 +23,13 @@ const props = defineProps({
     type: String,
     required: true
   },
-  // ProfileMenu.vue's own avatar/name — App.vue already fetched this once
-  // during boot (see its own `profile` prop docstring), passed straight
-  // through so this landing page can show the same topbar avatar the main
-  // chat screen does.
   profile: { type: Object, default: null }
 })
 
-// project-select is ProjectsMenu.vue's own switch; profile/logout are a
-// plain pass-through of ProfileMenu.vue's own emits.
 const emit = defineEmits([
   'close', 'project-select', 'home', 'profile', 'logout'
 ])
 
-// This view's own session pointer — never chatStore.js's shared
-// currentSessionId. Browsing/reviewing a session here (including an
-// imported one, which can never be "the" live session) must not leak
-// into what the main chat window is showing.
 const currentSessionId = ref(null)
 
 const inspectorRef = ref(null)
@@ -53,40 +43,24 @@ const inspectorTabs = computed(() => [
   { id: 'signals', label: 'Signals' }
 ])
 const inspectorActiveTab = ref('info')
-// Starts open — reviewing a specific session is the point of this view.
 const testSessionsPanelOpen = ref(true)
 const { width: sessionsPanelWidth, startDrag: startSessionsDrag } = useResizablePanel(240, { min: 160, max: 420 })
 
-// Independent of the main page's own Sessions panel state
-// (chatStore.js's sessionsPanelOpen) — this overlay has its own panel.
 function toggleTestSessionsPanel() {
   testSessionsPanelOpen.value = !testSessionsPanelOpen.value
   if (testSessionsPanelOpen.value) loadSessions(true, props.projectId)
 }
 
-// This view's Sessions panel reviews imported transcripts alongside live
-// ones, so every load/refresh below passes includeImported.
-
-// SessionsTree's own node id, either `user:<username>` (a user branch was
-// clicked, not one of their sessions) or `session:<id>`. Kept separate
-// from this view's own currentSessionId so the tree can highlight a
-// selected user even though that's not a session — see onSelectTreeNode below.
 const selectedUserNode = ref(null)
 const treeSelectedNodeId = computed(() =>
   selectedUserNode.value ? `user:${selectedUserNode.value}` : (currentSessionId.value != null ? `session:${currentSessionId.value}` : null)
 )
 
-// This view's own session switch — unlike chatStore.js's selectSession,
-// never touches the main chat window's messages/state, only this view's
-// own currentSessionId (which loadTimeline below reacts to).
 function selectSession(session) {
   if (session.id === currentSessionId.value) return
   currentSessionId.value = session.id
 }
 
-// A user branch has no session of its own, so it just clears the active
-// session, which the chat pane and Info tab then both render as "Please
-// select a session."
 function onSelectTreeNode(nodeId) {
   if (nodeId.startsWith('user:')) {
     selectedUserNode.value = nodeId.slice('user:'.length)
@@ -98,8 +72,6 @@ function onSelectTreeNode(nodeId) {
   if (session) selectSession(session)
 }
 
-// A session picked some other way (import, auto-select on load) should
-// clear a stale user-branch highlight so the tree's own selection follows.
 watch(currentSessionId, (id) => {
   if (id != null) selectedUserNode.value = null
 })
@@ -108,14 +80,8 @@ function handleWindowResize() {
   inspectorRef.value?.resize()
 }
 
-// The currently-selected session's row out of the shared sessions list
-// (chatStore.js). Null before the list has loaded, or if its id has
-// since been deleted out from under it.
 const currentSession = computed(() => sessions.value.find((s) => s.id === currentSessionId.value) ?? null)
 
-// Whether the session currently being reviewed was imported rather than
-// played live — the one case with no real Tracking rows for
-// annotatableSignalsRow below to consult.
 const currentSessionIsImported = computed(() => currentSession.value?.type === 'imported')
 
 const {
@@ -134,40 +100,25 @@ const {
   downloadingSessions, handleDownloadSessions,
 } = useSessionAdmin(props.projectId, currentSessionId, currentSession, currentSessionIsImported, selectSession)
 
-// Every registered user, fetched once — same list ManageUsersView.vue
-// shows, reused here just to resolve a live session's `username` (the
-// user's own id/email) into a full profile for the Info tab's card below.
-// GET /api/skills/platform/users is supervisor-and-up, and every entry point into this
-// view already requires at least supervisor (see App.vue), so this is
-// always reachable here.
 const users = ref([])
 async function loadUsers() {
   try {
     const res = await getUsers()
     users.value = res.users
   } catch {
-    // already surfaced via apiFetch
   }
 }
 
-// null for an imported session (no real user) or before the users list
-// or a match resolves — the Info tab only renders the card once this is set.
 const sessionUser = computed(() => {
   if (currentSessionIsImported.value || !currentSession.value) return null
   return users.value.find((u) => u.id === currentSession.value.username) ?? null
 })
 
-// The user whose branch (not a session within it) is selected in the
-// sessions tree — the Info tab shows their profile card in place of the
-// session card while this is set.
 const selectedUserProfile = computed(() => {
   if (!selectedUserNode.value) return null
   return users.value.find((u) => u.id === selectedUserNode.value) ?? null
 })
 
-// The persisted "reviewed" flag, read off the Sessions panel's list —
-// unlike hasAnyAnnotations above, "is there anything to clear" is a
-// different question than "has an expert signed off".
 const currentSessionLabeled = computed(() => {
   return sessions.value.find((s) => s.id === currentSessionId.value)?.has_annotations ?? false
 })
@@ -181,14 +132,11 @@ async function onToggleMarkDone() {
     await putSessionLabeled(currentSessionId.value, !currentSessionLabeled.value)
     await refreshSessionsQuietly(true, props.projectId)
   } catch {
-    // already surfaced via apiFetch
   } finally {
     markingDone.value = false
   }
 }
 
-// Some tabs aren't reactive to a selection change on their own — an
-// explicit nudge here refreshes whichever one's active.
 watch(selected, () => {
   nextTick(() => inspectorRef.value?.refresh())
 })
@@ -198,10 +146,8 @@ onMounted(async () => {
   await loadSessions(true, props.projectId)
   const mostRecent = sessions.value[0] ?? null
   if (mostRecent) {
-    selectSession(mostRecent) // ids necessarily differ here, so this always triggers watch(currentSessionId, loadTimeline)
+    selectSession(mostRecent)
   } else {
-    // No sessions at all — watch() only fires on an actual change, so
-    // a currentSessionId already null would never clear `loading`.
     loadTimeline()
   }
   window.addEventListener('resize', handleWindowResize)
@@ -385,12 +331,6 @@ async function handleSetSessionComment(sessionId, comment) {
   top: 0;
   left: 0;
   right: 0;
-  /* Extends past the viewport's own bottom edge on standalone iOS,
-     where WebKit bug #301108 leaves a gap there otherwise — see
-     index.html's own viewport meta comment and
-     useVisualViewport.js's installViewportOvershoot(). 0px, a no-op,
-     everywhere else (a plain browser tab, non-iOS, or once Apple fixes
-     the bug). */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
   box-sizing: border-box;
   padding-left: var(--safe-area-left);
@@ -473,8 +413,6 @@ async function handleSetSessionComment(sessionId, comment) {
   transition: width 0.15s ease;
 }
 
-/* Collapsed (see SessionsPanel.vue's own always-visible header toggle) —
-   a slim strip, same pattern as ChatWindow.vue's own equivalent. */
 .sessions-panel-collapsed {
   width: 2.4rem !important;
 }
@@ -498,7 +436,6 @@ async function handleSetSessionComment(sessionId, comment) {
   flex-shrink: 0;
 }
 
-/* Same style as Inspector.vue's own .inspector-title. */
 .test-chat-title {
   font-size: 0.8rem;
   font-weight: 600;
@@ -589,11 +526,6 @@ async function handleSetSessionComment(sessionId, comment) {
   transition: width 0.15s ease;
 }
 
-/* Collapsed (see Inspector.vue's own always-visible header toggle) —
-   without this, width stayed pinned to --inspector-width regardless (the
-   bug: an empty docked panel that never actually gave its own space back
-   to the timeline/sessions split next to it). Same slim-strip convention
-   EditProjectView.vue's own .inspector-panel-collapsed uses. */
 .test-inspector-panel-collapsed {
   width: 2.4rem !important;
 }

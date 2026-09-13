@@ -1,9 +1,4 @@
 <script setup>
-// The login wall's own screen — a full-viewport overlay, same visual
-// register as SplashScreen.vue's 'connecting'/'failed' variants, shown
-// whenever authStore.js's needsLogin flips true (see App.vue). Loads
-// Google Identity Services on demand rather than unconditionally from
-// index.html, so an already-authenticated session never pays for it.
 import { onMounted, ref } from 'vue'
 import { getAuthProviders, postLogin } from '../api.js'
 import { clearLoginRequirement } from '../authStore.js'
@@ -69,10 +64,6 @@ onMounted(async () => {
     callback: handleCredentialResponse
   })
   loading.value = false
-  // 'filled_blue'/'filled_black' always render the G icon on its own
-  // white badge, baked into Google's widget — no official option makes
-  // that badge blue, so 'outline' (white button) is the closest match
-  // that doesn't clash with it.
   window.google.accounts.id.renderButton(buttonEl.value, {
     theme: 'outline',
     size: 'large',
@@ -101,12 +92,6 @@ onMounted(async () => {
   top: 0;
   left: 0;
   right: 0;
-  /* Extends past the viewport's own bottom edge on standalone iOS,
-     where WebKit bug #301108 leaves a gap there otherwise — see
-     index.html's own viewport meta comment and
-     useVisualViewport.js's installViewportOvershoot(). 0px, a no-op,
-     everywhere else (a plain browser tab, non-iOS, or once Apple fixes
-     the bug). */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
   display: flex;
   align-items: center;
@@ -168,10 +153,6 @@ onMounted(async () => {
   color: #999;
 }
 
-/* No radius/overflow clip here on purpose: Google's own ~4px rounding is
-   baked into the button graphic itself, not a separate border we can
-   isolate — clipping to any other radius cuts into that graphic at the
-   corners instead of framing it cleanly. */
 .login-google-button {
   min-height: 2.5rem;
   display: inline-block;

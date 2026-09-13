@@ -40,9 +40,6 @@ def test_get_session_signals_returns_the_full_event_log_and_404s_for_an_unknown_
     response = client.get(f"/api/core/sessions/{session_id}/signals")
     assert response.status_code == 200
     log = response.json()
-    # Entering opened the conversation, so its own "" -> start_state
-    # transition is in the log. Nothing else: "Hello world" declares no
-    # signals/triggers.
     assert [(row["old_state"], row["new_state"]) for row in log] == [("", "Hello")]
     assert log[0]["values"] is None
 
@@ -57,15 +54,11 @@ def test_get_metrics_is_the_live_history_unless_pinned_to_a_message_keeping_its_
 
     live = _metrics(client, hello_project)
     assert live["engagement"] > 0.0
-    # engagement should have grown since, but a lookup pinned to the
-    # first message's timestamp must not reflect it.
     assert _metrics(client, hello_project, f"?message_id={first_message_id}")["engagement"] <= live["engagement"]
 
     response = client.get(f"/api/core/projects/{hello_project}/metrics?message_id={first_message_id}")
     assert response.status_code == 200
     body = response.json()
-    # Always a one_session context — retention/activity_consistency are
-    # excluded from that scope.
     assert {m["name"] for m in body} == {"engagement", "state_stability", "signal_stability"}
     for metric in body:
         assert set(metric) == {"name", "ui_label", "ui_description", "value"}
@@ -105,11 +98,6 @@ def test_get_test_metrics_lists_the_whole_catalog_optionally_scoped_to_a_session
 
     assert response.status_code == 200
     body = response.json()
-    # This is the frontend's own metric catalog (see MetricService.
-    # get_benchmark_metrics) — every metric belongs here, including
-    # benchmark_stability/benchmark_consistency (scoped to {all_sessions}
-    # in a real run's own results, but that scoping is irrelevant to a
-    # name -> label/description lookup).
     assert {m["name"] for m in body} == {
         "state_accuracy", "state_accuracy_stable", "state_accuracy_transition",
         "signal_accuracy", "transition_responsiveness", "benchmark_accuracy",
@@ -134,7 +122,7 @@ def test_get_test_metrics_reflects_annotations_and_deleting_them_clears_only_the
     before = {m["name"]: m for m in client.get(f"/api/skills/testing/projects/{hello_project}/tests/metrics").json()}
     assert before["state_accuracy"]["sample_count"] == 0
 
-    app_db.set_signal_expected_state(signal_row_id, "Hello")  # hello_project's own init_action.target
+    app_db.set_signal_expected_state(signal_row_id, "Hello")
     app_db.set_signal_expected_values(signal_row_id, {"foo": 80})
 
     after = {m["name"]: m for m in client.get(f"/api/skills/testing/projects/{hello_project}/tests/metrics").json()}

@@ -94,11 +94,6 @@ class TestNoAutoMode:
         assert info["models"][info["current_index"]]["model"] == "manual-only"
 
     def test_a_simulated_failover_skips_straight_past_a_no_auto_entry(self):
-        # Same pointer-advance a real failover triggers (see
-        # AutoLiveLLMProvider.generate_stream_with_schema's own
-        # self._cascade.advance() on a transient error) — the auto
-        # cascade itself was never built with "manual-only" in it at all,
-        # so there's no index it could ever land on.
         configs = [
             _config("primary", modes=("live",)),
             _config("manual-only", modes=("live", "no-auto")),

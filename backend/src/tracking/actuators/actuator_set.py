@@ -61,36 +61,11 @@ class TaskNamespace(ABC):
     def __init__(
         self, dispatcher: "TaskDispatcher | None" = None, factory: "TaskNamespaceFactory | None" = None,
     ) -> None:
-        # Bound fresh per task evaluation via with_ai_service —
-        # never set any other way (see EvaluationScopeBuilder.build).
         self._ai_service: "AiService | None" = None
-        # Same lifecycle as _ai_service above — the tool catalog of
-        # whichever state this task is actually evaluated for (see
-        # EvaluationScopeBuilder.build's own with_ai_service call), used
-        # only by prompt() below. None wherever _ai_service is too, or
-        # for a state with neither ai-may-read-sources nor
-        # ai-must-read-sources declared.
         self._tool_set: "ToolSet | None" = None
-        # How this namespace gets a task script run as a Task. None only
-        # for a bare namespace nobody wired to a SchedulerService (a test
-        # replay's own FakeTaskNamespace default): the script then runs
-        # inline and its output is dropped, since no browser is listening anyway.
         self._dispatcher = dispatcher
-        # The factory that built this namespace — shared with
-        # ChatNamespace for the human-operator bookkeeping (see
-        # TaskNamespaceFactory.set_human_operator/clear_human_operator),
-        # same "ask the thing that made you" shape as _dispatcher above.
         self._factory = factory
-        # Bound fresh per task evaluation via with_session — never
-        # set any other way. None for a namespace built without a firing
-        # session (e.g. a deferred call, or a project-wide test reset).
         self._session_id: int | None = None
-        # What the project running this task declared about each service
-        # it may reach (project.services — see
-        # automaton/project_services.py). Bound per evaluation from the
-        # scope's own automaton, like _ai_service above; the empty one
-        # answers "optional" for everything, which is what a namespace
-        # nobody bound to a project has always done.
         self._services = ProjectServices()
 
     def schedule_task(self, action: Action, scope: EvaluationScope, *, session_id: int | None) -> None:
@@ -101,11 +76,6 @@ class TaskNamespace(ABC):
         if not action.task:
             return
         if self._dispatcher is None:
-            # XXX Compiled automaton requirement - do not touch.
-            # XXX Dispatched on the scope's own automaton, not on the
-            # Automaton class: a compiled automaton runs a task without
-            # interpreting `action.task` text, and a hardcoded class name
-            # would bypass its override entirely.
             scope.automaton.render_task(action, scope)
             return
         self._dispatcher.schedule_now(action, scope, session_id=session_id)
@@ -119,9 +89,6 @@ class TaskNamespace(ABC):
         if self._ai_service is None:
             logger.warning("task.prompt() called with no AI service bound — returning ''.")
             return ""
-        # tool_set only actually passed when bound — a fake AiService
-        # predating tool-calling (most existing tests' own doubles, see
-        # tests/conftest.py) declares no such parameter at all.
         kwargs = {"tool_set": self._tool_set} if self._tool_set is not None else {}
         return _run_sync(self._ai_service.prompt(prompt, **kwargs))
 
@@ -232,12 +199,6 @@ class LiveTaskNamespace(TaskNamespace):
         that this project declared `whatsapp: disabled`, which reaches a
         caller as the same "nobody carried it" an unconfigured channel
         always meant here."""
-        # Written once: the service this asks for and the channel the
-        # message is addressed to are the same name, because a channel's
-        # name is the name of the skill that is that channel. This is
-        # still core naming a skill, which the channel set becoming a
-        # contribution is meant to end — but it names it in one place
-        # now instead of two.
         return _run_sync(self._services[_WHATSAPP].publish(Message(
             type=OUTPUT_TEXT, body={"text": message_md, "message_id": None},
             username=phone_number.strip().lstrip("+"),
@@ -245,10 +206,6 @@ class LiveTaskNamespace(TaskNamespace):
         )))
 
     def defer(self, act: Callable[[], None], when: datetime) -> JsSnippet | None:
-        # Both refusals are unreachable from a built index.yml — the
-        # AutomatonBuilder already requires a zero-argument lambda and a
-        # datetime-shaped `when` (see TriggerExpressionAnalyzer.defer_violations);
-        # they guard the Python-level API only.
         if not isinstance(act, DeferredExpression):
             raise TypeError(
                 f"task.defer needs a `lambda: ...` evaluated from a task line, got {type(act).__name__}."

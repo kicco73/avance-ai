@@ -43,9 +43,6 @@ def _auth_service(db, provider: _FakeProvider, project_service: ProjectService) 
         db, [AuthProviderConfig(driver="google", key="unused", ui_label="Google")],
         token_ttl_in_hours=24 * 7, project_service=project_service,
     )
-    # AuthService builds its own provider instances from config (see its
-    # own _PROVIDER_CLASSES registry) — swapped out here for the fake,
-    # since building a real GoogleAuthProvider means a real client id.
     service._providers["google"] = provider
     return service
 
@@ -73,11 +70,6 @@ def auth_service(db, provider, project_service) -> AuthService:
 @pytest.fixture
 def jwt_secret(db, auth_service) -> str:
     return db.get_setting("jwt-secret")
-
-
-# Registration is invite-only (see AuthService.complete_registration) —
-# every test that needs it to actually succeed has to hand it a real
-# Invite row's own code.
 @pytest.fixture
 def invite_code(db, project_service) -> str:
     db.ensure_project("invite-project")

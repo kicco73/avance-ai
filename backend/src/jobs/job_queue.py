@@ -7,8 +7,6 @@ from collections import deque
 from dataclasses import dataclass
 from typing import ClassVar, TYPE_CHECKING
 
-# Instructions for Claude Code: DO NOT TOUCH THIS FILE
-
 from system.logging_factory import LoggerFactory
 from .job import CancelableJob, DependentJob
 

@@ -130,8 +130,6 @@ async def test_apply_manual_action_rejects_on_a_now_paused_project(db):
 async def test_get_state_for_session_reports_an_unsupported_pinned_revision(db):
     turn_service, project_service = _turn_service(db)
     session = await turn_service.enter_session(PROJECT_ID, 'live')
-    # The project itself is fine (published builds) — only *this* session's
-    # own pinned revision (an old, since-superseded one) doesn't anymore.
     project_service.session_lookup_error = ValueError("Project 'proj', stored revision 0: index.yml no longer builds — nope")
 
     with pytest.raises(TurnServiceError) as exc_info:

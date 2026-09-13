@@ -37,7 +37,6 @@ from system.logging_factory import LoggerFactory
 from project.archive.automaton_loader import AutomatonLoader
 
 if TYPE_CHECKING:
-    # Type-only, same reason as AutomatonLoader's own TYPE_CHECKING import.
     from turn.sessions.session_manager import SessionManager
 
 logger = LoggerFactory.get_logger(__name__)
@@ -50,9 +49,6 @@ class CompiledAutomatonLoader(AutomatonLoader):
     ) -> None:
         super().__init__(db, session_manager=session_manager)
         self._apps_dir = apps_dir
-        # The check-then-import below is not atomic, while the cache dicts
-        # it reads and writes are. Held for the whole decision so two
-        # requests for the same project cannot both import the package.
         self._compiled_lock = threading.Lock()
 
     def load_at_revision(self, project_id: str, revision: int) -> Automaton:
@@ -79,11 +75,6 @@ class CompiledAutomatonLoader(AutomatonLoader):
         except PackageError as exc:
             logger.error("Compiled package unusable, falling back to the interpreted automaton: %s", exc)
             return None
-        # The one thing a compiled automaton does not know about itself:
-        # it is built with revision None, and whoever loads it says which
-        # stored revision it stands for — exactly as AutomatonLoader does
-        # for an interpreted one. Its package directory is per-revision,
-        # so this is stamped once and never changes under anyone.
         automaton.set_storage_location(revision)
         self.set_cached(project_id, revision, automaton)
         logger.info("Serving project '%s' revision %s from %s.", project_id, revision, directory)

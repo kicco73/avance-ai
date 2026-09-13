@@ -15,10 +15,7 @@ from listen.listen_provider import ListenProvider
 
 class FasterWhisperProvider(ListenProvider):
     def __init__(self, api_key: str | None, model: str, language: str | None = None) -> None:
-        # `api_key` accepted only to match every provider's uniform
-        # (api_key, model) constructor shape; faster-whisper never uses it.
         self._model = WhisperModel(model, device="cpu", compute_type="int8")
-        # None keeps faster-whisper's own autodetect; a real code skips it.
         self._language = language
 
     def transcribe(self, audio: bytes) -> str:

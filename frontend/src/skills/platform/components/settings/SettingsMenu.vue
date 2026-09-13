@@ -1,13 +1,8 @@
 <script setup>
-// Topbar "⚙" menu: dropdown with toggle / click-outside-to-close,
-// offering Manage projects and Manage services.
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { roleSatisfies } from '../../../../roles.js'
 
 const props = defineProps({
-  // App.vue only renders this component once the current user is at
-  // least 'supervisor' — this further disables the 'admin'-only items
-  // for a plain supervisor, per each action's own backend role gate.
   role: { type: String, default: null }
 })
 

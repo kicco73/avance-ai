@@ -14,8 +14,6 @@ pytestmark = pytest.mark.contract
 
 @pytest.mark.regression
 def test_exposes_every_user_field_except_id(db):
-    # The `db` fixture already seeds a User row for _default_session_user's
-    # own "user" identity (see conftest.py's own db fixture docstring).
     facts = UserFacts(db).as_dict()
 
     assert facts == {
@@ -24,7 +22,7 @@ def test_exposes_every_user_field_except_id(db):
         "email": "user",
         "name": "user",
         "picture_url": None,
-        "created_at": facts["created_at"],  # asserted non-None below
+        "created_at": facts["created_at"],
         "last_login": None,
         "active_project": None,
         "role": "user",

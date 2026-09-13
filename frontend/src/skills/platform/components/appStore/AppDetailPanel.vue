@@ -50,7 +50,6 @@ document.addEventListener('click', handleUninstallMenuDocumentClick, true)
 
 const releaseSkin = holdSkin(new AppSkinSource(computed(() => props.app?.id ?? null)))
 
-// The countdown that ends the session (see usePreviewExpiry).
 const { quitButtonLabel, expired, arm: armExpiryTimer, clear: clearExpiryTimer } = usePreviewExpiry()
 
 watch(expired, async (hasExpired) => {
@@ -85,7 +84,6 @@ async function toggleInstall() {
       await deleteInstallApp(app.id)
       app.installed = false
     } catch {
-      // already surfaced via apiFetch
     } finally {
       installing.value = false
     }
@@ -102,7 +100,6 @@ async function toggleInstall() {
     await postInstallApp(app.id)
     app.installed = true
   } catch {
-    // already surfaced via apiFetch
   } finally {
     installing.value = false
   }
@@ -351,8 +348,6 @@ onBeforeUnmount(async () => {
 }
 
 .app-store-try-panel {
-  /* ChatWaitingPanel above positions itself against this box, and so does
-     whichever of the two chats is on its way out. */
   position: relative;
   flex: 1;
   min-height: 300px;

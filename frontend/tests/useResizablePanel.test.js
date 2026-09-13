@@ -2,8 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createApp } from 'vue'
 import { useResizablePanel } from '../src/composables/useResizablePanel.js'
 
-// onBeforeUnmount needs an active component instance, so the composable is
-// exercised inside a bare setup() rather than called directly.
 function mountComposable(setup) {
   let result
   const container = document.createElement('div')
@@ -40,7 +38,7 @@ describe('useResizablePanel', () => {
     move(50)
     expect(width.value).toBe(330)
 
-    move(1000) // clamps at max
+    move(1000)
     expect(width.value).toBe(480)
   })
 
@@ -60,7 +58,7 @@ describe('useResizablePanel', () => {
     move(20)
     window.dispatchEvent(new Event('mouseup'))
     move(20)
-    expect(width.value).toBe(300) // only the one move before mouseup counted
+    expect(width.value).toBe(300)
   })
 
   it('invert: true negates the drag direction — dragging left grows the panel', () => {
@@ -69,10 +67,10 @@ describe('useResizablePanel', () => {
     const { width, startDrag } = mounted.result
 
     startDrag({ preventDefault: () => {} })
-    move(-40) // dragging left...
-    expect(width.value).toBe(400) // ...grows the panel
+    move(-40)
+    expect(width.value).toBe(400)
 
-    move(-1000) // clamps at max
+    move(-1000)
     expect(width.value).toBe(560)
   })
 

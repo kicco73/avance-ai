@@ -1,9 +1,5 @@
 <script setup>
-// Indeterminate spinner until real progress is known, then a filling ring
-// — shared by every "busy button" that reports SSE job progress (project
-// upload, session import).
 defineProps({
-  // 0-100, or null for the indeterminate spinner.
   progress: { type: Number, default: null }
 })
 </script>

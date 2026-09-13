@@ -112,9 +112,6 @@ async def test_a_gemini_replay_payload_never_raises_type_error_and_round_2_runs(
 
 
 async def test_round_2_over_budget_raises_413_and_saves_a_system_warning(db):
-    # A budget round 1 alone comfortably fits under, but round 2 (with the
-    # tool call's own arguments + a deliberately large accumulated result)
-    # blows past.
     tool_set = _FakeToolSet(result="x" * 3000)
 
     with pytest.raises(TurnServiceError) as exc_info:

@@ -26,8 +26,6 @@ PROJECT_ID = "proj"
 
 def _builder(db) -> EvaluationScopeBuilder:
     project_service = FixedProjectContext(project_id=PROJECT_ID)
-    # Read-only here (session_id is now required — PersistedEnv(None)
-    # raises — and no test in this file writes through this instance).
     env = PersistedEnv(db, project_service, session_id=0)
     metrics = MetricService(db, project_service)
     return EvaluationScopeBuilder(env, metrics, SessionFacts(db, project_service), UserFacts(db), db)
@@ -94,7 +92,6 @@ def test_the_scope_always_carries_every_namespace(db):
     "metric.retention() >= 0",
 ], ids=["session-metric", "metric"])
 def test_a_metric_namespace_is_usable_in_a_trigger_end_to_end(db, trigger):
-    # No transitions on record yet — state_stability starts at 100.
     _published(db)
     automaton = _automaton_with_trigger(trigger)
 

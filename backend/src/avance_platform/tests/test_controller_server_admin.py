@@ -76,7 +76,6 @@ def test_switching_projects_right_after_a_restore_does_not_crash(client, hello_p
     response = client.post(f"/api/core/projects/{hello_project}/activate")
     assert response.status_code == 200
 
-    # What the frontend does right after any switch: it enters the chat.
     assert session_of(enter_chat(client, hello_project))
 
 
@@ -91,7 +90,6 @@ def test_wipe_all_live_sessions_deletes_sessions_across_every_project(client, he
     assert response.json()["success"] is True
     assert client.get(f"/api/core/sessions/{session_id}/history").status_code == 404
 
-    # The project definition itself is untouched — only its live sessions.
     assert client.get(f"/api/skills/platform/projects/{hello_project}").status_code == 200
 
 
@@ -109,9 +107,6 @@ def test_clean_unused_revisions_deletes_only_superseded_unpublished_drafts(clien
     assert response.status_code == 200
     body = response.json()
     assert body["success"] is True
-    # One revision superseded (revision 0), even though it spans two files
-    # (index.yml + index.css) — "deleted" counts revisions, not rows.
     assert body["deleted"] == 1
 
-    # The current draft and the still-published revision are untouched.
     assert client.get(f"/api/skills/platform/projects/{hello_project}/files/index.css").json()["content"] == "/* v2 */"

@@ -1,15 +1,4 @@
 <script setup>
-// Opened from a session.taken_over notification's "Open" link (see
-// humanTakeoverStore.js, App.vue) — chat.switch_to_human(user_id)
-// handed this session to whoever is looking at this. A mirror of the
-// normal chat: it enters the same conversation on the bus and is told
-// what was said and what it offers, rendered inverted since the operator
-// is the one standing in for "assistant" here (MessageBubble's own
-// invert prop). Sending and typing both go out keyed by session_id,
-// never a prompt_id the operator's own tab may never have seen (a fresh
-// human_prompt push is one-shot — a tab that opens after it already fired
-// would otherwise never know what to reply to) — see system/bus_channel.
-// py's own _current_prompt_for_session.
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import MessageBubble from '../../../components/chat/MessageBubble.vue'
 import ActionButtons from '../../../components/chat/ActionButtons.vue'
@@ -64,9 +53,6 @@ onUnmounted(() => {
   for (const unsubscribe of unsubscribes.splice(0)) unsubscribe()
 })
 
-// A choice taken travels the way every other one does — `input.button`
-// on the socket (see backend docs/BUS.md), and what the new state offers
-// comes back on `state.buttons` like it does for anybody else.
 function handleAction(actionName) {
   actionLoading.value = true
   const taken = busChannel.send({ type: 'input.button', session_id: props.sessionId, id: actionName })
@@ -74,15 +60,6 @@ function handleAction(actionName) {
   if (taken) buttons.value = []
 }
 
-// getHumanPromptForSession is a plain lookup (see humanPromptStore.js),
-// not itself reactive to *which* prompt it is — this computed re-runs
-// whenever humanPromptStore's own backing ref changes, which is what
-// actually makes it reactive here. `immediate` also shows whatever prompt
-// was already pending the moment this page opened, not only the next one
-// — its text isn't in the history read above yet if it arrived first.
-// Display only: sending never depends on this having resolved (see
-// submit() below) — a missed push must never leave the operator unable
-// to write.
 const pendingPrompt = computed(() => getHumanPromptForSession(props.sessionId))
 
 watch(pendingPrompt, (prompt) => {
@@ -147,13 +124,6 @@ function submit() {
 </template>
 
 <style scoped>
-/* Same shell classes ChatView.vue uses — .chat-header/.chat-body/
-   .chat-footer are deliberately bare style hooks (see that file's own
-   comment) so a project's own skin (a single, unscoped app-wide <style>,
-   see chatSkin.js) paints this page the same way it paints the real
-   chat, without this component reaching into ChatView.vue's internals
-   or its customer-only session-lifecycle UI (new/close session,
-   autotracking/actuators toggles) at all. */
 .chat-window-outer {
   position: fixed;
   inset: 0;

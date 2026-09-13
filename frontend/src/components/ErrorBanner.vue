@@ -1,15 +1,9 @@
 <script setup>
-// Shared error strip, one instance per screen. Every apiFetch failure
-// lands in the same errorStore.js regardless of which screen triggered
-// it, so this is the only place that ever needs to render it.
 import { onUnmounted, ref, watch } from 'vue'
 import { clearApiError, errorDetail, errorMessage, errorSeverity } from '../errorStore.js'
 
 const showDetail = ref(false)
 
-// A new error resets any expanded detail and restarts the auto-dismiss
-// timer — each error gets its own full 10s. A 'warning' severity never
-// auto-dismisses; it stays until the user closes it or the caller clears it.
 const AUTO_DISMISS_MS = 10000
 let dismissTimer = null
 watch([errorMessage, errorSeverity], ([message, severity]) => {
@@ -18,8 +12,6 @@ watch([errorMessage, errorSeverity], ([message, severity]) => {
   dismissTimer = message && severity !== 'warning' ? setTimeout(clearApiError, AUTO_DISMISS_MS) : null
 })
 
-// Opening the detail means the user is reading it — cancel the timer so
-// auto-dismiss doesn't close it out from under them.
 watch(showDetail, (open) => {
   if (open && dismissTimer) {
     clearTimeout(dismissTimer)
@@ -52,13 +44,6 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* Teleported to <body> (see App.vue's own comment on that) — no longer
-   a flex child pushing .app-body down, so this is what actually keeps it
-   pinned across the top of the viewport instead of just wherever it
-   landed in <body>'s own child order. z-index above DialogHost.vue's own
-   .app-dim (2000): stays legible over the dim scrim while a dialog is
-   open, though a dialog's own top-layer promotion still always wins over
-   any z-index if the two actually overlap on screen. */
 .error-banner-wrap {
   position: fixed;
   top: var(--safe-area-top);
@@ -67,8 +52,6 @@ onUnmounted(() => {
   z-index: 2050;
 }
 
-/* "Slide up": collapses the banner's height to 0 so content below it
-   visibly scrolls up, rather than just fading in place. */
 .error-banner-collapse-enter-active, .error-banner-collapse-leave-active {
   transition: max-height 0.25s ease, opacity 0.2s ease;
   overflow: hidden;
@@ -138,8 +121,6 @@ onUnmounted(() => {
   overflow-y: auto;
 }
 
-/* severity: 'warning' — amber instead of red, for "this isn't a
-   failure, it's a state you should know about" styling. */
 .error-banner-wrap-warning .error-banner-row {
   background: #fff4e0;
   border-bottom-color: #f0d9a8;

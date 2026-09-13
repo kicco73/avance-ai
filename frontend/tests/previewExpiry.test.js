@@ -1,15 +1,9 @@
-// The countdown that ends a try-it-out chat session (see
-// usePreviewExpiry.js). It is what the app store's "Try me!" and Manage
-// projects' own "Test" both close their preview on — Test had lost it
-// entirely and ran until the panel was closed by hand.
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import { usePreviewExpiry } from '../src/composables/usePreviewExpiry.js'
 
 const EXPIRY_SECONDS = 5 * 60
 
-// usePreviewExpiry registers onBeforeUnmount, so it has to run inside a
-// real component instance rather than bare.
 function mountWithExpiry() {
   let api
   const app = createApp({

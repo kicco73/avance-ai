@@ -22,20 +22,12 @@ PROJECT_ID = "proj"
 
 @pytest.fixture
 def file_db(tmp_path) -> Db:
-    # File-backed, not :memory: — ToolSet.call() runs the driver via
-    # asyncio.to_thread, and a second thread's own connection to
-    # ":memory:" would see a distinct, empty database instead of shared
-    # state (see conftest.py's own app_db/test_action_task.py's own
-    # file_db, the same concern for a real background job-worker thread).
     return Db(f"sqlite:///{tmp_path / 'tool_set.db'}")
 
 
 def _seed(db, files: dict[str, bytes], content_types: dict[str, str]) -> int:
     db.ensure_project(PROJECT_ID)
     db.save_project_files(PROJECT_ID, files, content_types)
-    # A draft revision is rewritten in place, so seeding twice in one test
-    # leaves the same (project, revision, path) holding new bytes — what
-    # ProjectManager.finalize_update forgets for a real save.
     PROJECT_FILE_CACHE.forget_project(PROJECT_ID)
     return db.get_project_revision(PROJECT_ID)
 
@@ -188,7 +180,6 @@ async def test_call_passes_the_optional_strings_argument_positionally_after_the_
         "source_flights_select_rows_in_range",
         {"column": "date", "start": "2026-06-01", "end": "2026-06-30", "strings": ["Rome"]},
     ) == "code,date,city\nVY3003,2026-06-02,Rome\n"
-    # No strings at all behaves exactly like before.
     assert await dated.call(
         "source_flights_select_rows_where", {"column": "date", "operator": ">=", "value": "2026-06-01"},
     ) == "code,date,city\nVY3003,2026-06-01,Barcelona\nVY3003,2026-06-02,Rome\n"
@@ -198,9 +189,6 @@ async def test_call_turns_an_unknown_tool_or_a_driver_exception_into_an_error_st
     tool_set = SourceNamespace(file_db, _two_sources(file_db)).tool_set(["flights"])
     result = await tool_set.call("source_nope_select_rows_containing", {"values": ["x"]})
     assert result.startswith("error: unknown tool 'source_nope_select_rows_containing'.")
-
-    # ghost's own archive file was never seeded — the read raises inside
-    # the driver call, which call() must turn into a string, never propagate.
     revision = _seed(file_db, {"flights.csv": b"city,country\nParis,France\n"}, {"flights.csv": "text/csv"})
     ghost = SourceNamespace(file_db, _automaton(PROJECT_ID, revision, [Source(name="ghost", url="avance:missing.csv", ui_label="Ghost")])).tool_set(["ghost"])
     assert (await ghost.call("source_ghost_select_rows_containing", {"values": ["x"]})).startswith("error:")

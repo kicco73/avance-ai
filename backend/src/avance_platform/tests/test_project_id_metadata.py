@@ -45,13 +45,11 @@ def test_an_upload_persists_the_declared_project_and_re_uploading_publishes_a_ne
     assert parse_sse_result(resp)["project_id"] == "proj_one"
     assert app_db.project_exists("proj_one")
 
-    # No declared revision: every re-upload just becomes the next one.
     assert _upload(client, "project:\n  id: stable\n" + MINIMAL).status_code == 200
     assert app_db.get_project_published_revision("stable") == 0
     assert _upload(client, "project:\n  id: stable\n" + MINIMAL.replace("hi", "hi again")).status_code == 200
     assert app_db.get_project_published_revision("stable") == 1
 
-    # A declared revision must actually be greater than the published one.
     assert _upload(client, "project:\n  id: stable2\n  revision: 5\n" + MINIMAL).status_code == 200
     assert app_db.get_project_published_revision("stable2") == 5
     resp = _upload(client, "project:\n  id: stable2\n  revision: 5\n" + MINIMAL)
@@ -71,7 +69,6 @@ def test_changing_a_projects_id_through_the_editor_frees_up_the_old_one(client):
     )
     assert resp.status_code == 200, resp.text
 
-    # The old id is free again — a different project may now claim it.
     assert _upload(client, "project:\n  id: old_id\n" + MINIMAL).status_code == 200
 
 

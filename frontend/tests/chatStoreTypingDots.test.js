@@ -1,7 +1,3 @@
-// One rule, one case: an empty `output.text_stream` says the system has
-// started writing, and that is what puts a bubble on screen with the
-// dots in it — whether the person just asked for it, whether the
-// conversation opened itself, or whether a state spoke on its own.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
@@ -93,11 +89,6 @@ describe('an empty output.text_stream is what shows the dots', () => {
   })
 })
 
-// What each control does with the answer is that control's own business
-// (and its own skill's tests) — what belongs here is that what a
-// conversation can reach leaves it and arrives at whoever asked to hear
-// it. It is said once, by the `session.info` that answers entering (see
-// backend docs/BUS.md).
 describe('what the conversation can reach', () => {
   let chatStore
   let deliver

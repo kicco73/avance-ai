@@ -7,14 +7,9 @@ import { configured } from '../availability.js'
 const props = defineProps({
   store: { type: Object, required: true },
   disabled: { type: Boolean, default: false },
-  // Shown regardless of what this conversation can reach: a row that is
-  // standing in for a chat (see ChatInput.vue's own `sample`).
   sample: { type: Boolean, default: false }
 })
 
-// A sample row shows what a chat looks like, not what this person has
-// switched on: its controls are drawn in their resting state (see
-// ChatInput.vue's own `sample`).
 const on = computed(() => !props.sample && spokenTextEnabled.value)
 </script>
 

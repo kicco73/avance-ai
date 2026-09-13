@@ -174,8 +174,6 @@ class _FakeTurns:
         self.accepted_terms_for: list[str] = []
         self.in_turn = False
 
-    # --- entering ---------------------------------------------------- #
-
     async def enter_session(self, project_id, type):
         self.calls.append(("enter", project_id, type))
         return self._payload(self.session)
@@ -196,8 +194,6 @@ class _FakeTurns:
 
     def buttons_for(self, session_id, state_payload):
         return self.buttons
-
-    # --- one exchange ------------------------------------------------- #
 
     async def prepare_user_initiated_turn(self, session_id):
         if self.wrap_up_message and not self.db.get_messages(session_id):
@@ -248,8 +244,6 @@ class _FakeTurns:
     async def record_unsolicited_reply(self, username, project_id, content):
         self.calls.append(("unsolicited", username, project_id))
         self.db.add(SESSION_ID, "assistant", content)
-
-    # --- terms --------------------------------------------------------- #
 
     def get_legal_terms_status(self, project_id):
         self.calls.append(("terms_status", project_id))

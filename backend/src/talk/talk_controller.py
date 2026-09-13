@@ -44,9 +44,6 @@ class TalkController(BaseController):
         )
 
     async def _stream_audio_until_disconnected(self, request: Request, generation):
-        # A dropped/aborted fetch doesn't reliably surface as a send()
-        # failure — polling is_disconnected() stops the provider's work
-        # immediately instead of wasting a full synthesis.
         try:
             async for chunk in generation:
                 if await request.is_disconnected():

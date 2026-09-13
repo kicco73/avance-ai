@@ -1,27 +1,13 @@
 <script setup>
-// Detail card for one ai/talk/listen provider entry (config.yml's own
-// providers[]) — same badge/title/open-closed convention as
-// InspectorDetailCard.vue's state/action cards and
-// InspectorProjectCard.vue's project card, but read-only (Manage
-// services never edits config.yml, unlike those) so there's no edit
-// form: closed shows the essential fields, open adds the description.
 import { computed, ref } from 'vue'
 import { renderMarkdown } from '../../markdown.js'
 import { useTokensBar } from '../../composables/useTokensBar.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 
 const props = defineProps({
-  provider: { type: Object, required: true }, // {driver, model, url?, ui-label, ui-description, modes?, language?, token-budget-per-day?}
-  // Today's own token spend for this provider (see db/ai_usage.py) —
-  // null while Manage services > AI hasn't loaded it yet, or for a
-  // talk/listen provider (only ai-service ones carry a daily budget).
+  provider: { type: Object, required: true },
   usageToday: { type: Number, default: null },
-  // Of usageToday, how much was served from cache (see AiTokenUsage.
-  // cache_read_tokens) — null under the same conditions as usageToday.
   usageTodayCacheRead: { type: Number, default: null },
-  // Share (0..1) of *input* tokens served from cache over the trailing
-  // 24h (see db/ai_usage.py's own cache_read_ratio) — a longer, steadier
-  // window than "today", which resets at midnight.
   cacheReadRatio: { type: Number, default: null }
 })
 
@@ -31,9 +17,6 @@ const dailyBudget = computed(() => props.provider['token-budget-per-day'])
 const { width: tokensBarWidth, level: tokensBarLevel } = useTokensBar(
   computed(() => props.usageToday), dailyBudget
 )
-// The cached share of today's own bar, as a distinct segment drawn on
-// top of tokensBarWidth above — never wider than the bar's own fill
-// (cache_read_tokens is always a subset of usageToday's input tokens).
 const cacheBarWidth = computed(() => {
   const cap = dailyBudget.value
   if (!cap) return '0%'
@@ -56,19 +39,12 @@ function fieldLabel(key) {
   return key.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase())
 }
 
-// modes/language are pulled out as their own flag badges below, and
-// ui-label/ui-description are the title/description — everything else
-// (driver, model, url, ...) is shown as a field row.
 const fields = computed(() => {
   return Object.entries(props.provider)
     .filter(([key, value]) => !['ui-label', 'ui-description', 'modes', 'language', 'token-budget-per-day'].includes(key) && value != null && value !== '')
     .map(([key, value]) => [fieldLabel(key), String(value)])
 })
 
-// "no-auto" gets its own highlighted variant — it's the one badge that
-// actually changes this provider's behavior (opts it out of auto-live/
-// auto-test selection), so it shouldn't blend in with the purely
-// descriptive live/test/language ones.
 const flagBadges = computed(() => {
   const badges = []
   if (Array.isArray(props.provider.modes)) {
@@ -164,27 +140,16 @@ const flagBadges = computed(() => {
 .crossfade-enter-active, .crossfade-leave-active { transition: opacity 0.15s ease; }
 .crossfade-enter-from, .crossfade-leave-to { opacity: 0; }
 
-/* Closed state: plain "label: value" text — same idiom as
-   InspectorDetailCard.vue's own .inspector-detail-field, not the styled
-   inputs below (those are for the open state only). */
 .services-provider-field { margin: 0 0 0.4rem; line-height: 1.4; }
 .services-provider-field:last-child { margin-bottom: 0; }
 .services-provider-field strong { color: #555; margin-right: 0.3rem; }
 
-/* Open state: the same field-as-disabled-input look every other Manage
-   services tab uses (see ServicesView.vue's own identically-named rules
-   — duplicated here since scoped styles don't cross component
-   boundaries). */
 .services-field { display: flex; flex-direction: column; gap: 0.25rem; margin: 0 0 0.75rem; max-width: 420px; }
 .services-field:last-child { margin-bottom: 0; }
 .services-field-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
 .services-field-input { width: 100%; box-sizing: border-box; padding: 0.4rem 0.6rem; border: 1px solid #ddd; border-radius: 6px; background: #f5f5f7; color: #333; font: inherit; font-size: 0.85rem; }
 .services-field-input:disabled { opacity: 1; cursor: default; -webkit-text-fill-color: #333; }
 
-/* Daily consumption bar — same green/orange/red idiom as
-   SessionDetailCard.vue's own .session-detail-tokens (duplicated here
-   for the same scoped-styles-don't-cross-boundaries reason as
-   .services-field above), shown regardless of open/closed. */
 .services-provider-tokens { display: flex; align-items: center; gap: 0.4rem; }
 .services-provider-tokens-label { flex-shrink: 0; font-size: 0.68rem; color: #888; }
 .services-provider-tokens-bar-track { position: relative; flex: 1; min-width: 40px; height: 6px; border-radius: 999px; background: #eee; overflow: hidden; cursor: default; }
@@ -192,9 +157,6 @@ const flagBadges = computed(() => {
 .services-provider-tokens-bar-fill-green { background: #2e7d32; }
 .services-provider-tokens-bar-fill-orange { background: #f5a623; }
 .services-provider-tokens-bar-fill-red { background: #c62828; }
-/* The cache-served share of today's own bar — a distinct segment drawn
-   on top of the fill above, left-aligned on the same track so it always
-   reads as "this much of the bar was served from cache". */
 .services-provider-tokens-bar-cache { position: absolute; top: 0; left: 0; height: 100%; background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0 3px, transparent 3px 6px); transition: width 0.3s ease; }
 .services-provider-tokens-cache-label { flex-shrink: 0; font-size: 0.68rem; color: #888; }
 </style>

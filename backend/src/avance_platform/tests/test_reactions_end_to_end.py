@@ -78,8 +78,6 @@ def test_get_state_carries_the_reactions_vocabulary(client, reactions_project):
         {"key": "supportive", "ui_label": "🙏"},
         {"key": "encouraging", "ui_label": "💪"},
     ]
-    # The AI-facing fields (definition/ui_description) never reach the
-    # frontend — see Automaton.get_reaction_option_payload's own reasoning.
     for reaction in body["reactions"]:
         assert set(reaction) == {"key", "ui_label"}
 
@@ -99,10 +97,6 @@ def test_transcript_and_input_reaction_round_trip(client, reactions_project):
     session_id = session_of(enter_chat(client, reactions_project))
     turn = chat_turn(client, session_id, "hi")
     assistant_id = turn["assistant_message_id"]
-
-    # Freshly generated — no reaction set yet, but the field must already
-    # be present (null), not missing, so the frontend's `message.reaction`
-    # read never silently falls back to undefined.
     rows = client.get(f"/api/core/sessions/{session_id}/history").json()
     assistant_row = next(r for r in rows if r["id"] == assistant_id)
     assert assistant_row["reaction"] is None
@@ -111,7 +105,6 @@ def test_transcript_and_input_reaction_round_trip(client, reactions_project):
     assistant_row = next(r for r in rows if r["id"] == assistant_id)
     assert assistant_row["reaction"] == "supportive"
 
-    # Clearing (reaction: null) removes it again.
     rows = _react(client, session_id, assistant_id, None)
     assert next(r for r in rows if r["id"] == assistant_id)["reaction"] is None
 
@@ -190,10 +183,6 @@ def test_bots_own_reaction_is_captured_and_persisted_on_the_users_message(client
     turn = chat_turn(client, session_id, "hi")
     user_message_id = turn["user_message_id"]
     assert user_message_id is not None
-
-    # Carried on the turn response itself, not just persisted — the
-    # frontend applies this live (see chatStore.js's own submitMessage),
-    # without waiting on a full messages refetch to notice the DB write.
     assert turn["user_message_reaction"] == "supportive"
 
     rows = client.get(f"/api/core/sessions/{session_id}/history").json()
@@ -201,8 +190,5 @@ def test_bots_own_reaction_is_captured_and_persisted_on_the_users_message(client
     assistant_row = next(r for r in rows if r["id"] == turn["assistant_message_id"])
 
     assert user_row["reaction"] == "supportive"
-    # Never on the assistant's own new message — that's a different axis
-    # (the user's own reaction to a bot message, set via the PUT endpoint).
     assert assistant_row["reaction"] is None
-    # The visible reply text must never leak the raw tag markup.
     assert "[reaction]" not in "".join(m["content"] for m in turn["reply"])

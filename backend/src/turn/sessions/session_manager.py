@@ -33,10 +33,6 @@ def _publish(message: Message) -> None:
     task = loop.create_task(bus.publish(message))
     _announcements.add(task)
     task.add_done_callback(_announcements.discard)
-
-# Default open window, in minutes, when the caller doesn't supply one —
-# matches config.yml's turn-service.max-session-duration-in-minutes
-# default, kept here too so tests/direct constructions don't need it.
 DEFAULT_OPEN_WINDOW_MINUTES = 60.0
 
 
@@ -66,9 +62,6 @@ class SessionManager(object):
         the allowlist in tests/test_datetime_end_readers_contract.py."""
         if session["closed_at"] is not None:
             return False
-        # A session with no datetime_end yet (an in-progress transcript
-        # import) is never "open" either — never a crash from comparing
-        # against None.
         if session["datetime_end"] is None:
             return False
         now = now if now is not None else datetime.utcnow()
@@ -149,11 +142,6 @@ class SessionManager(object):
             raise SessionNotWritable("Session is closed.", code="session_closed")
         strategy = get_session_type_strategy(session["type"])
         active = self.get_active_session(username, project_id, type=session["type"])
-        # The one place a channel genuinely decides an outcome: this is
-        # an authorised write, and caller_channel() is whoever is actually
-        # speaking — declared by the channel itself, never by a transport
-        # guessing on their behalf, and None for the session types that
-        # have no channel at all.
         if not strategy.is_valid_write_target(session, active, strategy.caller_channel()):
             if active is None or active["id"] != session["id"]:
                 raise SessionNotWritable("Session is not active.", code="session_superseded")
@@ -168,15 +156,7 @@ class SessionManager(object):
             return session
         now = now if now is not None else datetime.utcnow()
         self._db.close_chat_session(session["id"], now, reason)
-        # A source's own per-session read cache (tracking.sources.
-        # avance_archive) — scratch space scoped to this session's whole
-        # lifetime, never needed again once it's over.
         self._db.delete_archives_with_prefix(session["project_id"], f"{CACHE_DIR}/sessions/{session['id']}/")
-        # No "current_channel" here any more: closing is not a channel
-        # operation. The editor closes sessions (label_project_controller.
-        # post_close_session) and so does AutomatonLoader when a revision
-        # stops building, neither of which is speaking to anybody — and
-        # `reason` already says who closed it and why.
         logger.info(
             "close_session(): session_id=%s username=%s project_id=%s session_channel=%s reason=%s",
             session["id"], session["username"], session["project_id"], session["channel"], reason,

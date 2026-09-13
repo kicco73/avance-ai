@@ -131,8 +131,6 @@ class WebImportJob(CancelableJob):
 
     async def _import_csv(self) -> None:
         # FIXME: the write must run on the request's own loop — the chat
-        # write lock commit takes is an asyncio primitive bound to it,
-        # and this step runs on a job worker's separate loop.
         assert self._csv is not None and self._columns is not None
         future = asyncio.run_coroutine_threadsafe(self._put_archive(self._csv), self._loop)
         await asyncio.wrap_future(future)

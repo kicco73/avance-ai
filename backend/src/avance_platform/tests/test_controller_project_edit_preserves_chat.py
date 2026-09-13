@@ -40,9 +40,6 @@ def _upload_and_reach_b(client) -> int:
 
 def test_editing_a_file_without_touching_the_current_state_keeps_the_conversation(client):
     session_id = _upload_and_reach_b(client)
-
-    # Adds an unrelated state "c" — "b" (the one the conversation is
-    # actually in) is untouched.
     yml_v2 = TWO_STATE_YML + "  c:\n    contextual-prompt: extra\n"
     resp = client.put("/api/skills/platform/projects/proj/files/index.yml", content=yml_v2.encode())
     assert resp.status_code == 200, resp.text
@@ -55,7 +52,6 @@ def test_editing_a_file_without_touching_the_current_state_keeps_the_conversatio
 def test_editing_a_file_that_removes_the_current_state_resets_the_conversation(client):
     _upload_and_reach_b(client)
 
-    # The edit removes "b", the state the conversation is currently in.
     yml_v2 = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
     resp = client.put("/api/skills/platform/projects/proj/files/index.yml", content=yml_v2.encode())
     assert resp.status_code == 200, resp.text
@@ -100,8 +96,6 @@ def test_editing_an_unrelated_project_does_not_touch_the_active_ones_conversatio
     other_yml = "project:\n  id: other\ninit-action:\n  target: x\nstates:\n  x:\n    contextual-prompt: hi\n"
     resp = client.post("/api/skills/platform/projects/upload", content=other_yml.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
-    # Uploading "other" activates it — reactivate "proj" so the edit
-    # below targets a non-active project.
     client.post("/api/core/projects/proj/activate")
 
     resp = client.put(

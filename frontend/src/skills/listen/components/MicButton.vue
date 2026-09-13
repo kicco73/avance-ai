@@ -9,8 +9,6 @@ import { unlockAudioPlayback } from '../../../audio.js'
 const props = defineProps({
   store: { type: Object, required: true },
   disabled: { type: Boolean, default: false },
-  // Shown regardless of what this conversation can reach: a row that is
-  // standing in for a chat (see ChatInput.vue's own `sample`).
   sample: { type: Boolean, default: false }
 })
 
@@ -19,14 +17,7 @@ const recording = ref(false)
 async function startPtt(event) {
   if (event?.pointerType === 'mouse' && event.button !== 0) return
   if (recording.value || props.disabled) return
-  // Inside this same pointerdown gesture — the voice message this
-  // eventually sends gets a reply whose own narration plays well outside
-  // any gesture of its own.
   unlockAudioPlayback()
-  // getUserMedia only exists in a secure context (https, or localhost) —
-  // over plain http on a LAN it's simply undefined, which otherwise
-  // surfaces as the same "access was denied" message a real permission
-  // refusal gives, hiding the actual (unfixable-by-the-user) cause.
   if (!navigator.mediaDevices?.getUserMedia) {
     setApiError(
       'Microphone unavailable.',

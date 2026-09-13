@@ -1,8 +1,5 @@
 <script setup>
 defineProps({
-  // What `state.buttons` said — already filtered server-side (TurnService's
-  // own buttons_for): untriggerable actions, plus every action
-  // while a test session's auto-tracking is off.
   actions: {
     type: Array,
     default: () => []
@@ -45,11 +42,6 @@ const emit = defineEmits(['action'])
   cursor: pointer;
 }
 
-/* An unbounded flex-wrap can grow to several rows before it runs out of
-   actions, eating the transcript's own height with no cap — a single
-   horizontally-scrollable row instead, same pattern as a mobile chip
-   bar. Tighter padding claws back some of the footer's own share of a
-   short screen. */
 @media (max-width: 640px) {
   .action-buttons {
     flex-wrap: nowrap;
@@ -74,14 +66,6 @@ const emit = defineEmits(['action'])
 }
 </style>
 
-<!-- Unscoped, deliberately: a scoped rule's [data-v-xxx] attribute selector
-     always outranks an equal-specificity .action-buttons/.action-btn rule
-     from a project's own index.css skin, regardless of load order — same
-     issue ChatView.vue's .chat-header/.chat-body/.chat-footer sidestep by
-     carrying no color of their own at all. These colors need a real
-     default, so they live here instead: no scoping attribute means a
-     skin's own same-specificity selector wins on source order (its <style>
-     tag is appended to <head> well after this one). -->
 <style>
 .action-buttons {
   background: #f5f5f7;

@@ -159,7 +159,6 @@ async function webImport() {
     })
     await load()
   } catch {
-    // already surfaced via apiFetch
   } finally {
     webImporting.value = false
     webImportProgress.value = null

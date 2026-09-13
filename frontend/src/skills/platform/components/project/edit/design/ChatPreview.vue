@@ -1,23 +1,4 @@
 <script setup>
-// Renders a real chat instance (not a mock) fed a static fake conversation, so a
-// project's index.css "skin" can be previewed live, updated in place per keystroke.
-//
-// The CSS goes into chatSkin.js's own single shared skin <style> element
-// (it holds it while visible, see holdSkin) rather than a separate tag of
-// this component's own — a second tag doesn't just risk the ordering
-// fight that element's own docstring describes, it has no dependency on
-// applyAspect, so Test mode's "Apply aspect" toggle had no effect on
-// whatever it was showing. Sharing the one element means entering Test
-// mode (which flips applyAspect off) clears it same as it would for the
-// real skin.
-//
-// This component stays mounted (v-show, not v-if) through ProjectDesignPanel's
-// own file switch (index.css vs. any other file) — so "unmount" alone isn't
-// enough to know when this preview stops being the thing on screen. An IntersectionObserver
-// on the root element tracks actual visibility instead: a display:none
-// ancestor (from any v-show layer above) collapses this element's geometry,
-// which the observer reports as non-intersecting. Going invisible hands
-// the element back to whoever owns it otherwise, rather than clearing it.
 import { computed, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
 import ChatView from '../../../../../../components/chat/ChatView.vue'
 import { holdSkin, invalidateSkin } from '../../../../../../chatSkin.js'
@@ -55,9 +36,6 @@ watch(visible, (isVisible) => {
 watch([() => props.css, () => props.projectId], invalidateSkin)
 
 onMounted(() => {
-  // jsdom (unit tests) has no IntersectionObserver — fall back to "always
-  // visible", the same unconditional-inject behavior this replaces, rather
-  // than crashing or silently never showing the preview under test.
   if (typeof IntersectionObserver === 'undefined') {
     visible.value = true
     return

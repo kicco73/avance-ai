@@ -68,7 +68,6 @@ def test_deleting_the_active_project_falls_back_to_a_remaining_one_and_degrades_
     projects = client.get("/api/core/projects").json()
     assert projects["projects"] == [{"id": cat, "is_paused": False, "ui_label": None}]
     assert projects["active"] == cat
-    # The fallback must actually be activated, not just recorded by id.
     assert session_of(enter_chat(client, cat))
 
     assert client.delete(f"/api/skills/platform/projects/{cat}").status_code == 200
@@ -122,10 +121,7 @@ def test_new_project_creates_activates_and_de_duplicates_the_hello_world_templat
     assert response.json()["project_id"] == "hello_world"
     assert client.get("/api/core/projects").json()["active"] == "hello_world"
 
-    # The template's own content really is what got persisted.
     assert "hello, world" in client.get("/api/skills/platform/projects/hello_world/files/index.yml").json()["content"].lower()
-    # It's actually usable, not just a stored blob — already published by
-    # the upload itself, but re-publishing must stay a harmless no-op.
     assert client.post("/api/skills/platform/projects/hello_world/publish", json={}).status_code == 200
     assert session_of(enter_chat(client, "hello_world"))
 

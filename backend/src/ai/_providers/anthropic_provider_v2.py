@@ -36,15 +36,8 @@ from system.logging_factory import LoggerFactory
 logger = LoggerFactory.get_logger(__name__)
 
 CLAUDE_DEFAULT_MODEL: str = "claude-sonnet-5"
-# httpx semantics: connect/write/pool budget, and the longest silence
-# tolerated *between* streamed chunks — not a cap on the whole reply.
 REQUEST_TIMEOUT_SECONDS: float = 30.0
-# The SDK's own retries are off: the cascade (ai/_providers/cascading_llm_provider.py)
-# is the one retry policy, so a 503 surfaces here at once instead of after
-# 2 silent SDK attempts stacked under the cascade's own 5.
 SDK_MAX_RETRIES: int = 0
-# stop_reason values meaning the response was cut short rather than
-# completing on its own — see AIServiceProviderOutputTruncatedError.
 _TRUNCATED_STOP_REASONS = ("max_tokens", "model_context_window_exceeded")
 
 CACHE_CONTROL: CacheControlEphemeralParam = {"type": "ephemeral"}
@@ -111,22 +104,8 @@ class AnthropicProvider(LLMProvider):
 
 		self._api_key: str = config.key
 		self._base_url: str | None = config.url
-		# One AsyncAnthropic per event loop, same reasoning as
-		# GeminiProvider.__client: this provider is a single app-wide
-		# instance driven from the main FastAPI loop, from every JobQueue
-		# worker's own long-lived loop, and from the one-shot loop each
-		# PromptContext._run_sync spins up. An httpx connection pool shared
-		# across loops reuses keep-alive sockets opened on another loop —
-		# in practice sporadic APIConnectionError ("Unable to reach the
-		# Anthropic API") under concurrent test replays, reproduced by
-		# tests/test_provider_event_loops.py. `_clients_lock` guards the
-		# first use from different threads; closed loops are pruned when
-		# a new one shows up, so the one-shot loops never pile up.
 		self._async_clients: dict[asyncio.AbstractEventLoop, anthropic.AsyncAnthropic] = {}
 		self._clients_lock = threading.Lock()
-		# get_input_tokens() calls messages.count_tokens synchronously —
-		# a plain sync client, rather than awaiting the async one above,
-		# keeps that method callable with no running event loop.
 		self._sync_client: anthropic.Anthropic = anthropic.Anthropic(
 			api_key=config.key,
 			base_url=config.url,
@@ -207,9 +186,6 @@ class AnthropicProvider(LLMProvider):
 			if role == "assistant" and message.get("tool_calls"):
 				blocks: list[Any] = []
 				assistant_text = message.get("content")
-				# A dict here is another provider's own replay payload
-				# (Gemini's parts, see gemini_provider_v2._REPLAY_PARTS_KEY)
-				# left behind by a cascade failover mid-loop — not text.
 				if assistant_text and not isinstance(assistant_text, dict):
 					blocks.append({"type": "text", "text": str(assistant_text)})
 				for call in message["tool_calls"]:
@@ -225,8 +201,6 @@ class AnthropicProvider(LLMProvider):
 			content: Any = message["content"]
 
 			if is_text_fragments(content):
-				# One user message the model must read as a whole: the
-				# fragments of a coalesced turn, as separate text blocks.
 				messages.append({
 					"role": role,
 					"content": [{"type": "text", "text": fragment} for fragment in content],
@@ -303,9 +277,6 @@ class AnthropicProvider(LLMProvider):
 		response_schema: dict[str, Any] = self.build_schema(
 			schema
 		)
-
-		# Any: Anthropic's SDK types don't expose the dynamic JSON-schema
-		# shape precisely enough to type this without false positives.
 		return {
 			"format": {
 				"type": "json_schema",
@@ -334,10 +305,6 @@ class AnthropicProvider(LLMProvider):
 		output_config: Any = self._build_output_config(
 			schema or {}
 		)
-
-		# tools omitted entirely (not passed as None) when there aren't
-		# any — matches _build_tools' own contract; the SDK's own `tools`
-		# param type doesn't even accept None, only Iterable[...] or Omit.
 		stream_kwargs: dict[str, Any] = {
 			"model": self._model_name,
 			"max_tokens": self._max_output_tokens,
@@ -346,10 +313,6 @@ class AnthropicProvider(LLMProvider):
 			"output_config": output_config,
 		}
 		if required_tools:
-			# Forced round: restricted to *only* required_tools (never the
-			# full catalog) — Anthropic's own tool_choice "any" forces a
-			# call among whatever `tools` carries, so restricting the
-			# candidate set means restricting `tools` itself for this one call.
 			stream_kwargs["tools"] = self._build_tools(required_tools)
 			stream_kwargs["tool_choice"] = {"type": "any"}
 		else:
@@ -369,11 +332,6 @@ class AnthropicProvider(LLMProvider):
 						yield text
 				final_message = await stream.get_final_message()
 				usage = final_message.usage
-				# usage.input_tokens excludes every cache-read/cache-write
-				# token by design (Anthropic's own accounting) — normalized
-				# here into a true input total, on_metadata's own
-				# "input_tokens" always meaning cache-inclusive input from
-				# this point on, across every provider (see SystemPrompt).
 				cache_read_tokens = getattr(usage, "cache_read_input_tokens", None) or 0
 				cache_creation_tokens = getattr(usage, "cache_creation_input_tokens", None) or 0
 				total_input_tokens = usage.input_tokens + cache_read_tokens + cache_creation_tokens
@@ -408,9 +366,6 @@ class AnthropicProvider(LLMProvider):
 				ToolCall(id=block.id, name=block.name, arguments=dict(block.input))
 				for block in final_content if getattr(block, "type", None) == "tool_use"
 			]
-			# Whatever the model said before/alongside asking for these
-			# calls (often nothing, under a JSON-schema response) — the
-			# provider-neutral assistant_content to replay in history.
 			assistant_text = "".join(
 				block.text for block in final_content if getattr(block, "type", None) == "text"
 			)

@@ -9,8 +9,6 @@ from system.try_again_error import TryAgainError
 
 logger = LoggerFactory.get_logger(__name__)
 
-# Instructions for Claude Code: DO NOT TOUCH THIS FILE
-
 class Job(ABC):
 
     MAX_RETRIES = 3
@@ -229,10 +227,7 @@ class CancelableJob(DependentJob):
     def _remove_parent_job(self, job: CancelableJob) -> tuple["CancelableJob", ...]:
         if not self._remove_parent(job):
             return ()
-        # I have no father depending on myself, I'm orphan.
-        # Aborting.
         self.__is_aborted = True
-        # removing myself from my children, they are no more needed.
         aborted: tuple[CancelableJob, ...] = (self,)
         for dep in self.children:
             aborted += dep._remove_parent_job(self)

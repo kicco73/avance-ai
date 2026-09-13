@@ -1,7 +1,5 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
-// An open/closed flag for a panel anchored inside `rootEl`, closed by any
-// document click that lands outside that element.
 export function useOutsideClickClose(rootEl) {
   const open = ref(false)
 

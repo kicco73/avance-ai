@@ -54,9 +54,6 @@ class IdentifierRegistry:
     DATETIME_TIMEZONE: dict[str, str] = {
         "utc": "The UTC timezone — pass as tzinfo to build a timezone-aware datetime, e.g. datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc).",
     }
-
-    # Every User field (db/models.py) except id — see
-    # db.users.UserMixin.get_user_facts, this namespace's own source.
     USER: dict[str, str] = {
         "email": "The user's email address (also their login identity).",
         "name": "The user's display name, as reported by their auth provider.",
@@ -77,32 +74,8 @@ class IdentifierRegistry:
             for metric in AnalyticsCalculator.default_metrics()
             if has_scope in metric.scope and (excludes_scope is None or excludes_scope not in metric.scope)
         }
-
-    # Engagement/State Stability/Signal Stability — every default metric
-    # meaningful over just the current session's own window (see
-    # tracking.session_facts.SessionFacts.metric).
     SESSION_METRIC: dict[str, str] = _metric_descriptions(has_scope="one_session")
-
-    # Retention/Activity Consistency — cross-session metrics. Excluding
-    # "one_session" matters: a metric's default scope is *every* MetricScope,
-    # so SESSION_METRIC's own metrics would otherwise match here too.
     METRIC: dict[str, str] = _metric_descriptions(has_scope="all_sessions_per_user", excludes_scope="one_session")
-
-    # The three places an expression can live see three different views
-    # of the registry below. A `trigger:`/`env:` expression is evaluated
-    # *inside* a session and may do nothing but read, so `task` is
-    # out — and so is `attachment`, a whole-file read with no place in a
-    # boolean condition or a simple value — and so is `chat`, whose
-    # methods are only ever meaningful as the reaction to leaving a
-    # state, not as part of deciding whether to. A `task:` line is where
-    # task.* (and attachment.read) are called — and a task.defer'd
-    # call runs long after the session that fired it is over, so `session`
-    # is out there instead, and so is `chat` (an on-exit-only namespace,
-    # never task's). An `on-exit:` script is where `chat` is available —
-    # otherwise the same exclusions as trigger/env (task.*/attachment
-    # stay out; on-exit has no local-variable/attachment-read concept of
-    # its own).
-    # Exclusion is by prefix: naming a namespace drops its nested ones too.
     TRIGGER_SCOPE_EXCLUDES: tuple[str, ...] = ("task", "attachment", "chat")
     TASK_SCOPE_EXCLUDES: tuple[str, ...] = ("session", "chat")
     ON_EXIT_SCOPE_EXCLUDES: tuple[str, ...] = ("task", "attachment")

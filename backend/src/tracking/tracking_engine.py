@@ -83,9 +83,6 @@ class TestObservationSink:
     def save_signal_snapshot(
         self, values: dict, session_id: int, message_id: int | None = None, output_values: dict | None = None,
     ) -> int:
-        # output_values: accepted only to satisfy TrackingSink's shared
-        # shape — TestObservation has no output column, a replay's own
-        # per-turn output is never worth keeping for observability.
         row = TestObservation.create(
             run=self._run_id, session=session_id, message=message_id, values=json.dumps(values),
         )
@@ -103,9 +100,6 @@ class TestObservationSink:
         origin: str | None = None,
         output_values: dict | None = None,
     ) -> int:
-        # transition_log_level/output_values: received only to satisfy
-        # TrackingSink's shared shape — there's no production log to write
-        # for a replay, and TestObservation has no output column.
         row = TestObservation.create(
             run=self._run_id, session=session_id, message=message_id,
             old_state=old_state, action=action, new_state=new_state,
@@ -125,9 +119,6 @@ class TrackingEngine:
         self._sink = sink
         self._env = env
         self._scope_builder = scope_builder
-        # "Dev mode: freeze automatic state transitions" toggle — False
-        # means a triggerable action is never *selected* here (signals
-        # are still evaluated); manual actions bypass this and always fire.
         self._auto_tracking_enabled = auto_tracking_enabled
 
     def evaluate_triggered_action(
@@ -169,13 +160,7 @@ class TrackingEngine:
         never returned: it reaches the browser over the websocket.
         `output_values`: structured output dict from this turn's AI generation."""
         if action is None:
-            # No transition fired — just the evaluation itself is worth
-            # keeping (see db.get_latest_signal_snapshot, Tracking.values).
             return self._sink.save_signal_snapshot(signal_values, session_id, message_id, output_values=output_values)
-
-        # Always saved, self-loop or not — a fired trigger is a real event
-        # worth a history entry either way; a self-loop just never bumps
-        # history_cutoff's own timestamp.
 
         self.apply_action_env(
             automaton, action, signal_values, state.key, username=username, project_id=project_id,
@@ -201,8 +186,6 @@ class TrackingEngine:
         output_values: dict | None = None,
     ) -> int:
         # FIXME: caller must have already applied action's own env: (via
-        # apply_action_env) itself — calling apply_transition too for the
-        # same action would run apply_action_env (and any task) twice.
         tracking_id = self._sink.save_transition(
             state.key,
             action.name,

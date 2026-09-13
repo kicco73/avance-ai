@@ -1,21 +1,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 
-// The countdown that ends the app store's "Try me!" session. A preview
-// session holds a real automaton (and a real env) open, so a stranger's
-// try-it-out is never left running indefinitely just because the panel is
-// still on screen. Manage projects' own "Test" runs the same kind of
-// session without it: that one is the project's owner working on it, not
-// somebody trying it out.
-//
-// Why it reports expiry as a ref instead of calling back: the owner is
-// what knows how to close its own preview (stop the session, tell the
-// person it ended), and a timer that reaches into that through a callback
-// would end up owning half of it. This only ever counts, and `expired`
-// flipping to true is the whole of what it says.
 const PREVIEW_EXPIRY_SECONDS = 5 * 60
 
-// Below this, the Quit button turns into the countdown itself rather than
-// showing a timer nobody is watching for the first four minutes.
 const COUNTDOWN_THRESHOLD_SECONDS = 59
 
 export function usePreviewExpiry() {
@@ -28,8 +14,6 @@ export function usePreviewExpiry() {
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
   })
 
-  // Above the threshold, and before the timer is armed at all, this reads
-  // 'Quit'.
   const quitButtonLabel = computed(() => (
     remainingSeconds.value <= COUNTDOWN_THRESHOLD_SECONDS ? remainingLabel.value : 'Quit'
   ))
@@ -40,8 +24,6 @@ export function usePreviewExpiry() {
     interval = null
   }
 
-  // Starts, or restarts, the full window — a preview that is restarted in
-  // place gets its whole five minutes again, not the remainder.
   function arm() {
     clear()
     expired.value = false

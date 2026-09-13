@@ -1,7 +1,4 @@
 <script setup>
-// Design mode's file explorer plus whichever editor fits the current
-// file. Purely presentational — state is owned by EditProjectView.vue
-// and reached only through props/emits.
 import { computed, ref } from 'vue'
 import FileExplorer from './FileExplorer.vue'
 import CodeEditor from '../../../../CodeEditor.vue'
@@ -18,44 +15,27 @@ const props = defineProps({
   files: { type: Array, default: () => [] },
   filesLoading: { type: Boolean, default: true },
   currentFileName: { type: String, default: null },
-  // Set only right after a create/upload/new-legal flow opens this exact
-  // file — MdEditorPanel defaults to its Edit tab for it instead of
-  // Preview (see useProjectFiles.js's own switchFile).
   justAddedFileName: { type: String, default: null },
   uploading: { type: Boolean, default: false },
   creatingFile: { type: Boolean, default: false },
   explorerWidth: { type: Number, required: true },
   currentFileIsMedia: { type: Boolean, default: false },
-  // A .txt/.md attachment — gets MdEditorPanel instead of the bare
-  // CodeEditor fallback below.
   currentFileIsMarkdown: { type: Boolean, default: false },
   highlightedStateKey: { type: String, default: null },
   firedActionEdge: { type: Object, default: null },
   selectedElement: { type: Object, default: null },
-  // Declared sources (see FileExplorer.vue's "Sources" branch).
-  // `currentSourceName` takes the editor pane over with SourceContentPanel,
-  // mutually exclusive with a real file being open.
   sources: { type: Array, default: () => [] },
   sourcesLoading: { type: Boolean, default: true },
   currentSourceName: { type: String, default: null },
-  // True while the "Sources" branch header itself is selected — takes
-  // the editor pane over with an empty state, same as currentSourceName
-  // does for a real source.
   sourcesRootSelected: { type: Boolean, default: false },
   modifiedFiles: { type: Array, default: () => [] },
-  // Forwarded to IndexYmlEditorPanel/CodeEditor — see CodeEditor.vue's
-  // own currentRevision prop.
   currentRevision: { type: Number, default: null }
 })
 
-// sources/<id>.csv — same convention ProjectEditor._source_archive
-// derives server-side, always 1:1 with the source's own current name.
 const currentSourceArchiveName = computed(() => (
   props.currentSourceName ? `sources/${props.currentSourceName}.csv` : null
 ))
 
-// Gates every "real file" view below — true only when neither a source
-// nor the Sources root itself is the current selection.
 const noSourceSelection = computed(() => !props.currentSourceName && !props.sourcesRootSelected)
 
 const emit = defineEmits([
@@ -64,9 +44,6 @@ const emit = defineEmits([
   'jump-to-definition', 'select', 'saved', 'renamed'
 ])
 
-// The Behavior branch's own attachments — index.yml's code segment offers
-// these for `attachments:` autocomplete. legal/terms.md is excluded too:
-// not something a state ever attaches to chat.
 const attachmentFiles = computed(() =>
   props.files.filter(
     (name) => name !== 'index.yml' && name !== 'index.css' && name !== 'legal/terms.md'
@@ -80,8 +57,6 @@ const indexCssEditorRef = ref(null)
 const mdEditorRef = ref(null)
 const sourceContentPanelRef = ref(null)
 
-// Exposed so EditProjectView.vue can reach the editor instances directly for
-// things a prop/emit can't express (jumpToLine, save/discard/undo/redo, reload, mediaType, ...).
 defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef, sourceContentPanelRef })
 </script>
 
@@ -127,9 +102,6 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
         :source-name="currentSourceName"
         @saved="emit('saved', $event)"
       />
-      <!-- Stays mounted (v-show): its InspectorGraph resolves the
-           Inspector's State/Actions selection, which unmounting would
-           drop whenever another file/source is viewed. -->
       <IndexYmlEditorPanel
         v-show="noSourceSelection && currentFileName === 'index.yml'"
         ref="indexYmlEditorRef"
@@ -215,8 +187,6 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
 .split-divider:hover { background: #dbe4f0; }
 
 .edit-project-editor-pane { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
-/* Same shape as IndexYmlEditorPanel's root .index-yml-editor — the two
-   fill this pane, one hidden via v-show while the other's showing. */
 .edit-project-editor-attachment { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .edit-project-editor-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0.75rem; background: #f5f5f7; border-bottom: 1px solid #ddd; flex-shrink: 0; }
 .edit-project-editor-filename { min-width: 0; font-size: 0.85rem; font-weight: 600; color: #333; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

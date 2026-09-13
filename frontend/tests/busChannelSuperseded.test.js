@@ -1,10 +1,3 @@
-// busChannel.js's handling of a channel taken over by another client of
-// the same identity (see backend system/bus_channel.py's own
-// SWITCHED_TO_OTHER_CLIENT/SUPERSEDED_CLOSE_CODE). The newest connection
-// wins there, so unlike every other close reason retrying must not happen:
-// it would take the channel straight back off whoever is using it now.
-// This settles into its own distinct connectionState instead of feeding
-// the exponential-backoff reconnect loop.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installFakeChatSocket } from './fakeChatSocket.js'
 
@@ -47,11 +40,10 @@ describe('busChannel: losing the channel to a newer client', () => {
 
     sockets[0].emit({ type: SWITCHED_TO_OTHER_CLIENT })
     sockets[0].closeWithCode(SUPERSEDED_CLOSE_CODE)
-    // Let any (wrongly) scheduled reconnect's microtasks run.
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(busChannel.connectionState).toBe('superseded')
-    expect(sockets).toHaveLength(1) // no reconnect attempt was made
+    expect(sockets).toHaveLength(1)
   })
 
   it('settles the same way on the close code alone, when the frame never lands', async () => {

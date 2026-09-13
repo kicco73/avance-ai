@@ -1,14 +1,3 @@
-// End to end: a live exchange's own frames on the one websocket — one
-// `output.tool` on phase "start" (with status_text and the structured
-// fields), one on phase "result", the pieces of the message, then the
-// message itself — driven through busChannel.js's REAL frame dispatch
-// (only api.js's createChatSocket is faked), all the way up into the chat
-// store and the MessageBubble-facing message shape. Proves the whole pipe:
-// while the tool call is in flight the bubble shows status_text, the
-// "result" phase clears it once TOOL_STATUS_MIN_MS is up (even past the
-// answer), the pieces accumulate, and once the exchange is over the
-// persisted tool_calls record (read from the history, same as a reload)
-// renders through toolTraceLine.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toolTraceLine } from '../src/toolTraceLine.js'
 import { TOOL_STATUS_MIN_MS } from '../src/toolStatusHold.js'
@@ -92,7 +81,6 @@ describe('a live exchange shows the tool status then the persisted trace, end to
     })
 
     const finished = chatStore.messages.value.find((m) => m.messageId === 51)
-    // The status line outlives the answer by design — see toolStatusHold.js.
     expect(finished.statusText).toBe(TOOL_START.status_text)
     expect(finished.content).toBe('Your flight is on time.')
 

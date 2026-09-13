@@ -3,26 +3,10 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { onProjectsChanged } from '../projectChangeEvents.js'
 import { getProjects } from '../api.js'
 
-// `selectedName`, when given, overrides which project the button label and
-// the ✓ mark reflect — for a caller (e.g. ManageUsersView.vue's own
-// project picker) that reuses this menu to choose a project without that
-// choice being the app's actual active project. Defaults to `null`, which
-// falls back to the normal behavior (the app's own active project).
 const props = defineProps({
   selectedName: { type: String, default: null },
-  // 'right' (default) anchors the dropdown's own right edge to the
-  // button's, opening leftward — for a button that's the last one on the
-  // right of its header. 'left' anchors the left edge instead, opening
-  // rightward, for a button placed near the left of its header (see
-  // LabelProjectView.vue).
   align: { type: String, default: 'right' },
-  // Live chat's own two extra rows (New/Close session) above the usual
-  // project list, with a divider between — opt-in since ManageUsersView.
-  // vue/LabelProjectView.vue reuse this same dropdown as a plain project
-  // picker with no session of its own to act on.
   sessionActions: { type: Boolean, default: false },
-  // Grays out "Close session" the same way projects.length === 0 already
-  // grays out the button itself — there's no open session left to close.
   closeSessionDisabled: { type: Boolean, default: false }
 })
 
@@ -35,8 +19,6 @@ const emit = defineEmits([
 
 const open = ref(false)
 const loading = ref(false)
-// {id, is_paused, ui_label}[] — ui_label is shown in place of the raw
-// id wherever declared.
 const projects = ref([])
 const activeProjectName = ref(null)
 const rootEl = ref(null)
@@ -50,7 +32,6 @@ async function loadProjects() {
     projects.value = res.projects
     activeProjectName.value = res.active
   } catch {
-    // already surfaced via apiFetch
   } finally {
     loading.value = false
   }
@@ -67,8 +48,6 @@ async function toggle() {
 }
 
 onMounted(loadProjects)
-// The catalog moving (a project created, deleted, renamed, published) is
-// a fact this menu observes, never something its owner has to hand it.
 onBeforeUnmount(onProjectsChanged(loadProjects))
 
 

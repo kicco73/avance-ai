@@ -26,12 +26,6 @@ from typing import Any
 from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
-
-# A build writes here first, and one rename moves the finished package
-# to the name the loader reads. Without that, a directory exists under
-# its final name with half its files in it and whoever looks first
-# imports that. The prefix keeps a staging directory out of the way of
-# `<module>.<revision>`, so nothing can mistake one for a package.
 STAGING_PREFIX = ".building."
 
 
@@ -66,23 +60,10 @@ def import_automaton(directory: Path, project_id: str, revision: int) -> Any:
     init = directory / "__init__.py"
     if not init.is_file():
         raise PackageError(f"{directory}: no __init__.py — not a compiled package.")
-
-    # Unique per (project, revision), and stable across runs: two
-    # revisions of one project may be imported at the same time (a
-    # session pinned to the older one), and neither may find the other in
-    # sys.modules. Derived rather than hashed so the name in a traceback
-    # says which project it came from.
     slug = "".join(character if character.isalnum() else "_" for character in project_id)
     module_name = f"_avance_app_{slug}_{revision}"
 
     def forget() -> None:
-        # __init__.py's own relative import (of its <name>.py, which
-        # itself does `from . import prompt`) resolves its submodules
-        # through sys.modules under module_name's own dotted prefix — a
-        # stale one there (a past call with this same (project, revision)
-        # key, since two different builds can share it across calls) would
-        # otherwise be reused instead of re-imported, silently serving
-        # old content. The outer entry alone isn't enough to purge.
         for cached in [name for name in sys.modules if name == module_name or name.startswith(f"{module_name}.")]:
             del sys.modules[cached]
 
@@ -93,8 +74,6 @@ def import_automaton(directory: Path, project_id: str, revision: int) -> Any:
     if spec is None or spec.loader is None:
         raise PackageError(f"{directory}: cannot be imported as a package.")
     module = importlib.util.module_from_spec(spec)
-    # Registered before exec_module: see forget()'s own docstring above —
-    # the same reasoning applies going forward, not just on purge.
     sys.modules[module_name] = module
     try:
         spec.loader.exec_module(module)

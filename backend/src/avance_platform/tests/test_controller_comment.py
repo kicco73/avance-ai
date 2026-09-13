@@ -77,13 +77,6 @@ def test_put_comment_does_not_disturb_expected_state_on_the_same_row(client, hel
     session_id = session_of(enter_chat(client, hello_project))
     chat_turn(client, session_id, "hi")
     messages = client.get(f"/api/core/sessions/{session_id}/history").json()
-    # The evaluation point is the *assistant* line: a turn records what the
-    # automaton decided, and the user's own message is not a decision. This
-    # test used to pick the user side, where set_message_expected_state
-    # answers 409 — and since nothing asserted that, the annotation it
-    # meant to protect was never written, and the comment landed on a bare
-    # row whose expected_state was null all along. Asserting the setup is
-    # what stops the same silence coming back.
     annotated_id = messages[0]["id"]
     prepared = client.put(
         f"/api/skills/platform/messages/{annotated_id}/expected-state", json={"expected_state": "Hello"},

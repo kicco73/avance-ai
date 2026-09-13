@@ -28,15 +28,7 @@ from .tracking_processor_ai import TrackingProcessorAfterAiMessage
 from .tracking_processor_user import TrackingProcessorAfterUserMessage
 
 if TYPE_CHECKING:
-	# TYPE_CHECKING-guarded: talker imports tracking.turn_protocol_using_schema,
-	# so an unconditional import here would risk a cycle (tracking -> talker
-	# -> tracking) — same reasoning as tracking_processor.py's own guard.
 	from talker import BaseTalker
-
-# Builds the BaseTalker to answer session_id's next turn as `username`, when
-# that session is toggled to a human (see set_human_talker_factory) — wired
-# in main.py to a closure over BusChannel, since only chat/ knows how
-# to actually reach a person over a websocket.
 HumanTalkerFactory = Callable[[str, int, str, "int | None"], "BaseTalker"]
 
 
@@ -50,7 +42,6 @@ class TrackingService(object):
 		# FIXME: mirrors AppConfig's own default (config.py) — keep in sync.
 		input_token_budget_per_turn: int | None = 16000,
 		# FIXME: mirrors AppConfig's own default (config.py) — keep in sync.
-		# Display-only — see get_total_token_budget_per_session.
 		total_token_budget_per_session: int | None = 200000,
 	) -> None:
 		self._db = db
@@ -61,12 +52,7 @@ class TrackingService(object):
 		self._total_token_budget_per_session = total_token_budget_per_session
 		self._session_import_manager = SessionImportManager(db)
 		self._session_export_manager = SessionExportManager(db)
-		# "Dev mode: freeze automatic state transitions" toggle — per
-		# 'test' session, never global: a native/imported session is
-		# always auto-tracked. Absent = enabled.
 		self._disabled_test_sessions: set[int] = set()
-		# Per session, set by the chat client's own audio toggle: absent =
-		# no spoken reply wanted, so the turn's prompt never asks for one.
 		self._audio_sessions: set[int] = set()
 		self._human_talker_factory: HumanTalkerFactory | None = None
 
@@ -195,9 +181,6 @@ class TrackingService(object):
 			self._db.link_signal_to_message(existing["id"], message_id)
 			return self._db.get_signal_row_by_message(message_id)
 		session = self._db.get_chat_session(session_id)
-		# old_state == "" specifically means "the automaton's own init
-		# transition" — an imported session never ran through the automaton
-		# at all, so writing ""->None here would falsely claim one happened.
 		if session is None or session["type"] == "imported":
 			return None
 		self._db.save_transition(
@@ -211,7 +194,7 @@ class TrackingService(object):
 		bookkeeping row left carrying no annotation at all, which is
 		deleted instead of kept as an empty husk. Returns None in that case."""
 		updated = self._db.get_signal_row_by_message(message_id)
-		assert updated is not None  # just written above, under the same message
+		assert updated is not None
 		if updated["old_state"] == "" and updated["expected_state"] is None and not updated["expected_values"]:
 			self._db.delete_signal_row(signal_row_id)
 			return None
@@ -222,7 +205,7 @@ class TrackingService(object):
 		self.automaton (the active project's), which would silently
 		validate against the wrong project whenever message_id belongs to a project that isn't the one currently active."""
 		message = self._db.get_message(message_id)
-		assert message is not None  # _require_annotatable_message already confirmed this above
+		assert message is not None
 		return self._project_service.get_automaton_for_session(message["session_id"])
 
 	def set_message_expected_state(self, message_id: int, expected_state: str | None) -> dict | None:
@@ -266,12 +249,12 @@ class TrackingService(object):
 		if row is not None:
 			return row
 		message = self._db.get_message(message_id)
-		assert message is not None  # ownership/existence already checked by TurnService._require_own_message
+		assert message is not None
 		self._db.save_transition(
 			None, None, None, message["session_id"], transition_log_level="INFO", message_id=message_id
 		)
 		row = self._db.get_signal_row_by_message(message_id)
-		assert row is not None  # just written above, under the same message
+		assert row is not None
 		return row
 
 	def set_message_comment(self, message_id: int, comment: str | None) -> dict | None:
@@ -329,11 +312,6 @@ class TrackingService(object):
 			env, metrics, session_facts, user_facts, self._db, automaton_namespace, task_namespace, chat_namespace,
 			ai_service=ai_service,
 		)
-
-		# A session with an operator (see TaskNamespaceFactory.
-		# get_human_operator) never reaches here at all — TurnService.
-		# process_turn routes it to _process_human_turn before ever
-		# calling this method, so this is always the plain AiTalker path.
 		tracking_processor = TrackingProcessor(
 			ai_service, scope_builder,
 			env, self._db, user_vars,

@@ -31,28 +31,12 @@ class TurnByTurnSignalSource:
         env: Env, messages: list[dict],
     ) -> None:
         self._ai_service = ai_service
-        # Unused here: TrackingService.get_definition hardcodes the "active
-        # project" automaton, not necessarily this run's; kept only for
-        # interface parity with how this class is constructed.
         self._tracking_service = tracking_service
         self._db = db
         self._automaton = automaton
         self._session_id = session_id
-        # The same live Env TestProcessor evaluates triggers/env writes
-        # against (see TestReplayJob._prepare_session) — read here only,
-        # to render the same input-visibility block a real turn's own
-        # generate_reply gets (see EnvPromptBlock, TrackingProcessor.
-        # generate_reply). Its values already reflect every earlier turn
-        # this replay has applied.
         self._env = env
-        # This session's full message history, fetched once by
-        # TestReplayJob._prepare_session rather than requeried here per
-        # turn (see _build_chat_history below).
         self._messages = messages
-        # One real AI call per get_turn_data call, always — see
-        # BatchSignalSource.calls_made for why TestReplayJob needs this on
-        # both signal sources (one job "step" = one real AI call, not one
-        # turn replayed).
         self.calls_made = 0
 
     async def get_turn_data(self, message_id: int, current_state: str) -> tuple[dict, dict, dict]:
@@ -82,16 +66,6 @@ class TurnByTurnSignalSource:
         protocol = TurnProtocolUsingSchema(self._ai_service)
 
         chat_history = self._build_chat_history(message_id)
-
-        # signal_definition/output_definition are already folded into
-        # base_prompt above, so SignalsPrompt/OutputPrompt carry no
-        # content of their own here — TextPrompt goes last, reproducing
-        # the old generate_reply_with_schema convention of appending
-        # base_prompt after every channel's own definition/content.
-        # OutputPrompt goes first, same ordering TrackingProcessor.
-        # build_turn_prompt uses live — so output values are available to
-        # the trigger evaluation this turn's own signals feed (see
-        # TestProcessor.process_message).
         output_prompt = OutputPrompt(None) if state.output else None
         prompt = Prompt.chain(output_prompt, SignalsPrompt(None), MemoryPrompt(Env()), TextPrompt(base_prompt))
         signal_values: dict = {}
@@ -114,17 +88,6 @@ class TurnByTurnSignalSource:
 
     def _build_chat_history(self, message_id: int) -> list[dict]:
         return [{"role": m["role"], "content": m["content"]} for m in self._messages if m["id"] <= message_id]
-
-
-# Rough per-turn output-token cost used to cap how many turns one batch
-# call asks for at once (see TestReplayJob._chunk_into_batches, which owns
-# this decision upfront — BatchSignalSource itself just executes whatever
-# group it's handed) — a heuristic, not a hard guarantee, since env's
-# actual length varies with what the model reports. Keeps a batch call
-# from asking for more turns than can plausibly fit before the provider
-# truncates the response (see AIServiceProviderOutputTruncatedError) —
-# better to split into another call than to lose an unbounded tail of
-# turns to truncation.
 TOKENS_PER_SIGNAL_VALUE_ESTIMATE = 2
 TOKENS_PER_ENV_TURN_ESTIMATE = 40
 BATCH_OUTPUT_BUDGET_SAFETY_MARGIN = 0.7
@@ -175,21 +138,12 @@ class BatchSignalSource(object):
         self._db = db
         self._automaton = automaton
         self._session_id = session_id
-        # See TurnByTurnSignalSource's own __init__ — same live Env, same
-        # once-fetched message list.
         self._env = env
         self._messages = messages
         self.calls_made = 0
-        # message_id -> (signal_values, memory, output_values) for every
-        # turn a prepare_batch() call has covered so far.
         self._covered: dict[int, tuple[dict, dict, dict]] = {}
 
     async def get_turn_data(self, message_id: int, current_state: str) -> tuple[dict, dict, dict]:
-        # current_state unused: prepare_batch() already covered every
-        # turn in its group for every project signal/output field,
-        # regardless of which state a given turn lands in — see the class
-        # docstring. TestProcessor.process_message filters output_values
-        # down to the current turn's own state.output itself.
         return self._covered.get(message_id, ({}, {}, {}))
 
     async def prepare_batch(self, turn_ids: list[int]) -> None:
@@ -209,21 +163,9 @@ class BatchSignalSource(object):
         base_prompt = f"{base_prompt}\n\nStarting memory (read-only context):\n{Env(memory=seed_memory).memory_as_text()}"
         if signal_definition:
             base_prompt = f"{base_prompt}\n\n{signal_definition}"
-        # Every turn in this group is evaluated from one snapshot, before
-        # any of them applies a transition (see TestReplayJob._run_next_step)
-        # — same reason signal_names above is the whole project's signal
-        # set rather than any one turn's own state, so the env visibility
-        # here is the union of every state's own `input` list rather than
-        # one particular turn's (see EnvPromptBlock.for_states).
         env_block = EnvPromptBlock.for_states(self._env, self._automaton, self._automaton.states.values())
         if env_block is not None:
             base_prompt = f"{base_prompt}\n\n{env_block.text()}"
-        # Same reasoning as env_block above — the union of every state's
-        # own `output` fields, never one particular turn's, since no
-        # individual turn's state is resolved before this call runs.
-        # TestProcessor.process_message is what filters a turn's own
-        # output_values back down to its real state.output before ever
-        # persisting one to env.
         output_names = {name for state in self._automaton.states.values() for name in state.output}
         output_definition = build_output_definition_for_names(self._automaton, output_names)
         if output_definition:
@@ -231,23 +173,7 @@ class BatchSignalSource(object):
         base_prompt = f"{base_prompt}\n\nConversation transcript:\n{self._build_conversation_text(turn_ids)}"
 
         protocol = TurnProtocolUsingSchema(self._ai_service)
-
-        # Not the real conversation as native multi-turn messages — see
-        # _build_conversation_text, which already flattened it into
-        # base_prompt above as a document to analyze. A chat API still
-        # needs at least one message to generate against; this one line
-        # is that trigger, not part of the data being analyzed.
         chat_history = [{"role": "user", "content": "Produce the structured output described above now."}]
-
-        # signal_definition/seed_memory are already folded into base_prompt
-        # above, so both channels carry no content of their own here —
-        # TextPrompt goes last, same convention as TurnByTurnSignalSource's.
-        # Index i = turn i+1 (see SignalsBatchPrompt/MemoryBatchPrompt's
-        # own decode) — empty until on_metadata actually fires for that
-        # tag, which never happens if the response was truncated before
-        # reaching it (see AIServiceProviderOutputTruncatedError) — every
-        # turn then falls back to {} below, same as a turn a mismatch
-        # check would have rejected.
         output_prompt = OutputBatchPrompt(expected_turns=len(turn_ids)) if output_names else None
         prompt = Prompt.chain(
             output_prompt,

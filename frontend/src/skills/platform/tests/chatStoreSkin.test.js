@@ -1,10 +1,3 @@
-// Real, executable verification of chatSkin.js's shared index.css "skin"
-// loader (see its own module-level watch/loadSkin) — not just a read of
-// the code. Drives the actual exported refs the way RunChat.vue/
-// ChatWindow.vue really do, mocks only fetch, and asserts on the real
-// jsdom document.head: does a request actually go out, does a <style>
-// tag actually land, does toggling applyAspect back on actually resume
-// loading, is there ever more than one tag at once.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
@@ -169,8 +162,6 @@ describe('chatSkin.js only ever applies the currently active store — live vs t
     chatStore.currentSessionId.value = 1
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
 
-    // Test mode's own store resolves in the background (e.g. RunChat.vue
-    // mounted once) — must not touch the live skin while 'live' is active.
     fetchMock.mockResolvedValue({ ok: true, text: async () => css('draft') })
     testChatStore.currentProjectId.value = 'draft-project'
     testChatStore.currentSessionId.value = 99
@@ -179,14 +170,10 @@ describe('chatSkin.js only ever applies the currently active store — live vs t
     expect(currentSkinStyleTags()[0].textContent).toContain(css('red'))
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    // Switching modes (EditProjectView's setMode('run')) immediately
-    // swaps to the test store's own already-resolved project/session.
     chatSkin.activeChatMode.value = 'test'
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     await vi.waitFor(() => expect(currentSkinStyleTags()[0].textContent).toContain(css('draft')))
 
-    // Leaving 'run' mode swaps straight back — the live store's project/
-    // session never had to be touched or reloaded to make this happen.
     fetchMock.mockResolvedValue({ ok: true, text: async () => css('red') })
     chatSkin.activeChatMode.value = 'live'
     await vi.waitFor(() => expect(currentSkinStyleTags()[0].textContent).toContain(css('red')))
@@ -220,7 +207,6 @@ describe('the real Test-mode bootstrap sequence (loadMessages -> session.info) a
 
   it('entering Test mode (loadMessages called on the test store) fetches and applies the skin, using the exact real session payload shape', async () => {
     await testChatStore.loadMessages()
-    // The exact frame the real backend answers with for this bug report.
     deliverEntered({
       sessionId: 2,
       projectId: 'ttm_prototype_2',

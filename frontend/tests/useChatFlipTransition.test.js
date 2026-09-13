@@ -2,12 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import { useChatFlipTransition } from '../src/composables/useChatFlipTransition.js'
 
-// These tests verify the deterministic wiring (which inline styles get set,
-// which event is listened for, when done() fires) — not visual smoothness
-// or timing feel, which no jsdom test can meaningfully judge. This code is
-// covered by [[feedback_js_hook_transitions_for_dynamic_direction]]: it was
-// tuned against real rendering, so a manual check in an actual browser is
-// still expected before trusting any change here.
 describe('useChatFlipTransition', () => {
   let navDirection, appBody, rafCallbacks
 
@@ -68,7 +62,7 @@ describe('useChatFlipTransition', () => {
     const done = vi.fn()
 
     s.onChatEnter(el, done)
-    expect(el.style.transition).toBe('') // not yet — waits `duration` first
+    expect(el.style.transition).toBe('')
 
     await vi.advanceTimersByTimeAsync(250)
     expect(el.style.transition).toBe('transform 250ms ease-out')
@@ -78,14 +72,9 @@ describe('useChatFlipTransition', () => {
     el.dispatchEvent(new TransitionEvent('transitionend', { propertyName: 'transform' }))
 
     expect(done).toHaveBeenCalled()
-    expect(el.style.zIndex).toBe('') // released back to the CSS class's own z-index
+    expect(el.style.zIndex).toBe('')
   })
 
-  // A leftover rotateY(0deg)/backface-visibility keeps the full-viewport,
-  // position: fixed chat window on a composited layer of its own for as
-  // long as the chat is open, and iOS WebKit stops repainting that layer
-  // once a turn's stream of DOM writes ends — the finished bubble goes
-  // blank at its full size until a scroll re-tiles it.
   it('onChatEnter leaves no 3D inline style behind once the flip is over', async () => {
     const s = mount()
     const el = document.createElement('div')

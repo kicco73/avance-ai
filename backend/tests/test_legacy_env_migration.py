@@ -71,7 +71,7 @@ def test_an_orphaned_live_key_is_dropped_even_when_a_stray_test_row_landed_more_
     db.set_action_env(live_session, {"old_key": 1, "keep_key": 2})
     test_session = _session(db, type="test")
     db.set_action_env(test_session, {"unrelated": 1})
-    _publish(db, ["keep_key"])  # "old_key" is no longer declared
+    _publish(db, ["keep_key"])
 
     migrate_env_rows(db)
 
@@ -93,7 +93,7 @@ def test_a_project_that_was_never_published_or_no_longer_builds_is_skipped_rathe
     )
     db.set_action_env(unpublished_session, {"a": 1})
 
-    migrate_env_rows(db)  # must not raise
+    migrate_env_rows(db)
     assert db.get_action_env(PROJECT_ID, USERNAME) == {"a": 1}
 
     _publish(db, ["a"])
@@ -101,7 +101,7 @@ def test_a_project_that_was_never_published_or_no_longer_builds_is_skipped_rathe
     revision = db.get_project_published_revision(PROJECT_ID)
     rewrite_archive_content(PROJECT_ID, "index.yml", revision, b"not: [valid, yaml: at all")
 
-    migrate_env_rows(db)  # must not raise
+    migrate_env_rows(db)
     assert db.get_action_env(PROJECT_ID, USERNAME) == {"a": 1}
 
 

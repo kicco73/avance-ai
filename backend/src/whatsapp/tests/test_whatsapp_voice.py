@@ -26,8 +26,6 @@ def _speaking(**overrides) -> Env:
     return env
 
 
-# --- a voice note coming in -------------------------------------------------- #
-
 async def test_a_voice_note_is_decoded_and_runs_the_very_same_turn(voice_env: Env):
     await voice_env.arrives(_payload(mtype="audio"))
 
@@ -59,8 +57,6 @@ async def test_a_voice_note_that_cannot_be_fetched_is_a_notice_too_and_an_unlink
     assert env.decoder.heard == [] and env.turns.calls == []
     assert env.api.sent == [(UNKNOWN_NUMBER, notices.NOT_LINKED)]
 
-
-# --- a voice note going out --------------------------------------------------- #
 
 async def test_the_default_policy_answers_in_kind():
     env = _speaking(reply_audio_text="Hola, te he oído.")
@@ -167,8 +163,6 @@ async def test_the_choices_follow_a_spoken_reply_and_stay_on_the_written_fallbac
     assert env.api.timeline == ["typing", "buttons"]
     assert env.api.interactive[0][2] == VOICE_TEXT_REPLY
 
-
-# --- audio encoding ----------------------------------------------------------- #
 
 def test_split_wav_handles_streaming_header_and_complete_file():
     pcm, rate = split_wav(_wav(rate=24000))

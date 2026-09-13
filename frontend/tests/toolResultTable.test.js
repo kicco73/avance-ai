@@ -1,6 +1,3 @@
-// The tool-call trace's own result rendering (see MessageBubble.vue): the
-// raw CSV a source driver returns becomes a markdown table, and anything
-// that isn't tabular falls back to being shown raw (empty string here).
 import { describe, expect, it } from 'vitest'
 import { csvToMarkdownTable } from '../src/toolResultTable.js'
 

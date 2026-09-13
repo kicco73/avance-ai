@@ -1,9 +1,5 @@
 import { computed, unref } from 'vue'
 
-// Shared by every token-usage bar (InspectorDetailCard.vue's per-state
-// estimate, ProjectTestPanel.vue's per-run budget): green under 75% of
-// max, orange under 100%, red at/above it — the fill itself is capped at
-// max (never overflows the track) even when the real count is higher.
 // FIXME: `max` may be a ref, not just a number — unref'd below.
 export function useTokensBar(tokens, max) {
   const width = computed(() => {

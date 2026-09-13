@@ -134,6 +134,4 @@ async def test_a_button_naming_no_session_is_refused_and_never_joins_a_queue(tur
 
     assert [m.body.get("code") for m in recorder.messages if m.type == "output.error"] == ["session_not_found"]
     assert [m.type for m in recorder.messages] == ["output.error"]
-    # No queue at all, not merely an empty one: the key would be None —
-    # one entry every sender without a session would share.
     assert listener._requests == {}

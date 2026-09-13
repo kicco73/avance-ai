@@ -1,7 +1,4 @@
 <script setup>
-// Top-right "⋮" contextual menu used by editable detail cards. Purely
-// presentational — what it does lives entirely in the slot content the
-// caller provides.
 import { onMounted, onUnmounted, ref } from 'vue'
 
 const open = ref(false)

@@ -37,9 +37,6 @@ logger = LoggerFactory.get_logger(__name__)
 
 class JsSnippet(str):
     # FIXME: subclassing str, not a plain str, is load-bearing —
-    # render_task/eval_action_on_exit use isinstance(result, JsSnippet)
-    # to tell a task/chat call's wire-ready JS apart from task.prompt()'s
-    # plain text.
     pass
 
 
@@ -95,55 +92,20 @@ class CoreAutomaton(object):
         states: dict[str, State],
         general_prompt: str,
         signals: list[Signal],
-        # Stored paths of the project's own top-level `attachments:`,
-        # resolved at build time — see model.State.attachments.
         general_attachments: tuple[str, ...],
         autotracking_on_ai_message: bool,
-        # Only AutomatonBuilder.build parses a project's declared env:
-        # section and passes a real list; other construction sites have none.
         env_keys: list[EnvKey] | None = None,
-        # Same reasoning as env_keys above — only AutomatonBuilder.build
-        # parses a project's declared reactions: section.
         reactions: list[Reaction] | None = None,
-        # Same reasoning again — only AutomatonBuilder.build parses a
-        # project's declared sources: section. Empty (never None) unless
-        # a project actually declares one — see tracking.sources.SourceNamespace.
         sources: list[Source] | None = None,
-        # The optional top-level `project:` section. `project_id` is this
-        # project's own mandatory, globally unique identity — what
-        # *other* projects reach it as through automaton.* references,
-        # and the sole key every DB table stores it under (see
-        # db/models.py's Project.id). `project_family` gates that
-        # visibility: two projects can observe/notify each other only
-        # when both declare the exact same family (never parsed, plain
-        # string equality) — None (the default) means neither observes
-        # nor is observed by anything, itself included (see
-        # AutomatonLoader.known_projects_env_keys). `project_revision` is
-        # the YAML's own declared `project.revision` (default 0) —
-        # distinct from this object's own `revision` attribute below
-        # (which DB storage revision it was actually loaded from).
         project_id: str | None = None,
         project_family: str | None = None,
         project_revision: int = 0,
         project_ui_label: str | None = None,
         project_ui_description: str | None = None,
         project_services: dict[str, str] | None = None,
-        # "resume" (default): a brand-new live session picks up wherever
-        # this user's own live automaton state already is (LiveSessionStrategy.
-        # starting_state). "restart": it enters cold instead, exactly like a
-        # test/preview session does — see SessionTypeStrategy.
-        # _init_action_start (session_type_strategy.py) — the target/task
-        # pair every strategy that starts a session at project boot shares.
         new_session_strategy: str = "resume",
-        # Non-fatal findings AutomatonBuilder.build collected while
-        # validating this project — a configuration that builds and runs
-        # but almost certainly isn't what the author meant (see
-        # AutomatonBuilder._actions_sanity_check). Never populated for an
-        # Automaton built in-memory by hand.
         build_warnings: "list[dict] | list[str] | None" = None,
     ):
-        # A real Action (not just a target state string) so it can also
-        # carry its own task/env — see TurnService._ensure_project_bootstrap.
         self.init_action = init_action
         self.states = states
         self.general_prompt = general_prompt
@@ -157,42 +119,15 @@ class CoreAutomaton(object):
         self.project_ui_label = project_ui_label
         self.project_ui_description = project_ui_description
         self.general_attachments = tuple(general_attachments)
-        # The two auto-tracking modes (before/after the AI reply) are
-        # mutually exclusive — this flag selects between them.
         self.autotracking_on_ai_message = autotracking_on_ai_message
         self.services = ProjectServices(project_services)
         self.new_session_strategy = new_session_strategy
-        # {message, line, section} each (see BuildCursor.warn). A build
-        # compiled before warnings knew where they were found carries
-        # plain strings, and reads as a warning with no place to go
-        # rather than as a shape nobody can render.
         self.build_warnings = [
             warning if isinstance(warning, dict) else {"message": warning, "line": None, "section": None}
             for warning in (build_warnings or [])
         ]
-        # Which DB storage revision this Automaton actually came from —
-        # unset here (never a build()-time concern: most callers,
-        # including nearly every test, build one purely in-memory with
-        # nothing to pin). Only AutomatonLoader.load_at_revision and
-        # ProjectManager.finalize_update, the two places that resolve
-        # this correctly and are about to cache the result, ever call
-        # set_storage_location below. project_id above already carries
-        # this project's own identity, so there's nothing left to pass in.
         self.revision: int | None = None
-        # Where this automaton's own project files live, for an automaton
-        # that carries them rather than pointing at a database: a compiled
-        # package sets it to its own data/ directory (see
-        # tracking.project_files.project_files_for, the one place it is
-        # read). None on the platform, where `revision` above says where
-        # to read instead.
         self.archives_dir: "Path | None" = None
-        # Answers derived from this automaton's own expression text (see
-        # analysis.py), each computed on first use and kept: they are
-        # fixed the moment the project is written, and `states`/`actions`
-        # are never mutated after construction — a change to a project
-        # builds a new Automaton (AutomatonBuilder.build), it never edits
-        # one in place. Kept per part rather than as one bundle so each
-        # keeps raising, or not raising, exactly where it used to.
         self._declared_env_key_names: set[str] | None = None
         self._triggerable_signal_names: dict[str, set[str]] = {}
         self._trigger_bare_names: dict[str, set[str]] = {}
@@ -232,8 +167,6 @@ class CoreAutomaton(object):
             self._declared_env_key_names = analysis.declared_env_key_names(
                 self.env_keys, self.init_action, self.states,
             )
-        # A copy: callers get a set of their own to mutate, exactly as
-        # when this was recomputed from scratch on every call.
         return set(self._declared_env_key_names)
 
     def triggerable_signal_names(self, state_key: str) -> set[str]:
@@ -399,15 +332,6 @@ class CoreAutomaton(object):
             elif isinstance(result, JsSnippet):
                 snippets.append(result)
         return "\n".join(snippets) if snippets else None
-
-    # --- the seam ---------------------------------------------------------
-    # Every expression this automaton evaluates goes through one of the
-    # three below, and nothing else here ever touches an evaluator. They
-    # are the entire behavioural surface a compiled automaton replaces:
-    # override these and the loops above — their ordering, their
-    # try/except, their warnings, what they collect and what they skip —
-    # stay literally the same code, which is the only way to be sure an
-    # interpreted and a compiled automaton cannot drift apart.
 
     @classmethod
     def _evaluate_expression(cls, expression: str, scope: dict[str, Any]) -> Any:

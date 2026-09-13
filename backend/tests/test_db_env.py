@@ -76,5 +76,4 @@ def test_resetting_a_project_wholesale_or_for_one_user_wipes_the_matching_env(db
 
     db.reset_project("proj")
     assert db.get_env("proj", "bob") == {}
-    # A different project's env is untouched throughout.
     assert db.get_env("other-proj", "alice") == {"a": "1"}

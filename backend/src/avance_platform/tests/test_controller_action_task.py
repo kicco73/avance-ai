@@ -74,7 +74,7 @@ def test_state_payload_never_carries_on_exit_itself(client):
 
     assert "on-exit" not in moved["state"]
     for action in moved["state"]["actions"]:
-        assert "on-exit" in action  # present per outgoing action instead
+        assert "on-exit" in action
 
 
 def test_get_state_has_no_task_since_nothing_just_fired(client):

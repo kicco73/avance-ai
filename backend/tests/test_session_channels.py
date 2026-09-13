@@ -152,8 +152,6 @@ def _build_existing(db, manager: SessionManager, channel: str, state_name: str) 
     return None
 
 
-# -- get_current_session_if_any_or_create_new (no intent) ------------------
-
 @pytest.mark.parametrize("channel", CHANNELS)
 @pytest.mark.parametrize("state_name", EXISTING_STATES)
 def test_get_current_session_if_any_or_create_new_matrix(db, channel, state_name):
@@ -190,8 +188,6 @@ def test_get_current_session_if_any_or_create_new_matrix(db, channel, state_name
     else:
         assert result["channel"] == channel
 
-
-# -- acquire_exclusive_session (real intent) --------------------------------
 
 @pytest.mark.parametrize("channel", CHANNELS)
 @pytest.mark.parametrize("state_name", EXISTING_STATES)
@@ -230,8 +226,6 @@ def test_acquire_exclusive_session_matrix(db, channel, state_name):
         assert result["channel"] == channel
 
 
-# -- TurnService.create_session ("New session") -----------------------------
-
 @pytest.mark.parametrize("channel", CHANNELS)
 @pytest.mark.parametrize("state_name", EXISTING_STATES)
 async def test_create_session_matrix(db, channel, state_name):
@@ -260,8 +254,6 @@ async def test_create_session_matrix(db, channel, state_name):
         assert reloaded["closed_at"] == existing["closed_at"]
         assert reloaded["close_reason"] == existing["close_reason"]
 
-
-# -- The shared admission gate, via process_turn/apply_manual_action -------
 
 _REJECTION_MESSAGES = {
     "other_channel_open": "Session is not active.",
@@ -311,8 +303,6 @@ async def test_apply_manual_action_matrix(db, channel, state_name):
     with pytest.raises(TurnServiceError, match=_REJECTION_MESSAGES[state_name]):
         await turn_service.apply_manual_action("go", existing["id"])
 
-
-# -- End to end: takeover in both directions --------------------------------
 
 async def test_takeover_whatsapp_to_web_via_new_session_then_open_conversation(db):
     """WhatsApp starts a session; the web calls "New session" while it's
@@ -400,8 +390,6 @@ async def test_and_the_web_takes_it_straight_back_the_same_way(db):
     assert db.get_chat_session(phone_session["id"])["close_reason"] == "channel-switch"
 
 
-# -- Reporting vs. admitting: only one of the two is a channel question ------
-
 def _without_a_channel(call):
     """Runs `call` in a brand-new context, where WebSession().channel was
     never set — what every caller looks like once auth/auth_middleware.py
@@ -465,8 +453,6 @@ def test_a_live_session_with_no_channel_is_writable_from_nowhere(db):
     _setup_project(db)
     manager = SessionManager(db, open_window_minutes=5)
     session = _make_open_session(db, "webchat")
-    # The row is edited straight through the model: create_chat_session
-    # refuses to make one this way, which is the point.
     from db.models import CoreSession
     CoreSession.update(channel=None).where(CoreSession.id == session["id"]).execute()
 

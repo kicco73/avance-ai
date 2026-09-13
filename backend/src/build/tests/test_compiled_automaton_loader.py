@@ -62,7 +62,6 @@ def test_the_published_revision_is_served_from_the_package_when_one_matches(db, 
 
     assert isinstance(automaton, CompiledAutomaton)
     assert automaton.archives_dir is not None
-    # The one thing a package does not know about itself.
     assert automaton.revision == revision
 
 
@@ -114,7 +113,6 @@ def test_the_second_load_comes_from_the_cache_rather_than_a_second_import(db, tm
     loader = _loader(db, tmp_path)
 
     first = loader.load_at_revision(PROJECT_ID, revision)
-    # Gone from disk: only a cache hit can answer now.
     import shutil
     shutil.rmtree(package_dir(tmp_path, module_name_for(PROJECT_ID), revision))
 

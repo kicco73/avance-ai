@@ -1,23 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-// A Test/draft session is a single, ephemeral conversation with no
-// project to switch away from and no paused/no-project splash screen of
-// its own, so the embedded test chat hides this header entirely.
-//
-// themeMode: 'auto' (default, LiveChatWindow.vue's own instance) shows
-// the project's index.css skin the whole time, same as the live chat
-// always has. 'manual' (RunChat.vue) leaves showing it up to the shared
-// applyAspect flag/toggle — owned here, not by whichever component happens
-// to pass the prop, so entering/leaving manual mode is always symmetric:
-// onMounted applies manualApplyAspectPreference (defaults to unskinned on
-// first-ever use), onBeforeUnmount saves whatever the toggle ended up at
-// back into that preference and always restores applyAspect itself to
-// true. applyAspect is shared across every ChatView instance (a genuine
-// app-wide preference, see chatSkin.js), which is exactly why a manual
-// instance must restore it on unmount rather than leaving it however it
-// last set it — manualApplyAspectPreference is what lets a manual
-// instance still remember its own choice across that reset.
 import ActionButtons from './ActionButtons.vue'
 import ChatInput from './ChatInput.vue'
 import MessageBubble from './MessageBubble.vue'
@@ -39,17 +22,8 @@ import { applyAspect, manualApplyAspectPreference } from '../../chatSkin.js'
 const props = defineProps({
   hideSessionsPanel: { type: Boolean, default: false },
   themeMode: { type: String, default: 'auto' },
-  // Which chat conversation this window renders — its own independent
-  // session/messages/state, never shared with any other store instance
-  // (see chatStoreFactory.js's createChatStore). Defaults to the app's
-  // one live chat; RunChat.vue passes its own test store instead.
   store: { type: Object, default: () => liveStore },
-  // Only ever set by LiveChatWindow.vue's real, top-level instance (see
-  // hideSessionsPanel above — RunChat.vue's embedded preview leaves both
-  // unset) — gates the header's own back-to-Manage-projects button below.
   role: { type: String, default: null },
-  // ProfileMenu.vue's own avatar/name, same pass-through every other
-  // top-level view already does.
   profile: { type: Object, default: null }
 })
 
@@ -78,10 +52,6 @@ const {
 
 const emit = defineEmits(['project-select', 'project-download', 'manage-projects', 'home', 'profile', 'logout'])
 
-// The header's own back arrow — only an admin (pushed *over*
-// ManageProjectsView) or a customer (pushed *over* AppStoreView, see
-// App.vue) has anywhere to pop back to; a plain user's chat is their whole
-// app, with no base to return to.
 const canBackToManageProjects = computed(() => props.role === 'admin' || props.role === 'customer')
 const backLabel = computed(() => props.role === 'customer' ? 'Back to App store' : 'Back to Manage projects')
 
@@ -92,28 +62,12 @@ defineExpose({
   focus: () => chatInputRef.value?.focus()
 })
 
-// selectedSessionActive reflects the backend's "active" verdict for the
-// displayed session, never recomputed here from a timestamp — only the
-// most recently started open session per project is ever active.
-// The websocket is the chat's only transport (see busChannel.js): with no
-// connection there is nowhere to send a message, so the input closes until
-// it is back — the one and only reason it closes besides the session
-// itself being unusable.
 const chatConnected = computed(() => chatConnectionState.value === 'open')
 
-// 'superseded' (see busChannel.js's SWITCHED_TO_OTHER_CLIENT handling):
-// another client of this same identity took the channel over, and the
-// newest one wins. Unlike the generic disconnected state below this never
-// resolves by waiting — the chat here is over — so instead of a notice it
-// gets ChatSupersededOverlay, which blocks the chat area outright.
 const chatSuperseded = computed(() => chatConnectionState.value === 'superseded')
 
 const chatDisabled = computed(() => !state.value?.key || !state.value?.chat_enabled || !selectedSessionActive.value)
 
-// Mirrors chatDisabled's own conditions, in the same order. A state with
-// no chat has nothing generic to say here — it may have no actions
-// either, so pointing at "use an action instead" would be wrong as often
-// as not; the input stays disabled with no explanation for that case.
 const chatDisabledReason = computed(() => {
   if (!selectedSessionActive.value) {
     if (currentSessionId.value == null) return 'No active session for this project yet.'
@@ -123,20 +77,8 @@ const chatDisabledReason = computed(() => {
   return null
 })
 
-// Mobile backgrounds the page constantly (app switch, screen lock) — iOS
-// suspends the webview and drops the socket within seconds of that.
-// Reopening the socket is not this view's business: busChannel.js watches
-// visibility itself and reconnects, in one place, for the whole app (and
-// resynchronizes this session when it does). All that is left here is the
-// plain history refresh for a tab that was away while nothing was in
-// flight.
 function onVisibilityChange() {
   if (document.visibilityState !== 'visible') return
-  // A reload mid-turn would replace `messages` out from under the
-  // in-flight assistant bubble submitMessage is still streaming into —
-  // it reconciles that bubble itself once the turn's own `done` arrives
-  // (see chatStoreFactory.js's submitMessage), so skip here while a turn
-  // is in flight rather than race it.
   if (!chatLoading.value) reloadMessages?.()
 }
 
@@ -154,13 +96,7 @@ onBeforeUnmount(() => {
 
 function submit() {
   const text = draft.value.trim()
-  // Deliberately not gated on chatLoading: a reply being generated never
-  // closes the input. Whatever arrives meanwhile is answered by the next
-  // turn, together with anything else waiting (see the backend's own
-  // coalescing).
   if (!text || chatDisabled.value) return
-  // Inside this same click/submit gesture — narration for the reply this
-  // triggers plays moments later, well outside any gesture of its own.
   unlockAudioPlayback()
   handleSend(text)
   draft.value = ''
@@ -178,12 +114,6 @@ function scrollToBottom() {
   })
 }
 
-// Whether the transcript was already scrolled near its bottom before the
-// latest change — read before each new-content auto-scroll below so
-// streaming/new messages don't yank someone back down mid-reread further
-// up. Starts true (a fresh mount/session has nothing to scroll away
-// from yet) and resets to true on session switch, since that view always
-// opens pinned at the bottom regardless of where the previous one sat.
 const NEAR_BOTTOM_THRESHOLD_PX = 80
 const userNearBottom = ref(true)
 
@@ -195,9 +125,6 @@ function onMessagesScroll() {
 
 watch(currentSessionId, () => { userNearBottom.value = true })
 
-// Auto-scroll when new messages arrive or stream in — but only for
-// someone already reading the live edge, not someone scrolled back
-// through history (see userNearBottom above).
 watch(
   messages,
   () => {
@@ -224,9 +151,6 @@ async function onAction(actionName) {
   focusInput()
 }
 
-// Tracks the state key just left, for the data-prev-state attribute below.
-// Set once per transition and never cleared, so it stays available for
-// styling a "leaving state X" transition after the fact.
 const prevStateKey = ref(null)
 watch(
   () => state.value?.key,
@@ -235,12 +159,6 @@ watch(
   }
 )
 
-// index.css's "skin" is applied globally now (see chatStore.js's own
-// loadSkin) — one shared <style> for the whole app rather than one per
-// ChatView instance, since LiveChatWindow.vue's own instance stays
-// mounted behind EditProjectView's overlay the entire time it's open and
-// would otherwise fight this instance's tag for which one's rules
-// actually win.
 </script>
 
 <template>
@@ -279,11 +197,6 @@ watch(
     </AppHeader>
 
     <SplashScreen v-if="!hideSessionsPanel && blockedReason === 'paused'" variant="paused" :reason="blockedDetail" embedded />
-    <!-- Only once the conversation has actually answered: before that
-         there is no state.key yet simply because entering is still in
-         flight, and "no project" would be the wrong thing to say about a
-         chat that is merely starting up — ChatWaitingPanel below covers
-         that. -->
     <SplashScreen
       v-else-if="!hideSessionsPanel && (blockedReason !== null || (historyLoaded && !state?.key))"
       variant="no-project"
@@ -380,9 +293,6 @@ watch(
   flex: 1;
   min-height: 0;
   min-width: 0;
-  /* .chat-header's own height, named so ChatSupersededOverlay can start
-     exactly below it — the band that carries AppHeader's controls is the
-     one part of this window that stays usable while the chat is blocked. */
   --chat-header-height: 70px;
 }
 
@@ -393,9 +303,6 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  /* Without this, an over-scroll past the top on Android Chrome falls
-     through to the browser's own pull-to-refresh — a full SPA reload,
-     losing the draft and re-running the terms/session checks. */
   overscroll-behavior-y: contain;
 }
 
@@ -418,21 +325,10 @@ watch(
   cursor: pointer;
 }
 
-/* Empty on its own: a style hook so a project's index.css can target
-   .chat-header/.chat-body/.chat-footer without reaching into internals. */
 .chat-header {
   flex-shrink: 0;
   height: var(--chat-header-height);
   position: relative;
-  /* Reserves the notch/status bar — content-box on purpose (not
-     border-box): this should *add* to the 70px a project's skin already
-     sizes its own icon/content against, not eat into it. Living here
-     rather than on LiveChatWindow.vue's own wrapper means this
-     element's own background — the one a skin actually paints (see the
-     .chat-header hook in that file's comment) — extends behind the
-     notch instead of leaving a color-mismatched gap above it.
-     Left/right aren't reserved here too — LiveChatWindow.vue's own
-     .live-chat-window already does, and reserving both would double it. */
   padding-top: var(--safe-area-top);
 }
 
@@ -440,10 +336,6 @@ watch(
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  /* Same reasoning as .chat-header above, for the opposite edge — the
-     home indicator (iOS) / gesture nav bar (Android). ChatInput.vue's
-     own .input-row no longer reserves this itself (see its own
-     comment), so this is the only place it's reserved now. */
   padding-bottom: var(--safe-area-bottom);
 }
 

@@ -18,8 +18,6 @@ PROJECT_ID = "proj"
 
 
 def _env(db, session_id: int = 0) -> PersistedEnv:
-    # session_id is now required (PersistedEnv(None) raises) — every
-    # no-arg call below is read-only, so a placeholder id is fine.
     return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
 
 
@@ -88,7 +86,6 @@ def test_action_set_and_memory_are_independent_stores_both_readable_through_get(
     assert env.memory() == {"favorite_color": "blue"}
     assert env.action_set() == {"a": 1, "number_of_steps": 3}
     assert env.get("number_of_steps") == 3
-    # memory_as_text renders memory only, never the action set.
     assert env.memory_as_text() == "favorite_color: blue"
 
 

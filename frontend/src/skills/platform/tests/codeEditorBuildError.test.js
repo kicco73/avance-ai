@@ -1,8 +1,3 @@
-// CodeEditor.vue's own save() — on a failed save whose error carries
-// AutomatonBuildError fields naming exactly this project/file/revision,
-// it emits 'build-error' with the line to jump to; any mismatch (wrong
-// project/file, or a stale revision — another save/publish/revert
-// landed since) must suppress it instead.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from 'vue'
 import CodeEditor from '../CodeEditor.vue'
@@ -34,10 +29,6 @@ describe('CodeEditor.vue save() build-error handling', () => {
     container.remove()
   })
 
-  // No @vue/test-utils in this project — mounted as the app root directly,
-  // same as chatWindowSessionActions.test.js's own ChatView.vue mount.
-  // Vue 3's own onXxx-prop-as-listener convention catches 'build-error'
-  // without needing a wrapping parent component.
   async function mountEditor(props) {
     const buildErrorCalls = []
     const app = createApp(CodeEditor, { ...props, onBuildError: (line) => buildErrorCalls.push(line) })

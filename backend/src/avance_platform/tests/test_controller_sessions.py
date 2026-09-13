@@ -196,8 +196,6 @@ def test_a_manual_new_session_closes_and_supersedes_the_bootstrap_one_rejecting_
     assert newer["session_id"] != older_id
     assert newer["current"] is True
     sessions = _sessions_by_id(client, hello_project)
-    # "New session" explicitly closes whatever was open before creating
-    # the new one — the older session is closed, not just superseded.
     assert sessions[older_id]["open"] is False
     assert sessions[older_id]["current"] is False
     assert sessions[older_id]["close_reason"] == "force-new-session"
@@ -252,10 +250,6 @@ def test_a_turn_in_a_non_chat_state_exposes_state_not_chat(client, app_db):
 def test_a_turn_from_another_channel_or_on_a_superseded_session_exposes_the_matching_code(client, app_db):
     _setup_channel_codes_project(app_db)
     older_id = session_of(enter_chat(client, "channel-codes-proj"))
-
-    # The websocket is the native chat by definition — a turn from another
-    # channel only ever reaches TurnService.process_turn directly, the
-    # way WhatsAppService does.
     WebSession().channel = "whatsapp"
     try:
         with pytest.raises(ServiceError) as raised:
@@ -263,10 +257,6 @@ def test_a_turn_from_another_channel_or_on_a_superseded_session_exposes_the_matc
     finally:
         WebSession().channel = "webchat"
     assert raised.value.code == "session_channel_mismatch"
-
-    # A second live session appearing outside TurnService's own
-    # close-before-create flow (e.g. an import) — `older` is still open,
-    # just no longer the active one.
     app_db.create_chat_session(
         "user", "channel-codes-proj", app_db.get_project_published_revision("channel-codes-proj"),
         datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
@@ -279,9 +269,6 @@ async def test_manual_action_exposes_turn_in_progress_code(client, app_db):
     _setup_channel_codes_project(app_db)
     session_id = session_of(enter_chat(client, "channel-codes-proj"))
     turn_service = client.app.state.turn_service
-    # Deliberate seam: the refusal only exists while a turn holds the
-    # session lock, and this app's AI service never blocks — driving it
-    # publicly would mean racing a turn that has already finished.
     lock = turn_service._session_locks.get(str(session_id))
     await lock.acquire()
     try:
@@ -310,7 +297,6 @@ def test_a_turn_rejects_an_idle_session_without_auto_rotating(client, hello_proj
 
     _turn_error(client, session_id)
 
-    # No silent rotation: nothing new was created on the closed session's behalf.
     sessions = client.get(f"/api/core/projects/{hello_project}/sessions").json()
     assert [s["id"] for s in sessions] == [session_id]
 

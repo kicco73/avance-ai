@@ -1,28 +1,16 @@
 <script setup>
-// Generic shell — header, tab bar, body — for tabs the caller provides via
-// named slots (`#tab-<id>`). Every tab stays mounted (v-show, not v-if) so
-// its registerTab ref always has somewhere to land. Tabs may optionally
-// implement `refresh(active)` and/or `resize()`, dispatched by id.
 import { reactive, ref, watch } from 'vue'
 
 const props = defineProps({
-  tabs: { type: Array, required: true }, // [{ id, label }]
+  tabs: { type: Array, required: true },
   activeTab: { type: String, default: null },
-  // Hides the tab bar/body via v-show (not v-if) so cytoscape and similar
-  // content inside a tab stays alive instead of needing to relayout from
-  // scratch each time it's shown; the header itself stays visible.
   collapsed: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['update:active-tab', 'update:collapsed'])
 
-// id -> mounted tab component instance, kept as a plain reactive() object
-// (not a Map) so registerTab(id)(instance) calls stay trackable.
 const registry = reactive({})
 
-// Returned to the caller's slot as a scoped prop — a ref setter closed
-// over `id`, so `:ref="registerTab('states')"` registers (or, called with
-// null on unmount, unregisters) that slot's component under a stable key.
 function registerTab(id) {
   return (instance) => {
     if (instance) registry[id] = instance
@@ -42,9 +30,6 @@ function setActiveTab(id) {
   registry[id]?.refresh?.(true)
 }
 
-// An externally-driven activeTab (v-model) is only followed when it names
-// one of the current tabs; otherwise ignored (the tabs watch below falls
-// back to the first tab on its own).
 watch(
   () => props.activeTab,
   (value) => {
@@ -54,9 +39,6 @@ watch(
   }
 )
 
-// Falls back to the first available tab the instant the active one is no
-// longer among `tabs`, whether because the tab set changed shape or an
-// externally-set activeTab was never a valid id to begin with.
 watch(
   () => props.tabs,
   (tabs) => {
@@ -67,8 +49,6 @@ watch(
   { deep: true, immediate: true }
 )
 
-// Single entry point for the caller — every registered tab decides for
-// itself, from the `active` flag it's handed, whether that means "reload".
 async function refresh() {
   await Promise.all(
     Object.entries(registry).map(([id, instance]) => instance.refresh?.(id === internalActive.value))

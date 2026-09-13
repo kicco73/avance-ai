@@ -14,11 +14,6 @@ const REGISTRY = {
   metric: { retention: 'Retention score.', activity_consistency: 'Activity consistency score.' }
 }
 
-// Prompt 6's cross-project namespace (see ProjectService.get_active_
-// identifier_registry) — a real registry never carries "automaton"
-// unless there's at least one other project, so this is its own fixture
-// rather than folded into REGISTRY above (every test that doesn't care
-// about it keeps seeing the exact same suggestions it always did).
 const REGISTRY_WITH_AUTOMATON = {
   ...REGISTRY,
   automaton: {},
@@ -26,9 +21,6 @@ const REGISTRY_WITH_AUTOMATON = {
   'automaton.other_project.env': { budget: 'Remaining budget, shared cross-project.' }
 }
 
-// A declared source's own dynamic namespace (see backend
-// ProjectInspector.get_identifier_registry) — same "source" (empty) +
-// "source.<name>" (that source's own methods) shape as automaton above.
 const REGISTRY_WITH_SOURCE = {
   ...REGISTRY,
   source: {},
@@ -59,26 +51,17 @@ function optionAt(text, label, registry = REGISTRY) {
 
 describe('completeIdentifiers', () => {
   it('suggests every top-level namespace unfiltered for a bare word or an explicit empty request, and nothing at all on an implicit empty one', () => {
-    // CodeMirror's own autocomplete does the actual text matching
-    // downstream (see @codemirror/autocomplete's CompletionResult.options).
     expect(labelsAt('sig')).toEqual(TOP_LEVEL)
     expect(labelsAt('', REGISTRY, true)).toEqual(TOP_LEVEL)
-    // "session.metric" is a dotted registry key, never itself a bare
-    // namespace word a user would type directly.
     expect(labelsAt('', REGISTRY, true).has('session.metric')).toBe(false)
     expect(completeIdentifiers(contextAt(''), REGISTRY)).toBeNull()
 
     const signalOption = optionAt('sig', 'signal')
     expect(signalOption.type).toBe('namespace')
-    // No trailing "." — completing a namespace name shouldn't force the
-    // user into typing on that field before they can look elsewhere.
     expect(signalOption.apply).toBe('signal')
   })
 
   it('suggests a namespace\'s own identifiers after its dot — plain for signal/env, call-style for a proxy — with the description in info, never detail', () => {
-    // A completion's own `detail` is rendered inline in the list and gets
-    // clipped past the list's width, which is what cut a longer
-    // ui-description off; the full text lives in `info` instead.
     const [mood] = optionsAt('signal.')
     expect(mood.label).toBe('mood')
     expect(mood.type).toBe('variable')
@@ -110,8 +93,6 @@ describe('completeIdentifiers', () => {
   it('returns null for an unknown dotted namespace and otherwise replaces only the word being typed', () => {
     expect(completeIdentifiers(contextAt('bogus.'), REGISTRY)).toBeNull()
 
-    // "signal.mo" is 9 characters; the replaceable range starts right
-    // after the dot (index 7), not at the very start of "signal".
     expect(completeIdentifiers(contextAt('signal.mo'), REGISTRY).from).toBe(7)
 
     const text = 'signal.mood >= 40 and sess'
@@ -126,8 +107,6 @@ describe('completeIdentifiers', () => {
     const [project] = optionsAt('automaton.', REGISTRY_WITH_AUTOMATON)
     expect(project.label).toBe('other_project')
     expect(project.type).toBe('namespace')
-    // No trailing "()" — automaton.<project> is a namespace to descend
-    // into, never itself called.
     expect(project.apply).toBe('other_project')
 
     const stateOption = optionAt('automaton.other_project.', 'state', REGISTRY_WITH_AUTOMATON)
@@ -177,9 +156,6 @@ describe('completionInfo', () => {
 
 describe('isProxyNamespace', () => {
   it('is true only for the namespaces whose members are actually called', () => {
-    // signal/env/user resolve straight off an already-fetched dict;
-    // automaton.* is real attribute access; datetime.timezone's only
-    // member (utc) is a plain attribute.
     for (const namespace of ['session', 'session.metric', 'source', 'metric', 'datetime']) {
       expect(isProxyNamespace(namespace)).toBe(true)
     }
@@ -202,7 +178,6 @@ describe('namespaceOf (the coloring regex\'s own namespace extraction)', () => {
     expect(namespaceOf('datetime.timezone.utc')).toBe('datetime.timezone')
     expect(namespaceOf('datetime.datetime')).toBe('datetime')
     expect(namespaceOf('datetime.timedelta')).toBe('datetime')
-    // .state/.env.<key> stay uncolored past automaton itself.
     expect(namespaceOf('automaton.other_project.state')).toBe('automaton')
     expect(namespaceOf('automaton.other_project.env.budget')).toBe('automaton')
 
@@ -220,8 +195,6 @@ describe('excludingNamespaces', () => {
 
     const registry = { ...REGISTRY, sessionish: { x: '' }, task: { send_mail: '' } }
     const filtered = excludingNamespaces(registry, ['session'])
-    // What the task editor sees: session gone, session.metric gone
-    // with it, task kept — and never a mere string-prefix match.
     expect(Object.keys(filtered)).toContain('sessionish')
     expect(filtered.task).toBeDefined()
     expect(filtered.session).toBeUndefined()

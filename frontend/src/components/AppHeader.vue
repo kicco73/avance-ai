@@ -1,29 +1,12 @@
 <script setup>
-// Shared top-bar shell for every full-screen view (Manage projects, Edit
-// project, Label sessions, Profile, Live chat) — one source for the
-// border/padding/safe-area treatment instead of each view re-deriving its
-// own (see the *-header rules this replaced in each of those files).
-// `left`/`center`/`right` are plain slots so each view keeps its own
-// controls and logic; only the shell itself, plus the shared
-// .app-header-icon-btn/.app-header-title look (exported unscoped below,
-// since slot content renders in the parent's own scope, out of reach of a
-// scoped selector here), is centralized.
 import { ref } from 'vue'
 
 const props = defineProps({
-  // 'solid': the white, bordered bar every non-chat view uses.
-  // 'overlay': transparent and absolutely positioned over its parent
-  // (LiveChatWindow's own skinned .chat-header), so a project's skin
-  // still shows through underneath the controls.
   variant: { type: String, default: 'solid' }
 })
 
 const rootEl = ref(null)
 
-// ManageProjectsView's own ResizeObserver needs the real header element
-// (to measure the same content-box width its layout math already assumed)
-// — a template ref on this component would otherwise only ever resolve to
-// the component instance, not the DOM node.
 defineExpose({ el: rootEl })
 </script>
 
@@ -50,9 +33,6 @@ defineExpose({ el: rootEl })
   background: white;
 }
 
-/* Live chat: no border/background of its own — the project's skin (see
-   ChatView.vue's own .chat-header) paints that instead, and this just
-   overlays its controls on top of it. */
 .app-header-overlay {
   position: absolute;
   top: 0;
@@ -88,14 +68,6 @@ defineExpose({ el: rootEl })
 </style>
 
 <style>
-/* Unscoped: shared "look" for controls each view places into AppHeader's
-   own slots — slot content renders in the parent's own scope, which a
-   scoped selector here could never reach.
-   .app-header-icon-btn: the small square icon button every view's back
-   arrow uses. ProjectsMenu.vue's own .projects-btn already matches this
-   look pixel-for-pixel (same size/border/color), so the overlay-only
-   rules below reach it too rather than duplicating them there.
-   .app-header-title: the header's own h2, for a view that needs one. */
 .app-header-icon-btn {
   flex-shrink: 0;
   display: flex;
@@ -118,9 +90,6 @@ defineExpose({ el: rootEl })
   color: white;
 }
 
-/* Live chat's overlay controls sit on top of a project's own skin — kept
-   unobtrusive until touched, same idiom as the old floating Settings/
-   Profile cluster this replaced. */
 .app-header-overlay .app-header-icon-btn,
 .app-header-overlay .projects-btn {
   opacity: 0.35;

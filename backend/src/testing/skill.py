@@ -52,8 +52,6 @@ class TestingSkill(Skill):
 
         core = bus.collect(POINT_CORE_SERVICES, {})
         broadcaster = core["progress_broadcaster"]
-        # Its own pool, never the platform SchedulerService's: a benchmark
-        # replaying hundreds of sessions must not starve live turns.
         queue = ThrottledJobQueue(
             max_concurrent=self._config.max_concurrent_tests,
             broadcaster=broadcaster,
@@ -65,9 +63,5 @@ class TestingSkill(Skill):
             core["project_service"], broadcaster,
         )
         controllers.append(construct(TestingController, {**core, "testing_service": service}))
-        # Offered to whoever collects the core registry next, the same way
-        # main.py offers what it composed: a skill that builds a service
-        # others may legitimately need is the only one that can put it
-        # there (see bus.POINT_CORE_SERVICES).
         bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({"testing_service": service}))
         logger.info("benchmarking started — up to %d run(s) at a time.", self._config.max_concurrent_tests)

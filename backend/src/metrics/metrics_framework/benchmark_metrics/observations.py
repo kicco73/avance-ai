@@ -106,9 +106,6 @@ class BenchmarkObservationBuilder(object):
                     elif time_quality is not None:
                         responsiveness = time_quality
                 else:
-                    # The expert expected the transition, but the system never
-                    # reached the expected state during the session. This is a
-                    # real benchmark failure, not a missing sample.
                     responsiveness = 0.0
 
             observations.append(
@@ -148,9 +145,6 @@ class BenchmarkObservationBuilder(object):
         """
         points: dict[tuple[int, int], dict[str, Any]] = {}
         for row in messages.itertuples(index=False):
-            # Missing values come back from pandas as float NaN, not None/''/
-            # falsy — plain truthiness treats NaN as truthy and would turn
-            # every unannotated message into a spurious expected_state point.
             if pd.notna(row.expected_state) and row.expected_state:
                 points[(int(row.session_id), int(row.id))] = {
                     "session_id": int(row.session_id),
@@ -277,8 +271,6 @@ class BenchmarkObservationBuilder(object):
     ) -> float | None:
         if message_delay is None or expected_position is None:
             return None
-        # The largest observable positive delay is the remaining number of
-        # messages in the session; negative delays are penalized symmetrically.
         max_positive = max(1, len(session_messages) - 1 - expected_position)
         max_negative = max(1, expected_position)
         max_delay = max_positive if message_delay >= 0 else max_negative

@@ -83,8 +83,8 @@ class BenchmarkMetricsTest(unittest.TestCase):
         result = SignalAccuracyMetric().calculate(observations)
         self.assertEqual(len(result.distribution), Statistics.DISTRIBUTION_BUCKET_COUNT)
         self.assertEqual(sum(result.distribution), result.sample_count)
-        self.assertEqual(result.distribution[8], 1)  # the 80% observation
-        self.assertEqual(result.distribution[9], 1)  # the 100% observation
+        self.assertEqual(result.distribution[8], 1)
+        self.assertEqual(result.distribution[9], 1)
 
     def test_distribution_is_empty_with_no_values(self) -> None:
         result = Statistics.result("empty", [])
@@ -143,8 +143,6 @@ class BenchmarkMetricsTest(unittest.TestCase):
         self.assertEqual(stable.sample_count, 2)
         self.assertEqual(transition.value, 0.0)
         self.assertEqual(transition.sample_count, 1)
-        # state_accuracy itself stays unaffected by the split — still
-        # every point regardless of expected_transition.
         overall = StateAccuracyMetric().calculate(observations)
         self.assertAlmostEqual(overall.value, 200.0 / 3.0)
         self.assertEqual(overall.sample_count, 3)

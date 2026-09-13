@@ -11,12 +11,6 @@ logger = LoggerFactory.get_logger(__name__)
 
 def migrate_env_rows(db: Db) -> None:
     stray_row_ids = _stray_test_session_env_row_ids(db)
-    # Only a cheap read-only pre-check when there's nothing stray to
-    # delete first — Db.get_action_env merges every session type for a
-    # (project, user) pair, so a stray test/preview row still in place
-    # could be mistaken for the live session's own latest value; once
-    # `stray_row_ids` is non-empty this same call is redone for real,
-    # below, only after that row is actually gone.
     if not stray_row_ids and not _orphan_action_env_keys(db):
         return
     db.backup_now(
@@ -84,11 +78,6 @@ def _declared_env_keys(db: Db, automaton_loader: AutomatonLoader, project_id: st
     try:
         automaton = automaton_loader.load_at_revision(project_id, revision)
     except (ValueError, FileNotFoundError) as exc:
-        # A published revision that doesn't build is ProjectManager.
-        # recompute_availability's own concern (it runs right after every
-        # migration here, at boot) — this cleanup just skips the project
-        # for now rather than taking the whole boot down with it; the
-        # same orphan check runs again next boot, once it's fixed.
         logger.warning(
             "Env migration: project '%s', published revision %s no longer builds — %s. Skipping its "
             "own orphaned-action_env-key check for now.",

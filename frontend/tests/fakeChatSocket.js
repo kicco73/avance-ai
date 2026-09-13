@@ -1,9 +1,5 @@
 import { vi } from 'vitest'
 
-// A WebSocket stand-in for busChannel.js's own createChatSocket: the test
-// decides when it opens, what it receives, and when it drops, and can read
-// back every frame the client sent. Returns the list every connection
-// attempt appends to, newest last.
 export function installFakeChatSocket(api) {
   const sockets = []
   api.createChatSocket.mockImplementation(() => {
@@ -24,11 +20,6 @@ export function installFakeChatSocket(api) {
         ws.readyState = 3
         ws.onclose?.()
       },
-      // Simulates the server closing the connection with a specific close
-      // code (e.g. busChannel.js's SUPERSEDED_CLOSE_CODE) — unlike
-      // close() above (the client's own explicit disconnect, which fires
-      // onclose with no event at all), this is what a real CloseEvent looks
-      // like.
       closeWithCode(code) {
         if (ws.readyState === 3) return
         ws.readyState = 3

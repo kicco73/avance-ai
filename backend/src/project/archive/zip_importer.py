@@ -34,9 +34,6 @@ class ZipImporter:
         it originally sat in the zip."""
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
             names = [entry.replace("\\", "/") for entry in zf.namelist()]
-            # macOS's Finder/Archive Utility tacks on a __MACOSX/ sidecar
-            # folder full of resource-fork metadata (AppleDouble ._filename
-            # entries, nothing of actual interest) whenever it zips a folder.
             names = [n for n in names if n.split("/", 1)[0] != "__MACOSX"]
 
             for name in names:

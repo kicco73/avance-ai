@@ -11,9 +11,6 @@ import { projectActions } from '../../../registry.js'
 const props = defineProps({
   app: { type: Object, required: true },
   publishedRevision: { type: Number, default: null },
-  // The project's own current (draft) revision. A build compiles the
-  // *published* revision, so a project carrying unpublished changes has
-  // nothing to build yet — see buildBlockedReason below.
   revision: { type: Number, default: null }
 })
 
@@ -263,7 +260,6 @@ onBeforeUnmount(async () => {
 }
 
 .project-detail-try-panel {
-  /* ChatWaitingPanel positions itself against this box. */
   position: relative;
   flex: 1;
   min-height: 300px;

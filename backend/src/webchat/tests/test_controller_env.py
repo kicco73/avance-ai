@@ -72,9 +72,6 @@ def test_delete_env_value_for_an_unknown_key_is_a_noop(client, hello_project):
 def test_env_with_a_message_id_restricts_to_a_point_in_time(client, hello_project):
     session_id = _session_id(client, hello_project)
     message_id = chat_turn(client, session_id, "hello")["assistant_message_id"]
-
-    # A value set *after* that message must not show up in its own
-    # point-in-time snapshot.
     client.put(f"/api/skills/platform/sessions/{session_id}/env/favorite_color", json={"value": "blue"})
 
     live = client.get(f"/api/skills/platform/sessions/{session_id}/env").json()

@@ -71,10 +71,6 @@ def test_the_middleware_authenticates_and_declares_no_channel():
         client = TestClient(app)
         client.cookies.set(SESSION_COOKIE_NAME, "good-token")
         return client.get("/api/protected")
-
-    # In a context of its own, so the suite's own default (see conftest's
-    # _default_session_user) cannot stand in for what the middleware did
-    # or did not set.
     response = contextvars.Context().run(call)
 
     assert response.status_code == 200

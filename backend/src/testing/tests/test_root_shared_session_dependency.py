@@ -22,9 +22,6 @@ pytestmark = pytest.mark.contract
 
 def _make_labeled_session(client, app_db, project_name, username):
     WebSession().user = username
-    # activate_project_idempotent needs an already-active project to
-    # compare against — set_active_project_id directly is the same
-    # effect for a brand new username with no chat history yet.
     app_db.set_active_project_id(project_name, username)
     session_id = session_of(enter_chat(client, project_name))
     chat_turn(client, session_id, "hi")

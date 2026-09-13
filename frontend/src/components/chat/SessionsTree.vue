@@ -43,7 +43,6 @@ const hasImportedSessions = computed(() => props.sessions.some((s) => s.type ===
 const activeTab = ref('live')
 const filteredSessions = computed(() => props.sessions.filter((s) => s.type === activeTab.value))
 
-// Reassignment is imported-only backend-side: a live session's username is its owner's identity.
 const canDragAndDrop = computed(() => activeTab.value === 'imported')
 
 function formatSessionTimestamp(iso) {

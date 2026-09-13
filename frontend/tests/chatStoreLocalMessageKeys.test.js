@@ -1,12 +1,3 @@
-// Regression: toStoreMessage never assigned a local `id` to a loaded
-// message — only messageId (the backend id) — while a placeholder's own
-// `id` comes from the same nextMessageId counter restarting at 0 on every
-// page load. A loaded message with backend messageId 1 and a fresh
-// placeholder with local id 1 then collided in ChatTimeline.vue's
-// `entry.message.key ?? entry.message.id` v-for key, and Vue silently
-// dropped one of the two nodes. toStoreMessage now draws its own `id`
-// from the same counter as every placeholder, so no loaded message can
-// ever collide with one.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))
@@ -53,9 +44,6 @@ describe('every store message carries a unique local id, loaded or placeholder',
 
     const ids = chatStore.messages.value.map((m) => m.id)
     expect(new Set(ids).size).toBe(ids.length)
-    // The loaded message's own local id is never the backend's raw id
-    // (which a placeholder's counter could easily also reach) — it's
-    // whatever the shared nextMessageId sequence assigned it.
     expect(loaded.messageId).toBe(1)
   })
 })

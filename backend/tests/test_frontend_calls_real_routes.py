@@ -33,14 +33,9 @@ SRC_ROOT = BACKEND_ROOT / "src"
 ROUTE_DECORATORS = {"get", "post", "put", "delete", "route"}
 PLACEHOLDER = "{}"
 MARKER = "${API_URL}"
-# `${API_URL}` followed by the path, up to the end of the template
-# literal or the start of a query string.
 CALL = re.compile(r"\$\{API_URL\}(/[^`?\s]*)")
 INTERPOLATION = re.compile(r"\$\{[^}]*\}")
 PARAMETER = re.compile(r"\{[^}]*\}")
-# A placeholder glued to the end of a segment rather than standing as
-# one — `.../tests${query}` — is an appended query string, not a path
-# parameter, which always follows a slash.
 APPENDED_QUERY = re.compile(r"(?<=[^/])\{\}$")
 
 
@@ -111,9 +106,6 @@ def frontend_calls() -> list[tuple[Path, str]]:
 
 def test_every_frontend_call_reaches_a_declared_route():
     declared = backend_routes()
-    # The API_URL the frontend holds already ends in /api, which is the
-    # whole reason this check exists: the two halves write the same path
-    # differently, and a sweep over one spelling misses the other.
     missing = [
         (source, "/api" + path)
         for source, path in frontend_calls()

@@ -53,8 +53,6 @@ describe('handlePublishProject', () => {
     await actions().handlePublishProject('proj')
 
     expect(postPublishProject).toHaveBeenCalledWith('proj', null)
-    // Publishing moves the catalog, and whoever displays it observes
-    // that fact rather than being poked through a component ref.
     expect(catalogChanges).toEqual(['changed'])
     expect(infoDialog).toHaveBeenCalledWith(expect.objectContaining({
       body: 'Published revision 4. Compiled into proj_r4.'

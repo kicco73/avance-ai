@@ -1,23 +1,16 @@
 <script setup>
-// A reusable detail card for the project's top-level `project:` section, using
-// the same badge/title/edit-form convention as InspectorDetailCard.vue's state/action
-// cards but as its own component: a project has no attachments, delete, or Graph-selection identity.
 import { computed, onMounted, ref, watch } from 'vue'
 import { vAutosize } from '../../../../components/skillkit/textareaAutosize.js'
 import { handleEnterNext } from '../../../../components/skillkit/enterToNextField.js'
 import { getDeclarableServices } from '../../api.js'
 
 const props = defineProps({
-  // { id, ui_label, ui_description, services, signal_tracking_on_ai_message, general_prompt } | null, from getProjectMetadata
   project: { type: Object, default: null },
   editable: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['set-field', 'set-service-level'])
 
-// What this backend actually has to offer a project, read off its own
-// source tree (see skills.declarable) — never a list kept here, so a
-// service added tomorrow shows up with its own label and description.
 const declarableServices = ref([])
 
 const SERVICE_LEVELS = [
@@ -30,12 +23,9 @@ onMounted(async () => {
   try {
     declarableServices.value = (await getDeclarableServices()).services
   } catch {
-    // already surfaced via apiFetch — the section just stays empty
   }
 })
 
-// A service the project never named is `optional`, which is exactly what
-// the backend does with an absent declaration (see project_services.py).
 function levelOf(service) {
   return props.project?.services?.[service.key] ?? 'optional'
 }
@@ -56,8 +46,6 @@ function resetEditBuffers() {
 }
 
 watch(() => props.project, resetEditBuffers, { immediate: true, deep: true })
-// Same "reopen always starts from whatever's actually current" reasoning
-// as InspectorDetailCard.vue's own identically-named watch.
 watch(open, (isOpen) => { if (isOpen) resetEditBuffers() })
 
 function handleCardClick() {
@@ -77,9 +65,6 @@ function commitUiDescription() {
   commitTextField('ui-description', editUiDescription.value, props.project?.ui_description ?? '')
 }
 
-// A falsy id round-trips as "no id declared" rather than the literal empty
-// string (see AutomatonYamlEditor.set_project_field) — "" is never a valid
-// identifier, so writing it through as-is would bounce back as a 400.
 function commitId() {
   commitTextField('id', editId.value, props.project?.id ?? '')
 }

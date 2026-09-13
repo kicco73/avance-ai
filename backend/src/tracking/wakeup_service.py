@@ -62,13 +62,7 @@ class WakeupService:
         self._project_service = project_service
         self._scheduler_service = scheduler_service
         self._namespace_factory = namespace_factory
-        # None whenever no websocket transport is configured — push is
-        # simply skipped in that case; a re-evaluated self-loop is still
-        # applied and persisted either way, only live delivery depends on this.
         self._tracking_service = tracking_service
-        # Only task.prompt() needs this — None here just means a
-        # self-loop's own task falls back to task.prompt()'s own
-        # no-context default ("", logged) instead of a real generation call.
         self._ai_service = ai_service
 
     def register(self) -> None:
@@ -76,12 +70,7 @@ class WakeupService:
         subscribe(EnvChanged, self._on_event)
 
     def _on_event(self, event: StateChanged | EnvChanged) -> None:
-        # Never lets a wake-up failure propagate back into publish()'s
-        # own caller — that caller is always some *other* project's real
-        # turn, which must complete regardless of whether waking up an observer succeeds.
         try:
-            # The observer index is keyed by project id directly now that
-            # project identity is unified (see ProjectObserverIndex).
             for observer_project_id in self._db.get_observers(event.project_id):
                 if self._db.get_latest_chat_session(event.username, observer_project_id) is not None:
                     self._wake(event.username, observer_project_id)
@@ -96,27 +85,15 @@ class WakeupService:
         bound to this (username, observer_project_id) pair — then applies a self-loop transition if one fires."""
         session = self._db.get_latest_chat_session(username, observer_project_id)
         if session is None:
-            return  # deleted between dispatch and this job actually running
+            return
 
         automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
-
-        # PersistedEnv/MetricService/SessionFacts/UserFacts/AutomatonNamespace
-        # all read WebSession().user themselves now — pinned to the observer
-        # being woken (never whatever's live for this job's own context),
-        # then restored. project_context stands in for the *live* active
-        # project these would otherwise resolve, staying fixed on
-        # observer_project_id instead — a wake-up must never silently
-        # evaluate against whatever project happens to be active right now.
         with WebSession().impersonate(username):
             project_context = FixedProjectContext(project_id=observer_project_id)
             env = PersistedEnv(self._db, project_context, session["id"])
             metrics = MetricService(self._db, project_context)
             session_facts = SessionFacts(self._db, project_context)
             user_facts = UserFacts(self._db)
-            # The real project_service here, unlike project_context above:
-            # AutomatonNamespace's automaton.<project> cross-references
-            # resolve an OTHER project entirely, a genuinely different
-            # mechanism from "the current one's own active project".
             automaton_namespace = AutomatonNamespace(self._db, self._project_service)
             scope_builder = EvaluationScopeBuilder(
                 env, metrics, session_facts, user_facts, self._db, automaton_namespace,
@@ -128,29 +105,17 @@ class WakeupService:
 
             scope = scope_builder.build(automaton, state.key, {})
             action = automaton.evaluate_triggers_action(state.key, scope)
-            # Self-loop only — re-checked here rather than relying solely on
-            # the build-time guarantee, since a wake-up must never apply a
-            # real, non-self-loop transition on the user's behalf.
             if action is not None and action.target == state.key:
                 tracking_engine.apply_transition(
                     automaton, state, action, {}, session["id"],
                     origin='system', username=username, project_id=observer_project_id,
                 )
-                # A nudge, never a turn's own ending — a push has no turn
-                # in flight to end. Best-effort: the transition above is
-                # persisted regardless, and its task arrives on its own,
-                # from the ActionTask apply_transition scheduled.
                 state_payload = automaton.get_state_payload(state)
                 auto_tracking_enabled = (
                     self._tracking_service.is_auto_tracking_enabled(session["id"])
                     if self._tracking_service is not None else True
                 )
                 await bus.publish(Message(type=UI_NOTIFICATION, username=username, body={
-                    # Deliberately still "project_name", not "project_id":
-                    # the frontend parses this exact shape by that literal
-                    # key name. This is the one wire format kept stable for
-                    # that consumer; everywhere else (HTTP responses, DB)
-                    # already uses project_id.
                     "project_name": observer_project_id,
                     "state": state_payload,
                     "buttons": pressable_actions(state_payload["actions"], auto_tracking_enabled),

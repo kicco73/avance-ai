@@ -99,8 +99,6 @@ async def test_a_state_that_takes_no_messages_reports_its_wrap_up_on_the_failure
 
     assert frames[-1].type == "output.error"
     assert frames[-1].body["code"] == "state_not_chat"
-    # What the state owed goes out as a message of its own, before the
-    # refusal — the person is owed it whether or not the turn ran.
     assert [f.body["text"] for f in frames if f.type == "output.text"] == [_WRAP_UP]
 
 
@@ -115,6 +113,4 @@ async def test_an_ordinary_turn_prepares_nothing_and_leaves_reply_to_the_turn(tu
     frames = await _frames_of(turn_service, turn_service_for.db, "hello")
 
     assert frames[-1].type == "output.text"
-    # One message, the turn's own: nothing was owed first, so nothing
-    # precedes it.
     assert [f.body["text"] for f in frames if f.type == "output.text"] == [_WRAP_UP]

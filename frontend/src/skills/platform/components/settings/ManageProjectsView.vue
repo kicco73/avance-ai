@@ -1,6 +1,4 @@
 <script setup>
-// Settings > Manage projects: one row per project with its three-state
-// status (see backend ProjectAvailability.project_status) and revision info.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getAppStoreApps, getProjectFiles, getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, putProjectPause, putProjectResume } from '../../api.js'
 import { confirmDialog, customDialog } from '../../../../dialogStore.js'
@@ -31,7 +29,6 @@ const props = defineProps({
   profile: { type: Object, default: null }
 })
 
-// Emits events only; App.vue owns the actual new/upload/delete actions.
 const emit = defineEmits([
   'new-project', 'upload', 'delete', 'edit', 'label', 'download', 'publish', 'open-skill-view',
   'manage-users', 'manage-services', 'app-store', 'about',
@@ -67,7 +64,6 @@ async function loadAppStoreApps() {
     const { apps } = await getAppStoreApps()
     appStoreAppById.value = Object.fromEntries(apps.map((app) => [app.id, app]))
   } catch {
-    // already surfaced via apiFetch
   }
 }
 
@@ -102,7 +98,6 @@ async function load() {
     loadIcons(rows.value.map((row) => row.id))
     loadAppStoreApps()
   } catch {
-    // already surfaced via apiFetch
   } finally {
     loading.value = false
   }
@@ -159,7 +154,6 @@ async function toggleStatus(row) {
       : await putProjectResume(row.id)
     replaceRow(updated)
   } catch {
-    // already surfaced via apiFetch
   } finally {
     togglingProject.value = null
   }
@@ -217,8 +211,6 @@ onMounted(() => {
   previousCanvasColor = setCanvasColor('#ffffff')
 })
 
-// The list is a view of the catalog, so it follows the catalog's own
-// event rather than waiting to be told by whoever changed it.
 onBeforeUnmount(onProjectsChanged(load))
 
 onBeforeUnmount(() => {

@@ -18,58 +18,14 @@ from auth.roles import role_satisfies
 from system.web_session import WebSession
 
 logger = logging.getLogger(__name__)
-
-# The frame an older connection is told it lost the channel with, and the
-# close code that follows it. The frontend must treat that code
-# specially: never reconnect (the newest client owns the channel now),
-# block the chat instead (see busChannel.js). 44xx is our own
-# application range (4401 is the existing auth-failure code).
 SWITCHED_TO_OTHER_CLIENT = "switched_to_other_client"
 SUPERSEDED_CLOSE_CODE = 4410
-
-# How many concurrent sockets one identity may hold: enough for one tab,
-# or for an admin testing HumanTalker to answer their own session from a
-# second tab (see talker.human_talker) — not "multi-device support", so
-# deliberately small. The newest connection always wins: a connection
-# past the cap is accepted and the oldest is superseded instead (see
-# WsConnection.supersede), because the browser that just asked for the
-# chat is the one the person is actually looking at.
 MAX_CONNECTIONS_PER_USER = 1
 MAX_CONNECTIONS_PER_ADMIN = 2
-
-# How long request_human_reply() waits for any of the user's connections
-# to answer before giving up — this is a manual-testing seam (see
-# talker.human_talker.HumanTalker), not a production SLA.
 HUMAN_REPLY_TIMEOUT_SECONDS = 300.0
-
-# What this socket is allowed to carry out of the Bus, and the whole of
-# the translation it does on the way: none. A frame reaching the browser
-# is the message that was published, under its own type — this object is
-# the Bus's reach into a web client, with a filter on what may leave, not
-# a second vocabulary (see docs/BUS.md).
-#
-# It is also the allowlist a client registers against: a browser asks for
-# the types it wants with a `subscribe` frame and drops them with
-# `unsubscribe`, and only what it registered for is ever sent to it (see
-# WsConnection.wants/push_event). A type outside this list is refused —
-# registering for one would otherwise be a way to read an internal type.
 WEB_FORWARDED = (UI_NOTIFICATION, SESSION_TAKEN_OVER, UI_SYSTEM_WARNING, UI_PROGRESS)
-
-# This socket's own frame for "a turn is waiting on a person to answer
-# it". Not a Bus type: nothing publishes it and it never leaves the Bus,
-# which is why it is not in WEB_FORWARDED.
 HUMAN_PROMPT = "human_prompt"
-
-# What a frame says about the delivery rather than about the message: it
-# travels in the envelope and never in the body.
 _ENVELOPE = frozenset({"type", "session_id", "project_id"})
-
-# What a client may register for: what may leave the Bus, plus this
-# socket's own frames. Registering is how a connection says what it is —
-# a connection that never asked for human_prompt is not answering as a
-# person, and is never sent one. The sender used to decide that instead,
-# by excluding the tab that had just written, which is a guess that only
-# holds when the operator is the same person.
 CLIENT_REGISTRABLE = WEB_FORWARDED + (HUMAN_PROMPT,)
 
 
@@ -100,17 +56,7 @@ class WsConnection(object):
         self._outgoing: asyncio.Queue[dict | None] = asyncio.Queue()
         self._closed = False
         self._close_code: int | None = None
-        # What this client asked to be told about, empty until it says so
-        # (see BusChannel._exportable): a socket is a bus connection,
-        # and a bus delivers to whoever registered, not to whoever is
-        # merely connected.
         self._subscriptions: set[str] = set()
-        # Which conversations this socket is showing. Filled when it is
-        # told which one it entered (see BusChannel.watch_session) and
-        # emptied by a `session.exit` frame. Nothing a server decides on
-        # its own — a session closed from elsewhere, an operator taking
-        # one over — carries a connection to answer to, so this is how
-        # those reach anybody at all.
         self._watching: set[int] = set()
 
     def subscribe(self, event_types: list[str]) -> None:
@@ -240,20 +186,9 @@ class BusChannel(object):
 
     def __init__(self, auth_service: AuthService) -> None:
         self.__auth_service = auth_service
-        # Which channel the interface listening on this socket speaks on,
-        # told to it by that interface at boot (see owned_by). None until
-        # something claims it, and in a build with no such package it
-        # stays None: an anonymous way in, whose messages name no channel
-        # and are therefore admitted to no live session.
         self.__channel: str | None = None
-        # The only thing in the process that writes to these sockets, and
-        # so the only thing that subscribes on their behalf: a producer
-        # publishes a nudge and never holds a connection (see
-        # _forward_notification).
         for message_type in WEB_FORWARDED:
             bus.subscribe(message_type, self.__forward_to_web)
-        # username -> every open connection of that identity, oldest
-        # first — see the class docstring for the cap.
         self._connections: dict[str, list[WsConnection]] = {}
         self.__by_id: dict[str, WsConnection] = {}
         self.__watchers: dict[int, set[WsConnection]] = {}
@@ -265,9 +200,6 @@ class BusChannel(object):
     async def channel_loop(self, websocket: WebSocket) -> None:
         token = websocket.cookies.get(SESSION_COOKIE_NAME)
         identity = self.__auth_service.verify_token(token) if token else None
-        # role=None means "verified identity, no User row yet" (mid
-        # Terms-of-Service flow, see AuthService.verify_token) — same as
-        # unauthenticated for chat purposes, just not for every route.
         if identity is None or identity.role is None:
             await websocket.close(code=4401)
             return
@@ -324,9 +256,6 @@ class BusChannel(object):
             superseded.supersede()
 
     def __handle_frame(self, connection: WsConnection, raw: str) -> None:
-        # A superseded socket may still deliver whatever was in flight
-        # when a newer client took the channel over — it is no longer
-        # this identity's chat, so nothing it says is acted on.
         if connection.closed:
             logger.debug("ignoring a frame from a superseded websocket")
             return
@@ -341,12 +270,6 @@ class BusChannel(object):
         if frame_type == "ping":
             connection.send({"type": "pong"})
         elif frame_type in CLIENT_INJECTABLE:
-            # A client speaks as a person: the only types it may put on
-            # the Bus are the ones a person can say (see bus.py's own
-            # CLIENT_INJECTABLE). What happens next is not this object's
-            # business — it publishes and stops. With no listener the
-            # frame is simply not answered, which is what a build with no
-            # chat installed looks like from here.
             self.__publish_client_frame(connection, frame_type, frame)
         elif frame_type == "subscribe":
             registered = self.__registrable(frame.get("events"))
@@ -428,9 +351,6 @@ class BusChannel(object):
         recognise a connection it does not own."""
         message = Message(
             type=frame_type,
-            # The frame is the body: everything the client said about this
-            # message, minus what the envelope already carries. A type
-            # that grows a field is not a change here.
             body={key: value for key, value in frame.items() if key not in _ENVELOPE},
             username=WebSession().user,
             session_id=frame.get("session_id"),
@@ -566,8 +486,6 @@ class BusChannel(object):
         }
         if not await self.push_event(username, HUMAN_PROMPT, frame):
             raise HumanNotConnectedError(username)
-        # Kept whole so a connection that registers later is handed the
-        # prompt it has to answer (see _deliver_pending_prompts).
         prompt = HumanPrompt(prompt_id, session_id, username, frame)
         self.__prompts[prompt_id] = prompt
         self.__prompt_by_session[session_id] = prompt

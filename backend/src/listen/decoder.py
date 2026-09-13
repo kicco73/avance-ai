@@ -20,11 +20,6 @@ from listen.listen_service import ListenService, ListenServiceError
 from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
-
-#: How the audio itself reaches the decoder. A channel that already holds
-#: the bytes passes them; one that holds a reference passes a callable
-#: that fetches them, so nothing is downloaded for a message no one will
-#: decode.
 AudioSource = bytes | Callable[[], Awaitable[bytes]]
 
 

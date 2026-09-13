@@ -91,10 +91,6 @@ def _processor(db, automaton: Automaton) -> tuple[TrackingProcessorAfterUserMess
 
 
 async def test_a_state_with_nothing_triggerable_never_requests_signals(db):
-    # has_to_evaluate_signals_before_ai_reply is True here (autotracking_on_ai_message=False)
-    # and this is a real user message (not AI-started) — under the old gate,
-    # evaluate_signals would have been True regardless of whether anything
-    # in state "a" could ever act on a signal value at all.
     automaton = _automaton(triggerable_from_a=False)
     processor, ai_service = _processor(db, automaton)
 
@@ -139,9 +135,9 @@ async def test_an_env_only_trigger_never_fires_at_the_opening_turn(db):
     processor, _ = _processor(db, automaton)
     processor.env.update_action_set({"ready": True})
 
-    await processor.process(None)  # the automaton's own AI-generated opener, no real user message
+    await processor.process(None)
 
-    assert processor.out.state.key == "a"  # never transitioned to "b"
+    assert processor.out.state.key == "a"
 
 
 async def test_the_same_env_only_trigger_fires_on_the_first_real_user_message(db):

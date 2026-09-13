@@ -42,15 +42,7 @@ class AvanceController(object):
             construct(DeploymentInfoController, bus.collect(POINT_CORE_SERVICES, {})),
             SkillsController(),
         ]
-        # Signing in is not part of the authoring surface: the middleware
-        # that gates every route in every build reads the same AuthService
-        # this controller writes to (see auth/auth_controller.py), so every
-        # build has one and this asks for it rather than working around
-        # its absence.
         controllers.append(AuthController(bus.collect(POINT_CORE_SERVICES, {})["auth_service"]))
-        # And whatever a skill registered for itself: a package that is
-        # not in this build contributes nothing, so its routes are not
-        # there to answer (see bus.POINT_HTTP_CONTROLLERS, system/skills.py).
         bus.collect(POINT_HTTP_CONTROLLERS, controllers)
 
         self.router = APIRouter()

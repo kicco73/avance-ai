@@ -16,9 +16,6 @@ from conftest import make_test_namespace_factory, make_test_scheduler_service
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService
 from turn_harness import FakeProjectService
-
-# Each test verifies one fact about action-level env: persisted,
-# self-referencing, ordered before the next prompt.
 pytestmark = pytest.mark.regression
 
 PROJECT_ID = "proj"
@@ -76,8 +73,6 @@ def _turn_service(db, automaton: Automaton) -> tuple[TurnService, FakeAiService]
 
 
 def _env_for(db, session_id: int = 0) -> PersistedEnv:
-    # session_id is now required (PersistedEnv(None) raises) — every
-    # no-arg call below is read-only, so a placeholder id is fine.
     return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
 
 

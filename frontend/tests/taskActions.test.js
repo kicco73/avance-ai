@@ -1,7 +1,3 @@
-// runTaskScript executes an action's own task field (a free-form
-// script, e.g. "celebrate()" or "notify('Title', 'Body')") against exactly
-// taskLocals — never the real module scope of confetti.js/toastStore.js
-// beyond what's re-exported there, and never throws out of a bad script.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../src/confetti.js', () => ({ celebrate: vi.fn() }))

@@ -54,7 +54,6 @@ async function edit() {
     }
     emit('updated', outcome)
   } catch {
-    // already surfaced via apiFetch
   } finally {
     saving.value = false
   }

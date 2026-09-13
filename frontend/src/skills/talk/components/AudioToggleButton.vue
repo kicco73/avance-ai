@@ -9,21 +9,14 @@ import { narrator } from '../narrator.js'
 const props = defineProps({
   store: { type: Object, required: true },
   disabled: { type: Boolean, default: false },
-  // Shown regardless of what this conversation can reach: a row that is
-  // standing in for a chat (see ChatInput.vue's own `sample`).
   sample: { type: Boolean, default: false }
 })
 
-// A sample row shows what a chat looks like, not what this person has
-// switched on: its controls are drawn in their resting state (see
-// ChatInput.vue's own `sample`).
 const on = computed(() => !props.sample && audioEnabled.value)
 
 function toggle() {
   const enabled = props.store.toggleAudio()
   if (!enabled) return
-  // Inside this same click gesture — every narration from here on,
-  // including the one about to play below, happens well outside one.
   unlockAudioPlayback()
   narrator.narrateLatest(props.store.messages.value)
 }

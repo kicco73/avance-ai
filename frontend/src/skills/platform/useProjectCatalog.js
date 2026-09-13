@@ -5,9 +5,6 @@ import { clearApiError, setApiWarning } from '../../errorStore.js'
 import { refreshIdentifierRegistry } from '../../identifierRegistry.js'
 import { refreshProjectFiles } from './projectFiles.js'
 
-// The draft's automaton-derived catalog: state keys/labels, action labels
-// (keyed `${stateKey}::${actionName}`, names are only unique per state),
-// build warnings and the "project_broken" flag.
 export function useProjectCatalog(projectId) {
   const validStateKeys = ref(new Set())
   const availableStates = ref([])
@@ -48,9 +45,6 @@ export function useProjectCatalog(projectId) {
     refreshProjectFiles(projectId)
   }
 
-  // Every edit to this project re-derives the catalog: the owner of the
-  // data observes the fact, rather than whoever made the edit remembering
-  // to call back here.
   onBeforeUnmount(onProjectChanged((changedProjectId) => {
     if (changedProjectId === projectId) return refreshCatalog()
   }))

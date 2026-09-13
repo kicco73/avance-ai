@@ -1,16 +1,7 @@
 import { ref } from 'vue'
 
-// Pending human_takeover pushes (see system/bus_channel.py's
-// send_human_takeover, fired by chat.switch_to_human) — one of this
-// account's other open tabs (see MAX_CONNECTIONS_PER_ADMIN) needs to open
-// a session and answer as the human. Unlike humanPromptStore.js's own
-// per-turn prompts, these never resolve anything by themselves — they're
-// just a link, dismissed once followed or closed.
 export const humanTakeovers = ref([])
 
-// Set by openHumanTakeover() below, watched by App.vue to actually push
-// the HumanOperatorChatView.vue instance — the store has no App-level
-// navigation of its own, so this is the one thing it hands upward.
 export const requestedOperatorSession = ref(null)
 
 let nextId = 0

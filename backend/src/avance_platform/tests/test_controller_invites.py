@@ -31,7 +31,7 @@ def test_every_call_creates_a_fresh_invite_with_its_own_code_and_the_configured_
 
     assert len(body["code"]) == 6
     assert body["code"].isalnum()
-    assert body["max_shares"] == 3  # ProjectService's own default
+    assert body["max_shares"] == 3
     assert body["expires_at"]
 
     assert _create_invite(client, hello_project)["code"] != body["code"]
@@ -69,5 +69,4 @@ class TestPostResolveInviteCodeAsUser:
         assert response.json() == {"project_id": hello_project}
         assert app_db.user_has_project_access(WebSession().user, hello_project) is True
 
-        # Revisiting a project already accessible ignores expiry entirely.
         assert client.post("/api/core/projects/invitations/EXPIR1").status_code == 200

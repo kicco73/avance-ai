@@ -41,18 +41,10 @@ class ApiStateController(BaseController):
             payload = self.project_service.inspector.get_active_state_payload()
         except:
             payload = {}
-
-        # Which project this deployment is serving. A client has to know
-        # what it is talking about before it can talk, and asking the
-        # authoring surface for the list would mean a delivered product
-        # could not find out — it runs one project and this names it.
         try:
             payload["project_id"] = self.project_service.get_active_project_id()
         except Exception:
             payload["project_id"] = None
         payload["input_token_budget_per_turn"] = self.turn_service.get_input_token_budget_per_turn()
         payload["total_token_budget_per_session"] = self.turn_service.get_total_token_budget_per_session()
-        # Whatever else is running adds its own field: listen_enabled
-        # comes from the Listen package when that package is there, and
-        # simply isn't in the payload when it isn't.
         return bus.collect(POINT_API_STATE, payload)

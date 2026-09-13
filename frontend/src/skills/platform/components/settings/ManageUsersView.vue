@@ -15,13 +15,9 @@ import TimelineChart from './TimelineChart.vue'
 
 const props = defineProps({
   currentUserRole: { type: String, default: null },
-  // ProfileMenu.vue's own avatar/name — App.vue already fetched this once
-  // during boot, passed straight through so this view can show the same
-  // topbar avatar the main chat screen does.
   profile: { type: Object, default: null }
 })
 
-// profile/logout are a plain pass-through of ProfileMenu.vue's own emits.
 const emit = defineEmits([
   'close', 'home-screen', 'home', 'profile', 'logout'
 ])
@@ -82,13 +78,9 @@ async function handleChangeRole(role) {
     const index = rows.value.findIndex((row) => row.id === user.id)
     if (index !== -1) rows.value[index] = updated
   } catch {
-    // already surfaced via apiFetch
   }
 }
 
-// The central panel's own project picker — deliberately independent of the
-// app's active project (see ProjectsMenu.vue's `selectedName` prop): picking
-// a project here only drives the statistics below, never `activateProject`.
 const statsProjectId = ref(null)
 const stats = ref([])
 const statsLoading = ref(false)
@@ -147,19 +139,11 @@ async function loadLatestSignals(projectId, user) {
   }
 }
 
-// Re-runs whenever either the toolbar's project or the Explorer's selected
-// user changes — the statistics are that user's own sessions of that project.
 watch([statsProjectId, selectedUser], ([projectId, user]) => {
   loadStats(projectId, user)
   loadLatestSignals(projectId, user)
 })
 
-// Seeds the picker with the app's current active project — a read-only
-// lookup (never activateProject), just so the panel isn't stuck on "Select
-// a project" when ProjectsMenu's own button already displays one (its
-// label falls back to the same active project before any local pick —
-// see its `selectedName` prop). Without this, a single-project prototype
-// looked like it needed a forced re-click to show anything.
 async function loadInitialProject() {
   try {
     const res = await getProjects()
@@ -329,12 +313,6 @@ defineExpose({ refresh: load })
   top: 0;
   left: 0;
   right: 0;
-  /* Extends past the viewport's own bottom edge on standalone iOS,
-     where WebKit bug #301108 leaves a gap there otherwise — see
-     index.html's own viewport meta comment and
-     useVisualViewport.js's installViewportOvershoot(). 0px, a no-op,
-     everywhere else (a plain browser tab, non-iOS, or once Apple fixes
-     the bug). */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
   box-sizing: border-box;
   padding-left: var(--safe-area-left);
@@ -355,11 +333,6 @@ defineExpose({ refresh: load })
   border-bottom: 1px solid #ddd;
 }
 
-/* Same centered, blue-skin style as ServicesView.vue's own
-   .services-header-title — absolutely centered since this header is a
-   plain flex row (not AppHeader.vue's 3-column grid), so it can't be
-   centered by flex alone against the left/right groups' mismatched
-   widths. */
 .manage-users-header-title {
   position: absolute;
   left: 50%;

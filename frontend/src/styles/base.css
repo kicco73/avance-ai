@@ -4,7 +4,6 @@ body {
   padding: 0;
   height: 100%;
   overscroll-behavior-y: none;
-  /* pan-x pan-y (not manipulation) drops pinch-zoom too; iOS ignores the viewport meta for this. */
   touch-action: pan-x pan-y;
   --app-base-gradient: linear-gradient(160deg, #e4e7eb, #9aa1ac);
   background: var(--app-base-gradient) no-repeat #9aa1ac;

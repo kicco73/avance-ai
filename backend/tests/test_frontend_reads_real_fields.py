@@ -28,21 +28,10 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_SRC = BACKEND_ROOT.parent / "frontend" / "src"
 PAYLOAD = BACKEND_ROOT / "src" / "turn" / "turn_service.py"
 
-#: `session.<field>` and `session?.<field>`, in .js and .vue alike.
 READ = re.compile(r"\bsession\??\.([a-z_][a-z0-9_]*)\b")
-
-#: What is never a read, however much it looks like one: a Bus type name
-#: is a string (`'session.new'`) and a reference to one is a comment.
-#: Taking either for a field of the session payload is the one false
-#: positive this test has.
 NOT_CODE = re.compile(
     r"/\*.*?\*/|<!--.*?-->|//[^\n]*|'[^'\n]*'|\"[^\"\n]*\"|`[^`]*`", re.S,
 )
-
-#: Fields a session payload carries from somewhere other than
-#: _session_payload, each with the method that adds it. Listed rather
-#: than discovered: a field nobody can point at is the thing this test is
-#: for.
 ADDED_ELSEWHERE = {
     "state": "_session_response",
     "unsupported_revision": "_list_sessions_by_type",
@@ -50,13 +39,10 @@ ADDED_ELSEWHERE = {
     "paused_reason": "get_current_session_if_any_or_create_new",
     "legal_terms_pending": "_legal_terms_pending_response (a refusal, not a session)",
 }
-
-#: Reads on something else the code happens to call `session`. Each one
-#: is a different object, not a session payload.
 NOT_A_SESSION_PAYLOAD = {
-    "metric",              # a metrics row, in a per-session loop
-    "value",               # ditto
-    "number_of_user_sessions",  # a project's own counter
+    "metric",
+    "value",
+    "number_of_user_sessions",
 }
 
 

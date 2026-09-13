@@ -349,11 +349,6 @@ class TestSourceZipRoundTrip:
 
         download = client.get(f"/api/skills/platform/projects/{hello_project}")
         assert download.status_code == 200
-
-        # Re-uploading the exact same revision is correctly rejected as
-        # "not newer" (an unrelated business rule) — bump project.revision
-        # in the downloaded zip first, same as any legitimate re-import of
-        # a newer copy would arrive with.
         bumped_zip = io.BytesIO()
         with zipfile.ZipFile(io.BytesIO(download.content)) as src, zipfile.ZipFile(bumped_zip, "w") as dst:
             for item in src.infolist():

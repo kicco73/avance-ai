@@ -42,11 +42,6 @@ class TestReplayJob(CancelableJob):
         self._signal_source_cls = signal_source_cls
         self._total = total
         self._pending_session_ids = list(session_ids)
-        # Each entry is one job "step" = one real AI call: a single
-        # message id for turn_by_turn, or a pre-computed group of message
-        # ids for batch (see _chunk_into_batches) — decided here, once,
-        # upfront, rather than left for BatchSignalSource to discover on
-        # its own as it goes.
         self._pending_batches: list[list[int]] = []
         self._current_session_id: int | None = None
         self._processor: TestProcessor | None = None
@@ -54,9 +49,6 @@ class TestReplayJob(CancelableJob):
         self._warnings: list[str] = []
 
     def _prepare(self) -> tuple[int, tuple[CancelableJob, ...]]:
-        # +1: _finalize() always lands on its own dedicated step (see
-        # _run_next_step()) — never folded into the last message's step,
-        # so the declared total is exact and never needs correcting later.
         return self._total + 1, ()
 
     @property
@@ -88,19 +80,12 @@ class TestReplayJob(CancelableJob):
                 self._pending_batches = batches
 
             assert self._processor is not None and self._current_session_id is not None and self._signal_source is not None
-            # One step = one real AI call: this batch's group of message
-            # ids was decided upfront by _prepare_session (see
-            # _chunk_into_batches), so a single BatchSignalSource call
-            # covers the whole group before any of its turns are applied.
             batch = self._pending_batches[0]
             if isinstance(self._signal_source, BatchSignalSource):
                 await self._signal_source.prepare_batch(batch)
             for message_id in batch:
                 await self._processor.process_message(self._current_session_id, message_id)
             self._pending_batches.pop(0)
-            # Never finalize here even if this was the last batch — the
-            # next call's while loop above finds nothing left and finalizes
-            # on its own dedicated step (see _prepare()'s +1).
 
     def _close_current_session(self) -> None:
         if isinstance(self._signal_source, BatchSignalSource):
@@ -133,9 +118,6 @@ class TestReplayJob(CancelableJob):
         session = db.get_chat_session(session_id)
         if session is None:
             return [], f"session {session_id}: not found, skipped"
-        # Fetched once and shared with both the processor and the signal
-        # source below, instead of each independently re-querying this
-        # same session's full message list.
         messages = db.get_messages(session_id)
         env = self._build_seed_env(session)
         session_facts = SessionFacts(db, FixedProjectContext(project_id=self._run['project_id']))

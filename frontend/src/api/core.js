@@ -2,9 +2,6 @@ import { setApiError } from '../errorStore.js'
 import { requireLogin } from '../authStore.js'
 import { emitProjectChanged } from '../projectChangeEvents.js'
 
-// Reads a `text/event-stream` body of `data: {...}\n\n` chunks, calling
-// `onProgress` for each one, until a `completed`/`failed` chunk arrives —
-// used by postImportSessions to show real progress instead of a spinner.
 async function readSseResult(res, onProgress) {
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
@@ -50,9 +47,6 @@ async function readBlobWithProgress(res, onProgress) {
 export async function apiFetch(url, options, { parse = 'json', onProgress, onCommitted } = {}) {
   let res
   try {
-    // The session cookie is httpOnly and, in dev, often cross-origin
-    // (VITE_API_URL pointing at a separate backend port) — without this
-    // it simply never gets sent, and every call 401s regardless of login.
     res = await fetch(url, { ...options, credentials: 'include' })
   } catch (err) {
     if (err.name === 'AbortError') throw err
@@ -71,18 +65,11 @@ export async function apiFetch(url, options, { parse = 'json', onProgress, onCom
         message = body.error.message
         detail = body.error.detail ?? ''
         code = body.error.code ?? null
-        // Only ever present on an AutomatonBuildError (see
-        // error_handlers.py's own ApiErrorHandlers._body) — project_id/
-        // revision/file/line/section, whichever the backend actually
-        // knew at the point it raised. CodeEditor.vue's own save() is
-        // the one place that uses this, to jump straight to the error.
         fields = body.error.fields ?? null
       }
     } catch {
 
     }
-    // A 401 means "not logged in" — LoginView.vue takes over the whole
-    // screen for that, so it doesn't also need an error banner.
     if (res.status === 401) {
       requireLogin()
     } else {
@@ -98,8 +85,6 @@ export async function apiFetch(url, options, { parse = 'json', onProgress, onCom
 
   onCommitted?.()
 
-  // A 204 has no body — res.json() on an empty response throws, regardless
-  // of the requested `parse` mode.
   if (res.status === 204) return null
   if (parse === 'blob') return readBlobWithProgress(res, onProgress)
   if (parse === 'text') return res.text()

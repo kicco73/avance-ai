@@ -1,8 +1,3 @@
-// BrokenProjectWarningsMenu.vue as a consumer of the shared channel: a
-// project breaking or being fixed reaches every admin as a pushed
-// ui.system_warning frame, and the counter moves without waiting for this
-// view to be refreshed. Clicking a row hands the caller the file/line the
-// build failed on, so EditProjectView can open the editor right there.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, nextTick } from 'vue'
 
@@ -49,8 +44,6 @@ describe('BrokenProjectWarningsMenu.vue', () => {
     return { opened, app, pushedFrame: subscribe.mock.calls[0][1] }
   }
 
-  // The list itself lives behind the toolbar button — nothing is rendered
-  // until the panel is open.
   async function openPanel() {
     container.querySelector('.warnings-btn').click()
     await vi.waitFor(() => expect(container.querySelector('.warnings-item')).not.toBeNull())

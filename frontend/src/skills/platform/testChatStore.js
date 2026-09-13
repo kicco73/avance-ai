@@ -5,13 +5,6 @@ import {
 } from './api.js'
 import { createChatStore } from '../../chatStoreFactory.js'
 
-// EditProjectView's embedded "Run" test chat — its own independent
-// session/messages/state, scoped to whichever project is currently open
-// for editing. Never touches the live chat's currentSessionId/messages
-// (see chatStore.js's own liveStore) — the two used to share one set of
-// refs, toggled by a testModeProjectId flag, which is exactly what let
-// browsing an imported session (or anything else touching the shared
-// refs) bleed into the live chat and vice versa.
 export function setTestProject(name) {
   testStore.clearChatUi()
   testStore.setProject(name)
@@ -54,7 +47,6 @@ export async function loadTestChatModels() {
   try {
     applyTestChatModelInfo(await getTestChatModels())
   } catch {
-    // already surfaced via apiFetch
   }
 }
 
@@ -63,7 +55,6 @@ async function selectTestChatModel(index) {
   try {
     applyTestChatModelInfo(await postTestChatModelSelection(index))
   } catch {
-    // already surfaced via apiFetch
   } finally {
     testChatModelSelectionLoading.value = false
   }

@@ -8,19 +8,8 @@ import { summarizeImportFailures } from '../../sessionImport.js'
 import { setApiError, clearApiError } from '../../errorStore.js'
 import { confirmDialog } from '../../dialogStore.js'
 
-// The "Label sessions" view's own session-administration actions: import,
-// move between users, and every delete flow. `currentSessionId`/
-// `currentSession`/`currentSessionIsImported`/`selectSession` are owned by
-// the caller — this composable only reads/drives them where an action
-// needs to clear or move the active selection.
 export function useSessionAdmin(projectId, currentSessionId, currentSession, currentSessionIsImported, selectSession) {
-  // Every selected file (whichever mix of .txt transcripts and "Download
-  // all" .json exports) uploaded in one request — all per-file/per-session
-  // dispatch and error handling happens server-side; this just renders the
-  // returned result.
   const importingSessions = ref(false)
-  // null until the first SSE progress chunk arrives — SessionsTree.vue
-  // shows the indeterminate spinner until then, a filling ring after.
   const importProgress = ref(null)
 
   async function handleImportSession(files) {
@@ -32,7 +21,6 @@ export function useSessionAdmin(projectId, currentSessionId, currentSession, cur
         importProgress.value = message.percentage
       })
     } catch {
-      // already surfaced via apiFetch
       return
     } finally {
       importingSessions.value = false
@@ -40,8 +28,6 @@ export function useSessionAdmin(projectId, currentSessionId, currentSession, cur
     }
 
     if (result.last_session_id != null) {
-      // The list must contain the new session before it can be looked up
-      // in it — refresh first, select second, not the other way around.
       await refreshSessionsQuietly(true, projectId)
       const imported = sessions.value.find((s) => s.id === result.last_session_id)
       if (imported) selectSession(imported)
@@ -77,8 +63,6 @@ export function useSessionAdmin(projectId, currentSessionId, currentSession, cur
     }
   }
 
-  // Any other non-live branch's own × button (see SessionsTree.vue's
-  // isDeletableBranch) — an arbitrary imported username, not a "Test user N" one.
   async function onDeleteUserSessions({ username }) {
     const ok = await confirmDialog({
       title: 'Delete sessions',
@@ -95,8 +79,6 @@ export function useSessionAdmin(projectId, currentSessionId, currentSession, cur
     }
   }
 
-  // The sessions panel's own "Delete all imported sessions" icon — every
-  // imported session of the project, across every user.
   const deletingAllImported = ref(false)
   async function handleDeleteAllImported() {
     const ok = await confirmDialog({
@@ -112,14 +94,11 @@ export function useSessionAdmin(projectId, currentSessionId, currentSession, cur
       if (currentSessionIsImported.value) currentSessionId.value = null
       await refreshSessionsQuietly(true, projectId)
     } catch {
-      // already surfaced via apiFetch
     } finally {
       deletingAllImported.value = false
     }
   }
 
-  // Only an imported session is ever deletable here — a live/native one
-  // is the record of a real conversation, not this view's to discard.
   const deletingSessionId = ref(null)
   async function handleDeleteSession(session) {
     const ok = await confirmDialog({
@@ -135,19 +114,12 @@ export function useSessionAdmin(projectId, currentSessionId, currentSession, cur
       if (session.id === currentSessionId.value) currentSessionId.value = null
       await refreshSessionsQuietly(true, projectId)
     } catch {
-      // already surfaced via apiFetch
     } finally {
       deletingSessionId.value = null
     }
   }
 
-  // Every session of this project as one .json file, re-uploadable through
-  // this view's own Import button. Same synthetic-<a> download trick as
-  // App.vue's handleModelDownload.
   const downloadingSessions = ref(false)
-  // `type` ('live' | 'imported') comes from SessionsTree.vue's own active
-  // tab (see its 'download-all' emit) — Download all only ever exports
-  // whichever kind is currently showing.
   async function handleDownloadSessions(type) {
     downloadingSessions.value = true
     try {
@@ -161,7 +133,6 @@ export function useSessionAdmin(projectId, currentSessionId, currentSession, cur
       link.remove()
       URL.revokeObjectURL(url)
     } catch {
-      // already surfaced via apiFetch
     } finally {
       downloadingSessions.value = false
     }

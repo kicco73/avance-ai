@@ -27,14 +27,10 @@ def test_snapshots_and_transitions_resolve_the_latest_values_and_current_state_i
 
     db.save_signal_snapshot({"foo": 1}, session_id)
     assert db.get_latest_signal_snapshot("proj") == {"foo": 1}
-    # A plain evaluation with no trigger firing must not look like a
-    # transition to state-resolution queries.
     assert db.get_current_state("proj") is None
 
     db.save_transition("", "init", "start", session_id, transition_log_level="INFO")
     assert db.get_current_state("proj") == "start"
-    # A manual/init transition carries no signal values — the latest
-    # *values* snapshot is still the earlier evaluation.
     assert db.get_latest_signal_snapshot("proj") == {"foo": 1}
 
     db.save_transition("start", "advance", "next", session_id, transition_log_level="INFO", signal_values={"foo": 42})
@@ -56,8 +52,6 @@ def test_current_state_is_scoped_by_project_and_self_loops_never_count_as_a_real
 
     assert db.get_current_state("proj-a") == "start-a"
     assert db.get_current_state("proj-b") == "start-b"
-    # A self-loop (old_state == new_state) doesn't count as a "real"
-    # transition for history_cutoff purposes, but it is the current state.
     assert db.get_last_transition_timestamp("proj-b") is None
 
 
@@ -74,7 +68,6 @@ def test_get_signals_returns_the_full_event_log_chronologically_with_every_annot
     assert rows[1]["old_state"] == "start"
     assert rows[1]["new_state"] == "next"
     assert rows[1]["id"] == row_id
-    # Nothing writes these at creation — they're just always present.
     assert rows[0]["expected_values"] is None
     assert rows[0]["expected_state"] is None
     assert rows[0]["comment"] is None

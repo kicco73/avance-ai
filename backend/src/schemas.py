@@ -7,20 +7,11 @@ from pydantic import BaseModel, field_validator
 
 
 class LoginRequest(BaseModel):
-    # 'google' for now — see auth/auth_service.py's own provider registry.
     provider: str
-    # The provider's own opaque credential (Google: the Identity Services
-    # ID token) — verified by AuthProvider.verify(), never inspected here.
     credential: str
 
 
 class AcceptTermsRequest(BaseModel):
-    # The invite code a "share project" link carries (see
-    # frontend/src/shareLink.js) — self-registration is only allowed
-    # when this clears AuthService.complete_registration's own
-    # ProjectService.validate_invite_for_registration check (exists, not
-    # expired, under its max-shares budget). None for a plain sign-in
-    # with no invite context, which registration now refuses.
     invite_code: str | None = None
 
 
@@ -33,48 +24,30 @@ class ActuatorsRequest(BaseModel):
 
 
 class AiModelSelectionRequest(BaseModel):
-    # None selects auto (the ai-service cascade's own fallback order); an
-    # index into GET /api/ai/models' `models` pins generation to that
-    # entry directly. See ai/ai_service.py's AiService.select_model.
     index: int | None = None
 
 
 class ExpectedStateRequest(BaseModel):
-    # None clears the annotation — see TurnService.set_message_expected_state.
     expected_state: str | None = None
 
 
 class ExpectedSignalsRequest(BaseModel):
-    # The whole replacement dict — a signal name missing from it is
-    # annotation-cleared for that signal alone; None/{} clears every
-    # signal's annotation for this message. See
-    # TurnService.set_message_expected_signals.
     expected_values: dict[str, int | float] | None = None
 
 
 class CommentRequest(BaseModel):
-    # None (or empty/whitespace-only) clears the comment — see
-    # TurnService.set_message_comment.
     comment: str | None = None
 
 
 class SetSessionLabeledRequest(BaseModel):
-    # See TurnService.mark_session_labeled — the "Label sessions" view's
-    # own "Mark done" button, a domain expert's explicit, toggleable
-    # verdict on whether a session's been reviewed.
     labeled: bool
 
 
 class SetSessionTitleRequest(BaseModel):
-    # None (or empty/whitespace-only) clears it back to unset — see
-    # TurnService.set_session_title.
     title: str | None = None
 
 
 class SessionImportMessageJson(BaseModel):
-    # See tracking.session_export.SessionExportManager._export_message —
-    # the exact shape "Download all" produces and TrackingService.
-    # import_session_json restores. Fields past role/text are optional.
     role: str
     text: str
     timestamp: str | None = None
@@ -92,8 +65,6 @@ class SessionImportMessageJson(BaseModel):
 
 
 class SessionImportJsonRequest(BaseModel):
-    # See tracking.session_export.SessionExportManager's own
-    # _export_session — one entry of the array "Download all" produces.
     name: str | None = None
     username: str | None = None
     type: str | None = None
@@ -109,28 +80,19 @@ class SessionImportJsonRequest(BaseModel):
 
 
 class TruncateSessionRequest(BaseModel):
-    # ISO 8601, expected to be one of the UTC-explicit strings the
-    # backend already handed back (see db._utc_iso). Every Message/
-    # Tracking row at or after this instant is deleted.
     timestamp: str
 
 
 class SetUserRoleRequest(BaseModel):
-    # See AuthService.set_user_role — UserController's own admin-only
-    # role-change endpoint (Manage Users' role badge).
     role: Literal["user", "customer", "supervisor", "admin"]
 
 
 class SetWhatsAppPhoneNumberRequest(BaseModel):
     phone_number: str | None = None
-    # True once the user has confirmed absorbing an existing WhatsApp-
-    # native account's history — see AuthService.set_whatsapp_phone_number.
     confirm_merge: bool = False
 
 
 class SetEnvValueRequest(BaseModel):
-    # See TurnService.set_env_value/tracking.env.Env.set_value — the
-    # Inspector's Memory section's own "click a value to edit it".
     value: str
 
 
@@ -139,12 +101,6 @@ class SetServiceLevelRequest(BaseModel):
 
 
 class SetProjectFieldRequest(BaseModel):
-    # See ProjectService.set_state_field/set_action_field/set_signal_field.
-    # Editable fields are free text (ui-label, contextual-prompt, etc.), a
-    # plain boolean (a state's history-cutoff/chat), a mapping of
-    # env-key -> expression source (an action's own 'env' field only), or
-    # a list of names (a state's own 'ai-may-read-sources'/
-    # 'ai-must-read-sources'/'ai-may-write-sources'/'input'/'output' fields only).
     value: str | bool | dict[str, str] | list[str]
 
     @field_validator("value")
@@ -167,15 +123,10 @@ class SetProjectFieldRequest(BaseModel):
 
 
 class RenameProjectFileRequest(BaseModel):
-    # See ProjectEditor.rename_project_file — the new basename only, same
-    # folder (aspect/behaviour) as the file being renamed.
     new_name: str
 
 
 class AiEditRequest(BaseModel):
-    # Free-form problem/change description typed into the index.yml/
-    # index.css editor's AI dialog — see ProjectEditor.
-    # generate_index_yml_ai_edit/generate_index_css_ai_edit.
     instruction: str
 
 
@@ -184,35 +135,20 @@ class WebImportRequest(BaseModel):
 
 
 class ReorderActionRequest(BaseModel):
-    # 0-based index the action should end up at, in its own state's
-    # actions list — see ProjectService.reorder_actions/
-    # AutomatonYamlEditor.reorder_actions.
     value: int
 
 
 class PublishProjectRequest(BaseModel):
-    # Required only when ProjectService.preview_publish reports
-    # needs_remap — the replacement state a human picked for one that's
-    # gone missing from the revision being published. None otherwise.
     remap_to: str | None = None
 
 
 class CreateTestRequest(BaseModel):
-    # None = every labeled session of the project, replayed as one run
-    # (same session_id=None|int dual as BenchmarkCalculator). See
-    # TestingService.create_run.
     session_id: int | None = None
-    # 'batch_lite', 'batch', or 'turn_by_turn' — see testing_service.py's own
-    # VALID_STRATEGIES.
     strategy: str
-    # None = the requesting user (WebSession().user), the default. Set to
-    # scope the run to a different user's sessions instead.
     username: str | None = None
 
 
 class StateTestRequest(BaseModel):
-    # See TestingService.start_job — same VALID_STRATEGIES as
-    # CreateTestRequest.strategy.
     strategy: str
 
 

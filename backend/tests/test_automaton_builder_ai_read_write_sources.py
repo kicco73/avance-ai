@@ -77,8 +77,6 @@ def test_each_field_must_be_a_list_of_declared_source_names(field_name):
 
 
 def test_a_source_may_not_be_both_may_and_must_read_and_a_write_needs_a_driver_with_update():
-    # No url means no driver, so no update to expose — unlike a read,
-    # there is nothing lenient about promising a write nobody can serve.
     with pytest.raises(ValueError, match="flights.*declared in both 'ai-may-read-sources' and 'ai-must-read-sources'"):
         _build("    ai-may-read-sources: [flights]\n    ai-must-read-sources: [flights]", _FLIGHTS_SOURCE)
     with pytest.raises(ValueError, match=r"ai-may-write-sources 'flights' references undefined name\(s\): source.flights.update"):
@@ -88,9 +86,6 @@ def test_a_source_may_not_be_both_may_and_must_read_and_a_write_needs_a_driver_w
 
 
 def test_ai_definition_is_required_only_once_a_source_is_listed_even_before_it_has_a_url():
-    # "Created, not yet configured" leniency — a read on a url-less source
-    # builds; it just can't be called until a url picks a driver. But
-    # ai-definition is still required once the source is actually listed.
     for field in ("ai-may-read-sources", "ai-must-read-sources"):
         with pytest.raises(ValueError, match="flights.*has no own 'ai-definition'"):
             _build(f"    {field}: [flights]", _FLIGHTS_CSV_NO_DEFINITION, contents=_FLIGHTS_CSV)

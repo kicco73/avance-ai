@@ -2,11 +2,6 @@ import { ref } from 'vue'
 
 export function useViewStack(currentUserRole) {
   const pushedView = ref(null)
-  // What the pushed view is *about*. One ref rather than one per view:
-  // App.vue used to carry editProjectId, labelProjectId,
-  // skillViewProjectId and operatorSessionId side by side, all of them
-  // null except the one belonging to whatever was open. Whoever pushes
-  // says what they are pushing about, and only that view ever reads it.
   const pushedViewContext = ref({})
   const chatOpen = ref(false)
   const homePreviewRole = ref(null)

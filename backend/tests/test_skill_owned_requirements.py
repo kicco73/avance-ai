@@ -84,9 +84,6 @@ def test_a_dependency_only_one_skill_imports_is_claimed_by_that_skill():
 
 
 def test_requirements_of_answers_only_for_the_packages_it_is_given():
-    # Each skill owns its own lines (see _claims), so the question a build
-    # asks is answered package by package: what one skill claims is in the
-    # answer when it is named, and in nothing else's.
     claims = _claims()
     owned = {}
     for line, (package,) in ((line, owners) for line, owners in claims.items() if len(owners) == 1):

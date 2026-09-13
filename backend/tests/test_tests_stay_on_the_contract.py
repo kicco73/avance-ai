@@ -36,9 +36,6 @@ pytestmark = pytest.mark.contract
 
 TESTS_ROOT = Path(__file__).resolve().parent
 SAMPLES_TESTS_ROOT = TESTS_ROOT.parent / "samples" / "tests"
-
-#: Named test seams, not reach-ins: each is a reset the harness owns and
-#: the process needs between tests (see conftest's autouse fixtures).
 SEAMS = {"_reset_for_tests"}
 
 DECLARATION = "REACHES_INTO"
@@ -64,8 +61,6 @@ def _reaches(tree: ast.Module) -> set[str]:
         if not node.attr.startswith("_") or node.attr.startswith("__") or node.attr in SEAMS:
             continue
         owner = node.value
-        # A test's own fakes are its business; only another object's
-        # privates are a reach into the implementation.
         if isinstance(owner, ast.Name) and owner.id == "self":
             continue
         found.add(node.attr)

@@ -13,16 +13,7 @@ from metrics.metrics_framework import AnalyticsCalculator
 from system.web_session import WebSession
 
 if TYPE_CHECKING:
-    # Deferred: project.project_service -> tracking.tracking_engine ->
-    # tracking.evaluation_scope -> SessionFacts from this very module —
-    # a real top-level import here would be circular. Safe as a type-only
-    # import since `from __future__ import annotations` (above) never
-    # evaluates it at runtime.
     from project.project_service import ProjectService
-
-# Distinguishes "never called" (production) from "called, and given
-# None" (replay, no real elapsed time) — None is itself a meaningful
-# value here, so it can't double as the sentinel.
 _UNSET = object()
 
 
@@ -52,22 +43,16 @@ class SessionFacts(object):
     def state_duration_in_minutes(self) -> float | None:
         now = self._now()
         if self._last_transition_instant is _UNSET:
-            # Production: no last transition yet is a routine 0.0, never
-            # a "nothing to report" None.
             project_id = self._project_service.get_active_project_id()
             last_transition = self._db.get_last_transition_timestamp(project_id)
             if last_transition is None or now is None:
                 return 0.0
             return round((now - last_transition).total_seconds() / 60, 2)
-        # Explicit replay context: no real last-transition instant to
-        # report is a genuine "nothing to say" here, not a 0.0.
         if self._last_transition_instant is None or now is None:
             return None
         return round((now - self._last_transition_instant).total_seconds() / 60, 2)
 
     def _replay_bound(self) -> datetime | None:
-        # None when self._replay_instant is still _UNSET (production —
-        # unbounded queries) or a real replay instant otherwise.
         return None if self._replay_instant is _UNSET else self._replay_instant
 
     def current_session_duration_in_minutes(self) -> float | None:
@@ -87,9 +72,6 @@ class SessionFacts(object):
             return None
         username = WebSession().user
         project_id = self._project_service.get_active_project_id()
-        # index 0 is the current/most recent session (as of `now`) —
-        # "last" means the one immediately before it, most-recent-first
-        # ordering. None for a user's very first session ever.
         sessions = self._db.list_chat_sessions(username, project_id, until=self._replay_bound())
         previous = sessions[1] if len(sessions) > 1 else None
         return _utc_iso(previous["datetime_start"]) if previous is not None else None

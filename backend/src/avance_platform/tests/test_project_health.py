@@ -99,8 +99,6 @@ def _make_admin(db, user_id: str) -> None:
     db.set_user_role(user_id, "admin")
 
 
-# --- Health precedence: published drives is_paused, draft never does ----
-
 
 def test_a_broken_published_revision_pauses_with_the_builders_own_message(db, project_service):
     _publish(db, project_service, "broken", VALID_YML)
@@ -115,8 +113,6 @@ def test_a_broken_published_revision_pauses_with_the_builders_own_message(db, pr
 
 def test_a_broken_draft_with_a_healthy_published_revision_never_pauses(db, project_service):
     _publish(db, project_service, "wip", VALID_YML)
-    # A raw draft edit, bypassing every real save path's own validation —
-    # exactly what a user mid-edit looks like from the DB's point of view.
     db.save_project_files("wip", {"index.yml": BROKEN_YML.encode("utf-8")}, {"index.yml": "text/yaml"})
 
     project_service.recompute_availability("wip")
@@ -130,17 +126,15 @@ def test_a_publish_that_builds_again_resumes_the_project(db, project_service):
     project_service.recompute_availability("flaky")
     assert db.get_project_availability("flaky")[0] is True
 
-    _publish(db, project_service, "flaky", VALID_YML)  # a real, validated re-save + publish
+    _publish(db, project_service, "flaky", VALID_YML)
 
     assert db.get_project_availability("flaky") == (False, None)
 
 
-# --- ensure_project_not_broken (the design-view gate) --------------------
-
 
 def test_ensure_project_not_broken_is_a_noop_for_a_healthy_draft(db, project_service):
     _publish(db, project_service, "solo", VALID_YML)
-    project_service.ensure_project_not_broken("solo")  # must not raise
+    project_service.ensure_project_not_broken("solo")
 
 
 def test_ensure_project_not_broken_raises_409_project_broken_for_a_broken_draft(db, project_service):
@@ -154,8 +148,6 @@ def test_ensure_project_not_broken_raises_409_project_broken_for_a_broken_draft(
     assert exc_info.value.code == "project_broken"
 
 
-# --- set_manually_running on a broken project -----------------------------
-
 
 def test_set_manually_running_rejects_a_project_whose_published_revision_is_broken(db, project_service):
     _publish(db, project_service, "solo", VALID_YML)
@@ -167,11 +159,8 @@ def test_set_manually_running_rejects_a_project_whose_published_revision_is_brok
 
     assert exc_info.value.status_code == HTTPStatus.CONFLICT
     assert exc_info.value.code == "project_broken"
-    # Rejected before the flag is ever cleared — still manually paused.
     assert db.get_manually_paused("solo") is True
 
-
-# --- get_runtime_status's own `broken` field ------------------------------
 
 
 def test_get_runtime_status_reports_broken_published_and_draft_separately(db, project_service):
@@ -207,15 +196,13 @@ def test_get_runtime_status_never_eats_a_real_transition(db, project_service):
     subscribe(ProjectPublishedHealthChanged, received.append)
 
     _corrupt_published_revision(db, project_service, "flaky")
-    PlatformService(project_service).get_runtime_status()  # polled repeatedly, e.g. by Manage projects
+    PlatformService(project_service).get_runtime_status()
     PlatformService(project_service).get_runtime_status()
     project_service.recompute_availability("flaky")
 
     assert len(received) == 1
     assert received[0].project_id == "flaky" and received[0].error is not None
 
-
-# --- One notification per transition --------------------------------------
 
 
 def test_recompute_fires_published_health_changed_exactly_once_per_transition(db, project_service):
@@ -225,7 +212,7 @@ def test_recompute_fires_published_health_changed_exactly_once_per_transition(db
 
     _corrupt_published_revision(db, project_service, "flaky")
     project_service.recompute_availability("flaky")
-    project_service.recompute_availability("flaky")  # still broken — no new event
+    project_service.recompute_availability("flaky")
     project_service.recompute_availability("flaky")
 
     assert len(received) == 1
@@ -239,7 +226,7 @@ def test_recompute_fires_a_recovery_event_with_no_error(db, project_service):
     received = []
     subscribe(ProjectPublishedHealthChanged, received.append)
 
-    _publish(db, project_service, "flaky", VALID_YML)  # fixes it, publishes again
+    _publish(db, project_service, "flaky", VALID_YML)
 
     assert len(received) == 1
     assert received[0].error is None
@@ -256,14 +243,10 @@ def test_recompute_all_availability_pauses_only_the_broken_project(db, project_s
     assert db.get_project_availability("broken")[0] is True
 
 
-# --- ProjectHealthNotifications: SystemWarning + ws push -------------------
-
 
 def test_broken_notification_job_warns_every_admin_and_pushes_to_connected_ones(db):
     _make_admin(db, "admin1")
     _make_admin(db, "admin2")
-    # "user" already exists (see conftest.py's own db fixture) with the
-    # default non-admin role — must never get a warning.
     bus_channel = RecordedWarnings()
 
     job = ProjectHealthNotificationJob(
@@ -339,8 +322,6 @@ def test_project_health_notifications_submits_a_job_on_the_event(db):
     assert submitted[0]._file == "index.yml" and submitted[0]._line == 3
 
 
-# --- A cached build failure that depended on another project's identity ---
-
 
 DEP_YML = """
 project:
@@ -389,31 +370,21 @@ def test_a_stale_build_failure_that_depended_on_a_deleted_and_recreated_project_
     of_changed_id's own clear_all_build_failures call)."""
     _publish(db, project_service, "dep", DEP_YML)
     _publish(db, project_service, "watcher_a", WATCHER_YML)
-    assert db.get_project_availability("watcher_a") == (False, None)  # available
+    assert db.get_project_availability("watcher_a") == (False, None)
 
 
     asyncio.run(project_service.manager.delete_project("dep"))
     project_service.recompute_availability("watcher_a")
-    assert db.get_project_availability("watcher_a")[0] is True  # paused: dep unavailable
-
-    # Force watcher_a's own cached (still-successful) automaton out, then
-    # check while 'dep' is still gone — this is what actually makes
-    # watcher_a's *build* fail (a real AutomatonBuildError, not just a
-    # dependency-unavailable pause) and cache that failure.
+    assert db.get_project_availability("watcher_a")[0] is True
     project_service.automaton_loader.invalidate_cache("watcher_a")
     rows = {row["id"]: row for row in PlatformService(project_service).get_runtime_status()}
     assert "automaton.dep" in rows["watcher_a"]["broken"]["published"]
 
-    _publish(db, project_service, "dep", DEP_YML)  # recreated, same id/family
-
-    # No explicit recompute_availability("watcher_a") call here — recreating
-    # 'dep' alone must be what heals it.
+    _publish(db, project_service, "dep", DEP_YML)
     is_paused, reason = db.get_project_availability("watcher_a")
     assert is_paused is False
     assert reason is None
 
-
-# --- Lazy recompute: a build failure discovered outside any save/publish ---
 
 
 def test_a_lazy_load_failure_on_the_published_revision_pauses_the_project(db, project_service):
@@ -426,7 +397,7 @@ def test_a_lazy_load_failure_on_the_published_revision_pauses_the_project(db, pr
     _publish(db, project_service, "flaky", VALID_YML)
     project_service.register_availability_cascade()
     _corrupt_published_revision(db, project_service, "flaky")
-    assert db.get_project_availability("flaky") == (False, None)  # not yet noticed
+    assert db.get_project_availability("flaky") == (False, None)
 
     with pytest.raises(AutomatonBuildError):
         project_service.get_automaton("flaky", db.get_project_published_revision("flaky"))
@@ -435,8 +406,6 @@ def test_a_lazy_load_failure_on_the_published_revision_pauses_the_project(db, pr
     assert is_paused is True
     assert "index.yml no longer builds" in reason
 
-
-# --- No migration on boot: a format break just pauses the project ---------
 
 
 TOOLS_FIELD_YML = """
@@ -481,7 +450,7 @@ def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_fiel
     project_service.recompute_all_availability()
 
     after = db.get_archive("old_format", "index.yml", revision=revision)
-    assert after == before  # never rewritten
+    assert after == before
 
     is_paused, reason = db.get_project_availability("old_format")
     assert is_paused is True

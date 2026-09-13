@@ -83,8 +83,6 @@ class CompileError(Exception):
     with enough context to find the cause in index.yml."""
 
 
-# --- input, through the platform's own zip-import safety --------------------
-
 def _is_zip(path: Path) -> bool:
     return path.is_file() and (path.suffix.lower() == ".zip" or zipfile.is_zipfile(path))
 
@@ -155,12 +153,6 @@ class PromptTable:
 class Compiler(object):
     """One automaton, compiled: Compiler(automaton, storage_revision).
     compile() -> (source of __init__.py, source of prompt.py)."""
-
-    # Which dataclass field on which type holds text written for the
-    # model. Everything named here is emitted as a constant in prompt.py
-    # and referenced from __init__.py; everything else is emitted
-    # inline. fixed_message is deliberately NOT here: it is a canned
-    # reply handed to the user verbatim, not something the model reads.
     _PROMPT_FIELDS: dict[type, tuple[str, ...]] = {
         State: ("contextual_prompt",),
         Signal: ("definition",),
@@ -168,13 +160,6 @@ class Compiler(object):
         EnvKey: ("ai_definition",),
         Source: ("ai_definition",),
     }
-
-    # The only scope entries that are plain dicts (see tracking/
-    # evaluation_scope.py). An expression reads them as attributes
-    # thanks to simpleeval's attribute-to-item fallback, so a compiled
-    # module needs a real object with those attributes for
-    # `signal.progress` to stay `signal.progress`. Everything else in
-    # the scope is already an object and is bound straight through.
     _ADAPTERS = {"signal": "_Signals", "env": "_Env", "user": "_User"}
 
     _PREAMBLE = '''from __future__ import annotations
@@ -256,12 +241,6 @@ def _compiled(table, text, kind):
         self.prompts.add_named("GENERAL_PROMPT", self.automaton.general_prompt or "")
 
         parts: list[str] = [self._PREAMBLE]
-        # Which stored revision this package was compiled from — what the
-        # loader checks before serving it (see project.archive.
-        # compiled_automaton_loader). The directory a package sits in names
-        # the same number, but that is a convenience: this is the claim the
-        # package itself makes, and the only one trusted. None for a build
-        # from a directory or zip on disk, which has no stored revision.
         parts.append(f"STORAGE_REVISION = {self.storage_revision!r}")
 
         state_names: dict[str, str] = {}
@@ -286,10 +265,6 @@ def _compiled(table, text, kind):
             items = getattr(self.automaton, attribute)
             rendered = "".join(f"    {self._dataclass_literal(i, key=i.name)},\n" for i in items)
             parts.append(f"{variable} = [\n{rendered}]" if items else f"{variable} = []")
-
-        # Paths under data/, already resolved by the builder — the same
-        # strings a State or Action carries, and the same ones the interpreted
-        # automaton holds.
         parts.append(f"_GENERAL_ATTACHMENTS = {self._literal(self.automaton.general_attachments)}")
         parts.append(self._compile_seam())
         parts.append(self._AUTOMATON_CLASS.format(
@@ -306,8 +281,6 @@ def _compiled(table, text, kind):
             build_warnings=self.automaton.build_warnings,
         ))
         return "\n\n".join(parts) + "\n", self.prompts.render()
-
-    # --- packaging guard -----------------------------------------------
 
     def _refuse_index_yml_as_attachment(self) -> None:
         """index.yml is compiled away in full and never copied into data/, so
@@ -326,8 +299,6 @@ def _compiled(table, text, kind):
                 "index.yml is declared as an attachment by " + ", ".join(declaring)
                 + " — a compiled package does not ship it, since it is compiled away in full."
             )
-
-    # --- literal emission, driven by dataclasses.fields() ---------------
 
     def _literal(self, value: Any) -> str:
         """A repr Python can read back. Only the shapes the model actually
@@ -379,8 +350,6 @@ def _compiled(table, text, kind):
                 parts.append(f"    {field.name}={self._literal(value)}")
         return "State(\n" + ",\n".join(parts) + ",\n)"
 
-    # --- naming -----------------------------------------------------------
-
     @classmethod
     def _identifier(cls, text: str) -> str:
         """`text` sanitized into a legal identifier fragment — non-identifier
@@ -412,17 +381,6 @@ def _compiled(table, text, kind):
             part[:1].upper() + part[1:] for part in self.automaton.project_id.split("_") if part
         ) + "Automaton"
 
-    # --- the seam, compiled -------------------------------------------
-    # Turns the expression text an Action carries into real Python, so a
-    # compiled automaton never evaluates a string. It replaces exactly
-    # the three primitives CoreAutomaton isolates for the purpose —
-    # _evaluate_expression, _evaluate_statement, _referenced_signal_names
-    # (_SEAM_OVERRIDES above) — and nothing else: every loop, every
-    # try/except, every warning around them stays the platform's own
-    # code, so an interpreted and a compiled automaton cannot drift
-    # apart on ordering, on what a failure means, or on what is
-    # collected and what is skipped.
-
     def _collect_sources(self) -> tuple[list[str], list[str]]:
         """(expressions, statements) — every distinct piece of text this
         automaton would otherwise hand to an evaluator, split by which
@@ -438,17 +396,12 @@ def _compiled(table, text, kind):
                 expressions[action.trigger] = None
             for expression in (action.env or {}).values():
                 expressions[expression] = None
-            # on-exit: an `env.<key> = expr` line's right-hand side goes to
-            # _evaluate_expression, a bare `chat.<method>(...)` line to
-            # _evaluate_statement (see CoreAutomaton.eval_action_on_exit).
             for _line, statement in TriggerExpressionAnalyzer.task_statements(action.on_exit or ""):
                 assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
                 if assignment is not None:
                     expressions[assignment[1]] = None
                 else:
                     statements[statement] = None
-            # task: both halves go to _evaluate_statement, an assignment as its
-            # right-hand side alone (see CoreAutomaton.render_task_script).
             for _line, statement in TriggerExpressionAnalyzer.task_statements(action.task or ""):
                 assignment = TriggerExpressionAnalyzer.task_assignment(statement)
                 statements[assignment[1] if assignment is not None else statement] = None
@@ -589,8 +542,6 @@ def _compiled(table, text, kind):
         return f"def {name}(_scope):\n" + (f"{bindings}\n" if bindings else "") + f"    return (\n{indented}\n    )\n"
 
 
-# --- packaging ---------------------------------------------------------
-
 def compile_package(project_path: Path, module_name: str, backend_src: Path) -> Path:
     """From a project directory or zip on disk — the CLI's own entry.
     No stored revision: nothing on disk has one."""
@@ -605,8 +556,6 @@ def compile_contents(
 ) -> Path:
     """From the project's files already in hand — what the Build view
     uses, since a stored project lives in Archive rows, not on disk."""
-    # Unlike a project's own keys, the package name is chosen by whoever
-    # asks for the build: sanitizing it silently would only hide a typo.
     if not module_name.isidentifier() or keyword.iskeyword(module_name):
         raise CompileError(f"{module_name!r} is not usable as a Python package name.")
     if "index.yml" not in contents:
@@ -626,9 +575,6 @@ def compile_contents(
     data_dir.mkdir(exist_ok=True)
     for rel_path, content in contents.items():
         if rel_path == "index.yml":
-            # Already compiled into <module_name>.py and prompt.py in
-            # full; a copy here would only be a stale duplicate of what
-            # the package actually does.
             continue
         destination = data_dir / rel_path
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -638,8 +584,6 @@ def compile_contents(
             destination.write_bytes(content)
     return package_dir
 
-
-# --- verification --------------------------------------------------------
 
 def _compare(what: str, compiled: Any, interpreted: Any) -> list[str]:
     return [] if compiled == interpreted else [f"{what}: compiled {compiled!r} != interpreted {interpreted!r}"]

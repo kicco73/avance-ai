@@ -32,8 +32,6 @@ class TestGetProjectMetadata:
         }
 
     def test_reports_declared_fields(self, client, hello_project):
-        # Editing "id" is a real rename — the response's own "id" is the
-        # project's new identity, and every call afterward must use it.
         response = client.put(f"/api/skills/platform/projects/{hello_project}/project/id", json={"value": "concierge"})
         project_id = response.json()["id"]
         client.put(f"/api/skills/platform/projects/{project_id}/project/ui-label", json={"value": "Concierge"})
@@ -104,9 +102,6 @@ class TestPutProjectField:
         assert response.status_code == 200
         assert response.json()["general_prompt"] == "Always be polite."
         assert client.get(f"/api/skills/platform/projects/{hello_project}/project").json()["project"]["general_prompt"] == "Always be polite."
-
-        # general-prompt must sit as a sibling of 'project:', never nested
-        # inside it (see AutomatonYamlEditor.set_project_field).
         response = client.get(f"/api/skills/platform/projects/{hello_project}/files/index.yml")
         assert "general-prompt: Always be polite." in response.json()["content"]
 

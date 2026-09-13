@@ -6,10 +6,6 @@ from peewee import fn
 
 from .models import Test, TestObservation, User
 from .utils import _utc_iso
-
-# Distinguishes "no username filter at all" (this sentinel, the default)
-# from an explicitly passed `username=None` — which instead filters down
-# to the multi-user pool runs (Test.username IS NULL).
 _USERNAME_UNSPECIFIED = object()
 
 
@@ -19,18 +15,11 @@ class TestMixin:
         self, username: str | None, project_id: str, session_id: int | None, strategy: str,
         project_draft_edit_count: int, session_labeling_revision: int | None, ai_model_snapshot: dict,
     ) -> dict:
-        # A prior dead/failed attempt (no results, no live job — see
-        # TestCache.find) can still occupy this exact cache key; discard
-        # it first so the retry's own insert doesn't collide with it
-        # under the same unique index.
         Test.delete().where(
             (Test.session == session_id) & (Test.strategy == strategy)
             & (Test.project_draft_edit_count == project_draft_edit_count)
             & (Test.session_labeling_revision == session_labeling_revision)
         ).execute()
-        # `username` may be a real registered account's email, an
-        # imported/synthetic identity, or None (a multi-user pool run) —
-        # user stays null unless it resolves to an actual User row.
         user = User.get_or_none(User.id == username) if username is not None else None
         row = Test.create(
             username=username, user=user, project_id=project_id, session=session_id, strategy=strategy,

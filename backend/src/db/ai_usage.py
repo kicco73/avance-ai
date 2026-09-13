@@ -37,11 +37,6 @@ class AiUsageMixin:
         if not provider_labels:
             return {'today': {}, 'today_cache_read': {}, 'history': [], 'cache_read_ratio': {}}
         since = datetime.utcnow() - timedelta(hours=hours)
-        # .cast('TEXT'): without it peewee infers `minute`'s Python type
-        # from AiTokenUsage.timestamp (a DateTimeField) and tries to parse
-        # SQLite's own truncated 'YYYY-MM-DDTHH:MM:00' string back into a
-        # datetime, which then doesn't match the ISO string by_minute's
-        # own keys (and ordering) rely on.
         minute = fn.strftime('%Y-%m-%dT%H:%M:00', AiTokenUsage.timestamp).cast('TEXT')
         rows = (
             AiTokenUsage

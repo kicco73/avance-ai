@@ -156,12 +156,6 @@ class TurnService(object):
 			"closed_at": _utc_iso(session["closed_at"]),
 			"close_reason": session["close_reason"],
 			"open": self.__session_manager.is_open(session),
-			# Whether this is the session its type's active slot holds —
-			# nothing about whether *you* may write to it. Writability is
-			# this AND the session having been opened on your own channel,
-			# which `channel` above already says: the client knows which
-			# channel it is, this service does not (see
-			# SessionTypeStrategy.is_current).
 			"current": current,
 			"has_annotations": session["labeled"],
 			"comment": session["comment"],
@@ -237,8 +231,6 @@ class TurnService(object):
 				)
 			except ValueError as exc:
 				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		# Current by construction: get_current_session_if_any_or_create_new
-		# either resolved this type's active session or created one.
 		return self._session_response(session, current=True)
 
 	def session_named(self, session_id: int) -> dict:
@@ -675,10 +667,6 @@ class TurnService(object):
 		return list(result["reply"])
 
 	def _state_speaks_unprompted(self, session_id: int, state: State) -> bool:
-		# A session with an operator (see TaskNamespaceFactory.
-		# get_human_operator) never auto-generates anything — every
-		# message either side sees while in human mode is one a person
-		# actually wrote, never a model-generated opener.
 		if self._namespace_factory.get_human_operator(session_id) is not None:
 			return False
 		content_since = self._db.history_cutoff_for_session(session_id, state.history_cutoff)
@@ -804,11 +792,6 @@ class TurnService(object):
 		async for chunk in assistant_talker.chat([], [{"role": "user", "content": text}], on_metadata or (lambda key, value: None)):
 			if on_metadata is None:
 				continue
-			# An empty chunk from HumanTalker.chat() is its own typing
-			# signal (see its own docstring), never real content — same
-			# "typing" key the AI path sends before generation starts
-			# (see TrackingProcessor.process), so the frontend reacts to
-			# one signal regardless of which talker produced it.
 			if chunk:
 				on_metadata("chunk", chunk)
 				accumulated += chunk

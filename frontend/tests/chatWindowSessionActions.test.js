@@ -1,10 +1,3 @@
-// Regression coverage for removing Live Chat's own "Session" menu (the ☰
-// toggle + sliding sessions panel, see the now-deleted
-// chatWindowSessionsAutoCollapse.test.js) in favor of the applications
-// menu's own two new top rows — New session (ProjectsMenu.vue's own
-// sessionActions prop) and Close session (chatStoreFactory.js's own
-// handleCloseSession). Mounts the real ChatView.vue end to end, not just
-// the store refs (see chatStoreSessionIsolation.test.js for that).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import { busChannel, deliver, deliverEntered, resetFakeBus } from './fakeBus.js'
@@ -38,12 +31,6 @@ function findButton(container, label) {
   return projectsPanelButtons(container).find((b) => b.textContent.trim() === label)
 }
 
-// Mounting ChatView is the heaviest thing this suite does, and the whole
-// component tree is transformed here, at import time, rather than inside
-// whichever test imports it first: that cost is 6.3s on its own and
-// 16.3s with the whole suite running in parallel, and vitest charged it
-// to that test's own 5s budget. A file's own imports are not timed, so
-// the import below is left with nothing but the re-evaluation.
 await import('../src/components/chat/ChatView.vue')
 
 describe('ChatView.vue: the applications menu carries New/Close session, with no separate Session menu', () => {
@@ -143,11 +130,10 @@ describe('ChatView.vue: the applications menu carries New/Close session, with no
     expect(sentOfType('session.terminate')[0]).toMatchObject({ session_id: 1 })
     expect(dialogStore.confirmDialog).not.toHaveBeenCalled()
 
-    // Closed, said by the one place every closure passes through.
     deliver({ type: 'session.ended', session_id: 1, reason: 'user' })
 
     await nextTick()
-    container.querySelector('.projects-btn').click() // the panel closed itself on that click — reopen it
+    container.querySelector('.projects-btn').click()
     await nextTick()
     expect(findButton(container, 'Close session').disabled).toBe(true)
 

@@ -13,13 +13,9 @@ from system.cascade import ProviderError
 
 
 class PiperTalkProvider(StreamingTalkProvider):
-    # Where voice model files are expected — this directory, not read from
-    # .config.yml (only the voice *name* is, via `model`; see TalkService).
     VOICES_DIR = Path(__file__).resolve().parent / 'models'
 
     def __init__(self, api_key: str | None, model: str) -> None:
-        # `model` is the voice name, not an API key — api_key is accepted
-        # only to match every provider's uniform constructor shape.
         model_path = self.VOICES_DIR / f"{model}.onnx"
         config_path = self.VOICES_DIR / f"{model}.onnx.json"
         if not model_path.is_file() or not config_path.is_file():

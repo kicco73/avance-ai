@@ -34,10 +34,6 @@ PROJECT_ID = "proj"
 
 
 def _automaton() -> Automaton:
-    # A high threshold: the model's own reported signal never actually
-    # fires the trigger, so this stays a same-state (non-transitioned)
-    # turn — the exact case the optimistic buffer is meant to flush live,
-    # not the transitioned/regenerated one.
     mood = Signal(name="mood", ui_label="Mood", definition="0-100 mood score.")
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="signal.mood >= 999")
     state_a = State(key="a", ui_label="A", final=False, contextual_prompt="You are in A.", actions=[action])

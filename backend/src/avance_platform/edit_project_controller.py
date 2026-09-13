@@ -23,43 +23,15 @@ from schemas import (
 from system.web_session import WebSession
 
 from controllers.base_controller import BaseController, delete, get, post, put
-
-# Explicit per-type whitelists for the field-by-field edit endpoints
-# below — name/key is deliberately never in any of these three: it's
-# generated once at creation and immutable from then on.
 STATE_EDITABLE_FIELDS = {
     "ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat-enabled", "reactions-enabled",
     "ai-may-read-sources", "ai-must-read-sources", "ai-may-write-sources", "input", "output",
 }
 ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "target", "trigger", "task", "on-exit", "env"}
-# The init-action is an action like any other (see AutomatonYamlEditor.
-# _init_action_payload) minus 'trigger' — it's the automaton's
-# unconditional entry point, never conditionally fired, so
-# AutomatonBuilder's own _build_init_action never reads that field for
-# it and this endpoint refuses to write one that would just sit dead in
-# the YAML. 'env' stays editable: AutomatonBuilder._build_init_action
-# merges it on top of every declared env key's own default.
 INIT_ACTION_EDITABLE_FIELDS = ACTION_EDITABLE_FIELDS - {"trigger"}
 SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
-# Unlike a state/action/signal, an env key has no separate ui-label to
-# derive its name from — 'name' is itself directly editable here.
-# 'ai-definition': the text the model reads about this variable, whenever
-# some state actually lists it in its own input/output (see automaton.EnvKey).
 ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value", "ai-definition"}
-# Same reasoning as ENV_KEY_EDITABLE_FIELDS — a source's own id is
-# directly editable, not derived from its ui-label. 'url' is deliberately
-# absent: it's system-managed (ProjectEditor.add_source/set_source_field
-# keep it in lockstep with the source's own cache archive), never a field
-# a client sets directly.
 SOURCE_EDITABLE_FIELDS = {"name", "ui-label", "ui-description", "ai-definition"}
-# The optional top-level `project:` section — 'id' is what other
-# projects reach this one as through automaton.<id>. 'general-prompt' is
-# actually its own separate top-level key (see AutomatonYamlEditor.
-# set_project_field), grouped in here only because the frontend edits it
-# from the same Project card.
-# 'services' is absent on purpose: a service's level is set one service
-# at a time through put_service_level below, never as a whole mapping
-# somebody has to assemble client-side.
 PROJECT_EDITABLE_FIELDS = {"id", "ui-label", "ui-description", "signal-tracking-on-ai-message", "general-prompt"}
 
 
@@ -136,11 +108,6 @@ class EditProjectController(BaseController):
         plus any text attachments), for the "Edit project" view's file
         explorer panel."""
         return {"files": self.platform_service.list_project_files(project_id)}
-
-    # The /content route this had to sort after is core now (see
-    # project/project_controller.py) and no longer shares a prefix with
-    # it, so there is nothing left here for its {file_name:path} wildcard
-    # to swallow.
     @get("/api/skills/platform/projects/{project_id}/files/{file_name:path}", role="admin")
     def get_project_file_info(self, project_id: str, file_name: str):
         """{content, can_undo, can_redo} of `file_name`'s current
@@ -239,10 +206,6 @@ class EditProjectController(BaseController):
         placeholder content itself."""
         return await self.project_service.add_legal_terms(project_id)
 
-    # ------------------------------------------------------------------
-    # index.yml structural editing, reusing put_project_file's own path.
-    # ------------------------------------------------------------------
-
     @post("/api/skills/platform/projects/{project_id}/states", role="admin")
     async def add_state(self, project_id: str):
         return await self.project_service.add_state(project_id)
@@ -340,10 +303,6 @@ class EditProjectController(BaseController):
         return await self.project_service.set_service_level(
             project_id, service, req.level
         )
-
-    # Named to sort alphabetically before put_action_field: routes
-    # register in alphabetical method-name order, and put_action_field's
-    # {field} wildcard would otherwise swallow this literal "order" segment.
     @put("/api/skills/platform/projects/{project_id}/states/{state_name}/actions/{action_name}/order", role="admin")
     async def move_action(
         self, project_id: str, state_name: str, action_name: str, req: ReorderActionRequest

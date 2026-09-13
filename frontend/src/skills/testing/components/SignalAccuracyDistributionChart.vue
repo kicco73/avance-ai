@@ -5,10 +5,6 @@ import { Chart, BarController, BarElement, LinearScale, CategoryScale, Tooltip }
 Chart.register(BarController, BarElement, LinearScale, CategoryScale, Tooltip)
 
 const props = defineProps({
-  // Fixed-width bucket counts across the 0..100% scale, low to high —
-  // see Statistics.DISTRIBUTION_BUCKET_COUNT in the backend's metrics
-  // framework. Bucket count/width is derived from this array's own
-  // length, never hardcoded, so either side can change it independently.
   distribution: { type: Array, default: () => [] },
 })
 

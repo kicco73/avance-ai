@@ -168,8 +168,6 @@ def test_jobs_beyond_pool_size_wait_until_a_worker_frees_up():
     job_queue.submit(second)
 
     assert started.wait(timeout=2.0)
-    # The pool's single worker is already busy with the first job — the
-    # second must still be waiting, never rejected.
     assert not second.is_done()
 
     release.set()
@@ -233,8 +231,6 @@ def test_two_queues_never_share_worker_pools():
 
     queue_b.submit(job_b)
     assert _wait_until(lambda: job_b.is_done())
-    # queue_a's only worker is still blocked on job_a — proves job_b never
-    # had to wait for it, i.e. the two pools are genuinely independent.
     assert not job_a.is_done()
 
     block.set()

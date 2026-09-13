@@ -1,13 +1,3 @@
-// Regression: ChatView.vue's own v-for used to key a message bubble by
-// `msg.messageId || msg.id || i` — a bubble being written into starts with
-// messageId: null (key falls back to msg.id), then chatStoreFactory.js
-// backfills the real backend messageId once the message lands, flipping
-// the v-for key and forcing Vue to unmount/remount the whole MessageBubble
-// at exactly the moment its final content (and, for a tool-call exchange,
-// its trace) land — the visible "glitch" a streamed reply had that a
-// reload (whose messages arrive with messageId already stable) never did.
-// The fix keys on msg.id first, which never changes across a message's own
-// lifetime, so the bubble instance survives the messageId backfill intact.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from 'vue'
 
@@ -28,12 +18,6 @@ vi.mock('../src/api.js', () => ({
   projectFileContentUrl: vi.fn(() => '/skin.css')
 }))
 
-// Mounting ChatView is the heaviest thing this suite does, and the whole
-// component tree is transformed here, at import time, rather than inside
-// whichever test imports it first: that cost is 6.3s on its own and
-// 16.3s with the whole suite running in parallel, and vitest charged it
-// to that test's own 5s budget. A file's own imports are not timed, so
-// the import below is left with nothing but the re-evaluation.
 await import('../src/components/chat/ChatView.vue')
 
 describe("a bubble being written into survives the messageId backfill without remounting", () => {

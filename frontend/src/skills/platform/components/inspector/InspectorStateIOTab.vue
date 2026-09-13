@@ -1,9 +1,4 @@
 <script setup>
-// State-level Input/Output tab: input/output don't declare their own
-// variables — they each just select a subset of this project's own
-// already-declared `env:` variables (see automaton.State.input/output).
-// No metadata is duplicated here; a variable's own description/
-// ai-definition lives only on its env-key card (InspectorEnvKeysTab.vue).
 import { computed, ref, onMounted } from 'vue'
 import { getProjectEnvKeys, getProjectSources } from '../../api.js'
 import { identifierRegistry } from '../../../../identifierRegistry.js'
@@ -67,11 +62,6 @@ function jumpToEnvKey(name) {
   emit('jump-to-definition', { kind: 'env-key', envKeyName: name })
 }
 
-// ai-may-read-sources / ai-must-read-sources / ai-may-write-sources: same
-// three list fields InspectorDetailCard.vue's badges cycle through, here
-// collapsed into one mutually-exclusive choice per source (a source can't
-// be both "may read" and "must read" at once — automaton_builder.py's
-// _build_state_source_lists already rejects that overlap server-side).
 function sourceSupportsWrite(name) {
   return 'update' in (identifierRegistry.value[`source.${name}`] ?? {})
 }

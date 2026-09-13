@@ -11,7 +11,7 @@ import wave
 class PcmWavCodec:
     """Mono 16-bit PCM <-> WAV conversions for TTS audio output."""
 
-    DEFAULT_SAMPLE_RATE = 24000  # Gemini TTS's documented output rate.
+    DEFAULT_SAMPLE_RATE = 24000
 
     @classmethod
     def sample_rate_from_mime(cls, mime_type: str) -> int:

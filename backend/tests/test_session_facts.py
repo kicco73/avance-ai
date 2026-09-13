@@ -73,8 +73,6 @@ def test_state_duration_is_zero_until_a_real_transition_then_measured_from_it(db
 
     session_id = _session(db, datetime(2026, 1, 1))
     db.save_transition("a", "advance", "b", session_id, transition_log_level="WARNING")
-    # save_transition always timestamps "now" — backdate it directly to
-    # make the duration deterministic for the assertion below.
     from db.models import Tracking as TrackingModel
     TrackingModel.update(timestamp=datetime.utcnow() - timedelta(minutes=30)).where(
         TrackingModel.session == session_id

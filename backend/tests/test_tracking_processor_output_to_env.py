@@ -94,8 +94,6 @@ async def test_output_values_are_copied_onto_the_real_env_keys_they_name(db):
 
 async def test_a_key_not_in_the_states_own_output_is_never_copied(db):
     automaton = _automaton()
-    # 'extra' isn't declared in state "a"'s own `output` — a hallucinated
-    # or stale field must never leak into the automaton's real env.
     processor, _, env = _processor(db, automaton, '{"status": "done", "extra": "nope"}')
 
     await processor.process("hello")

@@ -32,14 +32,9 @@ def test_truncate_rejects_an_unknown_session(client):
 @pytest.mark.contract
 def test_truncate_rejects_someone_elses_session(client, hello_project):
     session_id = session_of(enter_chat(client, hello_project))
-    # Reassign ownership directly — no endpoint exists to create another
-    # user's session.
     from db.models import CoreSession
 
     CoreSession.update(username="someone-else").where(CoreSession.id == session_id).execute()
-
-    # Only a plain "user" is denied — a supervisor owns every session (see
-    # TurnService._owns_session), so this must downgrade the default fixture role.
     WebSession().role = "user"
     response = client.post(f"/api/core/sessions/{session_id}/truncate", json={"timestamp": "2026-01-01T00:00:00+00:00"})
     assert response.status_code == 404

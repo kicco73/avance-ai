@@ -77,9 +77,6 @@ def test_resetting_a_project_wholesale_or_for_one_user_wipes_the_matching_action
 
 class TestLinkToolEnvWritesToMessage:
     def test_binds_every_unlinked_tool_row_at_or_after_since_never_a_stale_one_from_before_it(self, db):
-        # An orphan tool write from some earlier turn (never linked, for
-        # whatever reason) must not be silently attributed to a later
-        # turn's own assistant message just because it's still unlinked.
         session_id = _session(db)
         stale_row_id = db.set_action_env(session_id, {"old": "value"}, origin="tool")
         row_id = db.set_action_env(session_id, {"pnr": "ABC"}, origin="tool")

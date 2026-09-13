@@ -1,29 +1,11 @@
 <script setup>
-// Two-level tree under four independent branches: "Sessions" (a leaf per
-// annotated session), "States" (a leaf per state key), "Users", and
-// "Signals". Each branch node is activatable too — it launches every one
-// of its own children's tests at once — and carries that scope's own
-// aggregate status, same as any leaf. The project-wide "run everything"
-// control lives outside this tree, in ProjectTestPanel.vue's header
-// (styled like its reset button). ProjectTestPanel.vue owns all data
-// fetching/launching/polling — this component only renders and emits.
-//
-// Node identifiers are plain strings prefixed by kind —
-// 'sessions-branch', 'states-branch', `session:<id>`, `state:<key>` — used
-// directly as both the emitted identifier and the key into `statuses` below.
 import { computed, ref } from 'vue'
 import TestNodeButton from './TestNodeButton.vue'
 
 const props = defineProps({
-  // The annotated sessions the "Sessions" branch shows — already filtered
-  // upstream (see ProjectTestPanel.vue's own annotatedSessions).
   sessions: { type: Array, required: true },
-  // Every real state key of the project's current draft automaton (see
-  // api.js's getProjectStates).
   states: { type: Array, required: true },
   signals: { type: Array, required: true },
-  // { [nodeId]: 'idle'|'running'|'ok'|'warning'|'fail' } — idle is the
-  // implicit default for any id missing from this map.
   statuses: { type: Object, default: () => ({}) },
   progresses: { type: Object, default: () => ({}) },
   selectedNodeId: { type: String, default: null }
@@ -49,8 +31,6 @@ function toggleUserExpanded(username) {
 
 const nothingToTest = computed(() => !props.sessions.length)
 
-// One entry per distinct username among annotated sessions, each carrying
-// its own annotated sessions — the "Users" branch's own two-level shape.
 const usersByUsername = computed(() => {
   const grouped = new Map()
   for (const session of props.sessions) {
@@ -111,14 +91,9 @@ function moveSelection(delta) {
   const nextIndex = Math.max(0, Math.min(ids.length - 1, currentIndex + delta))
   const nextId = ids[nextIndex]
   emit('select', nextId)
-  // Keep keyboard focus (and the scroll position) on the row that's now
-  // selected, same as clicking it would — querySelector over refs since
-  // every row already carries its own nodeId as a data attribute.
   treeRef.value?.querySelector(`[data-node-id="${CSS.escape(nextId)}"]`)?.focus()
 }
 
-// Enter toggles the selected node's own children, same gesture as clicking
-// its caret — only meaningful for nodes that have any (branches and users).
 function onEnterKey() {
   const nodeId = props.selectedNodeId
   if (nodeId === 'sessions-branch') toggleExpanded('sessions')
@@ -128,9 +103,6 @@ function onEnterKey() {
   else if (nodeId?.startsWith('user:')) toggleUserExpanded(nodeId.slice('user:'.length))
 }
 
-// Mirrors TestNodeButton's own onClick guard (disabled || isBusy) — Right
-// arrow is the keyboard equivalent of clicking the selected node's play
-// button, so it must respect the exact same conditions.
 function canActivate(nodeId) {
   if (nothingToTest.value) return false
   const status = statusFor(nodeId)

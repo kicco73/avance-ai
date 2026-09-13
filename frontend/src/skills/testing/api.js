@@ -2,10 +2,6 @@ import { apiFetch } from '../../api/core.js'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 
-// The "Auto" tab's own replay launch — sessionId null means the
-// whole-project-scope run (every labeled session at once). `username`,
-// when given, scopes that whole-project run to just that user's sessions
-// instead of the requesting user's own.
 export function postTest(projectId, sessionId, strategy, username) {
   return apiFetch(`${API_URL}/skills/testing/projects/${encodeURIComponent(projectId)}/tests`, {
     method: 'POST',
@@ -41,8 +37,6 @@ export function deleteAllTestJobs(projectId) {
 export function getTestMetrics(projectId) {
   return apiFetch(`${API_URL}/skills/testing/projects/${encodeURIComponent(projectId)}/tests/metrics`)
 }
-
-// Every real state key of the project's current draft automaton.
 
 export function postStateTest(projectId, stateKey, strategy) {
   return apiFetch(`${API_URL}/skills/testing/projects/${encodeURIComponent(projectId)}/runs/states/${encodeURIComponent(stateKey)}`, {

@@ -8,10 +8,6 @@ from tracking.fixed_project_context import FixedProjectContext
 from metrics.metrics_framework import AnalyticsCalculator
 
 pytestmark = pytest.mark.contract
-
-# MetricService always evaluates in a one_session context — metric_names()
-# stays the full reserved-name registry, but calculate_values()/
-# merge_if_referenced only return the subset meaningful there.
 SESSION_SCOPED_METRIC_NAMES = {
     m.name for m in AnalyticsCalculator.default_metrics() if "one_session" in m.scope
 }
@@ -53,7 +49,7 @@ def test_merge_if_referenced_computes_metrics_only_when_a_trigger_mentions_one_n
     names = {"mySignal": 60}
 
     untouched = _metrics(db).merge_if_referenced(_automaton_with_trigger("mySignal >= 50"), "a", names)
-    assert untouched is names  # unchanged — metrics were never even computed
+    assert untouched is names
 
     merged = _metrics(db).merge_if_referenced(_automaton_with_trigger("engagement >= 50"), "a", names)
     assert merged["mySignal"] == 60

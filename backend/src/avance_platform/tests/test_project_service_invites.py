@@ -70,8 +70,6 @@ class TestCreateInvite:
 
         assert invite["max_shares"] == 10
         expires_at = datetime.fromisoformat(invite["expires_at"])
-        # Within a few seconds of now + 14 days — not asserting an exact
-        # instant, since create_invite computes it at call time.
         expected = datetime.utcnow().replace(tzinfo=expires_at.tzinfo) + timedelta(days=14)
         assert abs((expires_at - expected).total_seconds()) < 5
         assert invite["whatsapp_url"] == f"https://wa.me/15552052260?text=Invitation%20code%3A%20{invite['code']}"

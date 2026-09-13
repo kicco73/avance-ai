@@ -7,14 +7,6 @@ import {
 import { busChannel } from '../../busChannel.js'
 import { confirmDialog } from '../../dialogStore.js'
 
-// ProjectTestPanel.vue's own execution tree: per-node job status/progress
-// (live over the shared /api/core/bus connection, seeded once from a
-// REST snapshot), which node is selected, and dispatching a "run" click
-// to the right endpoint for that node's own kind. `strategy` is the
-// shared batch/turn_by_turn control (owned by the caller, read here);
-// `sessions`/`projectSignals` are reference data the caller already
-// loads, consulted only for display labels; `emit` is the component's
-// own defineEmits('select').
 export function useTestExecutionTree(projectId, strategy, sessions, projectSignals, emit) {
   let unsubscribeTestUpdates = null
 
@@ -26,32 +18,17 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     return Math.max(0, tokensTotal.value - baseline)
   })
 
-  // Every cache below is keyed by `${strategy}:${nodeId}`, never nodeId
-  // alone — turn_by_turn and batch results aren't comparable, so switching
-  // strategy must never show the other strategy's cached status/result for
-  // the same node.
   function cacheKey(strategyName, nodeId) {
     return `${strategyName}:${nodeId}`
   }
 
-  // One raw snapshot per event key (`${strategy}:${nodeId}`) — the last
-  // status message received for that node, kept whole. Displayed status,
-  // error, and progress are all derived from it on read (see outcome()
-  // below), never split into separate stores that could drift apart from
-  // one another as new events arrive.
   const nodeEvents = ref({})
-  // A node's own most recent aggregate result payload — fetched over REST
-  // once its job completes, a genuinely different piece of data (and a
-  // different source) from the status stream above, so it stays separate.
   const nodeLastResult = ref({})
 
   const selectedNodeId = ref(null)
   const selectedRun = ref(null)
   const selectedRunLoading = ref(false)
 
-  // completed with no error -> ok; completed but error carries text (one
-  // or more sessions skipped, e.g. no known starting state) -> warning,
-  // never a threshold on the metrics themselves. failed -> fail.
   function statusFromOutcome(status, error) {
     if (status === 'failed') return 'fail'
     if (status === 'aborted') return 'aborted'
@@ -59,18 +36,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     return 'running'
   }
 
-  // A node with no event yet falls back to TestsTree's own implicit 'idle'.
-  // ready/running/paused/exited are the QUEUE's own view of this job, not
-  // the job's (see JobQueue._broadcast_status/ThrottledJobQueue._throttle)
-  // — is a worker actively inside its step right now, asleep waiting out
-  // the rate limit, or neither? That's exactly the ready-vs-running-vs-
-  // paused split the UI shows. job_status (job.status() itself: pending/
-  // running/completed/failed) only matters once queue_status says
-  // 'exited' (to read the real outcome), or while it's still 'pending' —
-  // the one instant before Job.prepare() runs, when nothing (not even a
-  // step count) is known yet, which needs its own distinct spin instead of
-  // reading as an ordinary queued 'ready' (which usually already has a
-  // real, worth-persisting percentage behind it).
   function outcome(message) {
     if (!message) return 'idle'
     if (message.queue_status === 'exited') return statusFromOutcome(message.job_status, message.error)
@@ -79,8 +44,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     return message.queue_status
   }
 
-  // TestsTree only ever sees the active strategy's own statuses/progress —
-  // a node from the other strategy must never leak through.
   const currentStrategyStatuses = computed(() => {
     const prefix = `${strategy.value}:`
     const result = {}
@@ -90,12 +53,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     return result
   })
 
-  // message.percentage tracks the job's own overall progress (steps_done /
-  // total_steps) — true regardless of queue_status, so it must stay
-  // visible through every 'ready' gap between steps too. Gating this on
-  // queue_status === 'running' made the percentage vanish and the ring
-  // snap back to an indeterminate spin the instant a job was re-queued for
-  // its next step, even though nothing about its actual progress changed.
   const currentStrategyProgress = computed(() => {
     const prefix = `${strategy.value}:`
     const result = {}
@@ -116,13 +73,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     return message?.job_status === 'failed' ? message.error : null
   })
 
-  // Writes one node's event as a single, complete replacement — used both
-  // for real test-update messages (job_status/queue_status straight from
-  // the backend, see JobQueue._broadcast_status) and for the optimistic
-  // 'running'/'completed'/'failed' the activate*() functions below set on
-  // click, before the first real one arrives — jobStatus here is simple
-  // on purpose, so it's translated into the same two-field shape a real
-  // message carries, and outcome() never needs to special-case its origin.
   function setNodeEvent(key, jobStatus, error = null) {
     const queueStatus = (
       jobStatus === 'completed' || jobStatus === 'failed' || jobStatus === 'aborted' ? 'exited'
@@ -131,8 +81,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     nodeEvents.value = { ...nodeEvents.value, [key]: { key, job_status: jobStatus, queue_status: queueStatus, percentage: null, error } }
   }
 
-  // nodeId's own {kind, target} in the aggregate-result vocabulary — null
-  // for 'session:*' and 'root', neither of which is one.
   function aggregateKindAndTarget(nodeId) {
     if (nodeId.startsWith('state:')) return { kind: 'state', target: nodeId.slice('state:'.length) }
     if (nodeId.startsWith('signal:')) return { kind: 'signal', target: nodeId.slice('signal:'.length) }
@@ -149,15 +97,9 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
       const result = await getAggregateResult(projectId, kind, target, eventStrategy)
       nodeLastResult.value = { ...nodeLastResult.value, [key]: result }
     } catch {
-      // already surfaced via apiFetch
     }
   }
 
-  // The single live-update channel for every node's status/progress/result
-  // — connected once in onMounted, replacing all per-node polling. Each
-  // message replaces its node's whole event record in one write (see
-  // nodeEvents/setNodeEvent above), so a fresh 'pending'/'running' for a
-  // re-run can never leave a stale error behind from the previous attempt.
   function handleTestEvent(message) {
     nodeEvents.value = { ...nodeEvents.value, [message.key]: message }
 
@@ -173,7 +115,7 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     }
     if (queueStatus !== 'exited' || status !== 'completed') return
     const target = aggregateKindAndTarget(nodeId)
-    if (target == null) return // root — no result of its own
+    if (target == null) return
     fetchAggregateResult(key, eventStrategy, target.kind, target.target)
   }
 
@@ -184,7 +126,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
       const sessionId = Number(nodeId.slice('session:'.length))
       await postTest(projectId, sessionId, activeStrategy)
     } catch {
-      // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
     }
   }
@@ -196,7 +137,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
       const stateKey = nodeId.slice('state:'.length)
       await postStateTest(projectId, stateKey, activeStrategy)
     } catch {
-      // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
     }
   }
@@ -207,7 +147,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     try {
       await postSessionsRun(projectId, activeStrategy)
     } catch {
-      // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
     }
   }
@@ -218,7 +157,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     try {
       await postStatesAggregation(projectId, activeStrategy)
     } catch {
-      // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
     }
   }
@@ -230,7 +168,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
       const signalName = nodeId.slice('signal:'.length)
       await postSignalTest(projectId, signalName, activeStrategy)
     } catch {
-      // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
     }
   }
@@ -241,7 +178,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     try {
       await postSignalsAggregation(projectId, activeStrategy)
     } catch {
-      // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
     }
   }
@@ -257,7 +193,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
       const username = nodeId.slice('user:'.length)
       await postUserSessionsRun(projectId, username, activeStrategy)
     } catch {
-      // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
     }
   }
@@ -268,7 +203,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     try {
       await postUsersAggregation(projectId, activeStrategy)
     } catch {
-      // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
     }
   }
@@ -279,18 +213,12 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     try {
       await postRootAggregation(projectId, activeStrategy)
     } catch {
-      // already surfaced via apiFetch
       setNodeEvent(key, 'failed')
     }
   }
 
   async function onActivate(nodeId) {
-    // Pressing play selects the node it belongs to, same as clicking its
-    // row — the results panel should already be pointed at it once the
-    // run/job(s) finish.
     onSelect(nodeId)
-    // Snapshot the strategy at launch time — every job this dispatches is
-    // pinned to it regardless of whether the dropdown changes before they finish.
     const activeStrategy = strategy.value
     if (!currentStrategyBusy.value) {
       tokensBaselineByStrategy.value = {
@@ -318,14 +246,10 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     }
   }
 
-  // The running job's own key already matches cacheKey(strategy, nodeId)
-  // verbatim (see JobQueue._broadcast_status's "key") -- no per-node-kind
-  // dispatch needed here, unlike onActivate above.
   async function onAbort(nodeId) {
     try {
       await deleteTestJob(projectId, cacheKey(strategy.value, nodeId))
     } catch {
-      // already surfaced via apiFetch
     }
   }
 
@@ -334,7 +258,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
       try {
         await deleteAllTestJobs(projectId)
       } catch {
-        // already surfaced via apiFetch
       }
       return
     }
@@ -346,9 +269,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     selectedRunLoading.value = true
     try {
       const runs = await getTests(projectId, sessionId)
-      // Already most-recent-first (see backend TestService.list_runs)
-      // — filtered to the active strategy, since turn_by_turn and batch
-      // runs aren't comparable and must never be shown as if they were.
       const run = runs.find((run) => run.strategy === strategy.value) ?? null
       selectedRun.value = run
       if (run != null && run.status !== 'pending' && run.status !== 'running') {
@@ -373,9 +293,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     await loadSelectedRun(nodeId)
   }
 
-  // Switching strategy must refresh whatever's on screen for the currently
-  // selected node — otherwise it would keep showing the other strategy's
-  // last-fetched run.
   watch(strategy, () => {
     if (selectedNodeId.value && isRunNode(selectedNodeId.value)) {
       loadSelectedRun(selectedNodeId.value)
@@ -407,10 +324,6 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
     Object.keys(nodeEvents.value).some((key) => key.startsWith(`${strategy.value}:`))
   ))
 
-  // reset_cache() wipes every test row project-wide, every strategy at
-  // once — a job still in flight under any of them must be stopped or let
-  // finish first, so this checks every tracked node's raw status, not
-  // just the currently selected strategy's own view of them.
   const anyJobBusy = computed(() => (
     Object.values(nodeEvents.value).some((message) => (
       ['pending', 'ready', 'running', 'paused', 'requeued'].includes(outcome(message))
@@ -444,25 +357,13 @@ export function useTestExecutionTree(projectId, strategy, sessions, projectSigna
         await loadSelectedRun(selectedNodeId.value)
       }
     } catch {
-      // already surfaced via apiFetch
     } finally {
       resettingCache.value = false
     }
   }
 
   onMounted(async () => {
-    // selectedNodeId always starts null on a fresh mount (this tab isn't
-    // kept alive while closed — see EditProjectView.vue's autoOpen v-if),
-    // so there's never anything already selected to defer to here.
     onSelect('root')
-    // Live updates arrive over the shared /api/core/bus connection
-    // (the Bus's own ui.progress, see backend system/broadcaster.py)
-    // regardless of which page is open;
-    // the snapshot fetched here just catches this node up on whatever
-    // happened before this component existed — handleTestEvent needs no
-    // special-casing for it, it's shaped exactly like a live update.
-    // Registered before the await, so a live update landing mid-fetch is
-    // never clobbered by the (now stale) snapshot value for that same key.
     unsubscribeTestUpdates = busChannel.subscribe('ui.progress', handleTestEvent)
     const { events, tokens } = await getTestStatus(projectId)
     if (typeof tokens === 'number') tokensTotal.value = tokens

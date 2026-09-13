@@ -72,7 +72,6 @@ def test_a_build_leaves_exactly_one_package_where_the_loader_looks(db, tmp_path)
     assert not staging_dir(tmp_path, module_name_for(PROJECT_ID), revision).exists()
     assert service.invalidated == [(PROJECT_ID, revision)]
 
-    # And the loader picks it up without being told anything.
     automaton = CompiledAutomatonLoader(db, tmp_path).load_at_revision(PROJECT_ID, revision)
     assert isinstance(automaton, CompiledAutomaton)
 

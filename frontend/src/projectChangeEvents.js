@@ -1,8 +1,3 @@
-// Two facts, two registries. `projectChanged` is one project's own
-// content moving (an edit landed); `projectsChanged` is the catalog
-// itself moving (a project created, deleted, renamed, published,
-// activated). Whoever displays either observes it here instead of being
-// told by whoever caused it.
 const projectListeners = new Set()
 const catalogListeners = new Set()
 

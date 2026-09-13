@@ -27,30 +27,10 @@ from token_estimate import estimate_tokens
 from system.logging_factory import LoggerFactory
 
 if TYPE_CHECKING:
-	# Import guarded: tracking.sources -> ai.llm_provider (for ToolSpec)
-	# would close a circular import if this were eager, since importing
-	# anything under the `ai` package first runs ai/__init__.py, which
-	# imports this module. Only needed for the annotations below, never
-	# at runtime — same pattern as tracking.actuators.actuator_set's own
-	# `if TYPE_CHECKING: from ai import AiService`.
 	from tracking.sources import ToolSet
 
 logger = LoggerFactory.get_logger(__name__)
-
-# A tool-call round-trip (model asks for tools -> AiService resolves them
-# -> model is called again with the results) per turn — well past any
-# legitimate lookup chain; beyond this the model is almost certainly
-# looping, so AiService gives up with a clear error rather than running
-# away with API calls. 3, not 2: a state with two ai-must-read-sources
-# forces both into round 1's own tool_choice, but nothing forces the
-# model to call them together in one round — one call each is common,
-# which already spends rounds 1 and 2 on the forced reads alone, leaving
-# none for the model's actual final reply under a 2-round cap.
 MAX_TOOL_ROUNDS = 3
-
-# Appended only to turn_history's own copy of an "error:" tool result
-# (model-facing) — never to the copy tapped_on_metadata persists/the chat
-# UI shows raw (see ToolSet.call's own docstring).
 _TOOL_ERROR_DIRECTIVE = (
 	" This call failed — no data was returned. Tell the user the lookup could not be completed; "
 	"never invent data to fill the gap."
@@ -121,35 +101,14 @@ class AiService(object):
 		input_token_budget_per_turn: int | None = None,
 	) -> None:
 		self._auto_provider = auto_provider
-		# Index-aligned with `configs`; both empty for a hand-built
-		# AiService that only ever runs in auto mode.
 		self._selectable_providers = selectable_providers or []
 		self._configs = configs or []
-		# Maps auto_provider's own internal pointer (an index into
-		# whatever list it was actually built from) back to the matching
-		# index in self._configs/_selectable_providers. Only diverges from
-		# the identity mapping when for_live/for_test excluded a "no-auto"
-		# entry from the cascade while keeping it in _configs (see their
-		# own docstrings) — defaults to identity here so a hand-built
-		# AiService (most tests, and any caller that never excludes
-		# anything) needs no special handling.
 		self._auto_config_indices = (
 			auto_config_indices if auto_config_indices is not None else list(range(len(self._configs)))
 		)
-		# None = auto (use auto_provider); an index pins to that entry
-		# of selectable_providers/configs instead.
 		self._selected_index: int | None = None
-		# get_input_tokens() cache, keyed by (provider label, prompt hash) —
-		# the same prompt can cost a different count on a different
-		# provider, so the label is part of the key, not just the hash.
 		self._input_tokens_cache: LRUCache = LRUCache(maxsize=32)
 		self._input_tokens_cache_lock = threading.Lock()
-		# Optional: persists each call's input/output tokens for Manage
-		# services' own daily consumption bar/trend chart (see
-		# generate_stream_with_metadata's on_metadata tap and
-		# db/ai_usage.py) — None in the many tests that build an AiService
-		# by hand just to exercise the in-memory TokenCounter/cascade
-		# logic, which stays entirely unaffected by this.
 		self._db = db
 		self._input_token_budget_per_turn = input_token_budget_per_turn
 
@@ -447,10 +406,6 @@ class AiService(object):
 		on_metadata: MetadataCallback,
 		schema: dict[str, str],
 		tool_set: "ToolSet | None" = None,
-		# Restricts tool_choice to tool_set.required_specs() for the first
-		# tool-call round only (see TrackingProcessor.
-		# force_required_tools_for) — meaningless (and ignored) with no
-		# tool_set, or a tool_set with nothing in required_specs().
 		force_required_tools: bool = False,
 	) -> AsyncIterator[str]:
 		"""With no tool_set, this is exactly the single call it always was
@@ -474,24 +429,12 @@ class AiService(object):
 			async for chunk in self._stream_final_answer(response_stream, schema, tapped_on_metadata, provider_label):
 				yield chunk
 			return
-
-		# Extended with the assistant's own tool_calls message and one
-		# 'tool' result message per call, round after round — local to
-		# this turn only. Never written back to `history` (the caller's
-		# own list) or persisted anywhere: TrackingProcessor never sees it,
-		# and it's gone once this generator returns.
 		turn_history = list(history)
 		tool_specs = tool_set.specs()
 		required_specs = tool_set.required_specs()
-		# Summed across every round, for the end-of-turn log line below —
-		# never re-derived from _tap_token_usage's own AiTokenUsage writes,
-		# which reset per round by design (see its own docstring).
 		input_tokens_by_round: list[int] = []
 		cache_read_tokens_by_round: list[int] = []
 		cache_creation_tokens_by_round: list[int] = []
-		# One {name, arguments, result} entry per call across every round so
-		# far — for _enforce_input_budget's own SystemWarning, naming the
-		# heaviest accumulated results if a later round goes over budget.
 		tool_call_records: list[dict[str, Any]] = []
 
 		def _tally_input_tokens(name: str, value: Any) -> None:
@@ -505,11 +448,6 @@ class AiService(object):
 
 		for round_number in range(1, MAX_TOOL_ROUNDS + 1):
 			self._enforce_input_budget(system_prompt, turn_history, tool_set, tool_call_records, round_number)
-			# Only the first round of the first turn since ai-must-query-
-			# sources' own state was entered is ever restricted — every
-			# later round in this same turn, and every turn after the
-			# first, is auto with the full catalog (see this method's own
-			# force_required_tools docstring and TrackingProcessor's).
 			required_this_round = required_specs if (round_number == 1 and force_required_tools and required_specs) else None
 			logger.info(
 				f"generate_stream_with_metadata: provider={provider_label} fields={list(schema.keys())} "
@@ -527,14 +465,6 @@ class AiService(object):
 					"role": "assistant", "tool_calls": requested.calls, "content": requested.assistant_content,
 				})
 				for call in requested.calls:
-					# Sequential, never parallel — ToolSet.call's own
-					# contract; each result must land in the history
-					# before the next call runs, matching what a real
-					# multi-step lookup actually depends on. 'tool' fires
-					# twice per call — phase "start" right before it runs,
-					# phase "result" right after — both composed by
-					# ToolSet.tool_event, the only place that knows this
-					# tool's own source/method/label/description.
 					tapped_on_metadata("tool", tool_set.tool_event(call.name, call.arguments, "start", round=round_number))
 					call_started = time.monotonic()
 					result = await tool_set.call(call.name, call.arguments)
@@ -557,9 +487,6 @@ class AiService(object):
 				f"total_input_tokens={sum(input_tokens_by_round)} cache_read_tokens={sum(cache_read_tokens_by_round)} "
 				f"cache_creation_tokens={sum(cache_creation_tokens_by_round)}"
 			)
-			# The stream ended with no further tool request — the model's
-			# real final answer, already fully collected above; replay it
-			# through the exact same parser a live stream would use.
 			async for chunk in self._stream_final_answer(
 				self._as_async_iter(round_chunks), schema, tapped_on_metadata, provider_label,
 			):
@@ -624,21 +551,9 @@ class AiService(object):
 						last_text_length = len(current_text)
 						yield delta
 		except AIServiceProviderOutputTruncatedError as exc:
-			# The trailing field (whichever key is still last in
-			# accumulated_json) was cut off mid-value — unlike every other
-			# field, it never got a chance to prove itself complete by being
-			# superseded by a later key, so it can't be trusted. Every field
-			# already emitted above is unaffected.
 			logger.critical(f"{exc} -- discarding unterminated trailing field")
 			if "text" not in schema:
-				# Background metadata-only call (batch/turn-by-turn signal
-				# extraction) — no user-visible text to lose, so a logged,
-				# swallowed loss of the trailing field is the whole story.
 				return
-			# A schema with 'text' is always a live chat turn — the user's
-			# own reply may be the very field that got cut short, so this
-			# must surface as a visible error rather than end the stream
-			# quietly (see chat/ws_turn.py's WsChatTurn.run).
 			raise
 
 		logger.info(f"generate_stream_with_metadata: stream ended normally, provider={provider_label} accumulated_json_length={len(accumulated_json)}")

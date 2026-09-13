@@ -58,7 +58,6 @@ def _upload_and_activate(client, yaml_text: str) -> str:
     project_id = parse_sse_result(response)["project_id"]
     response = client.post(f"/api/core/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
-    # get_active_automaton_and_state requires a published revision.
     response = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
     return project_id
@@ -71,7 +70,6 @@ def test_returns_one_dict_per_namespace_for_the_active_project(client):
 
     assert response.status_code == 200
     body = response.json()
-    # "automaton" is always present, even empty with no other project.
     assert set(body) == {
         "signal", "env", "session", "session.metric", "user", "source", "task", "chat", "attachment", "metric",
         "automaton", "datetime", "datetime.timezone",
@@ -134,14 +132,14 @@ states:
 
 def test_automaton_namespace_lists_every_other_project_never_the_active_one(client):
     other_id = _upload_and_activate(client, OTHER_PROJECT)
-    project_id = _upload_and_activate(client, PROJECT)  # re-activates identifiers_proj
+    project_id = _upload_and_activate(client, PROJECT)
 
     response = client.get(f"/api/core/projects/{project_id}/identifiers")
 
     assert response.status_code == 200
     body = response.json()
     assert body["automaton"] == {}
-    assert f"automaton.{project_id}" not in body  # a project never lists itself
+    assert f"automaton.{project_id}" not in body
     assert body[f"automaton.{other_id}"] == {"state": f"The '{other_id}' project's own current state."}
     assert body[f"automaton.{other_id}.env"] == {"budget": "Remaining shared budget."}
 
@@ -190,12 +188,7 @@ def test_source_namespace_lists_one_entry_per_declared_source(client):
 
     assert response.status_code == 200
     body = response.json()
-    # value(*values, key=...) is a real method for scripts/triggers too
-    # (never a model tool — see tracking.sources.SourceDriver.value), so
-    # it belongs in the design view's own autocomplete alongside the reads.
     assert set(body["source.pino"]) == {
         "select_rows_containing", "select_rows_where", "select_rows_in_range", "value",
     }
-    # A source with no url yet (see AutomatonBuilder._build_source) is
-    # still listed under its own name, just with nothing to call on it.
     assert body["source.unconfigured"] == {}

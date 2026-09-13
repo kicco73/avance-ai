@@ -71,8 +71,6 @@ def test_find_treats_a_failed_jobs_run_as_a_cache_miss_and_forgets_it(db: Db):
         found = cache.find(session_id, "batch", 1, 0)
 
     assert found is None
-    # Not just a cache miss — the dead job must no longer be pinned in
-    # memory, otherwise every retry leaks another orphaned reference.
     assert cache.live_job_for(run["id"]) is None
 
 
@@ -83,7 +81,7 @@ def test_find_still_waits_for_a_job_that_is_genuinely_still_running(db: Db):
 
     cache = TestCache(db)
     job = _FakeJob(should_fail=False)
-    job.prepare()  # prepared but never run — genuinely still in flight
+    job.prepare()
     with cache.locked():
         cache.track(run["id"], job)
         found = cache.find(session_id, "batch", 1, 0)

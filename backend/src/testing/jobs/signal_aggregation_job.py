@@ -62,11 +62,6 @@ class SignalAggregationJob(_AggregationJob):
         self._sessions_job: PooledAggregationJob | None = None
         self._pending_run_ids: list[int] = []
         self._accumulator = Statistics.Accumulator()
-        # Shared across every signal's own job by AllSignalsAggregationJob
-        # (all resolving the very same run ids) so gathering one run's
-        # observations — its slowest part, see the class docstring — happens
-        # once total instead of once per signal. A standalone signal click
-        # gets its own private, single-use cache, same cost as before.
         self._observations_cache = observations_cache if observations_cache is not None else SharedObservationsCache()
 
     def _resolve_or_construct_dependencies(self) -> tuple[CancelableJob, ...]:

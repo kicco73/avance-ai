@@ -22,9 +22,6 @@ from .avance_archive import SCHEME as AVANCE_SCHEME, AvanceArchiveSource
 from .base import SourceContext, SourceDriver
 from .comparison import OPERATORS
 from .url import parse_source_url
-
-# scheme -> the driver that serves it — every `avance:<path>` one of the
-# project's archive files.
 SOURCE_DRIVERS: dict[str, type[SourceDriver]] = {
     AVANCE_SCHEME: AvanceArchiveSource,
 }
@@ -54,12 +51,6 @@ _STRINGS_PARAMETER = {
         "for no additional filter."
     ),
 }
-
-# The uniform JSON Schema of each SourceDriver method's own arguments —
-# the same for every driver, since every driver implements the very same
-# signature (see SourceDriver). A driver may *narrow* one of these
-# through parameter_schema() (an enum of real column names, the exact
-# writable fields), never change its shape.
 METHOD_SCHEMAS: dict[str, dict] = {
     "select_rows_containing": {
         "type": "object",
@@ -107,20 +98,9 @@ METHOD_SCHEMAS: dict[str, dict] = {
         "required": ["values", "fields"],
     },
 }
-
-# Which SourceDriver method each of a state's three source fields exposes
-# — a read field exposes every one of READ_METHODS the driver supports
-# (READ_METHOD, the plain row search, is the one every readable driver
-# implements, and so what a read field is validated against).
 READ_METHODS = ("select_rows_containing", "select_rows_where", "select_rows_in_range")
 READ_METHOD = READ_METHODS[0]
 WRITE_METHOD = "update"
-
-# method -> its own named arguments that precede that method's trailing
-# `*strings` variadic (see SourceDriver.select_rows_where/
-# select_rows_in_range) — every other method's variadic (`values`) comes
-# first in its own signature, with no fixed arguments ahead of it (see
-# ToolSet.call).
 _FIXED_PARAMS: dict[str, tuple[str, ...]] = {
     "select_rows_where": ("column", "operator", "value"),
     "select_rows_in_range": ("column", "start", "end"),
@@ -145,18 +125,9 @@ class ToolSet:
         may_write: list[Source] | None = None,
     ) -> None:
         self._namespace = namespace
-        # tool name ("source_<name>_<method>") -> (source name, method name)
         self._resolved: dict[str, tuple[str, str]] = {}
-        # tool name -> its own source, for tool_event() below.
         self._sources: dict[str, Source] = {}
         self._specs: list[ToolSpec] = []
-        # Every ai-must-read-sources read tool name — the subset
-        # AiService forces tool_choice down to on the first round after
-        # entering this state (see required_specs() below). Disjoint from
-        # every ai-may-read-sources tool name by construction:
-        # AutomatonBuilder rejects a source declared in both read fields
-        # for the same state. An `update` is never in here: a write is
-        # never forced.
         self._required_names: set[str] = set()
         for source in may_read:
             self._add_read_tools(source, required=False)
@@ -179,10 +150,6 @@ class ToolSet:
     def _add_tool(self, source: Source, driver: SourceDriver, method: str, *, required: bool) -> None:
         tool_name = f"source_{source.name}_{method}"
         description = driver.METHOD_DESCRIPTIONS.get(method, "")
-        # ai-definition is where the project author explains — *to the
-        # model* — what the source actually contains and how to use it,
-        # alongside the generic method blurb; never ui-description, which
-        # is human-facing UI text that must never reach the model.
         if source.ai_definition:
             description = f"{description}\n\n{source.ai_definition}" if description else source.ai_definition
         parameters = driver.parameter_schema(method) or METHOD_SCHEMAS[method]
@@ -296,17 +263,6 @@ class ToolSet:
 
 class SourceNamespace:
     def __init__(self, db: Db | None, automaton: Automaton, session_id: int | None = None, env: Env | None = None) -> None:
-        # None outside a real chat session (see tracking.evaluation_scope.
-        # EvaluationScopeBuilder.build) — passed straight through to every
-        # driver so it can decide for itself whether/how to use it
-        # (AvanceArchiveSource's own per-session read cache). `env`: the
-        # session's own Env, what a source driver would read and write —
-        # a throwaway in-memory one when the caller has none (a namespace
-        # built only to resolve archive sources).
-        #
-        # The one place a driver's file access is decided: from here on no
-        # driver asks where a project's files live (see
-        # tracking.project_files.project_files_for).
         self._context = SourceContext(
             db=db, automaton=automaton, session_id=session_id,
             env=env if env is not None else Env(),

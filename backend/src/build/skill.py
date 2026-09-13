@@ -62,10 +62,6 @@ class BuildSkill(Skill):
         )
 
     def register_controllers(self, controllers: list) -> None:
-        # XXX Compiled automaton requirement - do not touch.
-        # XXX The Build view's Target step, wired to a real compile. The
-        # directory it writes into is the one CompiledAutomatonLoader reads
-        # from — one setting (build-service.apps-dir), never two.
         from build import BuildService
         from build.build_controller import BuildController
 

@@ -61,7 +61,6 @@ async function load() {
     apps.value = (await getAppStoreApps(searchQuery.value)).apps
     if (selectedId.value == null && visibleApps.value.length) selectApp(visibleApps.value[0].id)
   } catch {
-    // already surfaced via apiFetch
   } finally {
     loading.value = false
   }
@@ -363,8 +362,6 @@ defineExpose({ refresh: load })
   opacity: 0;
 }
 
-/* Out of the flow so the app arriving and the app leaving overlap for
-   those 120ms instead of pushing each other around. */
 .app-store-detail-leave-active {
   position: absolute;
   inset: 0;

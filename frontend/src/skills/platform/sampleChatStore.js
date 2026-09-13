@@ -27,10 +27,6 @@ export function createSampleChatStore({ stateKey = ref(''), appId = ref(null) } 
     historyLoaded.value = false
     try {
       const res = await getAppPreviewTranscript(asked)
-      // Stale-response guard, the same one loadSkin has (see
-      // chatSkin.js): picking another app while this one's transcript is
-      // in flight left the late answer winning, and this card showing a
-      // conversation that belongs to an app nobody had selected.
       if (appId.value !== asked) return
       messages.value = res.messages?.length
         ? res.messages.map((m) => ({ id: m.id, messageId: m.id, role: m.role, content: m.content, timestamp: m.timestamp }))

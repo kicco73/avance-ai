@@ -42,10 +42,5 @@ class PlatformSkill(Skill):
         from avance_platform.platform_service import PlatformService
 
         core = bus.collect(POINT_CORE_SERVICES, {})
-        # Two facades over one set of collaborators, not two sets: a revision
-        # published through this one is immediately what the engine loads
-        # (see avance_platform/platform_service.py). The service owns its own
-        # controllers — this function no longer knows what they are, let
-        # alone what each of them takes.
         PlatformService(core["project_service"]).install(core, controllers)
         logger.info("platform started — the authoring surface is served.")

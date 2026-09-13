@@ -1,19 +1,10 @@
 <script setup>
-// The Inspector "Info" tab's card for a selected design-tree Source node
-// (see FileExplorer.vue's own "Sources" branch) — same badge/title/edit-form
-// convention as InspectorProjectCard.vue, but always showing its edit form
-// (a source has nothing worth a read-only view): a renameable id, ui-label
-// (the title), ui-description, and a (display-only) driver indicator.
-// Selecting this source opens a fresh sources/<id>.csv archive
-// (ProjectEditor.add_source), edited via SourceContentPanel.vue — the only
-// driver left today.
 import { ref, watch } from 'vue'
 import { vAutosize } from '../../../../components/skillkit/textareaAutosize.js'
 import { handleEnterNext } from '../../../../components/skillkit/enterToNextField.js'
 import CardMenu from '../../../../components/skillkit/CardMenu.vue'
 
 const props = defineProps({
-  // { name, ui_label, ui_description, ai_definition, url } | null, from getProjectSources
   source: { type: Object, default: null },
   deleting: { type: Boolean, default: false }
 })
@@ -138,11 +129,6 @@ function handleDelete() {
 </template>
 
 <style scoped>
-/* No max-height cap here (unlike other cards reusing this same class
-   name in their own scoped styles): this card is the Info tab's only
-   content while a source is selected (see InspectorStateTab.vue's own
-   isSourceContext, which hides every other card), so it should use
-   whatever height the tab actually has, not an arbitrary fraction of it. */
 .inspector-source-card { margin-top: 0; cursor: default; }
 .inspector-detail-card { display: flex; flex-direction: column; border-radius: 8px; border: 1px solid #eee; background: #fafafa; overflow: visible; }
 .inspector-detail-header { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem 0.6rem; border-bottom: 1px solid #eee; flex-shrink: 0; }
@@ -153,8 +139,6 @@ function handleDelete() {
 .inspector-detail-title-input:hover, .inspector-detail-title-input:focus { border-color: #ccc; background: white; }
 .inspector-detail-form-label { display: flex; align-items: center; gap: 0.35rem; margin: 20px 0 0.2rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
 .inspector-py-field-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 1.1rem; height: 0.85rem; border-radius: 3px; background: #4b8bbe; color: white; font-size: 0.55rem; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -0.02em; }
-/* Marks a field the AI itself reads, as opposed to a purely human-facing
-   one like Description — same convention as InspectorDetailCard.vue's own. */
 .inspector-ai-field-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; }
 .inspector-project-id-input { display: block; width: 100%; box-sizing: border-box; font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8rem; padding: 0.3rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
 .inspector-source-select { display: block; width: 100%; box-sizing: border-box; font: inherit; font-size: 0.8rem; padding: 0.3rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; background: white; }

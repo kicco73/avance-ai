@@ -76,8 +76,6 @@ def _hydrators(sink: list) -> dict:
 
 @pytest.fixture
 def file_db(tmp_path) -> Db:
-    # File-backed, not :memory: — the scheduler and queue threads each
-    # open their own connection (see conftest.app_db's docstring).
     instance = Db(f"sqlite:///{tmp_path / 'tasks.db'}")
     instance.get_or_create_user("test", "sub-user", "user", "user", None)
     instance.ensure_project("p")
@@ -166,8 +164,6 @@ def test_a_due_task_is_claimed_run_and_settled_done_while_a_failing_one_is_recor
 def test_a_task_due_soon_runs_at_its_time_without_waiting_for_a_poll(file_db):
     sink: list = []
     scheduler = _make(file_db, sink)
-    # poll_interval is 0.2s here; make the due time land well before the
-    # *second* poll so a wake-up on the exact due time is what makes it.
     scheduler.submit(StubTask("stub:1", "user", {"value": 1}, sink), timestamp=datetime.now(timezone.utc) + timedelta(seconds=0.5))
 
     assert not _wait_until(lambda: sink == [1], timeout=0.3)
@@ -218,8 +214,6 @@ class TestTheTableIsTheQueue:
     def test_a_new_scheduler_runs_what_the_previous_one_left_pending(self, file_db):
         first = _make(file_db, [], start=False)
         first.submit(StubTask("stub:1", "user", {"value": 1}, []), timestamp=_future())
-        # "Restart": the process that accepted the task is gone; the row
-        # comes due meanwhile.
         TaskRow.update(run_at=datetime.utcnow() - timedelta(seconds=1)).where(TaskRow.key == "stub:1").execute()
         sink: list = []
 
@@ -307,7 +301,7 @@ class TestTheTableIsTheQueue:
         file_db.get_or_create_user("test", "sub-user", "user", "user", None)
         scheduler.submit(StubTask("stub:2", "user", {"value": 2}, sink), timestamp=_future())
         assert file_db.list_tasks(project_id="p")
-        file_db.delete_archives("p")  # what ProjectManager.delete_project does — drops the Project row
+        file_db.delete_archives("p")
         assert file_db.list_tasks() == []
 
     def test_two_schedulers_over_one_table_never_run_the_same_row_twice(self, file_db):

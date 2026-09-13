@@ -12,10 +12,6 @@ from .archive.automaton_loader import AutomatonLoader
 class BuildOutcome:
     revision: int
     error: str | None
-    # The builder's own non-fatal warnings (Automaton.build_warnings) —
-    # only ever populated on a successful build (a failed one produced no
-    # Automaton to read them off); never new warnings of this checker's
-    # own, just surfacing what AutomatonBuilder already computes.
     warnings: list[str] = field(default_factory=list)
     file: str | None = None
     line: int | None = None
@@ -37,14 +33,6 @@ class ProjectHealthChecker:
     def __init__(self, db: Db, automaton_loader: AutomatonLoader) -> None:
         self._db = db
         self._automaton_loader = automaton_loader
-        # project_id -> whatever check() last returned for it — read via
-        # last_checked() *before* the next check() overwrites it, which is
-        # how ProjectManager.recompute_availability tells a real
-        # broken<->healthy transition apart from a repeated result.
-        # current() (used by read-only callers like the runtime-status
-        # view or ensure_project_not_broken) never touches this, so a
-        # background poll can never eat the transition a real recompute
-        # would otherwise have noticed.
         self._last: dict[str, ProjectHealth] = {}
 
     def check(self, project_id: str) -> ProjectHealth:

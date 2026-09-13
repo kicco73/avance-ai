@@ -2,37 +2,26 @@ import { apiFetch, projectFetch } from '../../../api/core.js'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 
-// `sessionId`, when given, pins the graph to the exact revision that
-// session ran against, instead of the current draft. The "States" tab
-// passes the session under review; EditProjectView omits it.
 export function getProjectGraph(projectId, sessionId) {
   const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
   return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/graph${query}`)
 }
 
 
-// Declared env-key definitions (name/ui_description/value) of the
-// project's top-level `env:` section.
 export function getProjectEnvKeys(projectId, sessionId) {
   const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
   return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/env-keys${query}`)
 }
 
-// The optional top-level `project:` section (id/ui_label/ui_description).
 export function getProjectMetadata(projectId) {
   return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/project`)
 }
 
-// Declared source definitions (name/ui_label/ui_description/url) of the
-// project's top-level `sources:` section.
 export function getProjectSources(projectId, sessionId) {
   const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
   return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/sources${query}`)
 }
 
-// ShareProjectDialog.vue's own trigger — a fresh Invite row every time
-// the dialog opens (see backend's InviteManager.create_invite), never
-// reused. { code, expires_at, max_shares }.
 export function postCreateInvite(projectId) {
   return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/invites`, { method: 'POST' })
 }
@@ -47,10 +36,6 @@ export function putProjectField(projectId, field, value) {
   )
 }
 
-// One service's own level for this project: 'required', 'optional' (the
-// default, which removes the declaration) or 'disabled' — see
-// PROJECT_SPECS.md §1.2. One service at a time, never a whole mapping
-// assembled here.
 export function putServiceLevel(projectId, service, level) {
   return projectFetch(
     projectId,
@@ -66,9 +51,6 @@ export function getProjectFiles(projectId) {
 }
 
 
-// {content, can_undo, can_redo} of fileName's current content —
-// can_undo/can_redo drive the editor's Undo/Redo buttons, scoped to the
-// current user.
 export function getProjectFile(projectId, fileName) {
   return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(fileName)}`)
 }
@@ -81,10 +63,6 @@ export function putProjectFile(projectId, fileName, content) {
   })
 }
 
-// Renames one file in place — the new basename only, same folder as
-// fileName (see ProjectEditor.rename_project_file, which also
-// auto-rewrites any index.yml/index.css reference to the old basename).
-// Response: {old_name, content, can_undo, can_redo, ...} for newName.
 export function renameProjectFile(projectId, fileName, newName) {
   return projectFetch(projectId, `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(fileName)}/rename`, {
     method: 'POST',
@@ -102,9 +80,6 @@ export function postSourceWebImport(projectId, sourceName, query, onProgress) {
   )
 }
 
-// Image attachments: same PUT route as putProjectFile, but the raw File
-// as body with its own Content-Type — the backend validates an image
-// save against the request header, unlike a text save.
 export function putProjectFileBinary(projectId, fileName, file) {
   return projectFetch(projectId, `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(fileName)}`, {
     method: 'PUT',
@@ -114,9 +89,6 @@ export function putProjectFileBinary(projectId, fileName, file) {
 }
 
 
-// A pure editor preview, not a save — nothing is persisted. `content` is
-// the editor's current text, needed so a later redo/undo can restore it;
-// the backend still decides what to restore. Response: {content, can_undo, can_redo}.
 export function undoProjectFile(projectId, fileName, content) {
   return apiFetch(
     `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(fileName)}/undo`,
@@ -131,9 +103,6 @@ export function redoProjectFile(projectId, fileName, content) {
   )
 }
 
-// A pure editor preview, same shape as undo/redo above — nothing is
-// persisted. Response: {content} — the new file text for the caller to
-// drop into its own (unsaved) editor buffer.
 function aiEditProjectFile(projectId, fileName, instruction) {
   return apiFetch(
     `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/files/${fileName}/ai-edit`,
@@ -208,9 +177,6 @@ export function putActionField(projectId, stateName, actionName, field, value) {
   )
 }
 
-// The init-action lives outside `states:` in the YAML, so unlike
-// putActionField it isn't looked up inside a state's `actions:` list —
-// every editable field goes through this dedicated endpoint instead.
 export function putInitActionField(projectId, field, value) {
   return projectFetch(
     projectId,
@@ -243,8 +209,6 @@ export function putSourceField(projectId, sourceName, field, value) {
   )
 }
 
-// 0-based index the action should end up at, within its own state's
-// actions list.
 export function putActionOrder(projectId, stateName, actionName, position) {
   return projectFetch(
     projectId,

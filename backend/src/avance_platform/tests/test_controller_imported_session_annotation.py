@@ -27,10 +27,6 @@ def _zip_of(files: dict[str, str]) -> bytes:
 
 
 def _index_yml(*, autotracking_on_ai_message: bool) -> str:
-    # A state with no actions is implicitly final, which would make
-    # imported-session reads gate on transition timestamps and trip over
-    # the NULL timestamps an import's messages carry — a no-op self-loop
-    # action keeps state "a" non-final to sidestep that here.
     return f"""
 init-action:
   target: a
@@ -131,9 +127,6 @@ def test_annotation_validates_against_the_messages_own_project_not_whatever_is_n
     _setup_project(client, autotracking_on_ai_message=True)
     _, by_role = _import_and_get_messages(client)
     message_id = by_role["user"]["id"]
-
-    # A second, unrelated project becomes active — its own automaton has
-    # no state "a" (and no signal "mood") at all, only state "x".
     other_index_yml = """
 project:
   id: other
@@ -153,15 +146,8 @@ states:
     assert parse_sse_result(response)["project_id"] == "other"
     assert client.post("/api/core/projects/other/activate").status_code == 200
     assert client.post("/api/skills/platform/projects/other/publish", json={}).status_code == 200
-
-    # Still succeeds — "a" is a real state in the *message's own* project
-    # ("proj"), regardless of "other" now being the active one.
     resp = client.put(f"/api/skills/platform/messages/{message_id}/expected-state", json={"expected_state": "a"})
     assert resp.status_code == 200, resp.text
     assert resp.json()["expected_state"] == "a"
-
-    # And a state that's real in "other" but not in "proj" must still be
-    # rejected — validation is scoped to "proj", never to "whatever is
-    # active", in both directions.
     resp = client.put(f"/api/skills/platform/messages/{message_id}/expected-state", json={"expected_state": "x"})
     assert resp.status_code == 422, resp.text

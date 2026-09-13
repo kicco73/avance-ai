@@ -14,10 +14,6 @@ from tracking.automaton_namespace import AutomatonNamespace
 pytestmark = pytest.mark.contract
 
 USERNAME = "user"
-
-# The family both the caller (scoped_to) and "observed" itself declare —
-# automaton.* visibility requires an exact match on both sides (see
-# tracking.automaton_namespace's own docstring).
 FAMILY = "shared_family"
 
 
@@ -104,9 +100,8 @@ def test_an_env_key_resolves_to_its_action_set_value_or_to_none_warning_only_whe
     assert _namespace(db).observed.env.never_declared is None
     assert _warning_kinds(db) == ["env_key_not_declared"]
 
-    # Declared but never set: None, and no warning of its own.
     assert _namespace(db).observed.env.visits is None
 
     db.set_action_env(session_id, {"visits": 3})
     assert _namespace(db).observed.env.visits == 3
-    assert _warning_kinds(db) == ["env_key_not_declared"]  # still just the one from above
+    assert _warning_kinds(db) == ["env_key_not_declared"]

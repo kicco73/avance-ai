@@ -1,15 +1,5 @@
-// Regression for putProject silently doing nothing: it called projectFetch
-// without importing it from core.js, so every upload threw a bare
-// ReferenceError inside the try/catch's "already surfaced via apiFetch"
-// branch — no request ever left the browser, no console output either.
-// Unlike the other API tests, this imports admin.js for real (only fetch
-// itself is stubbed) so a module-level mistake like a missing import
-// actually throws here instead of being hidden behind a mocked api.js.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Pinned here, not read off the running environment: admin.js resolves
-// its API_URL from VITE_API_URL at import time, so the stub must land
-// before the dynamic import below.
 let putProject
 
 beforeAll(async () => {

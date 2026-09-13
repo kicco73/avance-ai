@@ -1,10 +1,3 @@
-// Regression: a live turn that made a tool call used to leave the
-// assistant bubble's own toolCalls unset — MessageBubble.vue's permanent
-// trace (see toStoreMessage) only ever appeared after a manual reload,
-// since a live turn only ever publishes the pieces and the tool's own
-// status, never the persisted trace itself. The store now backfills it,
-// once, from the same history a reload reads — see chatStoreFactory.js's
-// own loadToolTrace.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))

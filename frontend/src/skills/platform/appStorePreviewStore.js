@@ -30,7 +30,6 @@ export async function stopPreviewSession() {
       await deletePreviewSessionEnv(sessionId)
       await deleteSession(sessionId)
     } catch {
-      // already surfaced via apiFetch
     }
   }
 }
@@ -41,7 +40,6 @@ export async function restartPreviewSession() {
     try {
       await deletePreviewSessionEnv(sessionId)
     } catch {
-      // already surfaced via apiFetch
     }
   }
   await handleNewSession()

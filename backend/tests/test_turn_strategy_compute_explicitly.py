@@ -63,8 +63,6 @@ async def test_v2_generate_reply_reports_the_decoded_signals_field(db):
 
 
 async def test_v2_generate_reply_also_reports_audio_and_memory_under_their_own_keys(db):
-    # TurnProtocolUsingSchema forwards every non-"text" key on_metadata
-    # reports, unfiltered — each one already decoded through its own channel.
     protocol = TurnProtocolUsingSchema(
         FakeAiServiceV2(metadata={"audio": "hi", "memory": "x: y", "signals": '{"mood": 1}'}),
     )

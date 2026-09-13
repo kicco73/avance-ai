@@ -45,10 +45,6 @@ def _wait_for_aggregate_result(client, project_name, kind, strategy, target=None
 
 
 def _make_labeled_session_for(client, app_db, project_name, username):
-    # set_active_project_id directly, not PUT .../activate: that
-    # endpoint's idempotent check reads the user's *current* active
-    # project first, which raises for a user who's never activated
-    # anything yet — unrelated to what's under test here.
     app_db.set_active_project_id(project_name, username)
     with WebSession().impersonate(username):
         session_id = session_of(enter_chat(client, project_name))
@@ -140,10 +136,6 @@ def test_users_aggregation_rerun_skips_dependency_resolution_when_cached(client,
     def spy(self):
         calls.append(1)
         return original(self)
-
-    # Nothing a caller sees changes when the tree is rebuilt: every
-    # sub-run is already completed, so resolving it again hands back the
-    # very same rows. Only the call itself distinguishes the two.
     with patch.object(UsersAggregationJob, "_resolve_or_construct_dependencies", spy):
         first = client.post(f"/api/skills/testing/projects/{hello_project}/aggregations/users", json={"strategy": "turn_by_turn"})
         assert first.status_code == 200, first.text
@@ -156,9 +148,6 @@ def test_users_aggregation_rerun_skips_dependency_resolution_when_cached(client,
         recached = _wait_for_aggregate_result(client, hello_project, "users", "turn_by_turn")
         assert recached.status_code == 200, recached.text
         assert recached.json() == cached.json()
-
-        # Unchanged: the second run's _prepare() resolved straight from
-        # the cache and never touched dependency resolution at all.
         assert len(calls) == 1
 
 

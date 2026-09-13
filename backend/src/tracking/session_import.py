@@ -8,10 +8,6 @@ import re
 
 from db import Db, validated_role
 from db.utils import _parse_iso
-
-# A line opens a new message when it starts with "user:" or "assistant:"
-# (case-insensitive, leading whitespace ignored); at most one space
-# after the colon is dropped from the first line of content.
 _PREFIX_RE = re.compile(r"^\s*(user|assistant):[ \t]?(.*)$", re.IGNORECASE)
 
 
@@ -30,9 +26,6 @@ def parse_transcript(text: str) -> list[dict]:
 
     if not raw_messages:
         raise ValueError("No valid messages found in transcript.")
-
-    # Consecutive same-role raw messages merge into one — the final
-    # result always alternates user/assistant.
     merged: list[dict] = []
     for message in raw_messages:
         if merged and merged[-1]["role"] == message["role"]:
@@ -90,10 +83,6 @@ class SessionImportManager:
             start_state=session_data.get('start_state'),
             end_state=session_data.get('end_state'),
             type=restored_type, title=session_data.get('name'),
-            # Restored rather than re-stamped: an exported live session
-            # says which channel it was held on, and losing that on the
-            # way back in used to be invisible only because every import
-            # was silently marked 'native-chat' by the column default.
             channel=session_data.get('channel'),
             closed_at=_parse_iso(session_data.get('closed_at')),
             close_reason=session_data.get('close_reason'),
@@ -106,17 +95,9 @@ class SessionImportManager:
             for message in messages:
                 self._import_message(session_id, message)
         except (KeyError, TypeError, ValueError):
-            # No transaction of its own — cleaned up by hand instead, so a
-            # malformed session never leaves a message-less (or half-written,
-            # when Db.save_message rejects a message's own role) CoreSession
-            # row behind for a retrying caller to mistake for a genuine one.
             self._db.delete_chat_session(session_id)
             raise
         return session_id
-
-    # Every one of these is optional on a message entry — a plain
-    # `message.get(key)` for each, rather than requiring the caller's
-    # JSON to carry every key on every message.
     _TRACKING_FIELDS = ('old_state', 'action', 'new_state', 'values', 'expected_state', 'expected_values', 'comment', 'origin')
 
     def _import_message(self, session_id: int, message: dict) -> None:

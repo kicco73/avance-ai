@@ -95,10 +95,6 @@ async def test_batch_signal_source_keeps_both_roles_labeled_at_the_user_message(
     turn_ids = _seed_conversation(db, session_id)
 
     prompt = await _prompt_sent_for(BatchSignalSource, db, automaton, session_id, turn_ids)
-
-    # The last covered turn's own assistant reply lands after turn_ids[-1]
-    # (a higher message id), so it's cut off same as before this refactor —
-    # only earlier turns' replies (already <= turn_ids[-1]) are shown.
     assert _transcript_in(prompt) == (
         "[Turn 1]\n"
         "User: user says 0\n"

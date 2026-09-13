@@ -1,7 +1,5 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
-// Whether the centered header logo still fits between the left and right
-// header groups; `headerEl` is the AppHeader component ref (its `.el`).
 export function useHeaderLogoFit(headerEl, headerLeftEl, headerActionsEl) {
   const headerWidth = ref(0)
   const headerLeftWidth = ref(0)

@@ -17,10 +17,6 @@ from db import Db
 from system.web_session import WebSession
 
 if TYPE_CHECKING:
-    # Deferred: project.project_service imports tracking.tracking_engine,
-    # which imports Env from this very module — a real top-level import
-    # here would be circular. Safe as a type-only import since `from
-    # __future__ import annotations` (above) never evaluates it at runtime.
     from project.project_service import ProjectService
 
 
@@ -107,9 +103,6 @@ class Env(object):
         self._write_action_set({})
 
     def get(self, key: str, default: Any = None) -> Any:
-        # action_set() takes priority on a name collision — an action's
-        # own `env:` field is the more deliberate/authoritative source
-        # than whatever the model itself noted under the same name.
         return {**self.memory(), **self.action_set()}.get(key, default)
 
     def memory_as_text(self) -> str:

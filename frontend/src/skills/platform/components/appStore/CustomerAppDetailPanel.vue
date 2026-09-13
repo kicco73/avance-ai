@@ -26,7 +26,6 @@ onMounted(async () => {
   try {
     sessionSummaries.value = (await getAppSessionSummaries(props.app.id)).sessions
   } catch {
-    // already surfaced via apiFetch
   }
 })
 
@@ -63,7 +62,6 @@ async function selectUninstallFromMenu() {
     await deleteInstallApp(app.id)
     app.installed = false
   } catch {
-    // already surfaced via apiFetch
   } finally {
     uninstalling.value = false
   }

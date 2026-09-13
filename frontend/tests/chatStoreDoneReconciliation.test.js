@@ -1,11 +1,3 @@
-// Regression: the streaming bubble used never to be reconciled against
-// the message that was actually persisted, so a piece dropped mid-stream
-// (a reload replacing `messages` mid-turn, or any other gap) left it
-// permanently short. The whole message — `output.text`, the one that
-// ends the exchange (see backend docs/BUS.md) — now replaces (never
-// concatenates) the bubble's content/audioText/timestamp, re-creates the
-// bubble if it was removed from `messages` in the meantime, and never
-// drops it once a piece has landed even if the exchange later fails.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../src/taskActions.js', () => ({ runTaskScript: vi.fn() }))
@@ -25,8 +17,6 @@ describe('the answer reconciles the streaming bubble it was being written into',
   let deliver
 
   beforeEach(async () => {
-    // After resetModules the store gets a fresh copy of the fake socket —
-    // the test has to publish into that one, not the first.
     vi.resetModules()
     const bus = await import('./fakeBus.js')
     bus.resetFakeBus()
@@ -59,8 +49,6 @@ describe('the answer reconciles the streaming bubble it was being written into',
   it('re-creates the bubble from the answer if it was removed from `messages` mid-turn', async () => {
     chatStore.currentSessionId.value = 1
     await chatStore.handleSend('hi again')
-    // A reload (or anything else) wipes the in-flight placeholder out of
-    // `messages` before the answer lands.
     chatStore.messages.value = chatStore.messages.value.filter((m) => m.role !== 'assistant')
     deliver({ type: 'state.buttons', session_id: 1, actions: [] })
     deliver({

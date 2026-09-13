@@ -71,7 +71,5 @@ def signal_row(id_, ts, values=None, old_state=None, action=None, new_state=None
         "old_state": old_state,
         "action": action,
         "new_state": new_state,
-        # Defaults to id_ itself, matching ascending chronological order
-        # for Timeline.signal_series's message_id-based ordering.
         "message_id": id_ if message_id is None else message_id,
     }

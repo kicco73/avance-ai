@@ -17,10 +17,6 @@ from pathlib import Path
 from system import skills
 
 DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
-
-#: The core's own reference material, by slug. Not every file in docs/ —
-#: the conventions written for whoever works in this repo are not
-#: reference material the product serves.
 CORE_DOCS = {
     "project-specs": "PROJECT_SPECS.md",
     "metrics": "METRICS.md",

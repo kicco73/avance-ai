@@ -41,9 +41,6 @@ def test_deleting_all_test_jobs_cancels_only_jobs_still_in_flight(client, hello_
 
     in_flight = _FakeCancelableJob("batch:in-flight")
     in_flight.prepare()
-
-    # _jobs_by_key has no public writer (only _submit/_track fill it) and a
-    # deterministic done/in-flight pair is what this test is about.
     testing_service._jobs_by_key["batch:done"] = done
     testing_service._jobs_by_key["batch:in-flight"] = in_flight
 

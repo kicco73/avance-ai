@@ -1,7 +1,4 @@
 <script setup>
-// Play/status control shared by every level of the "Test" tab's tree —
-// root and the two branch nodes run every test in their scope at once,
-// same gesture as a single leaf. Purely presentational — only emits.
 import { computed, ref } from 'vue'
 
 const props = defineProps({
@@ -17,51 +14,21 @@ const props = defineProps({
 
 const emit = defineEmits(['activate', 'abort'])
 
-// Once any step has reported a real percentage, keep showing it — even
-// while queued between steps ('ready'), not just at the instant a worker
-// is actually inside a step ('running'). A node with no progress yet
-// (still 'ready' but never picked up — reports percentage===0,
-// indistinguishable from "genuinely just began") spins indeterminately
-// instead — except while actually 'running': that arc is real and worth
-// showing even at 0%, so it never falls back to the indeterminate spin.
 const hasProgress = computed(() => props.status === 'running' || (props.progress != null && props.progress > 0))
-// A 0% arc is an invisible arc (stroke-dasharray "0 100") — without a
-// floor, the exact instant a job starts running the visible indeterminate
-// ring would vanish into nothing behind the lightning, reading as "the
-// ring disappeared" rather than "the same ring, now showing real
-// progress and holding still." A small minimum keeps it a visible,
-// continuous ring throughout.
 const progressPercent = computed(() => {
   if (!hasProgress.value) return 0
   const percent = Math.min(100, Math.round(props.progress))
   return props.status === 'running' ? Math.max(percent, 8) : percent
 })
 const isBusy = computed(() => ['pending', 'ready', 'running', 'paused', 'requeued'].includes(props.status))
-// One ring, always — idle/ok/warning/fail draw it fully closed (same
-// <circle>, same radius, same stroke as every busy state), so there is
-// never a second, separately-sized shape (a CSS border) standing in for
-// it — nothing to visibly mismatch when a node's status flips.
 const ringDasharray = computed(() => {
   if (!isBusy.value) return '100 100'
   return hasProgress.value ? `${progressPercent.value} 100` : '50 100'
 })
-// 'running' — this queue's own view of the job (see JobQueue's
-// ready/running/exited broadcasts, ThrottledJobQueue's added 'paused'),
-// not anything the job tracks itself — means a worker is actively inside
-// its step right now, and is the only busy state that gets the
-// active/green treatment. Every other busy state — 'ready' (queued, no
-// worker has picked it up yet) and 'paused' (throttled) — reads as the
-// same "waiting" blue. With N concurrent workers, at most N buttons are
-// ever green at once; every other in-flight one is blue.
 const buttonState = computed(() => (
   props.status === 'running' ? 'running' : (props.status === 'requeued' ? 'requeued' : (isBusy.value ? 'ready' : props.status))
 ))
 
-// Any in-flight job can be cancelled — queued or actually running —
-// hovering it swaps its icon for a cancel affordance instead of
-// disabling the button outright, so the hover can actually be observed
-// (a genuinely disabled native <button> doesn't reliably fire mouse
-// events across browsers).
 const isHovering = ref(false)
 const showCancel = computed(() => isHovering.value && isBusy.value)
 const showPlayOnHover = computed(() => isHovering.value && props.status === 'aborted')
@@ -71,9 +38,6 @@ function onClick() {
     emit('abort')
     return
   }
-  // pending/ready/running/paused: never clickable (can't re-launch an
-  // in-flight test). Any other status, including a past outcome, is a
-  // legitimate click — activate there means "re-run".
   if (props.disabled || isBusy.value) return
   emit('activate')
 }
@@ -109,12 +73,6 @@ function onClick() {
           <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" />
           <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" />
         </g>
-        <!-- 'running': a worker is inside this exact job's step right now —
-             the lightning marks that specific instant, not "this kind of
-             node is high-priority" (a priority node just gets picked up
-             sooner; once picked up it runs exactly like any other). Drawn
-             inside the same ring as the progress arc, not swapped in place
-             of it, so the percentage stays visible while it's running too. -->
         <path
           v-else-if="status === 'running'"
           class="test-node-btn-lightning"
@@ -198,11 +156,6 @@ function onClick() {
   cursor: not-allowed;
 }
 
-/* On hover the solid fill already reads as the button's shape — the ring
-   is a stroke sitting slightly inset from the true edge (it has to, to
-   avoid clipping), so drawn on top of the fill it reads as a second,
-   not-quite-matching circle. Simplest fix: let the fill alone stand once
-   hovered, no ring competing with it. */
 .test-node-btn:hover:not(:disabled):not(.test-node-btn-cancel) .test-node-btn-ring {
   display: none;
 }
@@ -304,10 +257,6 @@ function onClick() {
   color: white;
 }
 
-/* Hovering a running job: red fill covers the button's own circular
-   shape completely (it's already border-radius: 50%), white stop square
-   on top — no ring competing with it, same treatment idle/ok/warning/fail
-   get on hover, just red instead of blue/green/orange. */
 .test-node-btn-cancel {
   background: #c62828;
   color: white;
