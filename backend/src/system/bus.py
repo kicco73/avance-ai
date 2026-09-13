@@ -297,10 +297,6 @@ def subscribe(type: str, listener: Listener) -> None:
 
 
 def unsubscribe(type: str, listener: Listener) -> None:
-    """For a listener that only wanted one exchange — a producer that
-    publishes and takes back what the conversion produced. It filters by
-    origin itself: two of these can be registered at once, one per
-    message in flight, and neither may take the other's answer."""
     listeners = _listeners.get(type)
     if listeners is not None and listener in listeners:
         listeners.remove(listener)

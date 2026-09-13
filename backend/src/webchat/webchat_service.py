@@ -32,6 +32,7 @@ from project.project_service import ProjectService
 from turn.turn_service import TurnService
 
 from .bus_human_relay import BusHumanRelay
+from .conversation_opener import ConversationOpener
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -49,15 +50,17 @@ class WebchatService:
 
     def __init__(
         self, turn_service: TurnService, project_service: ProjectService,
-        notifications: BusChannel,
+        notifications: BusChannel, db,
     ) -> None:
         self._turn_service = turn_service
         self._notifications = notifications
+        self._opener = ConversationOpener(turn_service, db)
 
     def register(self) -> None:
         for message_type in TURN_FORWARDED:
             bus.subscribe(message_type, self._forward)
         bus.contribute(POINT_SPOKEN_REPLY, self._spoken_reply)
+        self._opener.register()
 
     def _spoken_reply(self, spoken) -> None:
         for _ in filter(self._turn_service.is_audio_enabled, filter(None, [spoken.session_id])):

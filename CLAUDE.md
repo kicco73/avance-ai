@@ -21,6 +21,28 @@ are written to be read before the code they describe:
 
 `README.md` covers architecture, install and configuration.
 
+## Where a thing belongs
+
+**The core is the last fallback, never the first.** Before writing a feature,
+work out what it logically belongs to — a skill, a channel, a package that
+already owns that subject — and put it there. The core is what is left when
+nothing else can own it, not the drawer everything is dropped into because it
+is reachable from everywhere.
+
+The pull towards it is constant and it always looks reasonable: the core can
+see every package, so anything put there compiles and every caller is one
+import away. That is the symptom, not the argument. A build that leaves a
+skill out has to lose that skill's behaviour with it; behaviour that ended up
+in the core stays, orphaned, in a product that has no use for it.
+
+Opening a conversation is the worked example. The core resolves which session
+you are in and announces it; whether the conversation should then *speak* is
+what a chat does when it opens, so it lives in `webchat/`, reached by a Bus
+event (see `backend/src/docs/BUS.md`, `session.opened`). It was in the core
+first, because that is where the listener already was, and it was wrong there:
+the phone channel opens its conversations itself and would have inherited a
+decision it does not make.
+
 ## Comments
 
 Comments are not a source. To find out what code does, run it, read what it

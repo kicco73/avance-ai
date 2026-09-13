@@ -740,13 +740,12 @@ class TurnService(object):
 		Returns the turn it ran, so a caller that is reporting an exchange
 		can report this one too.
 
-		Asking and doing are one step, under a lock of their own. Two
-		callers ask at the very start of a conversation — the browser
-		says `session.enter` and reads the transcript in the same breath,
-		and reading it opens the conversation too — and both found
-		nothing said yet, so the session began by saying the same thing
-		twice. The lock is not the turn's own (the turn takes that one
-		itself, further down): this one only guards the decision."""
+		Asking and doing are one step, under a lock of their own: two
+		connections entering the same conversation in the same instant
+		each ask for it, and without the lock both find nothing said yet
+		and the session begins by saying the same thing twice. The lock
+		is not the turn's own (the turn takes that one itself, further
+		down): this one only guards the decision."""
 		async with self._session_locks.get(f"open/{session_id}"):
 			automaton, state = await self._ensure_project_bootstrap(session_id)
 			if automaton is None:

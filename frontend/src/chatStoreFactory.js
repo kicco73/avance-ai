@@ -251,7 +251,7 @@ export function createChatStore({
   // message, carrying its id.
   busChannel.subscribe('output.reaction', (frame) => {
     if (frame.session_id !== currentSessionId.value) return
-    const idx = messages.value.findIndex((m) => m.role === 'user' && m.messageId == null)
+    const idx = messages.value.findLastIndex((m) => m.role === 'user' && m.messageId == null)
     if (idx !== -1) {
       messages.value[idx] = {
         ...messages.value[idx], messageId: frame.user_message_id, reaction: frame.reaction

@@ -1,15 +1,19 @@
-"""Entering a chat and then talking in it, through the real listener.
+"""Entering a chat, and then talking in it, through the real listener.
 
 `session.enter` is the only way into a conversation: it names a project,
 the server resolves or creates the session, and answers with what the
-conversation is (`session.info`), what was said (`session.messages`),
-what it offers (`state.buttons`) and — if the state has one — its
-opening message.
+conversation is (`session.info`), what was said (`session.messages`) and
+what it offers (`state.buttons`).
+
+Whether the conversation should now *speak* is not decided here — the
+announcement ends with `session.opened` and a chat answers it (see
+webchat/conversation_opener.py). What this defends is that the
+announcement comes first and that the event says the truth: a
+conversation with something in it has not just been opened.
 
 Then the person types without waiting for anything, and that request
-lands on the same session. Both are owed an answer, the second one
-especially: a chat where the first thing you type is never answered is a
-chat that does not work.
+lands on the same session. A chat where the first thing you type is
+never answered is a chat that does not work.
 """
 from __future__ import annotations
 
@@ -18,7 +22,7 @@ import asyncio
 import pytest
 
 from system import bus
-from system.bus import INPUT_TEXT, SESSION_ENTER, Message
+from system.bus import INPUT_TEXT, SESSION_ENTER, SESSION_OPENED, Message
 from system.web_session import WebSession
 from turn.input_listener import TurnInput
 from turn_harness import PROJECT_ID, one_state_automaton, turn_service_for  # noqa: F401 — turn_service_for is a fixture
@@ -28,7 +32,7 @@ pytestmark = pytest.mark.regression
 _PUBLISHED = (
     "output.text_stream", "output.text", "output.speech", "output.tool", "output.reaction",
     "state.changed", "state.buttons", "output.error",
-    "session.info", "session.messages", "session.blocked", "session.ended",
+    "session.info", "session.messages", "session.blocked", "session.ended", "session.opened",
 )
 
 
@@ -49,15 +53,14 @@ class _FakeProvider:
 
 
 class _Recorder:
-    def __init__(self, answers: int) -> None:
+    def __init__(self, until: tuple[str, ...]) -> None:
         self.messages: list[Message] = []
-        self._answers = answers
+        self._until = until
         self.finished = asyncio.Event()
 
     async def take(self, message: Message) -> None:
         self.messages.append(message)
-        said = [m for m in self.messages if m.type in ("output.text", "output.error")]
-        if len(said) >= self._answers:
+        if len([m for m in self.messages if m.type in self._until]) >= 1:
             self.finished.set()
 
     def kinds(self) -> list[str]:
@@ -67,12 +70,12 @@ class _Recorder:
         return [m.body["text"] for m in self.messages if m.type == "output.text"]
 
 
-async def _drive(turn_service, db, requests: list[Message], answers: int) -> tuple[_Recorder, TurnInput]:
+async def _drive(turn_service, db, requests: list[Message], until: tuple[str, ...]) -> tuple[_Recorder, TurnInput]:
     """Publishes each request the way a channel does — without waiting for
     the one before to be answered — and gives back what came out."""
     bus._reset_for_tests()
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
-    recorder = _Recorder(answers)
+    recorder = _Recorder(until)
     for message_type in _PUBLISHED:
         bus.subscribe(message_type, recorder.take)
     listener = TurnInput(turn_service, db)
@@ -92,7 +95,7 @@ def _asked(kind: str, session_id: int, body: dict) -> Message:
 
 def _entering(project_id: str) -> Message:
     return Message(
-        type=SESSION_ENTER, body={"type": "live"}, username=WebSession().user,
+        type=SESSION_ENTER, body={"session_type": "live"}, username=WebSession().user,
         project_id=project_id, channel="webchat", origin_id="connection-1",
     )
 
@@ -100,17 +103,18 @@ def _entering(project_id: str) -> Message:
 async def test_entering_says_what_the_conversation_is_before_anything_it_says(turn_service_for):
     """The order matters and used to be the other way round: the pieces
     of the opening message came out before what framed them, so a chat
-    could be reading a reply before it knew where it stood."""
+    could be reading a reply before it knew where it stood. Nothing may
+    be published for this conversation until the announcement is whole —
+    which is why the event that may produce a message comes last."""
     turn_service = turn_service_for(
         one_state_automaton(with_sources=False, autotracking_on_ai_message=False), _FakeProvider(),
     )
 
-    recorder, _ = await _drive(turn_service, turn_service_for.db, [_entering(PROJECT_ID)], answers=1)
+    recorder, _ = await _drive(
+        turn_service, turn_service_for.db, [_entering(PROJECT_ID)], until=(SESSION_OPENED,),
+    )
 
-    kinds = recorder.kinds()
-    assert kinds[:3] == ["session.info", "session.messages", "state.buttons"]
-    assert recorder.texts() == ["hello"]
-    assert kinds.index("state.buttons") < kinds.index("output.text")
+    assert recorder.kinds() == ["session.info", "session.messages", "state.buttons", "session.opened"]
 
 
 async def test_entering_names_the_project_and_the_conversation_comes_back(turn_service_for):
@@ -118,7 +122,9 @@ async def test_entering_names_the_project_and_the_conversation_comes_back(turn_s
         one_state_automaton(with_sources=False, autotracking_on_ai_message=False), _FakeProvider(),
     )
 
-    recorder, _ = await _drive(turn_service, turn_service_for.db, [_entering(PROJECT_ID)], answers=1)
+    recorder, _ = await _drive(
+        turn_service, turn_service_for.db, [_entering(PROJECT_ID)], until=(SESSION_OPENED,),
+    )
 
     info = next(m for m in recorder.messages if m.type == "session.info")
     assert info.session_id is not None
@@ -126,11 +132,32 @@ async def test_entering_names_the_project_and_the_conversation_comes_back(turn_s
     assert info.body["state"]["key"] == "a"
 
 
+async def test_a_conversation_with_something_in_it_has_not_just_been_opened(turn_service_for):
+    """`session.opened` is a fact, not a question anybody has to answer
+    later. The transcript is read to be announced anyway, and an empty
+    one is the whole of it: without this, every reload would be greeted
+    again — and whoever listens would have to work out that it should
+    not be."""
+    db = turn_service_for.db
+    turn_service = turn_service_for(
+        one_state_automaton(with_sources=False, autotracking_on_ai_message=False), _FakeProvider(),
+    )
+    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
+    turn_service.accept_user_message(session["id"], "we have spoken before")
+
+    recorder, _ = await _drive(
+        turn_service, db, [_entering(PROJECT_ID)], until=("state.buttons",),
+    )
+    await asyncio.sleep(0.05)
+
+    assert recorder.kinds() == ["session.info", "session.messages", "state.buttons"]
+
+
 async def test_typing_the_moment_the_chat_opens_is_still_answered(turn_service_for):
     """What a browser really does: it enters and the person starts typing
-    without waiting. The opener may well be dropped — a conversation is
-    only opened for someone who has said nothing — but what was typed is
-    answered, and nothing stays in the queue."""
+    without waiting. Entering never joins the queue of requests, so what
+    was typed is answered and nothing stays behind."""
     db = turn_service_for.db
     turn_service = turn_service_for(
         one_state_automaton(with_sources=False, autotracking_on_ai_message=False), _FakeProvider(),
@@ -140,7 +167,7 @@ async def test_typing_the_moment_the_chat_opens_is_still_answered(turn_service_f
     recorder, listener = await _drive(turn_service, db, [
         _entering(PROJECT_ID),
         _asked(INPUT_TEXT, session["id"], {"text": "hi"}),
-    ], answers=1)
+    ], until=("output.text",))
 
     assert recorder.texts() == ["hello"]
     assert listener._requests == {}

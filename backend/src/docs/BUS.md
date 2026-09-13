@@ -41,7 +41,7 @@ Addressed by `session_id`, except entering and creating: those name a
 | `session.speak` | client → server | `{enabled}` — speak, or stop speaking, in this conversation: whether the model is asked for the spoken version of its reply |
 | `session.info` | server → client | `{state, services, audio, current, channel, project_id}` — which conversation this is and everything describing it |
 | `session.messages` | server → client | `{messages}` — what was said |
-| `session.opened` | server → server | `{}` — somebody is in this conversation and has been told what it is. Published by `turn/input_listener.py` after the whole announcement and listened to by the same package: what a state has to say before anybody says anything is a reaction to this, not a kind of request. Never reaches a client |
+| `session.opened` | server → server | `{}` — this conversation has just been opened and has said nothing. Published by `turn/input_listener.py` after the whole announcement, and **only when the transcript it just announced was empty**. `webchat/conversation_opener.py` answers it with whatever the state has to say first. Never reaches a client |
 | `session.ended` | server → client | `{reason}` — closed, by the person or by the server itself (`channel-switch`, `force-new-session`, `revision-invalid`). Published from the one place every closure passes through, `SessionManager.close_session` |
 | `session.blocked` | server → client | `{reason, detail}` — there is no conversation to be had: `paused`, `terms`, `no_project`, `no_channel`. A refusal, not a failure: whoever shows a chat shows a different screen for each |
 | `session.taken_over` | server → client | `{project_id}` — handed to a person. Named for the session because that is what it is about, but delivered to that identity's connections: the point of it is to reach an operator who is not in the conversation yet |
@@ -114,8 +114,16 @@ that queue exists to fix the order of what a *person* says, has nothing
 to fix for a message nobody asked for, and every type it had to
 recognise as "not really typed text" was one more thing to get wrong —
 `session.create` was answered with «Message cannot be empty» for exactly
-that reason. Whoever runs turns listens for `session.opened` and answers
-it the way it answers anything else; entering only announces.
+that reason.
+
+And the core does not decide whether a conversation should speak. It
+resolves the session, announces it, and says `session.opened` when what
+it announced was empty — a fact it has in hand, because it read the
+transcript to send it. A **chat** answers that event
+(`webchat/conversation_opener.py`); a channel that shows no chat does
+not. Had the event been published on every `session.enter`, whoever
+listened would have had to work out whether the conversation had already
+spoken, and every reload would have been greeted again.
 
 ## Who is told what
 

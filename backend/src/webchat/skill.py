@@ -36,7 +36,7 @@ class WebchatSkill(Skill):
 
         core = bus.collect(POINT_CORE_SERVICES, {})
         service = WebchatService(
-            core["turn_service"], core["project_service"], core["bus_channel"],
+            core["turn_service"], core["project_service"], core["bus_channel"], core["db"],
         )
         # The channel this skill *is*, named once, here, where the name
         # lives (see BusChannel.owned_by). A session opened over the

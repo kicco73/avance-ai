@@ -1,10 +1,9 @@
 """A conversation opens once, however many people ask it to.
 
-Two callers asked at the very start: the browser said so, and in the same
-breath read the transcript — and reading it opened the conversation too.
-Both found nothing said yet and both generated, so a live chat began by
-saying the same thing twice. Reading opens nothing now (see
-TurnService.read_history), and this is what keeps it opening once.
+Two tabs showing the same conversation enter it in the same instant, and
+each `session.opened` asks for what the state has to say (see
+webchat/conversation_opener.py). Both find nothing said yet, so without
+the lock the chat begins by saying the same thing twice.
 """
 from __future__ import annotations
 

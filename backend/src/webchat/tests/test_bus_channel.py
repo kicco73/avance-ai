@@ -564,7 +564,7 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     # addressed to a connection it holds (see turn/input_listener.py).
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
     TurnInput(turn_service, db).register()
-    WebchatService(turn_service, None, channel).register()
+    WebchatService(turn_service, None, channel, None).register()
     websocket = _ScriptedWebSocket(
         [
             json.dumps({"type": "input.text", "session_id": session["id"], "text": "I have a problem"}),
@@ -606,7 +606,7 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
     channel = BusChannel(_FakeAuthService())
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
     TurnInput(turn_service, db).register()
-    WebchatService(turn_service, None, channel).register()
+    WebchatService(turn_service, None, channel, None).register()
     websocket = _ScriptedWebSocket(
         [json.dumps({"type": "input.text", "session_id": session["id"], "text": "hello?"})],
     )

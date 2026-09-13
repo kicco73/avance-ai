@@ -117,3 +117,36 @@ async def test_a_button_says_it_is_writing_and_streams_what_it_writes(turn_servi
     assert streamed[0].body["text"] == ""
     assert "".join(m.body["text"] for m in streamed) == _REPLY
     assert kinds.index("output.text_stream") < kinds.index("output.text")
+
+
+async def test_a_button_naming_no_session_is_refused_and_never_joins_a_queue(turn_service_for):
+    """A queue is kept per session, so a request with no session would
+    share one bucket with every other sender's — and the answer would be
+    addressed to whoever pressed last. `input.text` has always been
+    checked before anything is queued; a choice taken is checked the same
+    way now."""
+    db = turn_service_for.db
+    automaton = two_state_automaton()
+    turn_service = turn_service_for(automaton, _FakeProvider())
+    turn_service._project_service = _MovingProjectService(automaton)
+
+    bus._reset_for_tests()
+    db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
+
+    recorder = _Recorder()
+    for message_type in _PUBLISHED:
+        bus.subscribe(message_type, recorder.take)
+    listener = TurnInput(turn_service, db)
+    listener.register()
+
+    await bus.publish(Message(
+        type=INPUT_BUTTON, body={"id": "go"}, username=WebSession().user,
+        session_id=None, channel="webchat", origin_id="connection-1",
+    ))
+    await asyncio.wait_for(recorder.finished.wait(), timeout=10)
+
+    assert [m.body.get("code") for m in recorder.messages if m.type == "output.error"] == ["session_not_found"]
+    assert [m.type for m in recorder.messages] == ["output.error"]
+    # No queue at all, not merely an empty one: the key would be None —
+    # one entry every sender without a session would share.
+    assert listener._requests == {}

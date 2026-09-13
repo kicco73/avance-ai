@@ -21,21 +21,20 @@ picks out its own without core knowing who is listening.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from itertools import takewhile
 
 from db import Db
 from system import bus
 from system.bus import (
-    INPUT_TEXT, OUTPUT_REACTION, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TEXT_STREAM, OUTPUT_TOOL,
-    STATE_CHANGED, OUTPUT_ERROR, INPUT_BUTTON, INPUT_REACTION, STATE_BUTTONS,
-    SESSION_ENTER, SESSION_CREATE, SESSION_INFO, SESSION_MESSAGES, SESSION_BLOCKED,
-    SESSION_OPENED, SESSION_RECALL, SESSION_TERMINATE, SESSION_SPEAK, Message,
+    INPUT_TEXT, INPUT_BUTTON, INPUT_REACTION, OUTPUT_ERROR, SESSION_BLOCKED,
+    SESSION_ENTER, SESSION_CREATE, SESSION_OPENED, SESSION_RECALL,
+    SESSION_TERMINATE, SESSION_SPEAK, Message,
 )
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
 from system.web_session import WebSession
-from turn.tool_status_text import tool_status_text
+from turn.outbound import Outbound
 from turn.turn_service import TurnService
 
 logger = LoggerFactory.get_logger(__name__)
@@ -43,11 +42,6 @@ logger = LoggerFactory.get_logger(__name__)
 #: What a sender with no user row gets: the bottom of the ladder in
 #: auth/roles.py, never nothing.
 _LEAST_PRIVILEGED = "pending"
-
-#: Ends the drain below. Not a Message: a sentinel a producer could
-#: never publish by accident.
-_DONE = object()
-
 
 class TurnInput(object):
 
@@ -69,7 +63,6 @@ class TurnInput(object):
         # reaction to that.
         bus.subscribe(SESSION_ENTER, self._entering)
         bus.subscribe(SESSION_CREATE, self._entering)
-        bus.subscribe(SESSION_OPENED, self._opening)
         bus.subscribe(SESSION_RECALL, self._recalled)
         bus.subscribe(SESSION_TERMINATE, self._terminated)
         bus.subscribe(SESSION_SPEAK, self._speaking)
@@ -85,7 +78,7 @@ class TurnInput(object):
         role = self._role_of(message.username)
         kind = str((message.body or {}).get("session_type") or "live")
         with WebSession().for_sender(message.username, role=role, channel=message.channel):
-            entering = _Outbound(message)
+            entering = Outbound(message)
             try:
                 session = await self._resolved(message, kind)
             except ServiceError as exc:
@@ -98,12 +91,17 @@ class TurnInput(object):
                 await entering.flush()
                 return
             entered = replace(message, session_id=session["id"])
-            outbound = _Outbound(entered)
+            said = self._turn_service.read_history(session["id"])
+            outbound = Outbound(entered)
             outbound.informed(session, self._turn_service.services_for(session["id"]), kind)
-            outbound.recalled(self._turn_service.read_history(session["id"]))
+            outbound.recalled(said)
             outbound.offered(self._turn_service.buttons_for(session["id"], session["state"]))
             await outbound.flush()
-        await bus.publish(replace(entered, type=SESSION_OPENED, body={}))
+        # Only a conversation with nothing in it has just been opened.
+        # The transcript is already in hand, and it is the whole answer:
+        # anyone hearing this is told a fact, not asked to work one out.
+        for _ in filter(None, [not said]):
+            await bus.publish(replace(entered, type=SESSION_OPENED, body={}))
 
     async def _resolved(self, message: Message, kind: str) -> dict:
         for session_id in filter(None, [None if message.type == SESSION_CREATE else message.session_id]):
@@ -121,27 +119,6 @@ class TurnInput(object):
         for _ in filter(None, [session.get("paused")]):
             return {"reason": "paused", "detail": session.get("paused_reason") or ""}
         return None
-
-    async def _opening(self, message: Message) -> None:
-        """Whatever this conversation opens with. Its own task, like an
-        answer: publishing the announcement must not wait for a model.
-        Not a request — nobody asked for it — so it never joins the queue
-        of requests, which is what fixes the order of what a person says
-        and has nothing to fix here."""
-        role = self._role_of(message.username)
-        task = asyncio.create_task(self._greeting(message, role))
-        self._turns.add(task)
-        task.add_done_callback(self._turns.discard)
-
-    async def _greeting(self, message: Message, role: str) -> None:
-        with WebSession().for_sender(message.username, role=role, channel=message.channel):
-            outbound = _Outbound(message)
-            drain = asyncio.create_task(outbound.drain())
-            try:
-                await self._open_session(message, outbound)
-            finally:
-                outbound.close()
-                await drain
 
     async def _recalled(self, message: Message) -> None:
         await self._answering(message, lambda outbound: outbound.recalled(
@@ -162,7 +139,7 @@ class TurnInput(object):
     async def _answering(self, message: Message, say, first=None) -> None:
         role = self._role_of(message.username)
         with WebSession().for_sender(message.username, role=role, channel=message.channel):
-            outbound = _Outbound(message)
+            outbound = Outbound(message)
             try:
                 if first is not None:
                     await first(message.session_id)
@@ -185,9 +162,11 @@ class TurnInput(object):
         """
         role = self._role_of(message.username)
         with WebSession().for_sender(message.username, role=role, channel=message.channel):
-            requests = self._requests.setdefault(message.session_id, _Requests())
-            if not await self._accept(message, requests):
+            accepted = await self._accept(message)
+            if accepted is None:
                 return
+            requests = self._requests.setdefault(message.session_id, _Requests())
+            requests.add(accepted)
             if requests.answering:
                 return
             requests.answering = True
@@ -198,36 +177,33 @@ class TurnInput(object):
         self._turns.add(task)
         task.add_done_callback(self._turns.discard)
 
-    async def _accept(self, message: Message, requests: "_Requests") -> bool:
-        """Persists what the person said, right now. False when it was
-        refused — that request is answered with the refusal and never
-        joins the ones waiting."""
-        outbound = _Outbound(message)
+    async def _accept(self, message: Message) -> _Accepted | None:
+        """Persists what the person said, right now. None when it was
+        refused — that request is answered with the refusal, never joins
+        the ones waiting, and opens no queue of its own."""
+        outbound = Outbound(message)
+        for _ in filter(None, [not isinstance(message.session_id, int)]):
+            outbound.failed(ServiceError("Session not found.", status_code=404, code="session_not_found"), [])
+            await outbound.flush()
+            return None
         for _ in filter(INPUT_BUTTON.__eq__, [message.type]):
             # Nothing to persist: a choice taken is recorded by the
             # automaton itself.
-            requests.waiting.append(message)
-            requests.accepted.append(None)
-            return True
+            return _Accepted(message)
         text = str((message.body or {}).get("text") or "").strip()
         prepared: list[dict] = []
         try:
-            if not isinstance(message.session_id, int):
-                raise ServiceError("Session not found.", status_code=404, code="session_not_found")
             if not text:
                 raise ServiceError("Message cannot be empty.", status_code=400, code="empty_message")
             prepared = await self._turn_service.prepare_user_initiated_turn(message.session_id)
-            accepted = self._turn_service.accept_user_message(message.session_id, text)
+            message_id = self._turn_service.accept_user_message(message.session_id, text)
         except ServiceError as exc:
             # Whatever the state owed was written before the refusal and
             # is owed either way.
             outbound.failed(exc, prepared)
             await outbound.flush()
-            return False
-        requests.waiting.append(message)
-        requests.accepted.append(accepted)
-        requests.prepared.extend(prepared)
-        return True
+            return None
+        return _Accepted(message, message_id, prepared)
 
     async def _answer(self, session_id: int, requests: "_Requests", role: str) -> None:
         try:
@@ -255,7 +231,7 @@ class TurnInput(object):
 
     async def _run(self, message: Message, accepted: list[int], prepared: list[dict], role: str) -> None:
         with WebSession().for_sender(message.username, role=role, channel=message.channel):
-            outbound = _Outbound(message)
+            outbound = Outbound(message)
             drain = asyncio.create_task(outbound.drain())
             try:
                 await self._turn(message, accepted, prepared, outbound)
@@ -264,7 +240,7 @@ class TurnInput(object):
                 await drain
 
     async def _turn(
-        self, message: Message, accepted: list[int], prepared: list[dict], outbound: "_Outbound",
+        self, message: Message, accepted: list[int], prepared: list[dict], outbound: "Outbound",
     ) -> None:
         for _ in filter(INPUT_BUTTON.__eq__, [message.type]):
             await self._take_action(message, outbound)
@@ -298,22 +274,7 @@ class TurnInput(object):
             outbound.put(OUTPUT_ERROR, {"message": "Unexpected server error.", "detail": str(exc)})
 
 
-    async def _open_session(self, message: Message, outbound: "_Outbound") -> None:
-        """What a state has to say before anybody says anything, said as
-        an ordinary message — to whoever is reading there is no
-        difference between a greeting and an answer. A conversation
-        already under way is owed nothing and this is silent."""
-        try:
-            result = await self._turn_service.open_if_needed(message.session_id, outbound.on_metadata)
-        except ServiceError as exc:
-            outbound.failed(exc, [])
-            return
-        for opened in filter(None, [result]):
-            outbound.moved(opened)
-            outbound.offered(opened.get("buttons"))
-            outbound.said(opened["reply"])
-
-    async def _take_action(self, message: Message, outbound: "_Outbound") -> None:
+    async def _take_action(self, message: Message, outbound: "Outbound") -> None:
         """One of the choices the state offered, taken. It produces what
         the new state has to say and what it offers next — the same
         messages an answer produces, because to whoever is reading there
@@ -338,6 +299,16 @@ class TurnInput(object):
         outbound.said(result["reply"])
 
 
+@dataclass
+class _Accepted(object):
+    """One request that got past every check, and what accepting it
+    produced: the id it was persisted under — none for a choice taken,
+    which persists nothing — and whatever the state owed before it."""
+    message: Message
+    message_id: int | None = None
+    prepared: list[dict] = field(default_factory=list)
+
+
 class _Requests(object):
     """What one session has been asked and has not been answered yet."""
 
@@ -346,6 +317,11 @@ class _Requests(object):
         self.accepted: list[int] = []
         self.prepared: list[dict] = []
         self.answering = False
+
+    def add(self, accepted: _Accepted) -> None:
+        self.waiting.append(accepted.message)
+        self.accepted.append(accepted.message_id)
+        self.prepared.extend(accepted.prepared)
 
     def take(self) -> tuple[list[Message], list[int], list[dict]]:
         """One answer's worth: every text that piled up, answered
@@ -359,141 +335,3 @@ class _Requests(object):
         return batch, [a for a in accepted if a is not None], prepared
 
 
-class _Outbound(object):
-    """Everything a turn produces, published in the order it produced it.
-
-    on_metadata is synchronous and is called from deep inside the turn,
-    where there is nothing to await on; publishing is not. A task per
-    frame would put them on the wire in whatever order the loop got to
-    them, which for a stream of chunks is the one thing that must not
-    happen. So the frames are queued as they are made — synchronously,
-    in order — and one task drains the queue, awaiting each publish
-    before it takes the next.
-
-    Every frame is addressed the way the message that started the turn
-    was: same username, session, connection and stream. That is what
-    lets a channel recognise its own answer.
-    """
-
-    def __init__(self, message: Message) -> None:
-        self._message = message
-        self._queue: asyncio.Queue = asyncio.Queue()
-
-    def put(self, type: str, body) -> None:
-        self._queue.put_nowait(Message(
-            type=type, body=body, username=self._message.username,
-            project_id=self._message.project_id, session_id=self._message.session_id,
-            channel=self._message.channel, origin_id=self._message.origin_id,
-        ))
-
-    def close(self) -> None:
-        self._queue.put_nowait(_DONE)
-
-    async def flush(self) -> None:
-        """Publishes what is queued and stops — for a refusal, which has
-        no answer to run alongside it."""
-        self.close()
-        await self.drain()
-
-    async def drain(self) -> None:
-        while True:
-            item = await self._queue.get()
-            if item is _DONE:
-                return
-            try:
-                await bus.publish(item)
-            except Exception as exc:  # noqa: BLE001
-                # One frame nobody could take must not strand the rest:
-                # a turn that stops publishing mid-stream leaves whoever
-                # is listening waiting for an end that never comes.
-                logger.exception("Publishing %s failed: %s", item.type, exc)
-
-    def said(self, messages: list[dict]) -> None:
-        """Every whole message this exchange produced, in the order it
-        produced them: what the state owed before it could answer, then
-        the answer itself. One publication each — one message is what a
-        person reads, and the chunks before it were pieces of this. The
-        row id travels with the text: it is how a reader ties the bubble
-        it streamed, the tool trace and the audio to the row they are
-        about. Named for whose message it is — a reaction names the
-        person's own message, and the two must never be read as one. The
-        text to be spoken is `output.speech`, published when the model
-        writes it, not a field of the message."""
-        for message in messages:
-            self.put(OUTPUT_TEXT, {
-                "text": str(message.get("content") or ""),
-                "assistant_message_id": message.get("id"),
-                # The server's own time for this message, not the clock of
-                # whoever is showing it.
-                "timestamp": message.get("timestamp"),
-            })
-
-    def reacted(self, result: dict) -> None:
-        """The model's own reaction to what the person just said. It
-        belongs to that message and carries its id — which is also how a
-        reader learns the id of the message it just sent."""
-        for reaction in filter(None, [result.get("user_message_reaction")]):
-            self.put(OUTPUT_REACTION, {
-                "user_message_id": result.get("user_message_id"), "reaction": reaction,
-            })
-
-    def moved(self, result: dict) -> None:
-        """Where the conversation is now, said only when it moved: a
-        reader keeps the last state it was told about, and a turn that
-        changed nothing is not news about the state."""
-        for _ in filter(None, [result.get("state_changed")]):
-            self.put(STATE_CHANGED, {
-                "state": result.get("state"),
-                "new_state": result.get("new_state"),
-                "triggered_action": result.get("triggered_action"),
-            })
-
-    def informed(self, session: dict, services: dict, kind: str) -> None:
-        self.put(SESSION_INFO, {
-            "state": session.get("state"),
-            "services": services,
-            "audio": session.get("audio", False),
-            "current": session.get("current", True),
-            "channel": session.get("channel"),
-            "project_id": session.get("project_id"),
-            "session_type": kind,
-        })
-
-    def recalled(self, messages: list[dict]) -> None:
-        self.put(SESSION_MESSAGES, {"messages": messages})
-
-    def offered(self, buttons: list[dict] | None) -> None:
-        """What the person may do now. A fact about the state the
-        conversation is in, which is why it does not ride on whatever
-        message happened to come last — and why it is not a field of the
-        state either: this message is the only place the choices are."""
-        self.put(STATE_BUTTONS, {"actions": buttons or []})
-
-    def failed(self, exc: ServiceError, prepared: list[dict]) -> None:
-        """What the state owed is owed either way: it was written before
-        the refusal and goes out as any other message, so the terminal
-        frame carries only what went wrong."""
-        self.said(prepared)
-        body = {"message": exc.message, "detail": getattr(exc, "detail", str(exc))}
-        if exc.code is not None:
-            body["code"] = exc.code
-        self.put(OUTPUT_ERROR, body)
-
-    def on_metadata(self, key: str, value) -> None:
-        if key == "audio":
-            self.put(OUTPUT_SPEECH, {"text": str(value)})
-        elif key == "chunk":
-            self.put(OUTPUT_TEXT_STREAM, {"text": value})
-        elif key == "typing":
-            # The reply has started being written and none of it is
-            # readable yet — an empty piece of it, sent once: right before
-            # real generation starts for the model (see TrackingProcessor.
-            # process), or when an operator's own human_typing frame
-            # arrives for a human-answered turn.
-            self.put(OUTPUT_TEXT_STREAM, {"text": ""})
-        elif key == "tool":
-            # One frame type for both phases — a reader tells them apart
-            # by phase. status_text is only ever meaningful on "start"
-            # (see tool_status_text); "result" carries the payload as it
-            # is.
-            self.put(OUTPUT_TOOL, {**value, "status_text": tool_status_text(value)} if value["phase"] == "start" else value)
