@@ -21,8 +21,8 @@ with its own `type` in it: one shape to read, no wrapper.
 
 | Type | Body | Published by | Received by |
 | --- | --- | --- | --- |
-| `input.text` | `{text}` — what the person asks | `system/bus_channel.py` (a browser frame), `whatsapp/turn_exchange.py`, `listen/decoder.py` (converted from `input.audio`) | `turn/input_listener.py`, `whatsapp/inbound_voice_note.py` (subscribed for one exchange) |
-| `input.button` | `{id}` — one of the choices, taken. Same road as `input.text`, so the two cannot overtake each other | `system/bus_channel.py` | `turn/input_listener.py` |
+| `input.text` | `{text}` — what the person asks | `system/bus_channel.py` (a browser frame), `whatsapp/conversation.py`, `listen/decoder.py` (converted from `input.audio`) | `turn/input_listener.py`, `whatsapp/inbound_voice_note.py` (watching, for one voice note, whether anything decoded it) |
+| `input.button` | `{id}` — one of the choices, taken. Same road as `input.text`, so the two cannot overtake each other | `system/bus_channel.py`, `whatsapp/conversation.py` | `turn/input_listener.py` |
 | `input.audio` | `{audio}` — the bytes, or a callable that fetches them | `whatsapp/inbound_voice_note.py` | `listen/decoder.py` |
 | `input.reaction` | `{assistant_message_id, reaction}` — the person's own reaction to a message. The model's reaction to theirs is `output.reaction`: two facts about two different messages | `system/bus_channel.py` | `turn/input_listener.py` |
 
@@ -42,17 +42,17 @@ reading a transcript opens nothing (`TurnService.read_history`).
 
 | Type | Direction | Body |
 | --- | --- | --- |
-| `session.enter` | client → server | `{session_type}` — `live`, `test` or `preview`. I am showing a conversation of this kind for this project: give me the active one, or make one. It also says this connection is now watching that session |
-| `session.create` | client → server | `{session_type}` — make a new one regardless, closing whatever was active |
+| `session.enter` | client → server | `{session_type}` — `live`, `test` or `preview`. I am showing a conversation of this kind for this project: give me the active one, or make one. It also says this connection is now watching that session. A channel with no screen enters too: `whatsapp/conversation.py` enters once per inbound message |
+| `session.create` | client → server | `{session_type}` — make a new one regardless, closing whatever was active. What a channel asks for when the session it was given belongs to another one (`channel-switch`) |
 | `session.exit` | client → server | `{}` — I have stopped watching. Handled by the socket itself and never published: who watches what is the socket's own bookkeeping |
 | `session.recall` | client → server | `{before, limit}` — bring back what was said earlier. What is on screen when a conversation opens arrives without asking |
 | `session.terminate` | client → server | `{}` — the person closes it |
 | `session.speak` | client → server | `{enabled}` — speak, or stop speaking, in this conversation: whether the model is asked for the spoken version of its reply |
-| `session.info` | server → client | `{state, services, audio, current, channel, project_id}` — which conversation this is and everything describing it |
+| `session.info` | server → client | `{state, services, audio, current, channel, project_id}` — which conversation this is and everything describing it. `channel` is how a channel learns the session it was given is not its own |
 | `session.messages` | server → client | `{messages}` — what was said |
-| `session.opened` | server → server | `{}` — this conversation has just been opened and has said nothing. Published by `turn/input_listener.py` after the whole announcement, and **only when the transcript it just announced was empty**. `webchat/webchat_service.py` answers it with whatever the state has to say first. Never reaches a client |
+| `session.opened` | server → server | `{}` — this conversation has just been opened and has said nothing. Published by `turn/input_listener.py` after the whole announcement, and **only when the transcript it just announced was empty**. `webchat/webchat_service.py` answers it with whatever the state has to say first, and **only for its own channel**. Nothing in `whatsapp/` answers it at all, which is what "never writes the first message" is made of. Never reaches a client |
 | `session.ended` | server → client | `{reason}` — closed, by the person or by the server itself (`channel-switch`, `force-new-session`, `revision-invalid`). Published from the one place every closure passes through, `SessionManager.close_session` |
-| `session.blocked` | server → client | `{reason, detail}` — there is no conversation to be had: `paused`, `terms`, `no_project`, `no_channel`. A refusal, not a failure: whoever shows a chat shows a different screen for each |
+| `session.blocked` | server → client | `{reason, detail}` — there is no conversation to be had: `paused`, `terms`, `no_project`, `no_channel`. A refusal, not a failure: whoever shows a chat shows a different screen for each, and a channel with no screen says a sentence for each (`whatsapp/notices.py`) |
 | `session.taken_over` | server → client | `{project_id}` — handed to a person. Named for the session because that is what it is about, but delivered to that identity's connections: the point of it is to reach an operator who is not in the conversation yet |
 
 ## What is said back
@@ -60,14 +60,14 @@ reading a transcript opens nothing (`TurnService.read_history`).
 | Type | Body | Published by | Received by |
 | --- | --- | --- | --- |
 | `output.text_stream` | `{text}` — a piece of a message as it is written. **Empty** means the writing has started and nothing is readable yet | `turn/input_listener.py` | `webchat/webchat_service.py` |
-| `output.text` | `{text, assistant_message_id, timestamp}` — a whole message. The **last** one is the reply, and it is what says the exchange is over. The text to be spoken is its own message (`output.speech`), never a field of this | `turn/input_listener.py`, `tracking/actuators/actuator_set.py` (`task.whatsapp`) | `webchat/webchat_service.py`, `whatsapp/whatsapp_service.py`, `whatsapp/turn_exchange.py` |
-| `output.speech` | `{text}` — the spoken version of the reply, written by the model alongside it. It arrives while the reply is still being written, and a later one replaces the earlier | `turn/input_listener.py`, `talker/ai_talker.py` (asks for it) | `talk/skill.py`, `webchat/webchat_service.py`, `whatsapp/turn_exchange.py` |
+| `output.text` | `{text, assistant_message_id, timestamp}` — a whole message. The **last** one is the reply, and it is what says the exchange is over. The text to be spoken is its own message (`output.speech`), never a field of this | `turn/input_listener.py`, `tracking/actuators/actuator_set.py` (`task.whatsapp`) | `webchat/webchat_service.py`, `whatsapp/whatsapp_service.py` — twice, for two different things: the frames of its own conversations, and (**only**) the one with no `session_id`, a message that belongs to no conversation and that channel has to carry itself |
+| `output.speech` | `{text}` — the spoken version of the reply, written by the model alongside it. It arrives while the reply is still being written, and a later one replaces the earlier | `turn/input_listener.py`, `talker/ai_talker.py` (asks for it) | `talk/skill.py`, `webchat/webchat_service.py`, `whatsapp/whatsapp_service.py` (starts synthesizing the voice note there and then) |
 | `output.audio_stream` | `{stream}` | `talk/skill.py` | `talker/ai_talker.py` (for one exchange) |
 | `output.tool` | `dict` — one tool call; `phase` tells its two halves apart | `turn/input_listener.py` | `webchat/webchat_service.py` |
 | `output.reaction` | `{user_message_id, reaction}` — the model reacted to **that** message | `turn/input_listener.py` | `webchat/webchat_service.py` |
-| `output.error` | `{message, detail, code}` — in place of the reply. Only for things that went wrong: a conversation that cannot be had is `session.blocked` | `turn/input_listener.py` | `webchat/webchat_service.py`, `whatsapp/turn_exchange.py` |
+| `output.error` | `{message, detail, code}` — in place of the reply. Only for things that went wrong: a conversation that cannot be had is `session.blocked` | `turn/input_listener.py` | `webchat/webchat_service.py`, `whatsapp/whatsapp_service.py` |
 | `state.changed` | `{state, new_state, triggered_action}` — said only **when it moves**: a reader keeps the last one it was told | `turn/input_listener.py` | `webchat/webchat_service.py` |
-| `state.buttons` | `{actions}` — what can be done now, and the **only** place the choices are: no state payload carries them | `turn/input_listener.py` | `webchat/webchat_service.py`, `whatsapp/turn_exchange.py` |
+| `state.buttons` | `{actions}` — what can be done now, and the **only** place the choices are: no state payload carries them | `turn/input_listener.py` | `webchat/webchat_service.py`, `whatsapp/whatsapp_service.py` (held, to ride on the reply — see WHATSAPP.md) |
 
 ## Notifications and tools
 
@@ -136,10 +136,15 @@ spoken, and every reload would have been greeted again.
 
 Nobody works that out anywhere now: hearing it, a chat asks for the
 message (`TurnService.open_conversation`), which runs the turn without
-asking itself whether it should. A channel that opens its own
-conversations (`whatsapp/whatsapp_service.py`) decides the same way the
-core does — on the transcript it has just read — and asks for the same
-thing.
+asking itself whether it should — for **its own** conversations. A
+session opened on another channel is announced on the same Bus, and
+answering it would be one package greeting a conversation it does not
+serve, so `webchat` checks the channel before it opens anything.
+
+A channel may also answer nothing, and `whatsapp/` does: a phone is not
+written to until its owner writes. What the state owed is not lost by
+that — `TurnService.prepare_user_initiated_turn` still says it, as an
+`output.text` before the answer to the first thing the person says.
 
 ## Who is told what
 

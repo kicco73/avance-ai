@@ -37,6 +37,8 @@ from .bus_human_relay import BusHumanRelay
 
 logger = LoggerFactory.get_logger(__name__)
 
+CHANNEL = __package__
+
 #: What a turn produces, and what this forwards. Not CLIENT_INJECTABLE's
 #: mirror image: that is what a browser may put *on* the Bus, and this is
 #: what comes back.
@@ -63,6 +65,10 @@ class WebchatService:
         bus.contribute(POINT_SPOKEN_REPLY, self._spoken_reply)
 
     async def _opened(self, message: Message) -> None:
+        for _ in filter(CHANNEL.__eq__, [message.channel]):
+            await self._open(message)
+
+    async def _open(self, message: Message) -> None:
         async with publishing(message, self._db) as outbound:
             try:
                 opened = await self._turn_service.open_conversation(message.session_id, outbound.on_metadata)

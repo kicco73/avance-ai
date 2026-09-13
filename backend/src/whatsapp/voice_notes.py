@@ -1,7 +1,7 @@
 """The spoken half of a reply, as bytes WhatsApp will take.
 
 A reply's [audio] text is announced by the turn well before the rest of
-the reply is written (`output.speech`, see whatsapp/turn_exchange.py);
+the reply is written (`output.speech`, see whatsapp/conversation.py);
 synthesis starts right then, so by the time the note is actually wanted
 it is already encoded. The synthesis and the encoding are one pass: every
 WAV piece AiTalker.talk() yields goes straight into the encoder.
