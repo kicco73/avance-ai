@@ -125,14 +125,12 @@ not. Had the event been published on every `session.enter`, whoever
 listened would have had to work out whether the conversation had already
 spoken, and every reload would have been greeted again.
 
-Nobody works that out anywhere now. Two tabs entering an empty
-conversation in the same instant are both announced an empty transcript
-and both told it has just opened; the chat opens each conversation once
-because it knows which ones it is opening — the second event finds the
-message it would ask for already being written. A channel that opens its
-own conversations (`whatsapp/whatsapp_service.py`) decides the same way,
-on the transcript it has just read, and asks for the opening turn
-outright (`TurnService.open_conversation`).
+Nobody works that out anywhere now: hearing it, a chat asks for the
+message (`TurnService.open_conversation`), which runs the turn without
+asking itself whether it should. A channel that opens its own
+conversations (`whatsapp/whatsapp_service.py`) decides the same way the
+core does — on the transcript it has just read — and asks for the same
+thing.
 
 ## Who is told what
 

@@ -740,10 +740,10 @@ class TurnService(object):
 		reporting an exchange can report this one too.
 
 		Asked for, never worked out here: whoever asks has just read the
-		transcript and found nothing in it (see webchat/conversation_opener.py),
-		and a conversation that has already spoken never reaches this.
-		None for an imported session, which has no automaton to speak
-		for it."""
+		transcript and found nothing in it (see docs/BUS.md,
+		`session.opened`), so a conversation that has already spoken
+		never reaches this. None for an imported session, which has no
+		automaton to speak for it."""
 		automaton, _ = await self._ensure_project_bootstrap(session_id)
 		for _ in filter(None, [automaton is None]):
 			return None

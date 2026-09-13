@@ -4,6 +4,7 @@ import faulthandler
 import fcntl
 import os
 import json
+import shutil
 import signal
 import socket
 import subprocess
@@ -481,12 +482,21 @@ def fake_ai_service() -> FakeAiService:
     return FakeAiService()
 
 
+@pytest.fixture(scope="session")
+def app_db_template(tmp_path_factory) -> Path:
+    path = tmp_path_factory.mktemp("app-db-template") / "template.db"
+    Db(f"sqlite:///{path}")
+    return path
+
+
 @pytest.fixture
-def app_db(tmp_path) -> Db:
+def app_db(tmp_path, app_db_template) -> Db:
     """File-backed, not :memory: — TestClient runs sync endpoints in a real
     threadpool thread, and a second thread's own connection to ":memory:"
     would see a distinct, empty database instead of shared state."""
-    return Db(f"sqlite:///{tmp_path / 'test.db'}")
+    path = tmp_path / "test.db"
+    shutil.copyfile(app_db_template, path)
+    return Db(f"sqlite:///{path}")
 
 
 def make_test_scheduler_service(db: Db, broadcaster=None) -> SchedulerService:
