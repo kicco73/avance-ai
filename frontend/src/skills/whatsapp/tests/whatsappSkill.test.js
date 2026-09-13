@@ -17,7 +17,11 @@ describe('the whatsapp skill as the platform sees it', () => {
     expect(shareChannels[0].hint).toMatch(/WhatsApp/)
   })
 
-  it('labels its own channel in a session list', () => {
-    expect(channelLabels).toEqual({ 'whatsapp-chat': 'WhatsApp' })
+  it('labels its own channel in a session list, under the name a session is actually stamped with', () => {
+    // A channel is named after the package it is (see backend
+    // turn/channels.py) — labelling 'whatsapp-chat', the name it had
+    // before that, meant no WhatsApp session was ever labelled at all.
+    expect(channelLabels).toEqual({ whatsapp: 'WhatsApp' })
+    expect(Object.keys(channelLabels)).toEqual([key])
   })
 })

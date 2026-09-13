@@ -130,6 +130,10 @@ class Conversation(object):
     async def refused(self, body: dict) -> None:
         await notices.for_reason(body.get("reason")).delivered(self)
 
+    async def ended(self) -> None:
+        self._session_id = None
+        self._session_channel = None
+
     async def failed(self, body: dict) -> None:
         self._pending = None
         await notices.for_code(body.get("code")).delivered(self)

@@ -5,12 +5,12 @@ from http import HTTPStatus
 import pytest
 
 from system import bus
-from system.bus import SESSION_OPENED
+from system.bus import SESSION_ENDED, SESSION_OPENED, Message
 from system.service_error import ServiceError
 from whatsapp import notices
 from whatsapp.conversation import ACCEPT_TERMS
 from whatsapp.tests.whatsapp_helpers import (  # noqa: F401 — env is a fixture
-    LINKED_NUMBER, PROJECT, SESSION_ID, UNKNOWN_NUMBER, Env, _action, _config,
+    LINKED_EMAIL, LINKED_NUMBER, PROJECT, SESSION_ID, UNKNOWN_NUMBER, Env, _action, _config,
     _interactive_payload, _payload, env,
 )
 
@@ -82,6 +82,38 @@ async def test_a_session_open_on_another_channel_is_taken_over_before_the_turn(e
         ("enter", PROJECT, "live"), ("create", PROJECT, "live"), ("turn", SESSION_ID + 1, "hola"),
     ]
     assert env.api.sent == [(LINKED_NUMBER, REPLY_TEXT)]
+
+
+async def test_a_conversation_closed_from_elsewhere_is_forgotten_rather_than_still_watched(env: Env):
+    """Taking it back is the other channel's to do, and when it does, the
+    session this one holds is closed under it. Holding on to the id would
+    leave this conversation being handed announcements about a
+    conversation that is no longer its own."""
+    await env.arrives(_payload(text="hola"))
+    conversation = env.service._conversations[LINKED_NUMBER]
+    assert conversation.watching(SESSION_ID)
+
+    await bus.publish(Message(
+        type=SESSION_ENDED, username=LINKED_EMAIL, session_id=SESSION_ID,
+        body={"reason": "channel-switch"},
+    ))
+
+    assert not conversation.watching(SESSION_ID)
+
+
+async def test_the_next_message_after_a_takeover_opens_a_conversation_of_its_own(env: Env):
+    """Symmetry with the other channel: whoever the person writes to
+    takes the conversation, and takes it by opening a new one."""
+    await env.arrives(_payload(msg_id="wamid.1", text="hola"))
+    env.turns.session = {"id": SESSION_ID, "channel": "webchat", "project_id": PROJECT}
+
+    await env.arrives(_payload(msg_id="wamid.2", text="otra vez"))
+
+    assert [call for call in env.turns.calls if call[0] in ("create", "turn")] == [
+        ("turn", SESSION_ID, "hola"),
+        ("create", PROJECT, "live"),
+        ("turn", SESSION_ID + 1, "otra vez"),
+    ]
 
 
 async def test_a_paused_project_is_a_refusal_not_a_turn(env: Env):

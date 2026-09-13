@@ -84,6 +84,25 @@ Entering answers with the state's choices too. They are remembered, never
 sent: a phone is not a screen being refreshed, and only what an exchange
 itself offers goes out (`_Entering` / `_Answering` in `conversation.py`).
 
+### The other half of it
+
+Taking the conversation is only half a policy; the other half is the
+browser finding out. It does, and not by being refused: `webchat` applies
+the same rule off the same frame and comes to the opposite conclusion —
+it narrows `session.info`'s `current` to `false` for a conversation that
+is not its own, and the browser shows it read-only with a way back
+("Continue here" → `session.create`). It does **not** claim it back by
+itself, because its own `session.enter` fires on every reload and
+reconnection and the two channels would rally the session between them
+with nobody having written anything. Whoever the person *acts* on wins.
+`BUS.md` states the rule once, under "Whose conversation it is".
+
+The consequence is worth saying plainly: alternating between the phone
+and the browser gives one session per alternation. That is what
+`channel-switch` has always meant here — a transcript is never interleaved
+between two channels — and it is the price of the guarantee, not a bug in
+it.
+
 A refusal comes back as `session.blocked` and each reason has a sentence
 here: `paused`, and `terms` — which is not a sentence but the project's
 own `legal/terms.md` with a single Accept button, the WhatsApp equivalent

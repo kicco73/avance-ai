@@ -336,10 +336,9 @@ async def test_takeover_whatsapp_to_web_via_new_session_then_open_conversation(d
 
 
 async def test_takeover_web_to_whatsapp_via_run_turn_then_prepare_user_initiated_turn(db):
-    """The web has a session open; WhatsApp's own bootstrap
-    (acquire_exclusive_session, standing in for _run_turn's own call)
-    takes it over — prepare_user_initiated_turn never opens with an
-    AI-initiated message of its own, unlike the takeover above."""
+    """The web has a session open; an exclusive acquisition from the other
+    channel takes it over — prepare_user_initiated_turn never opens with
+    an AI-initiated message of its own, unlike the takeover above."""
     turn_service = _turn_service(db)
     WebSession().channel = "webchat"
     web_session = await turn_service.enter_session(PROJECT_ID, 'live')
@@ -355,6 +354,50 @@ async def test_takeover_web_to_whatsapp_via_run_turn_then_prepare_user_initiated
 
     await turn_service.prepare_user_initiated_turn(whatsapp_payload["id"])
     assert db.get_messages(whatsapp_payload["id"]) == []
+
+
+async def test_entering_shows_the_other_channels_session_and_creating_is_what_takes_it(db):
+    """The pair a channel with no screen actually uses (`session.enter`
+    then `session.create` — see BUS.md): entering answers with the
+    conversation as it stands, saying whose channel it is on and changing
+    nothing, and asking for a new one is what supersedes it. That split is
+    the whole of the policy: a channel that merely opened a view keeps its
+    hands off, and one whose owner just wrote takes the conversation."""
+    turn_service = _turn_service(db)
+    WebSession().channel = "webchat"
+    web_session = await turn_service.enter_session(PROJECT_ID, 'live')
+
+    WebSession().channel = "whatsapp"
+    entered = await turn_service.enter_session(PROJECT_ID, 'live')
+
+    assert entered["id"] == web_session["id"]
+    assert entered["channel"] == "webchat"
+    assert db.get_chat_session(web_session["id"])["closed_at"] is None
+
+    taken = await turn_service.create_session_of(PROJECT_ID, 'live')
+
+    assert taken["id"] != web_session["id"]
+    assert taken["channel"] == "whatsapp"
+    closed = db.get_chat_session(web_session["id"])
+    assert closed["closed_at"] is not None and closed["close_reason"] == "channel-switch"
+
+
+async def test_and_the_web_takes_it_straight_back_the_same_way(db):
+    """Symmetric, and it has to be: whoever the person acts on wins, and
+    the loser's session is closed under it every time."""
+    turn_service = _turn_service(db)
+    WebSession().channel = "whatsapp"
+    await turn_service.enter_session(PROJECT_ID, 'live')
+    phone_session = await turn_service.create_session_of(PROJECT_ID, 'live')
+
+    WebSession().channel = "webchat"
+    entered = await turn_service.enter_session(PROJECT_ID, 'live')
+    assert entered["id"] == phone_session["id"] and entered["channel"] == "whatsapp"
+
+    back = await turn_service.create_session_of(PROJECT_ID, 'live')
+
+    assert back["id"] != phone_session["id"] and back["channel"] == "webchat"
+    assert db.get_chat_session(phone_session["id"])["close_reason"] == "channel-switch"
 
 
 # -- Reporting vs. admitting: only one of the two is a channel question ------

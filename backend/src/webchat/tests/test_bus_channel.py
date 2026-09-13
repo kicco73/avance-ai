@@ -74,11 +74,22 @@ class _FakeWebSocket:
 
 
 class _RecordingConnection:
-    def __init__(self, *subscriptions: str):
+    def __init__(self, *subscriptions: str, username: str = USERNAME):
         self.id = "conn"
+        self.username = username
         self.sent: list[dict] = []
         self.closed = False
         self._subscriptions = set(subscriptions)
+        self._watching: set[int] = set()
+
+    def watch(self, session_id: int):
+        self._watching.add(session_id)
+
+    def unwatch(self, session_id: int):
+        self._watching.discard(session_id)
+
+    def watched(self) -> tuple[int, ...]:
+        return tuple(self._watching)
 
     def subscribe(self, event_types):
         self._subscriptions.update(event_types)
@@ -102,7 +113,8 @@ class TestPushEvent:
         subscribed = _RecordingConnection(UI_NOTIFICATION)
         other_type = _RecordingConnection(UI_PROGRESS)
         deaf = _RecordingConnection()
-        channel._connections[USERNAME] = [subscribed, other_type, deaf]
+        for connection in (subscribed, other_type, deaf):
+            channel._register(connection)
 
         payload = {"type": UI_NOTIFICATION, "project_name": "proj"}
         assert asyncio.run(channel.push_event(USERNAME, UI_NOTIFICATION, payload)) is True
@@ -112,7 +124,7 @@ class TestPushEvent:
 
     def test_returns_false_when_the_only_connection_never_registered(self):
         channel = BusChannel(_FakeAuthService())
-        channel._connections[USERNAME] = [_RecordingConnection()]
+        channel._register(_RecordingConnection())
 
         assert asyncio.run(channel.push_event(USERNAME, UI_NOTIFICATION, {"type": UI_NOTIFICATION})) is False
 
@@ -120,7 +132,8 @@ class TestPushEvent:
         channel = BusChannel(_FakeAuthService())
         first, second = _RecordingConnection(UI_NOTIFICATION), _RecordingConnection(UI_NOTIFICATION)
         first.id, second.id = "conn-1", "conn-2"
-        channel._connections[USERNAME] = [first, second]
+        channel._register(first)
+        channel._register(second)
 
         payload = {"type": UI_NOTIFICATION}
         assert asyncio.run(channel.push_event(USERNAME, UI_NOTIFICATION, payload)) is True
@@ -129,8 +142,8 @@ class TestPushEvent:
 
     def test_never_reaches_a_different_users_own_connection(self):
         channel = BusChannel(_FakeAuthService())
-        other = _RecordingConnection(UI_NOTIFICATION)
-        channel._connections["other-user"] = [other]
+        other = _RecordingConnection(UI_NOTIFICATION, username="other-user")
+        channel._register(other)
 
         assert asyncio.run(channel.push_event(USERNAME, UI_NOTIFICATION, {"type": UI_NOTIFICATION})) is False
         assert other.sent == []
@@ -234,8 +247,8 @@ class TestChannelLoop:
 
     def test_a_different_users_own_registration_is_left_alone(self):
         channel = BusChannel(_FakeAuthService())
-        other = _RecordingConnection()
-        channel._connections["other-user"] = [other]
+        other = _RecordingConnection(username="other-user")
+        channel._register(other)
 
         asyncio.run(channel.channel_loop(_FakeWebSocket()))
 
@@ -280,7 +293,7 @@ class TestConnectionCap:
     def test_a_second_connection_for_a_plain_user_supersedes_the_first(self):
         channel = BusChannel(_FakeAuthService())
         first = _SupersedableConnection()
-        channel._connections[USERNAME] = [first]
+        channel._register(first)
 
         websocket = _FakeWebSocket()
         asyncio.run(channel.channel_loop(websocket))
@@ -291,7 +304,7 @@ class TestConnectionCap:
     def test_the_superseded_connection_stops_being_registered(self):
         channel = BusChannel(_FakeAuthService())
         first = _SupersedableConnection()
-        channel._connections[USERNAME] = [first]
+        channel._register(first)
 
         websocket = _FakeWebSocket()
         asyncio.run(channel.channel_loop(websocket))
@@ -301,7 +314,7 @@ class TestConnectionCap:
     def test_an_admin_may_open_a_second_connection_without_superseding(self):
         channel = BusChannel(_FakeAdminAuthService())
         first = _SupersedableConnection()
-        channel._connections[USERNAME] = [first]
+        channel._register(first)
 
         websocket = _FakeWebSocket()
         asyncio.run(channel.channel_loop(websocket))
@@ -312,7 +325,9 @@ class TestConnectionCap:
     def test_a_third_connection_for_an_admin_supersedes_the_oldest_only(self):
         channel = BusChannel(_FakeAdminAuthService())
         oldest, newer = _SupersedableConnection(), _SupersedableConnection()
-        channel._connections[USERNAME] = [oldest, newer]
+        oldest.id, newer.id = "conn-oldest", "conn-newer"
+        channel._register(oldest)
+        channel._register(newer)
 
         websocket = _FakeWebSocket()
         asyncio.run(channel.channel_loop(websocket))
@@ -328,7 +343,7 @@ class TestSupersede:
 
     def test_sends_the_switched_frame_then_closes_with_the_superseded_code(self):
         websocket = _FakeWebSocket()
-        connection = WsConnection(websocket)
+        connection = WsConnection(websocket, USERNAME)
         connection.supersede()
 
         asyncio.run(connection.write_loop())
@@ -336,10 +351,28 @@ class TestSupersede:
         assert websocket.sent == [{"type": SWITCHED_TO_OTHER_CLIENT}]
         assert websocket.closed_with == SUPERSEDED_CLOSE_CODE
 
+    def test_a_superseded_connection_stops_being_addressable_at_all(self):
+        """Its id names nothing and it watches nothing, from the moment
+        it is superseded rather than from whenever its own loop ends: an
+        answer addressed to it falls through to whoever is showing that
+        conversation (see webchat_service._deliver) instead of being
+        written into a socket that discards it."""
+        channel = BusChannel(_FakeAuthService())
+        first = _SupersedableConnection()
+        first.id = "conn-old"
+        channel._register(first)
+        channel._watch(first, 7)
+
+        asyncio.run(channel.channel_loop(_FakeWebSocket()))
+
+        assert channel.has_connection("conn-old") is False
+        assert channel.send_to_connection("conn-old", {"type": "output.text"}) is False
+        assert channel.send_to_watchers(7, {"type": "session.ended"}) == 0
+
     def test_a_frame_arriving_after_it_was_superseded_is_not_answered(self):
         channel = BusChannel(_FakeAuthService())
         websocket = _FakeWebSocket()
-        connection = WsConnection(websocket)
+        connection = WsConnection(websocket, USERNAME)
         connection.supersede()
 
         channel._handle_frame(connection, '{"type": "ping"}')
@@ -360,11 +393,11 @@ class TestHumanPrompt:
 
     def test_a_human_reply_resolves_await_human_reply_with_its_text(self):
         """The operator's own frame carries session_id, never a prompt_id
-        it may never have seen — see _current_prompt_for_session."""
+        it may never have seen — see _prompt_by_session."""
         channel = BusChannel(_FakeAuthService())
         connection = _RecordingConnection(HUMAN_PROMPT)
         connection.id = "conn-1"
-        channel._connections[USERNAME] = [connection]
+        channel._register(connection)
 
         async def scenario():
             prompt_id = await channel.send_human_prompt(USERNAME, session_id=1, prompt_text="what do I say?")
@@ -377,7 +410,7 @@ class TestHumanPrompt:
         channel = BusChannel(_FakeAuthService())
         connection = _RecordingConnection(HUMAN_PROMPT)
         connection.id = "conn-1"
-        channel._connections[USERNAME] = [connection]
+        channel._register(connection)
 
         async def scenario():
             prompt_id = await channel.send_human_prompt(USERNAME, session_id=1, prompt_text="what do I say?")
@@ -392,17 +425,17 @@ class TestHumanPrompt:
         channel = BusChannel(_FakeAuthService())
         operator = _RecordingConnection(HUMAN_PROMPT)
         operator.id = "conn-1"
-        intruder = _RecordingConnection(HUMAN_PROMPT)
+        intruder = _RecordingConnection(HUMAN_PROMPT, username="someone-else@example.com")
         intruder.id = "conn-2"
-        channel._connections[USERNAME] = [operator]
-        channel._connections["someone-else@example.com"] = [intruder]
+        channel._register(operator)
+        channel._register(intruder)
 
         async def scenario():
             prompt_id = await channel.send_human_prompt(USERNAME, session_id=1, prompt_text="what do I say?")
             channel._handle_frame(intruder, json.dumps({"type": "human_reply", "session_id": 1, "text": "nonsense"}))
             channel._handle_frame(intruder, json.dumps({"type": "human_typing", "session_id": 1}))
-            assert not channel._pending_human_replies[prompt_id].done()
-            assert not channel._pending_typing_events[prompt_id].is_set()
+            assert not channel._prompts[prompt_id].answered
+            assert not channel._prompts[prompt_id].typing_seen
             channel._handle_frame(operator, json.dumps({"type": "human_reply", "session_id": 1, "text": "say hi"}))
             return await channel.await_human_reply(prompt_id)
 
@@ -412,7 +445,7 @@ class TestHumanPrompt:
         channel = BusChannel(_FakeAuthService())
         connection = _RecordingConnection(HUMAN_PROMPT)
         connection.id = "conn-1"
-        channel._connections[USERNAME] = [connection]
+        channel._register(connection)
 
         async def scenario():
             prompt_id = await channel.send_human_prompt(USERNAME, session_id=1, prompt_text="hi")
@@ -421,7 +454,7 @@ class TestHumanPrompt:
             # A second, unrelated reply for the same session must not
             # resolve a prompt that's already done.
             channel._handle_frame(connection, json.dumps({"type": "human_reply", "session_id": 1, "text": "late"}))
-            return channel._current_prompt_for_session.get(1)
+            return channel._prompt_by_session.get(1)
 
         assert asyncio.run(scenario()) is None
 
@@ -433,7 +466,8 @@ class TestHumanPrompt:
         channel = BusChannel(_FakeAuthService())
         operator, bystander = _RecordingConnection(HUMAN_PROMPT), _RecordingConnection()
         operator.id, bystander.id = "conn-operator", "conn-bystander"
-        channel._connections[USERNAME] = [bystander, operator]
+        channel._register(bystander)
+        channel._register(operator)
 
         asyncio.run(channel.send_human_prompt(USERNAME, session_id=1, prompt_text="hi"))
 
@@ -444,7 +478,7 @@ class TestHumanPrompt:
         channel = BusChannel(_FakeAuthService())
         bystander = _RecordingConnection()
         bystander.id = "conn-1"
-        channel._connections[USERNAME] = [bystander]
+        channel._register(bystander)
 
         with pytest.raises(HumanNotConnectedError):
             asyncio.run(channel.send_human_prompt(USERNAME, session_id=1, prompt_text="hi"))
@@ -456,7 +490,8 @@ class TestHumanPrompt:
         channel = BusChannel(_FakeAuthService())
         operator, latecomer = _RecordingConnection(HUMAN_PROMPT), _RecordingConnection()
         operator.id, latecomer.id = "conn-1", "conn-2"
-        channel._connections[USERNAME] = [operator, latecomer]
+        channel._register(operator)
+        channel._register(latecomer)
 
         asyncio.run(channel.send_human_prompt(USERNAME, session_id=1, prompt_text="what do I say?"))
         channel._handle_frame(latecomer, json.dumps({"type": "subscribe", "events": [HUMAN_PROMPT]}))
@@ -467,7 +502,8 @@ class TestHumanPrompt:
         channel = BusChannel(_FakeAuthService())
         operator, latecomer = _RecordingConnection(HUMAN_PROMPT), _RecordingConnection()
         operator.id, latecomer.id = "conn-1", "conn-2"
-        channel._connections[USERNAME] = [operator, latecomer]
+        channel._register(operator)
+        channel._register(latecomer)
 
         async def scenario():
             prompt_id = await channel.send_human_prompt(USERNAME, session_id=1, prompt_text="what do I say?")

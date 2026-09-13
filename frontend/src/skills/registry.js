@@ -25,6 +25,11 @@ export const shareChannels = contributionsOf('shareChannels')
 export const roleHomes = contributionsOf('roleHomes')
 export const modelSelectors = contributionsOf('modelSelectors')
 
+export const chatChannel = computed(() => manifests
+  .filter((manifest) => isSkillInstalled(manifest.key))
+  .map((manifest) => manifest.chatChannel)
+  .find(Boolean) ?? null)
+
 export const channelLabels = computed(() => manifests
   .filter((manifest) => isSkillInstalled(manifest.key))
   .reduce((labels, manifest) => ({ ...labels, ...manifest.channelLabels }), {}))

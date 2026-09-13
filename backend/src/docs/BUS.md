@@ -48,10 +48,10 @@ reading a transcript opens nothing (`TurnService.read_history`).
 | `session.recall` | client → server | `{before, limit}` — bring back what was said earlier. What is on screen when a conversation opens arrives without asking |
 | `session.terminate` | client → server | `{}` — the person closes it |
 | `session.speak` | client → server | `{enabled}` — speak, or stop speaking, in this conversation: whether the model is asked for the spoken version of its reply |
-| `session.info` | server → client | `{state, services, audio, current, channel, project_id}` — which conversation this is and everything describing it. `channel` is how a channel learns the session it was given is not its own |
+| `session.info` | server → client | `{state, services, audio, current, channel, project_id}` — which conversation this is and everything describing it. `current` says the session is the one its type's active slot holds, **never that you may write to it**: writability is that AND `channel` being your own (see "Whose conversation it is" below) |
 | `session.messages` | server → client | `{messages}` — what was said |
 | `session.opened` | server → server | `{}` — this conversation has just been opened and has said nothing. Published by `turn/input_listener.py` after the whole announcement, and **only when the transcript it just announced was empty**. `webchat/webchat_service.py` answers it with whatever the state has to say first, and **only for its own channel**. Nothing in `whatsapp/` answers it at all, which is what "never writes the first message" is made of. Never reaches a client |
-| `session.ended` | server → client | `{reason}` — closed, by the person or by the server itself (`channel-switch`, `force-new-session`, `revision-invalid`). Published from the one place every closure passes through, `SessionManager.close_session` |
+| `session.ended` | server → client | `{reason}` — closed, by the person or by the server itself (`channel-switch`, `force-new-session`, `revision-invalid`). Published from the one place every closure passes through, `SessionManager.close_session`. It is also the last thing said about that session: whoever was watching it stops (`webchat`) and whoever held it forgets it (`whatsapp`) |
 | `session.blocked` | server → client | `{reason, detail}` — there is no conversation to be had: `paused`, `terms`, `no_project`, `no_channel`. A refusal, not a failure: whoever shows a chat shows a different screen for each, and a channel with no screen says a sentence for each (`whatsapp/notices.py`) |
 | `session.taken_over` | server → client | `{project_id}` — handed to a person. Named for the session because that is what it is about, but delivered to that identity's connections: the point of it is to reach an operator who is not in the conversation yet |
 
@@ -146,6 +146,40 @@ written to until its owner writes. What the state owed is not lost by
 that — `TurnService.prepare_user_initiated_turn` still says it, as an
 `output.text` before the answer to the first thing the person says.
 
+## Whose conversation it is
+
+A **live session belongs to one channel at a time** (`CoreSession.channel`,
+fixed at creation — see `turn/channels.py`), and the two channels contend
+for it. The rule both read is one line, and neither the core nor a client
+can apply it alone:
+
+> **writable = `current` AND `channel` is mine.**
+
+`current` on `session.info` says the session is the one its type's active
+slot holds and nothing more; `TurnService` deliberately does not combine
+the two, because it does not know which channel is asking. The channel
+does, and each applies it its own way:
+
+- **`whatsapp/conversation.py` takes it.** Its `session.enter` happens
+  because somebody wrote, so a conversation on another channel is claimed
+  on the spot: `session.create`, which closes the other one
+  (`channel-switch`) and opens one of its own.
+- **`webchat/webchat_service.py` stands down.** Its `session.enter` fires
+  on every reload and every reconnection of the socket, and claiming there
+  would steal the conversation back from the phone each time a forgotten
+  tab woke up — the two would rally the session between them with nobody
+  having done anything. So it narrows `current` to `false` on the way out
+  and the browser shows the conversation read-only; taking it back is
+  something the person does (`session.create`, the "New session" button).
+
+A session with **no channel at all** (`test`, `preview`, `imported`) is
+nobody's and is never narrowed.
+
+The guarantee is not either of those, though: it is
+`LiveSessionStrategy.is_valid_write_target`, which refuses a write from
+the wrong channel with `session_channel_mismatch` / `session_superseded`.
+The two above are how a channel finds out *before* being refused.
+
 ## Who is told what
 
 An **answer** goes back to the connection that asked: the request carried
@@ -156,7 +190,8 @@ An **announcement** — a session closed from elsewhere, a conversation
 handed to a person — has no request behind it and no connection to answer
 to. It goes to whoever is *watching* that conversation: a connection
 starts watching when it is told which session it entered, and stops on
-`session.exit`.
+`session.exit` — or on `session.ended`, which is the last thing there is
+to say about that session.
 
 A **notification** (`ui.*`, and `session.taken_over`) goes to an
 identity's connections, and only to those that registered for its type.

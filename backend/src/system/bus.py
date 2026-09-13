@@ -28,6 +28,7 @@ just one of its fields.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, Protocol
 
@@ -288,18 +289,21 @@ Listener = Callable[[Message], Awaitable[None]]
 #: assembled and adds to it. Synchronous, because every point is.
 Contributor = Callable[[Any], None]
 
-_listeners: dict[str, list[Listener]] = {}
-_contributors: dict[str, list[Contributor]] = {}
+_listeners: dict[str, tuple[Listener, ...]] = {}
+_contributors: dict[str, tuple[Contributor, ...]] = {}
 
 
 def subscribe(type: str, listener: Listener) -> None:
-    _listeners.setdefault(type, []).append(listener)
+    _listeners[type] = _listeners.get(type, ()) + (listener,)
 
 
 def unsubscribe(type: str, listener: Listener) -> None:
-    listeners = _listeners.get(type)
-    if listeners is not None and listener in listeners:
-        listeners.remove(listener)
+    remaining = list(_listeners.get(type, ()))
+    try:
+        remaining.remove(listener)
+    except ValueError:
+        return
+    _listeners[type] = tuple(remaining)
 
 
 def handlers_for(type: str) -> list[Listener]:
@@ -324,15 +328,16 @@ async def publish(message: Message) -> bool:
             message.type, message.conversions,
         )
         return False
-    listeners = handlers_for(message.type)
+    listeners = _listeners.get(message.type, ())
     # INFO while the Bus is young: every delivery, with what identifies
     # the conversation and how many listeners took it. Drop to DEBUG once
     # the traffic is understood.
-    logger.info(
-        "bus %s -> %d listener(s) | user=%s session=%s channel=%s origin=%s from=%s%s",
-        message.type, len(listeners), message.username, message.session_id, message.channel,
-        message.origin_id, message.converted_from, _body_summary(message),
-    )
+    if logger.isEnabledFor(logging.INFO):
+        logger.info(
+            "bus %s -> %d listener(s) | user=%s session=%s channel=%s origin=%s from=%s%s",
+            message.type, len(listeners), message.username, message.session_id, message.channel,
+            message.origin_id, message.converted_from, _body_summary(message),
+        )
     for listener in listeners:
         try:
             await listener(message)
@@ -382,15 +387,18 @@ def _body_summary(message: Message) -> str:
 
 def contribute(point: str, contributor: Contributor) -> None:
     """Register to add something to whatever `point` assembles."""
-    _contributors.setdefault(point, []).append(contributor)
+    _contributors[point] = _contributors.get(point, ()) + (contributor,)
 
 
 def withdraw(point: str, contributor: Contributor) -> None:
     """The mirror of unsubscribe, for a contributor that only wanted one
     exchange — see docs/BUS.md."""
-    contributors = _contributors.get(point)
-    if contributors is not None and contributor in contributors:
-        contributors.remove(contributor)
+    remaining = list(_contributors.get(point, ()))
+    try:
+        remaining.remove(contributor)
+    except ValueError:
+        return
+    _contributors[point] = tuple(remaining)
 
 
 def collect(point: str, target: Any) -> Any:

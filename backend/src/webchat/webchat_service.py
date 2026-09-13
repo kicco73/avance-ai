@@ -102,9 +102,20 @@ class WebchatService:
         conversation handed to a person — goes to whoever is showing that
         conversation. The second has no request behind it and so no
         `origin_id` to answer to."""
+        self._deliver(message, self._frame(message))
+        for _ in filter(SESSION_ENDED.__eq__, [message.type]):
+            for session_id in filter(None, [message.session_id]):
+                self._notifications.unwatch_session(session_id)
+
+    def _frame(self, message: Message) -> dict:
         frame = {"type": message.type, "session_id": message.session_id, **(message.body or {})}
         for project_id in filter(None, [message.project_id]):
             frame.setdefault("project_id", project_id)
+        for _ in filter(SESSION_INFO.__eq__, [message.type]):
+            frame["current"] = bool(frame.get("current")) and frame.get("channel") in (None, CHANNEL)
+        return frame
+
+    def _deliver(self, message: Message, frame: dict) -> None:
         connection_id = message.origin_id
         if connection_id is None or not self._notifications.has_connection(connection_id):
             for session_id in filter(None, [message.session_id]):

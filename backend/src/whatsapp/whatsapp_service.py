@@ -7,7 +7,7 @@ from db import Db
 from system import bus
 from system.bus import (
     OUTPUT_ERROR, OUTPUT_SPEECH, OUTPUT_TEXT, POINT_CORE_SERVICES, POINT_SPOKEN_REPLY,
-    SESSION_BLOCKED, SESSION_INFO, STATE_BUTTONS, Message,
+    SESSION_BLOCKED, SESSION_ENDED, SESSION_INFO, STATE_BUTTONS, Message,
 )
 from system.logging_factory import LoggerFactory
 from system.web_session import WebSession
@@ -55,6 +55,7 @@ class WhatsAppService(object):
 
         bus.subscribe(SESSION_INFO, self._informed)
         bus.subscribe(SESSION_BLOCKED, self._refused)
+        bus.subscribe(SESSION_ENDED, self._ended)
         bus.subscribe(STATE_BUTTONS, self._offered)
         bus.subscribe(OUTPUT_SPEECH, self._announced)
         bus.subscribe(OUTPUT_TEXT, self._said)
@@ -68,6 +69,7 @@ class WhatsAppService(object):
     async def close(self) -> None:
         bus.unsubscribe(SESSION_INFO, self._informed)
         bus.unsubscribe(SESSION_BLOCKED, self._refused)
+        bus.unsubscribe(SESSION_ENDED, self._ended)
         bus.unsubscribe(STATE_BUTTONS, self._offered)
         bus.unsubscribe(OUTPUT_SPEECH, self._announced)
         bus.unsubscribe(OUTPUT_TEXT, self._said)
@@ -123,6 +125,10 @@ class WhatsAppService(object):
     async def _refused(self, message: Message) -> None:
         for conversation in self._mine(message):
             await conversation.refused(message.body or {})
+
+    async def _ended(self, message: Message) -> None:
+        for conversation in self._watching(message.session_id):
+            await conversation.ended()
 
     async def _offered(self, message: Message) -> None:
         for conversation in self._mine(message):
