@@ -14,6 +14,7 @@ from __future__ import annotations
 import pytest
 
 from test_turn_service_prepare_user_initiated_turn import _automaton, _turn_service
+from turn_harness import PROJECT_ID
 
 pytestmark = pytest.mark.contract
 
@@ -27,7 +28,7 @@ async def test_a_chat_blocked_state_reports_the_wrap_up_the_turn_itself_never_wi
     so the only thing this session will ever say is written by the
     preparation — and process_turn's own reply does not contain it."""
     turn_service = _turn_service(db, _automaton(final=True))
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     prepared = await turn_service.prepare_user_initiated_turn(session["id"])
     result = await turn_service.process_turn(session["id"], "ciao")
@@ -42,7 +43,7 @@ async def test_the_turn_alone_reports_only_half_of_it(db):
     exists: if this ever stops being true, the merge above is dead
     weight rather than a fix."""
     turn_service = _turn_service(db, _automaton(final=True))
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     await turn_service.prepare_user_initiated_turn(session["id"])
     result = await turn_service.process_turn(session["id"], "ciao")
@@ -55,7 +56,7 @@ async def test_an_ordinary_state_prepares_nothing_at_all(db):
     """Nothing to report, and nothing written: a state that can take a
     turn says what it has to say in the turn."""
     turn_service = _turn_service(db, _automaton(final=False))
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     prepared = await turn_service.prepare_user_initiated_turn(session["id"])
     result = await turn_service.process_turn(session["id"], "ciao")
@@ -68,7 +69,7 @@ async def test_the_prepared_message_was_written_before_the_turn_s_own(db):
     """A channel sends them in the order it was given them, so the order
     has to be the order they happened in."""
     turn_service = _turn_service(db, _automaton(final=True))
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     prepared = await turn_service.prepare_user_initiated_turn(session["id"])
     result = await turn_service.process_turn(session["id"], "ciao")

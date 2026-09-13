@@ -12,9 +12,7 @@ left with the panel that offers it.
 """
 from __future__ import annotations
 
-from http import HTTPStatus
 
-from fastapi import APIRouter, HTTPException
 
 from controllers.base_controller import BaseController, get
 from db import Db
@@ -30,10 +28,6 @@ class DeploymentInfoController(BaseController):
         self.version = version
         self.scheduler_service = scheduler_service
         self.services_config = services_config
-
-    def register_routes(self, router: APIRouter) -> None:
-        for method, path, kwargs, member in self._declared_routes():
-            router.add_api_route(path, member, methods=[method], **kwargs)
 
     @get("/api/core/settings/about", role="supervisor")
     def get_about(self):
@@ -58,10 +52,7 @@ class DeploymentInfoController(BaseController):
         """Task rows for one status at a time, by run_at per `order` (see
         scheduler.SchedulerService.list_tasks). `payload` is omitted: it
         is the task type's own hydration data, not meant for display."""
-        try:
-            tasks = self.scheduler_service.list_tasks(status=status, order=order)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        tasks = self.scheduler_service.list_tasks(status=status, order=order)
         return {
             "tasks": [
                 {key: value for key, value in task.items() if key != "payload"}

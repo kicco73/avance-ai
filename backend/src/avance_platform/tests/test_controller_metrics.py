@@ -59,13 +59,13 @@ def test_metrics_are_scoped_to_the_url_project(client):
         resp = client.post(f"/api/skills/platform/projects/{names[key]}/publish", json={})
         assert resp.status_code == 200, resp.text
 
-    client.post(f"/api/skills/platform/projects/{names['hello']}/activate")
+    client.post(f"/api/core/projects/{names['hello']}/activate")
     session_id = session_of(enter_chat(client, names["hello"]))
     for text in ("hi", "again", "and again"):
         chat_turn(client, session_id, text)
     hello_engagement = {m["name"]: m["value"] for m in client.get(f"/api/core/projects/{names['hello']}/metrics").json()}["engagement"]
 
-    client.post(f"/api/skills/platform/projects/{names['cat']}/activate")
+    client.post(f"/api/core/projects/{names['cat']}/activate")
     cat_engagement = {m["name"]: m["value"] for m in client.get(f"/api/core/projects/{names['cat']}/metrics").json()}["engagement"]
 
     assert hello_engagement > 0.0

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from typing import Any
+
+from peewee import Expression
+
 from .models import (
     Archive, CoreSession, EditHistory, File, Invite, Message, Project, ProjectObserverIndex, StateRemap,
     SystemWarning, Test, TestAggregateResult, Tracking, User, UserProject, database,
@@ -52,6 +56,10 @@ class ProjectMixin:
     def project_exists(self, project_id: str) -> bool:
         return Project.get_or_none(Project.id == project_id) is not None
 
+    def _project_field(self, project_id: str, field_name: str, default: Any) -> Any:
+        project = Project.get_or_none(Project.id == project_id)
+        return getattr(project, field_name) if project is not None else default
+
     def get_project_availability(self, project_id: str) -> tuple[bool, str | None] | None:
         """(is_paused, paused_reason) — None if `project_id` doesn't
         exist at all. A cheap single-row read, never a full automaton build."""
@@ -64,8 +72,7 @@ class ProjectMixin:
     def get_manually_paused(self, project_id: str) -> bool | None:
         """None if `project_id` doesn't exist at all — same convention
         as get_project_availability."""
-        project = Project.get_or_none(Project.id == project_id)
-        return project.manually_paused if project is not None else None
+        return self._project_field(project_id, 'manually_paused', None)
 
     def set_manually_paused(self, project_id: str, value: bool) -> None:
         Project.update(manually_paused=value).where(Project.id == project_id).execute()
@@ -73,42 +80,31 @@ class ProjectMixin:
     def set_project_metadata(self, project_id: str, ui_label: str | None, ui_description: str | None) -> None:
         Project.update(ui_label=ui_label, ui_description=ui_description).where(Project.id == project_id).execute()
 
-    def reset_project(self, project_id: str) -> None:
-        session_ids = CoreSession.select(CoreSession.id).where(CoreSession.project == project_id)
+    def _delete_sessions_where(self, condition: Expression) -> None:
+        session_ids = CoreSession.select(CoreSession.id).where(condition)
         Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
         Message.delete().where(Message.session.in_(session_ids)).execute()
-        CoreSession.delete().where(CoreSession.project == project_id).execute()
+        CoreSession.delete().where(condition).execute()
+
+    def reset_project(self, project_id: str) -> None:
+        self._delete_sessions_where(CoreSession.project == project_id)
 
     def reset_project_for_user(self, username: str, project_id: str, type: str) -> None:
-        session_ids = CoreSession.select(CoreSession.id).where(
+        self._delete_sessions_where(
             (CoreSession.username == username) & (CoreSession.project == project_id) & (CoreSession.type == type)
         )
-        Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
-        Message.delete().where(Message.session.in_(session_ids)).execute()
-        CoreSession.delete().where(
-            (CoreSession.username == username) & (CoreSession.project == project_id) & (CoreSession.type == type)
-        ).execute()
 
     def wipe_live_sessions_for_all_projects(self) -> None:
-        session_ids = CoreSession.select(CoreSession.id).where(CoreSession.type == 'live')
-        Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
-        Message.delete().where(Message.session.in_(session_ids)).execute()
-        CoreSession.delete().where(CoreSession.type == 'live').execute()
-
-    def _current_revision(self, project_id: str) -> int:
-        project = Project.get_or_none(Project.id == project_id)
-        return project.revision if project is not None else 0
+        self._delete_sessions_where(CoreSession.type == 'live')
 
     def get_project_revision(self, project_id: str) -> int:
-        return self._current_revision(project_id)
+        return self._project_field(project_id, 'revision', 0)
 
     def get_project_draft_edit_count(self, project_id: str) -> int:
-        project = Project.get_or_none(Project.id == project_id)
-        return project.draft_edit_count if project is not None else 0
+        return self._project_field(project_id, 'draft_edit_count', 0)
 
     def get_project_published_revision(self, project_id: str) -> int | None:
-        project = Project.get_or_none(Project.id == project_id)
-        return project.published_revision if project is not None else None
+        return self._project_field(project_id, 'published_revision', None)
 
     def _ensure_draft_revision(self, project_id: str) -> int:
         """The revision an Archive write/delete must target — forks
@@ -135,7 +131,7 @@ class ProjectMixin:
 
     def get_archive_row(self, project_id: str, archive_name: str, revision: int | None = None) -> Archive | None:
         if revision is None:
-            revision = self._current_revision(project_id)
+            revision = self.get_project_revision(project_id)
         return Archive.get_or_none(
             (Archive.project == project_id) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
         )
@@ -152,16 +148,12 @@ class ProjectMixin:
         return row.content if row is not None else None
 
     def get_archive_content_type(self, project_id: str, archive_name: str, revision: int | None = None) -> str | None:
-        if revision is None:
-            revision = self._current_revision(project_id)
-        row = Archive.get_or_none(
-            (Archive.project == project_id) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
-        )
+        row = self.get_archive_row(project_id, archive_name, revision=revision)
         return row.content_type if row is not None else None
 
     def get_archives(self, project_id: str, revision: int | None = None) -> dict:
         if revision is None:
-            revision = self._current_revision(project_id)
+            revision = self.get_project_revision(project_id)
         return {
             row.archive_name: row.content
             for row in Archive.select(Archive.archive_name, File.content).join(File).where(
@@ -169,22 +161,23 @@ class ProjectMixin:
             )
         }
 
+    def _upsert_archive(
+        self, project_id: str, archive_name: str, revision: int, content: bytes, content_type: str,
+    ) -> None:
+        existing = Archive.get_or_none(
+            (Archive.project == project_id) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
+        )
+        if existing is None:
+            Archive.create(project=project_id, archive_name=archive_name, revision=revision, hash=File.put(content, content_type))
+        else:
+            Archive.update(hash=File.put(content, content_type)).where(Archive.id == existing.id).execute()
+
     def save_project_files(self, project_id: str, files: dict[str, bytes], content_types: dict[str, str]) -> None:
         self.ensure_project(project_id)
         revision = self._ensure_draft_revision(project_id)
         Project.update(draft_edit_count=Project.draft_edit_count + 1).where(Project.id == project_id).execute()
         for archive_name, content in files.items():
-            content_type = content_types[archive_name]
-            existing = Archive.get_or_none(
-                (Archive.project == project_id) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
-            )
-            if existing is None:
-                Archive.create(
-                    project=project_id, archive_name=archive_name, revision=revision,
-                    hash=File.put(content, content_type),
-                )
-            else:
-                Archive.update(hash=File.put(content, content_type)).where(Archive.id == existing.id).execute()
+            self._upsert_archive(project_id, archive_name, revision, content, content_types[archive_name])
 
     def write_archive_at_revision(self, project_id: str, archive_name: str, revision: int, content: bytes, content_type: str) -> None:
         """Upserts one Archive row at an *exact* revision, bypassing
@@ -195,13 +188,7 @@ class ProjectMixin:
         pinned to, never wherever the project's current draft happens to
         be by the time the cache write runs (a long-open session can
         easily outlive a later publish)."""
-        existing = Archive.get_or_none(
-            (Archive.project == project_id) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
-        )
-        if existing is None:
-            Archive.create(project=project_id, archive_name=archive_name, revision=revision, hash=File.put(content, content_type))
-        else:
-            Archive.update(hash=File.put(content, content_type)).where(Archive.id == existing.id).execute()
+        self._upsert_archive(project_id, archive_name, revision, content, content_type)
 
     def delete_archives_with_prefix(self, project_id: str, prefix: str) -> None:
         """Deletes every Archive row (any revision) whose name starts with
@@ -220,14 +207,7 @@ class ProjectMixin:
         (see _ensure_draft_revision): for finalizing the draft that's
         already about to be published (see ProjectManager.publish_project's
         own project.revision stamping), not for a genuinely new edit."""
-        revision = self._current_revision(project_id)
-        existing = Archive.get_or_none(
-            (Archive.project == project_id) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
-        )
-        if existing is None:
-            Archive.create(project=project_id, archive_name=archive_name, revision=revision, hash=File.put(content, content_type))
-        else:
-            Archive.update(hash=File.put(content, content_type)).where(Archive.id == existing.id).execute()
+        self._upsert_archive(project_id, archive_name, self.get_project_revision(project_id), content, content_type)
 
     def import_new_revision(
         self, project_id: str, revision: int, files: dict[str, bytes], content_types: dict[str, str],
@@ -312,22 +292,6 @@ class ProjectMixin:
             ).order_by(Project.id)
         ]
 
-    def list_distinct_archive_names(self) -> list[tuple[str, str]]:
-        return [
-            (row.project_id, row.archive_name)
-            for row in Archive.select(Archive.project, Archive.archive_name).distinct()
-        ]
-
-    def list_index_yml_revisions(self) -> list[tuple[str, int]]:
-        """Every (project_id, revision) pair with its own 'index.yml' row
-        — every revision ever stored, not just a project's current or
-        published one. For a boot-time migration that must inspect every
-        historical index.yml, not just the live ones."""
-        return [
-            (row.project_id, row.revision)
-            for row in Archive.select(Archive.project, Archive.revision).where(Archive.archive_name == "index.yml")
-        ]
-
     def rename_archive(
         self, project_id: str, old_name: str, new_name: str,
         updated_files: dict[str, bytes] | None = None, content_types: dict[str, str] | None = None,
@@ -349,18 +313,11 @@ class ProjectMixin:
         row.archive_name = new_name
         row.save()
         for archive_name, content in (updated_files or {}).items():
-            content_type = (content_types or {})[archive_name]
-            existing = Archive.get_or_none(
-                (Archive.project == project_id) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
-            )
-            if existing is None:
-                Archive.create(project=project_id, archive_name=archive_name, revision=revision, hash=File.put(content, content_type))
-            else:
-                Archive.update(hash=File.put(content, content_type)).where(Archive.id == existing.id).execute()
+            self._upsert_archive(project_id, archive_name, revision, content, (content_types or {})[archive_name])
 
     def list_archives(self, project_id: str, revision: int | None = None) -> list[str]:
         if revision is None:
-            revision = self._current_revision(project_id)
+            revision = self.get_project_revision(project_id)
         return [
             p.archive_name for p in Archive.select(Archive.archive_name).where(
                 (Archive.project == project_id) & (Archive.revision == revision)

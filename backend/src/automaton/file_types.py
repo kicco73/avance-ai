@@ -9,6 +9,7 @@ folder it canonicalizes into and the size it may not exceed
 """
 from __future__ import annotations
 
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,8 @@ MAX_AUDIO_UPLOAD_BYTES = 15 * 1024 * 1024
 
 IMAGE_KIND = "image"
 AUDIO_KIND = "audio"
+
+ICON_FILE_RE = re.compile(r'^aspect/icon\.(png|jpe?g|gif|webp|svg)$', re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -124,26 +127,6 @@ class ProjectFileTypes:
     @classmethod
     def of(cls, name: str) -> ProjectFileType:
         return cls._BY_EXTENSION.get(Path(name).suffix.lower(), cls.UNKNOWN)
-
-    @classmethod
-    def extensions_in(cls, folder: str) -> set[str]:
-        return {file_type.extension for file_type in cls._TYPES if file_type.folder == folder}
-
-    @classmethod
-    def extensions_of_kind(cls, kind: str) -> set[str]:
-        return {file_type.extension for file_type in cls._TYPES if file_type.kind == kind}
-
-    @classmethod
-    def text_extensions(cls) -> set[str]:
-        return {file_type.extension for file_type in cls._TYPES if file_type.text}
-
-    @classmethod
-    def binary_extensions(cls) -> set[str]:
-        return {file_type.extension for file_type in cls._TYPES if not file_type.text}
-
-    @classmethod
-    def content_types_by_extension(cls) -> dict[str, str]:
-        return {file_type.extension: file_type.content_type for file_type in cls._TYPES}
 
     @classmethod
     def catalog_payload(cls) -> dict:

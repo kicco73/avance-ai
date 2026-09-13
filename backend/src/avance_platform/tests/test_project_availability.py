@@ -47,10 +47,6 @@ states:
 """
 
 
-async def _commit(_project_id, _automaton):
-    pass
-
-
 def _publish_project(db, project_service: ProjectService, project_id: str, index_yml: str) -> None:
     """A real save, through finalize_update, so the reverse index and the
     initial availability recompute both actually run. Auto-declares
@@ -68,7 +64,7 @@ def _publish_project(db, project_service: ProjectService, project_id: str, index
     db.publish_project(project_id)
     db.set_active_project_id(project_id, USERNAME)
     automaton = AutomatonBuilder().build({"index.yml": index_yml})
-    asyncio.run(project_service.manager.finalize_update(project_id, automaton, _commit, is_new_project=is_new_project))
+    asyncio.run(project_service.manager.finalize_update(project_id, automaton, is_new_project=is_new_project))
 
 
 def _chain(db, project_service) -> None:
@@ -273,7 +269,7 @@ def test_deleting_a_project_pauses_its_observer(db, project_service):
     that never resolved to a real project in the first place."""
     _dependency_pair(db, project_service)
 
-    asyncio.run(project_service.delete_project("dependency", _commit))
+    asyncio.run(project_service.delete_project("dependency"))
 
     is_paused, reason = db.get_project_availability("dependent")
     assert is_paused is True

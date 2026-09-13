@@ -5,7 +5,7 @@ import json
 
 from contextlib import asynccontextmanager
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime
 from http import HTTPStatus
 
 from automaton.automaton import Action, Automaton, SignalPayload, State, pressable_actions
@@ -13,8 +13,8 @@ from automaton.build_error import AutomatonBuildError
 from db import Db, _utc_iso
 from ai import AiService
 from system.keyed_lock_registry import KeyedLockRegistry
+from system.project_locks import ProjectLocks
 from project.archive.layout import CACHE_DIR
-from system.project_rw_lock import ProjectRwLock
 from system.web_session import WebSession
 from system import bus
 from system.bus import POINT_SESSION_SERVICES
@@ -57,6 +57,7 @@ class TurnService(object):
 		metric_service: MetricService,
 		scheduler_service: SchedulerService,
 		namespace_factory: TaskNamespaceFactory,
+		project_locks: ProjectLocks | None = None,
 	) -> None:
 		self._db = db
 		self._ai_service = ai_service
@@ -75,7 +76,7 @@ class TurnService(object):
 		self._user_facts = UserFacts(db)
 		self._automaton_namespace = AutomatonNamespace(db, project_service)
 
-		self._project_locks = KeyedLockRegistry(ProjectRwLock)
+		self._project_locks = project_locks or ProjectLocks()
 		self._session_locks = KeyedLockRegistry(asyncio.Lock)
 		self._session_lifecycle_locks = KeyedLockRegistry(asyncio.Lock)
 		self._global_lock = asyncio.Lock()
@@ -138,14 +139,6 @@ class TurnService(object):
 
 	def select_test_ai_model(self, index: int | None) -> None:
 		self._ai_test_service.select_model(index)
-
-	@staticmethod
-	def _now_iso() -> str:
-		return datetime.now(timezone.utc).isoformat()
-
-	@staticmethod
-	def _strip_timestamps(history: list[dict]) -> list[dict]:
-		return [{"role": m["role"], "content": m["content"]} for m in history]
 
 	def _session_payload(self, session: dict, *, current: bool) -> dict:
 		return {
@@ -277,19 +270,6 @@ class TurnService(object):
 			return {"blocked": "paused", "detail": paused_reason or ""}
 		return await self._create_session_of_type(get_session_type_strategy(type), project_id)
 
-	async def get_current_session_if_any_or_create_new(self, session_id: int | None) -> dict:
-		project_id = self._active_project_id
-		is_paused, paused_reason = self._project_service.get_project_availability(project_id)
-		if is_paused:
-			return {"paused": True, "paused_reason": paused_reason}
-		return await self._get_current_session_if_any_or_create_new_of_type(get_session_type_strategy('live'), project_id, session_id)
-
-	async def get_current_draft_session_if_any_or_create_new(self, session_id: int | None, project_id: str) -> dict:
-		return await self._get_current_session_if_any_or_create_new_of_type(get_session_type_strategy('test'), project_id, session_id)
-
-	async def get_current_preview_session_if_any_or_create_new(self, session_id: int | None, project_id: str) -> dict:
-		return await self._get_current_session_if_any_or_create_new_of_type(get_session_type_strategy('preview'), project_id, session_id)
-
 	async def acquire_exclusive_session(self) -> dict:
 		project_id = self._active_project_id
 		is_paused, paused_reason = self._project_service.get_project_availability(project_id)
@@ -343,18 +323,6 @@ class TurnService(object):
 		if strategy.task_for_new_session(automaton) is not None:
 			self._schedule_task(automaton, automaton.init_action, session["id"], project_id)
 		return response
-
-	async def create_session(self) -> dict:
-		return await self._create_session_of_type(get_session_type_strategy('live'), self._active_project_id)
-
-	async def create_draft_session(self, project_id: str) -> dict:
-		return await self._create_session_of_type(get_session_type_strategy('test'), project_id)
-
-	async def create_preview_session(self, project_id: str) -> dict:
-		deleted_ids = self._db.delete_sessions_by_username_and_type(self._username, 'preview')
-		for deleted_id in deleted_ids:
-			EphemeralEnvRegistry().discard(deleted_id)
-		return await self._create_session_of_type(get_session_type_strategy('preview'), project_id)
 
 	def reset_test_sessions(self, project_id: str) -> dict:
 		reset_session_ids = [
@@ -450,23 +418,6 @@ class TurnService(object):
 		assert session is not None
 		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 		return automaton.get_state_payload(state)
-
-	def get_state_for_operator(self, session_id: int) -> dict:
-		"""HumanOperatorChatView.vue's own state read: every action is
-		manually triggerable while an operator is attached — nothing
-		auto-fires from a customer's own message any more (see
-		_should_generate_opening_message) — regardless of this session's
-		own, unrelated is_auto_tracking_enabled flag (a test/dev-mode
-		toggle that never applies to a live session anyway). The
-		customer's own get_state_for_session is untouched: this is a
-		separate read, so their payload never gains buttons they
-		shouldn't see."""
-		self._ownership.require_own_session(session_id)
-		session = self._db.get_chat_session(session_id)
-		assert session is not None
-		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
-		state_payload = automaton.get_state_payload(state)
-		return {**state_payload, "buttons": pressable_actions(state_payload["actions"], False)}
 
 	def read_history(self, session_id: int, last_n: int | None = None) -> list[dict]:
 		"""What is already there, and nothing else — every reader of a
@@ -621,23 +572,11 @@ class TurnService(object):
 	def global_exclusive_access(self):
 		return self._global_lock
 
-	@asynccontextmanager
-	async def acquire_read(self, project_id: str):
-		lock = self._project_locks.get(project_id)
-		await lock.acquire_read()
-		try:
-			yield
-		finally:
-			await lock.release_read()
+	def acquire_read(self, project_id: str):
+		return self._project_locks.acquire_read(project_id)
 
-	@asynccontextmanager
-	async def acquire_write(self, project_id: str):
-		lock = self._project_locks.get(project_id)
-		await lock.acquire_write()
-		try:
-			yield
-		finally:
-			await lock.release_write()
+	def acquire_write(self, project_id: str):
+		return self._project_locks.acquire_write(project_id)
 
 	@asynccontextmanager
 	async def _session_scope(self, project_id: str, session_id: int):
@@ -649,32 +588,6 @@ class TurnService(object):
 	async def _session_lifecycle_scope(self, username: str, project_id: str):
 		async with self._session_lifecycle_locks.get(f"{username}/{project_id}"):
 			yield
-
-	def _already_answered_response(
-		self, session_id: int, automaton: Automaton, state: State, user_message_id: int,
-	) -> dict:
-		"""A request a previous one already took along with its own: it is
-		over the moment it gets the lock, and what answered it is that
-		other request's reply — a message that exists and has an id. It is
-		reported here as this request's answer too, because it is: one
-		answer covered both. A reader that has it already knows so by its
-		id, and does not show it twice."""
-		answer = self._db.get_message(user_message_id) or {}
-		answered_by = answer.get("answered_by")
-		reply = [m for m in [self._db.get_message(answered_by)] if answered_by and m]
-		return {
-			"reply": reply,
-			"user_message_id": user_message_id,
-			"user_message_reaction": None,
-			"assistant_message_id": answered_by,
-			"state": automaton.get_state_payload(state),
-			"buttons": self.buttons_for(session_id, automaton.get_state_payload(state)),
-			"state_changed": False,
-			"new_state": None,
-			"triggered_action": None,
-			"ai_model": self.get_ai_models_info(),
-			"session_id": session_id,
-		}
 
 	def _project_id_for_session(self, session_id: int) -> str:
 		return self._ownership.require_session(session_id)["project_id"]
@@ -734,23 +647,11 @@ class TurnService(object):
 
 		return automaton, state
 
-	async def open_if_needed(self, session_id: int, on_metadata: OnMetadata | None = None) -> dict | None:
-		"""What the automaton has to say before anybody says anything, if
-		this state has anything to open with and nothing has been said yet.
-		Returns the turn it ran, so a caller that is reporting an exchange
-		can report this one too.
-
-		Asking and doing are one step, under a lock of their own: two
-		connections entering the same conversation in the same instant
-		each ask for it, and without the lock both find nothing said yet
-		and the session begins by saying the same thing twice. The lock
-		is not the turn's own (the turn takes that one itself, further
-		down): this one only guards the decision."""
-		async with self._session_locks.get(f"open/{session_id}"):
-			automaton, state = await self._ensure_project_bootstrap(session_id)
-			if automaton is None:
-				return None
-			return await self._generate_opening_message_if_needed(session_id, automaton, state, on_metadata)
+	async def open_conversation(self, session_id: int, on_metadata: OnMetadata | None = None) -> dict | None:
+		automaton, _ = await self._ensure_project_bootstrap(session_id)
+		for _ in filter(None, [automaton is None]):
+			return None
+		return await self.process_turn(session_id, on_metadata=on_metadata)
 
 	async def prepare_user_initiated_turn(self, session_id: int) -> list[dict]:
 		"""The project bootstrap a user-initiated turn needs, plus the
@@ -768,10 +669,12 @@ class TurnService(object):
 			return []
 		if not (state.final or not state.chat_enabled):
 			return []
-		result = await self._generate_opening_message_if_needed(session_id, automaton, state)
-		return list(result["reply"]) if result is not None else []
+		if not self._state_speaks_unprompted(session_id, state):
+			return []
+		result = await self.process_turn(session_id)
+		return list(result["reply"])
 
-	def _should_generate_opening_message(self, session_id: int, state: State) -> bool:
+	def _state_speaks_unprompted(self, session_id: int, state: State) -> bool:
 		# A session with an operator (see TaskNamespaceFactory.
 		# get_human_operator) never auto-generates anything — every
 		# message either side sees while in human mode is one a person
@@ -783,21 +686,10 @@ class TurnService(object):
 		gate_since = self._db.get_last_transition_timestamp_for_session(session_id) if chat_blocked else content_since
 		return not self._db.has_messages_since(session_id, gate_since)
 
-	async def _generate_opening_message_if_needed(
-		self, session_id: int, automaton: Automaton, state: State, on_metadata: OnMetadata | None = None,
-	) -> dict | None:
-		if not self._should_generate_opening_message(session_id, state):
-			return None
-
-		return await self._generate_opening_message_body(session_id, on_metadata)
-
-	async def _generate_opening_message_body(self, session_id: int, on_metadata: OnMetadata | None = None) -> dict:
-		return await self.process_turn(session_id, on_metadata=on_metadata)
-
 	async def _messages_for_transition(
 		self, session_id: int, new_state: State, *, is_self_loop: bool, on_metadata: OnMetadata | None = None,
 	) -> tuple[list[dict], dict | None]:
-		should_open = not is_self_loop and self._should_generate_opening_message(session_id, new_state)
+		should_open = not is_self_loop and self._state_speaks_unprompted(session_id, new_state)
 		if not should_open:
 			return [], None
 		turn_result = await self._process_turn_body(session_id, on_metadata=on_metadata)
@@ -835,6 +727,9 @@ class TurnService(object):
 			fresh = fresh_state_payload if fresh_state_payload is not None else state_payload
 			return {
 				"state": fresh,
+				"state_changed": True,
+				"new_state": fresh.get("key"),
+				"triggered_action": action_name,
 				"buttons": self.buttons_for(session["id"], fresh),
 				"reply": reply,
 				"ai_model": self.get_ai_models_info(),

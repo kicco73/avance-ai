@@ -31,6 +31,7 @@ from project.archive.automaton_loader import AutomatonLoader
 from project.archive.loader_choice import AutomatonLoaderChoice
 from project.health_notifications import ProjectHealthNotifications
 from project.project_service import ProjectService
+from system.project_locks import ProjectLocks
 from ai import AiService
 from system.broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
 from tracking.actuators import TaskNamespaceFactory
@@ -134,9 +135,10 @@ def create_app() -> FastAPI:
             loader=AutomatonLoader(db, session_manager=session_manager),
         )).loader
 
+        project_locks = ProjectLocks()
         project_service = ProjectService(
             db, automaton_loader, session_manager,
-            ai_live_service, 
+            ai_live_service, project_locks=project_locks, 
             invite_valid_days=config.invite_valid_days, invite_max_shares=config.invite_max_shares,
         )
 
@@ -170,7 +172,7 @@ def create_app() -> FastAPI:
         )
         turn_service = TurnService(
             db, ai_live_service, ai_test_service, project_service, session_manager,
-            tracking_service, metric_service, scheduler_service, namespace_factory,
+            tracking_service, metric_service, scheduler_service, namespace_factory, project_locks,
         )
 
         # A channel posts what a person said; this is what answers it.

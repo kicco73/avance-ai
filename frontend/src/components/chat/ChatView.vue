@@ -64,6 +64,7 @@ const {
   draft,
   currentSessionId,
   selectedSessionActive,
+  conversationElsewhere,
   handleNewSession,
   handleCloseSession,
   handleSend,
@@ -116,9 +117,9 @@ const chatDisabled = computed(() => !state.value?.key || !state.value?.chat_enab
 const chatDisabledReason = computed(() => {
   if (!state.value?.key) return 'Please select a project from the menu.'
   if (!selectedSessionActive.value) {
-    return currentSessionId.value == null
-      ? 'No active session for this project yet.'
-      : 'This session is no longer active.'
+    if (currentSessionId.value == null) return 'No active session for this project yet.'
+    if (conversationElsewhere.value) return 'This conversation is continuing on another channel.'
+    return 'This session is no longer active.'
   }
   return null
 })
@@ -321,6 +322,12 @@ watch(
       class="chat-ended-notice"
     >
       {{ chatDisabledReason }}
+      <button
+        v-if="conversationElsewhere"
+        type="button"
+        class="chat-ended-notice-action"
+        @click="handleNewSession"
+      >Continue here</button>
     </p>
 
     <div class="chat-footer">
@@ -398,6 +405,17 @@ watch(
   margin: 0;
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
+}
+
+.chat-ended-notice-action {
+  margin-left: 0.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #0b6bcb;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 /* Empty on its own: a style hook so a project's index.css can target

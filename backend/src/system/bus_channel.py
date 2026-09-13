@@ -51,7 +51,7 @@ HUMAN_REPLY_TIMEOUT_SECONDS = 300.0
 # It is also the allowlist a client registers against: a browser asks for
 # the types it wants with a `subscribe` frame and drops them with
 # `unsubscribe`, and only what it registered for is ever sent to it (see
-# WsConnection.wants/push_event). A type outside this tuple is refused —
+# WsConnection.wants/push_event). A type outside this list is refused —
 # registering for one would otherwise be a way to read an internal type.
 WEB_FORWARDED = (UI_NOTIFICATION, SESSION_TAKEN_OVER, UI_SYSTEM_WARNING, UI_PROGRESS)
 
@@ -62,7 +62,7 @@ HUMAN_PROMPT = "human_prompt"
 
 # What a frame says about the delivery rather than about the message: it
 # travels in the envelope and never in the body.
-_ENVELOPE = ("type", "session_id", "project_id")
+_ENVELOPE = frozenset({"type", "session_id", "project_id"})
 
 # What a client may register for: what may leave the Bus, plus this
 # socket's own frames. Registering is how a connection says what it is —
@@ -93,8 +93,9 @@ class WsConnection(object):
     the wire and a synchronous caller (a turn's on_metadata) never has
     to await. Once the socket is gone, send() discards at DEBUG."""
 
-    def __init__(self, websocket: WebSocket) -> None:
+    def __init__(self, websocket: WebSocket, username: str) -> None:
         self.id = str(uuid.uuid4())
+        self.username = username
         self._websocket = websocket
         self._outgoing: asyncio.Queue[dict | None] = asyncio.Queue()
         self._closed = False
@@ -127,8 +128,8 @@ class WsConnection(object):
     def unwatch(self, session_id: int) -> None:
         self._watching.discard(session_id)
 
-    def watches(self, session_id: int) -> bool:
-        return session_id in self._watching
+    def watched(self) -> tuple[int, ...]:
+        return tuple(self._watching)
 
     @property
     def closed(self) -> bool:
@@ -182,6 +183,39 @@ class WsConnection(object):
         self.close(code=SUPERSEDED_CLOSE_CODE)
 
 
+class HumanPrompt(object):
+    __slots__ = ("id", "session_id", "operator", "frame", "_reply", "_typing")
+
+    def __init__(self, prompt_id: str, session_id: int, operator: str, frame: dict) -> None:
+        self.id = prompt_id
+        self.session_id = session_id
+        self.operator = operator
+        self.frame = frame
+        self._reply: asyncio.Future[str] = asyncio.get_running_loop().create_future()
+        self._typing = asyncio.Event()
+
+    @property
+    def answered(self) -> bool:
+        return self._reply.done()
+
+    @property
+    def typing_seen(self) -> bool:
+        return self._typing.is_set()
+
+    def answer(self, text: str) -> None:
+        if not self._reply.done():
+            self._reply.set_result(text)
+
+    def typing_started(self) -> None:
+        self._typing.set()
+
+    async def reply(self) -> str:
+        return await asyncio.wait_for(self._reply, timeout=HUMAN_REPLY_TIMEOUT_SECONDS)
+
+    async def typing(self) -> None:
+        await self._typing.wait()
+
+
 class BusChannel(object):
     """Every websocket one identity holds open, both directions: the
     browser sends `turn` frames on it (the only inbound chat frame —
@@ -221,30 +255,12 @@ class BusChannel(object):
         # username -> every open connection of that identity, oldest
         # first — see the class docstring for the cap.
         self._connections: dict[str, list[WsConnection]] = {}
+        self._by_id: dict[str, WsConnection] = {}
+        self._watchers: dict[int, set[WsConnection]] = {}
         self._inbound_tasks: set[asyncio.Task] = set()
-        # prompt_id -> the Future await_human_reply() is waiting on, and
-        # the Event wait_for_typing() is waiting on — one pair per prompt,
-        # both resolved by session_id (see _current_prompt_for_session):
-        # the operator's own frame never needs to know the prompt_id
-        # itself, only which session it's answering.
-        self._pending_human_replies: dict[str, asyncio.Future[str]] = {}
-        self._pending_typing_events: dict[str, asyncio.Event] = {}
-        # session_id -> the one prompt currently open for it (at most one
-        # at a time — HumanTalker.chat() awaits a reply before asking
-        # again) — what lets the operator's human_reply/human_typing
-        # frames carry session_id instead of a prompt_id they may never
-        # have seen (see send_human_prompt's own docstring).
-        self._current_prompt_for_session: dict[int, str] = {}
-        self._session_for_prompt: dict[str, int] = {}
-        # prompt_id -> the identity that prompt was actually sent to. A
-        # reply is only a reply when it comes from them: without this,
-        # anyone who guessed a session_id awaiting a human could answer
-        # in their place.
-        self._operator_for_prompt: dict[str, str] = {}
-        # prompt_id -> the frame that was sent, kept until it is answered:
-        # the push is one-shot, and the operator's view registers after it
-        # opens, which is usually after the prompt fired.
-        self._prompt_frames: dict[str, dict] = {}
+        self._prompts: dict[str, HumanPrompt] = {}
+        self._prompt_by_session: dict[int, HumanPrompt] = {}
+        self._prompts_by_operator: dict[str, dict[str, HumanPrompt]] = {}
 
     async def channel_loop(self, websocket: WebSocket) -> None:
         token = websocket.cookies.get(SESSION_COOKIE_NAME)
@@ -262,8 +278,8 @@ class BusChannel(object):
         cap = MAX_CONNECTIONS_PER_ADMIN if role_satisfies(identity.role, "admin") else MAX_CONNECTIONS_PER_USER
         await websocket.accept()
         logger.info(f"accepted websocket for {username}")
-        connection = WsConnection(websocket)
-        self._connections.setdefault(username, []).append(connection)
+        connection = WsConnection(websocket, username)
+        self._register(connection)
         self._supersede_over_cap(username, cap)
         writer = asyncio.create_task(connection.write_loop())
         try:
@@ -273,13 +289,26 @@ class BusChannel(object):
         except WebSocketDisconnect:
             pass
         finally:
-            remaining = self._connections.get(username)
-            if remaining is not None and connection in remaining:
-                remaining.remove(connection)
-                if not remaining:
-                    del self._connections[username]
+            self._deregister(connection)
             connection.close()
             await writer
+
+    def _register(self, connection: WsConnection) -> None:
+        self._connections.setdefault(connection.username, []).append(connection)
+        self._by_id[connection.id] = connection
+
+    def _deregister(self, connection: WsConnection) -> None:
+        remaining = self._connections.get(connection.username)
+        if remaining is not None and connection in remaining:
+            remaining.remove(connection)
+            if not remaining:
+                del self._connections[connection.username]
+        self._forget_connection(connection)
+
+    def _forget_connection(self, connection: WsConnection) -> None:
+        self._by_id.pop(connection.id, None)
+        for session_id in connection.watched():
+            self._unwatch(connection, session_id)
 
     def _supersede_over_cap(self, username: str, cap: int) -> None:
         """Makes room for the connection that just arrived by dropping the
@@ -290,6 +319,7 @@ class BusChannel(object):
         connections = self._connections.get(username, [])
         while len(connections) > cap:
             superseded = connections.pop(0)
+            self._forget_connection(superseded)
             logger.info(f"superseding an older websocket of {username}: a newer client took the channel")
             superseded.supersede()
 
@@ -326,7 +356,7 @@ class BusChannel(object):
             connection.unsubscribe(self._registrable(frame.get("events")))
         elif frame_type == SESSION_EXIT:
             for session_id in filter(None, [frame.get("session_id")]):
-                connection.unwatch(session_id)
+                self._unwatch(connection, session_id)
         elif frame_type == "human_reply":
             self._resolve_human_reply_for_session(connection, frame.get("session_id"), str(frame.get("text", "")))
         elif frame_type == "human_typing":
@@ -341,62 +371,48 @@ class BusChannel(object):
         registration into a way to read one."""
         if not isinstance(events, list):
             return []
-        wanted = [event for event in events if isinstance(event, str)]
-        refused = [event for event in wanted if event not in CLIENT_REGISTRABLE]
+        registrable: list[str] = []
+        refused: list[str] = []
+        for event in events:
+            if isinstance(event, str):
+                (registrable if event in CLIENT_REGISTRABLE else refused).append(event)
         if refused:
             logger.warning(f"refusing a websocket registration for types a client may not have: {refused}")
-        return [event for event in wanted if event in CLIENT_REGISTRABLE]
+        return registrable
 
     def _deliver_pending_prompts(self, connection: WsConnection, registered: list[str]) -> None:
         """A prompt that fired before this connection registered. The push
         is one-shot and the operator's view opens from a takeover
         notification, so the prompt it has to answer is usually already
         waiting by the time it asks for them."""
-        for username in filter(None, [self._username_of(connection)]):
-            for _ in filter(HUMAN_PROMPT.__eq__, registered):
-                for prompt_id, frame in self._prompt_frames.items():
-                    for _ in filter(username.__eq__, [self._operator_for_prompt.get(prompt_id)]):
-                        connection.send(frame)
+        if HUMAN_PROMPT not in registered:
+            return
+        for prompt in list(self._prompts_by_operator.get(connection.username, {}).values()):
+            connection.send(prompt.frame)
 
-    def _username_of(self, connection: WsConnection) -> str | None:
-        for username, connections in self._connections.items():
-            if connection in connections:
-                return username
-        return None
-
-    def _prompt_awaiting(self, connection: WsConnection, session_id) -> str | None:
+    def _prompt_awaiting(self, connection: WsConnection, session_id) -> HumanPrompt | None:
         """The prompt this session is waiting on, but only when it is
         this very connection's identity that was asked: the operator's
         own frames carry session_id, which any other signed-in user
         could name just as well."""
-        prompt_id = self._current_prompt_for_session.get(session_id)
-        if prompt_id is None:
+        prompt = self._prompt_by_session.get(session_id)
+        if prompt is None:
             return None
-        operator = self._operator_for_prompt.get(prompt_id)
-        sender = self._username_of(connection)
-        if operator != sender:
+        if prompt.operator != connection.username:
             logger.warning(
                 "ignoring a human frame for session %s from %s: %s was the one asked.",
-                session_id, sender, operator,
+                session_id, connection.username, prompt.operator,
             )
             return None
-        return prompt_id
+        return prompt
 
     def _resolve_human_reply_for_session(self, connection: WsConnection, session_id, text: str) -> None:
-        prompt_id = self._prompt_awaiting(connection, session_id)
-        if prompt_id is None:
-            return
-        future = self._pending_human_replies.get(prompt_id)
-        if future is not None and not future.done():
-            future.set_result(text)
+        for prompt in filter(None, [self._prompt_awaiting(connection, session_id)]):
+            prompt.answer(text)
 
     def _notify_typing_for_session(self, connection: WsConnection, session_id) -> None:
-        prompt_id = self._prompt_awaiting(connection, session_id)
-        if prompt_id is None:
-            return
-        event = self._pending_typing_events.get(prompt_id)
-        if event is not None:
-            event.set()
+        for prompt in filter(None, [self._prompt_awaiting(connection, session_id)]):
+            prompt.typing_started()
 
     def _publish_client_frame(self, connection: WsConnection, frame_type: str, frame: dict) -> None:
         """One inbound frame, onto the Bus. `origin_id` carries the
@@ -444,20 +460,31 @@ class BusChannel(object):
         socket from one that reached the Bus some other way — an
         `input.text` converted from a voice note carries the id of the
         message it was converted from, not of a connection."""
-        return any(
-            connection.id == connection_id
-            for connections in self._connections.values()
-            for connection in connections
-        )
+        return connection_id in self._by_id
 
     def watch_session(self, connection_id: str, session_id: int) -> None:
         """That connection is showing that conversation, from now until
         it says otherwise. Told by whoever answered its `session.enter`
         (see webchat_service), because the socket never learns which
         session a request resolved to."""
-        for connection in self._every_connection():
-            for _ in filter(connection_id.__eq__, [connection.id]):
-                connection.watch(session_id)
+        for connection in filter(None, [self._by_id.get(connection_id)]):
+            self._watch(connection, session_id)
+
+    def unwatch_session(self, session_id: int) -> None:
+        for connection in self._watchers.pop(session_id, ()):
+            connection.unwatch(session_id)
+
+    def _watch(self, connection: WsConnection, session_id: int) -> None:
+        connection.watch(session_id)
+        self._watchers.setdefault(session_id, set()).add(connection)
+
+    def _unwatch(self, connection: WsConnection, session_id: int) -> None:
+        connection.unwatch(session_id)
+        watchers = self._watchers.get(session_id)
+        if watchers is not None:
+            watchers.discard(connection)
+            if not watchers:
+                del self._watchers[session_id]
 
     def send_to_watchers(self, session_id: int, payload: dict) -> int:
         """One frame to every connection showing that conversation, and
@@ -465,27 +492,21 @@ class BusChannel(object):
         from somewhere else, an operator taking one over. Answering a
         request goes to the connection that made it instead (see
         send_to_connection)."""
-        watchers = [c for c in self._every_connection() if c.watches(session_id)]
+        watchers = list(self._watchers.get(session_id, ()))
         for connection in watchers:
             connection.send(payload)
         return len(watchers)
-
-    def _every_connection(self):
-        for connections in self._connections.values():
-            for connection in connections:
-                yield connection
 
     def send_to_connection(self, connection_id: str, payload: dict) -> bool:
         """Writes one frame to one open connection, by the id an inbound
         message carried in `origin_id`. False when that connection is
         gone — the caller is streaming, and a closed tab is an ordinary
         outcome, not an error."""
-        for connections in self._connections.values():
-            for connection in connections:
-                if connection.id == connection_id:
-                    connection.send(payload)
-                    return True
-        return False
+        connection = self._by_id.get(connection_id)
+        if connection is None:
+            return False
+        connection.send(payload)
+        return True
 
     async def _forward_to_web(self, message: Message) -> None:
         """Every WEB_FORWARDED message, to that identity's connections
@@ -505,7 +526,7 @@ class BusChannel(object):
         exists. False means nobody was listening for it, which is an
         ordinary outcome, not an error."""
         return self._send_to(
-            [connection for connection in self._connections.get(username, []) if connection.wants(event_type)],
+            [connection for connection in self._connections.get(username, ()) if connection.wants(event_type)],
             payload,
         )
 
@@ -547,12 +568,10 @@ class BusChannel(object):
             raise HumanNotConnectedError(username)
         # Kept whole so a connection that registers later is handed the
         # prompt it has to answer (see _deliver_pending_prompts).
-        self._prompt_frames[prompt_id] = frame
-        self._pending_human_replies[prompt_id] = asyncio.get_running_loop().create_future()
-        self._pending_typing_events[prompt_id] = asyncio.Event()
-        self._current_prompt_for_session[session_id] = prompt_id
-        self._session_for_prompt[prompt_id] = session_id
-        self._operator_for_prompt[prompt_id] = username
+        prompt = HumanPrompt(prompt_id, session_id, username, frame)
+        self._prompts[prompt_id] = prompt
+        self._prompt_by_session[session_id] = prompt
+        self._prompts_by_operator.setdefault(username, {})[prompt_id] = prompt
         return prompt_id
 
     async def await_human_reply(self, prompt_id: str) -> str:
@@ -562,19 +581,23 @@ class BusChannel(object):
         (see _resolve_human_reply_for_session), so this is purely an
         internal correlation key. Raises HumanReplyTimeoutError if none
         arrives within HUMAN_REPLY_TIMEOUT_SECONDS."""
-        future = self._pending_human_replies[prompt_id]
+        prompt = self._prompts[prompt_id]
         try:
-            return await asyncio.wait_for(future, timeout=HUMAN_REPLY_TIMEOUT_SECONDS)
+            return await prompt.reply()
         except asyncio.TimeoutError:
             raise HumanReplyTimeoutError(f"No reply for prompt {prompt_id} within {HUMAN_REPLY_TIMEOUT_SECONDS}s.")
         finally:
-            self._pending_human_replies.pop(prompt_id, None)
-            self._pending_typing_events.pop(prompt_id, None)
-            self._operator_for_prompt.pop(prompt_id, None)
-            self._prompt_frames.pop(prompt_id, None)
-            session_id = self._session_for_prompt.pop(prompt_id, None)
-            if session_id is not None and self._current_prompt_for_session.get(session_id) == prompt_id:
-                del self._current_prompt_for_session[session_id]
+            self._forget_prompt(prompt)
+
+    def _forget_prompt(self, prompt: HumanPrompt) -> None:
+        self._prompts.pop(prompt.id, None)
+        by_operator = self._prompts_by_operator.get(prompt.operator)
+        if by_operator is not None:
+            by_operator.pop(prompt.id, None)
+            if not by_operator:
+                del self._prompts_by_operator[prompt.operator]
+        if self._prompt_by_session.get(prompt.session_id) is prompt:
+            del self._prompt_by_session[prompt.session_id]
 
     async def wait_for_typing(self, prompt_id: str) -> None:
         """The BusHumanRelay.wait_for_typing() primitive: resolves the
@@ -583,5 +606,4 @@ class BusChannel(object):
         chat() races this against await_human_reply() so a reply that
         beats it to the operator's own keystroke never shows a typing
         signal at all."""
-        event = self._pending_typing_events[prompt_id]
-        await event.wait()
+        await self._prompts[prompt_id].typing()

@@ -96,10 +96,6 @@ class MessageMixin:
     def set_message_tokens(self, message_id: int, tokens: int, cache_read_tokens: int = 0) -> None:
         Message.update(tokens=tokens, cache_read_tokens=cache_read_tokens).where(Message.id == message_id).execute()
 
-    def delete_message(self, message_id: int) ->  None:
-        logger.warning(f"deleting message id {message_id}")
-        Message.delete().where(Message.id == message_id).execute()
-
     def get_message(self, message_id: int) -> dict | None:
         message = Message.get_or_none(Message.id == message_id)
         if message is None:
@@ -189,20 +185,6 @@ class MessageMixin:
                  .order_by(Message.id)
                  .with_cte(cte))
         return [_history_row(m, session_id) for m in query]
-
-    def unconsumed_user_fragments(self, session_id: int) -> list[dict]:
-        """Every user message no reply has answered yet."""
-        query = (Message
-                 .select()
-                 .where(
-                     (Message.session == session_id)
-                     & (Message.role == "user")
-                     & (Message.answered_by.is_null(True))
-                 ))
-        return [
-            {'id': m.id, 'role': m.role, 'content': m.content, 'timestamp': _utc_iso(m.timestamp)}
-            for m in query.order_by(Message.id)
-        ]
 
     def mark_messages_answered(self, message_ids: list[int], assistant_message_id: int) -> None:
         """Every one of them now points at the reply that answered it."""

@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
+from turn.ephemeral_env_registry import EphemeralEnvRegistry
 from turn.sessions.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from system import bus
 from system.bus import SESSION_ENDED, Message
@@ -90,6 +91,7 @@ class SessionManager(object):
     def create_session(
         self, strategy: SessionTypeStrategy, project_service: ProjectService, username: str, project_id: str,
     ) -> dict:
+        strategy.discard_superseded(self, username)
         state_key = strategy.starting_state(project_service, project_id, username)
         now = datetime.utcnow()
         revision = strategy.revision_for(project_service, project_id)
@@ -102,6 +104,10 @@ class SessionManager(object):
         session = self._db.get_chat_session(session_id)
         assert session is not None
         return session
+
+    def discard_sessions_of_type(self, username: str, type: str) -> None:
+        for discarded_id in self._db.delete_sessions_by_username_and_type(username, type):
+            EphemeralEnvRegistry().discard(discarded_id)
 
     def get_current_session_if_any_or_create_new(
         self, strategy: SessionTypeStrategy, project_service: ProjectService, username: str, project_id: str,

@@ -4,10 +4,9 @@ from db import Db
 from db.models import CoreSession, Tracking
 from system.logging_factory import LoggerFactory
 from project.archive.automaton_loader import AutomatonLoader
+from turn.sessions.env_for_session import EPHEMERAL_SESSION_TYPES
 
 logger = LoggerFactory.get_logger(__name__)
-
-_EPHEMERAL_SESSION_TYPES = ("test", "preview")
 
 
 def migrate_env_rows(db: Db) -> None:
@@ -42,7 +41,7 @@ def _stray_test_session_env_row_ids(db: Db) -> list[int]:
         .select(Tracking.id)
         .join(CoreSession, on=Tracking.session == CoreSession.id)
         .where(
-            CoreSession.type.in_(_EPHEMERAL_SESSION_TYPES)
+            CoreSession.type.in_(EPHEMERAL_SESSION_TYPES)
             & (Tracking.env.is_null(False) | Tracking.action_env.is_null(False))
         )
     )

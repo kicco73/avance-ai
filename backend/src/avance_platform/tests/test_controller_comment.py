@@ -67,7 +67,7 @@ def test_put_comment_succeeds_for_a_non_evaluation_point_message(client, hello_p
 
 
 @pytest.mark.contract
-def test_put_comment_is_404_for_an_unknown_message(client, hello_project):
+def test_put_comment_is_404_for_an_unknown_message(client):
     response = client.put("/api/skills/platform/messages/999999/comment", json={"comment": "note"})
     assert response.status_code == 404
 

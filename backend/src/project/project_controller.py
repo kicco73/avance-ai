@@ -14,9 +14,7 @@ from http import HTTPStatus
 
 from fastapi import HTTPException, Request, Response
 
-from automaton.automaton import Automaton
 from automaton.file_types import ProjectFileTypes
-from automaton.build_error import AutomatonBuildError
 from auth.roles import role_satisfies
 from controllers.base_controller import BaseController, get, post
 from system.web_session import WebSession
@@ -48,10 +46,6 @@ class ProjectController(BaseController):
             raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail=str(exc)) from exc
         return {"project_id": project_id}
 
-    async def _activate_project(self, project_id: str, new_automaton: Automaton) -> None:
-        async with self.turn_service.acquire_write(project_id):
-            pass
-
     @get("/api/core/projects/{project_id}/files/{file_name:path}/content")
     def get_project_file_content(self, project_id: str, file_name: str, request: Request, session_id: int | None = None):
         """Raw bytes of `file_name`'s content, for callers that can't use
@@ -62,14 +56,7 @@ class ProjectController(BaseController):
         and any image it references, via cssAssetUrls.js) hits this for
         every live chat session, whoever is looking. A product built
         without an editor still has to be able to draw itself."""
-        try:
-            content, content_type = self.project_service.editor.get_project_file_content(project_id, file_name, session_id)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        except AutomatonBuildError:
-            raise
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        content, content_type = self.project_service.editor.get_project_file_content(project_id, file_name, session_id)
         etag = f'"{hashlib.sha256(content).hexdigest()}"'
         if request.headers.get("if-none-match") == etag:
             return Response(status_code=HTTPStatus.NOT_MODIFIED, headers={"ETag": etag, "Cache-Control": "no-cache"})
@@ -84,14 +71,7 @@ class ProjectController(BaseController):
         one state currently open, not for the whole graph at once (see
         ProjectInspector.get_state_input_tokens). `tokens` is null when no
         AiService is configured for this deployment."""
-        try:
-            return {"tokens": self.project_service.inspector.get_state_input_tokens(project_id, state_name, session_id)}
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        except AutomatonBuildError:
-            raise
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return {"tokens": self.project_service.inspector.get_state_input_tokens(project_id, state_name, session_id)}
 
     @get("/api/core/projects/{project_id}/signals", role="supervisor")
     def get_project_signals(self, project_id: str, state_key: str | None = None, session_id: int | None = None):
@@ -102,14 +82,7 @@ class ProjectController(BaseController):
         Core: a signal definition describes what the engine tracks, which
         every build does; the benchmark reads these too."""
         self.project_service.ensure_project_not_broken(project_id)
-        try:
-            return {"signals": self.project_service.inspector.get_project_signals(project_id, state_key, session_id)}
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        except AutomatonBuildError:
-            raise
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return {"signals": self.project_service.inspector.get_project_signals(project_id, state_key, session_id)}
 
     @get("/api/core/projects/{project_id}/states", role="supervisor")
     def get_project_states(self, project_id: str):
@@ -117,12 +90,7 @@ class ProjectController(BaseController):
         automaton — the "States" branch's own node list (see
         TestsTree.vue)."""
         self.project_service.ensure_project_not_broken(project_id)
-        try:
-            return self.project_service.inspector.get_project_states(project_id)
-        except AutomatonBuildError:
-            raise
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return self.project_service.inspector.get_project_states(project_id)
 
     @post("/api/core/projects/{project_id}/activate", role="user")
     async def activate_project(self, project_id: str):
@@ -134,10 +102,7 @@ class ProjectController(BaseController):
         it and takes nothing from the client), and the invite flow
         activates the project it just redeemed in every build, editor or
         not. The frontend has always called it here."""
-        try:
-            await self.project_service.activate_project_idempotent(project_id, self._activate_project)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        await self.project_service.activate_project_idempotent(project_id)
         return {"success": True, "project_id": project_id}
 
     @get("/api/core/projects")
@@ -166,12 +131,7 @@ class ProjectController(BaseController):
         trigger/`env:` expression can reference, one {identifier:
         description} dict per namespace."""
         self.project_service.ensure_project_not_broken(project_id)
-        try:
-            return self.project_service.get_identifier_registry(project_id)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return self.project_service.get_identifier_registry(project_id)
 
     @get("/api/core/projects/{project_id}/metrics")
     def get_metrics(self, project_id: str, message_id: int | None = None, full: bool = False, username: str | None = None):

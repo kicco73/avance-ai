@@ -12,19 +12,14 @@ without one and still serve anybody.
 from __future__ import annotations
 
 from http import HTTPStatus
-from pathlib import Path
-
 from fastapi import HTTPException, Request, Response
 
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from schemas import AcceptTermsRequest, LoginRequest, SetWhatsAppPhoneNumberRequest
+from system.doc_catalog import TERMS_PATH
 from system.web_session import WebSession
 
 from controllers.base_controller import BaseController, get, post, put
-
-# Public, static — no auth needed to read it (a rejected/pending identity
-# still needs to see it before deciding).
-TERMS_PATH = Path(__file__).resolve().parent.parent / "docs" / "TERMS.md"
 
 
 class AuthController(BaseController):
@@ -48,10 +43,7 @@ class AuthController(BaseController):
 
     @post("/api/core/auth/login", role=None)
     def post_login(self, req: LoginRequest, response: Response):
-        try:
-            token = self.auth_service.login(req.provider, req.credential)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        token = self.auth_service.login(req.provider, req.credential)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
             value=token,

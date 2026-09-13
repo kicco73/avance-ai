@@ -4,8 +4,6 @@ tracking/evaluator.py's SignalEvaluator instead — this class never makes
 AI calls itself."""
 from __future__ import annotations
 
-from datetime import datetime
-
 from automaton.automaton import Automaton, SignalPayload
 from db import Db
 from system.logging_factory import LoggerFactory
@@ -13,11 +11,6 @@ from project.project_service import ProjectService
 from system.web_session import WebSession
 
 logger = LoggerFactory.get_logger(__name__)
-
-# How many recent history messages to send the model for a signals
-# computation call. Kept even so a slice always starts on a "user" turn
-# (history strictly alternates user/assistant, in pairs).
-SIGNALS_HISTORY_WINDOW = 14
 
 class Signals(object):
     def __init__(self, project_service: ProjectService, db: Db) -> None:
@@ -33,21 +26,6 @@ class Signals(object):
         if project_id is None:
             raise ValueError("No active project")
         return project_id
-
-    def history_window(
-        self, session_id: int, pending_message: dict | None, since: datetime | None
-    ) -> list[dict]:
-        """Recent messages framed as a single 'evaluate this transcript'
-        turn rather than multi-turn history, which would invite the model
-        to keep chatting. `pending_message` is appended locally, unpersisted."""
-        fetch_n = SIGNALS_HISTORY_WINDOW - 1 if pending_message is not None else SIGNALS_HISTORY_WINDOW
-        recent = self._db.get_messages(session_id, last_n=fetch_n, since=since)
-        if pending_message is not None:
-            recent = recent + [pending_message]
-        if recent and recent[0]["role"] != "user":
-            recent = recent[1:]
-        transcript = "\n".join(f"[{m['timestamp']}] {m['role']}: {m['content']}" for m in recent)
-        return [{"role": "user", "content": f"Conversation transcript:\n\n{transcript}"}]
 
     def get_definition(self, names: set[str] | None = None) -> str:
         """`names` restricts the definitions included — a signal the

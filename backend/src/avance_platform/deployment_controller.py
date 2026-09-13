@@ -15,36 +15,19 @@ core answer questions a product has no one to ask.
 """
 from __future__ import annotations
 
-from http import HTTPStatus
 
-from fastapi import APIRouter, HTTPException
 
-from automaton.automaton import Automaton
 from auth.auth_service import AuthService
 from controllers.base_controller import BaseController, get, post, put
-from project.project_service import ProjectService
 from schemas import AiModelSelectionRequest, SetUserRoleRequest
-from system.web_session import WebSession
 from turn.turn_service import TurnService
 
 
 class DeploymentController(BaseController):
 
-    def __init__(
-        self, turn_service: TurnService, project_service: ProjectService, auth_service: AuthService,
-    ) -> None:
+    def __init__(self, turn_service: TurnService, auth_service: AuthService) -> None:
         self.turn_service = turn_service
-        self.project_service = project_service
         self.auth_service = auth_service
-
-    @post("/api/skills/platform/projects/{project_id}/activate")
-    async def activate_project(self, project_id: str):
-        """Makes `project_id` the one this server answers turns for."""
-        try:
-            await self.project_service.activate_project_idempotent(project_id, self._activate_project)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return {"success": True, "project_id": project_id}
 
     @get("/api/skills/platform/ai/models")
     def get_ai_models(self):
@@ -58,10 +41,7 @@ class DeploymentController(BaseController):
         """Sets which model generate()/generate_stream() use: `index:
         null` for auto (the cascade's fallback order), or `index` into
         GET /api/skills/platform/ai/models' `models` to pin one directly."""
-        try:
-            self.turn_service.select_ai_model(req.index)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        self.turn_service.select_ai_model(req.index)
         return self.turn_service.get_ai_models_info()
 
     @get("/api/skills/platform/ai/models/test")
@@ -70,15 +50,9 @@ class DeploymentController(BaseController):
 
     @post("/api/skills/platform/ai/models/test/selection")
     def post_ai_test_model_selection(self, req: AiModelSelectionRequest):
-        try:
-            self.turn_service.select_test_ai_model(req.index)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        self.turn_service.select_test_ai_model(req.index)
         return self.turn_service.get_test_ai_models_info()
+
     @put("/api/skills/platform/users/{user_id}/role", role="admin")
     def put_user_role(self, user_id: str, req: SetUserRoleRequest):
         return self.auth_service.set_user_role(user_id, req.role)
-
-    async def _activate_project(self, project_id: str, new_automaton: Automaton) -> None:
-        async with self.turn_service.acquire_write(project_id):
-            pass

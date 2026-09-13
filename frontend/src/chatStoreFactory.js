@@ -1,4 +1,4 @@
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, unref, watch } from 'vue'
 import {
   getActuators, putActuators,
   getHistory, postTruncateSession, deleteSession,
@@ -61,7 +61,7 @@ export function setTotalTokenBudgetPerSession(value) {
 // `kind` ('live'|'test'|'preview') is both what this conversation is on
 // the bus and how chatSkin.js routes a skin to it.
 export function createChatStore({
-  kind, getSessionsList, resetSession = null,
+  kind, channel = null, getSessionsList, resetSession = null,
   getAutoTracking = null, putAutoTracking = null,
   confirmNewSession = true, useAutoTracking = false, useActuatorsToggle = false,
   subscribeToNotifications = false,
@@ -73,6 +73,11 @@ export function createChatStore({
   // watchedSessions.js).
   watch(currentSessionId, (now, before) => watchSession(now, before))
   const selectedSessionActive = ref(false)
+  const sessionChannel = ref(null)
+  const conversationElsewhere = computed(() => {
+    const mine = unref(channel)
+    return !!mine && !!sessionChannel.value && sessionChannel.value !== mine
+  })
   // Why there is no conversation to be had, as `session.blocked` said it:
   // null | 'paused' | 'terms' | 'no_project' | 'no_channel', and whatever
   // the reason carries with it.
@@ -160,6 +165,7 @@ export function createChatStore({
     currentSessionId.value = frame.session_id
     currentProjectId.value = frame.project_id ?? currentProjectId.value
     selectedSessionActive.value = frame.current ?? true
+    sessionChannel.value = frame.channel ?? null
     state.value = frame.state
     audioEnabled.value = !!frame.audio
     publishServices(frame.services || {})
@@ -378,6 +384,7 @@ export function createChatStore({
     if (session.id === currentSessionId.value) return
     currentSessionId.value = session.id
     selectedSessionActive.value = session.current
+    sessionChannel.value = session.channel ?? null
     syncAudioPreference()
     messages.value = []
     historyLoaded.value = false
@@ -829,7 +836,8 @@ export function createChatStore({
 
   return {
     abandonOpenReplies,
-    state, currentSessionId, selectedSessionActive, blockedReason, blockedDetail,
+    state, currentSessionId, selectedSessionActive, sessionChannel, conversationElsewhere,
+    blockedReason, blockedDetail,
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
     messages, historyLoaded, chatLoading, chatStatus, actionLoading, buttons,
     autoTrackingEnabled, autoTrackingLoading, actuatorsEnabled, actuatorsLoading, draft, turnCount,

@@ -14,4 +14,4 @@ export const shareChannels = [{
   hint: 'Scan to open WhatsApp with this invite ready to send.'
 }]
 
-export const channelLabels = { 'whatsapp-chat': 'WhatsApp' }
+export const channelLabels = { [key]: 'WhatsApp' }

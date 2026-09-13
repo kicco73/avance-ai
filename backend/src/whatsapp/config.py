@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from config import ConfigError
+from config import ConfigError, optional_choice, optional_section, optional_str, require_str
 
 SECTION = "whatsapp-service"
 
@@ -26,25 +26,16 @@ class WhatsAppServiceConfig:
     voice_replies: str
 
 
-def _require_str(section: dict, field: str, path: Path) -> str:
-    value = section.get(field)
-    if not isinstance(value, str) or not value.strip():
-        raise ConfigError(f"{path}: '{SECTION}.{field}' is missing or empty.")
-    return value.strip()
-
-
 def parse(raw: dict, path: Path) -> WhatsAppServiceConfig | None:
-    section = raw.get(SECTION, {})
-    if not isinstance(section, dict):
-        raise ConfigError(f"{path}: '{SECTION}' section is not a mapping.")
+    section = optional_section(raw, SECTION, path)
     if not section.get("enabled", False):
         return None
-    verify_token = _require_str(section, "verify-token", path)
-    app_secret = _require_str(section, "app-secret", path)
-    access_token = _require_str(section, "access-token", path)
+    verify_token = require_str(section, SECTION, "verify-token", path)
+    app_secret = require_str(section, SECTION, "app-secret", path)
+    access_token = require_str(section, SECTION, "access-token", path)
 
     # YAML reads an unquoted 1223547060851510 as an int: accept both
-    # (going through _require_str first would reject the int).
+    # (going through require_str first would reject the int).
     phone_number_id = section.get("phone-number-id")
     if isinstance(phone_number_id, int) and not isinstance(phone_number_id, bool):
         phone_number_id = str(phone_number_id)
@@ -52,10 +43,8 @@ def parse(raw: dict, path: Path) -> WhatsAppServiceConfig | None:
         raise ConfigError(f"{path}: '{SECTION}.phone-number-id' is missing or empty.")
     phone_number_id = phone_number_id.strip()
 
-    phone_number = section.get("phone-number")
+    phone_number = optional_str(section, SECTION, "phone-number", path)
     if phone_number is not None:
-        if not isinstance(phone_number, str):
-            raise ConfigError(f"{path}: '{SECTION}.phone-number' must be a string if present.")
         phone_number = phone_number.strip().lstrip("+")
         if not phone_number.isdigit():
             raise ConfigError(f"{path}: '{SECTION}.phone-number' must be digits only (E.164, no '+').")
@@ -72,9 +61,7 @@ def parse(raw: dict, path: Path) -> WhatsAppServiceConfig | None:
     if not isinstance(mark_read, bool):
         raise ConfigError(f"{path}: '{SECTION}.mark-read' must be a boolean if present.")
 
-    voice_replies = section.get("voice-replies", "when-spoken-to")
-    if voice_replies not in _VOICE_REPLIES:
-        raise ConfigError(f"{path}: '{SECTION}.voice-replies' must be one of {', '.join(_VOICE_REPLIES)} if present.")
+    voice_replies = optional_choice(section, SECTION, "voice-replies", path, "when-spoken-to", _VOICE_REPLIES)
 
     return WhatsAppServiceConfig(
         verify_token=verify_token, app_secret=app_secret, access_token=access_token,

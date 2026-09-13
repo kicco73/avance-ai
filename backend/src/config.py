@@ -80,14 +80,22 @@ class AppConfig:
         return None, None
 
     @staticmethod
-    def _require_str(raw: dict, section: str, field: str, path: Path) -> str:
-        sub = raw.get(section)
-        if not isinstance(sub, dict):
-            raise ConfigError(f"{path}: '{section}' section is missing or not a mapping.")
+    def _require_str_in(sub: dict, section: str, field: str, path: Path) -> str:
         value = sub.get(field)
         if not isinstance(value, str) or not value.strip():
             raise ConfigError(f"{path}: '{section}.{field}' is missing or empty.")
         return value.strip()
+
+    @staticmethod
+    def _optional_str_in(sub: dict, section: str, field: str, path: Path) -> str | None:
+        value = sub.get(field)
+        if value is not None and not isinstance(value, str):
+            raise ConfigError(f"{path}: '{section}.{field}' must be a string if present.")
+        return value
+
+    @classmethod
+    def _require_str(cls, raw: dict, section: str, field: str, path: Path) -> str:
+        return cls._require_str_in(cls._get_section(raw, section, path), section, field, path)
 
     @staticmethod
     def _get_section(raw: dict, section: str, path: Path) -> dict:
@@ -116,51 +124,42 @@ class AppConfig:
             raise ConfigError(f"{path}: '{section}.{field}' must be a positive number if present.")
         return float(value)
 
-    @classmethod
-    def _get_optional_positive_int(
-        cls, raw: dict, section: str, field: str, path: Path, default: int
-    ) -> int:
-        sub = cls._get_optional_section(raw, section, path)
+    @staticmethod
+    def _positive_int_in(sub: dict, section: str, field: str, path: Path, default: int) -> int:
         value = sub.get(field, default)
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ConfigError(f"{path}: '{section}.{field}' must be a positive integer if present.")
         return value
 
-    @classmethod
-    def _get_optional_non_negative_int(
-        cls, raw: dict, section: str, field: str, path: Path, default: int
-    ) -> int:
-        sub = cls._get_optional_section(raw, section, path)
+    @staticmethod
+    def _non_negative_int_in(sub: dict, section: str, field: str, path: Path, default: int) -> int:
         value = sub.get(field, default)
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ConfigError(f"{path}: '{section}.{field}' must be a non-negative integer if present.")
         return value
 
-    @classmethod
-    def _get_optional_bool(cls, raw: dict, section: str, field: str, path: Path, default: bool) -> bool:
-        sub = cls._get_optional_section(raw, section, path)
-        value = sub.get(field, default)
-        if not isinstance(value, bool):
-            raise ConfigError(f"{path}: '{section}.{field}' must be true or false if present.")
-        return value
-
-    @classmethod
-    def _get_optional_str(cls, raw: dict, section: str, field: str, path: Path, default: str | None) -> str | None:
-        # _get_optional_section, not _get_section: an absent section must
-        # stay absent-and-fine, same as _get_optional_positive_int.
-        sub = cls._get_optional_section(raw, section, path)
-        value = sub.get(field, default)
-        if value is not None and (not isinstance(value, str) or not value.strip()):
-            raise ConfigError(f"{path}: '{section}.{field}' must be a non-empty string if present.")
-        return value.strip() if isinstance(value, str) else value
-
-    @classmethod
-    def _get_optional_choice(cls, raw: dict, section: str, field: str, path: Path, default: str, choices: tuple[str, ...]) -> str:
-        sub = cls._get_section(raw, section, path)
+    @staticmethod
+    def _choice_in(sub: dict, section: str, field: str, path: Path, default: str, choices: tuple[str, ...]) -> str:
         value = sub.get(field, default)
         if value not in choices:
             raise ConfigError(f"{path}: '{section}.{field}' must be one of {', '.join(choices)} if present.")
         return value
+
+    @classmethod
+    def _get_optional_positive_int(
+        cls, raw: dict, section: str, field: str, path: Path, default: int
+    ) -> int:
+        return cls._positive_int_in(cls._get_optional_section(raw, section, path), section, field, path, default)
+
+    @classmethod
+    def _get_optional_non_negative_int(
+        cls, raw: dict, section: str, field: str, path: Path, default: int
+    ) -> int:
+        return cls._non_negative_int_in(cls._get_optional_section(raw, section, path), section, field, path, default)
+
+    @classmethod
+    def _get_optional_choice(cls, raw: dict, section: str, field: str, path: Path, default: str, choices: tuple[str, ...]) -> str:
+        return cls._choice_in(cls._get_section(raw, section, path), section, field, path, default, choices)
 
     @classmethod
     def _get_providers(cls, raw: dict, section: str, path: Path) -> list:
@@ -169,6 +168,12 @@ class AppConfig:
         if not isinstance(entries, list) or not entries:
             raise ConfigError(f"{path}: '{section}.providers' must be a non-empty list.")
         return entries
+
+    @staticmethod
+    def _provider_prefix(entry: object, section: str, i: int, path: Path) -> str:
+        if not isinstance(entry, dict):
+            raise ConfigError(f"{path}: '{section}.providers[{i}]' must be a mapping.")
+        return f"{section}.providers[{i}]"
 
     @staticmethod
     def _parse_ui_fields(entry: dict, driver: str, section: str, i: int, path: Path) -> tuple[str, str | None]:
@@ -212,18 +217,12 @@ class AppConfig:
 
         providers = []
         for i, entry in enumerate(entries):
-            if not isinstance(entry, dict):
-                raise ConfigError(f"{path}: 'auth-service.providers[{i}]' must be a mapping.")
-            driver = entry.get("driver")
-            key = entry.get("key")
-            if not isinstance(driver, str) or not driver.strip():
-                raise ConfigError(f"{path}: 'auth-service.providers[{i}].driver' is missing or empty.")
-            if not isinstance(key, str) or not key.strip():
-                raise ConfigError(f"{path}: 'auth-service.providers[{i}].key' is missing or empty.")
-            driver = driver.strip()
+            prefix = cls._provider_prefix(entry, "auth-service", i, path)
+            driver = cls._require_str_in(entry, prefix, "driver", path)
+            key = cls._require_str_in(entry, prefix, "key", path)
             ui_label, ui_description = cls._parse_ui_fields(entry, driver, "auth-service", i, path)
             providers.append(AuthProviderConfig(
-                driver=driver, key=key.strip(), ui_label=ui_label, ui_description=ui_description,
+                driver=driver, key=key, ui_label=ui_label, ui_description=ui_description,
             ))
         return providers
 
@@ -231,9 +230,7 @@ class AppConfig:
     def _parse_build_service_config(cls, raw: dict, path: Path) -> BuildServiceConfig:
         sub = cls._get_optional_section(raw, "build-service", path)
         for field in ("repo-url", "username", "token", "apps-dir"):
-            value = sub.get(field)
-            if value is not None and not isinstance(value, str):
-                raise ConfigError(f"{path}: 'build-service.{field}' must be a string if present.")
+            cls._optional_str_in(sub, "build-service", field, path)
         apps_dir = (sub.get("apps-dir") or "").strip()
         return BuildServiceConfig(
             repo_url=(sub.get("repo-url") or "").strip() or None,
@@ -285,28 +282,18 @@ class AppConfig:
 
         services = []
         for i, entry in enumerate(entries):
-            if not isinstance(entry, dict):
-                raise ConfigError(f"{path}: 'ai-service.providers[{i}]' must be a mapping.")
-            driver = entry.get("driver")
-            model = entry.get("model")
-            key = entry.get("key")
+            prefix = cls._provider_prefix(entry, "ai-service", i, path)
             url = entry.get("url")
-            if not isinstance(driver, str) or not driver.strip():
-                raise ConfigError(f"{path}: 'ai-service.providers[{i}].driver' is missing or empty.")
-            if not isinstance(model, str) or not model.strip():
-                raise ConfigError(f"{path}: 'ai-service.providers[{i}].model' is missing or empty.")
+            driver = cls._require_str_in(entry, prefix, "driver", path)
+            model = cls._require_str_in(entry, prefix, "model", path)
+            key = entry.get("key")
             if not isinstance(key, str):
-                raise ConfigError(f"{path}: 'ai-service.providers[{i}].key' must be a string.")
-            if key is not None and not isinstance(key, str):
-                raise ConfigError(f"{path}: 'ai-service.providers[{i}].key' must be a string or None.")
-            driver = driver.strip()
+                raise ConfigError(f"{path}: '{prefix}.key' must be a string.")
             ui_label, ui_description = cls._parse_ui_fields(entry, driver, "ai-service", i, path)
             modes = cls._parse_ai_service_modes(entry, i, path)
-            token_budget_per_day = entry.get("token-budget-per-day", 1_000_000)
-            if isinstance(token_budget_per_day, bool) or not isinstance(token_budget_per_day, int) or token_budget_per_day <= 0:
-                raise ConfigError(f"{path}: 'ai-service.providers[{i}].token-budget-per-day' must be a positive integer if present.")
+            token_budget_per_day = cls._positive_int_in(entry, prefix, "token-budget-per-day", path, 1_000_000)
             services.append(AIServiceConfig(
-                driver=driver, model=model.strip(), key=key, url=url,
+                driver=driver, model=model, key=key, url=url,
                 ui_label=ui_label, ui_description=ui_description,
                 max_output_tokens=max_output_tokens, modes=modes,
                 token_budget_per_day=token_budget_per_day,
@@ -468,3 +455,31 @@ def parse_ui_fields(entry: dict, driver: str, section: str, i: int, path: Path) 
 
 def optional_providers(raw: dict, section: str, path: Path) -> list | None:
     return AppConfig._get_optional_providers(raw, section, path)
+
+
+def optional_section(raw: dict, section: str, path: Path) -> dict:
+    return AppConfig._get_optional_section(raw, section, path)
+
+
+def provider_prefix(entry: object, section: str, i: int, path: Path) -> str:
+    return AppConfig._provider_prefix(entry, section, i, path)
+
+
+def require_str(sub: dict, section: str, field: str, path: Path) -> str:
+    return AppConfig._require_str_in(sub, section, field, path)
+
+
+def optional_str(sub: dict, section: str, field: str, path: Path) -> str | None:
+    return AppConfig._optional_str_in(sub, section, field, path)
+
+
+def optional_choice(sub: dict, section: str, field: str, path: Path, default: str, choices: tuple[str, ...]) -> str:
+    return AppConfig._choice_in(sub, section, field, path, default, choices)
+
+
+def optional_positive_int(sub: dict, section: str, field: str, path: Path, default: int) -> int:
+    return AppConfig._positive_int_in(sub, section, field, path, default)
+
+
+def optional_non_negative_int(sub: dict, section: str, field: str, path: Path, default: int) -> int:
+    return AppConfig._non_negative_int_in(sub, section, field, path, default)

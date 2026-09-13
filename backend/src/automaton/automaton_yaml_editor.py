@@ -77,30 +77,24 @@ class AutomatonYamlEditor:
         except KeyError:
             raise ValueError(f"Signal '{signal_name}' not found.") from None
 
-    def _env_key(self, name: str) -> CommentedMap:
-        env = self._env()
+    @staticmethod
+    def _named_entry(mapping: CommentedMap, name: str, noun: str) -> CommentedMap:
         try:
-            raw = env[name]
+            raw = mapping[name]
         except KeyError:
-            raise ValueError(f"Env key '{name}' not found.") from None
+            raise ValueError(f"{noun} '{name}' not found.") from None
         # A bare `key:` declaration (no nested fields at all) parses as
         # None, not {} — normalized in place the first time it's touched
         # so every other accessor below can treat it as a plain mapping.
         if raw is None:
-            raw = env[name] = CommentedMap()
+            raw = mapping[name] = CommentedMap()
         return raw
 
+    def _env_key(self, name: str) -> CommentedMap:
+        return self._named_entry(self._env(), name, "Env key")
+
     def _source(self, name: str) -> CommentedMap:
-        sources = self._sources()
-        try:
-            raw = sources[name]
-        except KeyError:
-            raise ValueError(f"Source '{name}' not found.") from None
-        # A bare `name:` declaration (no nested fields at all) parses as
-        # None, not {} — normalized in place, same as _env_key above.
-        if raw is None:
-            raw = sources[name] = CommentedMap()
-        return raw
+        return self._named_entry(self._sources(), name, "Source")
 
     def _actions(self, state_name: str) -> CommentedSeq:
         return self._state(state_name).setdefault("actions", CommentedSeq())
@@ -116,43 +110,35 @@ class AutomatonYamlEditor:
         """The first `{prefix}-N` past whatever's in use — one past the
         *highest* N taken, never backfilling a gap from a deleted entry."""
         pattern = re.compile(rf'^{re.escape(prefix)}-(\d+)$')
-        highest = -1
-        for name in existing_names:
-            match = pattern.match(name)
-            if match:
-                highest = max(highest, int(match.group(1)))
+        highest = max(
+            (int(match.group(1)) for match in map(pattern.match, existing_names) if match),
+            default=-1,
+        )
         return f"{prefix}-{highest + 1}"
 
     @staticmethod
-    def _unique_ui_label(base: str, existing_labels: set) -> str:
-        if base not in existing_labels:
+    def _unique_name(base: str, existing_names: set, separator: str, first_suffix: int) -> str:
+        if base not in existing_names:
             return base
-        suffix = 2
-        while f"{base} {suffix}" in existing_labels:
+        suffix = first_suffix
+        while f"{base}{separator}{suffix}" in existing_names:
             suffix += 1
-        return f"{base} {suffix}"
+        return f"{base}{separator}{suffix}"
+
+    @staticmethod
+    def _unique_ui_label(base: str, existing_labels: set) -> str:
+        return AutomatonYamlEditor._unique_name(base, existing_labels, " ", 2)
 
     @staticmethod
     def _unique_signal_name(base: str, existing_names: set) -> str:
-        base = base or "signal"
-        if base not in existing_names:
-            return base
-        suffix = 2
-        while f"{base}_{suffix}" in existing_names:
-            suffix += 1
-        return f"{base}_{suffix}"
+        return AutomatonYamlEditor._unique_name(base or "signal", existing_names, "_", 2)
 
     @staticmethod
     def _unique_source_name(base: str, existing_names: set) -> str:
         """behaviour, behaviour1, behaviour2 — unlike _unique_signal_name
         (no separator, 1-based) since a source's id is user-facing with
         no separate ui-label it's derived from (see add_source)."""
-        if base not in existing_names:
-            return base
-        suffix = 1
-        while f"{base}{suffix}" in existing_names:
-            suffix += 1
-        return f"{base}{suffix}"
+        return AutomatonYamlEditor._unique_name(base, existing_names, "", 1)
 
     def _existing_state_ui_labels(self) -> set:
         return {raw_state.get("ui-label", key) for key, raw_state in self._states().items()}
@@ -250,40 +236,36 @@ class AutomatonYamlEditor:
     def _uses_blank_line_separators(self, mapping: CommentedMap) -> bool:
         if mapping.lc.data is None:
             return False
-        keys = list(mapping.keys())
-        for key in keys[1:]:
-            line_info = mapping.lc.data.get(key)
-            if line_info is None:
-                continue
-            line = line_info[0]
-            if line > 0 and not self._source_lines[line - 1].strip():
-                return True
-        return False
+        line_infos = [mapping.lc.data.get(key) for key in list(mapping.keys())[1:]]
+        return any(
+            line_info[0] > 0 and not self._source_lines[line_info[0] - 1].strip()
+            for line_info in line_infos if line_info is not None
+        )
+
+    def _add_entry(self, mapping: CommentedMap, name: str, entry: CommentedMap) -> None:
+        add_blank_line = self._uses_blank_line_separators(mapping)
+        mapping[name] = entry
+        if add_blank_line:
+            mapping.yaml_set_comment_before_after_key(name, before="\n")
 
     def add_state(self) -> StatePayload:
         states = self._states()
-        add_blank_line = self._uses_blank_line_separators(states)
         name = self._next_numbered_name("state", set(states.keys()))
         ui_label = self._unique_ui_label("New State", self._existing_state_ui_labels())
-        states[name] = CommentedMap({
+        self._add_entry(states, name, CommentedMap({
             "ui-label": ui_label,
             "contextual-prompt": "",
-        })
-        if add_blank_line:
-            states.yaml_set_comment_before_after_key(name, before="\n")
+        }))
         return self._state_payload(name)
 
     def add_signal(self) -> SignalPayload:
         signals = self._signals()
-        add_blank_line = self._uses_blank_line_separators(signals)
         ui_label = self._unique_ui_label("New Signal", self._existing_signal_ui_labels())
         name = self._unique_signal_name(self.to_snake_case(ui_label), set(signals.keys()))
-        signals[name] = CommentedMap({
+        self._add_entry(signals, name, CommentedMap({
             "ui-label": ui_label,
             "definition": "",
-        })
-        if add_blank_line:
-            signals.yaml_set_comment_before_after_key(name, before="\n")
+        }))
         return self._signal_payload(name)
 
     def add_env_key(self) -> EnvKeyPayload:
@@ -291,11 +273,8 @@ class AutomatonYamlEditor:
         itself is the only name — so it's suffixed via _unique_signal_name
         (valid identifier chars), never _next_numbered_name's "-N" suffix."""
         env = self._env()
-        add_blank_line = self._uses_blank_line_separators(env)
         name = self._unique_signal_name("new_env_key", set(env.keys()))
-        env[name] = CommentedMap({"value": ""})
-        if add_blank_line:
-            env.yaml_set_comment_before_after_key(name, before="\n")
+        self._add_entry(env, name, CommentedMap({"value": ""}))
         return self._env_key_payload(name)
 
     def add_source(self, name_hint: str | None = None) -> SourcePayload:
@@ -303,12 +282,9 @@ class AutomatonYamlEditor:
         fresh env key's `value` — until the user picks a driver from
         the Inspector (see set_source_field)."""
         sources = self._sources()
-        add_blank_line = self._uses_blank_line_separators(sources)
         base = self.to_snake_case(name_hint) if name_hint else ""
         name = self._unique_source_name(base or "behaviour", set(sources.keys()))
-        sources[name] = CommentedMap({"ui-label": name})
-        if add_blank_line:
-            sources.yaml_set_comment_before_after_key(name, before="\n")
+        self._add_entry(sources, name, CommentedMap({"ui-label": name}))
         return self._source_payload(name)
 
     def add_action(self, state_name: str) -> ActionPayload:

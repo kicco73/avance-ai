@@ -23,10 +23,9 @@ db eventually.
 """
 from __future__ import annotations
 
-from http import HTTPStatus
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import Request, Response
 
 from controllers.base_controller import BaseController, get, post
 from db import Db
@@ -39,10 +38,6 @@ class ServerAdminController(BaseController):
         self.turn_service = turn_service
         self.project_service = project_service
         self.db = db
-
-    def register_routes(self, router: APIRouter) -> None:
-        for method, path, kwargs, member in self._declared_routes():
-            router.add_api_route(path, member, methods=[method], **kwargs)
 
     @get("/api/skills/platform/settings/backup", role="admin")
     async def get_backup(self):
@@ -65,10 +60,7 @@ class ServerAdminController(BaseController):
         has (all projects, sessions, messages)."""
         content = await request.body()
         async with self.turn_service.global_exclusive_access():
-            try:
-                self.db.restore_backup(content)
-            except ValueError as exc:
-                raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+            self.db.restore_backup(content)
             self.turn_service.clear_auto_tracking_overrides()
         return {"success": True}
 

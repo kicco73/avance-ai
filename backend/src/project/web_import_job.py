@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 from jobs import CancelableJob
 from system.web_session import WebSession
 
-from .types import CommitCallback
 from .web_import_crawler import CrawledPage
 
 if TYPE_CHECKING:
@@ -31,7 +30,7 @@ class WebImportJob(CancelableJob):
     def __init__(
         self, editor: "ProjectEditor", ai_service: "AiService", crawler: "WebCrawler",
         loop: asyncio.AbstractEventLoop, project_id: str, source_name: str, archive_name: str,
-        query: str, commit: CommitCallback,
+        query: str,
     ) -> None:
         super().__init__(key="web-import", username=f"web-import:{uuid.uuid4().hex}")
         self._editor = editor
@@ -42,7 +41,6 @@ class WebImportJob(CancelableJob):
         self._source_name = source_name
         self._archive_name = archive_name
         self._query = query
-        self._commit = commit
         self._owner = WebSession().user
         self._pages: list[CrawledPage] | None = None
         self._columns: list[str] | None = None
@@ -142,7 +140,7 @@ class WebImportJob(CancelableJob):
 
     async def _put_archive(self, content: str) -> None:
         with WebSession().impersonate(self._owner):
-            await self._editor.put_project_file(self._project_id, self._archive_name, content, None, self._commit)
+            await self._editor.put_project_file(self._project_id, self._archive_name, content, None)
 
 
 def _strip_fence(reply: str) -> str:

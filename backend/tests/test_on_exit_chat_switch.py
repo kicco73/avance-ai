@@ -63,10 +63,8 @@ def _publish(db, project_service: ProjectService, on_exit: str) -> None:
     import asyncio
     automaton = AutomatonBuilder().build({"index.yml": index_yml})
 
-    async def commit(_project_id, _automaton):
-        pass
 
-    asyncio.run(project_service.manager.finalize_update(PROJECT, automaton, commit))
+    asyncio.run(project_service.manager.finalize_update(PROJECT, automaton))
 
 
 def _fire_go(db, factory, project_service: ProjectService, session_id: int, *, fake: bool = False) -> None:

@@ -55,6 +55,37 @@ Do not add new ones. Why a change was made belongs in the commit message, a
 contract belongs in `backend/src/docs/`, and a behaviour that must not regress
 belongs in a test. A false comment gets deleted, not rewritten.
 
+## What a test may look at
+
+A test verifies behaviour and the i/o contract: what goes in at a public
+entry point, what comes out of a public observation. Never how the thing is
+made. A private method called from a test, a private attribute read to
+assert, a monkeypatch on an internal collaborator — each one fails on a
+rename and holds when the product breaks.
+
+Drive the unit the way production drives it, and observe what a caller can
+observe: the frame on the socket, the message on the Bus, the row in the
+database, the value the public method returned. `push_event()` returning
+False *is* «nobody is registered»; reading `_connections` to say the same
+thing asserts the shape of a dict.
+
+The failure this prevents is not hypothetical.
+`test_metrics_are_never_computed_when_no_trigger_references_one` patched
+`tracking_service._metrics`, but `_process` builds a `MetricService` of its
+own and uses that one — so the assertion passed whether the gate worked, was
+inverted, or was deleted. A test that cannot fail costs a full run and
+defends nothing.
+
+Three things are not reach-in, and are wanted: a fake injected at a port the
+constructor already takes; an abstract method implemented by a test subclass
+(`Job._prepare` is a contract of extension); and a test whose subject really
+is the source tree (`test_skill_boundaries.py` reads AST because the AST is
+what it defends).
+
+Where no public observation exists — a performance property, a concurrency
+window that must be held open — keep the seam and say why in one line. That
+is a decision, not an accident.
+
 ## Tests
 
 ```

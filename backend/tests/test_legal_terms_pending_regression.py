@@ -105,7 +105,7 @@ async def test_an_already_open_session_is_never_blocked_by_terms_published_since
     project_service.accept_legal_terms(USERNAME, PROJECT_ID)
     turn_service = _turn_service_for(db, project_service)
 
-    first = await turn_service.get_current_session_if_any_or_create_new(None)
+    first = await turn_service.enter_session(PROJECT_ID, 'live')
     assert first.get("legal_terms_pending") is not True
     session_id = first["id"]
 
@@ -117,7 +117,7 @@ async def test_an_already_open_session_is_never_blocked_by_terms_published_since
     # already-open one below just isn't.
     assert project_service.legal_terms_pending(USERNAME, PROJECT_ID) is True
 
-    second = await turn_service.get_current_session_if_any_or_create_new(None)
+    second = await turn_service.enter_session(PROJECT_ID, 'live')
     assert second.get("legal_terms_pending") is not True
     assert second["id"] == session_id
 
@@ -125,7 +125,7 @@ async def test_an_already_open_session_is_never_blocked_by_terms_published_since
 async def test_a_brand_new_session_is_still_blocked_by_currently_pending_terms(db, project_service):
     turn_service = _turn_service_for(db, project_service)
 
-    payload = await turn_service.get_current_session_if_any_or_create_new(None)
+    payload = await turn_service.enter_session(PROJECT_ID, 'live')
 
     assert payload.get("legal_terms_pending") is True
 

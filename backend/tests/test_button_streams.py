@@ -98,7 +98,7 @@ async def test_a_button_says_it_is_writing_and_streams_what_it_writes(turn_servi
 
     bus._reset_for_tests()
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     recorder = _Recorder()
     for message_type in _PUBLISHED:

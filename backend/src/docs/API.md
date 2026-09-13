@@ -52,8 +52,11 @@ in it, where its automaton stands, what it offers, whether it is blocked, whethe
 it has ended — is a message on `/api/core/bus`, and `BUS.md` is the vocabulary.
 Webchat has no HTTP surface left at all: `webchat_controller.py` is gone, and with
 it `sessions/current`, `POST sessions`, `messages` and `operator-state`. So are
-`state`, `close`, `audio` and `messages/{id}/reaction` from
-`turn/session_controller.py`.
+`state`, `close`, `audio`, `actions` and `messages/{id}/reaction` from
+`turn/session_controller.py`. The editor and the App Store followed: their own
+`test-sessions` and `preview-sessions` pairs — a POST to make one, a GET for the
+current one — are gone too, because a Test chat and a preview open the way every
+other conversation does, by saying `session.enter` or `session.create`.
 
 What stayed is the administration of sessions nobody is having:
 
@@ -62,7 +65,6 @@ GET    /api/core/sessions/{id}/history      someone else's transcript, read by t
                                             editor, the labelling screen, benchmark
 GET    /api/core/sessions/{id}/signals      the inspector
 GET|PUT /api/core/sessions/{id}/actuators   the inspector
-POST   /api/core/sessions/{id}/actions      the inspector moves the automaton
 POST   /api/core/sessions/{id}/truncate     the Run panel's "restart from here",
                                             which keeps a prefix that closing and
                                             recreating would lose
@@ -75,6 +77,41 @@ Which side something belongs on is decided by the envelope, not by taste. A mess
 about one conversation has a `session_id`, or a `project_id` when the session does
 not exist yet, and the bus delivers it to whoever is watching that session. A
 listing across many sessions has neither, and a route is the honest shape for it.
+
+## How a failure becomes a status
+
+An endpoint does not choose its own status code. It raises, and one handler
+registered in `main.py` — `ApiErrorHandlers.register`, see `error_handlers.py` —
+turns the exception into the `{error: {message, detail}}` body every failure
+shares:
+
+```text
+PermissionError     403
+FileNotFoundError   404
+ValueError          400
+AIServiceError      its own status_code
+ServiceError        its own status_code, plus code and fields
+anything else       500, logged
+```
+
+Starlette resolves a handler by walking the exception's MRO, so a subclass is
+covered by its base's handler with no registration of its own. That is what makes
+the list short: `TurnServiceError`, `TrackingServiceError` and every future
+sibling arrive through `ServiceError`, and `AutomatonBuildError` — which is both a
+`ServiceError` and a `ValueError` — is resolved by the `ServiceError` handler
+because `ServiceError` comes first in its MRO. A service that needs a status the
+table does not give it raises a `ServiceError` subclass saying so; that is the
+only mechanism, and there is no second one.
+
+This used to be written out per endpoint instead. Sixty-seven `try/except` blocks
+across thirteen controllers repeated the same three clauses, and thirty-three of
+them existed only to re-raise `AutomatonBuildError` so that the `except ValueError`
+on the next line would not swallow it into a 400 that lost its fields. The
+controllers now let the exception travel.
+
+The consequence worth knowing: the translation is no longer opt-in. A
+`FileNotFoundError` or a `ValueError` escaping *any* route is answered 404 or 400,
+including routes that used to let one through to a 500.
 
 ## Decisions taken
 
@@ -91,7 +128,7 @@ listing across many sessions has neither, and a route is the honest shape for it
   republishes onto the bus what a client sends. `ui.notification` was one of the four
   payloads, not the channel. It is `system/bus_channel.py` and `/api/core/bus`.
 - **Verbs became resources** where the path described an action rather than a thing:
-  `actions`, `invitations/{code}`, `auth/terms/acceptance`, `legal-terms/status`,
+  `invitations/{code}`, `auth/terms/acceptance`, `legal-terms/status`,
   `legal-terms/acceptance`; `POST` on the lifecycle commands (pause, resume,
   activate), `PUT` on the toggles (autotracking, actuators).
 

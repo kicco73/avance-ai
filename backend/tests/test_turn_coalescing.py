@@ -12,7 +12,7 @@ import pytest
 
 from ai.llm_provider import content_to_text, is_text_fragments
 from db.messages import _group_user_fragments
-from turn_harness import one_state_automaton, turn_service_for  # noqa: F401 — a pytest fixture, used by name
+from turn_harness import PROJECT_ID, one_state_automaton, turn_service_for  # noqa: F401 — a pytest fixture, used by name
 
 pytestmark = pytest.mark.contract
 
@@ -224,7 +224,7 @@ async def test_messages_arriving_while_a_turn_generates_are_answered_together_by
     provider = _GatedProvider()
     turn_service = turn_service_for(one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
     db = turn_service_for.db
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     session_id = session["id"]
     say = await _listening(turn_service, db, session_id)
 
@@ -261,7 +261,7 @@ async def test_the_coalesced_turn_binds_to_its_last_fragment(turn_service_for):
     provider = _GatedProvider()
     turn_service = turn_service_for(one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
     db = turn_service_for.db
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     session_id = session["id"]
 
     say = await _listening(turn_service, db, session_id)
@@ -286,7 +286,7 @@ async def test_the_history_reloaded_afterwards_is_the_one_the_model_was_sent(tur
     provider = _GatedProvider()
     turn_service = turn_service_for(one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
     db = turn_service_for.db
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     session_id = session["id"]
 
     say = await _listening(turn_service, db, session_id)
@@ -311,7 +311,7 @@ async def test_the_history_budget_drops_a_half_cut_group_whole(turn_service_for)
     provider.release.set()
     turn_service = turn_service_for(one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
     db = turn_service_for.db
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     session_id = session["id"]
 
     first = db.save_message("user", "one", session_id, tokens=10)
@@ -332,7 +332,7 @@ async def test_the_history_budget_keeps_a_group_it_fits_entirely(turn_service_fo
     provider.release.set()
     turn_service = turn_service_for(one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
     db = turn_service_for.db
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     session_id = session["id"]
 
     first = db.save_message("user", "one", session_id, tokens=10)

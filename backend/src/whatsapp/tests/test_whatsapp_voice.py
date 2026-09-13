@@ -5,16 +5,11 @@ import io
 import pytest
 
 from system.audio_format import PcmWavCodec
+from whatsapp import notices
 from whatsapp.audio import WHATSAPP_AUDIO_MIME, Mp3Encoder, split_wav, wav_to_mp3
-from whatsapp.cloud_api_client import split_text
-from whatsapp.outbound import REPLY_OPTIONS_PROMPT
-from whatsapp.inbound_voice_note import REPLY_AUDIO_NOT_UNDERSTOOD, REPLY_UNSUPPORTED_AUDIO
-from whatsapp.whatsapp_service import (
-    REPLY_NOT_LINKED, REPLY_PAUSED,
-    to_whatsapp_markdown,
-)
-from whatsapp.tests.whatsapp_helpers import (  # noqa: F401 — env/voice_env are fixtures
-    LINKED_EMAIL, LINKED_NUMBER, _FakeListen, _FakeTalk, _action, _build, _config, _payload, _post, _wav, env, voice_env,
+from whatsapp.tests.whatsapp_helpers import (  # noqa: F401 — voice_env is a fixture
+    LINKED_NUMBER, PROJECT, SESSION_ID, UNKNOWN_NUMBER, Env, _FakeDecoder, _FakeSpeaker,
+    _SpeechlessDecoder, _action, _config, _payload, _wav, voice_env,
 )
 
 pytestmark = pytest.mark.contract
@@ -23,181 +18,157 @@ TEXT_REPLY = "*Hola* — has dicho: hola"
 VOICE_TEXT_REPLY = "*Hola* — has dicho: hola por voz"
 
 
-def _voice():
-    talk, listen = _FakeTalk(), _FakeListen()
-    client, service, chat, db, api = _build(talk=talk, listen=listen)
-    talk.chat = chat
-    return client, service, chat, db, api, talk, listen
+def _speaking(**overrides) -> Env:
+    env = Env(speaker=_FakeSpeaker(), decoder=_FakeDecoder())
+    env.turns.reply_audio_text = "Hola."
+    for name, value in overrides.items():
+        setattr(env.turns, name, value)
+    return env
 
 
-def _spoken_voice_note(**chat_overrides):
-    client, _, chat, _, api, talk, listen = _voice()
-    chat.reply_audio_text = "Hola."
-    for name, value in chat_overrides.items():
-        setattr(chat, name, value)
-    return client, chat, api, talk, listen
+# --- a voice note coming in -------------------------------------------------- #
+
+async def test_a_voice_note_is_decoded_and_runs_the_very_same_turn(voice_env: Env):
+    await voice_env.arrives(_payload(mtype="audio"))
+
+    assert voice_env.decoder.heard == [b"OggS-fake-opus"]
+    assert voice_env.turns.calls == [("enter", PROJECT, "live"), ("turn", SESSION_ID, "hola por voz")]
+    assert [m["content"] for m in voice_env.db.messages if m["role"] == "user"] == ["hola por voz"]
 
 
-# --- voice in ------------------------------------------------------------- #
+async def test_a_build_that_cannot_listen_says_so_and_one_that_heard_nothing_says_something_else():
+    env = Env()
+    await env.arrives(_payload(mtype="audio"))
+    assert env.turns.calls == [("enter", PROJECT, "live")]
+    assert env.api.sent == [(LINKED_NUMBER, notices.UNSUPPORTED_AUDIO)]
 
-def test_voice_note_is_transcribed_and_processed_as_text(voice_env):
-    client, _, chat, db, api, talk, listen = voice_env
-    _post(client, _payload(mtype="audio"))
-    assert listen.heard == [b"OggS-fake-opus"]
-    assert chat.calls == [("session", LINKED_EMAIL), ("turn", LINKED_EMAIL)]
-    assert [m["content"] for m in db.messages if m["role"] == "user"] == ["hola por voz"]
-
-
-def test_a_voice_note_that_cannot_be_transcribed_gets_a_notice_and_no_turn(env):
-    client, _, chat, _, api = env
-    _post(client, _payload(mtype="audio"))
-    assert chat.calls == []
-    assert api.sent == [(LINKED_NUMBER, REPLY_UNSUPPORTED_AUDIO)]
-
-    client, _, chat, _, api, _, listen = _voice()
-    listen.transcript = "   "
-    _post(client, _payload(mtype="audio"))
-    assert chat.calls == []
-    assert api.sent == [(LINKED_NUMBER, REPLY_AUDIO_NOT_UNDERSTOOD)]
-
-    client, _, chat, _, api, _, listen = _voice()
-    listen.fail = True
-    _post(client, _payload(mtype="audio"))
-    assert chat.calls == []
-    assert api.sent == [(LINKED_NUMBER, REPLY_AUDIO_NOT_UNDERSTOOD)]
-
-    client, _, chat, _, api, _, _ = _voice()
-    api.media.clear()
-    _post(client, _payload(mtype="audio"))
-    assert chat.calls == []
-    assert api.sent == [(LINKED_NUMBER, REPLY_AUDIO_NOT_UNDERSTOOD)]
-
-    client, _, chat, _, api, _, listen = _voice()
-    _post(client, _payload(sender="34699999999", mtype="audio"))
-    assert listen.heard == [] and chat.calls == []
-    assert api.sent == [("34699999999", REPLY_NOT_LINKED)]
+    env = Env(speaker=_FakeSpeaker(), decoder=_SpeechlessDecoder())
+    await env.arrives(_payload(mtype="audio"))
+    assert env.api.sent == [(LINKED_NUMBER, notices.AUDIO_NOT_UNDERSTOOD)]
 
 
-# --- voice out ------------------------------------------------------------ #
+async def test_a_voice_note_that_cannot_be_fetched_is_a_notice_too_and_an_unlinked_one_is_never_fetched():
+    env = _speaking()
+    env.api.media.clear()
+    await env.arrives(_payload(mtype="audio"))
+    assert [call for call in env.turns.calls if call[0] == "turn"] == []
+    assert env.api.sent == [(LINKED_NUMBER, notices.AUDIO_NOT_UNDERSTOOD)]
 
-def test_the_default_policy_answers_in_kind_voice_for_voice_and_text_for_text():
-    client, chat, api, talk, _ = _spoken_voice_note(reply_audio_text="Hola, te he oído.")
-    _post(client, _payload(mtype="audio"))
-    assert talk.spoken == ["Hola, te he oído."]
-    (mp3, mime), = api.uploaded
+    env = _speaking()
+    await env.arrives(_payload(sender=UNKNOWN_NUMBER, mtype="audio"))
+    assert env.decoder.heard == [] and env.turns.calls == []
+    assert env.api.sent == [(UNKNOWN_NUMBER, notices.NOT_LINKED)]
+
+
+# --- a voice note going out --------------------------------------------------- #
+
+async def test_the_default_policy_answers_in_kind():
+    env = _speaking(reply_audio_text="Hola, te he oído.")
+    await env.arrives(_payload(mtype="audio"))
+    assert env.speaker.spoken == ["Hola, te he oído."]
+    (mp3, mime), = env.api.uploaded
     assert mime == WHATSAPP_AUDIO_MIME and mp3[:3] == b"ID3"
-    assert api.audio_sent == [(LINKED_NUMBER, "media-1")]
-    assert api.sent == []
+    assert env.api.audio_sent == [(LINKED_NUMBER, "media-1")]
+    assert env.api.sent == []
 
-    client, chat, api, talk, _ = _spoken_voice_note()
-    _post(client, _payload(text="hola"))
-    assert talk.spoken == [] and api.audio_sent == []
-    assert api.sent == [(LINKED_NUMBER, TEXT_REPLY)]
-
-
-def test_the_always_policy_speaks_text_replies_and_the_never_policy_stays_text():
-    talk = _FakeTalk()
-    client, _, chat, _, api = _build(config=_config(voice_replies="always"), talk=talk)
-    chat.reply_audio_text = "Hola."
-    _post(client, _payload(text="hola"))
-    assert talk.spoken == ["Hola."] and len(api.audio_sent) == 1 and api.sent == []
-
-    talk, listen = _FakeTalk(), _FakeListen()
-    client, _, chat, _, api = _build(config=_config(voice_replies="never"), talk=talk, listen=listen)
-    chat.reply_audio_text = "Hola."
-    _post(client, _payload(mtype="audio"))
-    assert talk.spoken == [] and api.audio_sent == []
-    assert api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
+    env = _speaking()
+    await env.arrives(_payload(text="hola"))
+    assert env.speaker.spoken == [] and env.api.audio_sent == []
+    assert env.api.sent == [(LINKED_NUMBER, TEXT_REPLY)]
 
 
-def test_synthesis_starts_mid_turn_when_announced_otherwise_from_the_persisted_text_and_afresh_when_it_differs():
-    """The reply's spoken text is the first thing the model emits, and the
-    voice note's synthesis starts right then (`output.speech`). The
-    prefetch is an optimisation, not a dependency: with nothing announced
-    during the turn the note is synthesized on the spot from the persisted
-    text, and when a regenerated reply persists a different one the note
-    follows the persisted one — this channel reads it from the row, as it
-    always has."""
-    client, _, api, talk, _ = _spoken_voice_note()
-    _post(client, _payload(mtype="audio"))
-    assert talk.spoken == ["Hola."]
-    assert talk.requested_during_turn == [True]
-    assert api.audio_sent == [(LINKED_NUMBER, "media-1")]
+async def test_always_speaks_a_typed_reply_too_and_never_keeps_every_reply_written():
+    env = Env(config=_config(voice_replies="always"), speaker=_FakeSpeaker())
+    env.turns.reply_audio_text = "Hola."
+    await env.arrives(_payload(text="hola"))
+    assert env.speaker.spoken == ["Hola."] and len(env.api.audio_sent) == 1 and env.api.sent == []
 
-    client, _, api, talk, _ = _spoken_voice_note(announces_audio=False)
-    _post(client, _payload(mtype="audio"))
-    assert talk.spoken == ["Hola."]
-    assert talk.requested_during_turn == [False]
-    assert api.audio_sent == [(LINKED_NUMBER, "media-1")]
-
-    client, _, api, talk, _ = _spoken_voice_note(announced_audio_text="Hola, primer intento.")
-    _post(client, _payload(mtype="audio"))
-    assert talk.spoken == ["Hola, primer intento.", "Hola."]
-    assert api.audio_sent == [(LINKED_NUMBER, "media-1")]
+    env = Env(config=_config(voice_replies="never"), speaker=_FakeSpeaker(), decoder=_FakeDecoder())
+    env.turns.reply_audio_text = "Hola."
+    await env.arrives(_payload(mtype="audio"))
+    assert env.speaker.spoken == [] and env.api.audio_sent == []
+    assert env.api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
 
 
-def test_every_voice_note_failure_falls_back_to_the_text_reply(monkeypatch):
-    """The encoder goes through PyAV, whose own exception types don't
-    derive from ValueError/httpx.HTTPError/ImportError — this used to
-    escape _try_voice_note uncaught and leave the user with no reply at
-    all instead of the text fallback."""
-    client, _, api, talk, _ = _spoken_voice_note(reply_audio_text=None)
-    _post(client, _payload(mtype="audio"))
-    assert talk.spoken == [] and api.audio_sent == []
-    assert api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
+async def test_synthesis_starts_the_moment_the_turn_announces_the_spoken_text():
+    env = _speaking()
+    await env.arrives(_payload(mtype="audio"))
+    assert env.speaker.spoken == ["Hola."]
+    assert env.speaker.requested_during_turn == [True]
+    assert env.api.audio_sent == [(LINKED_NUMBER, "media-1")]
 
-    client, _, chat, _, api = _build(listen=_FakeListen())
-    chat.reply_audio_text = "Hola."
-    _post(client, _payload(mtype="audio"))
-    assert api.audio_sent == []
-    assert api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
+    env = _speaking(announces_audio=False)
+    await env.arrives(_payload(mtype="audio"))
+    assert env.speaker.spoken == ["Hola."]
+    assert env.speaker.requested_during_turn == [False]
+    assert env.api.audio_sent == [(LINKED_NUMBER, "media-1")]
 
-    client, _, api, talk, _ = _spoken_voice_note()
-    api.fail_upload = True
-    _post(client, _payload(mtype="audio"))
-    assert talk.spoken == ["Hola."] and api.audio_sent == []
-    assert api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
+    env = _speaking(announced_audio_text="Hola, primer intento.")
+    await env.arrives(_payload(mtype="audio"))
+    assert env.speaker.spoken == ["Hola, primer intento.", "Hola."]
+    assert env.api.audio_sent == [(LINKED_NUMBER, "media-1")]
 
-    client, _, api, talk, _ = _spoken_voice_note()
-    talk.silent = True
-    _post(client, _payload(mtype="audio"))
-    assert api.uploaded == [] and api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
+
+async def test_every_way_a_voice_note_can_fail_falls_back_to_the_written_reply(monkeypatch):
+    env = _speaking(reply_audio_text=None)
+    await env.arrives(_payload(mtype="audio"))
+    assert env.speaker.spoken == [] and env.api.audio_sent == []
+    assert env.api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
+
+    env = Env(decoder=_FakeDecoder())
+    env.turns.reply_audio_text = "Hola."
+    await env.arrives(_payload(mtype="audio"))
+    assert env.api.audio_sent == []
+    assert env.api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
+
+    env = _speaking()
+    env.api.fail_upload = True
+    await env.arrives(_payload(mtype="audio"))
+    assert env.speaker.spoken == ["Hola."] and env.api.audio_sent == []
+    assert env.api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
+
+    env = _speaking()
+    env.speaker.silent = True
+    await env.arrives(_payload(mtype="audio"))
+    assert env.api.uploaded == [] and env.api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
 
     def _boom(self, wav):
         raise RuntimeError("pyav exploded")
 
     monkeypatch.setattr("whatsapp.audio.Mp3Encoder.push", _boom)
-    client, _, api, talk, _ = _spoken_voice_note()
-    _post(client, _payload(mtype="audio"))
-    assert api.audio_sent == [] and api.uploaded == []
-    assert api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
+    env = _speaking()
+    await env.arrives(_payload(mtype="audio"))
+    assert env.api.audio_sent == [] and env.api.uploaded == []
+    assert env.api.sent == [(LINKED_NUMBER, VOICE_TEXT_REPLY)]
 
 
-def test_notices_are_never_spoken(voice_env):
-    client, _, chat, _, api, talk, _ = voice_env
-    chat.session_payload = {"paused": True, "paused_reason": "quota"}
-    _post(client, _payload(mtype="audio"))
-    assert talk.spoken == [] and api.sent == [(LINKED_NUMBER, REPLY_PAUSED)]
+async def test_a_notice_is_never_spoken(voice_env: Env):
+    voice_env.turns.session = {"blocked": "paused", "detail": "quota"}
+
+    await voice_env.arrives(_payload(mtype="audio"))
+
+    assert voice_env.speaker.spoken == []
+    assert voice_env.api.sent == [(LINKED_NUMBER, notices.PAUSED)]
 
 
-def test_buttons_follow_a_spoken_reply_as_buttons_and_stay_on_the_text_fallback():
-    client, chat, api, _, _ = _spoken_voice_note()
-    chat.buttons = [_action("go", "Go"), _action("stop", "Stop")]
-    _post(client, _payload(mtype="audio"))
-    assert api.timeline == ["typing", "audio", "buttons"]
-    kind, to, body, buttons = api.interactive[0]
-    assert body == REPLY_OPTIONS_PROMPT and [b[0] for b in buttons] == ["go", "stop"]
-    assert api.sent == []
+async def test_the_choices_follow_a_spoken_reply_and_stay_on_the_written_fallback():
+    env = _speaking()
+    env.turns.buttons = [_action("go", "Go"), _action("stop", "Stop")]
+    await env.arrives(_payload(mtype="audio"))
+    assert env.api.timeline == ["typing", "audio", "buttons"]
+    kind, to, body, buttons = env.api.interactive[0]
+    assert body == notices.OPTIONS_PROMPT and [b[0] for b in buttons] == ["go", "stop"]
+    assert env.api.sent == []
 
-    client, chat, api, _, _ = _spoken_voice_note()
-    chat.buttons = [_action("go", "Go")]
-    api.fail_upload = True
-    _post(client, _payload(mtype="audio"))
-    assert api.timeline == ["typing", "buttons"]
-    assert api.interactive[0][2] == VOICE_TEXT_REPLY
+    env = _speaking()
+    env.turns.buttons = [_action("go", "Go")]
+    env.api.fail_upload = True
+    await env.arrives(_payload(mtype="audio"))
+    assert env.api.timeline == ["typing", "buttons"]
+    assert env.api.interactive[0][2] == VOICE_TEXT_REPLY
 
 
-# --- audio encoding ------------------------------------------------------- #
+# --- audio encoding ----------------------------------------------------------- #
 
 def test_split_wav_handles_streaming_header_and_complete_file():
     pcm, rate = split_wav(_wav(rate=24000))
@@ -225,8 +196,6 @@ def test_wav_to_mp3_produces_mono_48k_mp3_and_rejects_empty_audio():
 
 
 def test_incremental_encoder_matches_whole_file_encoding_and_finishes_empty_with_no_audio():
-    """Pushing the stream in arbitrary pieces — the header split too —
-    must decode to the same audio as encoding the complete WAV at once."""
     import av
 
     def decoded_samples(mp3: bytes) -> int:
@@ -247,15 +216,3 @@ def test_incremental_encoder_matches_whole_file_encoding_and_finishes_empty_with
     empty = Mp3Encoder()
     empty.push(PcmWavCodec.streaming_header(22050))
     assert empty.finish() == b""
-
-
-# --- helpers -------------------------------------------------------------- #
-
-def test_markdown_flattening_and_text_splitting_lose_nothing():
-    src = "## Título\n\nHola **fuerte** y __otro__, mira [esto](https://x.y).\n\n* uno\n* dos\n- tres"
-    assert to_whatsapp_markdown(src) == "*Título*\n\nHola *fuerte* y *otro*, mira esto (https://x.y).\n\n- uno\n- dos\n- tres"
-
-    text = ("palabra " * 1000).strip()
-    chunks = split_text(text, 4096)
-    assert len(chunks) == 2 and all(len(c) <= 4096 for c in chunks)
-    assert " ".join(chunks) == text

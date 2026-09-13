@@ -15,7 +15,7 @@ from tracking.env_prompt_block import EnvPromptBlock
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.prompt import (
     MemoryBatchPrompt, MemoryPrompt, OutputBatchPrompt, OutputPrompt, Prompt, SignalsBatchPrompt, SignalsPrompt,
-    TextPrompt, build_output_definition, build_output_definition_for_names,
+    TextPrompt, build_output_definition_for_names,
 )
 from tracking.tracking_service import TrackingService
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
@@ -62,11 +62,9 @@ class TurnByTurnSignalSource:
         if expected_row is not None and expected_row['expected_state']:
             signal_names |= self._automaton.triggerable_signal_names(expected_row['expected_state'])
 
-        nearest = self._db.get_nearest_tracking_row_by_message(self._session_id, message_id)
-        if nearest is not None:
-            real_state = nearest['new_state'] or nearest['old_state']
-            if real_state:
-                signal_names |= self._automaton.triggerable_signal_names(real_state)
+        real_state = self._db.nearest_tracked_state_by_message(self._session_id, message_id)
+        if real_state:
+            signal_names |= self._automaton.triggerable_signal_names(real_state)
 
         signal_definition = Signals(FixedProjectContext(self._automaton), self._db).get_definition(signal_names)
 
@@ -77,7 +75,7 @@ class TurnByTurnSignalSource:
         env_block = EnvPromptBlock.for_state(self._env, self._automaton, state)
         if env_block is not None:
             base_prompt = f"{base_prompt}\n\n{env_block.text()}"
-        output_definition = build_output_definition(self._automaton, state)
+        output_definition = build_output_definition_for_names(self._automaton, state.output)
         if output_definition:
             base_prompt = f"{base_prompt}\n\n{output_definition}"
 

@@ -1,11 +1,12 @@
 import { getSessions } from './api.js'
 import { createChatStore } from './chatStoreFactory.js'
+import { chatChannel } from './skills/registry.js'
 
 export {
   audioEnabled, spokenTextEnabled, inputTokenBudgetPerTurn, totalTokenBudgetPerSession,
   setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, toggleSpokenText,
 } from './chatStoreFactory.js'
-export { applyAspect, invalidateSkin, setSkinCss } from './chatSkin.js'
+export { applyAspect, invalidateSkin } from './chatSkin.js'
 
 // The app's one live chat — App.vue's own always-mounted widget. Never
 // shares a session/messages/state with EditProjectView's embedded "Run"
@@ -13,6 +14,7 @@ export { applyAspect, invalidateSkin, setSkinCss } from './chatSkin.js'
 // createChatStore() instance.
 export const liveStore = createChatStore({
   kind: 'live',
+  channel: chatChannel,
   getSessionsList: (includeImported, projectId) => getSessions(projectId, includeImported),
   confirmNewSession: true,
   useAutoTracking: false,

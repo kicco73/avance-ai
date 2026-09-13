@@ -87,7 +87,7 @@ def test_undo_and_redo_are_pure_previews_walking_the_full_trail_without_ever_tou
 
 
 @pytest.mark.regression
-def test_history_is_scoped_per_user_and_clear_history_drops_only_that_users_trail_for_that_project(db):
+def test_history_is_scoped_per_user_and_per_project(db):
     _save(db, b"alice-v0", user="alice")
     _save(db, b"alice-v1", user="alice")
     _save(db, b"n0", user="alice", name="notes.txt", content_type="text/plain")
@@ -102,14 +102,9 @@ def test_history_is_scoped_per_user_and_clear_history_drops_only_that_users_trai
     assert db.has_undo("bob", "proj", "notes.txt") is False
     assert db.undo_project_file("bob", "proj", "notes.txt", b"whatever bob has open") is None
     assert db.has_undo("alice", "proj", "notes.txt") is True
-
-    db.clear_history("alice", "proj")
-
-    assert db.has_undo("alice", "proj", "index.yml") is False
-    assert db.has_undo("alice", "proj", "notes.txt") is False
     assert db.has_undo("bob", "proj", "index.yml") is True
     assert db.has_undo("alice", "proj-b", "index.yml") is True
-    # Clearing history never touches current content.
+
     assert db.get_archive("proj", "index.yml") == b"bob-v1"
     assert db.get_archive("proj", "notes.txt") == b"n1"
 

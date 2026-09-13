@@ -82,7 +82,7 @@ def _turn_service(db) -> TurnService:
 async def test_live_session_always_excludes_triggered_actions(db):
     turn_service = _turn_service(db)
 
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     names = {a["name"] for a in turn_service.buttons_for(session["id"], session["state"])}
     assert names == {"manual"}
@@ -91,7 +91,7 @@ async def test_live_session_always_excludes_triggered_actions(db):
 async def test_test_session_excludes_triggered_actions_while_auto_tracking_is_on(db):
     turn_service = _turn_service(db)
 
-    session = await turn_service.get_current_draft_session_if_any_or_create_new(None, PROJECT_ID)
+    session = await turn_service.enter_session(PROJECT_ID, 'test')
 
     assert turn_service.is_auto_tracking_enabled(session["id"]) is True
     names = {a["name"] for a in turn_service.buttons_for(session["id"], session["state"])}
@@ -100,7 +100,7 @@ async def test_test_session_excludes_triggered_actions_while_auto_tracking_is_on
 
 async def test_test_session_includes_triggered_actions_once_auto_tracking_is_off(db):
     turn_service = _turn_service(db)
-    session = await turn_service.get_current_draft_session_if_any_or_create_new(None, PROJECT_ID)
+    session = await turn_service.enter_session(PROJECT_ID, 'test')
     session_id = session["id"]
 
     turn_service.set_auto_tracking_enabled(session_id, False)
@@ -113,7 +113,7 @@ async def test_test_session_includes_triggered_actions_once_auto_tracking_is_off
 async def test_actions_field_itself_is_never_filtered(db):
     turn_service = _turn_service(db)
 
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     names = {a["name"] for a in session["state"]["actions"]}
     assert names == {"manual", "auto"}

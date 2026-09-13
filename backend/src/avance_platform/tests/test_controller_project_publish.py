@@ -33,7 +33,7 @@ def _upload_activate_publish(client, project_id: str):
     )
     assert response.status_code == 200, response.text
     assert parse_sse_result(response)["project_id"] == project_id
-    assert client.post(f"/api/skills/platform/projects/{project_id}/activate").status_code == 200
+    assert client.post(f"/api/core/projects/{project_id}/activate").status_code == 200
     assert client.post(f"/api/skills/platform/projects/{project_id}/publish", json={}).status_code == 200
 
 

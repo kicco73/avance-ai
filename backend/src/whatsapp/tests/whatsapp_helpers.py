@@ -6,37 +6,51 @@ import hmac
 import json
 import math
 import struct
+from typing import Awaitable
 
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
 from auth.auth_middleware import AuthMiddleware
 from automaton.project_services import ProjectServices
 from system import bus
-from system.bus import INPUT_TEXT, OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, POINT_SPOKEN_REPLY, Message
+from system.audio_format import PcmWavCodec
+from system.bus import (
+    INPUT_AUDIO, INPUT_TEXT, OUTPUT_AUDIO_STREAM, OUTPUT_SPEECH, POINT_SPOKEN_REPLY, Message,
+)
+from system.service_error import ServiceError
 from tracking.spoken_reply import SpokenReply
 from turn.input_listener import TurnInput
-from whatsapp.config import WhatsAppServiceConfig
-from whatsapp.whatsapp_controller import WhatsAppController
-from system.service_error import ServiceError
-from system.web_session import WebSession
-from listen.decoder import SpeechDecoder
-from listen.listen_service import ListenServiceError
-from talk.audio_stream import AudioStream
-from system.audio_format import PcmWavCodec
 from whatsapp.audio import split_wav
+from whatsapp.config import WhatsAppServiceConfig
+from whatsapp.webhook import extract_incoming
 from whatsapp.whatsapp_service import WhatsAppService
 
-
 APP_SECRET = "app-secret"
-#: Seconds the double stays inside process_turn after announcing the
-#: reply's [audio] text, standing in for the generation a real turn spends
-#: there.
-GENERATING_THE_REST_OF_THE_REPLY = 0.05
 LINKED_NUMBER = "34600000001"
 LINKED_EMAIL = "alice@example.com"
+UNKNOWN_NUMBER = "34699999999"
+PROJECT = "demo-project"
+SESSION_ID = 7
+GENERATING_THE_REST_OF_THE_REPLY = 0.05
+
+
+async def answered(work: Awaitable[None]) -> None:
+    """`work`, and everything the Bus started because of it. A channel
+    answers Meta's webhook before the turn runs, so what a test is waiting
+    for is never finished when the call it made returns."""
+    before = set(asyncio.all_tasks())
+    await work
+    while True:
+        pending = [
+            task for task in asyncio.all_tasks()
+            if task not in before and task is not asyncio.current_task() and not task.done()
+        ]
+        if not pending:
+            return
+        await asyncio.gather(*pending, return_exceptions=True)
 
 
 class _FakeCloudApi:
@@ -48,7 +62,6 @@ class _FakeCloudApi:
         self.audio_sent: list[tuple[str, str]] = []
         self.media: dict[str, tuple[bytes, str]] = {"media-in-1": (b"OggS-fake-opus", "audio/ogg; codecs=opus")}
         self.fail_upload = False
-        # Every outbound call in order, to assert voice-vs-text-vs-buttons sequencing.
         self.timeline: list[str] = []
 
     async def send_text(self, to, body):
@@ -85,17 +98,25 @@ class _FakeCloudApi:
     async def close(self):
         pass
 
+    @property
+    def bodies(self) -> list[str]:
+        return [body for _, body in self.sent]
+
 
 class _FakeDb:
     def __init__(self) -> None:
         self.users = {LINKED_NUMBER: {"id": LINKED_EMAIL, "email": LINKED_EMAIL, "role": "user"}}
         self.messages: list[dict] = []
+        self.active_project = PROJECT
 
     def get_user_by_whatsapp_phone_number(self, whatsapp_phone_number):
         return self.users.get(whatsapp_phone_number)
 
     def get_user_by_id(self, user_id):
         return next((user for user in self.users.values() if user["id"] == user_id), None)
+
+    def get_active_project_id(self, user):
+        return self.active_project
 
     def get_messages(self, session_id, last_n=None):
         rows = [m for m in self.messages if m["session_id"] == session_id]
@@ -104,7 +125,7 @@ class _FakeDb:
     def add(self, session_id, role, content, audio_text=None):
         self.messages.append({
             "id": len(self.messages) + 1, "session_id": session_id, "role": role, "content": content,
-            "audio_text": audio_text,
+            "audio_text": audio_text, "timestamp": None,
         })
         return self.messages[-1]["id"]
 
@@ -131,163 +152,154 @@ class _FakeAuthService:
         return project_name
 
 
-class _FakeChatService:
-    """Records who it was called as (WebSession().user) and lets a test
-    script the session bootstrap payload, the current state's own
-    actions, the choices it offers, and the turn/action outcome."""
+class _FakeTurns:
+    """What core runs turns with, as this channel meets it — reached only
+    through `turn/input_listener.py`, which is the real one."""
 
     def __init__(self, db: _FakeDb) -> None:
         self.db = db
-        self.session_payload: dict = {"id": 7}
-        # What acquire_exclusive_session returns once accept_legal_terms
-        # has been called — the resolved shape a real TurnService would
-        # reach once the pending gate no longer applies.
-        self.resolved_session_payload: dict = {"id": 7}
+        self.state: dict = {"key": "x", "ui_label": "X", "actions": []}
+        self.buttons: list[dict] = []
+        self.session: dict = {"id": SESSION_ID, "channel": "whatsapp", "project_id": PROJECT}
+        self.created: dict = {"id": SESSION_ID + 1, "channel": "whatsapp", "project_id": PROJECT}
+        self.calls: list[tuple] = []
         self.turn_error: ServiceError | None = None
         self.action_error: Exception | None = None
-        # When True, the first raise of turn_error/action_error clears it,
-        # so a retried call (session_closed/session_not_found) succeeds —
-        # simulates the fresh session a real retry would actually get.
-        self.turn_error_clears_after_raise = False
-        self.action_error_clears_after_raise = False
-        self.opening_message: str | None = None
-        self.wrap_up_message: str | None = None
-        self.calls: list[tuple] = []
-        self.state: dict = {"key": "x", "ui_label": "X", "actions": []}
-        # What the state offers to press, as its own thing: the state
-        # payload does not carry the choices (see TurnService.buttons_for).
-        self.buttons: list[dict] = []
         self.action_reply_message: str | None = None
+        self.wrap_up_message: str | None = None
         self.reply_audio_text: str | None = None
+        self.announces_audio = True
+        self.announced_audio_text: str | None = None
         self.terms_content: str = "Please accept to continue."
         self.accepted_terms_for: list[str] = []
         self.in_turn = False
-        # When True, process_turn persists the user message but reports no
-        self.announces_audio = True
-        self.announced_audio_text: str | None = None
 
-    async def acquire_exclusive_session(self):
-        self.calls.append(("session", WebSession().user))
-        return self.session_payload
+    # --- entering ---------------------------------------------------- #
 
-    def get_legal_terms_status(self, project_name):
-        self.calls.append(("terms_status", project_name))
-        return {"pending": True, "content": self.terms_content}
+    async def enter_session(self, project_id, type):
+        self.calls.append(("enter", project_id, type))
+        return self._payload(self.session)
 
-    def accept_legal_terms(self, project_name):
-        self.calls.append(("accept_terms", project_name))
-        self.accepted_terms_for.append(project_name)
-        self.session_payload = self.resolved_session_payload
+    async def create_session_of(self, project_id, type):
+        self.calls.append(("create", project_id, type))
+        self.session = self.created
+        return self._payload(self.created)
 
-    async def open_if_needed(self, session_id, on_metadata=None):
-        """Opening is something a channel asks for, like the real one:
-        reading the transcript does not do it for anybody any more (see
-        TurnService.read_history)."""
-        if self.opening_message and not self.db.get_messages(session_id):
-            self.db.add(session_id, "assistant", self.opening_message)
-        return None
+    def _payload(self, session: dict) -> dict:
+        return {**session, "state": self.state} if "id" in session else dict(session)
 
     def read_history(self, session_id, last_n=None):
         return self.db.get_messages(session_id)
 
-    async def prepare_user_initiated_turn(self, session_id):
-        """Returns what it persisted, like the real one: the wrap-up is
-        not in the turn's own reply, so a caller that reports the turn
-        would otherwise never hear about it."""
-        if self.wrap_up_message and not self.db.get_messages(session_id):
-            return [self.db.row(self.db.add(session_id, "assistant", self.wrap_up_message))]
-        return []
-
-    def get_state_for_session(self, session_id):
-        return self.state
+    def services_for(self, session_id):
+        return {}
 
     def buttons_for(self, session_id, state_payload):
         return self.buttons
 
+    # --- one exchange ------------------------------------------------- #
+
+    async def prepare_user_initiated_turn(self, session_id):
+        if self.wrap_up_message and not self.db.get_messages(session_id):
+            return [self.db.row(self.db.add(session_id, "assistant", self.wrap_up_message))]
+        return []
+
     def accept_user_message(self, session_id, text):
-        """Persisted before the turn runs and handed over as an id, like
-        the real one — a turn that never happens still leaves the message
-        the person sent."""
+        if self.turn_error is not None:
+            raise self.turn_error
         return self.db.add(session_id, "user", text)
 
     def spoken_reply_wanted(self, session_id):
-        """The real question core asks before building the prompt (see
-        tracking/spoken_reply.py): nobody wanting it, or nothing able to
-        speak, and the reply is never given an [audio] text at all."""
         return bus.collect(
             POINT_SPOKEN_REPLY, SpokenReply(services=ProjectServices({}), session_id=session_id),
         ).asked
 
     async def process_turn(self, session_id, text, on_metadata=None, user_message_ids=None):
-        self.calls.append(("turn", WebSession().user))
-        if self.turn_error is not None:
-            error = self.turn_error
-            if self.turn_error_clears_after_raise:
-                self.turn_error = None
-            raise error
+        self.calls.append(("turn", session_id, text))
         self.in_turn = True
         try:
-            # The real turn emits the reply's [audio] text well before the
-            # rest of the reply is written, and then spends seconds writing
-            # it — long enough for the synthesis that announcement starts
-            # to get going. On the Bus that is a queued frame, a drain task
-            # and a listener away, so the double has to stay in the turn
-            # for more than the single loop tick it used to.
             audio_text = self.reply_audio_text if self.spoken_reply_wanted(session_id) else None
-            # The real turn emits the reply's spoken text well before the
-            # rest of the reply is written, and then spends seconds
-            # writing it — long enough for the synthesis that announcement
-            # starts to get going.
             if on_metadata is not None and self.announces_audio and audio_text:
                 on_metadata("audio", self.announced_audio_text or audio_text)
                 await asyncio.sleep(GENERATING_THE_REST_OF_THE_REPLY)
-            if not user_message_ids:
-                self.db.add(session_id, "user", text)
             assistant_id = self.db.add(
                 session_id, "assistant", f"**Hola** — has dicho: {text}", audio_text=audio_text,
             )
         finally:
             self.in_turn = False
-        # `reply` is the turn's own assistant message, exactly one, same
-        # as TrackingProcessor._build_turn_response — and never the
-        # wrap-up that prepare_user_initiated_turn wrote.
         return {
             "session_id": session_id, "state": self.state, "buttons": self.buttons,
-            "assistant_message_id": assistant_id,
-            "reply": [self.db.row(assistant_id)],
+            "assistant_message_id": assistant_id, "reply": [self.db.row(assistant_id)],
         }
 
-    async def apply_manual_action(self, action_name, session_id):
-        self.calls.append(("action", WebSession().user, action_name))
+    async def apply_manual_action(self, action_name, session_id, on_metadata=None):
+        self.calls.append(("action", session_id, action_name))
         if self.action_error is not None:
-            error = self.action_error
-            if self.action_error_clears_after_raise:
-                self.action_error = None
-            raise error
+            raise self.action_error
         reply = []
         if self.action_reply_message:
             reply = [self.db.row(self.db.add(session_id, "assistant", self.action_reply_message))]
-        return {"session_id": session_id, "state": self.state, "buttons": self.buttons, "reply": reply}
+        return {
+            "session_id": session_id, "state": self.state, "state_changed": True,
+            "new_state": self.state["key"], "triggered_action": action_name,
+            "buttons": self.buttons, "reply": reply,
+        }
+
+    async def record_unsolicited_reply(self, username, project_id, content):
+        self.calls.append(("unsolicited", username, project_id))
+        self.db.add(SESSION_ID, "assistant", content)
+
+    # --- terms --------------------------------------------------------- #
+
+    def get_legal_terms_status(self, project_id):
+        self.calls.append(("terms_status", project_id))
+        return {"pending": True, "content": self.terms_content}
+
+    def accept_legal_terms(self, project_id):
+        self.calls.append(("accept_terms", project_id))
+        self.accepted_terms_for.append(project_id)
+        self.session = {"id": SESSION_ID, "channel": "whatsapp", "project_id": PROJECT}
 
 
 def _wav(seconds: float = 0.5, rate: int = 22050) -> bytes:
-    pcm = b"".join(struct.pack("<h", int(8000 * math.sin(2 * math.pi * 440 * i / rate))) for i in range(int(rate * seconds)))
+    pcm = b"".join(
+        struct.pack("<h", int(8000 * math.sin(2 * math.pi * 440 * i / rate)))
+        for i in range(int(rate * seconds))
+    )
     return PcmWavCodec.to_wav(pcm, rate)
 
 
-class _FakeTalk:
-    """TalkService stand-in: streams the WAV the way the real one does
-    (streaming header first, then PCM chunks)."""
+class _SpokenText:
+
+    def __init__(self, speaker: "_FakeSpeaker", text: str) -> None:
+        self._speaker = speaker
+        self._text = text
+
+    def chunks(self):
+        return self._speaker.generate(self._text)
+
+
+class _FakeSpeaker:
+    """Whoever speaks in this build, as this channel meets it: one
+    listener for `output.speech` answering with `output.audio_stream`."""
 
     def __init__(self) -> None:
         self.spoken: list[str] = []
         self.silent = False
-        self.chat: _FakeChatService | None = None
+        self.turns: _FakeTurns | None = None
         self.requested_during_turn: list[bool] = []
+
+    def register(self) -> None:
+        bus.subscribe(OUTPUT_SPEECH, self._speak)
+
+    async def _speak(self, message: Message) -> None:
+        await bus.publish(message.converted(
+            OUTPUT_AUDIO_STREAM, {"stream": _SpokenText(self, str(message.body["text"]))}, mime="audio/wav",
+        ))
 
     async def generate(self, text):
         self.spoken.append(text)
-        self.requested_during_turn.append(self.chat.in_turn if self.chat is not None else False)
+        self.requested_during_turn.append(self.turns.in_turn if self.turns is not None else False)
         if self.silent:
             return
         pcm, rate = split_wav(_wav())
@@ -296,17 +308,31 @@ class _FakeTalk:
             yield pcm[i:i + 4096]
 
 
-class _FakeListen:
+class _FakeDecoder:
+    """Whoever decodes speech in this build: one listener for
+    `input.audio` answering with `input.text` on the same envelope."""
+
     def __init__(self, transcript: str = "hola por voz") -> None:
         self.transcript = transcript
         self.heard: list[bytes] = []
-        self.fail = False
 
-    async def transcribe(self, audio):
-        self.heard.append(audio)
-        if self.fail:
-            raise ListenServiceError("whisper down")
-        return self.transcript
+    def register(self) -> None:
+        bus.subscribe(INPUT_AUDIO, self._decode)
+
+    async def _decode(self, message: Message) -> None:
+        source = (message.body or {}).get("audio")
+        self.heard.append(await source() if callable(source) else source)
+        await self._answer(message)
+
+    async def _answer(self, message: Message) -> None:
+        await bus.publish(message.converted(INPUT_TEXT, {"text": self.transcript}))
+
+
+class _SpeechlessDecoder(_FakeDecoder):
+    """Registered for the same audio and making no words of it."""
+
+    async def _answer(self, message: Message) -> None:
+        return
 
 
 def _config(**overrides) -> WhatsAppServiceConfig:
@@ -319,38 +345,71 @@ def _config(**overrides) -> WhatsAppServiceConfig:
     return WhatsAppServiceConfig(**values)
 
 
+class Env:
+    """One channel, wired the way the skill wires it: the service, the
+    Cloud API it speaks through, and the real `TurnInput` behind the Bus."""
+
+    def __init__(self, config=None, speaker=None, decoder=None) -> None:
+        bus._reset_for_tests()
+        self.db = _FakeDb()
+        self.turns = _FakeTurns(self.db)
+        self.api = _FakeCloudApi()
+        self.auth = _FakeAuthService(self.db)
+        self.speaker = speaker
+        self.decoder = decoder
+        for registered in filter(None, [decoder]):
+            registered.register()
+        for registered in filter(None, [speaker]):
+            registered.register()
+            registered.turns = self.turns
+            bus.contribute(POINT_SPOKEN_REPLY, lambda spoken: spoken.ask())
+        self.config = config or _config()
+        self.service = WhatsAppService(self.config, self.turns, self.db, self.auth, client=self.api)
+        self.controllers: list = []
+        self.service.listen(self.controllers)
+        TurnInput(self.turns, self.db).register()
+
+    async def arrives(self, payload: dict) -> None:
+        for incoming in extract_incoming(payload):
+            await answered(self.service.receive(incoming))
+
+    def client(self) -> TestClient:
+        app = FastAPI()
+        app.add_middleware(AuthMiddleware)
+        router = APIRouter()
+        self.controllers[0].register_routes(router)
+        app.include_router(router)
+        return TestClient(app)
+
+
+@pytest.fixture
+def env() -> Env:
+    return Env()
+
+
+@pytest.fixture
+def voice_env() -> Env:
+    return Env(speaker=_FakeSpeaker(), decoder=_FakeDecoder())
+
+
 def _payload(msg_id="wamid.1", sender=LINKED_NUMBER, text="hola", mtype="text") -> dict:
     message = {"from": sender, "id": msg_id, "timestamp": "1749416383", "type": mtype}
     if mtype == "text":
         message["text"] = {"body": text}
     elif mtype == "audio":
-        # Real shape of an inbound voice note: no bytes, just a media id to download.
         message["audio"] = {"id": "media-in-1", "mime_type": "audio/ogg; codecs=opus", "voice": True}
-    return {"object": "whatsapp_business_account", "entry": [{"id": "WABA", "changes": [{"field": "messages", "value": {
-        "messaging_product": "whatsapp",
-        "metadata": {"display_phone_number": "34900000000", "phone_number_id": "123"},
-        "contacts": [{"profile": {"name": "Alice"}, "wa_id": sender}],
-        "messages": [message],
-    }}]}]}
+    return _envelope(message, sender)
 
 
-# Real Meta webhook shapes for a tapped reply button and a tapped list
-# row — _interactive_payload below builds the same `messages[0]` shape
-# generically, `kind`/`reply` matching the two "interactive" sub-objects
-# actually seen on the wire:
-#
-# button_reply: {"type": "interactive", "interactive": {
-#     "type": "button_reply", "button_reply": {"id": "go", "title": "Go"},
-# }}
-# list_reply: {"type": "interactive", "interactive": {
-#     "type": "list_reply", "list_reply": {"id": "opt2", "title": "Option 2", "description": "..."},
-# }}
 def _interactive_payload(msg_id="wamid.1", sender=LINKED_NUMBER, kind="button_reply", reply=None) -> dict:
     reply = reply or {"id": "go", "title": "Go"}
-    message = {
+    return _envelope({
         "from": sender, "id": msg_id, "timestamp": "1749416383", "type": "interactive",
         "interactive": {"type": kind, kind: reply},
-    }
+    }, sender)
+
+
+def _envelope(message: dict, sender: str) -> dict:
     return {"object": "whatsapp_business_account", "entry": [{"id": "WABA", "changes": [{"field": "messages", "value": {
         "messaging_product": "whatsapp",
         "metadata": {"display_phone_number": "34900000000", "phone_number_id": "123"},
@@ -370,69 +429,12 @@ def _sign(body: bytes) -> str:
     return "sha256=" + hmac.new(APP_SECRET.encode(), body, hashlib.sha256).hexdigest()
 
 
-def _build(config=None, talk=None, listen=None):
-    db = _FakeDb()
-    chat = _FakeChatService(db)
-    api = _FakeCloudApi()
-    auth = _FakeAuthService(db)
-    if listen is not None:
-        # Listen reaches this channel through the Bus now, never as a
-        # constructor argument: the service does not know it exists.
-        SpeechDecoder(listen).register()
-    # Stands in for the talk skill: registered for output.speech, it
-    # answers with output.audio on the same envelope. One listener per
-    # _build, so a second call in the same test never answers the first's.
-    bus._listeners[OUTPUT_SPEECH] = []
-    if talk is not None:
-        async def speak(message: Message) -> None:
-            await bus.publish(message.converted(
-                OUTPUT_AUDIO_STREAM, {"stream": AudioStream(talk, str(message.body["text"]))}, mime="audio/wav",
-            ))
-
-        bus.subscribe(OUTPUT_SPEECH, speak)
-        # The other half of what the talk skill registers: a build that
-        # can speak says so where the prompt is built (see talk/skill.py's
-        # own POINT_SPOKEN_REPLY contributor), and a turn is only ever
-        # given an [audio] text when something answered there.
-        bus.contribute(POINT_SPOKEN_REPLY, lambda spoken: spoken.ask())
-    service_config = config or _config()
-    service = WhatsAppService(service_config, chat, db, auth, client=api)
-    service.register()
-    # Turns are run by core, off the Bus, exactly as they are in the real
-    # process: this channel posts `input.text` and reads the frames that
-    # come back (see turn/input_listener.py). One listener per _build, like
-    # output.speech below: a second env in the same test must not have the
-    # first one's turn service answer for it.
-    bus._listeners[INPUT_TEXT] = []
-    TurnInput(chat, db).register()
-    app = FastAPI()
-    # The real app's login wall sits in front of these routes too — they
-    # must be reachable with no cookie at all (role=None).
-    app.add_middleware(AuthMiddleware)
-    from fastapi import APIRouter
-    router = APIRouter()
-    WhatsAppController(service, service_config).register_routes(router)
-    app.include_router(router)
-    return TestClient(app), service, chat, db, api
-
-
-@pytest.fixture
-def env():
-    return _build()
-
-
-@pytest.fixture
-def voice_env():
-    """Both voice services on, default policy (answer in kind)."""
-    talk, listen = _FakeTalk(), _FakeListen()
-    client, service, chat, db, api = _build(talk=talk, listen=listen)
-    talk.chat = chat
-    return client, service, chat, db, api, talk, listen
-
-
 def _post(client, payload, signature=None):
     body = json.dumps(payload).encode()
     return client.post(
         "/api/skills/whatsapp/webhook", content=body,
-        headers={"Content-Type": "application/json", "X-Hub-Signature-256": signature if signature is not None else _sign(body)},
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": signature if signature is not None else _sign(body),
+        },
     )

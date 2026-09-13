@@ -12,6 +12,7 @@ from automaton.file_types import ProjectFileTypes
 from automaton.build_error import AutomatonBuildError
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
 from db import ContentRestored, Db, FileRenamed
+from system.doc_catalog import DOCS_DIR
 from system.logging_factory import LoggerFactory
 from system.web_session import WebSession
 from tracking.project_files import PROJECT_FILE_CACHE
@@ -24,17 +25,11 @@ from .archive.layout import (
     ASPECT_DIR, BEHAVIOUR_DIR, ArchiveLayout, LEGAL_TERMS_FILE_NAME, LEGAL_TERMS_SKELETON, ROOT_FILE_NAMES,
     SOURCES_DIR,
 )
-from .types import CommitCallback
 
 if TYPE_CHECKING:
     from ai import AiService
 
 logger = LoggerFactory.get_logger(__name__)
-
-# backend/src/docs/ — same directory StudioController.get_doc serves
-# PROJECT_SPECS.md from (as "project-specs"); read directly here rather
-# than going through that endpoint since this runs server-side.
-DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
 
 # Both AI-edit prompts below share this placeholder for the format spec's
 # own text, substituted with .replace() rather than str.format() — the
@@ -150,7 +145,7 @@ class ProjectEditor:
         matches = [name for name in names if Path(name).name == file_name]
         return matches[0] if len(matches) == 1 else file_name
 
-    def _file_undo_redo_info(self, project_id: str, file_name: str) -> dict:
+    def get_project_file(self, project_id: str, file_name: str) -> dict:
         file_name = self._resolve_file_name(project_id, file_name)
         content = self._db.get_archive(project_id, file_name)
         if content is None:
@@ -179,11 +174,6 @@ class ProjectEditor:
         names.sort(key=lambda name: (name != "index.yml", name))
         return names
 
-    def get_project_file(self, project_id: str, file_name: str) -> dict:
-        """{content, can_undo, can_redo} for `file_name`'s current
-        content, scoped to the current user."""
-        return self._file_undo_redo_info(project_id, file_name)
-
     async def _run_ai_edit(self, system_prompt_template: str, spec_file_name: str, user_turn: str) -> str:
         """Shared by generate_index_yml_ai_edit/generate_index_css_ai_edit
         below: fills `system_prompt_template`'s %%SPEC%% placeholder with
@@ -198,6 +188,23 @@ class ProjectEditor:
         match = _CODE_FENCE_RE.search(reply)
         return (match.group(1) if match else reply).strip() + "\n"
 
+    async def _generate_file_ai_edit(
+        self, project_id: str, instruction: str, file_name: str, directory: str, fence_language: str,
+        spec_file_name: str, uploads_label: str, system_prompt_template: str,
+    ) -> str:
+        content = self._db.get_archive(project_id, file_name)
+        if content is None:
+            raise FileNotFoundError(f"Project '{project_id}' has no {file_name}.")
+        existing_names = self._db.list_archives(project_id)
+        upload_names = sorted(Path(name).name for name in existing_names if name.startswith(f"{directory}/"))
+        uploads_line = ", ".join(upload_names) if upload_names else "(none uploaded yet)"
+        user_turn = (
+            f"Current {file_name}:\n```{fence_language}\n{content.decode('utf-8')}\n```\n\n"
+            f"{uploads_label} already uploaded under {directory}/: {uploads_line}\n\n"
+            f"Requested change:\n{instruction}"
+        )
+        return await self._run_ai_edit(system_prompt_template, spec_file_name, user_turn)
+
     async def generate_index_yml_ai_edit(self, project_id: str, instruction: str) -> str:
         """Backs the "Edit project" index.yml editor's AI button
         (IndexYmlEditorPanel.vue): sends the AiService a prompt built from
@@ -210,18 +217,10 @@ class ProjectEditor:
         new index.yml content it replies with. A pure preview, same as
         undo/redo above — nothing is persisted here, the frontend drops
         the result into its own (unsaved) editor buffer."""
-        content = self._db.get_archive(project_id, "index.yml")
-        if content is None:
-            raise FileNotFoundError(f"Project '{project_id}' has no index.yml.")
-        existing_names = self._db.list_archives(project_id)
-        attachment_names = sorted(Path(name).name for name in existing_names if name.startswith(f"{BEHAVIOUR_DIR}/"))
-        attachments_line = ", ".join(attachment_names) if attachment_names else "(none uploaded yet)"
-        user_turn = (
-            f"Current index.yml:\n```yaml\n{content.decode('utf-8')}\n```\n\n"
-            f"Attachments already uploaded under behaviour/: {attachments_line}\n\n"
-            f"Requested change:\n{instruction}"
+        return await self._generate_file_ai_edit(
+            project_id, instruction, "index.yml", BEHAVIOUR_DIR, "yaml",
+            "PROJECT_SPECS.md", "Attachments", INDEX_YML_AI_EDIT_SYSTEM_PROMPT,
         )
-        return await self._run_ai_edit(INDEX_YML_AI_EDIT_SYSTEM_PROMPT, "PROJECT_SPECS.md", user_turn)
 
     async def generate_index_css_ai_edit(self, project_id: str, instruction: str) -> str:
         """Backs the "Edit project" index.css (Aspect) editor's AI button
@@ -231,18 +230,10 @@ class ProjectEditor:
         uploaded `aspect/` assets (so the model never invents a `url(...)`
         reference to a file that doesn't exist), and `instruction`. A pure
         preview, nothing persisted here — see generate_index_yml_ai_edit."""
-        content = self._db.get_archive(project_id, "index.css")
-        if content is None:
-            raise FileNotFoundError(f"Project '{project_id}' has no index.css.")
-        existing_names = self._db.list_archives(project_id)
-        asset_names = sorted(Path(name).name for name in existing_names if name.startswith(f"{ASPECT_DIR}/"))
-        assets_line = ", ".join(asset_names) if asset_names else "(none uploaded yet)"
-        user_turn = (
-            f"Current index.css:\n```css\n{content.decode('utf-8')}\n```\n\n"
-            f"Assets already uploaded under aspect/: {assets_line}\n\n"
-            f"Requested change:\n{instruction}"
+        return await self._generate_file_ai_edit(
+            project_id, instruction, "index.css", ASPECT_DIR, "css",
+            "SKIN_SPECS.md", "Assets", INDEX_CSS_AI_EDIT_SYSTEM_PROMPT,
         )
-        return await self._run_ai_edit(INDEX_CSS_AI_EDIT_SYSTEM_PROMPT, "SKIN_SPECS.md", user_turn)
 
     def get_project_file_content(
         self, project_id: str, file_name: str, session_id: int | None
@@ -261,12 +252,9 @@ class ProjectEditor:
         onto the same origin — not in dev, where they're on two different
         ports with no proxy between them."""
         revision = self._inspector._resolve_inspector_revision(project_id, session_id)
-        return self._get_file_content_at_revision(project_id, file_name, revision)
+        return self.get_project_file_content_at_revision(project_id, file_name, revision)
 
     def get_project_file_content_at_revision(self, project_id: str, file_name: str, revision: int) -> tuple[bytes, str]:
-        return self._get_file_content_at_revision(project_id, file_name, revision)
-
-    def _get_file_content_at_revision(self, project_id: str, file_name: str, revision: int) -> tuple[bytes, str]:
         file_name = self._resolve_file_name(project_id, file_name, revision)
         content = self._db.get_archive(project_id, file_name, revision=revision)
         if content is None:
@@ -276,8 +264,7 @@ class ProjectEditor:
         return content, content_type
 
     async def put_project_file(
-        self, project_id: str, file_name: str, content: bytes | str, content_type_header: str | None,
-        commit: CommitCallback,
+        self, project_id: str, file_name: str, content: bytes | str, content_type_header: str | None
     ) -> dict:
         """Creates or edits one of `project_id`'s files in place. A text
         extension is decoded as UTF-8, content_type inferred from the
@@ -339,11 +326,11 @@ class ProjectEditor:
 
         if to_persist is not None:
             self._db.save_project_file(WebSession().user, project_id, file_name, to_save, content_type)
-        project_id = await self._manager.finalize_update(project_id, new_automaton, commit, old_family=old_family)
+        project_id = await self._manager.finalize_update(project_id, new_automaton, old_family=old_family)
 
-        return {"success": True, "project_id": project_id, **self._file_undo_redo_info(project_id, file_name)}
+        return {"success": True, "project_id": project_id, **self.get_project_file(project_id, file_name)}
 
-    async def rename_project_file(self, project_id: str, old_name: str, new_name: str, commit: CommitCallback) -> dict:
+    async def rename_project_file(self, project_id: str, old_name: str, new_name: str) -> dict:
         """Renames one file within the current draft revision, keeping its
         content and its own category (aspect/behaviour) unchanged — only
         the basename is user-editable, same as an upload's target name is
@@ -417,14 +404,14 @@ class ProjectEditor:
             raise ValueError(f"Invalid project update: {exc}") from exc
 
         self._db.rename_project_file(WebSession().user, project_id, old_name, new_name, updated_files, content_types)
-        project_id = await self._manager.finalize_update(project_id, new_automaton, commit)
+        project_id = await self._manager.finalize_update(project_id, new_automaton)
 
         return {
             "success": True, "project_id": project_id, "old_name": old_name, "new_name": new_name,
-            **self._file_undo_redo_info(project_id, new_name),
+            **self.get_project_file(project_id, new_name),
         }
 
-    async def add_legal_terms(self, project_id: str, commit: CommitCallback) -> dict:
+    async def add_legal_terms(self, project_id: str) -> dict:
         """Seeds a fresh legal/terms.md with LEGAL_TERMS_SKELETON — the
         "New legal" file-explorer action. Rejects if the file already
         exists, since put_project_file would otherwise silently overwrite
@@ -433,91 +420,91 @@ class ProjectEditor:
             raise FileNotFoundError(f"Project '{project_id}' does not exist.")
         if LEGAL_TERMS_FILE_NAME in self._db.list_archives(project_id):
             raise ValueError(f"'{LEGAL_TERMS_FILE_NAME}' already exists.")
-        return await self.put_project_file(project_id, LEGAL_TERMS_FILE_NAME, LEGAL_TERMS_SKELETON, None, commit)
+        return await self.put_project_file(project_id, LEGAL_TERMS_FILE_NAME, LEGAL_TERMS_SKELETON, None)
 
-    async def _edit_index_yml_returning_project_id(self, project_id: str, commit: CommitCallback, operation):
-        current = self._file_undo_redo_info(project_id, "index.yml")["content"]
+    async def _edit_index_yml_returning_project_id(self, project_id: str, operation):
+        current = self.get_project_file(project_id, "index.yml")["content"]
         editor = AutomatonYamlEditor(current)
         result = operation(editor)
-        saved = await self.put_project_file(project_id, "index.yml", editor.serialize(), None, commit)
+        saved = await self.put_project_file(project_id, "index.yml", editor.serialize(), None)
         return result, saved["project_id"]
 
-    async def _edit_index_yml(self, project_id: str, commit: CommitCallback, operation):
+    async def _edit_index_yml(self, project_id: str, operation):
         """Runs `operation(editor: AutomatonYamlEditor) -> T` against
         `project_id`'s index.yml text, persists it via put_project_file,
         and returns `operation`'s own result untouched."""
-        result, _ = await self._edit_index_yml_returning_project_id(project_id, commit, operation)
+        result, _ = await self._edit_index_yml_returning_project_id(project_id, operation)
         return result
 
-    async def add_state(self, project_id: str, commit: CommitCallback) -> StatePayload:
-        return await self._edit_index_yml(project_id, commit, lambda editor: editor.add_state())
+    async def add_state(self, project_id: str) -> StatePayload:
+        return await self._edit_index_yml(project_id, lambda editor: editor.add_state())
 
-    async def add_signal(self, project_id: str, commit: CommitCallback) -> SignalPayload:
-        return await self._edit_index_yml(project_id, commit, lambda editor: editor.add_signal())
+    async def add_signal(self, project_id: str) -> SignalPayload:
+        return await self._edit_index_yml(project_id, lambda editor: editor.add_signal())
 
-    async def add_action(self, project_id: str, state_name: str, commit: CommitCallback) -> ActionPayload:
-        return await self._edit_index_yml(project_id, commit, lambda editor: editor.add_action(state_name))
+    async def add_action(self, project_id: str, state_name: str) -> ActionPayload:
+        return await self._edit_index_yml(project_id, lambda editor: editor.add_action(state_name))
 
     async def set_state_field(
-        self, project_id: str, state_name: str, field: str, value, commit: CommitCallback
+        self, project_id: str, state_name: str, field: str, value
     ) -> StatePayload:
         return await self._edit_index_yml(
-            project_id, commit, lambda editor: editor.set_state_field(state_name, field, value)
+            project_id, lambda editor: editor.set_state_field(state_name, field, value)
         )
 
     async def set_action_field(
-        self, project_id: str, state_name: str, action_name: str, field: str, value, commit: CommitCallback
+        self, project_id: str, state_name: str, action_name: str, field: str, value
     ) -> ActionPayload:
         return await self._edit_index_yml(
-            project_id, commit, lambda editor: editor.set_action_field(state_name, action_name, field, value)
+            project_id, lambda editor: editor.set_action_field(state_name, action_name, field, value)
         )
 
     async def set_signal_field(
-        self, project_id: str, signal_name: str, field: str, value, commit: CommitCallback
+        self, project_id: str, signal_name: str, field: str, value
     ) -> SignalPayload:
         return await self._edit_index_yml(
-            project_id, commit, lambda editor: editor.set_signal_field(signal_name, field, value)
+            project_id, lambda editor: editor.set_signal_field(signal_name, field, value)
         )
 
-    async def set_init_action_field(self, project_id: str, field: str, value, commit: CommitCallback):
+    async def set_init_action_field(self, project_id: str, field: str, value):
         return await self._edit_index_yml(
-            project_id, commit, lambda editor: editor.set_init_action_field(field, value)
+            project_id, lambda editor: editor.set_init_action_field(field, value)
         )
 
-    async def set_project_field(self, project_id: str, field: str, value, commit: CommitCallback) -> dict:
+    async def set_project_field(self, project_id: str, field: str, value) -> dict:
         payload, saved_project_id = await self._edit_index_yml_returning_project_id(
-            project_id, commit, lambda editor: editor.set_project_field(field, value)
+            project_id, lambda editor: editor.set_project_field(field, value)
         )
         return {**payload, "project_id": saved_project_id}
 
     async def set_service_level(
-        self, project_id: str, service: str, level: str, commit: CommitCallback
+        self, project_id: str, service: str, level: str
     ) -> ProjectPayload:
         return await self._edit_index_yml(
-            project_id, commit, lambda editor: editor.set_service_level(service, level)
+            project_id, lambda editor: editor.set_service_level(service, level)
         )
 
-    async def delete_state(self, project_id: str, state_name: str, commit: CommitCallback) -> None:
-        await self._edit_index_yml(project_id, commit, lambda editor: editor.delete_state(state_name))
+    async def delete_state(self, project_id: str, state_name: str) -> None:
+        await self._edit_index_yml(project_id, lambda editor: editor.delete_state(state_name))
 
-    async def delete_action(self, project_id: str, state_name: str, action_name: str, commit: CommitCallback) -> None:
-        await self._edit_index_yml(project_id, commit, lambda editor: editor.delete_action(state_name, action_name))
+    async def delete_action(self, project_id: str, state_name: str, action_name: str) -> None:
+        await self._edit_index_yml(project_id, lambda editor: editor.delete_action(state_name, action_name))
 
-    async def delete_signal(self, project_id: str, signal_name: str, commit: CommitCallback) -> None:
-        await self._edit_index_yml(project_id, commit, lambda editor: editor.delete_signal(signal_name))
+    async def delete_signal(self, project_id: str, signal_name: str) -> None:
+        await self._edit_index_yml(project_id, lambda editor: editor.delete_signal(signal_name))
 
-    async def add_env_key(self, project_id: str, commit: CommitCallback) -> EnvKeyPayload:
-        return await self._edit_index_yml(project_id, commit, lambda editor: editor.add_env_key())
+    async def add_env_key(self, project_id: str) -> EnvKeyPayload:
+        return await self._edit_index_yml(project_id, lambda editor: editor.add_env_key())
 
     async def set_env_key_field(
-        self, project_id: str, env_key_name: str, field: str, value, commit: CommitCallback
+        self, project_id: str, env_key_name: str, field: str, value
     ) -> EnvKeyPayload:
         return await self._edit_index_yml(
-            project_id, commit, lambda editor: editor.set_env_key_field(env_key_name, field, value)
+            project_id, lambda editor: editor.set_env_key_field(env_key_name, field, value)
         )
 
-    async def delete_env_key(self, project_id: str, env_key_name: str, commit: CommitCallback) -> None:
-        await self._edit_index_yml(project_id, commit, lambda editor: editor.delete_env_key(env_key_name))
+    async def delete_env_key(self, project_id: str, env_key_name: str) -> None:
+        await self._edit_index_yml(project_id, lambda editor: editor.delete_env_key(env_key_name))
 
     @staticmethod
     def _source_archive(source_name: str) -> str:
@@ -528,7 +515,7 @@ class ProjectEditor:
         return f"{SOURCES_DIR}/{source_name}.csv"
 
     async def add_source(
-        self, project_id: str, commit: CommitCallback, name_hint: str | None = None, content: bytes = b"",
+        self, project_id: str, name_hint: str | None = None, content: bytes = b"",
     ) -> SourcePayload:
         """A source's own archive is created empty right alongside it —
         `url` is never left unconfigured (contrast env keys/signals, which
@@ -543,10 +530,10 @@ class ProjectEditor:
             archive_name = self._source_archive(payload["name"])
             self._db.save_project_file(WebSession().user, project_id, archive_name, content, "text/csv")
             return editor.set_source_field(payload["name"], "url", f"avance:{archive_name}")
-        return await self._edit_index_yml(project_id, commit, operation)
+        return await self._edit_index_yml(project_id, operation)
 
     async def set_source_field(
-        self, project_id: str, source_name: str, field: str, value, commit: CommitCallback
+        self, project_id: str, source_name: str, field: str, value
     ) -> SourcePayload:
         """A 'name' edit also renames the source's own archive (and the
         `url` field pointing at it) to match — same "editing this field
@@ -555,7 +542,7 @@ class ProjectEditor:
         extended to a second, DB-backed side effect only sources have."""
         if field != "name":
             return await self._edit_index_yml(
-                project_id, commit, lambda editor: editor.set_source_field(source_name, field, value)
+                project_id, lambda editor: editor.set_source_field(source_name, field, value)
             )
 
         def operation(editor: AutomatonYamlEditor) -> SourcePayload:
@@ -569,11 +556,11 @@ class ProjectEditor:
                 return payload
             self._db.rename_project_file(WebSession().user, project_id, old_archive, new_archive)
             return editor.set_source_field(new_name, "url", f"avance:{new_archive}")
-        return await self._edit_index_yml(project_id, commit, operation)
+        return await self._edit_index_yml(project_id, operation)
 
-    async def delete_source(self, project_id: str, source_name: str, commit: CommitCallback) -> None:
+    async def delete_source(self, project_id: str, source_name: str) -> None:
         archive_name = self._source_archive(source_name)
-        await self._edit_index_yml(project_id, commit, lambda editor: editor.delete_source(source_name))
+        await self._edit_index_yml(project_id, lambda editor: editor.delete_source(source_name))
         if archive_name in self._db.list_archives(project_id):
             self._db.delete_archive(project_id, archive_name)
             # The archive goes after the index.yml edit that funnels
@@ -581,10 +568,10 @@ class ProjectEditor:
             PROJECT_FILE_CACHE.forget_project(project_id)
 
     async def reorder_actions(
-        self, project_id: str, state_name: str, action_name: str, position: int, commit: CommitCallback
+        self, project_id: str, state_name: str, action_name: str, position: int
     ) -> list[ActionPayload]:
         return await self._edit_index_yml(
-            project_id, commit, lambda editor: editor.reorder_actions(state_name, action_name, position)
+            project_id, lambda editor: editor.reorder_actions(state_name, action_name, position)
         )
 
     def _undo_redo_response(self, project_id: str, file_name: str, outcome: ContentRestored | FileRenamed, is_text: bool) -> dict:
@@ -596,7 +583,7 @@ class ProjectEditor:
         if isinstance(outcome, FileRenamed):
             return {
                 "success": True, "project_id": project_id, "renamed_to": outcome.active_name,
-                **self._file_undo_redo_info(project_id, outcome.active_name),
+                **self.get_project_file(project_id, outcome.active_name),
             }
         user = WebSession().user
         return {
@@ -607,54 +594,36 @@ class ProjectEditor:
             "can_redo": self._db.has_redo(user, project_id, file_name),
         }
 
+    def _restore_project_file(self, project_id: str, file_name: str, content: bytes, direction: str) -> dict:
+        if project_id not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_id}' does not exist.")
+        existing_names = self._db.list_archives(project_id)
+        resolved_name = self._resolve_file_name(project_id, file_name)
+        if resolved_name not in existing_names:
+            self._check_editable_file_name(file_name)
+        file_name = resolved_name
+        is_text = ProjectFileTypes.of(file_name).text
+        raw_content = content.encode("utf-8") if is_text and isinstance(content, str) else content
+
+        user = WebSession().user
+        restore = getattr(self._db, f"{direction}_project_file")
+        outcome = restore(user, project_id, file_name, raw_content)
+        if outcome is None:
+            raise ValueError(f"Nothing to {direction} for file '{file_name}'.")
+
+        return self._undo_redo_response(project_id, file_name, outcome, is_text)
+
     async def undo_project_file(self, project_id: str, file_name: str, content: bytes) -> dict:
         """A pure editor preview, not a persisted change — never touches
         Archive or the automaton cache. `content` is the editor's current
         unsaved state, kept so a later redo can restore it (a rename step
         ignores it — see db/history.py's own undo_project_file)."""
-        if project_id not in self._db.list_projects():
-            raise FileNotFoundError(f"Project '{project_id}' does not exist.")
-        existing_names = self._db.list_archives(project_id)
-        resolved_name = self._resolve_file_name(project_id, file_name)
-        if resolved_name not in existing_names:
-            self._check_editable_file_name(file_name)
-        file_name = resolved_name
-        is_text = ProjectFileTypes.of(file_name).text
-        raw_content = content.encode("utf-8") if is_text and isinstance(content, str) else content
-
-        user = WebSession().user
-        outcome = self._db.undo_project_file(user, project_id, file_name, raw_content)
-        if outcome is None:
-            raise ValueError(f"Nothing to undo for file '{file_name}'.")
-
-        return self._undo_redo_response(project_id, file_name, outcome, is_text)
+        return self._restore_project_file(project_id, file_name, content, "undo")
 
     async def redo_project_file(self, project_id: str, file_name: str, content: bytes) -> dict:
         """Mirror of undo_project_file, replaying the current user's own
         redo history instead (see db.Db.redo_project_file)."""
-        if project_id not in self._db.list_projects():
-            raise FileNotFoundError(f"Project '{project_id}' does not exist.")
-        existing_names = self._db.list_archives(project_id)
-        resolved_name = self._resolve_file_name(project_id, file_name)
-        if resolved_name not in existing_names:
-            self._check_editable_file_name(file_name)
-        file_name = resolved_name
-        is_text = ProjectFileTypes.of(file_name).text
-        raw_content = content.encode("utf-8") if is_text and isinstance(content, str) else content
-
-        user = WebSession().user
-        outcome = self._db.redo_project_file(user, project_id, file_name, raw_content)
-        if outcome is None:
-            raise ValueError(f"Nothing to redo for file '{file_name}'.")
-
-        return self._undo_redo_response(project_id, file_name, outcome, is_text)
-
-    def clear_project_history(self, project_id: str) -> None:
-        """Deletes the current user's undo/redo history for every file
-        in `project_id`, so a fresh editing session starts clean."""
-        if project_id not in self._db.list_projects():
-            raise FileNotFoundError(f"Project '{project_id}' does not exist.")
-        self._db.clear_history(WebSession().user, project_id)
+        return self._restore_project_file(project_id, file_name, content, "redo")
 
     @staticmethod
     def _check_editable_file_name(file_name: str) -> None:
@@ -668,7 +637,7 @@ class ProjectEditor:
             raise ValueError(f"Invalid file name: '{file_name}' — did you mean '{canonical}'?")
 
     async def delete_project_file(
-        self, project_id: str, file_name: str, commit: CommitCallback
+        self, project_id: str, file_name: str
     ) -> None:
         """Deleting index.css cascades to every image asset it could have
         referenced — the file explorer's own "Theme" branch never offers
@@ -713,4 +682,4 @@ class ProjectEditor:
         self._db.delete_archive(project_id, file_name)
         for name in cascade_names:
             self._db.delete_archive(project_id, name)
-        await self._manager.finalize_update(project_id, new_automaton, commit)
+        await self._manager.finalize_update(project_id, new_automaton)

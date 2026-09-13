@@ -1,11 +1,11 @@
 """The chat window, as a thing that delivers rather than a thing that
 answers.
 
-One object, built once by the skill. It runs no turns: core listens for
-`input.text` and publishes every frame a turn produces (see
-turn/input_listener.py), and this forwards the ones addressed to a
-connection it holds — `origin_id`, put there by system.bus_channel,
-which this package also tells which channel it speaks on.
+One object, built once by the skill. Core listens for `input.text` and
+publishes every frame a turn produces (see turn/input_listener.py), and
+this forwards the ones addressed to a connection it holds — `origin_id`,
+put there by system.bus_channel, which this package also tells which
+channel it speaks on.
 
 It owns no HTTP surface: a conversation lives on the bus, so the
 routes and the thing that serves them are packaged together.
@@ -22,19 +22,22 @@ from __future__ import annotations
 from system import bus
 from system.bus import (
     OUTPUT_REACTION, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TEXT_STREAM, OUTPUT_TOOL,
-    POINT_SPOKEN_REPLY, STATE_CHANGED, STATE_BUTTONS, OUTPUT_ERROR,
-    SESSION_INFO, SESSION_MESSAGES, SESSION_BLOCKED, SESSION_ENDED, Message,
+    STATE_CHANGED, STATE_BUTTONS, OUTPUT_ERROR,
+    SESSION_INFO, SESSION_MESSAGES, SESSION_BLOCKED, SESSION_ENDED,
+    POINT_SPOKEN_REPLY, SESSION_OPENED, Message,
 )
 from system.logging_factory import LoggerFactory
 from system.bus_channel import BusChannel
+from system.service_error import ServiceError
 from talker import HumanTalker
-from project.project_service import ProjectService
+from turn.outbound import publishing
 from turn.turn_service import TurnService
 
 from .bus_human_relay import BusHumanRelay
-from .conversation_opener import ConversationOpener
 
 logger = LoggerFactory.get_logger(__name__)
+
+CHANNEL = __package__
 
 #: What a turn produces, and what this forwards. Not CLIENT_INJECTABLE's
 #: mirror image: that is what a browser may put *on* the Bus, and this is
@@ -49,18 +52,30 @@ TURN_FORWARDED = (
 class WebchatService:
 
     def __init__(
-        self, turn_service: TurnService, project_service: ProjectService,
-        notifications: BusChannel, db,
+        self, turn_service: TurnService, notifications: BusChannel, db,
     ) -> None:
         self._turn_service = turn_service
         self._notifications = notifications
-        self._opener = ConversationOpener(turn_service, db)
+        self._db = db
 
     def register(self) -> None:
         for message_type in TURN_FORWARDED:
             bus.subscribe(message_type, self._forward)
+        bus.subscribe(SESSION_OPENED, self._opened)
         bus.contribute(POINT_SPOKEN_REPLY, self._spoken_reply)
-        self._opener.register()
+
+    async def _opened(self, message: Message) -> None:
+        for _ in filter(CHANNEL.__eq__, [message.channel]):
+            await self._open(message)
+
+    async def _open(self, message: Message) -> None:
+        async with publishing(message, self._db) as outbound:
+            try:
+                opened = await self._turn_service.open_conversation(message.session_id, outbound.on_metadata)
+            except ServiceError as exc:
+                outbound.failed(exc, [])
+                return
+            outbound.ran(opened)
 
     def _spoken_reply(self, spoken) -> None:
         for _ in filter(self._turn_service.is_audio_enabled, filter(None, [spoken.session_id])):
@@ -87,9 +102,20 @@ class WebchatService:
         conversation handed to a person — goes to whoever is showing that
         conversation. The second has no request behind it and so no
         `origin_id` to answer to."""
+        self._deliver(message, self._frame(message))
+        for _ in filter(SESSION_ENDED.__eq__, [message.type]):
+            for session_id in filter(None, [message.session_id]):
+                self._notifications.unwatch_session(session_id)
+
+    def _frame(self, message: Message) -> dict:
         frame = {"type": message.type, "session_id": message.session_id, **(message.body or {})}
         for project_id in filter(None, [message.project_id]):
             frame.setdefault("project_id", project_id)
+        for _ in filter(SESSION_INFO.__eq__, [message.type]):
+            frame["current"] = bool(frame.get("current")) and frame.get("channel") in (None, CHANNEL)
+        return frame
+
+    def _deliver(self, message: Message, frame: dict) -> None:
         connection_id = message.origin_id
         if connection_id is None or not self._notifications.has_connection(connection_id):
             for session_id in filter(None, [message.session_id]):

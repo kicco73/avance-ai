@@ -20,7 +20,7 @@ from ..archive.automaton_loader import AutomatonLoader
 from ..archive.layout import BUNDLE_FILE_NAMES, SESSIONS_EXPORT_FILENAME, TESTS_EXPORT_FILENAME
 from ..archive.zip_importer import ZipImporter
 from ..project_import_bundle_job import ProjectImportBundleJob
-from ..types import FAMILY_NOT_CHECKED, CommitCallback
+from ..types import FAMILY_NOT_CHECKED
 
 if TYPE_CHECKING:
     from .project_manager import ProjectManager
@@ -110,7 +110,7 @@ class ProjectUploader:
         return automaton, files, sessions_to_import, tests_to_import
 
     async def put_project(
-        self, content: bytes, content_type: str | None, commit: CommitCallback
+        self, content: bytes, content_type: str | None
     ) -> tuple[dict, ProjectImportBundleJob]:
         automaton, files, sessions_to_import, tests_to_import = self._build_from_upload(content, content_type)
         project_id = automaton.project_id
@@ -133,13 +133,13 @@ class ProjectUploader:
             final_revision = declared_revision if declared_revision is not None else 0
 
         return await self._persist_uploaded_project(
-            project_id, final_revision, automaton, files, sessions_to_import, tests_to_import, commit,
+            project_id, final_revision, automaton, files, sessions_to_import, tests_to_import,
             old_family=old_family,
         )
 
     async def _persist_uploaded_project(
         self, project_id: str, revision: int, automaton: Automaton, files: dict[str, str | bytes],
-        sessions_to_import: list[dict], tests_to_import: list[dict], commit: CommitCallback,
+        sessions_to_import: list[dict], tests_to_import: list[dict],
         *, old_family: str | None | object = FAMILY_NOT_CHECKED,
     ) -> tuple[dict, ProjectImportBundleJob]:
         files_bytes = {
@@ -153,7 +153,7 @@ class ProjectUploader:
         self._db.import_new_revision(project_id, revision, files_bytes, content_types)
         self._db.set_active_project_id(project_id, WebSession().user)
         await self._manager.finalize_update(
-            project_id, automaton, commit, is_new_project=is_new_project, old_family=old_family,
+            project_id, automaton, is_new_project=is_new_project, old_family=old_family,
         )
         self._manager.publish_project(project_id)
 
@@ -171,7 +171,7 @@ class ProjectUploader:
             suffix += 1
         return f"{base}_{suffix}"
 
-    async def create_new_project(self, commit: CommitCallback) -> tuple[dict, ProjectImportBundleJob]:
+    async def create_new_project(self) -> tuple[dict, ProjectImportBundleJob]:
         content = NEW_PROJECT_TEMPLATE.read_bytes()
         template_files, _, _ = self.extract_upload_files(content, "application/zip")
         base_id, _, _ = AutomatonBuilder.read_declared_env_keys(template_files["index.yml"])
@@ -180,5 +180,5 @@ class ProjectUploader:
             content, "application/zip", force_project_id=project_id,
         )
         return await self._persist_uploaded_project(
-            project_id, automaton.project_revision, automaton, files, sessions_to_import, tests_to_import, commit,
+            project_id, automaton.project_revision, automaton, files, sessions_to_import, tests_to_import,
         )

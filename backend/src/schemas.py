@@ -24,15 +24,7 @@ class AcceptTermsRequest(BaseModel):
     invite_code: str | None = None
 
 
-class ActionRequest(BaseModel):
-    action_name: str
-
-
 class AutoTrackingRequest(BaseModel):
-    enabled: bool
-
-
-class AudioEnabledRequest(BaseModel):
     enabled: bool
 
 
@@ -64,11 +56,6 @@ class CommentRequest(BaseModel):
     # None (or empty/whitespace-only) clears the comment — see
     # TurnService.set_message_comment.
     comment: str | None = None
-
-
-class ReactionRequest(BaseModel):
-    # None clears the reaction — see TurnService.set_message_reaction.
-    reaction: str | None = None
 
 
 class SetSessionLabeledRequest(BaseModel):

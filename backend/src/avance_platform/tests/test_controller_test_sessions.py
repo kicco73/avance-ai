@@ -1,7 +1,11 @@
-"""Regression coverage for the dedicated draft-session entry points: only
-POST /api/skills/platform/projects/{project_id}/test-sessions and GET .../current may
-create a session against an unpublished revision — entering a live
-conversation requires a published one, unconditionally.
+"""Regression coverage for the one entry point that may open a session
+against an unpublished revision: `session.enter`/`session.create` with
+`session_type: test`. Entering a live conversation requires a published
+revision, unconditionally.
+
+The two HTTP routes this file used to drive (POST .../test-sessions and
+GET .../current) were the pre-Bus version of the same thing and are gone;
+what they guarded is asked of the Bus here.
 """
 from __future__ import annotations
 
@@ -10,8 +14,8 @@ import contextvars
 import pytest
 
 from conftest import (
-    _frame_deadline, chat_socket, chat_turn, enter_chat, parse_sse_result, session_of,
-    turn_frame_seconds,
+    _frame_deadline, chat_action, chat_socket, chat_turn, create_chat, enter_chat, parse_sse_result,
+    session_of, turn_frame_seconds,
 )
 from system.web_session import WebSession
 
@@ -38,6 +42,10 @@ def _enter_frames(client, project_id: str, kind: str = "live", type: str = "sess
                     return frames
 
 
+def _info(frames: list[dict]) -> dict:
+    return next(frame for frame in frames if frame["type"] == "session.info")
+
+
 def _upload_and_activate(client, project_id: str, yaml_text: str) -> str:
     full_yaml = f"project:\n  id: {project_id}\n" + yaml_text
     response = client.post(
@@ -46,7 +54,7 @@ def _upload_and_activate(client, project_id: str, yaml_text: str) -> str:
     assert response.status_code == 200, response.text
     returned_id = parse_sse_result(response)["project_id"]
     assert returned_id == project_id
-    response = client.post(f"/api/skills/platform/projects/{returned_id}/activate")
+    response = client.post(f"/api/core/projects/{returned_id}/activate")
     assert response.status_code == 200, response.text
     return returned_id
 
@@ -83,46 +91,39 @@ def test_regular_session_creation_fails_for_an_unpublished_project(client, app_d
 def test_test_session_bootstrap_succeeds_for_an_unpublished_project(client, app_db):
     _setup_unpublished_project(app_db, "draft_only_3", UNPUBLISHED_PROJECT)
 
-    response = client.get("/api/skills/platform/projects/draft_only_3/test-sessions/current")
+    info = _info(enter_chat(client, "draft_only_3", "test"))
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["project_id"] == "draft_only_3"
-    assert body["current"] is True
+    assert info["project_id"] == "draft_only_3"
+    assert info["current"] is True
 
 
-def test_current_test_session_resumes_the_most_recent_one_instead_of_creating_a_new_one(client):
+def test_entering_the_test_chat_resumes_the_most_recent_one_instead_of_creating_a_new_one(client):
     """Regression: EditProjectView's own mode-switch flow (Design -> Run ->
-    Design -> Run) always resolves current-test-session with no session_id
-    of its own — this must resume the existing draft, never spawn a new
-    one each time the tab is re-entered."""
+    Design -> Run) enters with no session_id of its own — this must resume
+    the existing draft, never spawn a new one each time the tab is
+    re-entered."""
     _upload_and_activate(client, "resume_1", UNPUBLISHED_PROJECT)
     _publish(client, "resume_1")
-    first = client.get("/api/skills/platform/projects/resume_1/test-sessions/current").json()
+    first = session_of(enter_chat(client, "resume_1", "test"))
 
-    second = client.get("/api/skills/platform/projects/resume_1/test-sessions/current").json()
+    second = session_of(enter_chat(client, "resume_1", "test"))
 
-    assert second["id"] == first["id"]
+    assert second == first
 
 
-def test_current_test_session_still_creates_one_when_none_exists(client):
+def test_entering_the_test_chat_still_creates_one_when_none_exists(client):
     _upload_and_activate(client, "resume_2", UNPUBLISHED_PROJECT)
     _publish(client, "resume_2")
 
-    response = client.get("/api/skills/platform/projects/resume_2/test-sessions/current")
-
-    assert response.status_code == 200
-    assert response.json()["id"] is not None
+    assert session_of(enter_chat(client, "resume_2", "test")) is not None
 
 
-def test_post_test_session_succeeds_for_an_unpublished_project(client, app_db):
+def test_creating_a_test_session_succeeds_for_an_unpublished_project(client, app_db):
     _setup_unpublished_project(app_db, "draft_only_4", UNPUBLISHED_PROJECT)
 
-    response = client.post("/api/skills/platform/projects/draft_only_4/test-sessions")
+    info = _info(create_chat(client, "draft_only_4", "test"))
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["project_id"] == "draft_only_4"
+    assert info["project_id"] == "draft_only_4"
 
 
 def _publish(client, project_id: str) -> None:
@@ -133,11 +134,11 @@ def _publish(client, project_id: str) -> None:
 def test_a_test_session_never_appears_in_the_regular_sessions_list(client):
     _upload_and_activate(client, "isolation_1", UNPUBLISHED_PROJECT)
     _publish(client, "isolation_1")
-    test_session = client.post("/api/skills/platform/projects/isolation_1/test-sessions").json()
+    test_session_id = session_of(create_chat(client, "isolation_1", "test"))
 
     body = client.get("/api/core/projects/isolation_1/sessions").json()
 
-    assert test_session["id"] not in [s["id"] for s in body]
+    assert test_session_id not in [s["id"] for s in body]
 
 
 def test_a_native_session_never_appears_in_the_test_sessions_list(client):
@@ -154,12 +155,10 @@ def test_regular_bootstrap_and_test_bootstrap_never_resolve_to_the_same_session(
     _upload_and_activate(client, "isolation_3", UNPUBLISHED_PROJECT)
     _publish(client, "isolation_3")
 
-    native = next(
-        frame for frame in enter_chat(client, "isolation_3") if frame["type"] == "session.info"
-    )
-    test_session = client.get("/api/skills/platform/projects/isolation_3/test-sessions/current").json()
+    native = _info(enter_chat(client, "isolation_3"))
+    test_session = _info(enter_chat(client, "isolation_3", "test"))
 
-    assert native["session_id"] != test_session["id"]
+    assert native["session_id"] != test_session["session_id"]
     # Each is "current" only within its own pool.
     assert native["current"] is True
     assert test_session["current"] is True
@@ -168,14 +167,14 @@ def test_regular_bootstrap_and_test_bootstrap_never_resolve_to_the_same_session(
 def test_every_test_session_is_reported_current_not_just_the_most_recent(client):
     _upload_and_activate(client, "isolation_5", UNPUBLISHED_PROJECT)
     _publish(client, "isolation_5")
-    first = client.post("/api/skills/platform/projects/isolation_5/test-sessions").json()
-    second = client.post("/api/skills/platform/projects/isolation_5/test-sessions").json()
+    first = session_of(create_chat(client, "isolation_5", "test"))
+    second = session_of(create_chat(client, "isolation_5", "test"))
 
     body = client.get("/api/skills/platform/projects/isolation_5/test-sessions").json()
 
     by_id = {s["id"]: s for s in body}
-    assert by_id[first["id"]]["current"] is True
-    assert by_id[second["id"]]["current"] is True
+    assert by_id[first]["current"] is True
+    assert by_id[second]["current"] is True
 
 
 def test_a_chat_turn_against_a_test_session_is_accepted_as_active(client):
@@ -183,11 +182,11 @@ def test_a_chat_turn_against_a_test_session_is_accepted_as_active(client):
     within the Test chat, just never visible/active outside it."""
     _upload_and_activate(client, "isolation_4", UNPUBLISHED_PROJECT)
     _publish(client, "isolation_4")
-    test_session = client.post("/api/skills/platform/projects/isolation_4/test-sessions").json()
+    test_session_id = session_of(create_chat(client, "isolation_4", "test"))
 
-    turn = chat_turn(client, test_session['id'], "hi")
+    turn = chat_turn(client, test_session_id, "hi")
 
-    assert turn["session_id"] == test_session["id"]
+    assert turn["session_id"] == test_session_id
 
 
 PROJECT_WITH_A_SELF_LOOP = """
@@ -209,19 +208,14 @@ def test_a_turn_against_a_test_session_sees_a_draft_edit_made_after_it_was_creat
     unlike a native session, which stays pinned to its project_revision."""
     _upload_and_activate(client, "test_session_sees_live_draft", PROJECT_WITH_A_SELF_LOOP)
     _publish(client, "test_session_sees_live_draft")
-    test_session = client.post("/api/skills/platform/projects/test_session_sees_live_draft/test-sessions").json()
-    # Bootstraps the session's opening turn so the project has a real
-    # current_state before the draft edit below.
-    assert session_of(enter_chat(client, "test_session_sees_live_draft", "test")) == test_session["id"]
+    test_session_id = session_of(enter_chat(client, "test_session_sees_live_draft", "test"))
 
     # Edits the draft after the test session above already exists.
     new_action = client.post(
         "/api/skills/platform/projects/test_session_sees_live_draft/states/a/actions"
     ).json()
 
-    response = client.post(f"/api/core/sessions/{test_session['id']}/actions", json={"action_name": new_action["name"]})
-
-    assert response.status_code == 200
+    chat_action(client, test_session_id, new_action["name"])
 
 
 def test_a_test_session_opened_from_the_editor_has_no_channel(client):
@@ -229,15 +223,15 @@ def test_a_test_session_opened_from_the_editor_has_no_channel(client):
     get native-chat anyway, from AuthMiddleware, so every test session
     claimed to have been opened from the chat window. Run in a context of
     its own so the suite's own WebSession().channel default cannot supply
-    what the route no longer does."""
+    what the session type no longer does."""
     _upload_and_activate(client, "no_channel_1", UNPUBLISHED_PROJECT)
 
     def open_one():
         WebSession().user = "user"
         WebSession().role = "supervisor"
-        return client.post("/api/skills/platform/projects/no_channel_1/test-sessions").json()
+        return _info(create_chat(client, "no_channel_1", "test"))
 
-    session = contextvars.Context().run(open_one)
+    info = contextvars.Context().run(open_one)
 
-    assert session["type"] == "test"
-    assert session["channel"] is None
+    assert info["session_type"] == "test"
+    assert info["channel"] is None

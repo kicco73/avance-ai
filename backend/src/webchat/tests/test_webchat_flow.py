@@ -6,12 +6,17 @@ from conftest import (
     FakeAiService, chat_socket, chat_turn_frames, enter_chat, installed_skill, session_of,
     turn_frame_seconds, _frame_deadline,
 )
-from listen.decoder import SpeechDecoder
 from system import bus
-from system.bus import INPUT_AUDIO, Message
+from system.bus import INPUT_AUDIO, INPUT_TEXT, Message
 from system.web_session import WebSession
-from talk.talk_provider import StreamingTalkProvider
-from talk.talk_service import TalkService
+
+# This one module is a flow across three skills: what a browser says
+# reaches a turn, and what the turn says back is spoken on talk's own
+# route. Speaking is the real thing here, so the module collects only
+# where that package is (see docs/TESTS.md); decoding speech is not —
+# this channel only ever meets it as `input.text` coming back.
+StreamingTalkProvider = pytest.importorskip("talk.talk_provider").StreamingTalkProvider
+TalkService = pytest.importorskip("talk.talk_service").TalkService
 
 pytestmark = pytest.mark.contract
 
@@ -31,14 +36,17 @@ class _FakePiper(StreamingTalkProvider):
         yield b"\x00\x01" * 512, 22050
 
 
-class _FakeListen:
+class _FakeDecoder:
 
     def __init__(self) -> None:
         self.heard: list[bytes] = []
 
-    async def transcribe(self, audio: bytes) -> str:
-        self.heard.append(audio)
-        return TRANSCRIPT
+    def register(self) -> None:
+        bus.subscribe(INPUT_AUDIO, self._decode)
+
+    async def _decode(self, message: Message) -> None:
+        self.heard.append((message.body or {}).get("audio"))
+        await bus.publish(message.converted(INPUT_TEXT, {"text": TRANSCRIPT}))
 
 
 @pytest.fixture
@@ -96,8 +104,8 @@ def test_a_typed_message_runs_a_turn_and_its_reply_speaks_on_the_audio_route(web
 
 def test_a_voice_note_on_an_open_connection_runs_the_very_same_turn(webchat):
     client, session_id, talk = webchat
-    listen = _FakeListen()
-    SpeechDecoder(listen).register()
+    decoder = _FakeDecoder()
+    decoder.register()
 
     frames: list[dict] = []
     with _frame_deadline(turn_frame_seconds(), frames):
@@ -119,7 +127,7 @@ def test_a_voice_note_on_an_open_connection_runs_the_very_same_turn(webchat):
                 if frame["type"] in ("output.text", "output.error") and "state.buttons" in [f["type"] for f in frames]:
                     break
 
-    assert listen.heard == [VOICE_NOTE]
+    assert decoder.heard == [VOICE_NOTE]
     assert frames[-1]["type"] == "output.text"
     assert [frame["text"] for frame in frames if frame["type"] == "output.text_stream" and frame["text"]] == [REPLY_TEXT]
     assert talk.spoken == [SPOKEN_REPLY]

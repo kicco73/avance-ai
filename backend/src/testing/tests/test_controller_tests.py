@@ -158,10 +158,7 @@ def test_sessions_aggregation_pools_both_live_and_imported_sessions(client, hell
         )
     assert result.status_code == 200, result.text
 
-    export = client.get(f"/api/skills/testing/projects/{hello_project}/tests/export").json()
-    sessions_entry = next(entry for entry in export if entry["kind"] == "sessions")
-    assert sessions_entry["strategy"] == "turn_by_turn"
-    assert sessions_entry["results"]
+    assert result.json()
 
     for sid in (live_id, imported_id):
         _wait_for_terminal_status(

@@ -168,7 +168,7 @@ async def test_estimate_state_prompt_counts_the_same_attachment_bytes_the_real_t
     real_turn_archives = load_attachments(files, _turn_attachment_paths(automaton, state_a, include_signal_attachments=True))
     assert [a.filename for a in real_turn_archives] == ["global.txt", "mood.txt"]
 
-    estimate_text = estimate_state_prompt(None, automaton, state_a, files)
+    estimate_text = estimate_state_prompt(automaton, state_a, files)
 
     for archive in real_turn_archives:
         assert f"[Attachment: {archive.filename}]\n{archive.source['data']}" in estimate_text

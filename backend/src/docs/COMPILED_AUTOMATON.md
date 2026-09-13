@@ -522,9 +522,9 @@ were left alone, recorded here so they are not rediscovered from scratch.
   *Lluna* and *Drogodependencia* attach a scoring-instructions file to
   every one of their 9 and 8 signals, and none of them has ever been sent.
   Being fixed separately (`claude/prompt-signal-attachments.md`).
-  `Signals.history_window` and `SIGNALS_HISTORY_WINDOW` are the leftovers
-  of the removed call and have no callers; `priming.py`'s own docstring
-  still cites a `Signals.compute()` that does not exist. An *action's*
+  `Signals.history_window` and `SIGNALS_HISTORY_WINDOW`, the leftovers of
+  the removed call, are gone, and so is `priming.py`'s citation of a
+  `Signals.compute()` that does not exist. An *action's*
   `attachments:`, by contrast, is not a bug: §5 documents it as validated
   but deliberately never sent, with the instruction to declare it on the
   destination state instead.

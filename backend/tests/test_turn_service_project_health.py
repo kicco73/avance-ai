@@ -104,7 +104,7 @@ def _turn_service(db) -> tuple[TurnService, _FakeProjectService]:
 
 async def test_process_turn_rejects_a_turn_on_a_now_paused_project(db):
     turn_service, project_service = _turn_service(db)
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     project_service.available = (True, "index.yml no longer builds — nope")
 
     with pytest.raises(TurnServiceError) as exc_info:
@@ -117,7 +117,7 @@ async def test_process_turn_rejects_a_turn_on_a_now_paused_project(db):
 
 async def test_apply_manual_action_rejects_on_a_now_paused_project(db):
     turn_service, project_service = _turn_service(db)
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     project_service.available = (True, "Manually paused.")
 
     with pytest.raises(TurnServiceError) as exc_info:
@@ -129,7 +129,7 @@ async def test_apply_manual_action_rejects_on_a_now_paused_project(db):
 
 async def test_get_state_for_session_reports_an_unsupported_pinned_revision(db):
     turn_service, project_service = _turn_service(db)
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     # The project itself is fine (published builds) — only *this* session's
     # own pinned revision (an old, since-superseded one) doesn't anymore.
     project_service.session_lookup_error = ValueError("Project 'proj', stored revision 0: index.yml no longer builds — nope")
@@ -144,7 +144,7 @@ async def test_get_state_for_session_reports_an_unsupported_pinned_revision(db):
 
 async def test_a_healthy_session_on_an_available_project_is_unaffected(db):
     turn_service, project_service = _turn_service(db)
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     state = turn_service.get_state_for_session(session["id"])
 

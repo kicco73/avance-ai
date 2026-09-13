@@ -7,7 +7,7 @@ what it offers (`state.buttons`).
 
 Whether the conversation should now *speak* is not decided here — the
 announcement ends with `session.opened` and a chat answers it (see
-webchat/conversation_opener.py). What this defends is that the
+webchat/webchat_service.py). What this defends is that the
 announcement comes first and that the event says the truth: a
 conversation with something in it has not just been opened.
 
@@ -142,7 +142,7 @@ async def test_a_conversation_with_something_in_it_has_not_just_been_opened(turn
     turn_service = turn_service_for(
         one_state_automaton(with_sources=False, autotracking_on_ai_message=False), _FakeProvider(),
     )
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
     turn_service.accept_user_message(session["id"], "we have spoken before")
 
@@ -162,7 +162,7 @@ async def test_typing_the_moment_the_chat_opens_is_still_answered(turn_service_f
     turn_service = turn_service_for(
         one_state_automaton(with_sources=False, autotracking_on_ai_message=False), _FakeProvider(),
     )
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     recorder, listener = await _drive(turn_service, db, [
         _entering(PROJECT_ID),

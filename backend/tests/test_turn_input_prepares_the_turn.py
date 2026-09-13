@@ -63,7 +63,7 @@ def _chat_blocked_automaton() -> Automaton:
 async def _frames_of(turn_service, db, text: str) -> list[Message]:
     bus._reset_for_tests()
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     frames: list[Message] = []
     finished = asyncio.Event()

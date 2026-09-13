@@ -19,11 +19,9 @@ in the same position.
 """
 from __future__ import annotations
 
-from http import HTTPStatus
 
-from fastapi import HTTPException
 
-from controllers.base_controller import BaseController, delete, get, post, put
+from controllers.base_controller import BaseController, delete, get, put
 from schemas import AutoTrackingRequest, SetEnvValueRequest
 from turn.turn_service import TurnService
 
@@ -65,19 +63,13 @@ class InspectorController(BaseController):
         """Edits one stored env key (see TurnService.set_env_value) —
         the Inspector Env tab's own "click a value to edit it". Always
         current: there's no "editing history"."""
-        try:
-            return self.turn_service.set_env_value(session_id, key, req.value)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return self.turn_service.set_env_value(session_id, key, req.value)
 
     @delete("/api/skills/platform/sessions/{session_id}/env/{key}")
     def delete_env_value(self, session_id: int, key: str):
         """Removes one stored env key outright (see TurnService.
         delete_env_key) — the Inspector Env tab's own delete button."""
-        try:
-            return self.turn_service.delete_env_key(session_id, key)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return self.turn_service.delete_env_key(session_id, key)
 
     @get("/api/skills/platform/sessions/{session_id}/autotracking")
     def get_autotracking(self, session_id: int):

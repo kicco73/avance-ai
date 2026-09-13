@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime
 
-from peewee import fn
+from peewee import Expression, fn
 
 from system.logging_factory import LoggerFactory
 
@@ -31,9 +31,16 @@ class TrackingMixin:
             return None
         return json.loads(row.values)
 
+    def _evaluation_point_rows(self) -> Expression:
+        return Tracking.env.is_null(True) & Tracking.action_env.is_null(True) & Tracking.tool_calls.is_null(True)
+
+    @staticmethod
+    def _evaluation_point_payload(row) -> dict:
+        return {'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'output': row.output, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id, 'origin': row.origin}
+
     def get_signals(self, session_id: int) -> list[dict]:
-        rows = Tracking.select().where((Tracking.session == session_id) & Tracking.env.is_null(True) & Tracking.action_env.is_null(True) & Tracking.tool_calls.is_null(True)).order_by(Tracking.timestamp.asc(), Tracking.id.asc())
-        return [{'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'output': row.output, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id, 'origin': row.origin} for row in rows]
+        rows = Tracking.select().where((Tracking.session == session_id) & self._evaluation_point_rows()).order_by(Tracking.timestamp.asc(), Tracking.id.asc())
+        return [self._evaluation_point_payload(row) for row in rows]
 
     def get_timeline(self, project_id: str, username: str) -> dict:
         rows = (
@@ -42,7 +49,7 @@ class TrackingMixin:
             .join(CoreSession, on=Tracking.session == CoreSession.id)
             .where(
                 (CoreSession.project == project_id) & (CoreSession.username == username)
-                & Tracking.env.is_null(True) & Tracking.action_env.is_null(True) & Tracking.tool_calls.is_null(True)
+                & self._evaluation_point_rows()
             )
             .order_by(Tracking.timestamp.asc(), Tracking.id.asc())
         )
@@ -59,7 +66,8 @@ class TrackingMixin:
         """The one Tracking row (old_state "") recording when `project_id`'s
         automaton first entered its initial state — project-wide and at most
         one per project, since the automaton's current state is shared
-        across every user, not tracked per-user (see open_if_needed)."""
+        across every user, not tracked per-user (see TurnService.
+        _ensure_project_bootstrap)."""
         row = (
             Tracking
             .select()
@@ -122,11 +130,11 @@ class TrackingMixin:
         link_tool_env_writes_to_message), same exclusion get_signals uses."""
         row = Tracking.get_or_none(
             (Tracking.message == message_id)
-            & Tracking.env.is_null(True) & Tracking.action_env.is_null(True) & Tracking.tool_calls.is_null(True)
+            & self._evaluation_point_rows()
         )
         if row is None:
             return None
-        return {'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'output': row.output, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id, 'origin': row.origin}
+        return self._evaluation_point_payload(row)
 
     def get_session_ids_with_expected_state(self, project_id: str, state_key: str) -> set[int]:
         rows = (
@@ -141,10 +149,11 @@ class TrackingMixin:
         )
         return {row.session_id for row in rows}
 
-    def get_nearest_tracking_row_by_message(self, session_id: int, message_id: int) -> dict | None:
-        """Nearest real (production) Tracking row to `message_id`, by
-        message-id proximity — never by timestamp: a test replay's
-        turns don't share production's timeline."""
+    def nearest_tracked_state_by_message(self, session_id: int, message_id: int) -> str | None:
+        """The state the nearest real (production) Tracking row to
+        `message_id` left the conversation in, by message-id proximity —
+        never by timestamp: a test replay's turns don't share
+        production's timeline."""
         row = (
             Tracking
             .select()
@@ -154,7 +163,7 @@ class TrackingMixin:
         )
         if row is None:
             return None
-        return {'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id, 'origin': row.origin}
+        return row.new_state or row.old_state
 
     def set_signal_expected_state(self, signal_row_id: int, expected_state: str | None) -> None:
         Tracking.update(expected_state=expected_state).where(Tracking.id == signal_row_id).execute()

@@ -47,11 +47,6 @@ class InMemScheduler(Scheduler):
                     return
         self.__queue.cancel(job)
 
-    def pending_jobs(self) -> tuple[DependentJob, ...]:
-        """Snapshot of what is still waiting for its timestamp, in due order."""
-        with self.__wakeup:
-            return tuple(entry[2] for entry in self.__pending)
-
     def __run(self) -> None:
         while True:
             with self.__wakeup:

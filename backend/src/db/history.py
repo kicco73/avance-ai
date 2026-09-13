@@ -112,5 +112,3 @@ class HistoryMixin:
         self._push_history(user_id, project_id, archive_name, 'undo', current_content)
         return ContentRestored(content=row.content)
 
-    def clear_history(self, user_id: str, project_id: str) -> None:
-        EditHistory.delete().where((EditHistory.user_id == user_id) & (EditHistory.project_id == project_id)).execute()

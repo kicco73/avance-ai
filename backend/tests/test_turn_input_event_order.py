@@ -26,7 +26,7 @@ from system.bus import INPUT_TEXT, Message
 from system.web_session import WebSession
 from turn.input_listener import TurnInput
 from turn.turn_service import TurnService
-from turn_harness import one_state_automaton, turn_service_for  # noqa: F401 — turn_service_for is a fixture
+from turn_harness import PROJECT_ID, one_state_automaton, turn_service_for  # noqa: F401 — turn_service_for is a fixture
 
 pytestmark = pytest.mark.regression
 
@@ -89,7 +89,7 @@ async def _streamed_events(turn_service: TurnService, db, text: str) -> list[tup
     # The listener looks the sender's role up rather than taking it off
     # the wire (see Session.for_sender), so the sender has to exist.
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     recorder = _Recorder()
     for message_type in (

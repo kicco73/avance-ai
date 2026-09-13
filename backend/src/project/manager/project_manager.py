@@ -12,6 +12,7 @@ from automaton.build_error import AutomatonBuildError
 from turn.sessions.session_manager import SessionManager
 from db import Db
 from system.logging_factory import LoggerFactory
+from system.project_locks import ProjectLocks
 from system.web_session import WebSession
 from tracking.project_files import PROJECT_FILE_CACHE
 from tracking.session_export import SessionExportManager
@@ -26,7 +27,7 @@ from ..archive.layout import (
 from ..project_import_bundle_job import ProjectImportBundleJob
 from .availability import ProjectAvailability
 from .uploader import ProjectUploader
-from ..types import FAMILY_NOT_CHECKED, CommitCallback
+from ..types import FAMILY_NOT_CHECKED
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -34,9 +35,10 @@ class ProjectManager:
     def __init__(
         self, db: Db, automaton_loader: AutomatonLoader, inspector: ProjectInspector,
         session_export_manager: SessionExportManager, session_import_manager: SessionImportManager,
-        session_manager: SessionManager,
+        session_manager: SessionManager, project_locks: ProjectLocks,
     ) -> None:
         self._db = db
+        self._project_locks = project_locks
         self._automaton_loader = automaton_loader
         self._inspector = inspector
         self._session_export_manager = session_export_manager
@@ -74,12 +76,12 @@ class ProjectManager:
         return self._availability.get_project_availability(project_id)
 
     async def put_project(
-        self, content: bytes, content_type: str | None, commit: CommitCallback
+        self, content: bytes, content_type: str | None
     ) -> tuple[dict, ProjectImportBundleJob]:
-        return await self._uploader.put_project(content, content_type, commit)
+        return await self._uploader.put_project(content, content_type)
 
-    async def create_new_project(self, commit: CommitCallback) -> tuple[dict, ProjectImportBundleJob]:
-        return await self._uploader.create_new_project(commit)
+    async def create_new_project(self) -> tuple[dict, ProjectImportBundleJob]:
+        return await self._uploader.create_new_project()
 
     def accept_legal_terms(self, username: str, project_id: str) -> None:
         current = self._db.get_archive_row(
@@ -123,7 +125,7 @@ class ProjectManager:
             )
 
     async def finalize_update(
-        self, project_id: str, automaton: Automaton, commit: CommitCallback, *,
+        self, project_id: str, automaton: Automaton, *,
         is_new_project: bool = False, old_family: str | None | object = FAMILY_NOT_CHECKED,
     ) -> str:
         if automaton.project_id != project_id:
@@ -154,7 +156,7 @@ class ProjectManager:
                 session = self._session_manager.get_active_session(username, project_id, type=session_type)
                 if session is not None and session["end_state"] not in automaton.states:
                     self._db.delete_chat_session(session["id"])
-            await commit(project_id, automaton)
+            await self._project_locks.drain(project_id)
         return project_id
 
     def reset_test_sessions(self, project_id: str) -> None:
@@ -210,27 +212,27 @@ class ProjectManager:
         self._db.publish_project(project_id)
         return self._inspector.get_project_revision_info(project_id)
 
-    async def revert_to_published(self, project_id: str, commit: CommitCallback) -> dict:
+    async def revert_to_published(self, project_id: str) -> dict:
         if project_id not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_id}' does not exist.")
         self._db.revert_to_published(project_id)
         self._automaton_loader.invalidate_cache(project_id)
         new_automaton = self._automaton_loader.load(project_id)
-        project_id = await self.finalize_update(project_id, new_automaton, commit)
+        project_id = await self.finalize_update(project_id, new_automaton)
         return self._inspector.get_project_revision_info(project_id)
 
-    async def activate_project(self, project_id: str, commit: CommitCallback) -> Automaton:
+    async def activate_project(self, project_id: str) -> Automaton:
         new_automaton = self._automaton_loader.load(project_id)
         self._db.ensure_project(project_id)
         self._db.set_active_project_id(project_id, WebSession().user)
-        await commit(project_id, new_automaton)
+        await self._project_locks.drain(project_id)
         return new_automaton
 
-    async def activate_project_idempotent(self, project_id: str, commit: CommitCallback) -> Automaton:
+    async def activate_project_idempotent(self, project_id: str) -> Automaton:
         new_automaton = self._automaton_loader.load(project_id)
         if project_id == self._inspector.get_active_project_id():
             return new_automaton
-        return await self.activate_project(project_id, commit)
+        return await self.activate_project(project_id)
 
     def export_project_zip(self, project_id: str) -> bytes:
         archives = self._db.get_archives(project_id)
@@ -256,7 +258,7 @@ class ProjectManager:
 
         return buffer.getvalue()
 
-    async def delete_project(self, project_id: str, commit: CommitCallback) -> None:
+    async def delete_project(self, project_id: str) -> None:
         was_active = project_id == self._inspector.get_active_project_id()
         self._db.reset_project(project_id)
         self._db.delete_archives(project_id)
@@ -268,6 +270,6 @@ class ProjectManager:
             remaining = self._db.list_projects()
             fallback = next(iter(remaining), None)
             if fallback is not None:
-                await self.activate_project(fallback, commit)
+                await self.activate_project(fallback)
             else:
                 self._db.clear_active_project_id(WebSession().user)

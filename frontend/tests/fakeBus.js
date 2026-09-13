@@ -50,11 +50,12 @@ export function resetFakeBus() {
 // waiting for exactly these three, and has no session until they arrive.
 export function deliverEntered({
   sessionId = 1, projectId = 'proj', sessionType = 'live',
-  messages = [], state = null, services = {}, actions = [], current = true, audio = false
+  messages = [], state = null, services = {}, actions = [], current = true, audio = false,
+  channel = 'webchat'
 }) {
   deliver({
     type: 'session.info', session_id: sessionId, project_id: projectId, session_type: sessionType,
-    state, services, audio, current, channel: 'webchat'
+    state, services, audio, current, channel
   })
   deliver({ type: 'session.messages', session_id: sessionId, messages })
   deliver({ type: 'state.buttons', session_id: sessionId, actions })

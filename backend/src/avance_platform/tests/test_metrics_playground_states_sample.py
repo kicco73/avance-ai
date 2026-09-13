@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import enter_chat, parse_sse_result, session_of
+from conftest import chat_action, enter_chat, parse_sse_result, session_of
 
 from conftest import SAMPLES_DIR
 
@@ -16,7 +16,7 @@ def _upload_and_activate(client):
     response = client.post("/api/skills/platform/projects/upload", content=content, headers={"Content-Type": "application/zip"})
     assert response.status_code == 200, response.text
     project_id = parse_sse_result(response)["project_id"]
-    response = client.post(f"/api/skills/platform/projects/{project_id}/activate")
+    response = client.post(f"/api/core/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
     response = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text
@@ -36,15 +36,13 @@ def test_the_sample_loads_and_starts_at_lobby(client):
 def test_firing_notice_mood_actually_moves_to_its_own_dedicated_state(client):
     project_id = _upload_and_activate(client)
     session_id = session_of(enter_chat(client, project_id))
-    move = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "warm_up"})
-    assert move.json()["state"]["key"] == "engaged"
+    assert chat_action(client, session_id, "warm_up")["state"]["key"] == "engaged"
 
     # Manual invocation (like clicking the button) never checks the
     # trigger — see Automaton.move — so this exercises the real target
     # state without needing the "mood" signal to actually be >= 70.
-    response = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "notice_mood"})
+    moved = chat_action(client, session_id, "notice_mood")
 
-    assert response.status_code == 200
-    assert response.json()["state"]["key"] == "mood_reached"
+    assert moved["state"]["key"] == "mood_reached"
     # Unlike the self-looping variant, this is a genuine final state.
-    assert response.json()["state"]["final"] is True
+    assert moved["state"]["final"] is True

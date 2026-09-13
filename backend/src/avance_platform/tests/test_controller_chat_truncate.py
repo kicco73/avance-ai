@@ -6,14 +6,14 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import enter_chat, parse_sse_result, session_of
+from conftest import chat_action, enter_chat, parse_sse_result, session_of
 from system.web_session import WebSession
 
 from conftest import SAMPLES_DIR
 
 
 @pytest.mark.contract
-def test_truncate_rejects_an_unknown_session(client, hello_project):
+def test_truncate_rejects_an_unknown_session(client):
     response = client.post("/api/core/sessions/999999/truncate", json={"timestamp": "2026-01-01T00:00:00+00:00"})
     assert response.status_code == 404
 
@@ -69,16 +69,14 @@ def test_truncate_deletes_trailing_turns_and_rolls_the_live_state_back(client):
     resp = client.post("/api/skills/platform/projects/upload", content=content, headers={"Content-Type": "application/zip"})
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
-    client.post(f"/api/skills/platform/projects/{project_id}/activate")
+    client.post(f"/api/core/projects/{project_id}/activate")
     client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
 
     session_id = session_of(enter_chat(client, project_id))
     sessions = client.get(f"/api/core/projects/{project_id}/sessions").json()
     assert next(s for s in sessions if s["id"] == session_id)["start_state"] == "welcome"
 
-    action_response = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "unit-subjuntive"})
-    assert action_response.status_code == 200
-    moved_state = action_response.json()["state"]["key"]
+    moved_state = chat_action(client, session_id, "unit-subjuntive")["state"]["key"]
     assert moved_state != "welcome"
 
     signals = client.get(f"/api/core/sessions/{session_id}/signals").json()

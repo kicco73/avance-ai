@@ -150,10 +150,6 @@ class State:
         reading or writing — empty means no tool catalog at all."""
         return self.ai_may_read_sources + self.ai_must_read_sources + self.ai_may_write_sources
 
-    @property
-    def ai_read_source_names(self) -> tuple[str, ...]:
-        return self.ai_may_read_sources + self.ai_must_read_sources
-
 
 @dataclass
 class Signal:

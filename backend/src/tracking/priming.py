@@ -1,7 +1,7 @@
 """Builds the never-persisted turn carrying attachments as provider-
 neutral 'attachment' blocks. Shared, dependency-free home for this so
-both TurnService (every kind of turn) and AutoTracker (its fallback
-call into Signals.compute()) can use it without importing each other.
+both TurnService (every kind of turn) and AutoTracker can use it
+without importing each other.
 """
 from __future__ import annotations
 

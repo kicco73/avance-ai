@@ -1,6 +1,6 @@
-"""Integration tests for GET/POST/DELETE .../files/{file_name}, .../undo,
-.../redo, and .../history. POST .../undo and .../redo are a pure editor
-preview, not a save, and never touch Archive — only PUT .../files/{file_name} does.
+"""Integration tests for GET/POST/DELETE .../files/{file_name}, .../undo
+and .../redo. POST .../undo and .../redo are a pure editor preview, not a
+save, and never touch Archive — only PUT .../files/{file_name} does.
 """
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import zipfile
 
 import pytest
 
-from conftest import enter_chat, parse_sse_result, session_of
+from conftest import chat_action, enter_chat, parse_sse_result, session_of
 
 
 def _zip_of(files: dict[str, str]) -> bytes:
@@ -110,27 +110,20 @@ def test_undo_and_redo_preview_without_saving_and_a_fresh_edit_clears_redo(clien
 
 
 @pytest.mark.regression
-def test_clearing_history_or_deleting_a_file_drops_its_undo_trail_keeping_current_content(client):
+def test_deleting_a_file_drops_its_undo_trail_keeping_the_other_files_content(client):
     _upload(client)
     _save(client, V1_YML)
     client.put("/api/skills/platform/projects/proj/files/notes.txt", content=b"v1")
 
-    response = client.delete("/api/skills/platform/projects/proj/history")
-    assert response.status_code == 200
-    assert response.json() == {"success": True}
-    body = _index(client)
-    assert body["content"] == V1_YML
-    assert body["can_undo"] is False
-    assert _undo(client, V1_YML).status_code == 400
-
     assert client.delete("/api/skills/platform/projects/proj/files/notes.txt").status_code == 200
+
     assert client.get("/api/skills/platform/projects/proj/files/notes.txt").status_code == 404
+    assert _index(client)["content"] == V1_YML
 
 
 @pytest.mark.contract
-def test_undo_and_clear_history_are_404_for_an_unknown_project(client):
+def test_undo_is_404_for_an_unknown_project(client):
     assert client.post("/api/skills/platform/projects/does-not-exist/files/index.yml/undo").status_code == 404
-    assert client.delete("/api/skills/platform/projects/does-not-exist/history").status_code == 404
 
 
 @pytest.mark.regression
@@ -174,9 +167,7 @@ def test_undo_does_not_reset_or_reload_the_active_conversation(client):
     resp = client.post("/api/skills/platform/projects/proj2/publish", json={})
     assert resp.status_code == 200, resp.text
     session_id = session_of(enter_chat(client, "proj2"))
-    action_resp = client.post(f"/api/core/sessions/{session_id}/actions", json={"action_name": "go"})
-    assert action_resp.status_code == 200, action_resp.text
-    assert action_resp.json()["state"]["key"] == "b"
+    assert chat_action(client, session_id, "go")["state"]["key"] == "b"
 
     # A real edit that leaves "b" untouched (adds unrelated state "c"),
     # so the conversation survives this Save and undo has something to

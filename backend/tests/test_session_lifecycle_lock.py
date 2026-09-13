@@ -160,7 +160,7 @@ async def test_get_current_session_concurrent_with_acquire_exclusive_session_nev
 
     async def bootstrap_call():
         WebSession().channel = "webchat"
-        return await turn_service.get_current_session_if_any_or_create_new(None)
+        return await turn_service.enter_session(PROJECT_ID, 'live')
 
     async def exclusive_call():
         WebSession().channel = "webchat"

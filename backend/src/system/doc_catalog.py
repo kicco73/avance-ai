@@ -5,6 +5,7 @@ from pathlib import Path
 from system import skills
 
 DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
+TERMS_PATH = DOCS_DIR / "TERMS.md"
 
 
 class FileDoc:
