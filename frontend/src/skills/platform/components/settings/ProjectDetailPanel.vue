@@ -4,7 +4,7 @@ import ChatView from '../../../../components/chat/ChatView.vue'
 import ChatWaitingPanel from '../../../../components/chat/ChatWaitingPanel.vue'
 import AppStoreFrozenPreview from '../appStore/AppStoreFrozenPreview.vue'
 import { holdSkin } from '../../../../chatSkin.js'
-import { AppSkinSource } from '../../appSkinSource.js'
+import { ProjectSkinSource } from '../../projectSkinSource.js'
 import { setPreviewApp, appStorePreviewStore, historyLoaded, restartPreviewSession, stopPreviewSession } from '../../appStorePreviewStore.js'
 import { projectActions } from '../../../registry.js'
 
@@ -45,7 +45,7 @@ function handleDeleteMenuDocumentClick(event) {
 
 document.addEventListener('click', handleDeleteMenuDocumentClick, true)
 
-const releaseSkin = holdSkin(new AppSkinSource(computed(() => props.app?.id ?? null)))
+const releaseSkin = holdSkin(new ProjectSkinSource(computed(() => props.app?.id ?? null)))
 
 async function quitPreview() {
   if (!previewing.value) return

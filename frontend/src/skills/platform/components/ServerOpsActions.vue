@@ -6,10 +6,11 @@
 // servicesTabActions). A build without this panel shows the tab with
 // nothing to press.
 import { confirmDialog } from '../../../dialogStore.js'
+import ProgressSpinner from '../../../components/ProgressSpinner.vue'
 import { useServerOperations } from '../useServerOperations.js'
 
 const {
-  handleWipeAllLiveSessions, handleCleanUnusedRevisions, handleDownloadBackup, handleRestoreBackup,
+  backupDownload, handleWipeAllLiveSessions, handleCleanUnusedRevisions, handleDownloadBackup, handleRestoreBackup,
 } = useServerOperations()
 
 async function selectWipeAllLiveSessions() {
@@ -40,7 +41,23 @@ async function selectCleanUnusedRevisions() {
 <template>
   <div class="services-section">
     <div class="services-actions-row">
-      <button type="button" class="services-action-btn" @click="handleDownloadBackup()">Download backup</button>
+      <button
+        type="button"
+        class="services-action-btn services-download-btn"
+        :disabled="!!backupDownload"
+        :title="backupDownload && backupDownload.percentage != null ? `Downloading… ${Math.round(backupDownload.percentage)}%` : null"
+        @click="handleDownloadBackup()"
+      >
+        <span
+          v-if="backupDownload"
+          class="services-download-fill"
+          :style="{ width: `${backupDownload.percentage ?? 0}%` }"
+        ></span>
+        <span class="services-download-label">
+          <ProgressSpinner v-if="backupDownload" :progress="backupDownload.percentage" />
+          Download backup
+        </span>
+      </button>
       <label class="services-action-btn services-restore-label">
         Restore backup...
         <input
@@ -61,6 +78,11 @@ async function selectCleanUnusedRevisions() {
 .services-actions-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .services-action-btn { padding: 0.45rem 0.9rem; border-radius: 6px; border: 1px solid #ccc; background: white; cursor: pointer; font-size: 0.85rem; }
 .services-action-btn:hover { background: #f2f5f9; }
+.services-download-btn { position: relative; overflow: hidden; }
+.services-download-btn:disabled { cursor: default; color: #444; }
+.services-download-btn:disabled:hover { background: white; }
+.services-download-fill { position: absolute; inset: 0 auto 0 0; background: #dbe7f6; transition: width 0.15s linear; }
+.services-download-label { position: relative; display: inline-flex; align-items: center; gap: 0.4rem; }
 .services-action-btn-danger { border-color: #c0392b; color: #c0392b; }
 .services-action-btn-danger:hover { background: #fdecea; }
 .services-restore-label { display: inline-flex; align-items: center; }

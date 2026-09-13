@@ -244,6 +244,12 @@ export function createChatStore({
     bumpTurn()
   })
 
+  busChannel.subscribe('output.error', (frame) => {
+    if (frame.session_id !== currentSessionId.value) return
+    if (openExchanges.size > 0) return
+    setApiError(frame.message, frame.detail)
+  })
+
   // Where the conversation is now, said only when it moved. The choices
   // go with the state that offered them: they are gone until the system
   // says what this state offers (the `state.buttons` that follows).
@@ -746,16 +752,12 @@ export function createChatStore({
   // conversation is now. There is nothing here to await.
   function handleAction(actionName) {
     clearApiError()
-    // Off while it is being said, gone once it has been: a choice can be
-    // taken once, and what can be done next is the system's to say (the
-    // `state.buttons` that follows). If it never left — no socket — they
-    // come back on, because nothing was taken.
     actionLoading.value = true
     const taken = busChannel.send({
       type: 'input.button', session_id: currentSessionId.value, id: actionName,
     })
     actionLoading.value = false
-    if (taken) buttons.value = []
+    if (!taken) setApiError('Nothing was sent.', 'The chat is not connected.')
   }
 
   function clearChatUi() {

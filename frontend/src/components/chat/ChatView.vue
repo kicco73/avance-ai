@@ -333,7 +333,7 @@ watch(
       <ActionButtons
         v-if="selectedSessionActive"
         :actions="buttons"
-        :disabled="actionLoading"
+        :disabled="actionLoading || !chatConnected"
         @action="onAction"
       />
 

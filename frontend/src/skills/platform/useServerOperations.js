@@ -1,3 +1,4 @@
+import { ref } from 'vue'
 import { getState, getBackup, postRestoreBackup, postWipeAllLiveSessions, postCleanUnusedRevisions } from './api.js'
 import { confirmDialog, infoDialog } from '../../dialogStore.js'
 import { handleStateChange, clearChatUi } from '../../chatStore.js'
@@ -39,11 +40,17 @@ export function useServerOperations() {
     })
   }
 
+  const backupDownload = ref(null)
+
   async function handleDownloadBackup() {
+    backupDownload.value = { percentage: null }
     try {
-      downloadBlob(await getBackup(), 'avance-backup.sqlite')
+      const blob = await getBackup((message) => { backupDownload.value = message })
+      downloadBlob(blob, 'avance-backup.sqlite')
     } catch {
       // already surfaced via apiFetch
+    } finally {
+      backupDownload.value = null
     }
   }
 
@@ -65,5 +72,5 @@ export function useServerOperations() {
     }
   }
 
-  return { handleWipeAllLiveSessions, handleCleanUnusedRevisions, handleDownloadBackup, handleRestoreBackup }
+  return { backupDownload, handleWipeAllLiveSessions, handleCleanUnusedRevisions, handleDownloadBackup, handleRestoreBackup }
 }

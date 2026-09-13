@@ -32,6 +32,21 @@ async function readSseResult(res, onProgress) {
   return final?.result ?? null
 }
 
+async function readBlobWithProgress(res, onProgress) {
+  const total = Number(res.headers.get('Content-Length'))
+  const reader = res.body.getReader()
+  const chunks = []
+  let received = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    chunks.push(value)
+    received += value.length
+    onProgress?.({ percentage: total ? Math.min(100, (received / total) * 100) : null })
+  }
+  return new Blob(chunks, { type: res.headers.get('Content-Type') ?? '' })
+}
+
 export async function apiFetch(url, options, { parse = 'json', onProgress, onCommitted } = {}) {
   let res
   try {
@@ -86,7 +101,7 @@ export async function apiFetch(url, options, { parse = 'json', onProgress, onCom
   // A 204 has no body — res.json() on an empty response throws, regardless
   // of the requested `parse` mode.
   if (res.status === 204) return null
-  if (parse === 'blob') return res.blob()
+  if (parse === 'blob') return readBlobWithProgress(res, onProgress)
   if (parse === 'text') return res.text()
   if (parse === 'sse') return readSseResult(res, onProgress)
   if (parse === 'response') return res

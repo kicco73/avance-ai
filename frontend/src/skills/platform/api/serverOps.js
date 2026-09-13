@@ -7,8 +7,8 @@ const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 // the domain changes because nobody asked for a backup — which is why
 // these are a panel's, not the core's.
 
-export function getBackup() {
-  return apiFetch(`${API_URL}/skills/platform/settings/backup`, {}, { parse: 'blob' })
+export function getBackup(onProgress) {
+  return apiFetch(`${API_URL}/skills/platform/settings/backup`, {}, { parse: 'blob', onProgress })
 }
 
 export function postRestoreBackup(file) {
