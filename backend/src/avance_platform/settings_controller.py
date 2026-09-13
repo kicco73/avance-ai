@@ -12,34 +12,25 @@ editor was ever installed, and none of them touches a project's contents.
 from __future__ import annotations
 
 from http import HTTPStatus
-from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import HTTPException, Request, Response
 
-from auth.roles import role_satisfies
-from turn.turn_service import TurnService
 from db import Db
 from avance_platform.platform_service import PlatformService
 from project.project_service import ProjectService
 from scheduler import SchedulerService
 from system.web_session import WebSession
 
-from controllers.base_controller import BaseController, delete, get, post, put
-from .project_commit_mixin import ProjectCommitMixin
+from controllers.base_controller import BaseController, delete, get, post
 
 
-APP_NAME = "Avance"
-
-
-class SettingsController(BaseController, ProjectCommitMixin):
+class SettingsController(BaseController):
 
     def __init__(
-        self, turn_service: TurnService, project_service: ProjectService,
+        self, project_service: ProjectService,
         platform_service: PlatformService, db: Db, scheduler_service: SchedulerService,
     ) -> None:
-        # Read by ProjectCommitMixin rather than by anything below.
-        self.turn_service = turn_service
         self.project_service = project_service
         self.platform_service = platform_service
         self.db = db
@@ -70,24 +61,14 @@ class SettingsController(BaseController, ProjectCommitMixin):
     def put_project_pause(self, project_id: str):
         """An operator's own explicit override — only ever allowed while
         `project_id` is actually running."""
-        try:
-            return self.platform_service.set_manually_paused(project_id)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return self.platform_service.set_manually_paused(project_id)
 
     @post("/api/skills/platform/projects/{project_id}/resume", role="admin")
     def put_project_resume(self, project_id: str):
         """The other half of pause above — only ever allowed while
         `project_id` is manually paused (see ProjectService.
         set_manually_running)."""
-        try:
-            return self.platform_service.set_manually_running(project_id)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return self.platform_service.set_manually_running(project_id)
 
     @post("/api/skills/platform/projects", role="admin")
     async def post_new_project(self):
@@ -98,7 +79,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         The built-in template bundles no sessions/test results, so
         there's nothing for the returned job to do — no progress worth
         reporting, plain JSON response, unlike a real upload."""
-        result, _job = await self.project_service.create_new_project(self._activate_project)
+        result, _job = await self.project_service.create_new_project()
         return result
 
     @get("/api/skills/platform/projects/{project_id}", role="admin")
@@ -106,10 +87,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         """Downloads `project_id` as a zip — the read side of POST
         /api/skills/platform/projects/upload, built so it round-trips back through that
         endpoint with no transformation. Not restricted to the active project."""
-        try:
-            content = self.platform_service.export_project_zip(project_id)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        content = self.platform_service.export_project_zip(project_id)
         encoded_project_id = quote(project_id)
         return Response(
             content=content,
@@ -136,17 +114,14 @@ class SettingsController(BaseController, ProjectCommitMixin):
         content = await request.body()
         content_type = request.headers.get("content-type")
 
-        try:
-            _, job = await self.project_service.put_project(content, content_type, self._activate_project)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        _, job = await self.project_service.put_project(content, content_type)
         return self.scheduler_service.stream_progress(job)
 
     @delete("/api/skills/platform/projects/{project_id}", role="admin")
     async def delete_project(self, project_id: str):
 
         try:
-            await self.project_service.delete_project(project_id, self._activate_project)
+            await self.project_service.delete_project(project_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except OSError as exc:

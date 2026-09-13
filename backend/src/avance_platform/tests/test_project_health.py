@@ -52,10 +52,8 @@ def _publish(db, project_service: ProjectService, project_id: str, index_yml: st
     db.set_active_project_id(project_id, USERNAME)
     automaton = AutomatonBuilder().build({"index.yml": index_yml})
 
-    async def commit(_project_id, _automaton):
-        pass
 
-    asyncio.run(project_service.manager.finalize_update(project_id, automaton, commit, is_new_project=is_new_project))
+    asyncio.run(project_service.manager.finalize_update(project_id, automaton, is_new_project=is_new_project))
 
 
 def _corrupt_published_revision(db, project_service: ProjectService, project_id: str) -> None:
@@ -385,10 +383,8 @@ def test_a_stale_build_failure_that_depended_on_a_deleted_and_recreated_project_
     _publish(db, project_service, "watcher_a", WATCHER_YML)
     assert db.get_project_availability("watcher_a") == (False, None)  # available
 
-    async def commit(_project_id, _automaton):
-        pass
 
-    asyncio.run(project_service.manager.delete_project("dep", commit))
+    asyncio.run(project_service.manager.delete_project("dep"))
     project_service.recompute_availability("watcher_a")
     assert db.get_project_availability("watcher_a")[0] is True  # paused: dep unavailable
 

@@ -13,8 +13,8 @@ from automaton.build_error import AutomatonBuildError
 from db import Db, _utc_iso
 from ai import AiService
 from system.keyed_lock_registry import KeyedLockRegistry
+from system.project_locks import ProjectLocks
 from project.archive.layout import CACHE_DIR
-from system.project_rw_lock import ProjectRwLock
 from system.web_session import WebSession
 from system import bus
 from system.bus import POINT_SESSION_SERVICES
@@ -57,6 +57,7 @@ class TurnService(object):
 		metric_service: MetricService,
 		scheduler_service: SchedulerService,
 		namespace_factory: TaskNamespaceFactory,
+		project_locks: ProjectLocks | None = None,
 	) -> None:
 		self._db = db
 		self._ai_service = ai_service
@@ -75,7 +76,7 @@ class TurnService(object):
 		self._user_facts = UserFacts(db)
 		self._automaton_namespace = AutomatonNamespace(db, project_service)
 
-		self._project_locks = KeyedLockRegistry(ProjectRwLock)
+		self._project_locks = project_locks or ProjectLocks()
 		self._session_locks = KeyedLockRegistry(asyncio.Lock)
 		self._session_lifecycle_locks = KeyedLockRegistry(asyncio.Lock)
 		self._global_lock = asyncio.Lock()
@@ -571,23 +572,11 @@ class TurnService(object):
 	def global_exclusive_access(self):
 		return self._global_lock
 
-	@asynccontextmanager
-	async def acquire_read(self, project_id: str):
-		lock = self._project_locks.get(project_id)
-		await lock.acquire_read()
-		try:
-			yield
-		finally:
-			await lock.release_read()
+	def acquire_read(self, project_id: str):
+		return self._project_locks.acquire_read(project_id)
 
-	@asynccontextmanager
-	async def acquire_write(self, project_id: str):
-		lock = self._project_locks.get(project_id)
-		await lock.acquire_write()
-		try:
-			yield
-		finally:
-			await lock.release_write()
+	def acquire_write(self, project_id: str):
+		return self._project_locks.acquire_write(project_id)
 
 	@asynccontextmanager
 	async def _session_scope(self, project_id: str, session_id: int):

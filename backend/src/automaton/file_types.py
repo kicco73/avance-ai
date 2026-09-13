@@ -9,6 +9,7 @@ folder it canonicalizes into and the size it may not exceed
 """
 from __future__ import annotations
 
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,8 @@ MAX_AUDIO_UPLOAD_BYTES = 15 * 1024 * 1024
 
 IMAGE_KIND = "image"
 AUDIO_KIND = "audio"
+
+ICON_FILE_RE = re.compile(r'^aspect/icon\.(png|jpe?g|gif|webp|svg)$', re.IGNORECASE)
 
 
 @dataclass(frozen=True)

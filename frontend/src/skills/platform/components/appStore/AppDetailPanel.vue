@@ -1,11 +1,12 @@
 <script setup>
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import ChatView from '../../../../components/chat/ChatView.vue'
 import ChatWaitingPanel from '../../../../components/chat/ChatWaitingPanel.vue'
 import AppStoreFrozenPreview from './AppStoreFrozenPreview.vue'
-import { postInstallApp, deleteInstallApp, appStoreFileContentUrl } from '../../api.js'
+import { postInstallApp, deleteInstallApp } from '../../api.js'
 import { confirmDialog, infoDialog } from '../../../../dialogStore.js'
-import { setSkinCss, invalidateSkin } from '../../../../chatSkin.js'
+import { holdSkin } from '../../../../chatSkin.js'
+import { AppSkinSource } from '../../appSkinSource.js'
 import { setPreviewApp, appStorePreviewStore, historyLoaded, restartPreviewSession, stopPreviewSession } from '../../appStorePreviewStore.js'
 import { renderMarkdown } from '../../../../markdown.js'
 import { usePreviewExpiry } from '../../../../composables/usePreviewExpiry.js'
@@ -15,7 +16,6 @@ const props = defineProps({
   showFreeBadge: { type: Boolean, default: true },
   hideInstallActions: { type: Boolean, default: false },
   tryButtonLabel: { type: String, default: 'Try me!' },
-  timedSession: { type: Boolean, default: true },
   showUninstallMenu: { type: Boolean, default: false }
 })
 
@@ -48,42 +48,10 @@ function handleUninstallMenuDocumentClick(event) {
 
 document.addEventListener('click', handleUninstallMenuDocumentClick, true)
 
-// Guards against this component's own fetch resolving after it's already
-// gone — switching the selected app destroys this instance (see its
-// `:key` in AppStoreView.vue) rather than reusing it, but an in-flight
-// request from the old instance isn't cancelled by that, and with no
-// ordering guarantee on the network it can resolve after the new
-// instance's own fetch already applied the new app's skin — silently
-// overwriting it with the old one's.
-let skinRequestAlive = true
+const releaseSkin = holdSkin(new AppSkinSource(computed(() => props.app?.id ?? null)))
 
-async function loadSkinForApp(app) {
-  if (!app) return
-  let css = ''
-  try {
-    const response = await fetch(appStoreFileContentUrl(app.id, 'index.css'), { credentials: 'include', cache: 'no-store' })
-    css = response.ok ? await response.text() : ''
-  } catch {
-    css = ''
-  }
-  // Stale-response guard, the same one loadSkin has (see chatSkin.js):
-  // picking another app while this one's stylesheet is in flight left the
-  // late answer winning, and the panel wearing the look of an app nobody
-  // had selected.
-  if (skinRequestAlive && props.app?.id === app.id) setSkinCss(css, app.id)
-}
-
-watch(() => props.app?.id, () => loadSkinForApp(props.app), { immediate: true })
-
-// The countdown that ends the session (see usePreviewExpiry) — shared
-// with Manage projects' own "Test" preview, which runs the same kind of
-// session against the same store.
+// The countdown that ends the session (see usePreviewExpiry).
 const { quitButtonLabel, expired, arm: armExpiryTimer, clear: clearExpiryTimer } = usePreviewExpiry()
-
-function armExpiryTimerIfTimed() {
-  clearExpiryTimer()
-  if (props.timedSession) armExpiryTimer()
-}
 
 watch(expired, async (hasExpired) => {
   if (!hasExpired) return
@@ -148,20 +116,19 @@ async function selectOpen() {
 async function startPreview() {
   setPreviewApp(props.app.id)
   previewing.value = true
-  armExpiryTimerIfTimed()
+  armExpiryTimer()
   await appStorePreviewStore.handleNewSession()
 }
 
 async function restartPreview() {
-  armExpiryTimerIfTimed()
+  armExpiryTimer()
   await restartPreviewSession()
 }
 
 onBeforeUnmount(async () => {
-  skinRequestAlive = false
+  releaseSkin()
   document.removeEventListener('click', handleUninstallMenuDocumentClick, true)
   await quitPreview()
-  invalidateSkin()
 })
 </script>
 
@@ -220,8 +187,10 @@ onBeforeUnmount(async () => {
   </div>
 
   <div class="app-store-try-panel">
-    <AppStoreFrozenPreview v-if="!previewing || !historyLoaded" :app-id="app.id" />
-    <ChatView v-if="previewing && historyLoaded" hide-sessions-panel :store="appStorePreviewStore" />
+    <Transition name="app-store-try-chat">
+      <AppStoreFrozenPreview v-if="!previewing || !historyLoaded" :app-id="app.id" />
+      <ChatView v-else hide-sessions-panel :store="appStorePreviewStore" />
+    </Transition>
     <ChatWaitingPanel v-if="previewing && !historyLoaded" />
   </div>
 </template>
@@ -382,12 +351,29 @@ onBeforeUnmount(async () => {
 }
 
 .app-store-try-panel {
-  /* ChatWaitingPanel above positions itself against this box. */
+  /* ChatWaitingPanel above positions itself against this box, and so does
+     whichever of the two chats is on its way out. */
   position: relative;
   flex: 1;
   min-height: 300px;
   display: flex;
   flex-direction: column;
+}
+
+.app-store-try-chat-enter-active,
+.app-store-try-chat-leave-active {
+  transition: opacity 0.12s ease;
+}
+
+.app-store-try-chat-enter-from,
+.app-store-try-chat-leave-to {
+  opacity: 0;
+}
+
+.app-store-try-chat-leave-active {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 .app-store-try-btn {

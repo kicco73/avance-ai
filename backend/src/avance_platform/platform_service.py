@@ -17,10 +17,10 @@ immediately what the engine loads through the other.
 from __future__ import annotations
 
 import asyncio
-import re
 from typing import TYPE_CHECKING
 
 from automaton.automaton import Automaton, CompiledAutomaton, ProjectPayload, StatePayload
+from automaton.file_types import ICON_FILE_RE
 from project.web_import_job import WebImportJob
 from system import bus
 from system.bus import POINT_PROJECT_PUBLISHED
@@ -28,9 +28,7 @@ from system.wiring import construct
 from tracking.sources.url import parse_source_url
 
 if TYPE_CHECKING:
-    from project.project_service import CommitCallback, ProjectService
-
-_ICON_FILE_RE = re.compile(r'^aspect/icon\.(png|jpe?g|gif|webp|svg)$', re.IGNORECASE)
+    from project.project_service import ProjectService
 
 
 class PlatformService(object):
@@ -179,8 +177,8 @@ class PlatformService(object):
         published = self.manager.publish_project(project_id, remap_to)
         return bus.collect(POINT_PROJECT_PUBLISHED, {**published, "project_id": project_id})
 
-    async def activate_project(self, project_id: str, commit: CommitCallback) -> Automaton:
-        return await self.manager.activate_project(project_id, commit)
+    async def activate_project(self, project_id: str) -> Automaton:
+        return await self.manager.activate_project(project_id)
 
     def export_project_zip(self, project_id: str) -> bytes:
         return self.manager.export_project_zip(project_id)
@@ -197,7 +195,7 @@ class PlatformService(object):
         return self.editor.get_project_file_content(project_id, file_name, session_id)
 
     def build_web_import_job(
-        self, project_id: str, source_name: str, query: str, commit: CommitCallback,
+        self, project_id: str, source_name: str, query: str,
     ) -> WebImportJob:
         query = (query or "").strip()
         if not query:
@@ -206,7 +204,7 @@ class PlatformService(object):
             raise ValueError("No AI service is configured — an AI web import needs one.")
         return WebImportJob(
             self.editor, self.ai_service, self.web_crawler, asyncio.get_running_loop(),
-            project_id, source_name, self._source_archive_name(project_id, source_name), query, commit,
+            project_id, source_name, self._source_archive_name(project_id, source_name), query,
         )
 
     def _source_archive_name(self, project_id: str, source_name: str) -> str:
@@ -232,7 +230,7 @@ class PlatformService(object):
     def _find_app_icon_file(self, project_id: str) -> str | None:
         revision = self.project_service.get_published_revision(project_id)
         for name in self.db.list_archives(project_id, revision=revision):
-            if _ICON_FILE_RE.match(name):
+            if ICON_FILE_RE.match(name):
                 return name
         return None
 

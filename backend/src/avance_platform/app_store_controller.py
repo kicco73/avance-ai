@@ -24,10 +24,7 @@ class AppStoreController(BaseController):
 
     @post("/api/skills/platform/app-store/apps/{app_id}/install")
     def post_install_app(self, app_id: str):
-        try:
-            self.platform_service.install_app(WebSession().user, app_id)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        self.platform_service.install_app(WebSession().user, app_id)
         return {"success": True}
 
     @delete("/api/skills/platform/app-store/apps/{app_id}/install")

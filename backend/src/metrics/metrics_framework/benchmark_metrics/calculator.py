@@ -18,6 +18,7 @@ from .metrics import (
     TransitionResponsivenessMetric,
 )
 from .observations import BenchmarkData, BenchmarkObservationBuilder
+from ..timeline import records_frame
 
 
 class BenchmarkCalculator(object):
@@ -108,7 +109,7 @@ class BenchmarkCalculator(object):
         signals = self._load_signals(session_ids, signal_rows_by_session)
         data = BenchmarkData(
             messages=messages,
-            sessions=self._frame(sessions, [
+            sessions=records_frame(sessions, [
                 "id", "username", "project_id", "datetime_start", "datetime_end", "start_state", "end_state"
             ]),
             signals=signals,
@@ -169,11 +170,6 @@ class BenchmarkCalculator(object):
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
         return frame[columns].sort_values(["session_id", "id"], kind="stable")
 
-    @staticmethod
-    def _frame(rows: list[dict[str, object]], columns: list[str]) -> pd.DataFrame:
-        if not rows:
-            return pd.DataFrame(columns=columns)
-        return pd.DataFrame.from_records(rows, columns=columns)
 
     @staticmethod
     def _empty_signals() -> pd.DataFrame:

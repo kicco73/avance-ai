@@ -1,13 +1,11 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import ChatView from '../../../../components/chat/ChatView.vue'
 import ChatWaitingPanel from '../../../../components/chat/ChatWaitingPanel.vue'
 import AppStoreFrozenPreview from '../appStore/AppStoreFrozenPreview.vue'
-import { appStoreFileContentUrl } from '../../api.js'
-import { infoDialog } from '../../../../dialogStore.js'
-import { setSkinCss, invalidateSkin } from '../../../../chatSkin.js'
+import { holdSkin } from '../../../../chatSkin.js'
+import { AppSkinSource } from '../../appSkinSource.js'
 import { setPreviewApp, appStorePreviewStore, historyLoaded, restartPreviewSession, stopPreviewSession } from '../../appStorePreviewStore.js'
-import { usePreviewExpiry } from '../../../../composables/usePreviewExpiry.js'
 import { projectActions } from '../../../registry.js'
 
 const props = defineProps({
@@ -22,8 +20,6 @@ const props = defineProps({
 const emit = defineEmits(['edit', 'label', 'download', 'share', 'delete', 'publish', 'open-skill-view'])
 
 const previewing = ref(false)
-
-
 
 function appTitle(app) {
   return app?.ui_label || app?.id || ''
@@ -49,52 +45,10 @@ function handleDeleteMenuDocumentClick(event) {
 
 document.addEventListener('click', handleDeleteMenuDocumentClick, true)
 
-// Guards against this component's own fetch resolving after it's already
-// gone — switching the selected project destroys this instance (see its
-// `:key` in ManageProjectsView.vue) rather than reusing it, but an
-// in-flight request from the old instance isn't cancelled by that, and
-// with no ordering guarantee on the network it can resolve after the new
-// instance's own fetch already applied the new project's skin — silently
-// overwriting it with the old one's.
-let skinRequestAlive = true
-
-async function loadSkinForApp(app) {
-  if (!app) return
-  let css = ''
-  try {
-    const response = await fetch(appStoreFileContentUrl(app.id, 'index.css'), { credentials: 'include', cache: 'no-store' })
-    css = response.ok ? await response.text() : ''
-  } catch {
-    css = ''
-  }
-  // Stale-response guard, the same one loadSkin has (see chatSkin.js):
-  // picking another app while this one's stylesheet is in flight left the
-  // late answer winning, and the panel wearing the look of an app nobody
-  // had selected.
-  if (skinRequestAlive && props.app?.id === app.id) setSkinCss(css, app.id)
-}
-
-watch(() => props.app?.id, () => loadSkinForApp(props.app), { immediate: true })
-
-// "Test" opens a real preview session — same store, same automaton, same
-// ephemeral env as the app store's own "Try me!" — so it ends the same
-// way: on the shared countdown, never left running because the panel is
-// still on screen (see usePreviewExpiry).
-const { quitButtonLabel, expired, arm: armExpiryTimer, clear: clearExpiryTimer } = usePreviewExpiry()
-
-watch(expired, async (hasExpired) => {
-  if (!hasExpired) return
-  await quitPreview()
-  await infoDialog({
-    title: 'Test session expired',
-    body: 'Your test session has expired.',
-    okLabel: 'Close'
-  })
-})
+const releaseSkin = holdSkin(new AppSkinSource(computed(() => props.app?.id ?? null)))
 
 async function quitPreview() {
   if (!previewing.value) return
-  clearExpiryTimer()
   previewing.value = false
   await stopPreviewSession()
 }
@@ -102,20 +56,17 @@ async function quitPreview() {
 async function startPreview() {
   setPreviewApp(props.app.id)
   previewing.value = true
-  armExpiryTimer()
   await appStorePreviewStore.handleNewSession()
 }
 
 async function restartPreview() {
-  armExpiryTimer()
   await restartPreviewSession()
 }
 
 onBeforeUnmount(async () => {
-  skinRequestAlive = false
+  releaseSkin()
   document.removeEventListener('click', handleDeleteMenuDocumentClick, true)
   await quitPreview()
-  invalidateSkin()
 })
 </script>
 
@@ -149,7 +100,7 @@ onBeforeUnmount(async () => {
       class="project-detail-try-btn"
       :class="{ 'project-detail-try-btn-active': previewing }"
       @click="previewing ? quitPreview() : startPreview()"
-    >{{ previewing ? quitButtonLabel : 'Test' }}</button>
+    >{{ previewing ? 'Quit' : 'Test' }}</button>
     <button v-if="previewing" type="button" class="project-detail-secondary-btn" :disabled="!historyLoaded" @click="restartPreview">Restart</button>
     <button type="button" class="project-detail-secondary-btn" @click="emit('edit', app.id)">Edit</button>
     <button type="button" class="project-detail-secondary-btn" @click="emit('label', app.id)">Label</button>

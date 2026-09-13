@@ -23,10 +23,9 @@ db eventually.
 """
 from __future__ import annotations
 
-from http import HTTPStatus
 from pathlib import Path
 
-from fastapi import HTTPException, Request, Response
+from fastapi import Request, Response
 
 from controllers.base_controller import BaseController, get, post
 from db import Db
@@ -61,10 +60,7 @@ class ServerAdminController(BaseController):
         has (all projects, sessions, messages)."""
         content = await request.body()
         async with self.turn_service.global_exclusive_access():
-            try:
-                self.db.restore_backup(content)
-            except ValueError as exc:
-                raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+            self.db.restore_backup(content)
             self.turn_service.clear_auto_tracking_overrides()
         return {"success": True}
 

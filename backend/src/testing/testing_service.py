@@ -60,6 +60,10 @@ class TestingService:
         self._cache = TestCache(db)
         self._jobs_by_key: dict[str, CancelableJob] = {}
 
+    def _ensure_valid_strategy(self, strategy: str) -> None:
+        if strategy not in VALID_STRATEGIES:
+            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+
     def _submit(self, job: CancelableJob) -> CancelableJob:
         self._jobs_by_key[job.key] = job
         self._job_queue.submit(job)
@@ -92,8 +96,7 @@ class TestingService:
     def _construct_run(
         self, username: str | None, project_id: str, session_id: int | None, strategy: str,
     ) -> tuple[dict, CancelableJob | None]:
-        if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+        self._ensure_valid_strategy(strategy)
 
         automaton = self._load_automaton(project_id)
         project_draft_edit_count = self._db.get_project_draft_edit_count(project_id)
@@ -213,8 +216,7 @@ class TestingService:
         }
 
     def start_job(self, project_id: str, state_key: str, strategy: str) -> CancelableJob:
-        if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+        self._ensure_valid_strategy(strategy)
         session_ids = sorted(self._db.get_session_ids_with_expected_state(project_id, state_key))
         job = StateAggregationJob(self, project_id, state_key, strategy, session_ids)
         self._submit(job)
@@ -225,16 +227,14 @@ class TestingService:
         return sorted(int(row['id']) for row in sessions if row['labeled'])
 
     def start_signal_job(self, project_id: str, signal_name: str, strategy: str) -> CancelableJob:
-        if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+        self._ensure_valid_strategy(strategy)
         session_ids = self._labeled_session_ids(project_id)
         job = SignalAggregationJob(self, project_id, signal_name, strategy, session_ids)
         self._submit(job)
         return job
 
     def start_sessions_run_job(self, project_id: str, strategy: str) -> CancelableJob:
-        if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+        self._ensure_valid_strategy(strategy)
         job = self._sessions_job(project_id, strategy)
         self._submit(job)
         return job
@@ -253,8 +253,7 @@ class TestingService:
         return job
 
     def start_user_sessions_run_job(self, username: str, project_id: str, strategy: str) -> CancelableJob:
-        if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+        self._ensure_valid_strategy(strategy)
         sessions = self._db.list_chat_sessions(username, project_id, type=None)
         session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
         job = PooledAggregationJob(self, project_id, 'user_sessions', username, strategy, session_ids)
@@ -262,8 +261,7 @@ class TestingService:
         return job
 
     def _construct_users_aggregation_job(self, project_id: str, strategy: str) -> CancelableJob:
-        if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+        self._ensure_valid_strategy(strategy)
         sessions = self._db.list_chat_sessions(None, project_id, type=None)
         usernames = sorted({row['username'] for row in sessions if row['labeled']})
         session_ids_by_user = {
@@ -278,8 +276,7 @@ class TestingService:
         return job
 
     def _construct_all_states_job(self, project_id: str, strategy: str) -> CancelableJob:
-        if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+        self._ensure_valid_strategy(strategy)
         session_ids_by_state = {
             state_key: sorted(self._db.get_session_ids_with_expected_state(project_id, state_key))
             for state_key in self._project_states(project_id)
@@ -292,8 +289,7 @@ class TestingService:
         return job
 
     def _construct_all_signals_job(self, project_id: str, strategy: str) -> CancelableJob:
-        if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+        self._ensure_valid_strategy(strategy)
         session_ids = self._labeled_session_ids(project_id)
         return AllSignalsAggregationJob(self, project_id, strategy, session_ids, self._project_signal_names(project_id))
 
@@ -303,8 +299,7 @@ class TestingService:
         return job
 
     def start_root_job(self, project_id: str, strategy: str) -> CancelableJob:
-        if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+        self._ensure_valid_strategy(strategy)
         branch_jobs = [
             self._sessions_job(project_id, strategy),
             self._construct_all_states_job(project_id, strategy),

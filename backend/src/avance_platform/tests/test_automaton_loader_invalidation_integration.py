@@ -80,10 +80,6 @@ states:
 """
 
 
-async def _commit(_project_id, _automaton) -> None:
-    pass
-
-
 @pytest.fixture
 def project_service(db) -> ProjectService:
     return ProjectService(db, AutomatonLoader(db), SessionManager(db))
@@ -91,7 +87,7 @@ def project_service(db) -> ProjectService:
 
 def _upload(db, project_service: ProjectService, project_id: str, yml: str | None = None) -> None:
     content = (yml or VALID_YML).format(project_id=project_id).encode("utf-8")
-    asyncio.run(project_service.put_project(content, "text/yaml", _commit))
+    asyncio.run(project_service.put_project(content, "text/yaml"))
 
 
 def _corrupt_in_place(db, project_id: str, revision: int) -> None:
@@ -116,7 +112,7 @@ def test_a_real_save_on_a_previously_broken_draft_revision_clears_the_stale_fail
     assert (project_id, revision) in automaton_loader._build_failures
 
     fixed_automaton = AutomatonBuilder().build({"index.yml": VALID_YML.format(project_id=project_id)})
-    asyncio.run(project_service.manager.finalize_update(project_id, fixed_automaton, _commit))
+    asyncio.run(project_service.manager.finalize_update(project_id, fixed_automaton))
 
     assert (project_id, revision) not in automaton_loader._build_failures
     healed = automaton_loader.load(project_id)
@@ -142,7 +138,7 @@ def test_revert_to_published_clears_a_broken_drafts_stale_failure(db, project_se
         automaton_loader.load(project_id)
     assert (project_id, draft_revision) in automaton_loader._build_failures
 
-    asyncio.run(project_service.revert_to_published(project_id, _commit))
+    asyncio.run(project_service.revert_to_published(project_id))
 
     assert (project_id, draft_revision) not in automaton_loader._build_failures
     healed = automaton_loader.load(project_id)
@@ -219,7 +215,7 @@ def test_a_family_only_edit_via_put_project_file_clears_a_dependents_stale_failu
     # case finalize_update's id-rename branch structurally can't catch;
     # only its own old_family comparison can.
     asyncio.run(project_service.put_project_file(
-        "dep", "index.yml", DEP_YML.format(family="fam1"), "text/yaml", _commit,
+        "dep", "index.yml", DEP_YML.format(family="fam1"), "text/yaml",
     ))
 
     assert ("watcher_family", watcher_revision) not in automaton_loader._build_failures

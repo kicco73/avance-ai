@@ -78,6 +78,41 @@ about one conversation has a `session_id`, or a `project_id` when the session do
 not exist yet, and the bus delivers it to whoever is watching that session. A
 listing across many sessions has neither, and a route is the honest shape for it.
 
+## How a failure becomes a status
+
+An endpoint does not choose its own status code. It raises, and one handler
+registered in `main.py` — `ApiErrorHandlers.register`, see `error_handlers.py` —
+turns the exception into the `{error: {message, detail}}` body every failure
+shares:
+
+```text
+PermissionError     403
+FileNotFoundError   404
+ValueError          400
+AIServiceError      its own status_code
+ServiceError        its own status_code, plus code and fields
+anything else       500, logged
+```
+
+Starlette resolves a handler by walking the exception's MRO, so a subclass is
+covered by its base's handler with no registration of its own. That is what makes
+the list short: `TurnServiceError`, `TrackingServiceError` and every future
+sibling arrive through `ServiceError`, and `AutomatonBuildError` — which is both a
+`ServiceError` and a `ValueError` — is resolved by the `ServiceError` handler
+because `ServiceError` comes first in its MRO. A service that needs a status the
+table does not give it raises a `ServiceError` subclass saying so; that is the
+only mechanism, and there is no second one.
+
+This used to be written out per endpoint instead. Sixty-seven `try/except` blocks
+across thirteen controllers repeated the same three clauses, and thirty-three of
+them existed only to re-raise `AutomatonBuildError` so that the `except ValueError`
+on the next line would not swallow it into a 400 that lost its fields. The
+controllers now let the exception travel.
+
+The consequence worth knowing: the translation is no longer opt-in. A
+`FileNotFoundError` or a `ValueError` escaping *any* route is answered 404 or 400,
+including routes that used to let one through to a 500.
+
 ## Decisions taken
 
 - **Two endpoints were deleted rather than renamed.** `GET /api/build/skills` and

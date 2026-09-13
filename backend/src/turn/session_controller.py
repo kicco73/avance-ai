@@ -17,9 +17,7 @@ refused there rather than served a default.
 from __future__ import annotations
 
 
-from http import HTTPStatus
 
-from fastapi import HTTPException
 
 from controllers.base_controller import BaseController, delete, get, post, put
 from schemas import ActuatorsRequest, TruncateSessionRequest
@@ -53,10 +51,7 @@ class SessionController(BaseController):
         """"Restart from here": the live state may have moved backward,
         so the fresh payload is read back only once the mutation itself
         (see TurnService.truncate_session for its own synchronization) has completed."""
-        try:
-            await self.turn_service.truncate_session(session_id, req.timestamp)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        await self.turn_service.truncate_session(session_id, req.timestamp)
         return self.project_service.inspector.get_active_state_payload()
 
     @get("/api/core/sessions/{session_id}/history")

@@ -51,9 +51,18 @@ class ApiErrorHandlers:
 
     @classmethod
     async def file_not_found_error(cls, request: Request, exc: FileNotFoundError) -> JSONResponse:
-        error_msg = "\n".join(exc.args) if exc.args else "File not found"
-        logger.exception(f"API: {request.method} {request.url.path}: {error_msg}")
-        return JSONResponse(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, content=cls._body(error_msg, f"API: {request.method} {request.url.path}"))
+        logger.info("Not found on %s %s: %s", request.method, request.url.path, exc)
+        return JSONResponse(status_code=HTTPStatus.NOT_FOUND, content=cls._body(str(exc)))
+
+    @classmethod
+    async def value_error(cls, request: Request, exc: ValueError) -> JSONResponse:
+        logger.info("Bad request on %s %s: %s", request.method, request.url.path, exc)
+        return JSONResponse(status_code=HTTPStatus.BAD_REQUEST, content=cls._body(str(exc)))
+
+    @classmethod
+    async def permission_error(cls, request: Request, exc: PermissionError) -> JSONResponse:
+        logger.info("Forbidden on %s %s: %s", request.method, request.url.path, exc)
+        return JSONResponse(status_code=HTTPStatus.FORBIDDEN, content=cls._body(str(exc)))
 
     @classmethod
     async def ai_service_error(cls, request: Request, exc: AIServiceError) -> JSONResponse:
@@ -73,6 +82,8 @@ class ApiErrorHandlers:
     def register(cls, app: FastAPI) -> None:
         app.add_exception_handler(Exception, cls.unhandled_exception)
         app.add_exception_handler(HTTPException, cls.http_exception)
+        app.add_exception_handler(PermissionError, cls.permission_error)
         app.add_exception_handler(FileNotFoundError, cls.file_not_found_error)
+        app.add_exception_handler(ValueError, cls.value_error)
         app.add_exception_handler(AIServiceError, cls.ai_service_error)
         app.add_exception_handler(ServiceError, cls.service_error)

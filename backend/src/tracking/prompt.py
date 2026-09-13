@@ -9,7 +9,7 @@ from system.logging_factory import LoggerFactory
 from system.try_again_error import TryAgainError
 
 from ai import SystemPrompt
-from automaton.automaton import Automaton, State
+from automaton.automaton import Automaton
 
 from .env import Env
 
@@ -56,11 +56,6 @@ def build_output_definition_for_names(automaton: Automaton, names: Iterable[str]
 	return "- Definition of output fields:\n" + "\n\n".join(
 		f'\t- Output "{name}":\n{env_keys_by_name[name].ai_definition}' for name in unique_names
 	)
-
-
-def build_output_definition(automaton: Automaton, state: State) -> str | None:
-	"""One state's own `output` fields — see build_output_definition_for_names."""
-	return build_output_definition_for_names(automaton, state.output)
 
 
 def _turns_in_order(channel: str, by_turn: dict[int, Any], expected_turns: int, terminated: bool, raw: str | None) -> list[Any]:

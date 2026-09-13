@@ -17,7 +17,6 @@ const props = defineProps({
   showFreeBadge: { type: Boolean, default: true },
   hideInstallActions: { type: Boolean, default: false },
   tryButtonLabel: { type: String, default: 'Try me!' },
-  timedSession: { type: Boolean, default: true },
   showStoreButton: { type: Boolean, default: false },
   showUninstallMenu: { type: Boolean, default: false }
 })
@@ -139,24 +138,25 @@ defineExpose({ refresh: load })
       </div>
 
       <div class="app-store-preview">
-        <CustomerAppDetailPanel
-          v-if="selectedApp && subscribedOnly"
-          :key="selectedApp.id"
-          :app="selectedApp"
-          @open="handleDetailOpen"
-        />
-        <AppDetailPanel
-          v-else-if="selectedApp"
-          :key="selectedApp.id"
-          :app="selectedApp"
-          :show-free-badge="showFreeBadge"
-          :hide-install-actions="hideInstallActions"
-          :try-button-label="tryButtonLabel"
-          :timed-session="timedSession"
-          :show-uninstall-menu="showUninstallMenu"
-          @open="handleDetailOpen"
-        />
-        <p v-else-if="!loading" class="app-store-status">Select an app to see its details.</p>
+        <Transition name="app-store-detail">
+          <div v-if="selectedApp" :key="selectedApp.id" class="app-store-detail">
+            <CustomerAppDetailPanel
+              v-if="subscribedOnly"
+              :app="selectedApp"
+              @open="handleDetailOpen"
+            />
+            <AppDetailPanel
+              v-else
+              :app="selectedApp"
+              :show-free-badge="showFreeBadge"
+              :hide-install-actions="hideInstallActions"
+              :try-button-label="tryButtonLabel"
+              :show-uninstall-menu="showUninstallMenu"
+              @open="handleDetailOpen"
+            />
+          </div>
+        </Transition>
+        <p v-if="!selectedApp && !loading" class="app-store-status">Select an app to see its details.</p>
       </div>
     </div>
   </div>
@@ -285,6 +285,7 @@ defineExpose({ refresh: load })
 }
 
 .app-store-preview {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -292,6 +293,32 @@ defineExpose({ refresh: load })
   flex-direction: column;
   gap: 0.5rem;
   overflow-y: auto;
+}
+
+.app-store-detail {
+  flex: 1 0 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.app-store-detail-enter-active,
+.app-store-detail-leave-active {
+  transition: opacity 0.12s ease;
+}
+
+.app-store-detail-enter-from,
+.app-store-detail-leave-to {
+  opacity: 0;
+}
+
+/* Out of the flow so the app arriving and the app leaving overlap for
+   those 120ms instead of pushing each other around. */
+.app-store-detail-leave-active {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 .app-store-status {

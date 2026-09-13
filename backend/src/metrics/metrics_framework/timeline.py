@@ -10,6 +10,12 @@ from .dto import UserAnalyticsData
 from .interfaces import AnalyticsDb
 
 
+def records_frame(rows: list[dict[str, Any]], columns: list[str]) -> pd.DataFrame:
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame.from_records(rows, columns=columns)
+
+
 class UserAnalyticsDataBuilder(object):
     """Builds the analytical dataset from the application's Db facade. Does
     not import Peewee models directly — the Db facade stays the single
@@ -73,7 +79,7 @@ class UserAnalyticsDataBuilder(object):
         self, sessions: list[dict[str, Any]], messages: pd.DataFrame, signals: pd.DataFrame,
     ) -> UserAnalyticsData:
         if signals.empty:
-            transitions = self._empty_transitions()
+            transitions = self._empty_signals()
             signal_snapshots = self._empty_signals()
         else:
             transition_mask = signals["new_state"].notna()
@@ -84,7 +90,7 @@ class UserAnalyticsDataBuilder(object):
             username=self._username,
             project_id=self._project_id,
             messages=messages,
-            sessions=self._frame(sessions, [
+            sessions=records_frame(sessions, [
                 "id", "username", "project_id", "datetime_start",
                 "datetime_end", "start_state", "end_state",
             ]),
@@ -96,7 +102,7 @@ class UserAnalyticsDataBuilder(object):
         rows: list[dict[str, Any]] = []
         for session_id in session_ids:
             rows.extend(self._db.get_messages(session_id))
-        frame = self._frame(rows, ["id", "role", "content", "audio_text", "timestamp"])
+        frame = records_frame(rows, ["id", "role", "content", "audio_text", "timestamp"])
         if not frame.empty:
             frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
             frame.sort_values("timestamp", inplace=True, kind="stable")
@@ -106,7 +112,7 @@ class UserAnalyticsDataBuilder(object):
         rows: list[dict[str, Any]] = []
         for session_id in session_ids:
             rows.extend(self._db.get_signals(session_id))
-        frame = self._frame(
+        frame = records_frame(
             rows,
             ["id", "timestamp", "values", "old_state", "action", "new_state", "message_id"],
         )
@@ -116,17 +122,7 @@ class UserAnalyticsDataBuilder(object):
         return frame
 
     @staticmethod
-    def _frame(rows: list[dict[str, Any]], columns: list[str]) -> pd.DataFrame:
-        if not rows:
-            return pd.DataFrame(columns=columns)
-        return pd.DataFrame.from_records(rows, columns=columns)
-
-    @staticmethod
     def _empty_signals() -> pd.DataFrame:
-        return pd.DataFrame(columns=["id", "timestamp", "values", "old_state", "action", "new_state", "message_id"])
-
-    @staticmethod
-    def _empty_transitions() -> pd.DataFrame:
         return pd.DataFrame(columns=["id", "timestamp", "values", "old_state", "action", "new_state", "message_id"])
 
 

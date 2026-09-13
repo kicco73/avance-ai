@@ -21,7 +21,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from project.archive.packages import PackageError, discard_other_revisions, import_automaton, package_dir, staging_dir
+from project.archive.packages import (
+    STAGING_PREFIX, PackageError, discard_other_revisions, import_automaton, package_dir, staging_dir,
+)
 from system.logging_factory import LoggerFactory
 
 from .compiler import CompileError, compile_contents
@@ -35,7 +37,6 @@ logger = LoggerFactory.get_logger(__name__)
 BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 REPO_ROOT = BACKEND_DIR.parent
 BUILDS_DIR = REPO_ROOT / "builds"
-STAGING_PREFIX = ".building."
 
 _TEST_TIMEOUT_SECONDS = 1800.0
 # The one thing a build's own test run must not do: build a backend and

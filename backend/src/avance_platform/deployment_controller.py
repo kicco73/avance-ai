@@ -15,9 +15,7 @@ core answer questions a product has no one to ask.
 """
 from __future__ import annotations
 
-from http import HTTPStatus
 
-from fastapi import HTTPException
 
 from auth.auth_service import AuthService
 from controllers.base_controller import BaseController, get, post, put
@@ -43,10 +41,7 @@ class DeploymentController(BaseController):
         """Sets which model generate()/generate_stream() use: `index:
         null` for auto (the cascade's fallback order), or `index` into
         GET /api/skills/platform/ai/models' `models` to pin one directly."""
-        try:
-            self.turn_service.select_ai_model(req.index)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        self.turn_service.select_ai_model(req.index)
         return self.turn_service.get_ai_models_info()
 
     @get("/api/skills/platform/ai/models/test")
@@ -55,10 +50,7 @@ class DeploymentController(BaseController):
 
     @post("/api/skills/platform/ai/models/test/selection")
     def post_ai_test_model_selection(self, req: AiModelSelectionRequest):
-        try:
-            self.turn_service.select_test_ai_model(req.index)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        self.turn_service.select_test_ai_model(req.index)
         return self.turn_service.get_test_ai_models_info()
 
     @put("/api/skills/platform/users/{user_id}/role", role="admin")

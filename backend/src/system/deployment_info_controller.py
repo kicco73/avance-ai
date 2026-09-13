@@ -12,9 +12,7 @@ left with the panel that offers it.
 """
 from __future__ import annotations
 
-from http import HTTPStatus
 
-from fastapi import HTTPException
 
 from controllers.base_controller import BaseController, get
 from db import Db
@@ -54,10 +52,7 @@ class DeploymentInfoController(BaseController):
         """Task rows for one status at a time, by run_at per `order` (see
         scheduler.SchedulerService.list_tasks). `payload` is omitted: it
         is the task type's own hydration data, not meant for display."""
-        try:
-            tasks = self.scheduler_service.list_tasks(status=status, order=order)
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        tasks = self.scheduler_service.list_tasks(status=status, order=order)
         return {
             "tasks": [
                 {key: value for key, value in task.items() if key != "payload"}

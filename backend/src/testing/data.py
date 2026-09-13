@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd
 
 from db import Db
+from metrics.metrics_framework.timeline import records_frame
 from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalculator
 from metrics.metrics_framework.benchmark_metrics.observations import BenchmarkData
 
@@ -28,7 +29,7 @@ class TestDataBuilder:
         signal_rows_by_session = {session_id: db.get_signals(session_id) for session_id in session_ids}
 
         messages = calculator._load_messages(session_ids, signal_rows_by_session)
-        sessions = calculator._frame(sessions_rows, [
+        sessions = records_frame(sessions_rows, [
             "id", "username", "project_id", "datetime_start", "datetime_end", "start_state", "end_state"
         ])
         signals = cls._load_run_signals(db, run['id'], session_ids, signal_rows_by_session)

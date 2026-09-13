@@ -133,10 +133,8 @@ def _publish(db: Db, project_service: ProjectService, index_yml: str) -> None:
     db.set_active_project_id(PROJECT, USERNAME)
     automaton = AutomatonBuilder().build({"index.yml": index_yml})
 
-    async def commit(_project_id, _automaton):
-        pass
 
-    asyncio.run(project_service.manager.finalize_update(PROJECT, automaton, commit))
+    asyncio.run(project_service.manager.finalize_update(PROJECT, automaton))
 
 
 def _process(db: Db, websocket: FakeWebSocket | None = None, *, start: bool = False, ai_service=None):
@@ -408,7 +406,7 @@ def test_deleting_the_project_takes_its_pending_tasks_with_it(file_db):
     _fire_go(file_db, factory, project_service, {"distress": 70}, fake=False)
     assert file_db.list_tasks()
 
-    asyncio.run(project_service.delete_project(PROJECT, lambda *_: asyncio.sleep(0)))
+    asyncio.run(project_service.delete_project(PROJECT))
 
     assert file_db.list_tasks() == []
 

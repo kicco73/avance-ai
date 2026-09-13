@@ -55,7 +55,7 @@ def _publish_two_state_project_with_red_css(client) -> None:
 @pytest.mark.regression
 def test_get_project_file_reports_content_type_and_real_byte_size_with_content_only_for_text_files(client, hello_project):
     """Unlike content (null for binary files, since raw bytes aren't
-    JSON-serializable — see _file_undo_redo_info's own comment), size is
+    JSON-serializable — see get_project_file's own comment), size is
     always the real byte count either way."""
     css = b"body { color: red; }"
     assert _put_css(client, hello_project, css).status_code == 200
