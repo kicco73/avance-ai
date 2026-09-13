@@ -9,13 +9,11 @@ sessions and needs no benchmark at all, stayed behind in the core.
 """
 from __future__ import annotations
 
-import json
 from http import HTTPStatus
-from urllib.parse import quote
 
-from fastapi import HTTPException, Response
+from fastapi import HTTPException
 
-from controllers.base_controller import BaseController, delete, get, post, put
+from controllers.base_controller import BaseController, delete, get, post
 from schemas import CreateTestRequest, StateTestRequest
 from system.broadcaster import Broadcaster
 from system.web_session import WebSession
@@ -81,23 +79,10 @@ class TestingController(BaseController):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/skills/testing/projects/{project_id}/tests/export", role="supervisor")
-    def get_test_export(self, project_id: str):
-        payload = self.testing_service.export_results(project_id)
-        content = json.dumps(payload, indent=2).encode("utf-8")
-        encoded_project_id = quote(project_id)
-        return Response(
-            content=content,
-            media_type="application/json",
-            headers={
-                "Content-Disposition": f"attachment; filename=\"tests.json\"; filename*=UTF-8''{encoded_project_id}-tests.json"
-            },
-        )
-
     # Named get_test_record, not get_test: inspect.getmembers walks routes
     # alphabetically (see base_controller.py's own docstring), and "get_test"
-    # would sort before — and so shadow — the literal get_test_export/
-    # get_test_metrics routes above.
+    # would sort before — and so shadow — the literal get_test_metrics
+    # route above.
     @get("/api/skills/testing/projects/{project_id}/tests/{test_id}", role="supervisor")
     def get_test_record(self, project_id: str, test_id: int):
         """One Test, its domain data merged with its Job's

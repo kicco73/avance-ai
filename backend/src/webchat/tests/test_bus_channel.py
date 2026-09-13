@@ -25,7 +25,7 @@ from webchat.webchat_service import WebchatService
 from conftest import chat_socket, chat_turn_frames, enter_chat, session_of
 from webchat.tests.webchat_helpers import end_chat
 from system.web_session import WebSession
-from turn_harness import one_state_automaton, turn_service_for  # noqa: F401 — a pytest fixture, used by name
+from turn_harness import PROJECT_ID, one_state_automaton, turn_service_for  # noqa: F401 — a pytest fixture, used by name
 
 pytestmark = pytest.mark.contract
 
@@ -557,14 +557,14 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
         one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider,
     )
     db = turn_service_for.db
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     channel = BusChannel(_FakeAuthService())
     # Two objects now, and the split is the point: core runs the turn and
     # publishes what it produces, the chat window forwards what is
     # addressed to a connection it holds (see turn/input_listener.py).
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
     TurnInput(turn_service, db).register()
-    WebchatService(turn_service, None, channel, None).register()
+    WebchatService(turn_service, channel, None).register()
     websocket = _ScriptedWebSocket(
         [
             json.dumps({"type": "input.text", "session_id": session["id"], "text": "I have a problem"}),
@@ -602,11 +602,11 @@ async def test_a_socket_dropped_mid_turn_still_completes_and_persists_that_turn(
         one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider,
     )
     db = turn_service_for.db
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     channel = BusChannel(_FakeAuthService())
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
     TurnInput(turn_service, db).register()
-    WebchatService(turn_service, None, channel, None).register()
+    WebchatService(turn_service, channel, None).register()
     websocket = _ScriptedWebSocket(
         [json.dumps({"type": "input.text", "session_id": session["id"], "text": "hello?"})],
     )

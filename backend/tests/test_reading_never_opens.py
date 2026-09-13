@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from turn_harness import one_state_automaton, turn_service_for  # noqa: F401 — turn_service_for is a fixture
+from turn_harness import PROJECT_ID, one_state_automaton, turn_service_for  # noqa: F401 — turn_service_for is a fixture
 
 pytestmark = pytest.mark.regression
 
@@ -36,7 +36,7 @@ async def test_reading_the_history_opens_nothing(turn_service_for):
     turn_service = turn_service_for(
         one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider,
     )
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     assert turn_service.read_history(session["id"]) == []
     assert provider.answers == 0
@@ -49,7 +49,7 @@ async def test_opening_it_is_asked_for_and_speaks(turn_service_for):
     turn_service = turn_service_for(
         one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider,
     )
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     opened = await turn_service.open_conversation(session["id"])
 

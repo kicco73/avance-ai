@@ -30,7 +30,7 @@ class TestAggregateMixin:
     def find_test_aggregate_result(
         self, project_id: str, kind: str, target: str | None, strategy: str, project_draft_edit_count: int,
     ) -> dict | None:
-        revision = self._current_revision(project_id)
+        revision = self.get_project_revision(project_id)
         row = TestAggregateResult.get_or_none(
             (TestAggregateResult.project_id == project_id) & (TestAggregateResult.revision == revision)
             & (TestAggregateResult.project_draft_edit_count == project_draft_edit_count)
@@ -41,7 +41,7 @@ class TestAggregateMixin:
 
     def list_test_aggregate_results(self, project_id: str, revision: int | None = None) -> list[dict]:
         if revision is None:
-            revision = self._current_revision(project_id)
+            revision = self.get_project_revision(project_id)
         query = TestAggregateResult.select().where(
             (TestAggregateResult.project_id == project_id)
             & (TestAggregateResult.revision == revision)

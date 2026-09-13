@@ -52,8 +52,11 @@ in it, where its automaton stands, what it offers, whether it is blocked, whethe
 it has ended — is a message on `/api/core/bus`, and `BUS.md` is the vocabulary.
 Webchat has no HTTP surface left at all: `webchat_controller.py` is gone, and with
 it `sessions/current`, `POST sessions`, `messages` and `operator-state`. So are
-`state`, `close`, `audio` and `messages/{id}/reaction` from
-`turn/session_controller.py`.
+`state`, `close`, `audio`, `actions` and `messages/{id}/reaction` from
+`turn/session_controller.py`. The editor and the App Store followed: their own
+`test-sessions` and `preview-sessions` pairs — a POST to make one, a GET for the
+current one — are gone too, because a Test chat and a preview open the way every
+other conversation does, by saying `session.enter` or `session.create`.
 
 What stayed is the administration of sessions nobody is having:
 
@@ -90,7 +93,7 @@ listing across many sessions has neither, and a route is the honest shape for it
   republishes onto the bus what a client sends. `ui.notification` was one of the four
   payloads, not the channel. It is `system/bus_channel.py` and `/api/core/bus`.
 - **Verbs became resources** where the path described an action rather than a thing:
-  `actions`, `invitations/{code}`, `auth/terms/acceptance`, `legal-terms/status`,
+  `invitations/{code}`, `auth/terms/acceptance`, `legal-terms/status`,
   `legal-terms/acceptance`; `POST` on the lifecycle commands (pause, resume,
   activate), `PUT` on the toggles (autotracking, actuators).
 

@@ -16,7 +16,6 @@ refused there rather than served a default.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter
 
 from http import HTTPStatus
 
@@ -33,10 +32,6 @@ class SessionController(BaseController):
     def __init__(self, turn_service: TurnService, project_service: ProjectService) -> None:
         self.turn_service = turn_service
         self.project_service = project_service
-
-    def register_routes(self, router: APIRouter) -> None:
-        for method, path, kwargs, member in self._declared_routes():
-            router.add_api_route(path, member, methods=[method], **kwargs)
 
     @delete("/api/core/sessions/{session_id}")
     def delete_session(self, session_id: int):

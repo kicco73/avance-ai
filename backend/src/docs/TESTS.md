@@ -57,6 +57,25 @@ no fixture has to be told.
 A test module never imports another test module. Anything two of them
 share is core, and core belongs in `conftest.py` or `tests/turn_harness.py`.
 
+## How a test gets a session
+
+The same two ways a browser does, and no other: `conftest.enter_chat` and
+`conftest.create_chat`. Both go through `_opening_frames`, which opens a
+`chat_socket`, sends one frame — `session.enter` for the first,
+`session.create` for the second — and returns everything the announcement
+produced, up to and including the `state.buttons` that ends it (or the
+`session.blocked` that refuses it). `enter_chat` asks for the conversation
+that is open for this project, or a new one if there is none; `create_chat`
+asks for a new one regardless. Either takes the kind as `session_type`, so
+a test of the editor's Test chat or the App Store's preview says so and
+uses the same helper.
+
+Nothing else will do: no route resolves or creates a session (see
+`BUS.md`), and reading a transcript does not open one, so a test that
+skips the frame has no session to name. `conftest.session_of` reads the id
+off the `session.info` frame those helpers return, and that id is what
+`chat_turn` and the rest take.
+
 ## One thing pytest gets wrong on its own
 
 `build/` is a skill here, and pytest's built-in `norecursedirs` excludes a

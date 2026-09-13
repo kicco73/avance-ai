@@ -96,7 +96,7 @@ async def test_a_later_keys_default_sees_an_earlier_keys_freshly_applied_value(d
     b's expression is evaluated (the bug: a single batched eval
     evaluated every key against the same stale, pre-open snapshot)."""
     turn_service = _turn_service(db, _automaton({"a": "2", "b": "env.a + 1"}))
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     await turn_service.open_conversation(session["id"])
 
@@ -107,7 +107,7 @@ async def test_a_chain_of_three_resolves_in_declaration_order(db):
     turn_service = _turn_service(
         db, _automaton({"first": "1", "second": "env.first + 1", "third": "env.second + 1"})
     )
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     await turn_service.open_conversation(session["id"])
 
@@ -116,7 +116,7 @@ async def test_a_chain_of_three_resolves_in_declaration_order(db):
 
 async def test_a_key_that_already_has_a_value_is_never_recomputed(db):
     turn_service = _turn_service(db, _automaton({"a": "2"}))
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     _env_for(db, session["id"]).update_action_set({"a": 99})
 
     await turn_service.open_conversation(session["id"])
@@ -129,7 +129,7 @@ async def test_a_key_present_only_in_memory_is_not_already_set_the_default_still
     # owners (see Env's own docstring) — a same-named memory note must
     # never count as "already set" for the automaton's own env default.
     turn_service = _turn_service(db, _automaton({"a": "2"}))
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     _env_for(db, session["id"]).update({"a": "stale note"})
 
     await turn_service.open_conversation(session["id"])

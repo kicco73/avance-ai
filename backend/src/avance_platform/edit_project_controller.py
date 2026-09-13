@@ -5,14 +5,12 @@ publish/revert lifecycle of one project's own draft.
 """
 from __future__ import annotations
 
-import hashlib
 from http import HTTPStatus
 
 from fastapi import HTTPException, Request, Response
 
 from automaton.automaton_yaml_editor import InitActionTargetError
 from automaton.build_error import AutomatonBuildError
-from automaton.file_types import ProjectFileTypes
 from turn.turn_service import TurnService
 from avance_platform.platform_service import PlatformService
 from project.project_service import ProjectService
@@ -76,19 +74,6 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         self.project_service = project_service
         self.platform_service = platform_service
         self.scheduler_service = scheduler_service
-
-    @post("/api/skills/platform/projects/{project_id}/test-sessions", role="admin")
-    async def post_create_test_session(self, project_id: str):
-        """The embedded "Test" chat's explicit "start a new session"
-        action — the one place a session may exist against an unpublished
-        revision."""
-        return await self.turn_service.create_draft_session(project_id)
-
-    @get("/api/skills/platform/projects/{project_id}/test-sessions/current", role="admin")
-    async def get_current_test_session(self, project_id: str, session_id: int | None = None):
-        """The embedded "Test" chat's bootstrap endpoint — the
-        draft-session equivalent of GET /api/skills/webchat/sessions/current."""
-        return await self.turn_service.get_current_draft_session_if_any_or_create_new(session_id, project_id)
 
     @get("/api/skills/platform/projects/{project_id}/test-sessions", role="admin")
     def get_test_sessions(self, project_id: str):
@@ -262,17 +247,6 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"content": content}
-
-    @delete("/api/skills/platform/projects/{project_id}/history", role="admin")
-    def clear_project_history(self, project_id: str):
-        """Deletes the current user's undo/redo history for every file
-        in `project_id` — called when the view opens, so a fresh
-        editing session never inherits a previous one's trail."""
-        try:
-            self.platform_service.clear_project_history(project_id)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        return {"success": True}
 
     @put("/api/skills/platform/projects/{project_id}/files/{file_name:path}", role="admin")
     async def put_project_file(self, project_id: str, file_name: str, request: Request):

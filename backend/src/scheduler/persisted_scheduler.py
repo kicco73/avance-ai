@@ -146,12 +146,6 @@ class PersistedScheduler(Scheduler):
         if job.TYPE not in self._hydrators:
             raise ValueError(f"Task {job.key} is of type '{job.TYPE}' but no hydrator is registered for it.")
 
-    def poke(self) -> None:
-        """Re-read the table now rather than at the next poll — for a
-        caller that changed rows behind the scheduler's back."""
-        with self._wakeup:
-            self._wakeup.notify()
-
     # --- reads -------------------------------------------------------------
 
     def list_tasks(self, *, status: str | None = None, order: str = 'asc') -> list[dict[str, Any]]:

@@ -23,7 +23,7 @@ from db.db import Db
 from metrics.metric_service import MetricService
 from talker.base_talker import BaseTalker
 from test_chat_tool_set_integration import FakeProjectService, PROJECT_ID
-from turn_harness import drive_turn, one_state_automaton
+from turn_harness import PROJECT_ID, drive_turn, one_state_automaton
 from tracking.tracking_service import TrackingService
 
 pytestmark = pytest.mark.contract
@@ -119,7 +119,7 @@ async def test_a_human_operators_reply_arrives_as_the_turns_own_done_frame(turn_
     turn_service, namespace_factory = turn_service_for(
         one_state_automaton(with_sources=False, autotracking_on_ai_message=True)
     )
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     namespace_factory.set_human_operator(session["id"], OPERATOR)
 
     events = await _run_turn(turn_service, turn_service_for.db, session["id"], "turn-1", "hello, is anyone there?")
@@ -148,7 +148,7 @@ async def test_a_second_message_waits_for_the_operator_rather_than_being_answere
     turn_service, namespace_factory = turn_service_for(
         one_state_automaton(with_sources=False, autotracking_on_ai_message=True), delay_first=finish,
     )
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     namespace_factory.set_human_operator(session["id"], OPERATOR)
 
     async def first_turn():
@@ -181,7 +181,7 @@ async def test_a_human_mode_session_never_auto_generates_an_opening_message(turn
     turn_service, namespace_factory = turn_service_for(
         one_state_automaton(with_sources=False, autotracking_on_ai_message=True)
     )
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     namespace_factory.set_human_operator(session["id"], OPERATOR)
 
     messages = turn_service.read_history(session["id"])

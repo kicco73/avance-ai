@@ -246,11 +246,22 @@ def enter_chat(client: TestClient, project_id: str, session_type: str = "live") 
     A test that needs the session's own id reads it off the `session.info`
     frame: `session_of(enter_chat(...))`.
     """
+    return _opening_frames(client, "session.enter", project_id, session_type)
+
+
+def create_chat(client: TestClient, project_id: str, session_type: str = "live") -> list[dict]:
+    """A new conversation regardless of what was open — `session.create`,
+    the explicit "start a new session" button. Answers the same frames
+    `enter_chat` does, about a session that did not exist before."""
+    return _opening_frames(client, "session.create", project_id, session_type)
+
+
+def _opening_frames(client: TestClient, request: str, project_id: str, session_type: str) -> list[dict]:
     frames = []
     with _frame_deadline(turn_frame_seconds(), frames):
         with chat_socket(client) as ws:
             ws.send_json({
-                "type": "session.enter", "project_id": project_id, "session_type": session_type,
+                "type": request, "project_id": project_id, "session_type": session_type,
             })
             while True:
                 frames.append(ws.receive_json())
@@ -780,7 +791,7 @@ def hello_project(client: TestClient) -> str:
     )
     assert response.status_code == 200, response.text
     project_id = parse_sse_result(response)["project_id"]
-    response = client.post(f"/api/skills/platform/projects/{project_id}/activate")
+    response = client.post(f"/api/core/projects/{project_id}/activate")
     assert response.status_code == 200, response.text
     response = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
     assert response.status_code == 200, response.text

@@ -126,26 +126,6 @@ class ProjectFileTypes:
         return cls._BY_EXTENSION.get(Path(name).suffix.lower(), cls.UNKNOWN)
 
     @classmethod
-    def extensions_in(cls, folder: str) -> set[str]:
-        return {file_type.extension for file_type in cls._TYPES if file_type.folder == folder}
-
-    @classmethod
-    def extensions_of_kind(cls, kind: str) -> set[str]:
-        return {file_type.extension for file_type in cls._TYPES if file_type.kind == kind}
-
-    @classmethod
-    def text_extensions(cls) -> set[str]:
-        return {file_type.extension for file_type in cls._TYPES if file_type.text}
-
-    @classmethod
-    def binary_extensions(cls) -> set[str]:
-        return {file_type.extension for file_type in cls._TYPES if not file_type.text}
-
-    @classmethod
-    def content_types_by_extension(cls) -> dict[str, str]:
-        return {file_type.extension: file_type.content_type for file_type in cls._TYPES}
-
-    @classmethod
     def catalog_payload(cls) -> dict:
         return {
             "root_file_names": sorted(ROOT_FILE_NAMES),

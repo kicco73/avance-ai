@@ -57,7 +57,7 @@ def _setup_project(client, *, autotracking_on_ai_message: bool) -> int:
     )
     assert response.status_code == 200, response.text
     assert parse_sse_result(response)["project_id"] == "proj"
-    assert client.post("/api/skills/platform/projects/proj/activate").status_code == 200
+    assert client.post("/api/core/projects/proj/activate").status_code == 200
     assert client.post("/api/skills/platform/projects/proj/publish", json={}).status_code == 200
     session_id = session_of(enter_chat(client, "proj"))
     assert client.get(f"/api/core/sessions/{session_id}/history").status_code == 200
@@ -151,7 +151,7 @@ states:
     )
     assert response.status_code == 200, response.text
     assert parse_sse_result(response)["project_id"] == "other"
-    assert client.post("/api/skills/platform/projects/other/activate").status_code == 200
+    assert client.post("/api/core/projects/other/activate").status_code == 200
     assert client.post("/api/skills/platform/projects/other/publish", json={}).status_code == 200
 
     # Still succeeds — "a" is a real state in the *message's own* project

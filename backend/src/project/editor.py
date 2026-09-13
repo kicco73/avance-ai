@@ -649,13 +649,6 @@ class ProjectEditor:
 
         return self._undo_redo_response(project_id, file_name, outcome, is_text)
 
-    def clear_project_history(self, project_id: str) -> None:
-        """Deletes the current user's undo/redo history for every file
-        in `project_id`, so a fresh editing session starts clean."""
-        if project_id not in self._db.list_projects():
-            raise FileNotFoundError(f"Project '{project_id}' does not exist.")
-        self._db.clear_history(WebSession().user, project_id)
-
     @staticmethod
     def _check_editable_file_name(file_name: str) -> None:
         if not file_name or file_name in (".", "..") or file_name.startswith("."):

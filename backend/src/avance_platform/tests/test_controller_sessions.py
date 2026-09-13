@@ -296,7 +296,7 @@ def test_manual_new_session_starts_at_the_automatons_current_state_not_the_initi
     automaton position currently sits, never silently rewound to
     init_action.target."""
     project_id = _upload_and_publish(client, "Aprendr català.zip")
-    client.post(f"/api/skills/platform/projects/{project_id}/activate")
+    client.post(f"/api/core/projects/{project_id}/activate")
 
     bootstrap_id = session_of(enter_chat(client, project_id))
     assert _sessions_by_id(client, project_id)[bootstrap_id]["start_state"] == "welcome"
@@ -316,10 +316,10 @@ def test_switching_the_active_project_keeps_the_other_projects_sessions_and_the_
     hello = _upload_and_publish(client, "Hello world.zip")
     cat = _upload_and_publish(client, "Aprendr català.zip")
 
-    client.post(f"/api/skills/platform/projects/{hello}/activate")
+    client.post(f"/api/core/projects/{hello}/activate")
     hello_session_id = session_of(enter_chat(client, hello))
 
-    client.post(f"/api/skills/platform/projects/{cat}/activate")
+    client.post(f"/api/core/projects/{cat}/activate")
 
     assert app_db.get_chat_session(hello_session_id) is not None
     explicit_hello = client.get(f"/api/core/projects/{hello}/sessions").json()

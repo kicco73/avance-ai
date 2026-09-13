@@ -54,14 +54,6 @@ class AppStoreController(BaseController):
             return Response(status_code=HTTPStatus.NOT_MODIFIED, headers={"ETag": etag, "Cache-Control": "no-cache"})
         return Response(content=content, media_type=content_type, headers={"ETag": etag, "Cache-Control": "no-cache"})
 
-    @post("/api/skills/platform/app-store/apps/{app_id}/preview-sessions")
-    async def post_create_preview_session(self, app_id: str):
-        return await self.turn_service.create_preview_session(app_id)
-
-    @get("/api/skills/platform/app-store/apps/{app_id}/preview-sessions/current")
-    async def get_current_preview_session(self, app_id: str, session_id: int | None = None):
-        return await self.turn_service.get_current_preview_session_if_any_or_create_new(session_id, app_id)
-
     @delete("/api/skills/platform/app-store/preview-sessions/{session_id}/env")
     async def delete_preview_session_env(self, session_id: int):
         self.turn_service.clear_session_env(session_id)

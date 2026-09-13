@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from config import ConfigError, optional_providers, parse_ui_fields
+from config import optional_providers, optional_str, parse_ui_fields, provider_prefix, require_str
 
 SECTION = "talk-service"
 
@@ -24,21 +24,13 @@ def parse(raw: dict, path: Path) -> list[TalkServiceConfig]:
     entries = optional_providers(raw, SECTION, path) or []
     services = []
     for i, entry in enumerate(entries):
-        if not isinstance(entry, dict):
-            raise ConfigError(f"{path}: '{SECTION}.providers[{i}]' must be a mapping.")
-        driver = entry.get("driver")
-        model = entry.get("model")
-        key = entry.get("key")
-        if not isinstance(driver, str) or not driver.strip():
-            raise ConfigError(f"{path}: '{SECTION}.providers[{i}].driver' is missing or empty.")
-        if not isinstance(model, str) or not model.strip():
-            raise ConfigError(f"{path}: '{SECTION}.providers[{i}].model' is missing or empty.")
-        if key is not None and not isinstance(key, str):
-            raise ConfigError(f"{path}: '{SECTION}.providers[{i}].key' must be a string if present.")
-        driver = driver.strip()
+        prefix = provider_prefix(entry, SECTION, i, path)
+        driver = require_str(entry, prefix, "driver", path)
+        model = require_str(entry, prefix, "model", path)
+        key = optional_str(entry, prefix, "key", path)
         ui_label, ui_description = parse_ui_fields(entry, driver, SECTION, i, path)
         services.append(TalkServiceConfig(
-            driver=driver, model=model.strip(), key=key, ui_label=ui_label, ui_description=ui_description,
+            driver=driver, model=model, key=key, ui_label=ui_label, ui_description=ui_description,
         ))
     return services
 

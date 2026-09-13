@@ -6,7 +6,7 @@ import pytest
 
 from automaton.automaton import Action, Automaton, Signal, State, _TaskEval
 from automaton.scope import EvaluationScope
-from conftest import FakeAiService, chat_action, parse_sse_result, run_pending_tasks
+from conftest import FakeAiService, chat_action, create_chat, parse_sse_result, run_pending_tasks, session_of
 from db import Db
 from tracking.actuators.actuator_set import FakeTaskNamespace, LiveTaskNamespace
 
@@ -112,7 +112,7 @@ def test_task_prompt_fires_through_the_real_app_end_to_end(client, app):
     resp = client.post("/api/skills/platform/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
-    client.post(f"/api/skills/platform/projects/{project_id}/activate")
+    client.post(f"/api/core/projects/{project_id}/activate")
     client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
 
     # A test/draft session, deliberately — "Run actuators" defaults off
@@ -120,8 +120,8 @@ def test_task_prompt_fires_through_the_real_app_end_to_end(client, app):
     # task.send_mail's own report observable at all: a live session
     # would really try to dial the (dummy, unreachable) SMTP config
     # instead (see test_action_task.py's own module docstring).
-    session = client.post(f"/api/skills/platform/projects/{project_id}/test-sessions").json()
-    chat_action(client, session["id"], "go")
+    session_id = session_of(create_chat(client, project_id, "test"))
+    chat_action(client, session_id, "go")
 
     # The model call runs in the task, off the request; its
     # result reaches the browser as a notification frame.

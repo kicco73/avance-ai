@@ -78,6 +78,11 @@ class SessionTypeStrategy(ABC):
     @abstractmethod
     def task_for_new_session(self, automaton: "Automaton") -> dict | None: ...
 
+    # What a new session of this type supersedes, and must therefore take
+    # with it — nothing, for the types where a previous session is kept.
+    def discard_superseded(self, session_manager: "SessionManager", username: str) -> None:
+        return None
+
     # Where a session entering cold starts: the automaton's own
     # init_action, target state plus its task payload (None if it
     # declares none) — shared by every strategy that ever starts a
@@ -185,6 +190,13 @@ class PreviewSessionStrategy(SessionTypeStrategy):
 
     def is_current(self, session: dict, active_session: dict | None) -> bool:
         return True
+
+    # A person has one preview, and it is the one they just opened. The
+    # ones before it are not a history to look back through — nothing
+    # lists them and nothing can reach them — so they go, in every
+    # project: previewing another app is what supersedes this one.
+    def discard_superseded(self, session_manager: "SessionManager", username: str) -> None:
+        session_manager.discard_sessions_of_type(username, self.type_name)
 
     def caller_channel(self) -> str | None:
         return None

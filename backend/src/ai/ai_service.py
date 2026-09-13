@@ -172,15 +172,8 @@ class AiService(object):
 		still shown in get_models_info()'s "models") but is left out of
 		the cascade auto_provider itself actually cycles through, via
 		auto_config_indices — see _auto_eligible_indices."""
-		live_config = cls._filter_by_mode(ai_service_config, "live")
-		labeled = cls._build_labeled_providers(live_config)
-		selectable = [AutoLiveLLMProvider([entry]) for entry in labeled]
-		auto_config_indices = cls._auto_eligible_indices(live_config)
-		auto_labeled = [labeled[i] for i in auto_config_indices]
-		return cls(
-			AutoLiveLLMProvider(auto_labeled), selectable_providers=selectable, configs=live_config,
-			auto_config_indices=auto_config_indices, db=db,
-			input_token_budget_per_turn=input_token_budget_per_turn,
+		return cls._for_mode(
+			ai_service_config, "live", AutoLiveLLMProvider, db, input_token_budget_per_turn,
 		)
 
 	@classmethod
@@ -191,13 +184,23 @@ class AiService(object):
 		"""The test-panel/batch-run cascade — see for_live's own docstring
 		for why this stays fully independent of it, and for what "no-auto"
 		does here too."""
-		test_config = cls._filter_by_mode(ai_service_config, "test")
-		labeled = cls._build_labeled_providers(test_config)
+		return cls._for_mode(
+			ai_service_config, "test", AutoTestLLMProvider, db, input_token_budget_per_turn,
+		)
+
+	@classmethod
+	def _for_mode(
+		cls, ai_service_config: list[AIServiceConfig], mode: str,
+		auto_provider_class: type[AutoLiveLLMProvider], db: Db | None,
+		input_token_budget_per_turn: int | None,
+	) -> "AiService":
+		mode_config = cls._filter_by_mode(ai_service_config, mode)
+		labeled = cls._build_labeled_providers(mode_config)
 		selectable = [AutoLiveLLMProvider([entry]) for entry in labeled]
-		auto_config_indices = cls._auto_eligible_indices(test_config)
+		auto_config_indices = cls._auto_eligible_indices(mode_config)
 		auto_labeled = [labeled[i] for i in auto_config_indices]
 		return cls(
-			AutoTestLLMProvider(auto_labeled), selectable_providers=selectable, configs=test_config,
+			auto_provider_class(auto_labeled), selectable_providers=selectable, configs=mode_config,
 			auto_config_indices=auto_config_indices, db=db,
 			input_token_budget_per_turn=input_token_budget_per_turn,
 		)
@@ -254,25 +257,30 @@ class AiService(object):
 			return self._auto_config_indices[auto_index]
 		return auto_index
 
+	def _current_config(self) -> AIServiceConfig | None:
+		index = self._current_config_index
+		if 0 <= index < len(self._configs):
+			return self._configs[index]
+		return None
+
 	@property
 	def _current_provider_label(self) -> str:
 		"""Identifies the concrete provider/model get_input_tokens() would
 		actually hit right now — part of its cache key, since the same
 		prompt can cost a different token count on a different provider."""
-		index = self._current_config_index
-		if 0 <= index < len(self._configs):
-			config = self._configs[index]
-			return f"{config.driver}/{config.model}"
-		return type(self._current_leaf_provider).__name__
+		config = self._current_config()
+		if config is None:
+			return type(self._current_leaf_provider).__name__
+		return f"{config.driver}/{config.model}"
 
 	def get_max_output_tokens(self) -> int:
 		"""The active provider's configured output-token ceiling (see
 		AIServiceConfig.max_output_tokens) — used by callers that need to
 		size their own request to fit in one call, e.g. BatchSignalSource."""
-		index = self._current_config_index
-		if 0 <= index < len(self._configs):
-			return self._configs[index].max_output_tokens
-		return 4096
+		config = self._current_config()
+		if config is None:
+			return 4096
+		return config.max_output_tokens
 
 	def select_model(self, index: int | None) -> None:
 		if index is not None and not (0 <= index < len(self._selectable_providers)):

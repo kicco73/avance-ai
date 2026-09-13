@@ -116,7 +116,7 @@ def _env_for(db, session_id: int = 0) -> PersistedEnv:
 
 async def test_a_manually_fired_actions_env_is_persisted(db):
     turn_service = _turn_service(db, _automaton({"reset_counter": "True"}))
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     await turn_service.apply_manual_action("advance", session["id"])
 
@@ -127,7 +127,7 @@ async def test_a_manually_fired_actions_env_is_persisted(db):
 
 async def test_an_action_with_no_env_field_never_touches_env(db):
     turn_service = _turn_service(db, _automaton(None))
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     await turn_service.apply_manual_action("advance", session["id"])
 
@@ -138,7 +138,7 @@ async def test_an_action_with_no_env_field_never_touches_env(db):
 
 async def test_manual_actions_env_can_self_reference_a_previously_stored_value(db):
     turn_service = _turn_service(db, _automaton({"number_of_steps": "env.number_of_steps + 1"}, target="a"))
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     env = _env_for(db, session["id"])
     env.update_action_set({"number_of_steps": 3})
 
@@ -153,7 +153,7 @@ async def test_env_update_happens_before_the_transitions_own_prompt_is_built(db)
     that state gets because it reads the avance:env source."""
     turn_service = _turn_service(db, _automaton({"reset_counter": "True"}, model_reads_env=True))
     ai_service = turn_service._ai_service
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     await turn_service.apply_manual_action("advance", session["id"])
 
@@ -166,7 +166,7 @@ async def test_an_unexported_env_key_never_reaches_the_prompt(db):
     automaton's env stays out of the model's prompt entirely."""
     turn_service = _turn_service(db, _automaton({"reset_counter": "True"}))
     ai_service = turn_service._ai_service
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     await turn_service.apply_manual_action("advance", session["id"])
 

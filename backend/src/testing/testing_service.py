@@ -129,9 +129,6 @@ class TestingService:
         self._jobs_by_key.clear()
         self._status_broadcaster.clear()
 
-    def export_results(self, project_id: str) -> list[dict]:
-        return self._db.list_test_aggregate_results(project_id)
-
     def get_run(self, run_id: int) -> dict:
         run = self._db.get_test(run_id)
         if run is None:

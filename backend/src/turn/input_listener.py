@@ -157,12 +157,12 @@ class TurnInput(object):
             if requests.answering:
                 return
             requests.answering = True
-        # Not awaited: an answer is written for as long as the model
-        # takes, and bus.publish awaits each listener in order — awaiting
-        # here would hold up whoever published the request.
-        task = asyncio.create_task(self._answer(message.session_id, requests))
-        self._turns.add(task)
-        task.add_done_callback(self._turns.discard)
+            # Not awaited: an answer is written for as long as the model
+            # takes, and bus.publish awaits each listener in order —
+            # awaiting here would hold up whoever published the request.
+            task = asyncio.create_task(self._answer(message.session_id, requests))
+            self._turns.add(task)
+            task.add_done_callback(self._turns.discard)
 
     async def _accept(self, message: Message, outbound: "Outbound") -> _Accepted | None:
         """Persists what the person said, right now. None when it was

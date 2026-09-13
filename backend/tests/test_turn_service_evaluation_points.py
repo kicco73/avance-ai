@@ -136,7 +136,7 @@ def turn_service_for(db):
 
 
 async def _opened_session(turn_service: TurnService) -> int:
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     await turn_service.open_conversation(session["id"])
     return session["id"]
 

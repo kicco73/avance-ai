@@ -220,9 +220,6 @@ class PlatformService(object):
             return path
         raise FileNotFoundError(f"Source '{source_name}' does not exist in project '{project_id}'.")
 
-    def clear_project_history(self, project_id: str) -> None:
-        self.editor.clear_project_history(project_id)
-
     def list_app_store_apps(self, username: str, search: str | None = None) -> list[dict]:
         apps = self.db.list_projects_for_app_store(username, search)
         for app in apps:

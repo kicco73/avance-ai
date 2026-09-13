@@ -9,12 +9,6 @@ class BenchmarkNormalizer(object):
         return max(0.0, min(100.0, float(value)))
 
     @classmethod
-    def exact_match(cls, matches: int, samples: int) -> float:
-        if samples <= 0:
-            return 0.0
-        return cls.clamp(matches / samples * 100.0)
-
-    @classmethod
     def signal_agreement(cls, actual: float | None, expected: float) -> float:
         if actual is None:
             return 0.0

@@ -69,7 +69,7 @@ def test_truncate_deletes_trailing_turns_and_rolls_the_live_state_back(client):
     resp = client.post("/api/skills/platform/projects/upload", content=content, headers={"Content-Type": "application/zip"})
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
-    client.post(f"/api/skills/platform/projects/{project_id}/activate")
+    client.post(f"/api/core/projects/{project_id}/activate")
     client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
 
     session_id = session_of(enter_chat(client, project_id))

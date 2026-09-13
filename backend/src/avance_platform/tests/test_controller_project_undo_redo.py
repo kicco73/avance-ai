@@ -1,6 +1,6 @@
-"""Integration tests for GET/POST/DELETE .../files/{file_name}, .../undo,
-.../redo, and .../history. POST .../undo and .../redo are a pure editor
-preview, not a save, and never touch Archive — only PUT .../files/{file_name} does.
+"""Integration tests for GET/POST/DELETE .../files/{file_name}, .../undo
+and .../redo. POST .../undo and .../redo are a pure editor preview, not a
+save, and never touch Archive — only PUT .../files/{file_name} does.
 """
 from __future__ import annotations
 
@@ -110,27 +110,20 @@ def test_undo_and_redo_preview_without_saving_and_a_fresh_edit_clears_redo(clien
 
 
 @pytest.mark.regression
-def test_clearing_history_or_deleting_a_file_drops_its_undo_trail_keeping_current_content(client):
+def test_deleting_a_file_drops_its_undo_trail_keeping_the_other_files_content(client):
     _upload(client)
     _save(client, V1_YML)
     client.put("/api/skills/platform/projects/proj/files/notes.txt", content=b"v1")
 
-    response = client.delete("/api/skills/platform/projects/proj/history")
-    assert response.status_code == 200
-    assert response.json() == {"success": True}
-    body = _index(client)
-    assert body["content"] == V1_YML
-    assert body["can_undo"] is False
-    assert _undo(client, V1_YML).status_code == 400
-
     assert client.delete("/api/skills/platform/projects/proj/files/notes.txt").status_code == 200
+
     assert client.get("/api/skills/platform/projects/proj/files/notes.txt").status_code == 404
+    assert _index(client)["content"] == V1_YML
 
 
 @pytest.mark.contract
-def test_undo_and_clear_history_are_404_for_an_unknown_project(client):
+def test_undo_is_404_for_an_unknown_project(client):
     assert client.post("/api/skills/platform/projects/does-not-exist/files/index.yml/undo").status_code == 404
-    assert client.delete("/api/skills/platform/projects/does-not-exist/history").status_code == 404
 
 
 @pytest.mark.regression

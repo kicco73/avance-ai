@@ -1,6 +1,3 @@
-from dataclasses import dataclass
-
-from automaton.automaton import State
 from system.logging_factory import LoggerFactory
 from system.web_session import WebSession
 from tracking.tracking_processor import OutVariables, TrackingProcessor
@@ -9,10 +6,6 @@ from tracking.tracking_processor import OutVariables, TrackingProcessor
 logger = LoggerFactory.get_logger(__name__)
 
 class TrackingProcessorAfterUserMessage(TrackingProcessor):
-
-	@dataclass
-	class Parameters:
-		signal_row_id: State
 
 	async def _get_ai_reply(self) -> OutVariables:
 

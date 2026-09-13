@@ -103,23 +103,6 @@ class SessionMixin:
         session = query.order_by(CoreSession.datetime_start.desc(), CoreSession.id.desc()).first()
         return self._chat_session_to_dict(session) if session is not None else None
 
-    def get_previous_chat_session(
-        self, username: str, project_id: str, before_session_id: int,
-        type: str | tuple[str, ...] | None='live',
-    ) -> dict | None:
-        """The session immediately before `before_session_id` in this
-        (username, project_id)'s own history, ordered by id — unlike
-        get_latest_chat_session, the answer never changes on a later call
-        against the same still-current session. TurnService's own
-        legal/terms.md re-notice check relies on exactly that stability."""
-        query = CoreSession.select().where(
-            (CoreSession.project == project_id) & (CoreSession.username == username)
-            & (CoreSession.id < before_session_id)
-        )
-        query = self._filter_by_type(query, type)
-        session = query.order_by(CoreSession.id.desc()).first()
-        return self._chat_session_to_dict(session) if session is not None else None
-
     def list_chat_sessions(
         self, username: str | None, project_id: str, until: datetime | None=None,
         type: str | tuple[str, ...] | None='live',

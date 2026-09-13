@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from http import HTTPStatus
 
-from fastapi import APIRouter, HTTPException
+from fastapi import HTTPException
 
 from controllers.base_controller import BaseController, get
 from db import Db
@@ -30,10 +30,6 @@ class DeploymentInfoController(BaseController):
         self.version = version
         self.scheduler_service = scheduler_service
         self.services_config = services_config
-
-    def register_routes(self, router: APIRouter) -> None:
-        for method, path, kwargs, member in self._declared_routes():
-            router.add_api_route(path, member, methods=[method], **kwargs)
 
     @get("/api/core/settings/about", role="supervisor")
     def get_about(self):

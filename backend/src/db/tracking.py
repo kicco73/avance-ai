@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime
 
-from peewee import fn
+from peewee import Expression, fn
 
 from system.logging_factory import LoggerFactory
 
@@ -31,8 +31,11 @@ class TrackingMixin:
             return None
         return json.loads(row.values)
 
+    def _evaluation_point_rows(self) -> Expression:
+        return Tracking.env.is_null(True) & Tracking.action_env.is_null(True) & Tracking.tool_calls.is_null(True)
+
     def get_signals(self, session_id: int) -> list[dict]:
-        rows = Tracking.select().where((Tracking.session == session_id) & Tracking.env.is_null(True) & Tracking.action_env.is_null(True) & Tracking.tool_calls.is_null(True)).order_by(Tracking.timestamp.asc(), Tracking.id.asc())
+        rows = Tracking.select().where((Tracking.session == session_id) & self._evaluation_point_rows()).order_by(Tracking.timestamp.asc(), Tracking.id.asc())
         return [{'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'output': row.output, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id, 'origin': row.origin} for row in rows]
 
     def get_timeline(self, project_id: str, username: str) -> dict:
@@ -42,7 +45,7 @@ class TrackingMixin:
             .join(CoreSession, on=Tracking.session == CoreSession.id)
             .where(
                 (CoreSession.project == project_id) & (CoreSession.username == username)
-                & Tracking.env.is_null(True) & Tracking.action_env.is_null(True) & Tracking.tool_calls.is_null(True)
+                & self._evaluation_point_rows()
             )
             .order_by(Tracking.timestamp.asc(), Tracking.id.asc())
         )
@@ -123,7 +126,7 @@ class TrackingMixin:
         link_tool_env_writes_to_message), same exclusion get_signals uses."""
         row = Tracking.get_or_none(
             (Tracking.message == message_id)
-            & Tracking.env.is_null(True) & Tracking.action_env.is_null(True) & Tracking.tool_calls.is_null(True)
+            & self._evaluation_point_rows()
         )
         if row is None:
             return None

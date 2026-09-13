@@ -38,8 +38,6 @@ class MetadataTurnMismatch(TryAgainError):
 	part is discarded along with it. Always a model mistake, always
 	worth another attempt (TryAgainError): none of these failure modes
 	are guaranteed to repeat on a fresh sample."""
-	def __init__(self, message: str) -> None:
-		super().__init__(message)
 
 
 def _fail(channel: str, message: str, raw: str | None) -> NoReturn:
@@ -50,11 +48,7 @@ def _fail(channel: str, message: str, raw: str | None) -> NoReturn:
 
 def build_output_definition_for_names(automaton: Automaton, names: Iterable[str]) -> str | None:
 	"""The `- Definition of output fields:` block for exactly `names`
-	(declaration order, deduplicated) — None once `names` is empty.
-	Shared by TrackingProcessor._build_output_definition (one state's own
-	`output`) and BatchSignalSource.prepare_batch (the union of every
-	state's own `output`, since a batch call doesn't resolve each turn's
-	individual state — see OutputBatchPrompt)."""
+	(declaration order, deduplicated) — None once `names` is empty."""
 	unique_names = list(dict.fromkeys(names))
 	if not unique_names:
 		return None
@@ -116,6 +110,18 @@ def _decode_turn_keyed_lines(channel: str, raw: str, expected_turns: int) -> lis
 	return _turns_in_order(channel, by_turn, expected_turns, terminated, raw)
 
 
+def _decode_json_object(raw: str, raw_label: str) -> dict[str, Any]:
+	decoded: dict[str, Any] = {}
+	if not raw:
+		return decoded
+	try:
+		decoded = json.loads(raw) or {}
+		assert isinstance(decoded, dict)
+	except Exception as exc:
+		logger.error(f"{exc} -- {raw_label}: {raw}")
+	return decoded
+
+
 class Prompt:
 	"""One channel's own prompt, or a composition of several. Internally a
 	dict {channel: leaf Prompt} — a freshly-constructed subclass instance
@@ -173,12 +179,11 @@ class Prompt:
 		— the ordering primitive TrackingProcessor uses in place of a
 		hand-built list + a static channel-order gate: which channels are
 		active this turn is just which of `parts` isn't None."""
-		result: Prompt | None = None
-		for part in parts:
-			if part is None:
-				continue
-			result = part if result is None else result.compose(part)
-		assert result is not None, "Prompt.chain() needs at least one non-None part"
+		present = [part for part in parts if part is not None]
+		assert present, "Prompt.chain() needs at least one non-None part"
+		result = present[0]
+		for part in present[1:]:
+			result = result.compose(part)
 		return result
 
 	def schema(self) -> dict[str, str]:
@@ -296,15 +301,7 @@ class OutputPrompt(Prompt):
 		super().__init__(output_definition or "")
 
 	def decode(self, raw: str) -> dict[str, Any]:
-		output: dict[str, Any] = {}
-		if not raw:
-			return output
-		try:
-			output = json.loads(raw) or {}
-			assert isinstance(output, dict)
-		except Exception as exc:
-			logger.error(f"{exc} -- raw output: {raw}")
-		return output
+		return _decode_json_object(raw, "raw output")
 
 
 EMBED_SIGNAL_TAG_PROMPT = """
@@ -328,15 +325,7 @@ class SignalsPrompt(Prompt):
 
 	def decode(self, raw: str) -> dict[str, float]:
 		"""Single-turn format only: a JSON object, e.g. '{"mood": 50.2}'."""
-		signals: dict[str, Any] = {}
-		if not raw:
-			return signals
-		try:
-			signals = json.loads(raw) or {}
-			assert isinstance(signals, dict)
-		except Exception as exc:
-			logger.error(f"{exc} -- raw signal: {raw}")
-		return signals
+		return _decode_json_object(raw, "raw signal")
 
 
 # A single live turn or turn-by-turn replay uses SignalsPrompt's own plain

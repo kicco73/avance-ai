@@ -4,7 +4,7 @@ import os
 import re
 import sqlite3
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime
 
 from system.logging_factory import LoggerFactory
 
@@ -39,9 +39,6 @@ logger = LoggerFactory.get_logger(__name__)
 def _REFERENCED_TABLES(sql: str) -> set:
     """Every table a stored CREATE TABLE statement names as a parent."""
     return set(re.findall(r'REFERENCES\s+"([^"]+)"', sql or ""))
-
-def _utc_iso(dt: datetime | None) -> str | None:
-    return dt.replace(tzinfo=timezone.utc).isoformat() if dt is not None else None
 
 class Db(
     SessionMixin,

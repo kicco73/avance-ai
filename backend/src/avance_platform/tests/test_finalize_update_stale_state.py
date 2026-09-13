@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from conftest import chat_action, enter_chat, parse_sse_result, session_of
+from conftest import chat_action, create_chat, enter_chat, parse_sse_result, session_of
 from system.web_session import WebSession
 
 pytestmark = pytest.mark.regression
@@ -71,10 +71,10 @@ def test_editing_the_current_users_stale_state_never_touches_an_imported_session
 
 def test_editing_a_stale_state_deletes_the_current_users_own_test_session(client, app_db):
     project_id, _ = _upload_and_reach_b(client)
-    test_session = client.post(f"/api/skills/platform/projects/{project_id}/test-sessions").json()
-    chat_action(client, test_session["id"], "go")
+    test_session_id = session_of(create_chat(client, project_id, "test"))
+    chat_action(client, test_session_id, "go")
 
     resp = client.put("/api/skills/platform/projects/proj/files/index.yml", content=YML_WITHOUT_B.encode())
     assert resp.status_code == 200, resp.text
 
-    assert app_db.get_chat_session(test_session["id"]) is None
+    assert app_db.get_chat_session(test_session_id) is None

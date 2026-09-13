@@ -113,7 +113,7 @@ def turn_service_for(file_db):
 
 
 async def _bootstrap_session(turn_service: TurnService) -> int:
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
     return session["id"]
 
 

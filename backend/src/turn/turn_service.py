@@ -5,7 +5,7 @@ import json
 
 from contextlib import asynccontextmanager
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime
 from http import HTTPStatus
 
 from automaton.automaton import Action, Automaton, SignalPayload, State, pressable_actions
@@ -139,14 +139,6 @@ class TurnService(object):
 	def select_test_ai_model(self, index: int | None) -> None:
 		self._ai_test_service.select_model(index)
 
-	@staticmethod
-	def _now_iso() -> str:
-		return datetime.now(timezone.utc).isoformat()
-
-	@staticmethod
-	def _strip_timestamps(history: list[dict]) -> list[dict]:
-		return [{"role": m["role"], "content": m["content"]} for m in history]
-
 	def _session_payload(self, session: dict, *, current: bool) -> dict:
 		return {
 			"id": session["id"],
@@ -277,19 +269,6 @@ class TurnService(object):
 			return {"blocked": "paused", "detail": paused_reason or ""}
 		return await self._create_session_of_type(get_session_type_strategy(type), project_id)
 
-	async def get_current_session_if_any_or_create_new(self, session_id: int | None) -> dict:
-		project_id = self._active_project_id
-		is_paused, paused_reason = self._project_service.get_project_availability(project_id)
-		if is_paused:
-			return {"paused": True, "paused_reason": paused_reason}
-		return await self._get_current_session_if_any_or_create_new_of_type(get_session_type_strategy('live'), project_id, session_id)
-
-	async def get_current_draft_session_if_any_or_create_new(self, session_id: int | None, project_id: str) -> dict:
-		return await self._get_current_session_if_any_or_create_new_of_type(get_session_type_strategy('test'), project_id, session_id)
-
-	async def get_current_preview_session_if_any_or_create_new(self, session_id: int | None, project_id: str) -> dict:
-		return await self._get_current_session_if_any_or_create_new_of_type(get_session_type_strategy('preview'), project_id, session_id)
-
 	async def acquire_exclusive_session(self) -> dict:
 		project_id = self._active_project_id
 		is_paused, paused_reason = self._project_service.get_project_availability(project_id)
@@ -343,18 +322,6 @@ class TurnService(object):
 		if strategy.task_for_new_session(automaton) is not None:
 			self._schedule_task(automaton, automaton.init_action, session["id"], project_id)
 		return response
-
-	async def create_session(self) -> dict:
-		return await self._create_session_of_type(get_session_type_strategy('live'), self._active_project_id)
-
-	async def create_draft_session(self, project_id: str) -> dict:
-		return await self._create_session_of_type(get_session_type_strategy('test'), project_id)
-
-	async def create_preview_session(self, project_id: str) -> dict:
-		deleted_ids = self._db.delete_sessions_by_username_and_type(self._username, 'preview')
-		for deleted_id in deleted_ids:
-			EphemeralEnvRegistry().discard(deleted_id)
-		return await self._create_session_of_type(get_session_type_strategy('preview'), project_id)
 
 	def reset_test_sessions(self, project_id: str) -> dict:
 		reset_session_ids = [
@@ -450,23 +417,6 @@ class TurnService(object):
 		assert session is not None
 		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 		return automaton.get_state_payload(state)
-
-	def get_state_for_operator(self, session_id: int) -> dict:
-		"""HumanOperatorChatView.vue's own state read: every action is
-		manually triggerable while an operator is attached — nothing
-		auto-fires from a customer's own message any more (see
-		_state_speaks_unprompted) — regardless of this session's
-		own, unrelated is_auto_tracking_enabled flag (a test/dev-mode
-		toggle that never applies to a live session anyway). The
-		customer's own get_state_for_session is untouched: this is a
-		separate read, so their payload never gains buttons they
-		shouldn't see."""
-		self._ownership.require_own_session(session_id)
-		session = self._db.get_chat_session(session_id)
-		assert session is not None
-		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
-		state_payload = automaton.get_state_payload(state)
-		return {**state_payload, "buttons": pressable_actions(state_payload["actions"], False)}
 
 	def read_history(self, session_id: int, last_n: int | None = None) -> list[dict]:
 		"""What is already there, and nothing else — every reader of a
@@ -649,32 +599,6 @@ class TurnService(object):
 	async def _session_lifecycle_scope(self, username: str, project_id: str):
 		async with self._session_lifecycle_locks.get(f"{username}/{project_id}"):
 			yield
-
-	def _already_answered_response(
-		self, session_id: int, automaton: Automaton, state: State, user_message_id: int,
-	) -> dict:
-		"""A request a previous one already took along with its own: it is
-		over the moment it gets the lock, and what answered it is that
-		other request's reply — a message that exists and has an id. It is
-		reported here as this request's answer too, because it is: one
-		answer covered both. A reader that has it already knows so by its
-		id, and does not show it twice."""
-		answer = self._db.get_message(user_message_id) or {}
-		answered_by = answer.get("answered_by")
-		reply = [m for m in [self._db.get_message(answered_by)] if answered_by and m]
-		return {
-			"reply": reply,
-			"user_message_id": user_message_id,
-			"user_message_reaction": None,
-			"assistant_message_id": answered_by,
-			"state": automaton.get_state_payload(state),
-			"buttons": self.buttons_for(session_id, automaton.get_state_payload(state)),
-			"state_changed": False,
-			"new_state": None,
-			"triggered_action": None,
-			"ai_model": self.get_ai_models_info(),
-			"session_id": session_id,
-		}
 
 	def _project_id_for_session(self, session_id: int) -> str:
 		return self._ownership.require_session(session_id)["project_id"]

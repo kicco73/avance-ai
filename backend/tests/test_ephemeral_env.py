@@ -73,8 +73,8 @@ def _env_tracking_row_count(session_id: int) -> int:
 
 
 async def test_a_test_sessions_env_lives_only_in_memory_isolated_from_the_live_one_and_from_the_next_test_session(service):
-    live_session = await service.get_current_session_if_any_or_create_new(None)
-    first = await service.create_draft_session(PROJECT_ID)
+    live_session = await service.enter_session(PROJECT_ID, 'live')
+    first = await service.create_session_of(PROJECT_ID, 'test')
 
     result = await service.apply_manual_action("advance", first["id"])
 
@@ -83,13 +83,13 @@ async def test_a_test_sessions_env_lives_only_in_memory_isolated_from_the_live_o
     assert service.get_env(first["id"])["action_set"] == {"favorite_color": "blue"}
     assert service.get_env(live_session["id"])["action_set"] == {}
 
-    second = await service.create_draft_session(PROJECT_ID)
+    second = await service.create_session_of(PROJECT_ID, 'test')
     assert service.get_env(second["id"])["action_set"] == {}
 
 
 @pytest.mark.parametrize("discard", ["reset", "delete", "close"])
 async def test_resetting_deleting_or_closing_a_test_session_discards_its_ephemeral_env(service, discard):
-    session = await service.create_draft_session(PROJECT_ID)
+    session = await service.create_session_of(PROJECT_ID, 'test')
     await service.apply_manual_action("advance", session["id"])
     assert EphemeralEnvRegistry().get(session["id"]).action_set() == {"favorite_color": "blue"}
 

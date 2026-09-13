@@ -30,7 +30,6 @@ from system.logging_factory import LoggerFactory
 from system.bus_channel import BusChannel
 from system.service_error import ServiceError
 from talker import HumanTalker
-from project.project_service import ProjectService
 from turn.outbound import publishing
 from turn.turn_service import TurnService
 
@@ -51,8 +50,7 @@ TURN_FORWARDED = (
 class WebchatService:
 
     def __init__(
-        self, turn_service: TurnService, project_service: ProjectService,
-        notifications: BusChannel, db,
+        self, turn_service: TurnService, notifications: BusChannel, db,
     ) -> None:
         self._turn_service = turn_service
         self._notifications = notifications

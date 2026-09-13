@@ -96,7 +96,7 @@ def two_projects(db) -> tuple[ProjectService, TurnService]:
 async def test_opening_another_projects_session_writes_that_projects_env_not_the_active_ones(db, two_projects):
     project_service, turn_service = two_projects
     # The active project's own session, bootstrapped the normal way.
-    active_session = await turn_service.get_current_session_if_any_or_create_new(None)
+    active_session = await turn_service.enter_session(ACTIVE_PROJECT, 'live')
     await turn_service.open_conversation(active_session["id"])
     assert _env(db, ACTIVE_PROJECT).action_set() == {"active_key": "active-default"}
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from conftest import (
-    _frame_deadline, chat_action, chat_socket, enter_chat, parse_sse_result, session_of,
+    _frame_deadline, chat_action, chat_socket, create_chat, enter_chat, parse_sse_result, session_of,
     turn_frame_seconds,
 )
 
@@ -113,19 +113,13 @@ def test_new_live_session_from_a_chatless_final_state_still_resumes_there(client
 
 def test_new_test_session_still_restarts_at_init_every_time(client, app_db):
     project_id = _upload_and_publish(client)
-    resp = client.post(f"/api/skills/platform/projects/{project_id}/test-sessions")
-    assert resp.status_code == 200, resp.text
-    first = resp.json()
-    assert first["start_state"] == "a"
-    # init-action's task fires as a task, never inside this response.
-    assert "task" not in first
+    first = _info_of(create_chat(client, project_id, "test"))
+    assert first["state"]["key"] == "a"
+    # init-action's task fires as a task, never inside the frames.
     assert [t["payload"]["script"].strip() for t in app_db.list_tasks()] == ["task.send_mail(user.email, 'hi')"]
 
-    assert chat_action(client, first["id"], "go")["state"]["key"] == "b"
+    assert chat_action(client, first["session_id"], "go")["state"]["key"] == "b"
 
-    resp = client.post(f"/api/skills/platform/projects/{project_id}/test-sessions")
-    assert resp.status_code == 200, resp.text
-    second = resp.json()
-    assert second["start_state"] == "a"
-    assert "task" not in second
+    second = _info_of(create_chat(client, project_id, "test"))
+    assert second["state"]["key"] == "a"
     assert [t["payload"]["script"].strip() for t in app_db.list_tasks()] == ["task.send_mail(user.email, 'hi')"] * 2

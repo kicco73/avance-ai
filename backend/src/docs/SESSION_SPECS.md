@@ -134,3 +134,34 @@ no linked transition — don't assume they're present with `null` values:
   array entry is imported independently; one bad session doesn't abort the
   others (`import_session_json` rolls back just that session's own rows on
   error).
+
+# A person has one preview
+
+A preview is not a conversation anybody keeps. It exists so somebody can
+try an app out from the App Store, and the moment they try another one
+the previous attempt is of no interest: no listing returns one —
+`list_sessions` asks for `live`/`imported`, `list_test_sessions` for
+`test`, and the preview chat's own sessions list is empty by
+construction — so nothing on screen can lead back to it. There is
+exactly one per person, **across every project at once** — previewing
+another app supersedes the preview of the first, and the query that
+enforces it (`Db.delete_sessions_by_username_and_type`) is keyed on the
+username and the type, with no project in it.
+
+The clean-up is preventive, not lazy. `SessionManager.create_session`
+asks the strategy what the new session supersedes
+(`SessionTypeStrategy.discard_superseded`) **before** it writes the new
+row, and `PreviewSessionStrategy` answers with every preview that person
+still has. Both halves go: the rows — the session, its messages, its
+tracking — and the ephemeral env the session was carrying
+(`EphemeralEnvRegistry`). Nothing is left marked for somebody to come
+past and collect later, so there is no state a reader has to filter.
+
+Only `preview` does this. `live` and `test` inherit the base
+`discard_superseded`, which supersedes nothing: a live conversation is
+what the Sessions panel lists and the benchmark reads, and a test one is
+what the editor's own Sessions panel lists.
+
+`backend/tests/test_preview_sessions_supersede.py` holds all three
+cases — the second preview of one project, the preview of another, and
+the live session that keeps its predecessor.

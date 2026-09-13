@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import chat_action, enter_chat, session_of
+from conftest import chat_action, create_chat, enter_chat, session_of
 
 pytestmark = pytest.mark.contract
 
@@ -69,10 +69,8 @@ def test_the_graph_follows_the_draft_unless_pinned_to_a_live_sessions_own_publis
 
 def test_a_test_session_always_tracks_the_live_draft(client):
     _upload(client, TWO_STATE_YML)
-    response = client.post("/api/skills/platform/projects/proj/test-sessions")
-    assert response.status_code == 200, response.text
-    _fire_action(client, response.json()["id"])
-    test_session_id = response.json()["id"]
+    test_session_id = session_of(create_chat(client, "proj", "test"))
+    _fire_action(client, test_session_id)
 
     _upload(client, THREE_STATE_YML, publish=False)
 

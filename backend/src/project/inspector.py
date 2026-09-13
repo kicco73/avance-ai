@@ -294,7 +294,7 @@ class ProjectInspector:
         # The estimate counts what a real turn would send, attachments
         # included — so it reads them the same way a turn does.
         prompt = estimate_state_prompt(
-            self._ai_service, automaton, state, project_files_for(self._db, automaton),
+            automaton, state, project_files_for(self._db, automaton),
         )
         return self._ai_service.get_input_tokens(prompt)
 

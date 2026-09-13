@@ -31,6 +31,15 @@ with its own `type` in it: one shape to read, no wrapper.
 Addressed by `session_id`, except entering and creating: those name a
 `project_id`, because the session is what they are asking for.
 
+**`session.enter` and `session.create` are the only way to reach a
+session at all**, and that holds for every kind of it: live, test and
+preview alike go through `turn/input_listener.py`, which is now the
+single door. No route resolves or creates one any more — the editor's
+Test chat and the app store's preview used to have a pair each, and they
+are gone with webchat's. What HTTP still has is the administration of
+sessions nobody is in: listing them, deleting one, annotating one. Even
+reading a transcript opens nothing (`TurnService.read_history`).
+
 | Type | Direction | Body |
 | --- | --- | --- |
 | `session.enter` | client → server | `{session_type}` — `live`, `test` or `preview`. I am showing a conversation of this kind for this project: give me the active one, or make one. It also says this connection is now watching that session |
@@ -197,6 +206,7 @@ in their part.
 | `http.controllers` | the controllers to mount | `controller.py` | `talk`, `listen`, `whatsapp`, `avance_platform`, `testing`, `build` |
 | `core.services` | the assembled core | every skill | `main.py`, `testing` |
 | `automaton.loader` | which loader answers "give me this automaton" | `main.py` | `avance_platform`, `product` |
+| `project.published` | the report a publish answers with, once whoever can turn a revision into a package has added what it made of this one | `avance_platform/platform_service.py` | `build` |
 | `turn.spoken_reply` | `SpokenReply` — `want()` from whoever runs the interface, `ask()` from whoever can speak | `tracking/tracking_processor.py` | `talk`, `webchat`, `whatsapp` |
 | `session.services` | `SessionServices` — `offers(name, installed)`: what each service can do for **one** conversation. The session's own project can only narrow the server's switch | `turn/turn_service.py` | `talk`, `listen` |
 

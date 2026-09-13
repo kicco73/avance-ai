@@ -241,7 +241,7 @@ async def test_create_session_matrix(db, channel, state_name):
     existing = _build_existing(db, manager, channel, state_name)
     turn_service = _turn_service(db, session_manager=manager)
 
-    payload = await turn_service.create_session()
+    payload = await turn_service.create_session_of(PROJECT_ID, 'live')
 
     assert existing is None or payload["id"] != existing["id"]
     assert payload["channel"] == channel
@@ -323,7 +323,7 @@ async def test_takeover_whatsapp_to_web_via_new_session_then_open_conversation(d
     whatsapp_session = await turn_service.acquire_exclusive_session()
 
     WebSession().channel = "webchat"
-    web_payload = await turn_service.create_session()
+    web_payload = await turn_service.create_session_of(PROJECT_ID, 'live')
 
     assert web_payload["id"] != whatsapp_session["id"]
     assert web_payload["channel"] == "webchat"
@@ -342,7 +342,7 @@ async def test_takeover_web_to_whatsapp_via_run_turn_then_prepare_user_initiated
     AI-initiated message of its own, unlike the takeover above."""
     turn_service = _turn_service(db)
     WebSession().channel = "webchat"
-    web_session = await turn_service.get_current_session_if_any_or_create_new(None)
+    web_session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     WebSession().channel = "whatsapp"
     whatsapp_payload = await turn_service.acquire_exclusive_session()

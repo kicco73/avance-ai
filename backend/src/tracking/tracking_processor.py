@@ -27,7 +27,7 @@ from .env_prompt_block import EnvPromptBlock
 from .evaluation_scope import EvaluationScopeBuilder
 from .prompt import (
 	AudioPrompt, MemoryPrompt, OutputPrompt, Prompt, ReactionPrompt, SignalsPrompt, TextPrompt, TranslatePrompt,
-	build_output_definition,
+	build_output_definition_for_names,
 )
 from .attachments import load_attachments
 from .priming import build_priming_messages
@@ -68,13 +68,7 @@ def _turn_attachment_paths(automaton: Automaton, state: State, include_signal_at
 		for signal in automaton.signals:
 			if signal.name in signal_names:
 				paths.extend(signal.attachments)
-	seen: set[str] = set()
-	deduped = []
-	for path in paths:
-		if path not in seen:
-			seen.add(path)
-			deduped.append(path)
-	return deduped
+	return list(dict.fromkeys(paths))
 
 @dataclass
 class Metadata:
@@ -228,10 +222,7 @@ class TrackingProcessor(object):
 
 		self._open_turn(fragments, user_message_ids)
 
-		def dummy_on_metadata(key: str, value: str) -> None:
-			pass
-
-		self.metadata = Metadata(on_metadata or dummy_on_metadata, {}, {})
+		self.metadata = Metadata(on_metadata or (lambda key, value: None), {}, {})
 
 		# Always sent before generation actually starts — the frontend's
 		# own typing-dots signal (see chat/ws_turn.py's own "typing" key,
@@ -313,20 +304,19 @@ class TrackingProcessor(object):
 		if key == 'output':
 			rv = self.metadata.output = value or {}
 		elif key == 'signals':
-			rv = value
 			self._resolve_signals(value)
 		elif key == 'memory':
-			rv = self.metadata.memory = value
+			self.metadata.memory = value
 		elif key == 'audio':
-			rv = self.metadata.audio = value
+			self.metadata.audio = value
 		elif key == 'reaction':
-			rv = self.metadata.reaction = value
+			self.metadata.reaction = value
 		elif key == 'translations':
-			rv = self.metadata.button_translations = value
+			self.metadata.button_translations = value
 		elif key == 'input_tokens':
 			rv = self.metadata.input_tokens = (self.metadata.input_tokens or 0) + value
 		elif key == 'output_tokens':
-			rv = self.metadata.output_tokens = value
+			self.metadata.output_tokens = value
 		elif key == 'cache_read_tokens':
 			rv = self.metadata.cache_read_tokens = (self.metadata.cache_read_tokens or 0) + value
 		elif key == 'tool' and value.get('phase') == 'result':
@@ -598,7 +588,7 @@ class TrackingProcessor(object):
 		# Pinned to THIS turn's own already-resolved automaton (never
 		# whatever project happens to be "active" right now, which need
 		# not be the same one this session actually belongs to).
-		output_definition = self._build_output_definition(automaton, state)
+		output_definition = build_output_definition_for_names(automaton, state.output)
 		signals = Signals(FixedProjectContext(automaton), self.db)
 		signal_names = automaton.triggerable_signal_names(state.key)
 		signal_definition = signals.get_definition(signal_names)
@@ -617,10 +607,6 @@ class TrackingProcessor(object):
 				_turn_attachment_paths(automaton, state, include_signal_attachments),
 			),
 		)
-
-	@staticmethod
-	def _build_output_definition(automaton: Automaton, state: State) -> str | None:
-		return build_output_definition(automaton, state)
 
 	@staticmethod
 	def _build_reaction_definition(automaton: Automaton) -> str | None:
@@ -700,7 +686,7 @@ def _spoken_reply_possible(services: ProjectServices) -> bool:
 
 
 def estimate_state_prompt(
-	ai_service: AiService, automaton: Automaton, state: State, files: "ProjectFiles",
+	automaton: Automaton, state: State, files: "ProjectFiles",
 ) -> str:
 	"""The system_prompt TrackingProcessor.generate_reply would actually
 	send for `state`, plus a synthetic one-turn history standing in for a
@@ -722,7 +708,7 @@ def estimate_state_prompt(
 		reaction_definition = None
 		turn_attachments: list = []
 	else:
-		output_definition = TrackingProcessor._build_output_definition(automaton, state)
+		output_definition = build_output_definition_for_names(automaton, state.output)
 		signals = Signals(FixedProjectContext(automaton), None)
 		signal_definition = signals.get_definition(automaton.triggerable_signal_names(state.key))
 		reaction_definition = (

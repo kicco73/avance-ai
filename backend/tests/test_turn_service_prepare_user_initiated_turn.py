@@ -87,7 +87,7 @@ def _turn_service(db, automaton: Automaton) -> TurnService:
 
 async def test_skips_the_opening_message_for_a_chat_enabled_state(db):
     turn_service = _turn_service(db, _automaton(final=False))
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     await turn_service.prepare_user_initiated_turn(session["id"])
 
@@ -96,7 +96,7 @@ async def test_skips_the_opening_message_for_a_chat_enabled_state(db):
 
 async def test_still_generates_the_wrap_up_message_for_a_chat_blocked_state(db):
     turn_service = _turn_service(db, _automaton(final=True))
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     await turn_service.prepare_user_initiated_turn(session["id"])
 
@@ -105,7 +105,7 @@ async def test_still_generates_the_wrap_up_message_for_a_chat_blocked_state(db):
 
 async def test_still_applies_declared_env_defaults(db):
     turn_service = _turn_service(db, _automaton(final=False, env={"a": "2"}))
-    session = await turn_service.get_current_session_if_any_or_create_new(None)
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     await turn_service.prepare_user_initiated_turn(session["id"])
 
