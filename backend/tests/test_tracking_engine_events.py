@@ -51,7 +51,7 @@ class FakeChatNamespaceRecorder(FakeChatNamespace):
     normally backed by a websocket/factory neither exists here."""
 
     def __init__(self) -> None:
-        super().__init__()
+        super().__init__(project_id="p")
         self.pushed: list[str] = []
 
     def push_notification(self, snippet_text: str) -> None:

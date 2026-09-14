@@ -76,7 +76,7 @@ def _fire_go(db, factory, project_service: ProjectService, session_id: int, *, f
     task_namespace = task_namespace.with_session(session_id)
     chat_namespace = chat_namespace.with_session(session_id)
     builder = EvaluationScopeBuilder(
-        env, MetricService(db, context), SessionFacts(db, context), UserFacts(db), db, None,
+        env, MetricService(db, context), SessionFacts(db, context), UserFacts(db), db,
         task_namespace, chat_namespace,
     )
     engine = TrackingEngine(DbTrackingSink(db), env, builder)
@@ -148,5 +148,20 @@ def test_a_mixed_on_exit_script_writes_env_and_pushes_a_chat_notification_synchr
     _fire_go(db, factory, project_service, session_id)
 
     assert db.get_action_env(PROJECT, USERNAME).get("counter") == 1
-    assert [m.body for m in notified.for_user(USERNAME)] == [{"task": 'celebrate()\nnotify("Nice!", "Done.")'}]
+    (message,) = notified.for_user(USERNAME)
+    assert (message.body, message.session_id, message.project_id) == (
+        {"task": 'celebrate()\nnotify("Nice!", "Done.")'}, session_id, PROJECT,
+    )
     assert db.list_tasks() == []
+
+
+def test_show_from_on_exit_is_pushed_to_the_firing_session(wired):
+    db, project_service, factory = wired
+    notified = RecordedMessages(UI_NOTIFICATION)
+    _publish(db, project_service, "chat.show('**Rules**')")
+    session_id = _session(db, project_service)
+
+    _fire_go(db, factory, project_service, session_id)
+
+    (message,) = notified.for_user(USERNAME)
+    assert (message.body, message.session_id, message.project_id) == ({"task": 'show("**Rules**")'}, session_id, PROJECT)

@@ -79,7 +79,7 @@ class TaskNamespaceFactory:
         return LiveChatNamespace(project_id, factory=self)
 
     def chat_fake(self, *, project_id: str) -> FakeChatNamespace:
-        return FakeChatNamespace(factory=self)
+        return FakeChatNamespace(project_id, factory=self)
 
     def chat_for_session(self, session_id: int) -> ChatNamespace:
         session = self._db.get_chat_session(session_id)

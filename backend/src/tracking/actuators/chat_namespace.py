@@ -30,7 +30,8 @@ class ChatNamespace(ABC):
     pages a person) is each subclass's own concern. Reachable only from
     an action's own `on-exit:` script (see IdentifierRegistry.for_on_exit)."""
 
-    def __init__(self, factory: "TaskNamespaceFactory | None" = None) -> None:
+    def __init__(self, project_id: str, factory: "TaskNamespaceFactory | None" = None) -> None:
+        self._project_id = project_id
         self._factory = factory
         self._session_id: int | None = None
 
@@ -66,7 +67,10 @@ class ChatNamespace(ABC):
         otherwise published whether or not any interface is listening."""
         if self._factory is None or self._session_id is None:
             return
-        _run_sync(bus.publish(Message(type=UI_NOTIFICATION, username=WebSession().user, body={"task": snippet_text})))
+        _run_sync(bus.publish(Message(
+            type=UI_NOTIFICATION, username=WebSession().user, session_id=self._session_id,
+            project_id=self._project_id, body={"task": snippet_text},
+        )))
 
     @abstractmethod
     def switch_to_human(self, user_id: str) -> JsSnippet | None:
@@ -76,10 +80,6 @@ class ChatNamespace(ABC):
 class LiveChatNamespace(ChatNamespace):
     """Bound to one project directly (no dispatcher — chat has nothing
     to schedule as a background Task, unlike TaskNamespace)."""
-
-    def __init__(self, project_id: str, factory: "TaskNamespaceFactory | None" = None) -> None:
-        super().__init__(factory)
-        self._project_id = project_id
 
     def switch_to_human(self, user_id: str) -> None:
         if self._factory is None or self._session_id is None:

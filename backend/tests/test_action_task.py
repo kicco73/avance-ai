@@ -150,7 +150,7 @@ def _fire_go(
     task_namespace = factory.fake(project_id=PROJECT) if fake else factory.live(project_id=PROJECT)
     builder = EvaluationScopeBuilder(
         env, MetricService(db, context), SessionFacts(db, context),
-        UserFacts(db), db, None, task_namespace, ai_service=ai_service,
+        UserFacts(db), db, task_namespace, ai_service=ai_service,
     )
     engine = TrackingEngine(DbTrackingSink(db), env, builder)
     engine.apply_action_env(automaton, automaton.states["a"].actions[0], signal_values, "a", session_id=session_id)
@@ -253,7 +253,7 @@ def test_a_fake_task_namespaces_task_still_runs_as_a_task_and_reports(file_db):
     context = FixedProjectContext(automaton=automaton, project_id=PROJECT)
     env = PersistedEnv(file_db, context, session_id=0)
     builder = EvaluationScopeBuilder(
-        env, MetricService(file_db, context), SessionFacts(file_db, context), UserFacts(file_db), file_db, None,
+        env, MetricService(file_db, context), SessionFacts(file_db, context), UserFacts(file_db), file_db,
         factory.fake(project_id=PROJECT),
     )
     TrackingEngine(DbTrackingSink(file_db), env, builder).apply_action_env(

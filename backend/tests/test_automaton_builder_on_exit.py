@@ -167,7 +167,7 @@ def test_eval_action_on_exit_collects_chat_snippets_alongside_env_updates():
         name="go", ui_label="go", ui_button="go", target="b",
         on_exit="env.counter = env.counter + 1\nchat.celebrate()\nchat.notify('Nice!', 'Done.')",
     )
-    scope = EvaluationScope({"env": {"counter": 5}, "chat": FakeChatNamespace()}, automaton=None, state_key="a")
+    scope = EvaluationScope({"env": {"counter": 5}, "chat": FakeChatNamespace(project_id="p")}, automaton=None, state_key="a")
     updates, chat_snippets = Automaton.eval_action_on_exit(action, scope)
     assert updates == {"counter": 6}
     assert chat_snippets == 'celebrate()\nnotify("Nice!", "Done.")'

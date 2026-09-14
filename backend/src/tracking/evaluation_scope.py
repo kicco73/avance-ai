@@ -47,7 +47,7 @@ class EvaluationScopeBuilder(object):
         self._user = user
         self._db = db
         self._task_namespace = task_namespace if task_namespace is not None else FakeTaskNamespace()
-        self._chat_namespace = chat_namespace if chat_namespace is not None else FakeChatNamespace()
+        self._chat_namespace = chat_namespace if chat_namespace is not None else FakeChatNamespace(project_id="")
         self._ai_service = ai_service
 
     def build(
